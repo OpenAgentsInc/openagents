@@ -29,6 +29,7 @@
 #[cfg(feature = "window")]
 pub mod backdrop;
 pub mod canvas;
+mod icons;
 pub mod layout;
 pub mod paint;
 pub mod text;
@@ -38,7 +39,16 @@ pub mod window;
 
 pub use canvas::{Frame, PxRect};
 pub use layout::{Rect, Scene};
+pub use layout::{SplitLayout, WindowLayout};
 pub use theme::Theme;
+
+/// A command key chord that activates a node in the current view.
+#[derive(Clone, Copy, Debug)]
+pub struct KeyBinding {
+    pub key: &'static str,
+    pub shift: bool,
+    pub node: &'static str,
+}
 /// The `wgpu` the window and a [`backdrop::Backdrop`] draw with.
 #[cfg(feature = "window")]
 pub use wgpu;
@@ -92,6 +102,21 @@ pub trait App {
     /// The colors and type sizes the adapter paints with.
     fn theme(&self) -> Theme {
         Theme::default()
+    }
+
+    /// Layout of the window's semantic root. The default is a centered column.
+    fn window_layout(&self) -> WindowLayout {
+        WindowLayout::Column
+    }
+
+    /// The leading pane was resized by dragging its divider, in points.
+    fn resize_leading_pane(&mut self, width: f32, now: Instant) {
+        let _ = (width, now);
+    }
+
+    /// Command chords (Ctrl on Linux and Windows, Cmd on macOS).
+    fn key_bindings(&self) -> &'static [KeyBinding] {
+        &[]
     }
 
     /// Called once with a waker before the first frame.
@@ -165,7 +190,7 @@ fn capture_into<A: App>(
 ) -> (Frame, Scene) {
     let theme = app.theme();
     let mut fonts = text::Fonts::new();
-    let scene = layout::lay_out_window(
+    let scene = layout::lay_out_with_layout(
         app.view().view(),
         &theme,
         &mut fonts,
@@ -173,6 +198,7 @@ fn capture_into<A: App>(
         &layout::Interaction::default(),
         width,
         height,
+        app.window_layout(),
     );
     let mut frame = frame(
         (width * scale).round() as usize,

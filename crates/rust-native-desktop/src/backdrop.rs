@@ -354,32 +354,47 @@ impl Compositor {
     }
 
     /// Uploads the views' premultiplied frame, the window's size.
-    pub(crate) fn upload(&self, queue: &wgpu::Queue, frame: &Frame) {
+    pub(crate) fn upload_regions(
+        &self,
+        queue: &wgpu::Queue,
+        frame: &Frame,
+        regions: &[crate::PxRect],
+    ) {
         let Some(views) = &self.views else {
             return;
         };
         if (frame.width as u32, frame.height as u32) != self.window {
             return;
         }
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: views,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &frame.pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(self.window.0 * 4),
-                rows_per_image: Some(self.window.1),
-            },
-            wgpu::Extent3d {
-                width: self.window.0,
-                height: self.window.1,
-                depth_or_array_layers: 1,
-            },
-        );
+        for region in regions {
+            let x = region.x as u32;
+            let y = region.y as u32;
+            let width = region.w as u32;
+            let height = region.h as u32;
+            if width == 0 || height == 0 {
+                continue;
+            }
+            let offset = (y as usize * frame.width + x as usize) * 4;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: views,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x, y, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &frame.pixels[offset..],
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.window.0 * 4),
+                    rows_per_image: Some(self.window.1),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
     }
 
     /// Records the pass that lays the views over the backdrop into `output`.

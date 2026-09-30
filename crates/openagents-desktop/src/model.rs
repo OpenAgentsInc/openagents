@@ -41,6 +41,8 @@ pub enum Screen {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
+    /// Navigate the desktop shell without starting work.
+    Navigate { action: crate::chrome::Action },
     /// "Can't scan? Copy a code instead".
     CopyCode,
     /// Bring the code back after it was hidden.
@@ -409,6 +411,7 @@ impl Model {
     pub fn activate(&mut self, intent: Intent, now: Instant) -> Vec<Request> {
         self.codes.input(now);
         match intent {
+            Intent::Navigate { .. } => Vec::new(),
             Intent::CopyCode => match self.codes.shown() {
                 Some(shown) => {
                     let code = shown.text.clone();

@@ -36,6 +36,7 @@
 
 #[cfg(all(feature = "app", not(windows)))]
 pub mod backdrop;
+pub mod chrome;
 pub mod codes;
 pub mod control;
 pub mod fake;

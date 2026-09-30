@@ -1,0 +1,694 @@
+//! Desktop navigation and sample sidebar content, projected as semantic views.
+//!
+//! The layout reimplements Zeron's shell and sidebar design. Sample chats
+//! exist only for this window and never create a task or a saved conversation.
+
+use crate::model::{Intent, Model};
+use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
+use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole};
+use serde::Serialize;
+use std::collections::BTreeSet;
+
+pub const MARK: &str = "openagents-mark";
+pub const SIDEBAR_MIN: f32 = 224.0;
+pub const SIDEBAR_MAX: f32 = 400.0;
+pub const SIDEBAR_DEFAULT: f32 = 280.0;
+const SAMPLE_LIMIT: usize = 40;
+const SIDEBAR: Color = Color::rgb(18, 20, 23);
+const SELECTED: Color = Color::rgb(44, 47, 52);
+const TEXT: Color = Color::rgb(230, 232, 235);
+const MUTED: Color = Color::rgb(150, 155, 163);
+const CLEAR: Color = Color {
+    red: 0,
+    green: 0,
+    blue: 0,
+    alpha: 0,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Section {
+    Pinned,
+    OpenAgents,
+    Website,
+    Recent,
+    Archived,
+}
+
+impl Section {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Pinned => "pinned",
+            Self::OpenAgents => "openagents",
+            Self::Website => "website",
+            Self::Recent => "recent",
+            Self::Archived => "archived",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pinned => "Pinned",
+            Self::OpenAgents => "OpenAgents",
+            Self::Website => "Website",
+            Self::Recent => "Recent",
+            Self::Archived => "Archived",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum Action {
+    ToggleSidebar,
+    ToggleSection { section: Section },
+    SelectChat { id: u64 },
+    NewChat,
+    Grid,
+    Computers,
+    Settings,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Page {
+    Chat(u64),
+    Grid,
+    Computers,
+    Settings,
+}
+
+#[derive(Clone, Debug)]
+pub struct Chat {
+    pub id: u64,
+    pub title: String,
+    pub detail: &'static str,
+    pub section: Section,
+}
+
+/// Presentation state for the shell. Computer state remains in `Model`.
+#[derive(Clone, Debug)]
+pub struct State {
+    pub page: Page,
+    pub sidebar_width: f32,
+    pub collapsed: bool,
+    pub closed_sections: BTreeSet<Section>,
+    pub chats: Vec<Chat>,
+    next_chat: u64,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        let examples = [
+            (
+                "Welcome to OpenAgents",
+                "OpenAgents · Today",
+                Section::Pinned,
+            ),
+            (
+                "A place for good ideas",
+                "OpenAgents · Yesterday",
+                Section::Pinned,
+            ),
+            (
+                "Build the desktop shell",
+                "Coder · Just now",
+                Section::OpenAgents,
+            ),
+            (
+                "Make the sidebar feel right",
+                "Coder · 12 min ago",
+                Section::OpenAgents,
+            ),
+            (
+                "Review the latest changes",
+                "Coder · 1 hour ago",
+                Section::OpenAgents,
+            ),
+            ("Design a new home page", "Coder · Today", Section::Website),
+            (
+                "A quieter color palette",
+                "OpenAgents · Today",
+                Section::Website,
+            ),
+            (
+                "Polish the little details",
+                "Coder · Yesterday",
+                Section::Website,
+            ),
+            (
+                "What should I make next?",
+                "OpenAgents · Today",
+                Section::Recent,
+            ),
+            (
+                "Take a look around the Grid",
+                "Verse · Today",
+                Section::Recent,
+            ),
+            ("Compare the latest results", "Gym · Today", Section::Recent),
+            (
+                "Plan a weekend project",
+                "OpenAgents · Yesterday",
+                Section::Recent,
+            ),
+            (
+                "Connect my phone",
+                "OpenAgents · Yesterday",
+                Section::Recent,
+            ),
+            ("A small experiment", "Gym · Yesterday", Section::Recent),
+            (
+                "Notes for tomorrow",
+                "OpenAgents · 2 days ago",
+                Section::Recent,
+            ),
+            (
+                "The first prototype",
+                "Coder · Last week",
+                Section::Archived,
+            ),
+            (
+                "An idea to come back to",
+                "OpenAgents · Last week",
+                Section::Archived,
+            ),
+        ];
+        Self {
+            page: Page::Chat(1),
+            sidebar_width: SIDEBAR_DEFAULT,
+            collapsed: false,
+            closed_sections: BTreeSet::from([Section::Archived]),
+            chats: examples
+                .into_iter()
+                .enumerate()
+                .map(|(index, (title, detail, section))| Chat {
+                    id: index as u64 + 1,
+                    title: title.into(),
+                    detail,
+                    section,
+                })
+                .collect(),
+            next_chat: 18,
+        }
+    }
+}
+
+impl State {
+    pub fn activate(&mut self, action: Action) {
+        match action {
+            Action::ToggleSidebar => self.collapsed = !self.collapsed,
+            Action::ToggleSection { section } => {
+                if !self.closed_sections.remove(&section) {
+                    self.closed_sections.insert(section);
+                }
+            }
+            Action::SelectChat { id } => {
+                if self.chats.iter().any(|chat| chat.id == id) {
+                    self.page = Page::Chat(id);
+                }
+            }
+            Action::NewChat => {
+                let id = self.next_chat;
+                self.next_chat += 1;
+                if self.chats.len() == SAMPLE_LIMIT {
+                    self.chats.pop();
+                }
+                self.chats.insert(
+                    0,
+                    Chat {
+                        id,
+                        title: "New chat".into(),
+                        detail: "OpenAgents · Just now",
+                        section: Section::Recent,
+                    },
+                );
+                self.closed_sections.remove(&Section::Recent);
+                self.page = Page::Chat(id);
+            }
+            Action::Grid => self.page = Page::Grid,
+            Action::Computers => self.page = Page::Computers,
+            Action::Settings => self.page = Page::Settings,
+        }
+    }
+
+    pub fn resize(&mut self, width: f32) {
+        if width.is_finite() {
+            self.sidebar_width = width.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
+        }
+    }
+
+    pub fn selected(&self) -> Option<&Chat> {
+        let Page::Chat(id) = self.page else {
+            return None;
+        };
+        self.chats.iter().find(|chat| chat.id == id)
+    }
+}
+
+fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
+    Node {
+        key: key.into(),
+        style: Style::default(),
+        element,
+    }
+}
+
+fn stack(key: &str, axis: Axis, gap: Space, children: Vec<Node<Intent>>) -> Node<Intent> {
+    let mut node = node(key, Element::Stack { axis, children });
+    node.style.gap = Some(gap);
+    node
+}
+
+fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
+    node(
+        key,
+        Element::Text {
+            value: value.into(),
+            role,
+        },
+    )
+}
+
+fn action(
+    key: &str,
+    label: impl Into<String>,
+    action: Action,
+    glyph: Option<Glyph>,
+    selected: bool,
+) -> Node<Intent> {
+    let mut node = node(
+        key,
+        Element::Button {
+            label: label.into(),
+            enabled: true,
+            icon: glyph.map(|glyph| Icon {
+                glyph,
+                circular: false,
+                pill: false,
+            }),
+            intent: Intent::Navigate { action },
+        },
+    );
+    node.style = Style {
+        background: Some(if selected { SELECTED } else { SIDEBAR }),
+        foreground: Some(if selected { TEXT } else { MUTED }),
+        align: Some(TextAlign::Start),
+        weight: Some(TextWeight::Normal),
+        ..Style::default()
+    };
+    node
+}
+
+fn icon_button(key: &str, label: &str, action: Action, glyph: Glyph) -> Node<Intent> {
+    let mut node = node(
+        key,
+        Element::Button {
+            label: label.into(),
+            enabled: true,
+            icon: Some(Icon {
+                glyph,
+                circular: true,
+                pill: false,
+            }),
+            intent: Intent::Navigate { action },
+        },
+    );
+    node.style.background = Some(CLEAR);
+    node.style.foreground = Some(MUTED);
+    node
+}
+
+fn sidebar(state: &State) -> Node<Intent> {
+    let mut title = text("shell-brand", "OpenAgents", TextRole::Body);
+    title.style.weight = Some(TextWeight::Bold);
+    title.style.padding_start = Some(Space::Sm);
+    title.style.padding_top = Some(Space::Sm);
+    title.style.padding_bottom = Some(Space::Md);
+    let mut new = action(
+        "sidebar-new-chat",
+        "New chat",
+        Action::NewChat,
+        Some(Glyph::Compose),
+        false,
+    );
+    new.style.background = Some(Color::rgb(33, 36, 41));
+    new.style.foreground = Some(TEXT);
+    let header = stack(
+        "sidebar-header",
+        Axis::Vertical,
+        Space::Sm,
+        vec![title, new],
+    );
+    let mut groups = vec![action(
+        "sidebar-grid",
+        "The Grid",
+        Action::Grid,
+        Some(Glyph::Cloud),
+        state.page == Page::Grid,
+    )];
+    for section in [
+        Section::Pinned,
+        Section::OpenAgents,
+        Section::Website,
+        Section::Recent,
+        Section::Archived,
+    ] {
+        let closed = state.closed_sections.contains(&section);
+        let count = state
+            .chats
+            .iter()
+            .filter(|chat| chat.section == section)
+            .count();
+        let label = format!(
+            "{}  {}  {count}",
+            if closed { "+" } else { "−" },
+            section.label()
+        );
+        let mut rows = vec![action(
+            &format!("sidebar-section-{}", section.key()),
+            label,
+            Action::ToggleSection { section },
+            matches!(section, Section::OpenAgents | Section::Website).then_some(Glyph::Folder),
+            false,
+        )];
+        if !closed {
+            rows.extend(
+                state
+                    .chats
+                    .iter()
+                    .filter(|chat| chat.section == section)
+                    .map(|chat| {
+                        action(
+                            &format!("sidebar-chat-{}", chat.id),
+                            format!("{}\n{}", chat.title, chat.detail),
+                            Action::SelectChat { id: chat.id },
+                            None,
+                            state.page == Page::Chat(chat.id),
+                        )
+                    }),
+            );
+        }
+        groups.push(stack(
+            &format!("sidebar-group-{}", section.key()),
+            Axis::Vertical,
+            Space::Xs,
+            rows,
+        ));
+    }
+    let body = stack("sidebar-body", Axis::Vertical, Space::Md, groups);
+    let footer = stack(
+        "sidebar-footer",
+        Axis::Vertical,
+        Space::Xs,
+        vec![
+            action(
+                "sidebar-computers",
+                "Phones and computers",
+                Action::Computers,
+                Some(Glyph::Computer),
+                state.page == Page::Computers,
+            ),
+            action(
+                "sidebar-settings",
+                "Settings",
+                Action::Settings,
+                Some(Glyph::Menu),
+                state.page == Page::Settings,
+            ),
+            text(
+                "sidebar-preview",
+                "Sample chats · on this computer",
+                TextRole::Status,
+            ),
+        ],
+    );
+    let mut pane = stack(
+        "shell-sidebar",
+        Axis::Vertical,
+        Space::None,
+        if state.collapsed {
+            ["sidebar-header", "sidebar-body", "sidebar-footer"]
+                .into_iter()
+                .map(|key| stack(key, Axis::Vertical, Space::None, vec![]))
+                .collect()
+        } else {
+            vec![header, body, footer]
+        },
+    );
+    pane.style.background = Some(SIDEBAR);
+    pane
+}
+
+fn placeholder(state: &State) -> Node<Intent> {
+    let new = state
+        .selected()
+        .is_some_and(|chat| chat.title == "New chat");
+    let heading = if new {
+        "A fresh start."
+    } else {
+        "What would you like to do?"
+    };
+    let line = if new {
+        "Your next idea has a place to begin."
+    } else {
+        "Your chats, projects, and computers in one place."
+    };
+    let mut new_chat = action(
+        "welcome-new-chat",
+        "New chat",
+        Action::NewChat,
+        Some(Glyph::Compose),
+        false,
+    );
+    new_chat.style.align = None;
+    let mut grid = action(
+        "welcome-grid",
+        "Watch the Grid",
+        Action::Grid,
+        Some(Glyph::Cloud),
+        false,
+    );
+    grid.style.align = None;
+    let mut buttons = stack(
+        "shell-welcome-actions",
+        Axis::Wrap,
+        Space::Sm,
+        vec![new_chat, grid],
+    );
+    buttons.style.align = Some(TextAlign::Center);
+    let mut body = stack(
+        "shell-welcome",
+        Axis::Vertical,
+        Space::Md,
+        vec![
+            node(
+                "shell-mark",
+                Element::Surface {
+                    resource: MARK.into(),
+                    label: "OpenAgents".into(),
+                },
+            ),
+            text("shell-welcome-title", heading, TextRole::Heading),
+            text("shell-welcome-line", line, TextRole::Status),
+            buttons,
+        ],
+    );
+    body.style.align = Some(TextAlign::Center);
+    body
+}
+
+/// The shell wraps the existing computer screens without changing their intents.
+pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
+    let prompt = model.nearby().is_some();
+    let title: String = if prompt {
+        "Connect a phone".into()
+    } else {
+        match state.page {
+            Page::Chat(_) => state
+                .selected()
+                .map_or("New chat", |chat| chat.title.as_str())
+                .into(),
+            Page::Grid => "The Grid".into(),
+            Page::Computers => "Phones and computers".into(),
+            Page::Settings => "Settings".into(),
+        }
+    };
+    let subtitle = state
+        .selected()
+        .map_or("OpenAgents", |chat| match chat.section {
+            Section::OpenAgents => "OpenAgents / Project",
+            Section::Website => "Website / Project",
+            _ => "OpenAgents / Chat",
+        });
+    let mut heading = text("shell-page-title", title, TextRole::Body);
+    heading.style.weight = Some(TextWeight::Bold);
+    let header = stack(
+        "shell-content-header",
+        Axis::Horizontal,
+        Space::Sm,
+        vec![
+            icon_button(
+                "shell-toggle-sidebar",
+                if state.collapsed {
+                    "Show sidebar"
+                } else {
+                    "Hide sidebar"
+                },
+                Action::ToggleSidebar,
+                Glyph::Menu,
+            ),
+            stack(
+                "shell-page-heading",
+                Axis::Vertical,
+                Space::Xs,
+                vec![
+                    heading,
+                    text("shell-page-subtitle", subtitle, TextRole::Status),
+                ],
+            ),
+            icon_button(
+                "shell-new-chat",
+                "New chat",
+                Action::NewChat,
+                Glyph::Compose,
+            ),
+        ],
+    );
+    let body = if prompt {
+        crate::screens::root(model, now)
+    } else {
+        match state.page {
+            Page::Chat(_) => placeholder(state),
+            Page::Grid => {
+                let mut body = stack(
+                    "shell-grid",
+                    Axis::Vertical,
+                    Space::Sm,
+                    vec![
+                        text("shell-grid-title", "The Grid", TextRole::Heading),
+                        text(
+                            "shell-grid-line",
+                            "A window into the shared world.",
+                            TextRole::Status,
+                        ),
+                    ],
+                );
+                body.style.align = Some(TextAlign::Center);
+                body
+            }
+            Page::Computers => crate::screens::root(model, now),
+            Page::Settings => stack(
+                "shell-settings",
+                Axis::Vertical,
+                Space::Md,
+                vec![
+                    text(
+                        "shell-settings-title",
+                        "OpenAgents desktop",
+                        TextRole::Heading,
+                    ),
+                    text(
+                        "shell-settings-line",
+                        "Chats in this preview are examples. Your connected phones and computers use your existing setup.",
+                        TextRole::Body,
+                    ),
+                    action(
+                        "settings-computers",
+                        "Manage phones and computers",
+                        Action::Computers,
+                        Some(Glyph::Computer),
+                        false,
+                    ),
+                ],
+            ),
+        }
+    };
+    let footer = stack(
+        "shell-content-footer",
+        Axis::Horizontal,
+        Space::Sm,
+        vec![text(
+            "shell-content-note",
+            if matches!(state.page, Page::Chat(_)) {
+                "Sample conversation"
+            } else {
+                "OpenAgents"
+            },
+            TextRole::Status,
+        )],
+    );
+    let mut content = stack(
+        "shell-content",
+        Axis::Vertical,
+        Space::None,
+        vec![header, body, footer],
+    );
+    content.style.background = Some(Color {
+        red: 10,
+        green: 12,
+        blue: 15,
+        alpha: 105,
+    });
+    stack(
+        "desktop-shell",
+        Axis::Horizontal,
+        Space::None,
+        vec![sidebar(state), content],
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_chats_are_bounded_and_reopen_their_section() {
+        let mut state = State::default();
+        state.closed_sections.insert(Section::Recent);
+        for _ in 0..80 {
+            state.activate(Action::NewChat);
+        }
+        assert_eq!(state.chats.len(), SAMPLE_LIMIT);
+        assert_eq!(state.selected().expect("selected chat").title, "New chat");
+        assert!(!state.closed_sections.contains(&Section::Recent));
+        let page = state.page;
+        state.activate(Action::SelectChat { id: u64::MAX });
+        assert_eq!(state.page, page);
+    }
+
+    #[test]
+    fn collapse_preserves_width_and_chat_selection() {
+        let mut state = State::default();
+        state.resize(350.0);
+        state.activate(Action::SelectChat { id: 4 });
+        state.activate(Action::ToggleSidebar);
+        state.activate(Action::ToggleSidebar);
+        assert_eq!(state.sidebar_width, 350.0);
+        assert_eq!(state.page, Page::Chat(4));
+        state.resize(f32::NAN);
+        assert_eq!(state.sidebar_width, 350.0);
+    }
+
+    #[test]
+    fn every_shell_route_validates_and_uses_plain_words() {
+        use crate::model::{Agent, Screen};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut state = State::default();
+        for action in [
+            Action::Grid,
+            Action::Computers,
+            Action::Settings,
+            Action::NewChat,
+            Action::ToggleSidebar,
+        ] {
+            state.activate(action);
+            let root = root(&state, &model, 0);
+            for value in crate::screens::words(&root) {
+                assert!(crate::words::banned_in(&value).is_empty(), "{value}");
+            }
+            rust_native::View::new("shell-test", 1, root)
+                .validate()
+                .expect("valid view");
+        }
+    }
+}

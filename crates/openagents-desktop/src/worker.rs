@@ -14,6 +14,10 @@ use rust_native_desktop::Waker;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 /// The most recent tasks the home screen lists.
@@ -260,6 +264,52 @@ pub fn parse_tasks(json: &[u8], archived: &std::collections::BTreeSet<String>) -
     tasks
 }
 
+/// Polls the screen lock independently of host requests. A slow host cannot
+/// delay hiding a pairing code, and the UI reads only a cached value.
+pub struct ScreenLock {
+    locked: Arc<AtomicBool>,
+    _stop: Sender<()>,
+}
+
+impl ScreenLock {
+    pub fn start(waker: Waker) -> Self {
+        Self::with_probe(waker, Duration::from_secs(1), platform::screen_locked)
+    }
+
+    fn with_probe(
+        waker: Waker,
+        interval: Duration,
+        mut probe: impl FnMut() -> bool + Send + 'static,
+    ) -> Self {
+        let locked = Arc::new(AtomicBool::new(false));
+        let shared = locked.clone();
+        let (stop, stopped) = channel();
+        std::thread::spawn(move || {
+            let mut previous = None;
+            loop {
+                let locked = probe();
+                shared.store(locked, Ordering::Relaxed);
+                if previous != Some(locked) {
+                    previous = Some(locked);
+                    waker.wake();
+                }
+                if stopped.recv_timeout(interval) != Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                {
+                    return;
+                }
+            }
+        });
+        Self {
+            locked,
+            _stop: stop,
+        }
+    }
+
+    pub fn locked(&self) -> bool {
+        self.locked.load(Ordering::Relaxed)
+    }
+}
+
 /// A background worker.
 pub struct Worker {
     requests: Sender<Request>,
@@ -297,6 +347,33 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slow_lock_probe_does_not_block_reads_and_changes_wake_the_window() {
+        let (states, probe) = channel();
+        let (wakes, changed) = channel();
+        let monitor = ScreenLock::with_probe(
+            Waker::new(move || {
+                let _ = wakes.send(());
+            }),
+            Duration::from_millis(1),
+            move || probe.recv().unwrap_or(false),
+        );
+        // The probe is waiting for a state while the UI can read its cache.
+        assert!(!monitor.locked());
+        states.send(true).expect("a lock state");
+        changed
+            .recv_timeout(Duration::from_secs(2))
+            .expect("a wake");
+        assert!(monitor.locked());
+        states.send(false).expect("an unlock state");
+        changed
+            .recv_timeout(Duration::from_secs(2))
+            .expect("a wake");
+        assert!(!monitor.locked());
+        drop(monitor);
+        drop(states);
+    }
 
     #[test]
     fn tasks_list_running_first_then_newest() {

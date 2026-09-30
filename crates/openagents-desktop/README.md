@@ -1,10 +1,44 @@
 # openagents-desktop
 
-**OpenAgents** for Mac: the desktop app a person installs so their phone can
-connect to this computer by scanning a QR code. The design is
+**OpenAgents** for desktop opens into a chat shell with a sidebar and the live
+Grid behind its main pane. The sidebar currently contains sample chats;
+selecting or creating one changes only the window's presentation state.
+**Phones and computers** opens the existing pairing and computer controls.
+Their design is
 [Connect a computer by scanning a QR code](../../docs/coder/design/2026-09-29-auto-pairing.md);
 the screens are `DSK-01` to `DSK-03` in the
 [wireframe](../../docs/product/2026-09-28-app-wireframe.md).
+
+## The shell and sidebar
+
+The shell reimplements Zeron's inset content pane, grouped chat list, and
+anchored footer ([port audit](../../docs/research/2026-09-29-comet-desktop-ui-port-audit.md),
+[#9993](https://github.com/OpenAgentsInc/openagents/issues/9993)).
+[`src/chrome.rs`](src/chrome.rs) owns its bounded sample data and typed
+navigation actions. It projects existing Rust Native elements; desktop layout
+stays in the adapter.
+
+- Drag the sidebar seam to resize it from 224 to 400 points.
+- Click the main header's sidebar button, or press Ctrl+B (Cmd+B on macOS),
+  to hide or restore it. The window retains its width and selected chat.
+- Click a section to hide or reveal its chats. The list scrolls independently
+  while the header and footer stay in place. Tab brings a focused row into view;
+  Enter or Space activates it.
+- **New chat**, or Ctrl+N (Cmd+N on macOS), adds a sample chat for this window.
+  Closing the window discards sample navigation and chats.
+- **The Grid** opens the world view. **Phones and computers** and **Settings**
+  lead to the existing computer controls. Opening a chat cancels any displayed
+  pairing code.
+
+The window requests 90% of the usable display area, with a 1200×840-point
+fallback and a minimum of 760×540. A tiling desktop controls its placement.
+Views can grow to 1.6× their size at 1200×840 points. The shell
+retains the current painter and backdrop; it does not implement a transcript
+or editable composer yet.
+
+The foreground retains its pixels between interactions and repaints changed
+controls. Screen-lock checks run on a separate background thread, once a
+second, so dragging does not start a subprocess on the UI thread.
 
 | Screen | What it shows |
 | --- | --- |
@@ -25,12 +59,6 @@ the same program that reads them and macOS never asks to allow it.
 
 When a code shows, rotates, and is cancelled is [`src/codes.rs`](src/codes.rs);
 `INVARIANTS.md` (Linking devices) states the rules.
-
-The window opens nearly full screen: 90% of the display's usable area (on a
-Mac its visible frame, without the menu bar and the Dock), centered. The app
-keeps no window position, so each launch opens that way. The views scale with
-the window, up to 1.6 times their size at 560 by 720 points, so the code and
-the words grow with it, and the Grid fills the whole window.
 
 ## The backdrop
 
@@ -70,11 +98,11 @@ invented.
 ## Run it
 
 ```sh
-# The window against an in-process host; a phone "scans" after 8 seconds.
-cargo run -p openagents-desktop -- --fake-host --fake-scan 8
+# An in-process host; open Phones and computers, then Connect another phone.
+cargo run --release -p openagents-desktop -- --fake-host --fake-scan 8
 
 # The window against this Mac's host (its control socket).
-cargo run -p openagents-desktop -- --no-login-agent
+cargo run --release -p openagents-desktop -- --no-login-agent
 
 # Every screen as PNG files (without the backdrop).
 cargo run -p openagents-desktop -- --capture /tmp/openagents-desktop
@@ -82,7 +110,7 @@ cargo run -p openagents-desktop -- --capture /tmp/openagents-desktop
 # The backdrop with simulated players: an in-process relay and three
 # walkers, then the window watching that relay.
 cargo run -p verse --no-default-features --example grid_walkers -- 3
-cargo run -p openagents-desktop -- --fake-host --verse-relay ws://127.0.0.1:PORT
+cargo run --release -p openagents-desktop -- --fake-host --verse-relay ws://127.0.0.1:PORT
 
 # The backdrop alone, as a PNG, watching a relay for ten seconds.
 cargo run -p verse --no-default-features --features capture \
@@ -125,9 +153,15 @@ owner archived never show on the home screen.
 
 ```sh
 cargo test -p openagents-desktop
+cargo test --release -p openagents-desktop --bin openagents-desktop \
+  shell_paint_benchmark -- --ignored --nocapture
 UPDATE_SNAPSHOTS=1 cargo test -p openagents-desktop   # record a screen change
 git diff crates/openagents-desktop/snapshots
 ```
+
+The timing test uses the real shell with warm font caches. It reports layout
+and foreground paint times for hover, scrolling, and sidebar resizing at 1×
+and 2× scale. It excludes GPU rendering and display latency.
 
 ## Screenshots
 

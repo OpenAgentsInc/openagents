@@ -17,8 +17,8 @@
 //! - A stack with a `style.background` is a card with rounded corners.
 //! - A button is a filled rounded rectangle, a capsule with `pill`, a link
 //!   when its `style.background` is transparent, and a checkbox with the
-//!   `unchecked` or `checked` glyph. Other glyphs are not drawn; the label
-//!   says what the button does.
+//!   `unchecked` or `checked` glyph. Other glyphs are vector icons beside
+//!   the label, or on their own in a circular button.
 //! - A surface takes the size the application gives for its resource; an
 //!   unregistered one shows its label.
 //! - Transcripts, messages, tools, and composers are not supported: they
@@ -68,6 +68,14 @@ impl Rect {
 /// One drawing operation, in points.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
+    /// Starts a clipped drawing region; clips nest.
+    PushClip(Rect),
+    PopClip,
+    Glyph {
+        rect: Rect,
+        glyph: Glyph,
+        color: Color,
+    },
     Fill {
         rect: Rect,
         radius: f32,
@@ -88,9 +96,15 @@ pub enum Op {
         color: Color,
     },
     /// A check mark inside `rect`.
-    Check { rect: Rect, color: Color },
+    Check {
+        rect: Rect,
+        color: Color,
+    },
     /// The application paints the surface `resource` here.
-    Surface { resource: String, rect: Rect },
+    Surface {
+        resource: String,
+        rect: Rect,
+    },
 }
 
 /// A rectangle that activates a node.
@@ -99,6 +113,8 @@ pub struct Hit {
     pub rect: Rect,
     pub key: String,
     pub enabled: bool,
+    /// The visible portion of a scroll container, when this control is in one.
+    pub clip: Option<Rect>,
 }
 
 /// A laid-out view.
@@ -112,15 +128,18 @@ pub struct Scene {
     /// Elements and properties this adapter drew differently, or not at
     /// all, such as `transcript` or `icon.glyph`.
     pub unsupported: BTreeSet<&'static str>,
+    /// Separate scroll regions and the resize seam in a split window.
+    pub split: Option<SplitRegions>,
 }
 
 impl Scene {
     /// The enabled button under `x`, `y`, if any.
     pub fn hit(&self, x: f32, y: f32) -> Option<&Hit> {
-        self.hits
-            .iter()
-            .rev()
-            .find(|hit| hit.enabled && hit.rect.contains(x, y))
+        self.hits.iter().rev().find(|hit| {
+            hit.enabled
+                && hit.rect.contains(x, y)
+                && hit.clip.is_none_or(|clip| clip.contains(x, y))
+        })
     }
 
     /// The keys of every enabled button, in focus order.
@@ -150,6 +169,62 @@ pub struct Interaction {
     pub hover: Option<String>,
     pub pressed: Option<String>,
     pub focus: Option<String>,
+    pub leading_scroll: f32,
+    pub content_scroll: f32,
+}
+
+/// Window layout outside the semantic view contract. A split view is a
+/// horizontal stack of two vertical stacks, each with header, body, and footer.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum WindowLayout {
+    #[default]
+    Column,
+    Split(SplitLayout),
+}
+
+/// Sizing for a leading pane and a content pane, in logical points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SplitLayout {
+    pub leading_width: f32,
+    pub min_leading_width: f32,
+    pub max_leading_width: f32,
+    pub min_content_width: f32,
+    pub collapsed: bool,
+    pub center_content: bool,
+}
+
+impl SplitLayout {
+    /// Clamps the leading pane and reserves room for content at narrow sizes.
+    pub fn width_at(self, width: f32) -> f32 {
+        if self.collapsed {
+            return 0.0;
+        }
+        let min = self.min_leading_width.max(1.0);
+        let max = self.max_leading_width.max(min);
+        let requested = if self.leading_width.is_finite() {
+            self.leading_width
+        } else {
+            min
+        };
+        requested
+            .clamp(min, max)
+            .min((width - self.min_content_width.max(1.0)).max(0.0))
+    }
+}
+
+/// A scrollable body; header and footer are outside its clip.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScrollRegion {
+    pub rect: Rect,
+    pub limit: f32,
+    pub offset: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SplitRegions {
+    pub leading: ScrollRegion,
+    pub content: ScrollRegion,
+    pub divider: Option<Rect>,
 }
 
 /// The sizes the application gives its surfaces: `(resource, available)`
@@ -188,6 +263,100 @@ pub fn lay_out_window<I>(
     scene
 }
 
+/// Lays out a column or a split window. A malformed split falls back to the
+/// column and reports that the split layout is unsupported.
+#[allow(clippy::too_many_arguments)]
+pub fn lay_out_with_layout<I>(
+    view: &View<I>,
+    theme: &Theme,
+    fonts: &mut Fonts,
+    sizes: &SurfaceSizes<'_>,
+    interaction: &Interaction,
+    width: f32,
+    height: f32,
+    layout: WindowLayout,
+) -> Scene {
+    let WindowLayout::Split(split) = layout else {
+        return lay_out_window(view, theme, fonts, sizes, interaction, width, height);
+    };
+    let Element::Stack {
+        axis: Axis::Horizontal,
+        children,
+    } = &view.root.element
+    else {
+        let mut scene = lay_out_window(view, theme, fonts, sizes, interaction, width, height);
+        scene.unsupported.insert("window.split");
+        return scene;
+    };
+    if children.len() != 2 || children.iter().any(|pane| {
+        !matches!(&pane.element, Element::Stack { axis: Axis::Vertical, children } if children.len() == 3)
+    }) {
+        let mut scene = lay_out_window(view, theme, fonts, sizes, interaction, width, height);
+        scene.unsupported.insert("window.split");
+        return scene;
+    }
+    let leading_width = split.width_at(width);
+    let mut engine = Engine {
+        theme,
+        fonts,
+        sizes,
+        interaction,
+        scene: Scene::default(),
+    };
+    let leading = if leading_width > 0.0 {
+        engine.docked_pane(
+            &children[0],
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                w: leading_width,
+                h: height,
+            },
+            12.0,
+            interaction.leading_scroll,
+            false,
+        )
+    } else {
+        ScrollRegion::default()
+    };
+    let content = engine.docked_pane(
+        &children[1],
+        Rect {
+            x: leading_width + 8.0,
+            y: 8.0,
+            w: (width - leading_width - 16.0).max(1.0),
+            h: (height - 16.0).max(1.0),
+        },
+        20.0,
+        interaction.content_scroll,
+        split.center_content,
+    );
+    let divider = (leading_width > 0.0).then_some(Rect {
+        x: leading_width - 4.0,
+        y: 0.0,
+        w: 8.0,
+        h: height,
+    });
+    if let Some(divider) = divider {
+        engine.scene.ops.push(Op::Fill {
+            rect: Rect {
+                x: divider.x + 3.0,
+                w: 1.0,
+                ..divider
+            },
+            radius: 0.0,
+            color: theme.rule,
+        });
+    }
+    engine.scene.height = height;
+    engine.scene.split = Some(SplitRegions {
+        leading,
+        content,
+        divider,
+    });
+    engine.scene
+}
+
 struct Engine<'a> {
     theme: &'a Theme,
     fonts: &'a mut Fonts,
@@ -209,6 +378,10 @@ fn padding(style: &Style) -> [f32; 4] {
 /// Whether a node keeps its own width in a stack rather than sharing the
 /// stack's.
 fn keeps_width<I>(node: &Node<I>) -> bool {
+    if matches!(node.element, Element::Button { .. }) && node.style.align == Some(TextAlign::Start)
+    {
+        return false;
+    }
     matches!(
         node.element,
         Element::Button { .. } | Element::Surface { .. }
@@ -239,6 +412,93 @@ fn checkbox_state(icon: Option<rust_native::Icon>) -> Option<bool> {
 }
 
 impl Engine<'_> {
+    fn docked_pane<I>(
+        &mut self,
+        node: &Node<I>,
+        rect: Rect,
+        inset: f32,
+        scroll: f32,
+        center: bool,
+    ) -> ScrollRegion {
+        let Element::Stack { children, .. } = &node.element else {
+            unreachable!("checked pane")
+        };
+        self.scene.ops.push(Op::PushClip(rect));
+        if let Some(color) = node.style.background {
+            self.scene.ops.push(Op::Fill {
+                rect,
+                radius: if center { 12.0 } else { 0.0 },
+                color,
+            });
+        }
+        let width = (rect.w - 2.0 * inset).max(1.0);
+        let header_height = self.size(&children[0], width).1;
+        let footer_height = self.size(&children[2], width).1;
+        self.place(&children[0], rect.x + inset, rect.y + inset, width);
+        let body_rect = Rect {
+            x: rect.x + inset,
+            y: rect.y + inset + header_height + 16.0,
+            w: width,
+            h: (rect.h - 2.0 * inset - header_height - footer_height - 32.0).max(1.0),
+        };
+        let body_width = if center {
+            width.min(self.theme.column)
+        } else {
+            width
+        };
+        let body_height = self.size(&children[1], body_width).1;
+        let limit = (body_height - body_rect.h).max(0.0);
+        let offset = if scroll.is_finite() {
+            scroll.clamp(0.0, limit)
+        } else {
+            0.0
+        };
+        let top = if center {
+            ((body_rect.h - body_height) / 2.0).max(0.0)
+        } else {
+            0.0
+        };
+        self.scene.ops.push(Op::PushClip(body_rect));
+        let first_hit = self.scene.hits.len();
+        self.place(
+            &children[1],
+            body_rect.x + (width - body_width) / 2.0,
+            body_rect.y + top - offset,
+            body_width,
+        );
+        for hit in &mut self.scene.hits[first_hit..] {
+            hit.clip = Some(body_rect);
+        }
+        self.scene.ops.push(Op::PopClip);
+        if limit > 0.0 {
+            let h = (body_rect.h * body_rect.h / body_height)
+                .max(24.0)
+                .min(body_rect.h);
+            self.scene.ops.push(Op::Fill {
+                rect: Rect {
+                    x: rect.x + rect.w - 5.0,
+                    y: body_rect.y + offset / limit * (body_rect.h - h),
+                    w: 3.0,
+                    h,
+                },
+                radius: 1.5,
+                color: self.theme.rule,
+            });
+        }
+        self.place(
+            &children[2],
+            rect.x + inset,
+            rect.y + rect.h - inset - footer_height,
+            width,
+        );
+        self.scene.ops.push(Op::PopClip);
+        ScrollRegion {
+            rect: body_rect,
+            limit,
+            offset,
+        }
+    }
+
     fn text_font(&self, role: TextRole, style: &Style) -> rust_native::layout::display::Font {
         let bold = style.weight == Some(TextWeight::Bold);
         let (size, weight, mono) = match role {
@@ -306,21 +566,41 @@ impl Engine<'_> {
                         CHECKBOX + CHECKBOX_GAP + paragraph.width,
                         paragraph.height.max(CHECKBOX),
                     )
+                } else if icon.is_some_and(|icon| icon.circular) {
+                    (32.0, 32.0)
                 } else if transparent(node.style.background) {
-                    let paragraph = self.paragraph(label, TextRole::Body, &node.style, Some(inner));
-                    (paragraph.width, paragraph.height + 4.0)
+                    let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
+                    let paragraph = self.paragraph(
+                        label,
+                        TextRole::Body,
+                        &node.style,
+                        Some((inner - icon_width).max(1.0)),
+                    );
+                    (
+                        if node.style.align == Some(TextAlign::Start) {
+                            inner
+                        } else {
+                            paragraph.width + icon_width
+                        },
+                        paragraph.height + 4.0,
+                    )
                 } else {
+                    let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
                     let paragraph = self.paragraph(
                         label,
                         TextRole::Body,
                         &Style {
-                            weight: Some(TextWeight::Bold),
+                            weight: node.style.weight.or(Some(TextWeight::Bold)),
                             ..node.style
                         },
-                        Some((inner - 2.0 * BUTTON_PAD.0).max(1.0)),
+                        Some((inner - 2.0 * BUTTON_PAD.0 - icon_width).max(1.0)),
                     );
                     (
-                        paragraph.width + 2.0 * BUTTON_PAD.0,
+                        if node.style.align == Some(TextAlign::Start) {
+                            inner
+                        } else {
+                            paragraph.width + 2.0 * BUTTON_PAD.0 + icon_width
+                        },
                         paragraph.height + 2.0 * BUTTON_PAD.1,
                     )
                 }
@@ -642,9 +922,6 @@ impl Engine<'_> {
         let pressed = self.interaction.pressed.as_deref() == Some(node.key.as_str());
         let focused = self.interaction.focus.as_deref() == Some(node.key.as_str());
         let theme = *self.theme;
-        if icon.is_some() && checkbox_state(icon).is_none() {
-            self.scene.unsupported.insert("icon.glyph");
-        }
         let rect;
         if let Some(on) = checkbox_state(icon) {
             let paragraph = self.paragraph(
@@ -710,8 +987,45 @@ impl Engine<'_> {
                 w: width,
                 h: height,
             };
+        } else if let Some(icon) = icon.filter(|icon| icon.circular) {
+            rect = Rect {
+                x,
+                y,
+                w: 32.0,
+                h: 32.0,
+            };
+            let base = node.style.background.unwrap_or(theme.button);
+            let color = node.style.foreground.unwrap_or(theme.text);
+            let color = if enabled { color } else { theme.muted };
+            if base.alpha > 0 || (hovered && enabled) || (pressed && enabled) {
+                self.scene.ops.push(Op::Fill {
+                    rect,
+                    radius: 8.0,
+                    color: if hovered || pressed {
+                        mix(theme.background, theme.text, 0.08)
+                    } else {
+                        base
+                    },
+                });
+            }
+            self.scene.ops.push(Op::Glyph {
+                rect: Rect {
+                    x: x + 8.0,
+                    y: y + 8.0,
+                    w: 16.0,
+                    h: 16.0,
+                },
+                glyph: icon.glyph,
+                color,
+            });
         } else if transparent(node.style.background) {
-            let paragraph = self.paragraph(label, TextRole::Body, &node.style, Some(inner));
+            let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
+            let paragraph = self.paragraph(
+                label,
+                TextRole::Body,
+                &node.style,
+                Some((inner - icon_width).max(1.0)),
+            );
             let color = if enabled {
                 node.style.foreground.unwrap_or(theme.link)
             } else {
@@ -725,7 +1039,11 @@ impl Engine<'_> {
             rect = Rect {
                 x,
                 y,
-                w: paragraph.width,
+                w: if node.style.align == Some(TextAlign::Start) {
+                    inner
+                } else {
+                    paragraph.width + icon_width
+                },
                 h: paragraph.height + 4.0,
             };
             if hovered && enabled {
@@ -740,22 +1058,46 @@ impl Engine<'_> {
                     color,
                 });
             }
-            self.text(paragraph, x, y + 1.0, inner, TextAlign::Start, color);
+            if let Some(icon) = icon {
+                self.scene.ops.push(Op::Glyph {
+                    rect: Rect {
+                        x,
+                        y: y + 2.0,
+                        w: 16.0,
+                        h: 16.0,
+                    },
+                    glyph: icon.glyph,
+                    color,
+                });
+            }
+            self.text(
+                paragraph,
+                x + icon_width,
+                y + 1.0,
+                inner - icon_width,
+                TextAlign::Start,
+                color,
+            );
         } else {
+            let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
             let style = Style {
-                weight: Some(TextWeight::Bold),
+                weight: node.style.weight.or(Some(TextWeight::Bold)),
                 ..node.style
             };
             let paragraph = self.paragraph(
                 label,
                 TextRole::Body,
                 &style,
-                Some((inner - 2.0 * BUTTON_PAD.0).max(1.0)),
+                Some((inner - 2.0 * BUTTON_PAD.0 - icon_width).max(1.0)),
             );
             rect = Rect {
                 x,
                 y,
-                w: paragraph.width + 2.0 * BUTTON_PAD.0,
+                w: if node.style.align == Some(TextAlign::Start) {
+                    inner
+                } else {
+                    paragraph.width + 2.0 * BUTTON_PAD.0 + icon_width
+                },
                 h: paragraph.height + 2.0 * BUTTON_PAD.1,
             };
             let pill = icon.is_some_and(|icon| icon.pill);
@@ -772,19 +1114,31 @@ impl Engine<'_> {
             } else if pressed {
                 fill = mix(fill, theme.background, 0.3);
             } else if hovered {
-                fill = mix(fill, theme.background, 0.12);
+                fill = mix(fill, theme.text, 0.06);
             }
             self.scene.ops.push(Op::Fill {
                 rect,
                 radius,
                 color: fill,
             });
+            if let Some(icon) = icon {
+                self.scene.ops.push(Op::Glyph {
+                    rect: Rect {
+                        x: x + BUTTON_PAD.0,
+                        y: y + BUTTON_PAD.1 + 1.0,
+                        w: 16.0,
+                        h: 16.0,
+                    },
+                    glyph: icon.glyph,
+                    color,
+                });
+            }
             self.text(
                 paragraph,
-                x + BUTTON_PAD.0,
+                x + BUTTON_PAD.0 + icon_width,
                 y + BUTTON_PAD.1,
-                rect.w - 2.0 * BUTTON_PAD.0,
-                TextAlign::Center,
+                rect.w - 2.0 * BUTTON_PAD.0 - icon_width,
+                node.style.align.unwrap_or(TextAlign::Center),
                 color,
             );
         }
@@ -800,6 +1154,7 @@ impl Engine<'_> {
             rect,
             key: node.key.clone(),
             enabled,
+            clip: None,
         });
     }
 }
@@ -967,5 +1322,169 @@ mod tests {
         assert!(scene.unsupported.contains("surface"));
         assert!(scene.unsupported.contains("transcript"));
         assert_eq!(scene.texts(), vec!["Something"]);
+    }
+
+    fn split_fixture(interaction: &Interaction, collapsed: bool) -> Scene {
+        let vertical = |key: &str, children| {
+            node(
+                key,
+                Style::default(),
+                Element::Stack {
+                    axis: Axis::Vertical,
+                    children,
+                },
+            )
+        };
+        let rows = (0..30)
+            .map(|index| {
+                let mut row = button(&format!("chat-{index}"), "A sample chat", None);
+                row.style.align = Some(TextAlign::Start);
+                row.style.background = Some(Color::rgb(190, 30, 30));
+                row
+            })
+            .collect();
+        let leading = vertical(
+            "leading",
+            vec![
+                button(
+                    "leading-header",
+                    "New chat",
+                    Some(Icon {
+                        glyph: Glyph::Compose,
+                        circular: false,
+                        pill: false,
+                    }),
+                ),
+                vertical("leading-body", rows),
+                button("leading-footer", "Computers", None),
+            ],
+        );
+        let content = vertical(
+            "content",
+            vec![
+                text("content-header", "Chat"),
+                text("content-body", "Welcome"),
+                text("content-footer", "Preview"),
+            ],
+        );
+        let view = View::new(
+            "split-test",
+            1,
+            node(
+                "root",
+                Style::default(),
+                Element::Stack {
+                    axis: Axis::Horizontal,
+                    children: vec![leading, content],
+                },
+            ),
+        );
+        lay_out_with_layout(
+            &view,
+            &Theme::default(),
+            &mut Fonts::new(),
+            &|_, _| None,
+            interaction,
+            960.0,
+            540.0,
+            WindowLayout::Split(SplitLayout {
+                leading_width: 280.0,
+                min_leading_width: 224.0,
+                max_leading_width: 400.0,
+                min_content_width: 360.0,
+                collapsed,
+                center_content: true,
+            }),
+        )
+    }
+
+    #[test]
+    fn split_scrolling_clips_rows_and_preserves_header_footer_and_content() {
+        let initial = split_fixture(&Interaction::default(), false);
+        let scrolled = split_fixture(
+            &Interaction {
+                leading_scroll: 500.0,
+                ..Interaction::default()
+            },
+            false,
+        );
+        assert!(initial.unsupported.is_empty());
+        assert_eq!(scrolled.split.expect("regions").content.offset, 0.0);
+        for key in ["leading-header", "leading-footer"] {
+            assert_eq!(
+                initial
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == key)
+                    .expect("control")
+                    .rect,
+                scrolled
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == key)
+                    .expect("control")
+                    .rect
+            );
+        }
+        let hidden = scrolled
+            .hits
+            .iter()
+            .find(|hit| hit.key == "chat-0")
+            .expect("first row");
+        assert!(
+            scrolled
+                .hit(hidden.rect.x + 2.0, hidden.rect.y + 2.0)
+                .is_none()
+        );
+        let mut before = crate::Frame::new(960, 540, Theme::default().background);
+        let mut after = before.clone();
+        let mut fonts = Fonts::new();
+        crate::paint::paint(
+            &initial,
+            &mut before,
+            1.0,
+            0.0,
+            &mut fonts,
+            &mut |_, _, _| {},
+        );
+        crate::paint::paint(
+            &scrolled,
+            &mut after,
+            1.0,
+            0.0,
+            &mut fonts,
+            &mut |_, _, _| {},
+        );
+        for y in 0..65 {
+            for x in 0..280 {
+                assert_eq!(before.pixel(x, y), after.pixel(x, y), "header at {x},{y}");
+            }
+        }
+        assert_eq!(
+            initial.split.expect("regions").leading.rect,
+            scrolled.split.expect("regions").leading.rect
+        );
+    }
+
+    #[test]
+    fn collapse_removes_leading_controls_from_pointer_and_focus_access() {
+        let scene = split_fixture(&Interaction::default(), true);
+        assert!(scene.split.expect("regions").divider.is_none());
+        assert!(
+            scene
+                .hits
+                .iter()
+                .all(|hit| !hit.key.starts_with("leading-") && !hit.key.starts_with("chat-"))
+        );
+        let split = SplitLayout {
+            leading_width: 900.0,
+            min_leading_width: 224.0,
+            max_leading_width: 400.0,
+            min_content_width: 360.0,
+            collapsed: false,
+            center_content: true,
+        };
+        assert_eq!(split.width_at(960.0), 400.0);
+        assert_eq!(split.width_at(500.0), 140.0);
     }
 }

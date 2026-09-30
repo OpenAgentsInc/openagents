@@ -16,7 +16,10 @@ dependency the workspace did not already have.
   JetBrains Mono outlines with `swash`.
 - **Paint** ([`src/paint.rs`](src/paint.rs), [`src/canvas.rs`](src/canvas.rs))
   draws antialiased rounded rectangles, check marks, and glyphs into an
-  RGBA frame. `capture` paints a view without a window, for tests and PNGs.
+  RGBA frame. The window retains this frame and compares drawing operations
+  to repaint changed regions. Clipping excludes hidden operations and limits
+  rasterization to visible pixels. `capture` paints a complete view without
+  a window, for tests and PNGs.
 - **Window** ([`src/window.rs`](src/window.rs), the default `window`
   feature) paints only when the view, the size, or the pointer's target
   changes, sleeps until the application's next tick, and turns clicks and
@@ -26,7 +29,8 @@ dependency the workspace did not already have.
 - **Backdrop** ([`src/backdrop.rs`](src/backdrop.rs), with `window`) is
   an optional live picture an application draws with the window's own
   `wgpu` device (`window::run_with_backdrop`). The views are then painted
-  into a clear frame only when they change; each frame the backdrop is
+  into a retained clear frame only when they change, and only changed pixel
+  regions are uploaded; each frame the backdrop is
   drawn at half size, blurred, dimmed under the window's background
   (`Look`), and the views are laid over it in one pass, so every view
   keeps its full contrast. The backdrop sets its own frame rate and gets
@@ -41,7 +45,7 @@ dependency the workspace did not already have.
 | `Stack` wrap | Flows onto as many rows as needed. |
 | `List` | A vertical stack with a rule between rows. The label is not drawn. |
 | `Text` | `heading`, `body`, `status` (secondary color), `code` and `terminal` (JetBrains Mono; terminal never wraps), `markdown` as plain text. `align` and `weight` apply. |
-| `Button` | A filled rounded rectangle; a capsule with `pill`; a link with a transparent `style.background`; a checkbox with the `unchecked` or `checked` glyph. Other glyphs are not drawn (the label shows). |
+| `Button` | A filled rounded rectangle; a capsule with `pill`; a link with a transparent `style.background`; a checkbox with the `unchecked` or `checked` glyph. The closed glyph set is drawn with vector strokes. A `circular` icon button draws only its glyph and keeps its label as its semantic name. Explicit `align: start` fills the available width and aligns the label to the start. |
 | `Surface` | The application's `surface_size` and `paint_surface`; an unregistered resource shows its label. |
 | `style.background` on a stack | A card with rounded corners. |
 | `style.padding`, `gap`, `foreground` | As given (`xs` 4, `sm` 8, `md` 16, `lg` 28 points). |
@@ -49,6 +53,26 @@ dependency the workspace did not already have.
 
 The application supplies the palette through `App::theme`; the defaults are
 white on black.
+
+## Split windows
+
+`App::window_layout` defaults to the centered column. `WindowLayout::Split`
+lays out a horizontal root stack with two vertical pane stacks. Each pane has
+three children: header, scrollable body, and footer. All controls stay ordinary
+semantic nodes with revision-bound activations. The layout is an adapter
+option, not another view schema or a change to phone layout.
+
+`SplitLayout` sets the leading pane's preferred width, its bounds, the content
+pane's minimum width, collapse state, and whether to center body content.
+The leading pane clamps to the available window width. A malformed pane tree
+falls back to the column and reports `window.split` in `Scene::unsupported`.
+
+Each body clips its drawing and pointer targets, has its own scroll offset,
+and exposes a scrollbar when it overflows. Headers and footers stay fixed.
+Tab scrolls an offscreen focused control into view. Dragging the seam calls
+`App::resize_leading_pane`; the application owns the preferred width. Closing
+or losing focus ends a drag. `App::key_bindings` maps command chords to node
+keys, and the window resolves them against the current validated view.
 
 ## Use it
 

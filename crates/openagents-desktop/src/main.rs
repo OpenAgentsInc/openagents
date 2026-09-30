@@ -42,7 +42,7 @@ Usage: openagents-desktop [options]
   --verse-relay URL    watch the Grid behind the window on URL (default
                        $OPENAGENTS_VERSE_RELAY, else wss://relay.openagents.com)
   --no-backdrop        a plain background, without the Grid
-  --capture DIR        paint each screen, against the in-process host, to
+  --capture DIR        paint pairing and shell screens, against the in-process host, to
                        PNG files in DIR
   --help               this text";
 
@@ -161,9 +161,11 @@ fn main() -> ExitCode {
     let window = rust_native_desktop::window::Options {
         fill: Some(WINDOW_FILL),
         zoom: Some(rust_native_desktop::window::Zoom {
-            design: (560.0, 720.0),
+            design: (1200.0, 840.0),
             max: 1.6,
         }),
+        size: (1200.0, 840.0),
+        min_size: (760.0, 540.0),
         ..rust_native_desktop::window::Options::default()
     };
     let result = match backdrop(&options) {
@@ -207,8 +209,8 @@ fn backdrop(_: &Options) -> Option<Box<dyn rust_native_desktop::backdrop::Backdr
 }
 
 /// Walks the screens against the in-process host and paints each to a PNG
-/// in `directory` at twice the window's default size. Returns how many it
-/// wrote.
+/// in `directory`. Pairing screens use 2× scale; shell fixtures use desktop
+/// dimensions. Returns how many it wrote.
 fn capture(directory: &PathBuf) -> Result<usize, String> {
     std::fs::create_dir_all(directory)
         .map_err(|error| format!("cannot create {}: {error}", directory.display()))?;
@@ -218,7 +220,7 @@ fn capture(directory: &PathBuf) -> Result<usize, String> {
         Some(fake.clone()),
         None,
         None,
-        home(),
+        directory.join("fixture-home"),
     );
     let start = Instant::now();
     let mut app = DesktopApp::inline(Model::new(start, Screen::Connect, Agent::Enabled), context);
@@ -267,7 +269,75 @@ fn capture(directory: &PathBuf) -> Result<usize, String> {
         .ok_or("no phone")?;
     app.click(Intent::AskRemove { device }, start + Duration::from_secs(8));
     write(&mut app, "dsk-03-remove")?;
-    Ok(count)
+    Ok(count + capture_shell(directory)?)
+}
+
+fn capture_shell(directory: &std::path::Path) -> Result<usize, String> {
+    use openagents_desktop::chrome::Action;
+    let fake = FakeHost::new("Studio Mac", shell::unix_now());
+    let context = Context::new(
+        Box::new(fake.clone()),
+        Some(fake),
+        None,
+        None,
+        directory.join("fixture-home"),
+    );
+    let now = Instant::now();
+    let mut app = DesktopApp::inline_shell(Model::new(now, Screen::Home, Agent::Enabled), context);
+    app.tick(now);
+    let mut write = |name: &str, width: f32, height: f32| -> Result<(), String> {
+        let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+        if !scene.unsupported.is_empty() {
+            return Err(format!(
+                "unsupported shell elements: {:?}",
+                scene.unsupported
+            ));
+        }
+        std::fs::write(directory.join(format!("{name}.png")), frame.png()?)
+            .map_err(|error| error.to_string())
+    };
+    write("shell-welcome", 1200.0, 840.0)?;
+    app.click(
+        Intent::Navigate {
+            action: Action::SelectChat { id: 3 },
+        },
+        now,
+    );
+    let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+    std::fs::write(directory.join("shell-selected-chat.png"), frame.png()?)
+        .map_err(|error| error.to_string())?;
+    app.click(
+        Intent::Navigate {
+            action: Action::ToggleSidebar,
+        },
+        now,
+    );
+    let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+    std::fs::write(directory.join("shell-collapsed.png"), frame.png()?)
+        .map_err(|error| error.to_string())?;
+    app.click(
+        Intent::Navigate {
+            action: Action::ToggleSidebar,
+        },
+        now,
+    );
+    app.resize_leading_pane(400.0, now);
+    let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+    std::fs::write(directory.join("shell-wide-sidebar.png"), frame.png()?)
+        .map_err(|error| error.to_string())?;
+    let (frame, _) = rust_native_desktop::capture(&mut app, 760.0, 540.0, 1.0);
+    std::fs::write(directory.join("shell-minimum.png"), frame.png()?)
+        .map_err(|error| error.to_string())?;
+    app.click(
+        Intent::Navigate {
+            action: Action::Settings,
+        },
+        now,
+    );
+    let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+    std::fs::write(directory.join("shell-settings.png"), frame.png()?)
+        .map_err(|error| error.to_string())?;
+    Ok(6)
 }
 
 #[cfg(test)]
@@ -315,7 +385,14 @@ mod tests {
         use rust_native_desktop::backdrop::{Look, composite};
         use rust_native_desktop::{Frame, Theme};
         let fake = FakeHost::new("Studio Mac", shell::unix_now());
-        let context = Context::new(Box::new(fake.clone()), Some(fake), None, None, home());
+        let fixture_home = tempfile::tempdir().expect("a fixture home");
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            fixture_home.path().to_path_buf(),
+        );
         let start = Instant::now();
         let mut app =
             DesktopApp::inline(Model::new(start, Screen::Connect, Agent::Enabled), context);
@@ -390,6 +467,6 @@ mod tests {
     fn a_capture_walks_every_screen() {
         let directory = tempfile::tempdir().expect("a directory");
         let count = capture(&directory.path().to_path_buf()).expect("the capture");
-        assert_eq!(count, 6);
+        assert_eq!(count, 12);
     }
 }

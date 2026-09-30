@@ -1,30 +1,34 @@
-# Porting the Comet (Zeron) desktop UI to Rust Native: audit
+# Porting the Zeron desktop UI to Rust Native: audit
 
 This audit estimates what it would take to port the whole desktop user
-interface of Zeron, the app in the `zeronsh/comet` repository, into the
+interface of Zeron, the app in the `zeronsh/zeron` repository, into the
 OpenAgents desktop app, and to convert it to Rust Native along the way. It
 inventories every Zeron screen and component, maps each GPUI concept to a
 Rust Native equivalent, names the framework capabilities that Rust Native
-lacks, and proposes phases, milestones, and issues. No issues were created
-and no code was changed.
+lacks, and proposes phases, milestones, and issues. It now records the shell
+and sidebar implementation in [#9993](https://github.com/OpenAgentsInc/openagents/issues/9993)
+and revises the remaining estimates using this session's measured pace.
 
 | Field | Value |
 | --- | --- |
-| Reference | `github.com/zeronsh/comet`, local clone at `~/work/projects/repos/comet` |
-| Revision read | `50cf9e97` (2026-09-28), 1,664 commits since the first on 2026-07-19 |
-| License | MIT, copyright 2026 Wing (`comet/LICENSE`) |
-| OpenAgents revision | `origin/main` at `c16fee66` |
-| Method | Read-only reading of code, tests, and docs, with `wc -l` and `grep` counts. Nothing was built or run. |
+| Reference | `github.com/zeronsh/zeron`, installed checkout at `~/zeron`; formerly Comet |
+| Revisions read | `50cf9e97` for the original inventory; `ed3b1aae` in `~/zeron` for the shell implementation |
+| License | MIT, copyright 2026 Wing (`~/zeron/LICENSE`) |
+| OpenAgents baseline for the implementation | `d9e2a1020a`, with newer pairing changes and version alignment integrated before final checks |
+| Method | Original source inventory, followed by implementation, targeted tests, PNG captures, a live Linux window, and foreground timing measurements |
 | Earlier review | [Zeron (zeronsh/comet) review](2026-09-28-zeron-comet-review.md), which covers the phone transcript, text engine, and command ledger |
 
-Paths that start with `comet/` are relative to the Zeron clone. All other
+Paths that start with `comet/` retain the inventory's old prefix and are
+relative to `~/zeron`. All other
 paths are relative to this repository. LOC counts include tests unless a
 row says otherwise; Zeron keeps most unit tests in `mod tests` blocks at the
-end of each file.
+end of each file. Source inventory counts below are the original snapshot,
+unless a row explicitly describes the implementation.
 
 ## Contents
 
 - [Executive summary](#executive-summary)
+- [Completed in this session](#completed-in-this-session)
 - [Comet architecture overview](#comet-architecture-overview)
 - [OpenAgents today](#openagents-today)
 - [GPUI to Rust Native concept mapping](#gpui-to-rust-native-concept-mapping)
@@ -44,46 +48,54 @@ Zeron's UI crate is 157,280 lines of Rust in 128 files
 (`comet/crates/ui/src`), about 122,500 of them outside test modules. It sits
 on a forked GPUI that supplies a GPU renderer, flexbox layout (Taffy), text
 shaping, IME, virtualized lists, overlays, focus, key bindings, animation,
-drag and drop, and native menus. Rust Native supplies almost none of that on
-desktop today. `crates/rust-native` is 9,148 lines, and
-`crates/rust-native-desktop` is 3,145 lines that paint in software on the
-CPU. The desktop adapter can't draw `Transcript`, `Message`, `Tool`, or
+drag and drop, and native menus. Rust Native already supplies semantic
+views, transcript measurement, and a working desktop painter. The desktop
+adapter now also has split panes, independent clipped scrolling, vector
+icons, shortcuts, and retained painting. It can't draw `Transcript`, `Message`, `Tool`, or
 `Composer` yet (`crates/rust-native-desktop/src/layout.rs`, `Scene::unsupported`).
-About half the effort is therefore framework work that every Zeron screen
-depends on.
+The remaining framework work should follow the next measured product slice.
 
-**Effort.** Estimates are in engineer-weeks (ew) for one experienced Rust UI
-engineer, and include tests and snapshot fixtures.
+**Effort.** Estimates are remaining focused implementation hours for the
+agent-assisted workflow used here, including targeted tests and fixtures.
+The requested shell and sidebar, previously estimated at 5–7 engineer-weeks,
+were implemented and checked in about one working hour, including the lag
+fix. The issue was created at 01:57 UTC on September 30, still September 29
+locally. This is a measured calibration point for a bounded UI slice; the
+unimplemented transcript, IME, and accessibility work still needs its own
+measurement. These ranges replace the original manual-engineering estimates.
 
-| Scope | Framework (phases 0–3) | Application (phases 4–5) | Total |
+| Remaining scope | Framework (phases 0–3) | Application (phases 4–5) | Total |
 | --- | --- | --- | --- |
-| Chat-first slice (recommended): shell, sidebar, transcript, composer, pickers, menus, settings subset, diff review, command palette, and the phone-host mappings | 30–44 ew | 28–39 ew | **58–83 ew** |
-| Everything in Zeron's desktop UI, one to one | 31–47 ew | 56–80 ew | **87–127 ew** |
+| Chat-first slice: real chat binding, transcript, composer, pickers, menus, settings subset, diff review, command palette, and phone-host mappings | 32–54 h | 21–36 h | **53–90 h** |
+| Every inventoried Zeron UI surface, including the optional IDE surfaces | 36–62 h | 52–98 h | **88–160 h** |
 
-With three engineers, the chat-first slice is about 6–8 calendar months,
-because the renderer, layout, and text input must land before most
-application work can run in parallel. For comparison,
-Zeron's authors wrote the whole app, including the engine, in about 10 weeks
-with heavy agent use, on top of a finished UI framework.
+At eight focused hours per day, these ranges are about 7–12 coding days for
+the chat-first slice and 11–20 for all inventoried UI surfaces. They exclude
+waiting for devices, owner feedback, signing, and store releases. The full
+surface estimate has lower confidence: none of its editor, browser, or
+capture integrations was measured in this session. Re-estimate after the
+first functioning transcript and composer. The engine, harness, and sync
+remain outside this UI estimate.
 
-| Component group | Estimate |
+| Component group | Remaining estimate |
 | --- | --- |
-| Renderer and layout spike, and spec updates (phase 0) | 2 ew |
-| GPU renderer for `rust-native-desktop` (quads, borders, shadows, clips, glyph atlas, layers) | 5–7 ew |
-| General box layout (flex subset) and style extensions | 4–6 ew |
-| Text editing contract, desktop IME, and clipboard | 5–7 ew |
-| Focus scopes, key bindings, and commands | 2–3 ew |
-| Virtualized lists, scroll containers, and the desktop transcript painter | 4–6 ew |
-| Overlays, popovers, menus, tooltips, and modals | 3–4 ew |
-| Animation, images and icons, syntax spans, accessibility, snapshot tests | 5–9 ew |
-| Shell and sidebar | 5–7 ew |
-| Transcript rows and chat cards | 5–7 ew |
-| Composer, queue, and attachments | 5–7 ew |
-| Pickers, command palette, native menu bar, notifications | 3–4 ew |
-| Theme and motion tokens | 1–2 ew |
-| Diff review pane | 3–4 ew |
-| Settings subset | 3–4 ew |
-| Phone hosts: map text editing, overlays, images, and highlight spans | 3–4 ew |
+| Long-content renderer/layout measurement and needed spec updates | 2–4 h |
+| GPU foreground renderer, if the long-content measurements require it | 6–10 h |
+| General box layout and style extensions beyond the implemented split layout | 3–5 h |
+| Text editing contract, desktop IME, and clipboard | 6–10 h |
+| Focus scopes and command/keymap extensions beyond the implemented shortcuts | 2–3 h |
+| General virtual lists and desktop transcript painting | 5–8 h |
+| Overlays, menus, tooltips, and modals | 4–6 h |
+| Animation, images, syntax spans, and accessibility | 4–8 h |
+| Requested shell and sidebar with sample content | **Done; 0 h remaining** |
+| Bind the shell to real chat state | 2–4 h |
+| Transcript rows and chat cards | 4–6 h |
+| Composer, queue, and attachments | 4–6 h |
+| Pickers, command palette, native menu bar, and notifications | 2–4 h |
+| Theme and motion tokens | 1–2 h |
+| Diff review pane | 3–5 h |
+| Settings subset | 2–4 h |
+| Phone hosts: text editing, overlays, images, and highlight spans | 3–5 h |
 
 **Recommended approach.**
 
@@ -99,17 +111,48 @@ with heavy agent use, on top of a finished UI framework.
    can reach iOS and Android. Add the missing capabilities in the right
    layer: semantics in `crates/rust-native`, painting and platform input in
    `crates/rust-native-desktop`, and native widgets in the phone hosts.
-3. Replace software painting with a GPU renderer before any Zeron screen is
-   ported. The current CPU painter is fine for five static pairing screens,
-   not for a streaming 3,000-row transcript.
-4. Run a two-week spike first that decides between owning the GPU renderer
-   and layout, which this audit recommends, and adopting GPUI as the
-   renderer behind `rust-native-desktop`. See [open questions](#open-questions).
+3. Keep the implemented split layout and retained painter for the shell.
+   The first lag report was resolved without replacing the renderer. Measure
+   a streaming 3,000-row transcript before choosing further renderer work.
+4. Use a 2–4-hour long-content spike to decide the next renderer and layout
+   changes. Evaluate a GPUI backend only if the existing adapter cannot meet
+   the measured budget. See [open questions](#open-questions).
 
-**Order.** GPU renderer and layout, then text input, focus, and keys, then
-lists, the transcript, and overlays, then the chat-first app slice, then the
+**Order.** Shell and sidebar are implemented. Next measure long-content
+painting and deliver a real transcript and composer, then the remaining
+chat-first controls, then the
 review surfaces and settings. Defer the IDE surfaces until a product need
 exists.
+
+## Completed in this session
+
+[#9993](https://github.com/OpenAgentsInc/openagents/issues/9993) implements
+the requested desktop shell and sidebar:
+
+- Full-height sidebar, inset main pane and header, fixed sidebar header and
+  footer, grouped sample chats and projects, selection, new sample chats,
+  section disclosure, Grid navigation, and settings/computer navigation.
+- Sidebar collapse, 224–400-point drag resizing, independent clipped body
+  scrolling, scrollbars, keyboard focus, and Ctrl/Cmd+B and Ctrl/Cmd+N.
+- Existing Rust Native nodes and typed intents, with desktop split layout
+  in the adapter. No new wire schema, GPUI dependency, or product language.
+- Existing pairing controls and the live Grid remain integrated. Leaving
+  the pairing screen cancels its codes. Newer full-permission pairing and
+  silent host-start behavior on `main` are preserved.
+- Retained foreground pixels, drawing-operation damage comparison, partial
+  texture uploads, hidden-operation culling, and faster rectangle spans.
+  Screen-lock polling runs separately from the UI and host requests.
+
+The sidebar data is bounded sample content. Chat persistence, a real
+transcript, an editable composer, the right-hand review pane, overlays, and
+general virtualization remain future work. This completes the requested
+shell slice of CDP-16 and parts of C1, C2, C6, C9, C11, and C16; it does not
+complete every capability in those rows.
+
+See the [verification record](../desktop/verification/2026-09-29-shell-sidebar/verification.md)
+for checks, captures, and timing measurements. The source design was
+reimplemented from `~/zeron/crates/ui/src/shell.rs`; no Zeron code or assets
+were vendored.
 
 ## Comet architecture overview
 
@@ -288,25 +331,29 @@ tests) defines schema `rust-native.view.v2` in `src/view.rs`.
 
 ### Desktop adapter
 
-`crates/rust-native-desktop` (8 files, 3,145 lines) uses winit 0.30.13,
+The original `crates/rust-native-desktop` snapshot (8 files, 3,145 lines) uses winit 0.30.13,
 wgpu 29.0.4, and swash 0.2.10:
 
-- `src/layout.rs` (971 lines) places nodes in points and records button
-  rectangles in focus order.
+- `src/layout.rs` places nodes in points and records button rectangles in
+  focus order. It now supports a two-pane window with fixed headers and
+  footers, independently scrolling clipped bodies, and a resize seam.
 - `src/paint.rs` and `src/canvas.rs` paint antialiased rounded rectangles,
-  strokes, check marks, and glyphs **on the CPU** into an RGBA frame that
-  is uploaded to the wgpu surface.
+  strokes, check marks, and vector icons on the CPU. `paint::Retained`
+  compares drawing operations, clears and repaints changed regions, and
+  uploads those regions to the foreground texture over the GPU Grid.
 - `src/window.rs` repaints only when the view, size, or hovered target
   changes. It handles clicks, Tab and Shift+Tab, Enter, Space, Escape, and
-  Cmd or Ctrl+Q and W. There is one window-level scroll, no IME, no text
-  input, and no clipboard.
+  Cmd or Ctrl+Q and W, plus application-defined command chords. Focus
+  scrolling brings hidden sidebar controls into view. There is still no
+  desktop IME or editable text control; the existing pairing clipboard is
+  application-owned.
 - `src/backdrop.rs` and `src/backdrop.wgsl` draw an application backdrop at
   half size, blurred and dimmed, under the views.
 - `capture` and `capture_views` render PNGs without a window, for tests.
 
 ### Desktop app
 
-`crates/openagents-desktop` (21 source files, 8,735 lines) is the companion
+The original `crates/openagents-desktop` snapshot (21 source files, 8,735 lines) is the companion
 app from [#9970](https://github.com/OpenAgentsInc/openagents/issues/9970):
 
 - Screens `DSK-01` (Connect a phone), `DSK-02` (Connected), `DSK-03`
@@ -316,13 +363,16 @@ app from [#9970](https://github.com/OpenAgentsInc/openagents/issues/9970):
   The screen specifications are in the
   [app wireframe](../product/2026-09-28-app-wireframe.md#desktop-app-screens).
 - `src/shell.rs` implements `rust_native_desktop::App` and paints the QR
-  code on a `Surface`.
+  code and OpenAgents mark on registered surfaces. `src/chrome.rs` now
+  projects the shell and bounded sample sidebar using existing semantic
+  nodes and local typed navigation state.
 - The Verse backdrop (`src/backdrop.rs`,
   [#9982](https://github.com/OpenAgentsInc/openagents/issues/9982)) spectates
   the Grid and is drawn by the Verse renderer on the window's wgpu device.
   It measured 7.2% CPU with three players on an M5 Max.
 - `src/update.rs` (1,441 lines) is a signed-manifest updater.
-- The app uses the adapter's default white-on-black theme, not `coder-ui`.
+- The shell supplies its own dark neutral palette through `App::theme`.
+  Pairing-only captures retain their existing theme.
 
 ### Phone hosts and themes
 
@@ -359,11 +409,11 @@ layout of primitives, and painting.
 
 | GPUI concept | Zeron use | Rust Native equivalent today | What to add, and where |
 | --- | --- | --- | --- |
-| Elements: `div()`, `Render`, `RenderOnce`, `IntoElement` | 1,524 `div()` | `Node { key, style, element }` with 11 element kinds | Keep semantic elements. Add a small set of layout primitives (`Box`, `Scroll`, `Overlay`, `Split`) to the core so a desktop screen can be expressed without a new element per widget. |
+| Elements: `div()`, `Render`, `RenderOnce`, `IntoElement` | 1,524 `div()` | Semantic nodes; adapter-owned split layout and clipped pane bodies are implemented | Reuse the current split shell. Add shared semantics for general boxes, virtual lists, and overlays only when a screen needs them. |
 | Styling and flex (Taffy under GPUI) | `.flex()`, `.w()`, `.rounded()`, `.border()`, `.shadow()`, `.overflow_hidden()` | `Style` with color, padding, gap, weight, align | Core: size constraints (fixed, min, max, fill, fraction), grow and shrink, radius, border, shadow, opacity, overflow, and absolute position. Desktop: a flex-subset solver, or Taffy. |
-| Entities and models: `Entity<T>`, `cx.notify`, `subscribe`, `observe`, `EventEmitter` | 208 `Entity<`, 964 `notify` | The app owns state and rebuilds a `View` per revision | Keep one-way state. Add keyed diffing and damage in the desktop adapter (RN3's mounting contract) so a revision repaints only changed subtrees. |
+| Entities and models: `Entity<T>`, `cx.notify`, `subscribe`, `observe`, `EventEmitter` | 208 `Entity<`, 964 `notify` | The app rebuilds semantic views; retained drawing-operation damage is implemented in the adapter | Keep one-way state. Measure long transcripts before adding a broader retained node tree. |
 | Actions: `actions!`, `on_action`, `key_context` | 5 blocks, 81 handlers | Typed intents resolved from `Activation` | Core: a `Command` registry with ids, labels, and default key chords, dispatched as intents. Used by menus, the palette, and keys. |
-| Key bindings: `KeyBinding::new`, contexts, `clear_key_bindings` | 93 bindings, user rebinding | Hard-coded Tab, Enter, Space, Escape, and quit in `window.rs` | Core: a `Keymap` of chord to command per context, serializable for settings. Desktop: chord matching from winit key events, including `mod` as Cmd or Ctrl. |
+| Key bindings: `KeyBinding::new`, contexts, `clear_key_bindings` | 93 bindings, user rebinding | Tab, Enter, Space, Escape, quit, and `App::key_bindings` with revision-bound chord activation | Add contexts, user rebinding, persistence, and a shared command registry when needed. |
 | Focus: `FocusHandle`, `track_focus`, `tab_index`, tab groups | 83 handles, 93 tab references | Focus order equals button order | Core: `focusable` and focus scopes on nodes, focus-restore rules, and `autofocus`. Desktop: focus rings, scope trapping in modals. |
 | Text input: `EntityInputHandler`, marked text, `bounds_for_range` | The composer's hand-rolled input (38 actions, 66 bindings) | `Composer` with a draft string; no editing | Core: an `EditState` (text, selection, caret affinity, undo, grapheme and word motion). Desktop: winit `Ime` events, IME candidate position, and clipboard. Phones: map to `UITextView` and `EditText`. |
 | Code editor: `gpui_base::input::Editor` with a rope | File preview and editing | None | Don't port (see [what not to port](#what-not-to-port-and-what-to-adapt-instead)). A read-only code view is enough. |
@@ -512,10 +562,13 @@ syntax rows include `comet/crates/theme` and `comet/crates/syntax`. The
 chat-first plan ports or adapts 41 of the 72 components. Their Zeron
 sources total about 117,000 lines, but that figure counts whole files,
 including their tests and the parts the plan drops, such as most of
-`shell.rs`. Because OpenAgents' application state already lives in Rust
-and the chat-first product needs less than Zeron, the ported code should be
-roughly 25,000–35,000 lines of view code plus about 20,000–25,000 lines of
-new framework code.
+`shell.rs`. OpenAgents' application state already lives in Rust, and the
+chat-first product needs fewer surfaces. Implement them as small product
+slices. The shell used existing semantic
+nodes and a bounded adapter extension, so the original prediction of
+25,000–35,000 view lines plus 20,000–25,000 framework lines is withdrawn.
+Measure the resulting code after the transcript and composer slice instead
+of using Zeron's source size as a proxy for effort.
 
 ## Rust Native capabilities to add
 
@@ -525,27 +578,28 @@ are `bins/*-ios/host` and `bins/*-android/host`.
 
 | # | Capability | Core | Desktop adapter | Hosts | Phones | Estimate |
 | --- | --- | --- | --- | --- | --- | --- |
-| C1 | GPU renderer: instanced rounded rectangles, borders, shadows, clip stack, layers, glyph atlas from `swash`, damage tracking | None | New `gpu` module replacing `paint.rs` and `canvas.rs` for windows; keep CPU paint for `capture` or render captures from the GPU | None | No | 5–7 ew |
-| C2 | Box layout: size constraints, grow and shrink, absolute position, overflow, split panes | New layout primitives and style fields; a flex-subset solver shared by any Rust-painting adapter | Uses the solver | SwiftUI and Android map fields to their own layout | Partly: style fields | 3–4 ew |
-| C3 | Style extensions: radius, border, shadow, opacity, size, theme token groups (RN6 brought forward) | `Style`, `StylePatch`, `StyleSheet` | Paint them | Map what the platform supports | Yes | 1–2 ew |
-| C4 | Text editing contract: `EditState`, selection, caret affinity, undo, word and grapheme motion, multi-line, auto-grow bounds | New `edit` module (RN4) | Caret, selection paint, key handling, winit IME preedit and commit, candidate window position | `UITextView` and `EditText` bridges | Yes | 5–7 ew with C5 |
+| C1 | GPU renderer: instanced rounded rectangles, borders, shadows, clip stack, layers, glyph atlas from `swash`, damage tracking | None | Retained damage and partial uploads implemented; add GPU primitives and glyph atlas if long-content measurements require them | None | No | 6–10 h; damage and partial uploads done |
+| C2 | Box layout: size constraints, grow and shrink, absolute position, overflow, split panes | New layout primitives and style fields; a flex-subset solver shared by any Rust-painting adapter | Split panes implemented; general solver remains | SwiftUI and Android map fields to their own layout | Partly: style fields | 2–3 h; split layout done |
+| C3 | Style extensions: radius, border, shadow, opacity, size, theme token groups (RN6 brought forward) | `Style`, `StylePatch`, `StyleSheet` | Paint them | Map what the platform supports | Yes | 1–2 h |
+| C4 | Text editing contract: `EditState`, selection, caret affinity, undo, word and grapheme motion, multi-line, auto-grow bounds | New `edit` module (RN4) | Caret, selection paint, key handling, winit IME preedit and commit, candidate window position | `UITextView` and `EditText` bridges | Yes | 6–10 h with C5 |
 | C5 | Clipboard for text and images | Intent types | `arboard` or per-platform code | Platform pasteboard | Yes | Included in C4 |
-| C6 | Virtual list and scroll containers: keyed rows, measured heights, anchors, scrollbars, stick-to-bottom spring | `VirtualList` element; generalize `layout::Frame` beyond transcripts | Scroll physics, scrollbars, wheel and trackpad momentum | Map to `UICollectionView` and `RecyclerView` | Yes | 2–3 ew |
-| C7 | Desktop transcript painter over `RowDisplay`, with link hover and cross-row selection | Selection model shared with phones | Paint runs, rectangles, widgets; hit testing | Android already has `TextSelection.kt` | Yes (shared selection model) | 2–3 ew |
-| C8 | Overlays: popover, menu, context menu, tooltip, modal dialog, anchored placement, dismissal, nested menus with hover intent | `Overlay` element and `tooltip` property | Overlay layer, occlusion, focus trap | `UIMenu`, sheets, `PopupMenu`, dialogs | Yes | 3–4 ew |
-| C9 | Commands, key bindings, focus scopes | `Command`, `Keymap`, focus fields | Chord matching, focus rings | iPad hardware keyboard commands | Partly | 2–3 ew |
-| C10 | Animation: transitions and springs, motion tokens, reduced motion | Transition specs on nodes | Frame clock that runs only while animating | `withAnimation` and `ViewPropertyAnimator` | Yes | 1–2 ew |
-| C11 | Images and SVG icons | `Image` element and a larger glyph set | Decode (`png`, add JPEG and WebP), `resvg` icons, atlas eviction | `UIImage` and `Bitmap` | Yes | 1–2 ew |
-| C12 | Drag and drop: internal payloads, list reordering, external file drop | `Draggable`, `DropTarget`, `Reorder` | Drag ghost, auto-scroll, `DroppedFile` | iPad drag and drop later | Later | 1–2 ew |
-| C13 | Syntax highlight spans for code blocks and diffs | Spans on `Markdown` code and a `Diff` element | Paint colors only | Paint colors only | Yes | 1–2 ew |
-| C14 | Accessibility tree for painted desktop views | Existing labels and `Accessibility` records | AccessKit (`accesskit_winit`) | Already native | No | 1–2 ew |
-| C15 | Native menu bar and notifications driven by commands | Command ids and labels | None | Desktop host: `muda` or the `objc2` code in `crates/openagents-desktop/src/menubar.rs` | No | 1 ew |
-| C16 | Scripted-input test harness and PNG snapshots | Fixture views | Headless window driver, image comparison | None | No | 1 ew |
-| C17 | Per-region blur and edge fades | Style hints | GPU passes (the backdrop blur exists) | Material blur on iOS | Partly | 1–2 ew, later |
+| C6 | Virtual list and scroll containers: keyed rows, measured heights, anchors, scrollbars, stick-to-bottom spring | `VirtualList` element; generalize `layout::Frame` beyond transcripts | Clipped pane scrolling and scrollbars implemented; general virtualization, anchors, and momentum remain | Map to `UICollectionView` and `RecyclerView` | Yes | 2–3 h; pane scrolling done |
+| C7 | Desktop transcript painter over `RowDisplay`, with link hover and cross-row selection | Selection model shared with phones | Paint runs, rectangles, widgets; hit testing | Android already has `TextSelection.kt` | Yes (shared selection model) | 3–5 h |
+| C8 | Overlays: popover, menu, context menu, tooltip, modal dialog, anchored placement, dismissal, nested menus with hover intent | `Overlay` element and `tooltip` property | Overlay layer, occlusion, focus trap | `UIMenu`, sheets, `PopupMenu`, dialogs | Yes | 4–6 h |
+| C9 | Commands, key bindings, focus scopes | `Command`, `Keymap`, focus fields | Command chords, focus rings, and focus scrolling implemented; contexts and modal scopes remain | iPad hardware keyboard commands | Partly | 2–3 h; shell chords and focus scrolling done |
+| C10 | Animation: transitions and springs, motion tokens, reduced motion | Transition specs on nodes | Frame clock that runs only while animating | `withAnimation` and `ViewPropertyAnimator` | Yes | 0.5–1 h |
+| C11 | Images and SVG icons | `Image` element and a larger glyph set | Vector drawing of the closed Glyph set implemented; image decoding and cache remain | `UIImage` and `Bitmap` | Yes | 0.5–1 h; vector glyphs done |
+| C12 | Drag and drop: internal payloads, list reordering, external file drop | `Draggable`, `DropTarget`, `Reorder` | Drag ghost, auto-scroll, `DroppedFile` | iPad drag and drop later | Later | 2–4 h, later |
+| C13 | Syntax highlight spans for code blocks and diffs | Spans on `Markdown` code and a `Diff` element | Paint colors only | Paint colors only | Yes | 1–2 h |
+| C14 | Accessibility tree for painted desktop views | Existing labels and `Accessibility` records | AccessKit (`accesskit_winit`) | Already native | No | 2–4 h |
+| C15 | Native menu bar and notifications driven by commands | Command ids and labels | None | Desktop host: `muda` or the `objc2` code in `crates/openagents-desktop/src/menubar.rs` | No | 1–2 h, application budget |
+| C16 | Scripted-input test harness and PNG snapshots | Fixture views | PNG capture fixtures, coder-desk live inputs, and full/incremental pixel comparison; extend with each feature | None | No | Shell captures and pixel-parity checks done; broader checks in feature budgets |
+| C17 | Per-region blur and edge fades | Style hints | GPU passes (the backdrop blur exists) | Material blur on iOS | Partly | 3–5 h, later |
 
-Taken together, C1–C16 are 30–45 engineer-weeks. The chat-first plan
-defers C12 and C17, and moves C15 into the application phase, so its
-framework phases (0–3) total 30–44 engineer-weeks with the spike. C4, C6, C8, C10, C11, and C13 help the phone apps directly: the
+The remaining framework budget is 32–54 focused hours including the spike.
+C12 and C17 are deferred, and C15 belongs to the application budget. The
+table records remaining work after the shell implementation; overlapping
+capabilities are counted once in the summary. C4, C6, C8, C10, C11, and C13 help the phone apps directly: the
 phone composer needs C4, long chats need C6, chat card menus need C8, and
 code blocks need C13.
 
@@ -637,12 +691,18 @@ their machines, not ours:
 
 What that means for Rust Native on desktop:
 
-1. **CPU painting doesn't scale.** `rust-native-desktop` repaints the whole
-   RGBA frame on the CPU and uploads it. At 2,560×1,600 that's 16 MB per
-   frame; at 120 Hz while streaming or scrolling it would cost several
-   cores. C1 must come first.
-2. **Paint only what changed.** Keyed diffing (RN3) and per-layer damage
-   let a streamed token repaint one transcript row, not the window.
+1. **The shell lag is measured and fixed.** Whole-window foreground painting
+   cost 121 ms at 1200×840 and 208 ms at 1271×1428 in the unoptimized build;
+   2× scale cost 461 ms. Retained painting reduced warmed hover painting
+   to about 2.6 ms at 1× and 8.5 ms at 2× in the same build. The optimized
+   build measures roughly 0.1–0.4 ms for hover, under 2 ms for scrolling,
+   and 1–4 ms for sidebar resizing. These are CPU foreground measurements,
+   excluding GPU rendering and display latency; they don't establish a
+   3,000-row transcript budget.
+2. **Paint only what changed.** Drawing-operation damage and partial uploads
+   are implemented. Reuse them for the first transcript painter and measure
+   whether visible-row culling is sufficient before adding GPU foreground
+   rendering or keyed node mounting.
 3. **Measure off the UI thread.** The transcript layout already produces
    immutable frames. Run it on a worker and publish frames, as the phone
    design does, so the UI thread only paints.
@@ -664,26 +724,28 @@ What that means for Rust Native on desktop:
 Each phase ends with a snapshot fixture, a scripted-input test, and a note
 in the desktop verification directory, `docs/desktop/verification/`.
 
-### Phase 0: decisions and spike (2 ew)
+### Phase 0: long-content measurement and needed contracts (2–4 h)
 
-- Build a 3,300-row transcript fixture and a sidebar with 500 chats. Render
-  them with (a) a minimal GPU quad and glyph-atlas renderer in
-  `rust-native-desktop`, and (b) GPUI as the painter behind the same
-  semantic views.
-- Decide on Taffy versus an own flex subset for C2.
+- Build a 3,300-row transcript fixture and a virtualized sidebar with 500
+  chats. Start with the existing retained painter and record its costs.
+- Add a small GPU foreground comparison only if it misses the budget.
+  Decide whether broader box layout needs a solver or another bounded
+  adapter extension.
 - **Acceptance:** a written decision with measured frame time (p50 and p99),
   idle CPU, streaming CPU, memory, build time, and binary size for both
-  options on one Apple silicon Mac.
+  the current adapter and any proposed replacement on the available Linux
+  machine; confirm platform-specific behavior on an Apple silicon Mac.
 
-### Phase 1: renderer and layout (10–14 ew)
+### Phase 1: remaining renderer and layout work (9–15 h)
 
-- C1, C2, C3, and C16.
-- Port `DSK-01` to `DSK-04` onto the new renderer with no visible change.
+- Extend C1, C2, and C3 where the measured next slice needs them. Split
+  panes, clipped bodies, damage, partial uploads, and shell captures exist.
+- Keep `DSK-01` to `DSK-04` correct through any painter changes.
 - **Acceptance:** the existing desktop snapshots match within a small pixel
   tolerance; scrolling the 3,300-row fixture (without transcript features)
   holds p99 frame time under 8.3 ms at 120 Hz; idle CPU is under 1%.
 
-### Phase 2: input (7–10 ew)
+### Phase 2: input (8–13 h)
 
 - C4, C5, and C9.
 - A single-line and multi-line text field as Rust Native elements, with
@@ -693,7 +755,7 @@ in the desktop verification directory, `docs/desktop/verification/`.
   when idle; Tab order and focus restore pass scripted tests; shortcuts
   rebind and persist.
 
-### Phase 3: lists, transcript, and overlays (11–18 ew)
+### Phase 3: lists, transcript, and overlays (13–22 h)
 
 - C6, C7, C8, C10, C11, C13, and C14.
 - **Acceptance:** the desktop paints `Transcript`, `Message`, `Tool`, and
@@ -702,10 +764,11 @@ in the desktop verification directory, `docs/desktop/verification/`.
   copies text across rows; menus open, dismiss on an outside click or
   Escape, and trap focus in dialogs.
 
-### Phase 4: chat-first desktop, milestone A (19–27 ew)
+### Phase 4: remaining chat-first desktop, milestone A (13–22 h)
 
-- Shell with a resizable sidebar and title bar, chat list, transcript with
-  OpenAgents chat cards, composer with attachments, agent and project
+- The shell and resizable sample sidebar are implemented. Bind them to
+  real chats, add a transcript with OpenAgents cards, a composer with
+  attachments, and agent and project
   pickers, command palette, native menu bar driven by commands (C15), one
   OpenAgents theme with motion tokens, and the Verse backdrop behind the chat. Application state comes from
   `crates/openagents-mobile`, not new desktop-only models.
@@ -714,7 +777,7 @@ in the desktop verification directory, `docs/desktop/verification/`.
   no explanation, and every screen passes `CHK-01` to `CHK-13`; streaming
   CPU is at most 15% of one core; peak memory is at most 350 MiB.
 
-### Phase 5: review, settings, and phones, milestone B (9–12 ew)
+### Phase 5: review, settings, and phones, milestone B (8–14 h)
 
 - Read-only unified diff pane, "What changed" card, settings (appearance,
   text size, shortcuts, notifications, phones and computers, archived
@@ -734,58 +797,65 @@ in the desktop verification directory, `docs/desktop/verification/`.
 
 ## Proposed issue breakdown
 
-These issues aren't created. Each would reference this audit and name
-Zeron's source file in its commit messages.
+The shell and sidebar work is tracked by the single issue
+[#9993](https://github.com/OpenAgentsInc/openagents/issues/9993). The other
+rows remain planning items, not newly created issues. Estimates are
+remaining focused hours and reuse the capabilities already implemented.
 
 | ID | Title | Phase | Depends on | Estimate |
 | --- | --- | --- | --- | --- |
-| CDP-00 | Desktop renderer and layout spike: owned GPU renderer versus GPUI backend | 0 | None | 1.5 ew |
-| CDP-01 | `rust-native-desktop`: GPU quad, border, shadow, and clip renderer | 1 | CDP-00 | 3 ew |
-| CDP-02 | `rust-native-desktop`: glyph atlas and GPU text from `swash` | 1 | CDP-01 | 2–4 ew |
-| CDP-03 | `rust-native`: size, grow, position, and overflow fields, and the box layout solver | 1 | CDP-00 | 3–4 ew |
-| CDP-04 | `rust-native`: radius, border, shadow, opacity, and theme token groups | 1 | CDP-03 | 1–2 ew |
-| CDP-05 | `rust-native-desktop`: scripted input driver and PNG snapshot comparison | 1 | CDP-01 | 1 ew |
-| CDP-06 | `rust-native`: text editing contract (`EditState`), RN4 part 1 | 2 | CDP-03 | 2–3 ew |
-| CDP-07 | `rust-native-desktop`: text field painting, IME, and clipboard | 2 | CDP-02, CDP-06 | 3–4 ew |
-| CDP-08 | `rust-native`: commands, key map, and focus scopes | 2 | CDP-03 | 2–3 ew |
-| CDP-09 | `rust-native`: general virtual list and scroll containers | 3 | CDP-03 | 2–3 ew |
-| CDP-10 | `rust-native-desktop`: transcript painter, link hover, and cross-row selection | 3 | CDP-02, CDP-09 | 2–3 ew |
-| CDP-11 | `rust-native`: overlays, menus, tooltips, and modal dialogs | 3 | CDP-08 | 3–4 ew |
-| CDP-12 | `rust-native`: transitions, motion tokens, and reduced motion | 3 | CDP-01 | 1–2 ew |
-| CDP-13 | `rust-native`: images and a larger icon set | 3 | CDP-01 | 1–2 ew |
-| CDP-14 | `rust-native`: syntax highlight spans for code blocks and diffs | 3 | None | 1–2 ew |
-| CDP-15 | `rust-native-desktop`: AccessKit accessibility tree | 3 | CDP-03 | 1–2 ew |
-| CDP-16 | Desktop shell: sidebar, title bar, split panes, and chat list | 4 | CDP-03, CDP-09, CDP-11 | 5–7 ew |
-| CDP-17 | Desktop chat: transcript and OpenAgents chat cards | 4 | CDP-10 | 5–7 ew |
-| CDP-18 | Desktop composer: attachments, queued messages, and questions as cards | 4 | CDP-07, CDP-13 | 5–7 ew |
-| CDP-19 | Desktop agent and project pickers and the command palette | 4 | CDP-11 | 2–3 ew |
-| CDP-20 | Desktop native menu bar and notifications driven by commands | 4 | CDP-08 | 1 ew |
-| CDP-21 | Desktop diff pane and "What changed" card | 5 | CDP-09, CDP-14 | 3–4 ew |
-| CDP-22 | Desktop settings: appearance, shortcuts, notifications, phones and computers, archived | 5 | CDP-07, CDP-11 | 3–4 ew |
-| CDP-23 | Phone hosts: map `EditState`, overlays, images, and highlight spans | 5 | CDP-06, CDP-11, CDP-13, CDP-14 | 3–4 ew |
-| CDP-24 | Update the Rust Native spec, architecture, and build order for the desktop adapter | 0 | CDP-00 | 0.5 ew |
-| CDP-25 | Desktop theme: one OpenAgents theme, light and dark, with motion tokens | 4 | CDP-04, CDP-12 | 1–2 ew |
+| CDP-00 | Measure the current adapter with long-content fixtures; choose further rendering work | 0 | None | 1.5–3 h |
+| CDP-01 | `rust-native-desktop`: GPU quad, border, shadow, and clip renderer | 1 | CDP-00 | 3–5 h |
+| CDP-02 | `rust-native-desktop`: glyph atlas and GPU text from `swash` | 1 | CDP-01 | 3–5 h |
+| CDP-03 | `rust-native`: size, grow, position, and overflow fields, and the box layout solver | 1 | CDP-00 | 2–3 h |
+| CDP-04 | `rust-native`: radius, border, shadow, opacity, and theme token groups | 1 | CDP-03 | 1–2 h |
+| CDP-05 | `rust-native-desktop`: scripted input driver and PNG snapshot comparison | 1 | Implemented shell fixtures; extend with each feature | Shell fixtures and parity checks done; remaining checks in feature budgets |
+| CDP-06 | `rust-native`: text editing contract (`EditState`), RN4 part 1 | 2 | CDP-03 | 3–5 h |
+| CDP-07 | `rust-native-desktop`: text field painting, IME, and clipboard | 2 | CDP-02, CDP-06 | 3–5 h |
+| CDP-08 | `rust-native`: commands, key map, and focus scopes | 2 | CDP-03 | 2–3 h |
+| CDP-09 | `rust-native`: general virtual list and scroll containers | 3 | CDP-03 | 2–3 h |
+| CDP-10 | `rust-native-desktop`: transcript painter, link hover, and cross-row selection | 3 | CDP-02, CDP-09 | 3–5 h |
+| CDP-11 | `rust-native`: overlays, menus, tooltips, and modal dialogs | 3 | CDP-08 | 4–6 h |
+| CDP-12 | `rust-native`: transitions, motion tokens, and reduced motion | 3 | CDP-01 | 0.5–1 h |
+| CDP-13 | `rust-native`: images and a larger icon set | 3 | CDP-01 | 0.5–1 h |
+| CDP-14 | `rust-native`: syntax highlight spans for code blocks and diffs | 3 | None | 1–2 h |
+| CDP-15 | `rust-native-desktop`: AccessKit accessibility tree | 3 | CDP-03 | 2–4 h |
+| CDP-16 | Implemented shell and sample sidebar; next bind real chat state | 4 | Current adapter; real chat state | Shell/sidebar done in #9993; real chat binding: 2–4 h |
+| CDP-17 | Desktop chat: transcript and OpenAgents chat cards | 4 | CDP-10 | 4–6 h |
+| CDP-18 | Desktop composer: attachments, queued messages, and questions as cards | 4 | CDP-07, CDP-13 | 4–6 h |
+| CDP-19 | Desktop agent and project pickers and the command palette | 4 | CDP-11 | 1–2 h |
+| CDP-20 | Desktop native menu bar and notifications driven by commands | 4 | CDP-08 | 1–2 h |
+| CDP-21 | Desktop diff pane and "What changed" card | 5 | CDP-09, CDP-14 | 3–5 h |
+| CDP-22 | Desktop settings: appearance, shortcuts, notifications, phones and computers, archived | 5 | CDP-07, CDP-11 | 2–4 h |
+| CDP-23 | Phone hosts: map `EditState`, overlays, images, and highlight spans | 5 | CDP-06, CDP-11, CDP-13, CDP-14 | 3–5 h |
+| CDP-24 | Update the Rust Native spec, architecture, and build order for the desktop adapter | 0 | CDP-00 | 0.5–1 h |
+| CDP-25 | Desktop theme: one OpenAgents theme, light and dark, with motion tokens | 4 | CDP-04, CDP-12 | 1–2 h |
 
-CDP-24 matters early: `crates/rust-native/docs/spec.md` and
+CDP-24 matters when shared layout semantics change: `crates/rust-native/docs/spec.md` and
 `docs/coder/rust-native/build-order.md` still say adapters lay out blocks
-and that no universal layout engine should be added up front. Box layout
-for Rust-painted adapters changes that boundary and needs to be recorded.
+and that no universal layout engine should be added up front. The implemented
+adapter-specific split does not change the wire contract. A general shared
+box solver would change that boundary and must be recorded when it is added.
 
 ## Open questions
 
-1. **Own renderer or GPUI behind Rust Native?** GPUI would supply the GPU
-   renderer, Taffy layout, IME, lists, and menus today, which could remove
-   15–20 ew of framework work. The costs are a large dependency tree pinned
+1. **Does long-content rendering need GPU foreground drawing?** The shell
+   is responsive on the retained painter. GPUI would supply general
+   layout, IME, lists, and menus, but a rewrite is no longer a prerequisite
+   for porting screens. The costs are a large dependency tree pinned
    to a fork, Zed's release cadence, limited accessibility support compared
    with AccessKit, and a second window system beside the winit and wgpu stack that Verse and the
-   deck already use. The spike (CDP-00) should decide with numbers.
+   deck already use. The short spike (CDP-00) should decide with numbers
+   from long-content fixtures, starting with the current adapter.
 2. **Does the desktop app share one state crate with the phones?** This
    audit assumes the desktop reads `crates/openagents-mobile`. If desktop
    state diverges, the Rust Native benefit of one set of screens shrinks.
-3. **How much of `DSK-03` Home becomes the chat shell?** The wireframe's
-   desktop screens are about pairing. A chat-first desktop needs a new
-   wireframe section before Phase 4.
+3. **How should the sample shell bind to real chats?** The shell is now
+   implemented, and **Phones and computers** keeps `DSK-03` reachable.
+   The next slice needs real chat state and a transcript/composer flow;
+   a wireframe update should document the implemented structure.
 4. **Windows support.** Verse doesn't build on Windows, so the backdrop is
    absent there. Decide whether Windows is in scope for milestone A.
 5. **Does Coder need a visible terminal on desktop?** The answer decides
-   whether the terminal grid (about 4 ew) moves into Phase 5.
+   whether a terminal surface, provisionally 3–6 focused hours using the
+   existing Rust terminal crates, joins the optional work.

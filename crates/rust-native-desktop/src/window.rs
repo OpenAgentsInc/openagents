@@ -1,8 +1,9 @@
 //! A native window for an [`App`].
 //!
 //! One `winit` window over a `wgpu` surface. Each frame is laid out and
-//! painted in software, then copied into the surface texture; there is no
-//! shader. A frame is painted only when the view, the window size, or the
+//! painted in software, then copied into the surface texture. The foreground
+//! is retained, and changes repaint only the affected regions. A frame is
+//! updated only when the view, the window size, or the
 //! pointer's target changes. Between frames the event loop sleeps until the
 //! time the application's [`App::tick`] asked for, or until a [`Waker`]
 //! wakes it.
@@ -19,8 +20,7 @@
 //! application only the intent that view carried.
 
 use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
-use crate::canvas::Frame;
-use crate::layout::{Interaction, Scene, lay_out_window};
+use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_layout};
 use crate::text::Fonts;
 use crate::{App, Waker, paint};
 use rust_native::Activation;
@@ -170,7 +170,9 @@ fn run_shell<A: App>(
         backdrop,
         compositor: None,
         painted: false,
+        foreground: paint::Retained::default(),
         hold: None,
+        resizing: false,
     };
     event_loop
         .run_app(&mut shell)
@@ -250,6 +252,7 @@ struct LaidOut {
     size: (u32, u32),
     scale: u32,
     interaction: Interaction,
+    layout: WindowLayout,
 }
 
 struct Shell<A: App> {
@@ -273,8 +276,10 @@ struct Shell<A: App> {
     compositor: Option<Compositor>,
     /// Whether the views' texture holds the current views.
     painted: bool,
+    foreground: paint::Retained,
     /// No backdrop frame before this: the surface skipped the last one.
     hold: Option<Instant>,
+    resizing: bool,
 }
 
 impl<A: App> Shell<A> {
@@ -340,11 +345,12 @@ impl<A: App> Shell<A> {
             size: (width.round() as u32, height.round() as u32),
             scale: (self.scale() * 100.0) as u32,
             interaction: self.interaction.clone(),
+            layout: self.app.window_layout(),
         };
         if self.scene.is_none() || self.laid_out.as_ref() != Some(&key) {
             let theme = self.app.theme();
             let app = &self.app;
-            let scene = lay_out_window(
+            let scene = lay_out_with_layout(
                 app.view().view(),
                 &theme,
                 &mut self.fonts,
@@ -352,7 +358,12 @@ impl<A: App> Shell<A> {
                 &self.interaction,
                 width,
                 height,
+                app.window_layout(),
             );
+            if let Some(split) = scene.split {
+                self.interaction.leading_scroll = split.leading.offset;
+                self.interaction.content_scroll = split.content.offset;
+            }
             self.scroll = self.scroll.clamp(0.0, (scene.height - height).max(0.0));
             self.scene = Some(scene);
             self.laid_out = Some(key);
@@ -372,14 +383,23 @@ impl<A: App> Shell<A> {
 
     fn hover(&mut self) {
         let target = self.target();
+        let scale = self.scale();
+        let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
+        let divider = self
+            .scene()
+            .split
+            .and_then(|split| split.divider)
+            .is_some_and(|divider| divider.contains(x, y));
+        if let Some(window) = &self.window {
+            window.set_cursor(if divider || self.resizing {
+                CursorIcon::ColResize
+            } else if target.is_some() {
+                CursorIcon::Pointer
+            } else {
+                CursorIcon::Default
+            });
+        }
         if target != self.interaction.hover {
-            if let Some(window) = &self.window {
-                window.set_cursor(if target.is_some() {
-                    CursorIcon::Pointer
-                } else {
-                    CursorIcon::Default
-                });
-            }
             self.interaction.hover = target;
             self.redraw();
         }
@@ -424,6 +444,30 @@ impl<A: App> Shell<A> {
             (Some(at), true) => (at + order.len() - 1) % order.len(),
         };
         self.interaction.focus = Some(order[next].clone());
+        let key = &order[next];
+        if let Some(hit) = self
+            .scene()
+            .hits
+            .iter()
+            .find(|hit| &hit.key == key)
+            .cloned()
+            && let Some(clip) = hit.clip
+        {
+            let delta = if hit.rect.y < clip.y {
+                hit.rect.y - clip.y
+            } else {
+                (hit.rect.y + hit.rect.h - clip.y - clip.h).max(0.0)
+            };
+            if let Some(split) = self.scene().split {
+                if clip == split.leading.rect {
+                    self.interaction.leading_scroll =
+                        (split.leading.offset + delta).clamp(0.0, split.leading.limit);
+                } else {
+                    self.interaction.content_scroll =
+                        (split.content.offset + delta).clamp(0.0, split.content.limit);
+                }
+            }
+        }
         self.redraw();
     }
 
@@ -434,6 +478,11 @@ impl<A: App> Shell<A> {
             Key::Character(text) if command => {
                 if matches!(text.as_str(), "q" | "w") {
                     return false;
+                }
+                if let Some(binding) = self.app.key_bindings().iter().find(|binding| {
+                    binding.key == text.as_str() && binding.shift == self.modifiers.shift_key()
+                }) {
+                    self.activate(binding.node.to_owned());
                 }
             }
             Key::Named(NamedKey::Tab) => self.move_focus(self.modifiers.shift_key()),
@@ -505,13 +554,13 @@ impl<A: App> Shell<A> {
             let scroll = self.scroll;
             self.scene();
             let scene = self.scene.take().expect("a scene");
-            let mut frame = Frame::transparent(width as usize, height as usize);
             let app = &mut self.app;
-            paint::paint(
+            let regions = self.foreground.update(
                 &scene,
-                &mut frame,
+                (width as usize, height as usize),
                 scale,
                 scroll,
+                None,
                 &mut self.fonts,
                 &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
             );
@@ -520,7 +569,11 @@ impl<A: App> Shell<A> {
             self.compositor
                 .as_ref()
                 .expect("a compositor")
-                .upload(&gpu.queue, &frame);
+                .upload_regions(
+                    &gpu.queue,
+                    self.foreground.frame().expect("a foreground"),
+                    &regions,
+                );
             self.painted = true;
         }
         let gpu = self.gpu.as_ref().expect("the gpu");
@@ -589,17 +642,18 @@ impl<A: App> Shell<A> {
         let scroll = self.scroll;
         self.scene();
         let scene = self.scene.take().expect("a scene");
-        let mut frame = Frame::new(width, height, theme.background);
         let app = &mut self.app;
-        paint::paint(
+        self.foreground.update(
             &scene,
-            &mut frame,
+            (width, height),
             scale,
             scroll,
+            Some(theme.background),
             &mut self.fonts,
             &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
         );
         self.scene = Some(scene);
+        let mut frame = self.foreground.frame().expect("a foreground").clone();
         let gpu = self.gpu.as_mut().expect("the gpu");
         if gpu.bgra {
             for pixel in frame.pixels.chunks_exact_mut(4) {
@@ -823,6 +877,12 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.redraw();
             }
             WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(true) => self.redraw(),
+            WindowEvent::Focused(false) => {
+                self.resizing = false;
+                self.interaction.pressed = None;
+                self.modifiers = ModifiersState::empty();
+                self.redraw();
+            }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
@@ -837,6 +897,19 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             WindowEvent::CursorMoved { position, .. } => {
                 self.app.input(Instant::now());
                 self.cursor = position;
+                if self.resizing
+                    && let WindowLayout::Split(split) = self.app.window_layout()
+                {
+                    let (width, _) = self.logical_size();
+                    let requested = (position.x as f32 / self.scale())
+                        .clamp(split.min_leading_width, split.max_leading_width);
+                    self.app.resize_leading_pane(
+                        requested.min((width - split.min_content_width).max(1.0)),
+                        Instant::now(),
+                    );
+                    self.tick();
+                    self.redraw();
+                }
                 self.hover();
             }
             WindowEvent::CursorLeft { .. } => {
@@ -849,9 +922,21 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     MouseScrollDelta::LineDelta(_, y) => y * 40.0,
                     MouseScrollDelta::PixelDelta(position) => position.y as f32 / self.scale(),
                 };
-                let (_, height) = self.logical_size();
-                let limit = (self.scene().height - height).max(0.0);
-                self.scroll = (self.scroll - lines).clamp(0.0, limit);
+                if let Some(split) = self.scene().split {
+                    let scale = self.scale();
+                    let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
+                    if split.leading.rect.contains(x, y) {
+                        self.interaction.leading_scroll =
+                            (split.leading.offset - lines).clamp(0.0, split.leading.limit);
+                    } else if split.content.rect.contains(x, y) {
+                        self.interaction.content_scroll =
+                            (split.content.offset - lines).clamp(0.0, split.content.limit);
+                    }
+                } else {
+                    let (_, height) = self.logical_size();
+                    let limit = (self.scene().height - height).max(0.0);
+                    self.scroll = (self.scroll - lines).clamp(0.0, limit);
+                }
                 self.hover();
                 self.redraw();
             }
@@ -864,10 +949,18 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 let target = self.target();
                 match state {
                     ElementState::Pressed => {
-                        self.interaction.pressed = target;
+                        let scale = self.scale();
+                        let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
+                        self.resizing = self
+                            .scene()
+                            .split
+                            .and_then(|split| split.divider)
+                            .is_some_and(|rect| rect.contains(x, y));
+                        self.interaction.pressed = if self.resizing { None } else { target };
                         self.interaction.focus = None;
                     }
                     ElementState::Released => {
+                        self.resizing = false;
                         if let Some(pressed) = self.interaction.pressed.take()
                             && target.as_deref() == Some(pressed.as_str())
                         {
