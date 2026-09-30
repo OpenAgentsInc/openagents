@@ -75,7 +75,9 @@ fn trace(action: &str, way: &str) {
 
 /// Read the system clipboard only in response to an explicit paste action.
 /// On Linux: the window's own Wayland seat first ([`crate::wayland`]),
-/// then `wl-paste` or `xclip`, then `arboard`.
+/// then `wl-paste` or `xclip`, then `arboard`. On Windows: the clipboard
+/// API through `arboard`, as Unicode text, where a PowerShell pipe would
+/// pass it through the console's code page and flash a console window.
 #[cfg(feature = "window")]
 pub fn paste() -> Option<String> {
     #[cfg(target_os = "linux")]
@@ -90,7 +92,7 @@ pub fn paste() -> Option<String> {
         trace("paste", "the clipboard command");
         return String::from_utf8(text).ok();
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     if let Some(text) = with_arboard(|clipboard| clipboard.get_text().ok()) {
         trace("paste", "arboard");
         return (text.len() <= MAX_TEXT).then_some(text);
@@ -100,7 +102,7 @@ pub fn paste() -> Option<String> {
 
 /// Write selected text only after an explicit copy or cut action. On
 /// Linux: the window's own Wayland selection first, then `wl-copy` or
-/// `xclip`, then `arboard`.
+/// `xclip`, then `arboard`. On Windows: the clipboard API, as [`paste`].
 #[cfg(feature = "window")]
 pub fn copy(text: &str) -> bool {
     #[cfg(target_os = "linux")]
@@ -112,7 +114,7 @@ pub fn copy(text: &str) -> bool {
         trace("copy", "the clipboard command");
         return true;
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     if with_arboard(|clipboard| clipboard.set_text(text).ok()).is_some() {
         trace("copy", "arboard");
         return true;
@@ -202,8 +204,8 @@ fn write_command(mut command: std::process::Command, bytes: &[u8]) -> bool {
 
 /// One `arboard` clipboard for the process: on Linux an X11 or
 /// data-control selection lasts only as long as its owner, so the owner
-/// lives until the process exits.
-#[cfg(all(feature = "window", target_os = "linux"))]
+/// lives until the process exits. Windows keeps what is set after it.
+#[cfg(all(feature = "window", any(target_os = "linux", windows)))]
 fn with_arboard<T>(read: impl FnOnce(&mut arboard::Clipboard) -> Option<T>) -> Option<T> {
     static CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
     let mut clipboard = CLIPBOARD.lock().ok()?;
@@ -233,21 +235,8 @@ fn clipboard_command(write: bool) -> Option<std::process::Command> {
         command.args(args);
         Some(command)
     }
-    #[cfg(target_os = "windows")]
-    {
-        let mut command = std::process::Command::new("powershell.exe");
-        command.args([
-            "-NoProfile",
-            "-Command",
-            if write {
-                "$input | Set-Clipboard"
-            } else {
-                "Get-Clipboard -Raw"
-            },
-        ]);
-        Some(command)
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    // Windows uses the clipboard API ([`with_arboard`]), not a command.
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = write;
         None

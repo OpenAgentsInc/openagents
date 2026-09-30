@@ -27,6 +27,22 @@
 //! `~/.local/share` readable. Package caches are granted by their own
 //! directories (`~/.cargo/registry`, not `~/.cargo`, which may hold
 //! `credentials.toml`).
+//!
+//! # Windows
+//!
+//! On Windows the list grants nothing. The boundary there is an
+//! AppContainer that reads a path only once its DACL names the container
+//! ([`crate::Spec::build`]), so every read granted is an entry written
+//! onto a directory (and inherited by everything under it) and removed
+//! after the run: over a rustup or npm tree that is tens of thousands of
+//! files per run, and on the system directories on the person's `PATH`
+//! (`C:\Windows\System32`) the person may not change the DACL at all, so
+//! the boundary would refuse every run. What Windows lets every
+//! AppContainer read (the Windows and Program Files trees, where Git for
+//! Windows, Python, Node, and Go install for all users) stays usable: the
+//! search path is kept, and the boundary keeps the entries it can read.
+//! A toolchain installed in the profile (rustup, a per-user Python) is not
+//! on a Windows run's `PATH` yet.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -209,7 +225,9 @@ const MAX_LINKS_PER_DIRECTORY: usize = 512;
 
 /// Toolchain roots outside the home directory, per platform, with the
 /// toolchain each belongs to.
-const SYSTEM_ROOTS: &[(&str, &str)] = if cfg!(target_os = "macos") {
+const SYSTEM_ROOTS: &[(&str, &str)] = if cfg!(windows) {
+    &[]
+} else if cfg!(target_os = "macos") {
     &[
         ("/Library/Developer/CommandLineTools", "xcode"),
         ("/Library/Preferences/com.apple.dt.Xcode.plist", "xcode"),
@@ -235,7 +253,9 @@ const SYSTEM_ROOTS: &[(&str, &str)] = if cfg!(target_os = "macos") {
 
 /// Program directories outside the home directory that a search path gets
 /// when the person's `PATH` lacks them.
-const SYSTEM_BINS: &[&str] = if cfg!(target_os = "macos") {
+const SYSTEM_BINS: &[&str] = if cfg!(windows) {
+    &[]
+} else if cfg!(target_os = "macos") {
     &["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"]
 } else {
     &[
@@ -366,6 +386,11 @@ impl Toolchains {
             }
         }
         list.toolchains.environment = environment;
+        // Windows grants no reads; see the module docs.
+        if cfg!(windows) {
+            list.toolchains.reads.clear();
+            list.toolchains.environment.clear();
+        }
         list.finish()
     }
 
@@ -793,6 +818,43 @@ mod tests {
         assert_eq!(
             installed_xcodes(dir.path()),
             vec![dir.path().join("Xcode-beta.app")]
+        );
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    /// A Windows toolchain run grants no DACL entries: not the system
+    /// directories on `PATH`, which the person may not change, nor a
+    /// toolchain tree in the profile. The search path keeps the person's
+    /// entries for the boundary to filter.
+    #[test]
+    fn windows_toolchains_grant_nothing() {
+        let home = tempfile::tempdir().unwrap();
+        let cargo_bin = home.path().join(".cargo").join("bin");
+        std::fs::create_dir_all(&cargo_bin).unwrap();
+        std::fs::create_dir_all(home.path().join(".rustup").join("toolchains")).unwrap();
+        let system = std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join("System32");
+        let path = std::env::join_paths([system.clone(), cargo_bin.clone()]).unwrap();
+        let none = |_: &str| None;
+        let toolchains = Toolchains::derive(&Host {
+            path,
+            home: Some(home.path().to_path_buf()),
+            account_home: None,
+            var: &none,
+            developer_dir: None,
+        });
+        assert!(toolchains.reads.is_empty(), "{:?}", toolchains.reads);
+        assert!(toolchains.environment.is_empty());
+        assert!(
+            toolchains.path.contains(&cargo_bin),
+            "{:?}",
+            toolchains.path
         );
     }
 }

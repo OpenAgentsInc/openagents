@@ -3633,6 +3633,10 @@ mod saved_fixtures {
     };
     use rust_native_desktop::input::TextInput;
     #[test]
+    #[cfg_attr(
+        windows,
+        ignore = "coder-history reads saved sessions on Linux and macOS only"
+    )]
     fn both_saved_harnesses_open_read_only_without_changing_an_unsent_draft() {
         let temp = tempfile::tempdir().unwrap();
         let codex = temp.path().join("codex");

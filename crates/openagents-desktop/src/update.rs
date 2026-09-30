@@ -1,8 +1,9 @@
-//! Auto-update for OpenAgents on Mac and Linux.
+//! Auto-update for OpenAgents on Mac, Linux, and Windows.
 //!
 //! The updater is Rust, not Sparkle. A release is described by a signed
-//! manifest at [`MANIFEST_URL`] (Mac) or [`LINUX_MANIFEST_URL`] (Linux,
-//! [`linux`]): an envelope that carries the manifest's
+//! manifest at [`MANIFEST_URL`] (Mac), [`LINUX_MANIFEST_URL`] (Linux,
+//! [`linux`]), or [`WINDOWS_MANIFEST_URL`] (Windows, [`windows`]): an
+//! envelope that carries the manifest's
 //! exact bytes, the ID of the key that signed them, and an Ed25519
 //! signature. The app trusts only the public keys compiled into
 //! [`TRUSTED_KEYS`]; `scripts/desktop/sign-manifest.sh` makes the envelope
@@ -41,6 +42,17 @@
 //! its own file ([`linux::replace_file`]); a `.deb` install is offered the
 //! download instead, since replacing files the package manager owns is the
 //! package manager's job.
+//!
+//! Windows is the same without a code signature check in the app: a
+//! manifest names `"platform": "windows"`, no Team ID, and each artifact's
+//! `format` (`msi` or `zip`). An install from the per-user MSI downloads
+//! and verifies the new MSI in the background; **Restart to update** then
+//! hands it to Windows Installer once this process has exited
+//! ([`windows::install_after_exit`]), which stops the host, upgrades the
+//! installed files in place (the MSI's major upgrade), and opens the new
+//! app. A copy unpacked from the `.zip` is offered the download. The MSI's
+//! own Authenticode signature is checked by Windows when it runs; the
+//! signed manifest's size and SHA-256 are the updater's proof.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -66,6 +78,11 @@ pub const MANIFEST_URL: &str =
 /// them (`desktop/linux/VERSION/`).
 pub const LINUX_MANIFEST_URL: &str =
     "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/manifest.json";
+
+/// Where the signed manifest for the Windows builds is published, beside
+/// them (`desktop/windows/VERSION/`).
+pub const WINDOWS_MANIFEST_URL: &str =
+    "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/windows/manifest.json";
 
 /// The manifest payload's schema name.
 pub const MANIFEST_SCHEMA: &str = "openagents.desktop.update.v1";
@@ -93,6 +110,8 @@ pub enum Platform {
     Mac,
     /// AppImages and `.deb` packages; the manifest names `linux`.
     Linux,
+    /// The per-user MSI and the `.zip`; the manifest names `windows`.
+    Windows,
 }
 
 impl Platform {
@@ -100,6 +119,8 @@ impl Platform {
     pub const fn this() -> Platform {
         if cfg!(target_os = "linux") {
             Platform::Linux
+        } else if cfg!(windows) {
+            Platform::Windows
         } else {
             Platform::Mac
         }
@@ -110,6 +131,7 @@ impl Platform {
         match self {
             Platform::Mac => MANIFEST_URL,
             Platform::Linux => LINUX_MANIFEST_URL,
+            Platform::Windows => WINDOWS_MANIFEST_URL,
         }
     }
 }
@@ -248,7 +270,7 @@ pub struct Manifest {
     /// Mac manifest, absent on a Linux one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
-    /// `linux` for the Linux builds; absent for the Mac.
+    /// `linux` or `windows`; absent for the Mac.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platform: Option<String>,
     /// When the release was signed, RFC 3339, for display.
@@ -270,7 +292,8 @@ pub struct Artifact {
     pub sha256: String,
     /// The file's length in bytes.
     pub size: u64,
-    /// On Linux, `appimage` or `deb`; absent for a Mac zip.
+    /// On Linux, `appimage` or `deb`; on Windows, `msi` or `zip`; absent
+    /// for a Mac zip.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
 }
@@ -281,6 +304,7 @@ impl Artifact {
         let extension = match self.format.as_deref() {
             Some("appimage") => "AppImage",
             Some("deb") => "deb",
+            Some("msi") => "msi",
             _ => "zip",
         };
         format!("OpenAgents-{version}-{}.{extension}", self.arch)
@@ -355,7 +379,9 @@ fn validate(manifest: &Manifest, platform: Platform) -> Result<(), UpdateError> 
         manifest.platform.as_deref(),
         manifest.team_id.as_deref(),
     ) {
-        (Platform::Mac, None, Some(TEAM_ID)) | (Platform::Linux, Some("linux"), None) => {}
+        (Platform::Mac, None, Some(TEAM_ID))
+        | (Platform::Linux, Some("linux"), None)
+        | (Platform::Windows, Some("windows"), None) => {}
         (_, named, team) => {
             return bad(format!(
                 "platform `{}` with team ID `{}` for {platform:?}",
@@ -370,7 +396,9 @@ fn validate(manifest: &Manifest, platform: Platform) -> Result<(), UpdateError> 
     for artifact in &manifest.artifacts {
         let arch_ok = match platform {
             Platform::Mac => matches!(artifact.arch.as_str(), "universal" | "arm64" | "x86_64"),
-            Platform::Linux => matches!(artifact.arch.as_str(), "arm64" | "x86_64"),
+            Platform::Linux | Platform::Windows => {
+                matches!(artifact.arch.as_str(), "arm64" | "x86_64")
+            }
         };
         if !arch_ok {
             return bad(format!("architecture `{}`", artifact.arch));
@@ -378,6 +406,7 @@ fn validate(manifest: &Manifest, platform: Platform) -> Result<(), UpdateError> 
         let format_ok = match platform {
             Platform::Mac => artifact.format.is_none(),
             Platform::Linux => matches!(artifact.format.as_deref(), Some("appimage" | "deb")),
+            Platform::Windows => matches!(artifact.format.as_deref(), Some("msi" | "zip")),
         };
         if !format_ok {
             return bad(format!(
@@ -405,7 +434,8 @@ fn validate(manifest: &Manifest, platform: Platform) -> Result<(), UpdateError> 
 
 /// Decides what a verified manifest means for the running version `current`
 /// on architecture `arch` (`arm64` or `x86_64`), installed as `format`
-/// (`None` on a Mac; `appimage` or `deb` on Linux).
+/// (`None` on a Mac; `appimage` or `deb` on Linux; `msi` or `zip` on
+/// Windows).
 pub fn decide(
     manifest: &Manifest,
     current: &Version,
@@ -747,7 +777,8 @@ pub fn check_identity(
 }
 
 /// A downloaded and checked build waiting to be installed: an extracted
-/// bundle on a Mac, the verified AppImage file on Linux.
+/// bundle on a Mac, the verified AppImage file on Linux, the verified MSI
+/// on Windows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Staged {
     pub version: Version,
@@ -764,6 +795,12 @@ pub enum Install {
     AppImage(PathBuf),
     /// The `.deb` in `/usr/lib/openagents`: offer the download.
     Deb,
+    /// The per-user MSI's install folder
+    /// (`%LOCALAPPDATA%\Programs\OpenAgents`): download, verify, and
+    /// hand the new MSI to Windows Installer after exit.
+    Msi(PathBuf),
+    /// A copy unpacked from the `.zip`: offer the download.
+    WindowsZip,
 }
 
 impl Install {
@@ -773,6 +810,8 @@ impl Install {
             Install::MacBundle => None,
             Install::AppImage(_) => Some("appimage"),
             Install::Deb => Some("deb"),
+            Install::Msi(_) => Some("msi"),
+            Install::WindowsZip => Some("zip"),
         }
     }
 
@@ -780,13 +819,14 @@ impl Install {
         match self {
             Install::MacBundle => Platform::Mac,
             Install::AppImage(_) | Install::Deb => Platform::Linux,
+            Install::Msi(_) | Install::WindowsZip => Platform::Windows,
         }
     }
 
     /// Whether the updater downloads and installs releases itself, rather
     /// than offering the download.
     pub fn installs_itself(&self) -> bool {
-        !matches!(self, Install::Deb)
+        !matches!(self, Install::Deb | Install::WindowsZip)
     }
 }
 
@@ -849,7 +889,29 @@ impl Updater {
         .installed_as(install))
     }
 
-    /// A Mac updater; [`Updater::installed_as`] makes it a Linux one.
+    /// The updater for this Windows install ([`windows::detect`]): the
+    /// Windows manifest, the compiled keys, this crate's version, and
+    /// `%LOCALAPPDATA%\com.openagents.desktop\updates`.
+    pub fn for_windows(install: Install) -> Result<Self, UpdateError> {
+        let cache = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .filter(|dir| dir.is_absolute())
+            .ok_or_else(|| UpdateError::Io("LOCALAPPDATA is not set".into()))?
+            .join(BUNDLE_ID)
+            .join("updates");
+        Ok(Self::new(
+            WINDOWS_MANIFEST_URL.into(),
+            TRUSTED_KEYS,
+            running_version()?,
+            cache,
+            Box::new(HttpTransport::new()?),
+            Box::new(NoInspector),
+        )
+        .installed_as(install))
+    }
+
+    /// A Mac updater; [`Updater::installed_as`] makes it a Linux or
+    /// Windows one.
     pub fn new(
         manifest_url: String,
         keys: &'static [TrustedKey],
@@ -919,8 +981,8 @@ impl Updater {
     }
 
     /// Downloads and checks `release`: on a Mac, extracts the bundle and
-    /// checks its signature; on Linux, checks the AppImage's header. Old
-    /// downloads in the cache are removed first.
+    /// checks its signature; on Linux, checks the AppImage's header; on
+    /// Windows, the MSI's. Old downloads in the cache are removed first.
     pub fn fetch(&self, release: &Release) -> Result<Staged, UpdateError> {
         self.prune(&release.version);
         let archive = download(
@@ -929,8 +991,13 @@ impl Updater {
             &release.version,
             &self.cache,
         )?;
-        if let Install::AppImage(_) = &self.install {
-            if let Err(error) = linux::check_appimage(&archive) {
+        if let Install::AppImage(_) | Install::Msi(_) = &self.install {
+            let checked = if let Install::Msi(_) = &self.install {
+                windows::check_msi(&archive)
+            } else {
+                linux::check_appimage(&archive)
+            };
+            if let Err(error) = checked {
                 let _ = fs::remove_file(&archive);
                 return Err(error);
             }
@@ -978,7 +1045,25 @@ impl Updater {
     /// Replaces the running app with `staged` and restarts the host (the
     /// launchd agent, or the systemd user unit). Returns what to relaunch:
     /// the caller then calls [`relaunch_after_exit`] and exits.
+    ///
+    /// On Windows nothing is replaced while the app runs: this checks the
+    /// staged MSI once more and schedules Windows Installer for after this
+    /// process exits ([`windows::install_after_exit`]), and returns the
+    /// MSI. The caller exits without relaunching; the MSI opens the new
+    /// app.
     pub fn install(&self, staged: &Staged) -> Result<PathBuf, UpdateError> {
+        if let Install::Msi(folder) = &self.install {
+            let actual = sha256_file(&staged.app)?;
+            if actual != staged.release.artifact.sha256 {
+                return Err(UpdateError::DigestMismatch {
+                    expected: staged.release.artifact.sha256.clone(),
+                    actual,
+                });
+            }
+            windows::check_msi(&staged.app)?;
+            windows::install_after_exit(&staged.app, folder)?;
+            return Ok(staged.app.clone());
+        }
         if let Install::AppImage(target) = &self.install {
             linux::replace_file(target, &staged.app, &staged.release.artifact.sha256)?;
             let _ = fs::remove_file(&staged.app);
@@ -1155,8 +1240,11 @@ pub fn restart_host_agent() {
 
 /// Opens `app` once this process has exited. The caller exits right after.
 pub fn relaunch_after_exit(app: &Path) -> Result<(), UpdateError> {
-    if Platform::this() == Platform::Linux {
-        return linux::relaunch_after_exit(app);
+    match Platform::this() {
+        Platform::Linux => return linux::relaunch_after_exit(app),
+        // The MSI opens the new app when it finishes.
+        Platform::Windows => return Ok(()),
+        Platform::Mac => {}
     }
     Command::new("/bin/sh")
         .args([
@@ -1180,8 +1268,8 @@ pub enum UpdateState {
     Downloading(Version),
     /// A checked bundle is waiting; the menu offers to restart into it.
     Ready(Staged),
-    /// A newer release for an install the package manager updates (the
-    /// `.deb`): the window offers its download.
+    /// A newer release for an install the app does not update itself (the
+    /// `.deb`, or a Windows `.zip`): the window offers its download.
     Available(Release),
     /// The last attempt failed; the next check retries.
     Failed(String),
@@ -1288,7 +1376,6 @@ pub mod linux {
     /// the running app and host carry on until they restart; a failure
     /// leaves `target` as it was.
     pub fn replace_file(target: &Path, staged: &Path, sha256: &str) -> Result<(), UpdateError> {
-        use std::os::unix::fs::PermissionsExt;
         let parent = target
             .parent()
             .ok_or_else(|| UpdateError::Io("the AppImage has no folder".into()))?;
@@ -1309,8 +1396,12 @@ pub mod linux {
                     error,
                 )
             })?;
-            fs::set_permissions(&incoming, fs::Permissions::from_mode(0o755))
-                .map_err(|error| io_error("could not make the update executable", error))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&incoming, fs::Permissions::from_mode(0o755))
+                    .map_err(|error| io_error("could not make the update executable", error))?;
+            }
             fs::File::open(&incoming)
                 .and_then(|file| file.sync_all())
                 .map_err(|error| io_error("could not flush the update", error))?;
@@ -1370,6 +1461,148 @@ pub mod linux {
         }
         Command::new("xdg-open")
             .arg(url)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(drop)
+            .map_err(|error| io_error("could not open the download", error))
+    }
+}
+
+/// The Windows side: which install this is, the MSI's header, the hand-off
+/// to Windows Installer after exit, and opening a download.
+pub mod windows {
+    use super::{Install, UpdateError, io_error};
+    use std::io::Read;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+
+    /// The installed window's file name. Only a package names it so; a
+    /// build directory holds `openagents-desktop.exe`, which never checks.
+    pub const APP_EXE: &str = "OpenAgents.exe";
+
+    /// The MSI's install folder under `%LOCALAPPDATA%`.
+    pub const MSI_FOLDER: [&str; 2] = ["Programs", "OpenAgents"];
+
+    /// An OLE compound file's signature, which every MSI starts with.
+    const MSI_MAGIC: [u8; 8] = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+    /// How this process was installed, from where it runs.
+    pub fn detect() -> Option<Install> {
+        let exe = std::env::current_exe().ok()?;
+        classify(
+            &exe,
+            std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .as_deref(),
+        )
+    }
+
+    /// [`detect`] over explicit values: the MSI when `exe` is
+    /// [`APP_EXE`] in `local_app_data`'s [`MSI_FOLDER`], a `.zip` copy when
+    /// it is [`APP_EXE`] anywhere else, and `None` for a build directory.
+    /// Windows paths compare without regard to case.
+    pub fn classify(exe: &Path, local_app_data: Option<&Path>) -> Option<Install> {
+        let named = exe
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(APP_EXE));
+        if !named {
+            return None;
+        }
+        let folder = exe.parent()?;
+        let msi = local_app_data
+            .filter(|dir| dir.is_absolute() || dir.to_string_lossy().contains(':'))
+            .map(|dir| MSI_FOLDER.iter().fold(dir.to_path_buf(), |p, c| p.join(c)));
+        let same = |a: &Path, b: &Path| {
+            a.to_string_lossy()
+                .trim_end_matches(['\\', '/'])
+                .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']))
+        };
+        Some(match msi {
+            Some(msi) if same(folder, &msi) => Install::Msi(folder.to_path_buf()),
+            _ => Install::WindowsZip,
+        })
+    }
+
+    /// Refuses a file that does not start with the compound-file signature
+    /// every MSI carries.
+    pub fn check_msi(path: &Path) -> Result<(), UpdateError> {
+        let mut header = [0u8; 8];
+        std::fs::File::open(path)
+            .and_then(|mut file| file.read_exact(&mut header))
+            .map_err(|error| io_error("could not read the new installer", error))?;
+        if header != MSI_MAGIC {
+            return Err(UpdateError::Malformed(
+                "the download is not a Windows Installer package".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// The PowerShell that runs after this process exits: wait for it,
+    /// stop what still runs from the install folder (the host, a task's
+    /// engine, another window), so no file is in use, then install the
+    /// MSI with a progress bar and no restart. The MSI's major upgrade
+    /// replaces the files, and its launch action opens the new app, which
+    /// starts the new host. Paths arrive in variables, never in the
+    /// script's text.
+    pub const INSTALL_SCRIPT: &str = "\
+$ErrorActionPreference = 'SilentlyContinue'; \
+Wait-Process -Id ([int]$env:OPENAGENTS_UPDATE_PID) -Timeout 60; \
+$dir = $env:OPENAGENTS_UPDATE_FOLDER.TrimEnd('\\'); \
+Get-Process | Where-Object { $_.Path -and ([IO.Path]::GetDirectoryName($_.Path) -ieq $dir) } | Stop-Process -Force; \
+Start-Sleep -Milliseconds 500; \
+Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\msiexec.exe') \
+-ArgumentList @('/i', ('\"' + $env:OPENAGENTS_UPDATE_MSI + '\"'), '/passive', '/norestart') -Wait";
+
+    /// Schedules [`INSTALL_SCRIPT`] for `msi` over the install `folder`,
+    /// in a hidden PowerShell that outlives this process. The caller exits
+    /// right after. A path that cannot be passed safely is refused.
+    pub fn install_after_exit(msi: &Path, folder: &Path) -> Result<(), UpdateError> {
+        for path in [msi, folder] {
+            let text = path.to_string_lossy();
+            if text.contains('"') || text.chars().any(char::is_control) {
+                return Err(UpdateError::Io(format!(
+                    "`{text}` has a character the installer cannot be given"
+                )));
+            }
+        }
+        let mut command = Command::new("powershell.exe");
+        command
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                INSTALL_SCRIPT,
+            ])
+            .env("OPENAGENTS_UPDATE_PID", std::process::id().to_string())
+            .env("OPENAGENTS_UPDATE_MSI", msi)
+            .env("OPENAGENTS_UPDATE_FOLDER", folder)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, from `winbase.h`.
+            command.creation_flags(0x0800_0000 | 0x0000_0200);
+        }
+        command
+            .spawn()
+            .map(drop)
+            .map_err(|error| io_error("could not start the installer", error))
+    }
+
+    /// Opens `url` (the new MSI or `.zip`) in the person's browser.
+    pub fn open_download(url: &str) -> Result<(), UpdateError> {
+        if !url.starts_with("https://") {
+            return Err(UpdateError::Malformed(format!("`{url}` is not https")));
+        }
+        Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1469,6 +1702,34 @@ mod tests {
         let current = Version::parse("1.0.0").unwrap();
         assert!(matches!(
             decide(&manifest, &current, "x86_64", Some("appimage")),
+            Err(UpdateError::Downgrade { .. })
+        ));
+    }
+
+    /// A Windows manifest signed by the real release key by
+    /// `scripts/desktop/sign-manifest-windows.sh` (a fixture MSI and .zip).
+    const WINDOWS_RELEASE_KEY_FIXTURE: &str = r#"{"key":"desktop-update-2026-09","payload":"eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwiYnVuZGxlX2lkIjoiY29tLm9wZW5hZ2VudHMuZGVza3RvcCIsInZlcnNpb24iOiIwLjAuMS1maXh0dXJlIiwicGxhdGZvcm0iOiJ3aW5kb3dzIiwicHVibGlzaGVkIjoiMjAyNi0wOS0zMFQyMDo1Mjo1OVoiLCJhcnRpZmFjdHMiOlt7ImFyY2giOiJ4ODZfNjQiLCJ1cmwiOiJodHRwczovL3N0b3JhZ2UuZ29vZ2xlYXBpcy5jb20vb3BlbmFnZW50c2dlbWluaS1vYS11cGRhdGVzL2Rlc2t0b3Avd2luZG93cy10ZXN0LzAuMC4xLWZpeHR1cmUvT3BlbkFnZW50cy0wLjAuMS1maXh0dXJlLXg2NC5tc2kiLCJzaGEyNTYiOiI2ZGRhMTUyNGM5NjEyM2JkZWFiYTQzMWJiOGJjZjRlYWFlOTc3NjA2NTU5ZDQxMTkxOWZmZGRhNTBlZGYzZWZlIiwic2l6ZSI6OCwiZm9ybWF0IjoibXNpIn0seyJhcmNoIjoieDg2XzY0IiwidXJsIjoiaHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL29wZW5hZ2VudHNnZW1pbmktb2EtdXBkYXRlcy9kZXNrdG9wL3dpbmRvd3MtdGVzdC8wLjAuMS1maXh0dXJlL09wZW5BZ2VudHMtMC4wLjEtZml4dHVyZS13aW5kb3dzLXg2NC56aXAiLCJzaGEyNTYiOiI4ZGNjN2U2MDE2MDYyMTdmM2I3NTQ3NjY1MTExODJhOTE2YjE3ZTlhMjZhOTRjOWQ4ODcxMDRlYmE5MmU5YmIyIiwic2l6ZSI6NCwiZm9ybWF0IjoiemlwIn1dfQ==","signature":"Wr6LWIJXloI3si/r0wi9rHwX/+Bkv/wPrm0GBLKaRPgoSZKS/xipA+KdNoYm7em0eLzfEjt9glvCnqnU9X62CQ=="}"#;
+
+    #[test]
+    fn the_release_key_signs_a_windows_manifest_the_windows_app_accepts() {
+        let bytes = WINDOWS_RELEASE_KEY_FIXTURE.as_bytes();
+        let manifest = verify_envelope(bytes, TRUSTED_KEYS, Platform::Windows).unwrap();
+        assert_eq!(manifest.platform.as_deref(), Some("windows"));
+        let formats: Vec<_> = manifest
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.format.as_deref())
+            .collect();
+        assert_eq!(formats, [Some("msi"), Some("zip")]);
+        for other in [Platform::Mac, Platform::Linux] {
+            assert!(matches!(
+                verify_envelope(bytes, TRUSTED_KEYS, other),
+                Err(UpdateError::Malformed(_))
+            ));
+        }
+        let current = Version::parse("1.0.0").unwrap();
+        assert!(matches!(
+            decide(&manifest, &current, "x86_64", Some("msi")),
             Err(UpdateError::Downgrade { .. })
         ));
     }
@@ -1961,6 +2222,213 @@ mod tests {
         bytes
     }
 
+    fn windows_manifest(version: &str, files: &[(&str, &[u8])]) -> Manifest {
+        let mut manifest = linux_manifest(version, files);
+        manifest.platform = Some("windows".into());
+        manifest
+    }
+
+    /// The compound-file signature an MSI starts with, then a payload.
+    fn fake_msi(tag: &str) -> Vec<u8> {
+        let mut bytes = vec![0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+        bytes.extend_from_slice(&[0u8; 56]);
+        bytes.extend_from_slice(tag.as_bytes());
+        bytes
+    }
+
+    #[test]
+    fn a_windows_manifest_is_only_for_windows() {
+        let pair = key_pair();
+        let keys = trusted(&pair);
+        let windows = windows_manifest("1.1.0", &[("msi", b"a"), ("zip", b"b")]);
+        let bytes = seal(&pair, "test-key", &serde_json::to_vec(&windows).unwrap());
+        assert_eq!(
+            verify_envelope(&bytes, keys, Platform::Windows).unwrap(),
+            windows
+        );
+        for other in [Platform::Mac, Platform::Linux] {
+            assert!(matches!(
+                verify_envelope(&bytes, keys, other),
+                Err(UpdateError::Malformed(_))
+            ));
+        }
+        // The Mac's and Linux's manifests are refused on Windows.
+        let mac = manifest("1.1.0", &"a".repeat(64), 10);
+        let linux = linux_manifest("1.1.0", &[("appimage", b"a")]);
+        for other in [mac, linux] {
+            let bytes = seal(&pair, "test-key", &serde_json::to_vec(&other).unwrap());
+            assert!(matches!(
+                verify_envelope(&bytes, keys, Platform::Windows),
+                Err(UpdateError::Malformed(_))
+            ));
+        }
+        // A Team ID, a universal build, or another format is refused.
+        let mut cases = Vec::new();
+        let mut m = windows.clone();
+        m.team_id = Some(TEAM_ID.into());
+        cases.push(m);
+        let mut m = windows.clone();
+        m.artifacts[0].arch = "universal".into();
+        cases.push(m);
+        let mut m = windows.clone();
+        m.artifacts[0].format = Some("exe".into());
+        cases.push(m);
+        let mut m = windows.clone();
+        m.artifacts[0].format = None;
+        cases.push(m);
+        for case in cases {
+            let bytes = seal(&pair, "test-key", &serde_json::to_vec(&case).unwrap());
+            assert!(
+                matches!(
+                    verify_envelope(&bytes, keys, Platform::Windows),
+                    Err(UpdateError::Malformed(_))
+                ),
+                "{case:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_windows_install_is_recognized_by_where_it_runs() {
+        let local = PathBuf::from(r"C:\Users\Kai Lee\AppData\Local");
+        let installed = local.join("Programs").join("OpenAgents");
+        assert_eq!(
+            windows::classify(&installed.join("OpenAgents.exe"), Some(&local)),
+            Some(Install::Msi(installed.clone()))
+        );
+        // Windows paths ignore case.
+        let shouted = PathBuf::from(r"C:\USERS\KAI LEE\APPDATA\LOCAL")
+            .join("programs")
+            .join("openagents")
+            .join("openagents.EXE");
+        assert!(matches!(
+            windows::classify(&shouted, Some(&local)),
+            Some(Install::Msi(_))
+        ));
+        // Unpacked from the .zip anywhere else.
+        let unzipped =
+            PathBuf::from(r"C:\Users\Kai Lee\Downloads\OpenAgents").join("OpenAgents.exe");
+        assert_eq!(
+            windows::classify(&unzipped, Some(&local)),
+            Some(Install::WindowsZip)
+        );
+        assert_eq!(
+            windows::classify(&installed.join("OpenAgents.exe"), None),
+            Some(Install::WindowsZip)
+        );
+        // A build directory never checks.
+        let built =
+            PathBuf::from(r"C:\src\openagents\target\release").join("openagents-desktop.exe");
+        assert_eq!(windows::classify(&built, Some(&local)), None);
+    }
+
+    #[test]
+    fn only_an_msi_header_is_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("good.msi");
+        fs::write(&good, fake_msi("x")).unwrap();
+        windows::check_msi(&good).unwrap();
+        let bad = dir.path().join("bad.msi");
+        fs::write(&bad, fake_appimage("x")).unwrap();
+        assert!(windows::check_msi(&bad).is_err());
+        let short = dir.path().join("short.msi");
+        fs::write(&short, [0xd0, 0xcf]).unwrap();
+        assert!(windows::check_msi(&short).is_err());
+    }
+
+    #[test]
+    fn an_msi_install_stages_the_signed_msi_and_a_zip_is_offered_the_download() {
+        let pair = key_pair();
+        let home = tempfile::tempdir().unwrap();
+        let new = fake_msi("1.1.0");
+        let m = for_this_arch(windows_manifest("1.1.0", &[("msi", &new), ("zip", b"zip")]));
+        let envelope = seal(&pair, "test-key", &serde_json::to_vec(&m).unwrap());
+
+        /// Serves the envelope, then the build.
+        struct Served {
+            envelope: Vec<u8>,
+            build: Vec<u8>,
+        }
+        impl Transport for Served {
+            fn open(&self, url: &str, _from: u64) -> io::Result<Body> {
+                let bytes = if url.ends_with("manifest.json") {
+                    self.envelope.clone()
+                } else {
+                    self.build.clone()
+                };
+                Ok(Body {
+                    partial: false,
+                    reader: Box::new(io::Cursor::new(bytes)),
+                })
+            }
+        }
+        let updater = |build: Vec<u8>, install: Install| {
+            Updater::new(
+                "https://example.invalid/manifest.json".into(),
+                trusted(&pair),
+                Version::parse("1.0.0").unwrap(),
+                home.path().join("cache"),
+                Box::new(Served {
+                    envelope: envelope.clone(),
+                    build,
+                }),
+                Box::new(NoInspector),
+            )
+            .installed_as(install)
+            .restarting_host_with(no_restart)
+        };
+        let folder = home.path().join("Programs").join("OpenAgents");
+
+        // A build that is not what was signed is refused and deleted.
+        let mut tampered = new.clone();
+        *tampered.last_mut().unwrap() ^= 1;
+        let state = run_once(&updater(tampered, Install::Msi(folder.clone())), &|_| {});
+        assert!(matches!(state, UpdateState::Failed(_)), "{state:?}");
+
+        let msi = updater(new.clone(), Install::Msi(folder.clone()));
+        let UpdateState::Ready(staged) = run_once(&msi, &|_| {}) else {
+            panic!("expected a staged MSI")
+        };
+        assert_eq!(staged.version, Version::parse("1.1.0").unwrap());
+        assert_eq!(staged.app.extension().unwrap(), "msi");
+        assert_eq!(fs::read(&staged.app).unwrap(), new);
+        // The staged file is checked again before Windows Installer gets
+        // it: one changed since is refused.
+        fs::write(&staged.app, fake_msi("1.1.1")).unwrap();
+        assert!(matches!(
+            msi.install(&staged),
+            Err(UpdateError::DigestMismatch { .. })
+        ));
+
+        let zip = updater(new, Install::WindowsZip);
+        let UpdateState::Available(release) = run_once(&zip, &|_| {}) else {
+            panic!("expected the download to be offered")
+        };
+        assert_eq!(release.artifact.format.as_deref(), Some("zip"));
+        assert_eq!(
+            release.artifact.url,
+            "https://example.invalid/OpenAgents.zip"
+        );
+    }
+
+    #[test]
+    fn the_windows_install_script_takes_its_paths_from_variables() {
+        let script = windows::INSTALL_SCRIPT;
+        for needed in [
+            "$env:OPENAGENTS_UPDATE_PID",
+            "$env:OPENAGENTS_UPDATE_FOLDER",
+            "$env:OPENAGENTS_UPDATE_MSI",
+            "'/passive'",
+            "'/norestart'",
+            "Stop-Process",
+        ] {
+            assert!(script.contains(needed), "{needed}");
+        }
+        assert!(
+            windows::install_after_exit(Path::new("C:\\a\"b.msi"), Path::new("C:\\x")).is_err()
+        );
+    }
+
     #[test]
     fn a_linux_manifest_is_only_for_linux() {
         let pair = key_pair();
@@ -2032,6 +2500,8 @@ mod tests {
         ));
     }
 
+    // Linux paths, which Windows does not read as absolute.
+    #[cfg(unix)]
     #[test]
     fn a_linux_install_is_recognized_by_where_it_runs() {
         let dir = tempfile::tempdir().unwrap();

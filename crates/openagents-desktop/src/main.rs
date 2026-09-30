@@ -55,8 +55,9 @@ Usage: openagents-desktop [options]
   --benchmark-scale N   render the benchmark at 1x or 2x
   --capture DIR        paint pairing and shell screens, against the in-process host, to
                        PNG files in DIR
-  --check-update       say whether a newer release is published (Linux)
-  --update             install a newer release now: an AppImage replaces itself (Linux)
+  --check-update       say whether a newer release is published (Linux, Windows)
+  --update             install a newer release now: an AppImage replaces itself,
+                       the Windows MSI installs after exit (Linux, Windows)
   --notify-test        show a test notification and say how it was delivered (Linux)
   --help               this text";
 
@@ -143,6 +144,17 @@ fn home() -> PathBuf {
 }
 
 fn main() -> ExitCode {
+    // Windows sets no `HOME`, and the Coder runner this window runs in
+    // process (`coder::task::local`) keeps its state and settings under
+    // it, as `coder.exe` does: take the profile folder before any thread
+    // starts, the same fallback `coder.exe`'s `main` makes.
+    #[cfg(windows)]
+    if std::env::var_os("HOME").is_none()
+        && let Some(profile) = std::env::var_os("USERPROFILE")
+    {
+        // SAFETY: no other thread exists yet.
+        unsafe { std::env::set_var("HOME", profile) };
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     #[cfg(windows)]
     if platform::wants_start_host(&args) {

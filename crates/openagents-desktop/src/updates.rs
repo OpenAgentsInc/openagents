@@ -1,13 +1,19 @@
-//! The updater's place in the window on Linux.
+//! The updater's place in the window on Linux and Windows.
 //!
-//! The Mac offers its update in the menu bar ([`crate::menubar`]). Linux has
-//! no menu-bar item, so Settings offers it: an AppImage checks, downloads,
+//! The Mac offers its update in the menu bar ([`crate::menubar`]). Linux and
+//! Windows have no menu-bar item, so Settings offers it: an AppImage checks, downloads,
 //! and verifies each release in the background and Settings shows
 //! **Restart to update to VERSION**, which replaces the AppImage file,
 //! restarts the host unit, and starts the new app. An app installed from
 //! the `.deb` is updated by the package manager, so Settings shows
 //! **Download VERSION**, which opens the new package in the browser. A build
 //! directory (`cargo run`) checks nothing.
+//!
+//! On Windows the per-user MSI install downloads and verifies the new MSI
+//! in the background, and **Restart to update to VERSION** hands it to
+//! Windows Installer once the window has closed; the MSI stops the host,
+//! upgrades the files, and opens the new app. A copy unpacked from the
+//! `.zip` shows **Download VERSION**.
 //!
 //! `OPENAGENTS_UPDATE_MANIFEST_URL` points the check at another manifest,
 //! for testing a release before it is published; it must still be signed by
@@ -16,17 +22,19 @@
 //! [`command`] is the same flow from a terminal: `--check-update` and
 //! `--update`.
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 use openagents_desktop::chrome;
 
 /// Where a test points the check instead of the published manifest.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
 const MANIFEST_OVERRIDE: &str = "OPENAGENTS_UPDATE_MANIFEST_URL";
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub use linux::{act, command, offer, start};
 
-#[cfg(target_os = "linux")]
+/// Linux's and Windows' shared flow; [`detect`], [`for_install`], and
+/// [`open_download`] are what differ.
+#[cfg(any(target_os = "linux", windows))]
 mod linux {
     use super::MANIFEST_OVERRIDE;
     use openagents_desktop::chrome;
@@ -41,12 +49,33 @@ mod linux {
 
     static SHARED: OnceLock<Shared> = OnceLock::new();
 
-    /// The updater for this install, or `None` outside an AppImage or the
-    /// `.deb`.
+    #[cfg(target_os = "linux")]
+    use update::linux::{detect, open_download};
+    #[cfg(windows)]
+    use update::windows::{detect, open_download};
+
+    #[cfg(target_os = "linux")]
+    fn for_install(install: Install) -> Result<Updater, update::UpdateError> {
+        Updater::for_linux(install)
+    }
+
+    #[cfg(windows)]
+    fn for_install(install: Install) -> Result<Updater, update::UpdateError> {
+        Updater::for_windows(install)
+    }
+
+    /// Whether this install is only offered its download.
+    fn offered_only(install: &Install) -> bool {
+        !install.installs_itself()
+    }
+
+    /// The updater for this install, or `None` for a build directory
+    /// (outside an AppImage or the `.deb` on Linux; not `OpenAgents.exe`
+    /// on Windows).
     fn updater() -> Option<Result<Updater, update::UpdateError>> {
-        let install = update::linux::detect()?;
+        let install = detect()?;
         Some(
-            Updater::for_linux(install).map(|updater| match std::env::var(MANIFEST_OVERRIDE) {
+            for_install(install).map(|updater| match std::env::var(MANIFEST_OVERRIDE) {
                 Ok(url) if !url.is_empty() => updater.with_manifest_url(url),
                 _ => updater,
             }),
@@ -109,7 +138,7 @@ mod linux {
                 .install(&staged)
                 .and_then(|app| update::relaunch_after_exit(&app))
                 .map(|()| std::process::exit(0)),
-            UpdateState::Available(release) => update::linux::open_download(&release.artifact.url),
+            UpdateState::Available(release) => open_download(&release.artifact.url),
             _ => Ok(()),
         };
         if let Err(error) = result {
@@ -128,7 +157,7 @@ mod linux {
         let updater = match updater() {
             None => {
                 eprintln!(
-                    "This copy of OpenAgents is not an AppImage or the .deb, so it does not update itself."
+                    "This copy of OpenAgents is a development build, so it does not update itself."
                 );
                 return false;
             }
@@ -151,7 +180,7 @@ mod linux {
             }
         };
         let url = &release.artifact.url;
-        if !install || *updater.install_kind() == Install::Deb {
+        if !install || offered_only(updater.install_kind()) {
             println!("OpenAgents {} is available: {url}", release.version);
             if *updater.install_kind() == Install::Deb {
                 println!("Install it with your package manager.");
@@ -163,6 +192,14 @@ mod linux {
             .fetch(&release)
             .and_then(|staged| updater.install(&staged));
         match installed {
+            Ok(path) if cfg!(windows) => {
+                println!(
+                    "Windows Installer installs OpenAgents {} from {} once this exits.",
+                    release.version,
+                    path.display()
+                );
+                true
+            }
             Ok(path) => {
                 println!(
                     "Updated {} to OpenAgents {}.",
@@ -179,18 +216,18 @@ mod linux {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub fn start(_waker: rust_native_desktop::Waker) {}
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub fn offer() -> Option<chrome::Update> {
     None
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub fn act() {}
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub fn command(_install: bool) -> bool {
     eprintln!("On a Mac, OpenAgents offers updates in its menu-bar menu.");
     false

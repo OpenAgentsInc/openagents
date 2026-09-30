@@ -416,6 +416,17 @@ impl Field {
                             return Action::Unhandled;
                         }
                     }
+                    // Windows reports AltGr as Ctrl+Alt, so a character typed
+                    // with it (`@`, `€`, `{` on many layouts) is text, not a
+                    // shortcut.
+                    _ if cfg!(windows)
+                        && alt
+                        && text.is_some_and(|text| {
+                            !text.is_empty() && !text.chars().any(|c| c.is_control())
+                        }) =>
+                    {
+                        self.apply(Input::Text(text.unwrap_or_default()), at_ms);
+                    }
                     _ => return Action::Unhandled,
                 }
             }

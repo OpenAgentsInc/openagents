@@ -283,6 +283,91 @@ checks. `OPENAGENTS_UPDATE_MANIFEST_URL` points the check at a test
 manifest (for example `desktop/linux-test/manifest.json`, signed with
 `--prefix desktop/linux-test`); the compiled key still has to verify it.
 
+## Releasing for Windows
+
+The Windows release is a per-user MSI and a `.zip` for x64, at the same
+version as the Mac
+([#10027](https://github.com/OpenAgentsInc/openagents/issues/10027)).
+Two steps, which can run on one Mac or Linux computer:
+
+1. **Build**, from a clean checkout of the release commit, with Rust's
+   `x86_64-pc-windows-gnu` target, a MinGW-w64 linker
+   (`x86_64-w64-mingw32-gcc`: Homebrew's `mingw-w64` on a Mac), and
+   `wixl`, `zip`, and `osslsigncode` on `PATH` (on NixOS,
+   `nix shell nixpkgs#msitools nixpkgs#zip nixpkgs#osslsigncode`):
+
+   ```sh
+   scripts/desktop/package-windows.sh --out /tmp/openagents-windows-1.0.0 \
+     --pfx codesign.pfx --pfx-password-file codesign.pass --require-signing
+   ```
+
+   It cross-builds `OpenAgents.exe` (the window), `coder.exe`,
+   `microcoder.exe`, and `coder-boundary.exe`, signs each with
+   Authenticode (SHA-256, RFC 3161 timestamp), and writes
+   `OpenAgents-<version>-x64.msi` (wixl), `OpenAgents-<version>-windows-x64.zip`,
+   `SHA256SUMS`, and `BUILDINFO`. On a Windows computer,
+   `scripts\desktop\package-windows.ps1` builds the same packages with the
+   MSVC target, the WiX Toolset, and `signtool`. Both install in
+   `%LOCALAPPDATA%\Programs\OpenAgents` with the same `UpgradeCode`.
+2. **Sign and publish**, on the computer that holds the update key:
+
+   ```sh
+   CLOUDSDK_CONFIG=... scripts/desktop/sign-manifest-windows.sh \
+     --version 1.0.0 --dir /tmp/openagents-windows-1.0.0 --upload
+   ```
+
+   It checks `SHA256SUMS`, the MSI's and the `.zip`'s headers, and that
+   `BUILDINFO` says the packages are signed; writes the signed manifest
+   (the Mac's envelope, with `"platform": "windows"` and each artifact's
+   `format`, `msi` or `zip`); signs `SHA256SUMS`; and uploads everything
+   to `desktop/windows/<version>/`, then the manifest to
+   `desktop/windows/manifest.json`.
+
+**Authenticode.** A release needs the OpenAgents code-signing certificate,
+which only the owner can obtain (workspace `NEEDS_OWNER.md`). Without it
+`package-windows.sh` builds unsigned packages and says so, and
+`sign-manifest-windows.sh` refuses to publish them to `desktop/windows`:
+an unsigned build goes only to a test prefix (`--prefix
+desktop/windows-test`), for checking the app before the certificate
+exists. Windows SmartScreen warns on an unsigned MSI ("Windows protected
+your PC"; **More info**, **Run anyway**).
+
+**Updates on Windows.** An app installed from the MSI checks
+`desktop/windows/manifest.json` at start and every six hours, downloads
+the new MSI in the background, and verifies its size and SHA-256 against
+the signed manifest. Settings then offers **Restart to update to
+VERSION**: the window closes, a hidden PowerShell waits for it, stops what
+still runs from the install folder (the host, a task's engine), and runs
+`msiexec /i <msi> /passive /norestart`; the MSI's major upgrade replaces
+the files and opens the new app, which starts the new host. Pairings
+survive: the host's keys are in Credential Manager and its state under
+`%USERPROFILE%\.openagents`, never in the install folder. A copy unpacked
+from the `.zip` shows **Download VERSION** instead, which opens the MSI in
+the browser. A development build (`openagents-desktop.exe`) never checks.
+From a terminal, `OpenAgents.exe --check-update` reports, and `--update`
+installs after it exits. `OPENAGENTS_UPDATE_MANIFEST_URL` points the check
+at a test manifest, such as `desktop/windows-test/manifest.json`; the
+compiled key still has to verify it.
+
+**What differs on Windows.** Chat, Coder runs from chat, and pairing are
+the same shared Rust as on the Mac. The Verse backdrop (the Grid behind the
+window) stays off: Verse does not build for Windows yet, and the window
+keeps its plain background. Coder's desktop notifications are Linux's for
+now ([#10026](https://github.com/OpenAgentsInc/openagents/issues/10026));
+on Windows, as on the Mac, a notice is dropped, so there is no toast yet.
+Copy and paste use the Windows
+clipboard API as Unicode text; the folder chooser is the common item
+dialog (`IFileOpenDialog`); IME composition comes from winit, and a
+character typed with AltGr (which Windows reports as Ctrl+Alt) is text,
+not a shortcut. A local Coder run's sandbox (the `toolchains` access of
+[#10045](https://github.com/OpenAgentsInc/openagents/issues/10045)) is
+the AppContainer boundary with the network open; it grants no extra reads
+on Windows (each read is a DACL entry written over a whole tree, and the
+system folders on `PATH` cannot take one), so tools installed for all
+users under `C:\Program Files` (Git for Windows, Python, Node, Go) are on
+its `PATH`, and a toolchain in the profile (rustup) is not yet. Where no
+AppContainer can be made, the run refuses rather than running unconfined.
+
 ## Linux and Windows
 
 The same app builds for Linux and Windows

@@ -282,10 +282,19 @@ fn write_atomic(home: &Path, name: &str, value: &impl Serialize) -> Result<(), S
     sync_dir(home)
 }
 
+/// Flushes `dir`'s entries.
+#[cfg(unix)]
 fn sync_dir(dir: &Path) -> Result<(), String> {
     fs::File::open(dir)
         .and_then(|dir| dir.sync_all())
         .map_err(|error| format!("cannot sync {}: {error}", dir.display()))
+}
+
+/// Windows opens no directory as a file, and NTFS journals the rename
+/// itself: nothing to flush.
+#[cfg(not(unix))]
+fn sync_dir(_dir: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 #[cfg(test)]

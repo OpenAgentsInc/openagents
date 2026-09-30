@@ -220,7 +220,20 @@ async fn a_full_access_turn_runs_in_git_bash_and_retains_its_artifact() {
 
 #[tokio::test]
 async fn a_boundary_turn_runs_in_its_appcontainer_or_refuses_before_any_command() {
-    let Some((root, store, grant)) = fixture(Access::Boundary) else {
+    runs_in_its_appcontainer_or_refuses(Access::Boundary).await;
+}
+
+/// A person's local run (`access: toolchains`, #10045) on Windows: the same
+/// AppContainer with the network, and no extra reads, so it runs there or
+/// refuses before any command where no AppContainer can be made (Wine),
+/// never unconfined.
+#[tokio::test]
+async fn a_toolchain_turn_runs_in_its_appcontainer_or_refuses_before_any_command() {
+    runs_in_its_appcontainer_or_refuses(Access::Toolchains).await;
+}
+
+async fn runs_in_its_appcontainer_or_refuses(access: Access) {
+    let Some((root, store, grant)) = fixture(access) else {
         return;
     };
     // Outside the workspace: the container has no entry there.

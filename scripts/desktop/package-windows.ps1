@@ -30,6 +30,9 @@ Needs: Rust with the x86_64-pc-windows-msvc target, the WiX Toolset v4 or
 later (`dotnet tool install --global wix`) for the MSI, and signtool (the
 Windows SDK) for signing.
 
+scripts/desktop/package-windows.sh builds the same MSI and .zip from a Mac
+or Linux computer (x86_64-pc-windows-gnu, wixl, osslsigncode).
+
 .EXAMPLE
 scripts\desktop\package-windows.ps1 -CertificateThumbprint 0123...ABCD -RequireSigning
 #>
@@ -153,8 +156,7 @@ try {
         $files = ""
         foreach ($name in $Binaries.Values) {
             $id = "File_" + ($name -replace '[^A-Za-z0-9]', '_')
-            $keyPath = if ($name -eq "OpenAgents.exe") { ' KeyPath="yes"' } else { "" }
-            $files += "        <File Id=`"$id`" Source=`"$(Join-Path $Stage $name)`"$keyPath />`n"
+            $files += "        <File Id=`"$id`" Source=`"$(Join-Path $Stage $name)`" />`n"
         }
         # Start the host at sign-in: the same value the app writes, owned by
         # the MSI so an uninstall removes it. Only with the host installed.
@@ -176,13 +178,20 @@ try {
     <SummaryInformation Description="OpenAgents: connect your phone to this computer" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of OpenAgents is already installed." />
     <MediaTemplate EmbedCab="yes" />
-    <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="OpenAgents" />
+    <!-- Per user, in %LOCALAPPDATA%\Programs\OpenAgents, where the app's
+         updater (update::windows) recognizes the MSI install. -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="OpenAgents" />
+      </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
     <ComponentGroup Id="App" Directory="INSTALLFOLDER">
       <Component Id="Binaries">
-$files      </Component>
+$files        <RegistryValue Root="HKCU" Key="Software\OpenAgents\Desktop" Name="Installed"
+                       Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      </Component>
 $runEntry      <Component Id="StartMenu" Directory="ProgramMenuFolder">
         <Shortcut Id="StartMenuShortcut" Name="OpenAgents" Target="[INSTALLFOLDER]OpenAgents.exe"
                   WorkingDirectory="INSTALLFOLDER" />
@@ -193,11 +202,12 @@ $runEntry      <Component Id="StartMenu" Directory="ProgramMenuFolder">
     <Feature Id="Main">
       <ComponentGroupRef Id="App" />
     </Feature>
-    <!-- Open the app after install, so the code shows without another step. -->
+    <!-- Open the app after an interactive or progress-bar install (the
+         updater's /passive), so the code shows without another step. -->
     <CustomAction Id="LaunchApp" Directory="INSTALLFOLDER"
                   ExeCommand="&quot;[INSTALLFOLDER]OpenAgents.exe&quot;" Return="asyncNoWait" />
     <InstallExecuteSequence>
-      <Custom Action="LaunchApp" After="InstallFinalize" Condition="NOT Installed AND NOT REMOVE AND UILevel &gt;= 2" />
+      <Custom Action="LaunchApp" After="InstallFinalize" Condition="NOT Installed AND NOT REMOVE AND UILevel &gt; 2" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

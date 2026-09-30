@@ -64,6 +64,10 @@ rust-native-desktop = { path = "../rust-native-desktop", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 ring = { version = "0.17", optional = true }
 semver = { version = "1", optional = true }
+# File choosers: the Grid's store on every system, and on Windows the
+# folder chooser (the common item dialog, `IFileOpenDialog` with
+# `FOS_PICKFOLDERS`). `rust-native-desktop` already uses it for images.
+rfd = { version = "0.17.2", optional = true }
 
 # Linux: the desktop portal's folder chooser over the session bus
 # (`src/platform/linux.rs`). The same zbus release and features the host's
@@ -84,7 +88,6 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 verse = { path = "../verse", default-features = false, optional = true }
 coder-mobile = { path = "../coder-mobile", optional = true }
 gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"], optional = true }
-rfd = { version = "0.17.2", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "0.9.4", optional = true }

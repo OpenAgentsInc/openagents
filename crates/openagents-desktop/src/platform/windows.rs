@@ -1,6 +1,6 @@
 //! Windows: the host started at sign-in from the per-user `Run` key, the
 //! control channel as a per-user named pipe, and the desktop's lock state,
-//! clipboard, and folder chooser.
+//! clipboard, and folder chooser (the common item dialog).
 //!
 //! - **Keys.** The host keeps its keys as generic credentials in
 //!   Credential Manager, under the service `com.openagents.desktop` and the
@@ -204,18 +204,15 @@ pub fn clear_if(text: &str) {
     }
 }
 
-/// Asks the person for a folder with the system's chooser.
+/// Asks the person for a folder with the system's chooser: the common
+/// item dialog (`IFileOpenDialog` with `FOS_PICKFOLDERS`), which keeps any
+/// path Windows can name, where a PowerShell chooser's answer passed
+/// through the console's code page.
 pub fn choose_folder() -> openagents_desktop::folder::Chosen {
-    use openagents_desktop::folder::Chosen;
-    let path = powershell(
-        "Add-Type -AssemblyName System.Windows.Forms; \
-         $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
-         $d.Description = 'Choose the folder that holds your code'; \
-         if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }",
-    );
-    match path.as_deref().map(str::trim) {
-        Some(path) if !path.is_empty() => Chosen::Folder(PathBuf::from(path)),
-        _ => Chosen::Cancelled,
+    use openagents_desktop::folder::{Chosen, PROMPT};
+    match rfd::FileDialog::new().set_title(PROMPT).pick_folder() {
+        Some(path) => Chosen::Folder(path),
+        None => Chosen::Cancelled,
     }
 }
 

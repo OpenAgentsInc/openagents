@@ -116,6 +116,10 @@ impl Cache {
             file.write_all(encrypted.as_bytes()).map_err(io_error)?;
             file.sync_all().map_err(io_error)?;
             fs::rename(&temp, path).map_err(io_error)?;
+            // The rename's directory entry is flushed on Unix. Windows opens
+            // no directory as a file (`File::open` refuses one), and NTFS
+            // journals the rename itself.
+            #[cfg(unix)]
             fs::File::open(&self.root)
                 .and_then(|d| d.sync_all())
                 .map_err(io_error)?;
