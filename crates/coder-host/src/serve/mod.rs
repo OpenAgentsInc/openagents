@@ -667,28 +667,7 @@ pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
         .await
         .ok()
         .flatten();
-    // A waiting question or approval asks for the device's attention; the
-    // summary never carries the question itself.
-    let attention = match (task.phase, note.and_then(crate::tasks::Note::attention)) {
-        (Phase::Waiting, Some(attention)) => attention,
-        (Phase::Completed, _) => Attention::Completed,
-        (Phase::Failed, _) => Attention::Failed,
-        _ => Attention::None,
-    };
-    let note = note.map(crate::tasks::Note::headline);
-    let draft = SummaryDraft {
-        host: &shared.host_key,
-        subject_kind: SubjectKind::Task,
-        subject: &task.task,
-        sequence: task.revision,
-        phase: task.phase,
-        headline: note
-            .as_deref()
-            .unwrap_or_else(|| activity_summary::generic_headline(SubjectKind::Task, task.phase)),
-        attention,
-        updated_at: now,
-    };
-    let Ok(summary) = activity_summary::encode(&draft) else {
+    let Some(summary) = activity(&shared.host_key, task, note, now) else {
         return;
     };
     for device in shared.authority.active_devices(Some(Right::Observe), now) {
@@ -709,6 +688,37 @@ pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
             shared.publisher.everywhere(&event).await;
         }
     }
+}
+
+/// The same disclosed task state for paired devices and the local owner.
+pub(crate) fn activity(
+    host: &str,
+    task: &TaskRef,
+    note: Option<crate::tasks::Note>,
+    now: u64,
+) -> Option<activity_summary::ActivitySummary> {
+    // A waiting question or approval asks for the device's attention; the
+    // summary never carries the question itself.
+    let attention = match (task.phase, note.and_then(crate::tasks::Note::attention)) {
+        (Phase::Waiting, Some(attention)) => attention,
+        (Phase::Completed, _) => Attention::Completed,
+        (Phase::Failed, _) => Attention::Failed,
+        _ => Attention::None,
+    };
+    let note = note.map(crate::tasks::Note::headline);
+    let draft = SummaryDraft {
+        host,
+        subject_kind: SubjectKind::Task,
+        subject: &task.task,
+        sequence: task.revision,
+        phase: task.phase,
+        headline: note
+            .as_deref()
+            .unwrap_or_else(|| activity_summary::generic_headline(SubjectKind::Task, task.phase)),
+        attention,
+        updated_at: now,
+    };
+    activity_summary::encode(&draft).ok()
 }
 
 /// Write the SSH runtime record: schema, process ID, and listener port.

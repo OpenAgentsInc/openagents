@@ -29,12 +29,19 @@ clipboard facility must report a reason. Repeat image clipboard paste on macOS.
 The real macOS picker and scripted decoder, clipboard pixel, drop, removal,
 and refusal checks pass. Open a follow-up issue if a native adapter check fails.
 
-## Installed local Coder broker and chat handoff (#10014, #10015)
+## Installed local Coder broker, handoff, and task chat (#10014–#10016)
 
 After installing the desktop bundle and its Coder built from current `main`,
 exercise the **Run Coder** flow added by #10015 against this computer. Confirm
 that the normal OS key source remains in the resident host, saved device
 pairings remain available after restart, and the task can be read and stopped.
+With the configured engine signed in, verify live tool steps, Stop, the
+phase-appropriate steering choice, queued follow-ups, and answers to a question
+and an approval in the same task on desktop and phone. The scratch host checks
+cover command admission, durable queue editing, exact retries, steering, Stop,
+and archive. Shared state tests cover question and approval answers, stale
+responses, split ATIF records, and draft acknowledgment. Native painter checks
+cover all three task modes at normal and minimum window sizes.
 Archive every verification task afterward. The scratch same-user socket,
 portable client, durable inbox, restart, history, admission, and cancellation
 checks pass without accessing the owner’s computer state.

@@ -161,6 +161,15 @@ impl LocalLane {
 impl HostLane {
     fn run(&mut self, request: Request) -> Option<Outcome> {
         match request {
+            Request::TaskChat {
+                chat,
+                ticket,
+                request,
+            } => Some(Outcome::TaskChat {
+                chat,
+                ticket,
+                result: Box::new(self.control.task_chat(request)),
+            }),
             Request::Chat { ticket, command } => Some(Outcome::Chat {
                 ticket,
                 result: Box::new(self.control.chat(command)),

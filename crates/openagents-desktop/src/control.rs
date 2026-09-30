@@ -81,6 +81,17 @@ pub type ControlResult<T> = Result<T, ControlError>;
 
 /// The operations the window uses, over any transport.
 pub trait HostControl: Send {
+    fn task_chat(
+        &mut self,
+        request: openagents_chat_app::task_chat::Request,
+    ) -> ControlResult<openagents_chat_app::task_chat::Answer> {
+        let _ = request;
+        Err(ControlError::Refused {
+            code: "unsupported".into(),
+            message: "This host does not support the task chat. Update the host.".into(),
+        })
+    }
+
     /// Hosted chat data over the same local authority as pairing operations.
     fn chat(
         &mut self,
@@ -421,6 +432,27 @@ fn unexpected<T>() -> ControlResult<T> {
 }
 
 impl HostControl for SocketControl {
+    fn task_chat(
+        &mut self,
+        request: openagents_chat_app::task_chat::Request,
+    ) -> ControlResult<openagents_chat_app::task_chat::Answer> {
+        use openagents_chat_app::task_chat::{Answer, Request};
+        match request {
+            Request::Activity { task } => match self.call(Op::TaskActivity { task })? {
+                Reply::TaskActivity { summary } => Ok(Answer::Activity(summary)),
+                _ => unexpected(),
+            },
+            Request::History { query } => self.task_history(query).map(Answer::History),
+            Request::Operation { request, operation } => self
+                .task_operation(&request, operation)
+                .map(Answer::Operation)
+                .map_err(|error| ControlError::Refused {
+                    code: format!("{:?}", error.code),
+                    message: error.message,
+                }),
+        }
+    }
+
     fn chat(
         &mut self,
         command: openagents_chat::service::Command,

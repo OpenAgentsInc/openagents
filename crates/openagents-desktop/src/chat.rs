@@ -7,6 +7,7 @@ use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::service::{Command, Snapshot};
 use openagents_chat_app::projection::{self, Appearance, Projection, Reply};
 use openagents_chat_app::session::Session;
+use openagents_chat_app::task_chat::{self, Action as TaskAction};
 use rust_native::style::{Space, Style};
 use rust_native::{Axis, Element, MessageRole, Node, TextRole, ValidatedView};
 use rust_native_desktop::composer::{
@@ -43,6 +44,9 @@ pub struct Panel {
     ids: BTreeMap<String, u64>,
     fields: BTreeMap<String, Field>,
     submissions: BTreeMap<String, (String, Submission)>,
+    tasks: BTreeMap<String, task_chat::Session>,
+    task_submissions: BTreeMap<(String, String), Submission>,
+    task_editor: BTreeMap<String, u64>,
     born: Instant,
     pub viewport: (f32, f32, f32),
     pub transcript: Transcript,
@@ -53,7 +57,7 @@ pub struct Panel {
     composer_rect: Option<PxRect>,
     rows_dirty: bool,
     activated: Vec<String>,
-    press_revision: Option<u64>,
+    press_revision: Option<(u64, u64)>,
     queued: Vec<Request>,
     navigation: Option<openagents_chat::router::Screen>,
     notice: Option<String>,
@@ -80,6 +84,9 @@ impl Panel {
             ids: BTreeMap::new(),
             fields: BTreeMap::new(),
             submissions: BTreeMap::new(),
+            tasks: BTreeMap::new(),
+            task_submissions: BTreeMap::new(),
+            task_editor: BTreeMap::new(),
             born: now,
             viewport: (1200.0, 840.0, 1.0),
             transcript: Transcript::default(),
@@ -198,10 +205,133 @@ impl Panel {
         if previous != self.session.selected {
             self.selected_changed(previous);
         }
-        outcome
+        outcome.or_else(|| {
+            let chat = self.session.selected.clone()?;
+            let (ticket, request) = self.tasks.get_mut(&chat)?.tick(now)?;
+            Some(Request::TaskChat {
+                chat,
+                ticket,
+                request,
+            })
+        })
     }
     fn busy(&self) -> bool {
-        self.session.busy()
+        self.task()
+            .map_or_else(|| self.session.busy(), task_chat::Session::busy)
+    }
+    fn task(&self) -> Option<&task_chat::Session> {
+        self.tasks.get(self.session.selected.as_ref()?)
+    }
+    pub fn task_outcome(
+        &mut self,
+        chat: String,
+        ticket: u64,
+        result: ControlResult<task_chat::Answer>,
+    ) {
+        let Some(task) = self.tasks.get_mut(&chat) else {
+            return;
+        };
+        let revision = task.revision;
+        let operation = task
+            .pending_request(ticket)
+            .and_then(|request| match request {
+                task_chat::Request::Operation { request, .. } => Some(request.clone()),
+                _ => None,
+            });
+        let accepted = match result {
+            Err(crate::control::ControlError::Refused { code, .. }) if code == "source_changed" => {
+                task.source_changed(ticket);
+                false
+            }
+            Err(crate::control::ControlError::Refused { code, message })
+                if code != "unavailable" && code != "Unavailable" =>
+            {
+                task.refused(ticket, message);
+                false
+            }
+            other => task.outcome(ticket, other.map_err(|error| error.to_string())),
+        };
+        if accepted
+            && let Some(operation) = operation
+            && let Some(submission) = self.task_submissions.remove(&(chat.clone(), operation))
+            && let Some(field) = self.fields.get_mut(&chat)
+        {
+            let _ = field.draft.accepted(&submission);
+            field.focused = true;
+        }
+        if revision != task.revision && self.session.selected.as_ref() == Some(&chat) {
+            self.rows_dirty = true;
+        }
+    }
+    fn task_action(
+        &mut self,
+        action: TaskAction,
+        view: &ValidatedView<Intent>,
+        now: Instant,
+    ) -> Option<Request> {
+        let chat = self.session.selected.clone()?;
+        let submitted = matches!(
+            action,
+            TaskAction::Send | TaskAction::Queue | TaskAction::Steer
+        );
+        let submission = if submitted {
+            if let Some(reason) = self.session.images.hosted_send_refusal(&chat) {
+                self.notice = Some(reason.into());
+                return None;
+            }
+            let field = self.field()?;
+            let stamp = field.draft.stamp().ok()?;
+            let submission = field.draft.submission(view, &stamp, None).ok()?;
+            if submission.text.len() > 16 * 1024 {
+                self.notice = Some(
+                    "Coder accepts messages up to 16 KiB. Shorten this draft to send it.".into(),
+                );
+                return None;
+            }
+            Some(submission)
+        } else {
+            None
+        };
+        let task = self.tasks.get_mut(&chat)?;
+        let revision = task.revision;
+        let editing = matches!(action, TaskAction::EditQueued(_));
+        let request = task.action(
+            action,
+            submission.as_ref().map_or("", |s| s.text.as_str()),
+            task_chat::unix_now(),
+        );
+        if editing && let Some(text) = task.editing_text().map(str::to_owned) {
+            *self.task_editor.entry(chat.clone()).or_default() += 1;
+            let mut field = Field::with_placeholder(task.placeholder());
+            // The replacement text mounts with the new editing token in footer().
+            field.focused = true;
+            if let Some(wake) = self.waker.clone() {
+                field.start(wake);
+            }
+            self.fields.insert(chat.clone(), field);
+            self.notice = Some(format!(
+                "Editing queued message: {}",
+                text.chars().take(80).collect::<String>()
+            ));
+        }
+        if revision != task.revision {
+            self.rows_dirty = true;
+        }
+        let (ticket, request) = request?;
+        if let Some(submission) = submission
+            && let task_chat::Request::Operation {
+                request: operation, ..
+            } = &request
+        {
+            self.task_submissions
+                .insert((chat.clone(), operation.clone()), submission);
+        }
+        let _ = now;
+        Some(Request::TaskChat {
+            chat,
+            ticket,
+            request,
+        })
     }
     pub fn images(&self) -> &[openagents_chat_app::attachments::Image] {
         self.session
@@ -351,6 +481,20 @@ impl Panel {
         let accepted = self
             .session
             .outcome(ticket, result.map_err(|error| error.to_string()));
+        if let Some(snapshot) = self.session.state()
+            && let (Some(chat), Some(binding)) = (&snapshot.chat, &snapshot.coder)
+        {
+            let replace = self.tasks.get(chat).is_none_or(|task| {
+                task.binding.task != binding.task || task.binding.host != binding.host
+            });
+            if replace {
+                self.tasks.insert(
+                    chat.clone(),
+                    task_chat::Session::new(binding.clone(), Instant::now()),
+                );
+                self.rows_dirty = true;
+            }
+        }
         for (_, request) in accepted {
             if let Some((id, submission)) = self.submissions.remove(&request)
                 && let Some(field) = self.fields.get_mut(&id)
@@ -437,6 +581,9 @@ impl Panel {
                 None
             }
             Action::Card { key } => {
+                if let Some(action) = self.task().and_then(|task| task.actions.get(&key)).cloned() {
+                    return self.task_action(action, view, now);
+                }
                 let previous = self.session.selected.clone();
                 let effect = self.session.card_action(&key);
                 if previous != self.session.selected {
@@ -489,6 +636,9 @@ impl Panel {
                 None
             }
             Action::Send => {
+                if self.task().is_some() {
+                    return self.task_action(TaskAction::Send, view, now);
+                }
                 if let Some(reason) = self.session.images.hosted_send_refusal(&id) {
                     self.notice = Some(reason.into());
                     return None;
@@ -543,8 +693,20 @@ impl Panel {
                 let title = self.rename.as_ref()?.1.text().to_owned();
                 self.save_name(id, title)
             }
-            Action::Stop => Some(self.request(Command::Stop { chat: id })),
-            Action::Retry => self.session.retry().map(request),
+            Action::Stop => {
+                if self.task().is_some() {
+                    self.task_action(TaskAction::Stop, view, now)
+                } else {
+                    Some(self.request(Command::Stop { chat: id }))
+                }
+            }
+            Action::Retry => {
+                if self.task().is_some() {
+                    self.task_action(TaskAction::Retry, view, now)
+                } else {
+                    self.session.retry().map(request)
+                }
+            }
             Action::Restore => Some(self.request(Command::Restore { chat: id })),
             Action::Archive => Some(self.request(Command::Archive { chat: id })),
             Action::Earlier => self.session.earlier().map(request),
@@ -764,7 +926,9 @@ impl Panel {
                     }))
                 }
             }
-            C::Stop if self.busy() => self.action(Action::Stop, view, now),
+            C::Stop if self.busy() || self.task().is_some_and(|task| task.active()) => {
+                self.action(Action::Stop, view, now)
+            }
             C::Rename => self.action(Action::Rename, view, now),
             C::Pin => self.action(Action::Pin, view, now),
             C::Archive => self.action(Action::Archive, view, now),
@@ -985,7 +1149,10 @@ impl Panel {
             let moved = matches!(event, SurfaceInput::Move { .. });
             let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
             if matches!(event, SurfaceInput::Down { .. }) {
-                self.press_revision = Some(self.session.revision);
+                self.press_revision = Some((
+                    self.session.revision,
+                    self.task().map_or(0, |task| task.revision),
+                ));
             }
             if matches!(event, SurfaceInput::Down { .. })
                 && let Some(field) = self.field()
@@ -995,7 +1162,12 @@ impl Panel {
             if let Some(action) = self.transcript.pointer(event, &mut self.fonts) {
                 let destination = match action {
                     rust_native_desktop::transcript::Action::Activate(key) => {
-                        if self.press_revision.take() == Some(self.session.revision) {
+                        if self.press_revision.take()
+                            == Some((
+                                self.session.revision,
+                                self.task().map_or(0, |task| task.revision),
+                            ))
+                        {
                             self.activated.push(key);
                         }
                         return true;
@@ -1058,7 +1230,10 @@ impl Panel {
         false
     }
     pub fn next_wake(&self, now: Instant) -> Instant {
-        self.session.next_wake(now)
+        self.task().map_or_else(
+            || self.session.next_wake(now),
+            |task| self.session.next_wake(now).min(task.next_wake(now)),
+        )
     }
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
@@ -1306,41 +1481,52 @@ impl Panel {
         }
         let start = self.state().map_or(0, |state| state.start);
         if self.rows_dirty {
-            let state = self.session.state();
-            let turns = state.map_or(&[][..], |state| state.turns.as_slice());
-            let mut rows = self.projection.rows(
-                turns,
-                start,
-                Reply {
-                    partial: state.map_or("", |state| state.partial.as_str()),
-                    busy: state.is_some_and(|state| state.busy),
-                    failure: self
-                        .session
-                        .error
-                        .as_deref()
-                        .or_else(|| state.and_then(|state| state.failure.as_deref())),
-                },
-                &appearance(),
-            );
-            if rows.is_empty() {
-                rows.push(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None)));
-            }
-            let busy = self.busy();
-            let fallback = Snapshot {
-                chat: self.session.selected.clone(),
-                ..Snapshot::default()
-            };
-            let snapshot = self
+            let task_rows = self
                 .session
                 .selected
                 .as_ref()
-                .and_then(|id| self.session.states.get(id))
-                .unwrap_or(&fallback);
-            rows.extend(self.session.cards.rows_with(
-                snapshot,
-                busy,
-                self.session.error.as_deref(),
-            ));
+                .and_then(|id| self.tasks.get_mut(id))
+                .map(task_chat::Session::rows);
+            let rows = if let Some(rows) = task_rows {
+                rows
+            } else {
+                let state = self.session.state();
+                let turns = state.map_or(&[][..], |state| state.turns.as_slice());
+                let mut rows = self.projection.rows(
+                    turns,
+                    start,
+                    Reply {
+                        partial: state.map_or("", |state| state.partial.as_str()),
+                        busy: state.is_some_and(|state| state.busy),
+                        failure: self
+                            .session
+                            .error
+                            .as_deref()
+                            .or_else(|| state.and_then(|state| state.failure.as_deref())),
+                    },
+                    &appearance(),
+                );
+                if rows.is_empty() {
+                    rows.push(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None)));
+                }
+                let busy = self.busy();
+                let fallback = Snapshot {
+                    chat: self.session.selected.clone(),
+                    ..Snapshot::default()
+                };
+                let snapshot = self
+                    .session
+                    .selected
+                    .as_ref()
+                    .and_then(|id| self.session.states.get(id))
+                    .unwrap_or(&fallback);
+                rows.extend(self.session.cards.rows_with(
+                    snapshot,
+                    busy,
+                    self.session.error.as_deref(),
+                ));
+                rows
+            };
             if self.transcript_rows != rows {
                 self.transcript_rows = rows;
                 let size = self.transcript_size;
@@ -1353,7 +1539,7 @@ impl Panel {
             self.rows_dirty = false;
         }
         let mut controls = vec![];
-        if start > 0 {
+        if start > 0 && self.task().is_none() {
             controls.push(button(
                 "chat-earlier",
                 "Load earlier",
@@ -1444,15 +1630,38 @@ impl Panel {
             return button("chat-restore", "Restore chat", Action::Restore, true);
         }
         let busy = self.busy();
-        let draft = self.fields.get(&id).map(|field| field.text().to_owned());
+        let task = self.tasks.get(&id);
+        let placeholder = task.map_or("Message OpenAgents…", task_chat::Session::placeholder);
+        if let Some(field) = self.fields.get_mut(&id) {
+            field.set_placeholder(placeholder);
+        }
+        let draft = self.fields.get(&id).map(|field| {
+            if field.draft.editor().is_none() {
+                task.and_then(task_chat::Session::editing_text)
+                    .unwrap_or(field.text())
+                    .to_owned()
+            } else {
+                field.text().to_owned()
+            }
+        });
+        let task_mode = task.map(task_chat::Session::mode);
+        let task_ready = task.is_none_or(|task| task.summary.is_some());
         let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
             || !self.session.images.get(&id).is_empty();
         let composer = Node {
             key: "chat-composer".into(),
             style: Style::default(),
             element: Element::Composer {
-                token: format!("chat-{id}"),
-                placeholder: "Message OpenAgents…".into(),
+                token: if let Some(task) = task {
+                    format!(
+                        "task-{}-{}",
+                        task.binding.task,
+                        self.task_editor.get(&id).copied().unwrap_or(0)
+                    )
+                } else {
+                    format!("chat-{id}")
+                },
+                placeholder: placeholder.into(),
                 max_bytes: 32 * 1024,
                 enabled: true,
                 busy,
@@ -1465,7 +1674,7 @@ impl Panel {
             },
         };
         let mut buttons = vec![];
-        buttons.push(if busy {
+        buttons.push(if busy && task.is_none() {
             button(
                 "chat-stop",
                 "Stop",
@@ -1473,8 +1682,32 @@ impl Panel {
                 self.state().is_some_and(|state| state.busy),
             )
         } else {
-            button("chat-send", "Send", Action::Send, enabled)
+            button(
+                "chat-send",
+                match task_mode {
+                    Some(openagents_chat_app::coder_tab::Mode::Queue) => "Queue",
+                    Some(openagents_chat_app::coder_tab::Mode::Answer) => "Answer",
+                    _ => "Send",
+                },
+                Action::Send,
+                enabled && !busy && task_ready,
+            )
         });
+        if let Some(task) = task
+            && task.active()
+        {
+            buttons.push(button("chat-stop", "Stop Coder", Action::Stop, !busy));
+            if let Some(choice) = task.steer_choice() {
+                buttons.push(button(
+                    "task-steer",
+                    choice.label(),
+                    Action::Card {
+                        key: "task-steer".into(),
+                    },
+                    enabled && !busy,
+                ));
+            }
+        }
         buttons.push(button(
             "chat-attach",
             "Attach image",
@@ -1644,5 +1877,121 @@ mod image_tests {
             .unwrap();
         panel.poll_images(2);
         assert_eq!(panel.draft(), "newer");
+    }
+}
+
+#[cfg(test)]
+mod task_tests {
+    use super::*;
+    use nostr::activity_summary::{self, Attention, Phase, SubjectKind, SummaryDraft};
+    fn panel() -> (Panel, Instant) {
+        let now = Instant::now();
+        let mut panel = Panel::new(now);
+        panel.session.select("chat");
+        panel.selected_changed(None);
+        let mut task = task_chat::Session::new(
+            openagents_chat::basic_chats::Spawned {
+                host: "a".repeat(64),
+                task: "b".repeat(64),
+                project: Some("scratch".into()),
+                at: None,
+            },
+            now,
+        );
+        task.summary = Some(
+            activity_summary::encode(&SummaryDraft {
+                host: &task.binding.host,
+                subject_kind: SubjectKind::Task,
+                subject: &task.binding.task,
+                sequence: 4,
+                phase: Phase::Running,
+                headline: "Coder is working",
+                attention: Attention::None,
+                updated_at: task_chat::unix_now(),
+            })
+            .unwrap(),
+        );
+        panel.tasks.insert("chat".into(), task);
+        (panel, now)
+    }
+    fn mount(panel: &mut Panel, revision: u64) -> ValidatedView<Intent> {
+        let view = rust_native::View::new("task-editor", revision, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        view
+    }
+    fn receipt() -> task_chat::Answer {
+        task_chat::Answer::Operation(coder_access::protocol::Outcome::Dispatched {
+            receipt: coder_access::protocol::Receipt {
+                operation: "task.command".into(),
+                reference: "b".repeat(64),
+            },
+        })
+    }
+    #[test]
+    fn a_running_task_offers_queue_stop_and_steer_and_retries_clear_only_the_acknowledged_draft() {
+        let (mut panel, now) = panel();
+        panel.body();
+        let view = mount(&mut panel, 1);
+        let labels = crate::screens::words(&view.view().root);
+        assert!(labels.iter().any(|label| label == "Queue"));
+        assert!(labels.iter().any(|label| label == "Stop Coder"));
+        assert!(labels.iter().any(|label| label == "Stop and send"));
+        panel.input(TextInput::Commit("next turn  "), now);
+        let Request::TaskChat {
+            chat,
+            ticket,
+            request,
+        } = panel.action(Action::Send, &view, now).unwrap()
+        else {
+            panic!("task request")
+        };
+        panel.task_outcome(
+            chat.clone(),
+            ticket,
+            Err(crate::control::ControlError::Unreachable),
+        );
+        assert_eq!(panel.draft(), "next turn  ");
+        let Request::TaskChat {
+            ticket: retry,
+            request: same,
+            ..
+        } = panel.action(Action::Retry, &view, now).unwrap()
+        else {
+            panic!("retry")
+        };
+        assert_eq!(request, same);
+        panel.task_outcome(chat, retry, Ok(receipt()));
+        assert_eq!(panel.draft(), "");
+    }
+    #[test]
+    fn a_delayed_task_acknowledgment_preserves_edits_and_a_refusal_keeps_the_draft() {
+        let (mut panel, now) = panel();
+        let view = mount(&mut panel, 1);
+        panel.input(TextInput::Commit("original"), now);
+        let Request::TaskChat { chat, ticket, .. } =
+            panel.action(Action::Send, &view, now).unwrap()
+        else {
+            panic!("send")
+        };
+        panel.input(TextInput::Commit(" newer"), now);
+        panel.task_outcome(chat.clone(), ticket, Ok(receipt()));
+        assert_eq!(panel.draft(), "original newer");
+        let view = mount(&mut panel, 2);
+        let Request::TaskChat { ticket, .. } = panel.action(Action::Send, &view, now).unwrap()
+        else {
+            panic!("send")
+        };
+        panel.task_outcome(
+            chat,
+            ticket,
+            Err(crate::control::ControlError::Refused {
+                code: "conflict".into(),
+                message: "The turn changed.".into(),
+            }),
+        );
+        assert_eq!(panel.draft(), "original newer");
+        assert!(!panel.busy());
     }
 }

@@ -276,7 +276,16 @@ impl DesktopApp {
                 Runner::Background(worker) => worker.send(request),
                 Runner::Inline(context) => {
                     if let Some(outcome) = context.run(request) {
-                        if let Outcome::Chat { ticket, result } = outcome {
+                        if let Outcome::TaskChat {
+                            chat,
+                            ticket,
+                            result,
+                        } = outcome
+                        {
+                            if let Some(panel) = &mut self.chat {
+                                panel.task_outcome(chat, ticket, *result);
+                            }
+                        } else if let Outcome::Chat { ticket, result } = outcome {
                             if let Some(chat) = &mut self.chat {
                                 chat.outcome(ticket, *result);
                             }
@@ -292,6 +301,17 @@ impl DesktopApp {
 
     fn apply(&mut self, outcomes: Vec<Outcome>, now: Instant) {
         for outcome in outcomes {
+            if let Outcome::TaskChat {
+                chat,
+                ticket,
+                result,
+            } = outcome
+            {
+                if let Some(panel) = &mut self.chat {
+                    panel.task_outcome(chat, ticket, *result);
+                }
+                continue;
+            }
             if let Outcome::Chat { ticket, result } = outcome {
                 if let Some(chat) = &mut self.chat {
                     chat.outcome(ticket, *result);
@@ -2333,5 +2353,115 @@ mod command_fixtures {
                 .unwrap()
                 .contains("Cmd/Ctrl+N")
         );
+    }
+}
+
+#[cfg(test)]
+mod task_fixtures {
+    use super::*;
+    use nostr::activity_summary::{self, Attention, Phase, SubjectKind, SummaryDraft};
+    use openagents_chat::{basic_chats::Spawned, service::Snapshot};
+    use openagents_chat_app::task_chat;
+    use std::time::Duration;
+
+    #[test]
+    fn task_modes_mount_and_paint_at_default_and_minimum_sizes() {
+        for (name, phase, attention, label) in [
+            (
+                "running",
+                Phase::Running,
+                Attention::None,
+                "Coder is working",
+            ),
+            (
+                "question",
+                Phase::Waiting,
+                Attention::Input,
+                "Coder asked a question",
+            ),
+            (
+                "approval",
+                Phase::Waiting,
+                Attention::Approval,
+                "Coder asked for approval",
+            ),
+        ] {
+            let (mut app, now) = super::tests::chat_fixture(0);
+            let mut panel = openagents_desktop::chat::Panel::new(now);
+            let Request::Chat {
+                ticket,
+                command: openagents_chat::service::Command::Create { chat },
+            } = panel.new_chat()
+            else {
+                panic!("create")
+            };
+            let snapshot = Snapshot {
+                chat: Some(chat.clone()),
+                coder: Some(Spawned {
+                    host: "a".repeat(64),
+                    task: "b".repeat(64),
+                    project: Some("scratch".into()),
+                    at: None,
+                }),
+                ..Snapshot::default()
+            };
+            panel.outcome(ticket, Ok(snapshot.clone()));
+            for _ in 0..8 {
+                match panel.tick(now + Duration::from_secs(1)) {
+                    Some(Request::Chat { ticket, .. }) => {
+                        panel.outcome(ticket, Ok(snapshot.clone()))
+                    }
+                    Some(Request::TaskChat {
+                        chat,
+                        ticket,
+                        request: task_chat::Request::Activity { task },
+                    }) => {
+                        let summary = activity_summary::encode(&SummaryDraft {
+                            host: &"a".repeat(64),
+                            subject_kind: SubjectKind::Task,
+                            subject: &task,
+                            sequence: 4,
+                            phase,
+                            headline: label,
+                            attention,
+                            updated_at: unix_now(),
+                        })
+                        .unwrap();
+                        panel.task_outcome(chat, ticket, Ok(task_chat::Answer::Activity(summary)));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            app.chat = Some(panel);
+            app.present();
+            for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
+                let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+                let words = openagents_desktop::screens::words(&app.view().view().root);
+                assert!(words.iter().any(|word| word
+                    == if attention == Attention::None {
+                        "Queue"
+                    } else {
+                        "Answer"
+                    }));
+                let send = scene
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == "chat-send")
+                    .unwrap();
+                assert!(send.rect.y + send.rect.h <= height);
+                assert!(scene.hits.iter().any(|hit| hit.key == "chat-stop"));
+                if let Some(path) = std::env::var_os("OPENAGENTS_TASK_CAPTURE_DIR") {
+                    let path = std::path::PathBuf::from(path);
+                    std::fs::create_dir_all(&path).unwrap();
+                    std::fs::write(
+                        path.join(format!("{name}-{width}.png")),
+                        frame.png().unwrap(),
+                    )
+                    .unwrap();
+                }
+            }
+        }
     }
 }

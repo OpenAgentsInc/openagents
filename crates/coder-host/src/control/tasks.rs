@@ -342,3 +342,30 @@ fn read(
         None => client.verify_reply_via(&pending, &handled.reply, now, Route::Direct),
     }
 }
+
+pub(super) fn activity(shared: &Shared, id: &str) -> Reply {
+    if id.len() != 64
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return super::refused("malformed", "The task identity is invalid.");
+    }
+    let Some(task) = shared
+        .tasks
+        .current()
+        .into_iter()
+        .find(|task| task.task == id)
+    else {
+        return super::refused("not_found", "This task is unavailable or archived.");
+    };
+    let Some(summary) = crate::serve::activity(
+        &shared.host_key,
+        &task,
+        shared.tasks.note(id),
+        crate::unix_time().unwrap_or_default(),
+    ) else {
+        return super::refused("unavailable", "The task state could not be read.");
+    };
+    Reply::TaskActivity { summary }
+}

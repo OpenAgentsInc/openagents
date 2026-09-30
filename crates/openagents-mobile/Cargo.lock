@@ -5314,6 +5314,7 @@ dependencies = [
  "getrandom 0.3.4",
  "iroh",
  "iroh-mdns-address-lookup",
+ "nostr",
  "openagents-chat",
  "serde",
  "serde_json",

@@ -1231,6 +1231,12 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
     )
 }
 
+/// Render parsed task rows with the same semantics on every native adapter.
+pub fn project_rows<I>(rows: &[Row]) -> Vec<Node<I>> {
+    let delegated = std::collections::BTreeMap::new();
+    rows.iter().map(|row| draw(row, 0, &delegated)).collect()
+}
+
 fn draw<I>(
     row: &Row,
     compact: u8,

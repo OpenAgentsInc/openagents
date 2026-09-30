@@ -14,6 +14,9 @@ use tokio::io::AsyncWriteExt;
 
 fn every_op() -> Vec<Op> {
     vec![
+        Op::TaskActivity {
+            task: "11".repeat(32),
+        },
         Op::Status {},
         Op::InviteCreate {},
         Op::InviteCancel {
@@ -43,6 +46,33 @@ fn every_op() -> Vec<Op> {
             secret: "33".repeat(32),
         },
     ]
+}
+
+#[test]
+fn local_activity_uses_the_phone_summary_contract_and_rejects_extra_content() {
+    use nostr::activity_summary::{self, Attention, Phase, SubjectKind, SummaryDraft};
+    let host = "a".repeat(64);
+    let task = "b".repeat(64);
+    let summary = activity_summary::encode(&SummaryDraft {
+        host: &host,
+        subject_kind: SubjectKind::Task,
+        subject: &task,
+        sequence: 4,
+        phase: Phase::Waiting,
+        headline: "Coder asked a question",
+        attention: Attention::Input,
+        updated_at: 1_790_000_000,
+    })
+    .unwrap();
+    let reply = Reply::TaskActivity { summary };
+    let wire = serde_json::to_value(&reply).unwrap();
+    assert_eq!(
+        serde_json::from_value::<Reply>(wire.clone()).unwrap(),
+        reply
+    );
+    let mut extra = wire;
+    extra["summary"]["question"] = json!("private question text");
+    assert!(serde_json::from_value::<Reply>(extra).is_err());
 }
 
 #[test]

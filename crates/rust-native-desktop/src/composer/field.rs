@@ -43,6 +43,11 @@ impl Field {
             ..Self::default()
         }
     }
+    pub fn set_placeholder(&mut self, placeholder: &str) {
+        if self.placeholder != placeholder {
+            self.placeholder = placeholder.into();
+        }
+    }
     /// Grow from one line to eight lines, then scroll within the field.
     pub fn height(&self, width: f32) -> f32 {
         let text = self.text();
@@ -142,6 +147,7 @@ impl Field {
             self.draft.editor().map(|e| e.revision()),
             self.focused,
             self.offset.to_bits(),
+            &self.placeholder,
         )
             .hash(&mut hash);
         hash.finish()

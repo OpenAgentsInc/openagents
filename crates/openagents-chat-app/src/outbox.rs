@@ -48,6 +48,21 @@ pub struct Draft<'a> {
     pub emulate: bool,
 }
 
+impl Draft<'_> {
+    /// Freeze the same command bytes for every native client and transport.
+    pub fn command(self, now: u64) -> TaskCommand {
+        TaskCommand {
+            command: coder_host::access::protocol::random_id(),
+            task: self.task.into(),
+            action: self.action,
+            based_on: self.based_on,
+            text: self.text.into(),
+            emulate: self.emulate,
+            issued_at: now,
+        }
+    }
+}
+
 /// What became of one attempt.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Attempt {
@@ -84,15 +99,7 @@ impl Outbox {
         }
         self.pending.push(Pending {
             host: host.to_owned(),
-            command: TaskCommand {
-                command: coder_host::access::protocol::random_id(),
-                task: draft.task.to_owned(),
-                action: draft.action,
-                based_on: draft.based_on,
-                text: draft.text.to_owned(),
-                emulate: draft.emulate,
-                issued_at: now,
-            },
+            command: draft.command(now),
             next_try: now,
             tries: 0,
             unreached_at: None,

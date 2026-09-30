@@ -226,7 +226,7 @@ pub enum Choice {
 }
 
 impl Choice {
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Choice::Queue => "Queue for next turn",
             Choice::SteerNow => "Steer now",
@@ -234,7 +234,7 @@ impl Choice {
         }
     }
 
-    fn command(self) -> (CommandAction, bool) {
+    pub fn command(self) -> (CommandAction, bool) {
         match self {
             Choice::Queue => (CommandAction::Queue, false),
             Choice::SteerNow => (CommandAction::Steer, false),

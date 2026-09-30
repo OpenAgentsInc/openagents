@@ -352,6 +352,7 @@ fn answer(shared: &Shared, op: Op) -> Reply {
                 Err(_) => refused("not_pending", "no nearby request with that ID is waiting"),
             }
         }
+        Op::TaskActivity { task } => tasks::activity(shared, &task),
         Op::OwnerImport { secret } => owner_import(shared, &secret),
         Op::ProjectRemove { label } => {
             let reply = change_projects(shared, |settings| {

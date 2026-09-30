@@ -83,6 +83,8 @@ pub enum Op {
     TaskHistory {
         query: coder_connect::protocol::Query,
     },
+    /// The same task activity a paired phone receives, over the local socket.
+    TaskActivity { task: String },
     /// Hosted chat; admitted only as this machine's local operator.
     Chat {
         command: openagents_chat::service::Command,
@@ -148,6 +150,10 @@ impl Response {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    TaskActivity {
+        #[serde(with = "activity_json")]
+        summary: nostr::activity_summary::ActivitySummary,
+    },
     Task {
         outcome: coder_access::protocol::Outcome,
     },
@@ -325,4 +331,21 @@ pub async fn next_request<S: AsyncRead + Unpin>(stream: &mut S) -> Result<Option
 /// `unavailable` when the write fails.
 pub async fn respond<S: AsyncWrite + Unpin>(stream: &mut S, response: &Response) -> Result<()> {
     write_message(stream, response, MAX_MESSAGE_BYTES).await
+}
+
+mod activity_json {
+    use nostr::activity_summary::{self, ActivitySummary};
+    use serde::{Deserialize, Serialize};
+    pub fn serialize<S: serde::Serializer>(
+        summary: &ActivitySummary,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        activity_summary::to_value(summary).serialize(serializer)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ActivitySummary, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        activity_summary::verify_value(&value).map_err(serde::de::Error::custom)
+    }
 }
