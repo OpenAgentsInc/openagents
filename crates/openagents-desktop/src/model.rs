@@ -154,6 +154,9 @@ pub struct Task {
     pub title: String,
     /// The task store's status word, such as `running` or `finished`.
     pub status: String,
+    /// Why a stopped task stopped, such as
+    /// `Couldn't start: Claude Code isn't set up on this computer.`
+    pub reason: Option<String>,
 }
 
 /// What Coder can use on this Mac.
@@ -776,6 +779,7 @@ mod tests {
                         tasks: vec![Task {
                             title: "Fix the login test".into(),
                             status: "running".into(),
+                            reason: None,
                         }],
                     }),
                     Request::OpenLoginItems | Request::Adopt => None,

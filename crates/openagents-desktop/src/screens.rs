@@ -488,11 +488,13 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
             .iter()
             .enumerate()
             .map(|(index, task)| {
-                text(
-                    &format!("task-{index}"),
-                    format!("{} · {}", task.title, task_status(&task.status)),
-                    TextRole::Body,
-                )
+                let line = match &task.reason {
+                    Some(reason) => {
+                        format!("{} · {} · {reason}", task.title, task_status(&task.status))
+                    }
+                    None => format!("{} · {}", task.title, task_status(&task.status)),
+                };
+                text(&format!("task-{index}"), line, TextRole::Body)
             })
             .collect();
         coder.push(node(

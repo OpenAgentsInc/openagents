@@ -805,7 +805,8 @@ async fn repository_cli(arguments: &[String]) -> u8 {
         );
         return 0;
     }
-    let result = async {
+    use microcoder::repository::Failure;
+    let result: Result<serde_json::Value, Failure> = async {
         let mut grant = None;
         let mut store = None;
         let mut detach = false;
@@ -813,42 +814,49 @@ async fn repository_cli(arguments: &[String]) -> u8 {
         while let Some(flag) = arguments.next() {
             if flag == "--detach" {
                 if detach {
-                    return Err("give --detach only once".into());
+                    return Err(Failure::run("give --detach only once".into()));
                 }
                 detach = true;
                 continue;
             }
-            let value = arguments.next().ok_or("an option needs a value")?;
+            let value = arguments
+                .next()
+                .ok_or_else(|| Failure::run("an option needs a value".into()))?;
             match flag.as_str() {
                 "--grant" if grant.is_none() => grant = Some(std::path::PathBuf::from(value)),
                 "--store" if store.is_none() => store = Some(std::path::PathBuf::from(value)),
-                _ => return Err("unknown or repeated repository option".into()),
+                _ => return Err(Failure::run("unknown or repeated repository option".into())),
             }
         }
-        let path = grant.ok_or("repository requires --grant")?;
+        let path = grant.ok_or_else(|| Failure::run("repository requires --grant".into()))?;
         let store = store
             .or_else(|| {
                 std::env::var_os("HOME")
                     .map(|home| std::path::PathBuf::from(home).join(".openagents/tasks"))
             })
-            .ok_or("no task store path")?;
+            .ok_or_else(|| Failure::run("no task store path".into()))?;
         let mut bytes = Vec::new();
         std::fs::File::open(path)
-            .map_err(|error| error.to_string())?
+            .map_err(|error| Failure::run(error.to_string()))?
             .take(coder::task::MAX_COMMAND_BYTES as u64 + 1)
             .read_to_end(&mut bytes)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| Failure::run(error.to_string()))?;
         if detach {
             return microcoder::repository::launch::start(&store, &bytes)
-                .map(|launched| serde_json::json!(launched));
+                .map(|launched| serde_json::json!(launched))
+                .map_err(Failure::run);
         }
         // A computer without a Jev key still runs a repository turn: the
         // desktop app asks only that Codex or Claude Code is signed in, so
         // the steps go without Jev's advisory judgments there, and the
-        // transcript says so. A key that is present is always used.
+        // transcript says so. A key that is present is always used; one the
+        // client cannot use means the task never starts, and the cause
+        // tells the host that launched this owner why.
         let judge = match jev_key() {
             Some(_) => Some(JevJudge {
-                client: jev_client()?,
+                client: jev_client().map_err(|why| {
+                    Failure::unstarted(coder::task::autostart::StartCause::Configuration, why)
+                })?,
             }),
             None => None,
         };
@@ -863,7 +871,7 @@ async fn repository_cli(arguments: &[String]) -> u8 {
             0
         }
         Err(error) => {
-            eprintln!("{}", serde_json::json!({"error":error}));
+            eprintln!("{}", error.diagnostic());
             2
         }
     }

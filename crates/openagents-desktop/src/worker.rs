@@ -193,10 +193,12 @@ impl Context {
                 Task {
                     title: "Fix the login test".into(),
                     status: "running".into(),
+                    reason: None,
                 },
                 Task {
                     title: "Update the README".into(),
                     status: "finished".into(),
+                    reason: None,
                 },
             ];
         }
@@ -224,9 +226,16 @@ pub fn parse_tasks(json: &[u8]) -> Vec<Task> {
         .filter_map(|entry| {
             let title = entry.pointer("/intent/title")?.as_str()?;
             let status = entry.get("status")?.as_str()?;
+            // A task the host ended before it started says why.
+            let reason = entry
+                .get("cancellation_reason")
+                .and_then(serde_json::Value::as_str)
+                .filter(|_| status == "cancelled")
+                .map(|reason| reason.chars().take(160).collect());
             Some(Task {
                 title: title.chars().take(80).collect(),
                 status: status.into(),
+                reason,
             })
         })
         .collect();
@@ -285,5 +294,22 @@ mod tests {
         let titles: Vec<String> = parse_tasks(json).into_iter().map(|t| t.title).collect();
         assert_eq!(titles, vec!["Working one", "Newest", "Oldest"]);
         assert!(parse_tasks(b"not json").is_empty());
+    }
+
+    #[test]
+    fn a_task_that_never_started_says_why() {
+        let json = br#"[
+            {"task_id":"a","intent":{"title":"Fix it"},"status":"cancelled",
+             "cancellation_reason":"Couldn't start: Claude Code isn't set up on this computer."},
+            {"task_id":"b","intent":{"title":"Waiting"},"status":"queued",
+             "cancellation_reason":null}
+        ]"#;
+        let tasks = parse_tasks(json);
+        assert_eq!(tasks[1].title, "Fix it");
+        assert_eq!(
+            tasks[1].reason.as_deref(),
+            Some("Couldn't start: Claude Code isn't set up on this computer.")
+        );
+        assert_eq!(tasks[0].reason, None);
     }
 }

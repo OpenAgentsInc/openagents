@@ -110,6 +110,18 @@ While the policy is on:
    process (its launcher, its admission, and every record it makes while it
    runs) waits the same two minutes for a busy store instead of failing the
    task; only a store still busy after that fails it.
+4. A started task never waits forever for its owner process. When the
+   owner process exits without admitting the task, the next sweep reads the
+   cause it wrote to its launch diagnostic. A model app (Codex, Claude
+   Code, Devin, or OpenCode) that isn't set up, or a grant
+   that doesn't fit the computer ends the task at once. An unexplained stop
+   or a refused admission may be transient, so the host starts the task once
+   more, and ends it if that owner fails too. An owner that is still running
+   but hasn't admitted the task after 10 minutes ends it as well. The host
+   cancels the task with the cause's sentence, such as
+   `Couldn't start: Claude Code isn't set up on this computer.`, and a device's summary
+   headline and the desktop app's task list show that sentence. The
+   headline is built from the typed cause, never from the owner's text.
 
 ## Routes and capacity
 
@@ -285,7 +297,9 @@ Each decision appends one line to `~/.openagents/host/autostart.jsonl`
 | `refused` | The owner process could not start, or no admitted provider is connected, with the reason. |
 | `no_capacity` | No connected admitted provider had capacity. `resets_at` is the earliest reset, in Unix seconds, when known. The task was cancelled with that reason. |
 | `usage` | With usage probes on: each admitted provider's probed windows, or why it has none, when the task was routed. |
-| `unadmitted` | A started task was still queued 120 seconds later: its owner process refused it. The reason is in the task store's `repository-launch-TASK-*.jsonl` diagnostic. |
+| `unadmitted` | A started task was never admitted: its owner process exited first, or still hadn't admitted it after 10 minutes. The detail names the cause; the owner's full error is in the task store's `repository-launch-TASK-*.jsonl` diagnostic. |
+| `retry` | The cause may be transient (`stopped` or `admission`) and the turn had one start, so the next sweep starts it again. The detail is the cause. |
+| `not_started` | The host cancelled the task with the cause's sentence. The detail is the cause: `codex`, `claude`, `devin`, `open_code`, `configuration`, `admission`, `stopped`, or `timeout`. |
 | `policy_on`, `policy_off` | The owner changed the policy, with its bounds. |
 
 Entries never hold a prompt or a title. An entry about a later turn of a

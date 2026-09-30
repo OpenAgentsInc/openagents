@@ -46,6 +46,7 @@ use std::time::Duration;
 
 use atif::{Source, Step};
 use coder::task::adapter::Route as GrantRoute;
+use coder::task::autostart::StartCause;
 use coder::task::capacity::{self, Provider, Refusal};
 use coder::task::{self, adapter::Host};
 use microcoder_loop::failover::{Failover, Journal, refused_generation};
@@ -503,22 +504,27 @@ pub(crate) enum Client<T> {
     Claude(crate::claude::ClaudeGenerator),
 }
 
-/// The client for one admitted route, or why it cannot be built here.
+/// The client for one admitted route, or why it cannot be built here: a
+/// route the grant names wrongly is a settings mismatch, and a route whose
+/// app has no login or program here names that app.
 fn client(
     route: &GrantRoute,
     access: coder::task::adapter::Access,
     session: &str,
-) -> Result<Client<codex_transport::codex::CodexTransport>, String> {
+) -> Result<Client<codex_transport::codex::CodexTransport>, Unusable> {
+    let mismatch = |why: String| (StartCause::Configuration, why);
     if route.model.contains('/') {
-        return Err("Repository execution requires an exact model name, not a routed slug.".into());
+        return Err(mismatch(
+            "Repository execution requires an exact model name, not a routed slug.".into(),
+        ));
     }
     match Provider::from_config(&route.provider) {
         Some(Provider::Claude) => {
             if route.generation_endpoint != crate::claude::ENDPOINT {
-                return Err(format!(
+                return Err(mismatch(format!(
                     "Repository execution through claude requires the generation endpoint {}.",
                     crate::claude::ENDPOINT
-                ));
+                )));
             }
             crate::claude::ClaudeGenerator::from_env(&route.model, route.effort.clone())
                 .map(|generator| {
@@ -526,14 +532,16 @@ fn client(
                         access == coder::task::adapter::Access::Full,
                     ))
                 })
+                .map_err(|why| (StartCause::Claude, why))
         }
         Some(Provider::Codex) if route.generation_endpoint == codex_transport::codex::BASE_URL => {
-            let login = codex_transport::codex::Login::default_path().ok_or("no Codex login path")?;
+            let login = codex_transport::codex::Login::default_path()
+                .ok_or((StartCause::Codex, "no Codex login path".to_owned()))?;
             codex_transport::codex::CodexTransport::new(login, session)
                 .map(Client::Codex)
-                .map_err(|error| error.to_string())
+                .map_err(|error| (StartCause::Codex, error.to_string()))
         }
-        _ => Err("Repository execution requires the exact Codex endpoint; other providers are unsupported.".into()),
+        _ => Err(mismatch("Repository execution requires the exact Codex endpoint; other providers are unsupported.".into())),
     }
 }
 
@@ -586,10 +594,10 @@ impl AgentEngine {
         }
     }
 
-    fn binary(self) -> Result<PathBuf, String> {
+    fn binary(self) -> Result<PathBuf, Unusable> {
         match self {
-            AgentEngine::Devin => devin::binary(),
-            AgentEngine::OpenCode => opencode::binary(),
+            AgentEngine::Devin => devin::binary().map_err(|why| (StartCause::Devin, why)),
+            AgentEngine::OpenCode => opencode::binary().map_err(|why| (StartCause::OpenCode, why)),
         }
     }
 
@@ -601,8 +609,13 @@ impl AgentEngine {
     }
 }
 
+/// Why a route cannot be used here: what this computer lacks, and the
+/// owner's words for it.
+type Unusable = (StartCause, String);
+
 /// The admitted routes as stages, in preference order, and the routes that
-/// cannot be used on this host with why. The primary route must be usable.
+/// cannot be used on this host with why. The primary route must be usable;
+/// when it is not, the error names what this computer lacks.
 fn stages(
     routes: Vec<GrantRoute>,
     access: coder::task::adapter::Access,
@@ -612,7 +625,7 @@ fn stages(
         Vec<Stage<codex_transport::codex::CodexTransport>>,
         Vec<Value>,
     ),
-    String,
+    Unusable,
 > {
     let mut stages: Vec<Stage<_>> = Vec::new();
     let mut unavailable = Vec::new();
@@ -631,7 +644,7 @@ fn stages(
             },
             Ok(stage) => stages.push(stage),
             Err(why) if index == 0 => return Err(why),
-            Err(why) => unavailable.push(json!({"route":route,"unavailable":why})),
+            Err((_, why)) => unavailable.push(json!({"route":route,"unavailable":why})),
         }
     }
     Ok((stages, unavailable))
@@ -650,24 +663,37 @@ pub async fn execute(
     directory: &Path,
     bytes: &[u8],
     judge: Option<crate::models::JevJudge>,
-) -> Result<task::Task, String> {
-    let grant = task::owner::Grant::parse(bytes).map_err(|error| error.to_string())?;
-    let config = grant
-        .adapter_configuration
-        .as_ref()
-        .ok_or("missing repository configuration")?;
-    config.validate().map_err(|error| error.to_string())?;
+) -> Result<task::Task, Failure> {
+    let unstarted = |cause: StartCause| move |message: String| Failure::unstarted(cause, message);
+    let grant = task::owner::Grant::parse(bytes)
+        .map_err(|error| error.to_string())
+        .map_err(unstarted(StartCause::Configuration))?;
+    let config = grant.adapter_configuration.as_ref().ok_or_else(|| {
+        Failure::unstarted(
+            StartCause::Configuration,
+            "missing repository configuration".into(),
+        )
+    })?;
+    config
+        .validate()
+        .map_err(|error| error.to_string())
+        .map_err(unstarted(StartCause::Configuration))?;
     if let Some(judge) = &judge
         && (judge.client.base_url() != config.decision_endpoint
             || judge.client.default_model() != config.decision_model)
     {
-        return Err("The configured decision client differs from the execution grant.".into());
+        return Err(Failure::unstarted(
+            StartCause::Configuration,
+            "The configured decision client differs from the execution grant.".into(),
+        ));
     }
     let session = format!("repository-{}-1", grant.task_id);
-    let (stages, unavailable) = stages(config.routes(), config.access, &session)?;
+    let (stages, unavailable) = stages(config.routes(), config.access, &session)
+        .map_err(|(cause, why)| Failure::unstarted(cause, why))?;
     let host = Host::admit(directory, bytes)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())
+        .map_err(unstarted(StartCause::Admission))?;
     if !unavailable.is_empty() {
         let _ = host.append(
             &Step::said(
@@ -695,7 +721,51 @@ pub async fn execute(
         &session,
     )
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| Failure::run(error.to_string()))
+}
+
+/// Why [`execute`] returned no task. A failure before admission names its
+/// cause, so the host that launched the owner can say why the task never
+/// started; the owner writes it to its launch diagnostic.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failure {
+    /// Set when the task was never admitted.
+    pub cause: Option<StartCause>,
+    pub message: String,
+}
+
+impl Failure {
+    #[must_use]
+    pub fn unstarted(cause: StartCause, message: String) -> Self {
+        Self {
+            cause: Some(cause),
+            message,
+        }
+    }
+
+    #[must_use]
+    pub fn run(message: String) -> Self {
+        Self {
+            cause: None,
+            message,
+        }
+    }
+
+    /// The diagnostic line the owner writes: `{"error": ...}`, with
+    /// `"cause"` when the task was never admitted.
+    #[must_use]
+    pub fn diagnostic(&self) -> Value {
+        match self.cause {
+            Some(cause) => json!({"error": self.message, "cause": cause}),
+            None => json!({"error": self.message}),
+        }
+    }
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
 }
 
 async fn run_stages<T: codex_transport::Transport>(

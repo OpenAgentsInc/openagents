@@ -386,7 +386,8 @@ impl Tasks for Inbox {
     /// A task that ended for lack of model capacity: the auto-start policy
     /// ended it before a run, or its run stopped when the last admitted
     /// provider refused. The reset comes from the policy's record or the
-    /// capacity book.
+    /// capacity book. Or a task the policy ended because its owner process
+    /// never admitted it, with the cause the owner reported.
     fn note(&self, id: &str) -> Option<Note> {
         let task = Store::open(&self.store).ok()?.show(id).ok()?;
         match super::interaction::pending(&task) {
@@ -412,8 +413,12 @@ impl Tasks for Inbox {
             return Some(Note::NoCapacity { until });
         }
         if task.status == Status::Cancelled && task.run.is_none() {
-            let until = self.autostart.as_ref()?.no_capacity(id)?;
-            return Some(Note::NoCapacity { until });
+            let autostart = self.autostart.as_ref()?;
+            if let Some(until) = autostart.no_capacity(id) {
+                return Some(Note::NoCapacity { until });
+            }
+            let cause = autostart.not_started(id, task.turn_started())?;
+            return Some(Note::NotStarted { cause });
         }
         None
     }

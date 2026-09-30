@@ -1822,3 +1822,60 @@ fn the_suggestions_are_plain_and_unique() {
         assert!(!suggestion.message.is_empty());
     }
 }
+
+/// A task whose computer could not start it says why under its phase,
+/// instead of waiting as Queued forever.
+#[test]
+fn a_task_the_computer_could_not_start_says_why() {
+    let fixture = Fixture::hosts();
+    let mut snapshot = fixture.computers.snapshot().clone();
+    let summary = snapshot
+        .activity
+        .iter_mut()
+        .find(|s| s.subject_kind == nostr::activity_summary::SubjectKind::Task)
+        .expect("a task summary");
+    summary.phase = nostr::activity_summary::Phase::Cancelled;
+    summary.attention = nostr::activity_summary::Attention::None;
+    summary.headline = coder_host::Note::NotStarted {
+        cause: coder_host::StartCause::Claude,
+    }
+    .headline();
+    summary.updated_at = NOW + 1;
+    summary.sequence += 100;
+    let (host, task) = (summary.host.clone(), summary.subject.clone());
+    let label = snapshot
+        .host(&host)
+        .map(|h| h.label.clone())
+        .expect("a host");
+    let saved = move |_: &str, subject: &str| {
+        (subject == task).then(|| coder_history::Chat {
+            id: "chat".into(),
+            harness: coder_history::Harness::Coder,
+            native_id: None,
+            title: "Fix the flaky test".into(),
+            title_truncated: false,
+            updated_at: None,
+            archived: false,
+            subagent: false,
+            source_id: Some("source".into()),
+            status: coder_history::SourceStatus::Available,
+        })
+    };
+    let rows = crate::coder_tab::tasks(
+        &snapshot,
+        &snapshot.activity,
+        &crate::coder_list::List::default(),
+        &saved,
+    );
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|row| match &row.element {
+            rust_native::Element::Button { label, .. } => label.clone(),
+            _ => String::new(),
+        })
+        .collect();
+    let expected = format!(
+        "Fix the flaky test\nStopped · {label}\nCouldn't start: Claude Code isn't set up on this computer"
+    );
+    assert!(labels.contains(&expected), "{labels:?}");
+}

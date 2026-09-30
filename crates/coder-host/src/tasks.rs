@@ -35,6 +35,10 @@ pub enum Note {
     /// running, or stopped when the last one refused. `until` is the
     /// earliest reset, in Unix seconds, when a provider reported one.
     NoCapacity { until: Option<u64> },
+    /// The task never started: the process the host launched to own it
+    /// ended, or waited too long, before admitting it, and the host ended
+    /// the task instead of leaving it queued.
+    NotStarted { cause: StartCause },
     /// The engine ended its turn with a question and waits for an answer.
     Question,
     /// The engine ended its turn asking to approve a step and waits for the
@@ -52,6 +56,7 @@ impl Note {
                 format!("No model capacity until {}", utc(until))
             }
             Note::NoCapacity { until: None } => "No model capacity".to_owned(),
+            Note::NotStarted { cause } => cause.headline().to_owned(),
             Note::Question => "Coder asked a question".to_owned(),
             Note::Approval => "Coder asked for approval".to_owned(),
         }
@@ -62,10 +67,65 @@ impl Note {
     #[must_use]
     pub fn attention(self) -> Option<Attention> {
         match self {
-            Note::NoCapacity { .. } => None,
+            Note::NoCapacity { .. } | Note::NotStarted { .. } => None,
             Note::Question => Some(Attention::Input),
             Note::Approval => Some(Attention::Approval),
         }
+    }
+}
+
+/// Why a task's owner process never admitted it. The owner reports the
+/// cause in its launch diagnostic; the host words it from this type alone,
+/// never from the owner's text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartCause {
+    /// The task's first route needs Codex, which is not set up here.
+    Codex,
+    /// The task's first route needs Claude Code, which is not set up here.
+    Claude,
+    /// The task's first route needs Devin, which is not set up here.
+    Devin,
+    /// The task's first route needs OpenCode, which is not set up here.
+    OpenCode,
+    /// The execution grant does not fit this computer's settings.
+    Configuration,
+    /// The task owner refused the task, such as when another owner held it.
+    Admission,
+    /// The owner process ended without saying why.
+    Stopped,
+    /// The owner process was still running but had not admitted the task
+    /// after the host's admission grace.
+    Timeout,
+}
+
+impl StartCause {
+    /// The sentence a device shows, such as
+    /// `Couldn't start: Claude Code isn't set up on this computer`.
+    #[must_use]
+    pub const fn headline(self) -> &'static str {
+        match self {
+            StartCause::Codex => "Couldn't start: Codex isn't set up on this computer",
+            StartCause::Claude => "Couldn't start: Claude Code isn't set up on this computer",
+            StartCause::Devin => "Couldn't start: Devin isn't set up on this computer",
+            StartCause::OpenCode => "Couldn't start: OpenCode isn't set up on this computer",
+            StartCause::Configuration => {
+                "Couldn't start: the task's settings don't fit this computer"
+            }
+            StartCause::Admission => {
+                "Couldn't start: Coder couldn't take the task on this computer"
+            }
+            StartCause::Stopped => "Couldn't start: Coder stopped before starting the task",
+            StartCause::Timeout => "Couldn't start: Coder didn't start the task within 2 minutes",
+        }
+    }
+
+    /// Whether starting the task again may work: an unexplained stop or a
+    /// refused admission can be transient, while a missing key or app, or a
+    /// settings mismatch, fails the same way until the owner fixes it.
+    #[must_use]
+    pub const fn retryable(self) -> bool {
+        matches!(self, StartCause::Stopped | StartCause::Admission)
     }
 }
 
@@ -254,6 +314,43 @@ mod tests {
         assert_eq!(
             Note::NoCapacity { until: None }.headline(),
             "No model capacity"
+        );
+    }
+
+    #[test]
+    fn every_not_started_cause_survives_the_summary_disclosure_rules() {
+        for cause in [
+            StartCause::Codex,
+            StartCause::Claude,
+            StartCause::Devin,
+            StartCause::OpenCode,
+            StartCause::Configuration,
+            StartCause::Admission,
+            StartCause::Stopped,
+            StartCause::Timeout,
+        ] {
+            let note = Note::NotStarted { cause };
+            assert_eq!(note.attention(), None);
+            let headline = note.headline();
+            assert!(headline.starts_with("Couldn't start: "), "{headline}");
+            let summary = activity_summary::encode(&SummaryDraft {
+                host: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                subject_kind: SubjectKind::Task,
+                subject: &"a".repeat(64),
+                sequence: 2,
+                phase: Phase::Cancelled,
+                headline: &headline,
+                attention: Attention::None,
+                updated_at: 1_790_572_210,
+            })
+            .unwrap();
+            assert_eq!(summary.headline, headline);
+            let text = serde_json::to_string(&cause).unwrap();
+            assert_eq!(serde_json::from_str::<StartCause>(&text).unwrap(), cause);
+        }
+        assert_eq!(
+            serde_json::from_str::<StartCause>("\"open_code\"").unwrap(),
+            StartCause::OpenCode
         );
     }
 

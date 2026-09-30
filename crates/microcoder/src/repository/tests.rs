@@ -403,7 +403,9 @@ async fn claude_execution_refuses_another_endpoint_before_admission() {
     let error = execute(&store, &serde_json::to_vec(&grant).unwrap(), Some(judge))
         .await
         .unwrap_err();
-    assert!(error.contains(crate::claude::ENDPOINT), "{error}");
+    assert!(error.message.contains(crate::claude::ENDPOINT), "{error}");
+    assert_eq!(error.cause, Some(StartCause::Configuration));
+    assert_eq!(error.diagnostic()["cause"], "configuration");
     assert!(std::fs::read_dir(&store).unwrap().all(|entry| {
         !entry
             .unwrap()

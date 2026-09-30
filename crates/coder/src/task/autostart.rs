@@ -45,6 +45,8 @@ use super::capacity::{self, Connection, Provider};
 use super::usage;
 use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};
 
+pub use coder_host::StartCause;
+
 /// The policy file in the host root.
 pub const POLICY_FILE: &str = "autostart.json";
 /// The append-only record in the host root.
@@ -60,6 +62,16 @@ pub const DEFAULT_DECISION_MODEL: &str = "jev-1.13.0";
 /// How long a started task may stay queued, waiting for its owner process
 /// to admit it, before it stops counting against the concurrency bound.
 const PENDING_GRACE: u64 = 120;
+/// How long a started task may stay queued while its owner process still
+/// runs before the host ends it as never started. An owner that has exited
+/// without admitting the task ends it at the next sweep instead. It matches
+/// [`StartCause::Timeout`]'s sentence.
+const ADMISSION_DEADLINE: u64 = 600;
+/// How many times the host launches an owner for one turn when the owner
+/// stops without admitting it for a cause that may be transient.
+const MAX_ATTEMPTS: usize = 2;
+/// The most of a launch diagnostic the host reads, from its end.
+const DIAGNOSTIC_TAIL: u64 = 64 * 1024;
 /// How often the host looks for eligible tasks it could not start earlier.
 pub const SWEEP_EVERY: Duration = Duration::from_secs(10);
 /// How long a sweep waits for a busy task store. A save's disk sync can
@@ -383,7 +395,10 @@ pub struct Entry {
     pub at: u64,
     /// `eligible`, `started`, `skipped`, `refused`, `no_capacity`,
     /// `usage` (the probed windows a start was routed with),
-    /// `unadmitted`, `policy_on`, or `policy_off`.
+    /// `unadmitted` (an owner process never admitted a started turn),
+    /// `retry` (the host starts that turn again), `not_started` (the host
+    /// ended it, with the cause's name as the detail), `policy_on`, or
+    /// `policy_off`.
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
@@ -656,6 +671,25 @@ impl Autostart {
             .map(|entry| entry.resets_at)
     }
 
+    /// Why the policy ended `task` at `turn` because its owner process never
+    /// admitted it, if it did.
+    #[must_use]
+    pub fn not_started(&self, task: &str, turn: u64) -> Option<StartCause> {
+        let subject = Some((task.to_owned(), turn));
+        journal(&self.root)
+            .into_iter()
+            .rev()
+            .find(|entry| entry.event == "not_started" && entry.subject() == subject)
+            .map(|entry| {
+                entry
+                    .detail
+                    .and_then(|detail| {
+                        serde_json::from_value(serde_json::Value::String(detail)).ok()
+                    })
+                    .unwrap_or(StartCause::Stopped)
+            })
+    }
+
     /// Sweep on the creating thread instead of a new one, for tests.
     #[must_use]
     pub fn foreground(mut self) -> Self {
@@ -724,8 +758,12 @@ impl Autostart {
         let history = journal(&self.root);
         let mut waiting: Vec<Entry> = Vec::new();
         let mut decided: BTreeSet<(String, u64)> = BTreeSet::new();
-        let mut started: Vec<((String, u64), u64)> = Vec::new();
+        // Each turn's latest start, how many starts it had, and whether that
+        // start's failure to be admitted is recorded or settled.
+        let mut started: BTreeMap<(String, u64), (u64, Option<u32>)> = BTreeMap::new();
+        let mut attempts: BTreeMap<(String, u64), usize> = BTreeMap::new();
         let mut unadmitted: BTreeSet<(String, u64)> = BTreeSet::new();
+        let mut settled: BTreeSet<(String, u64)> = BTreeSet::new();
         for entry in history {
             let Some(task) = entry.subject() else {
                 continue;
@@ -735,11 +773,21 @@ impl Autostart {
                     waiting.push(entry);
                 }
                 "started" => {
-                    started.push((task.clone(), entry.at));
+                    started.insert(task.clone(), (entry.at, entry.owner_process));
+                    *attempts.entry(task.clone()).or_default() += 1;
+                    unadmitted.remove(&task);
+                    settled.remove(&task);
                     decided.insert(task);
                 }
                 "unadmitted" => {
                     unadmitted.insert(task);
+                }
+                "retry" => {
+                    settled.insert(task.clone());
+                    decided.remove(&task);
+                }
+                "not_started" => {
+                    settled.insert(task);
                 }
                 "skipped" | "refused" | "no_capacity" => {
                     decided.insert(task);
@@ -748,7 +796,7 @@ impl Autostart {
             }
         }
         waiting.retain(|entry| entry.subject().is_some_and(|t| !decided.contains(&t)));
-        if waiting.is_empty() && started.iter().all(|(task, _)| unadmitted.contains(task)) {
+        if waiting.is_empty() && started.keys().all(|task| settled.contains(task)) {
             return Vec::new();
         }
         // Probe usage before opening the task store, so no request runs
@@ -789,35 +837,72 @@ impl Autostart {
                     return written;
                 }
             };
-            let mut active = started
-                .iter()
-                .filter(|((task, turn), at)| match store.show(task) {
-                    Ok(task) if task.turn_started() != *turn => false,
-                    Ok(task) => match task.status {
-                        Status::Running | Status::CancelRequested => true,
-                        Status::Queued => {
-                            task.run.is_none() && now.saturating_sub(*at) < PENDING_GRACE
-                        }
-                        _ => false,
-                    },
-                    Err(_) => false,
-                })
-                .count();
-            // A started task still queued after the grace was never admitted
-            // by its owner process; say so once, so the journal shows it.
-            for (subject, at) in &started {
-                let (id, turn) = subject;
-                let stalled = store.show(id).is_ok_and(|task| {
-                    task.turn_started() == *turn
-                        && task.status == Status::Queued
-                        && task.run.is_none()
-                        && now.saturating_sub(*at) >= PENDING_GRACE
-                });
-                if stalled && !unadmitted.contains(subject) {
-                    write(Entry::new(now, "unadmitted").task(id).at_turn(*turn).detail(
-                        "the owner process did not admit the task; read its launch diagnostic in the task store",
-                    ));
+            // A started turn still queued was never admitted. It waits while
+            // its owner process runs, up to the deadline; once the owner has
+            // exited, or the deadline passes, the host says why and either
+            // starts it again or ends it, so it never waits forever.
+            let mut active = 0;
+            for (subject, &(at, owner_process)) in &started {
+                if settled.contains(subject) {
+                    continue;
                 }
+                let (id, turn) = subject;
+                let Ok(task) = store.show(id) else {
+                    continue;
+                };
+                if task.turn_started() != *turn {
+                    continue;
+                }
+                match task.status {
+                    Status::Running | Status::CancelRequested => {
+                        active += 1;
+                        continue;
+                    }
+                    Status::Queued if task.run.is_none() => {}
+                    _ => continue,
+                }
+                let waited = now.saturating_sub(at);
+                let running = owner_process.is_none_or(alive);
+                if running && waited < ADMISSION_DEADLINE {
+                    if waited < PENDING_GRACE {
+                        active += 1;
+                    }
+                    continue;
+                }
+                let cause = if running {
+                    StartCause::Timeout
+                } else {
+                    launch_cause(&self.store, id, at).unwrap_or(StartCause::Stopped)
+                };
+                if !unadmitted.contains(subject) {
+                    write(
+                        Entry::new(now, "unadmitted")
+                            .task(id)
+                            .at_turn(*turn)
+                            .detail(format!(
+                                "the owner process did not admit the task: {}; read its launch diagnostic in the task store",
+                                cause.headline()
+                            )),
+                    );
+                }
+                if cause.retryable() && attempts.get(subject).copied().unwrap_or(0) < MAX_ATTEMPTS {
+                    write(
+                        Entry::new(now, "retry")
+                            .task(id)
+                            .at_turn(*turn)
+                            .detail(cause_name(cause)),
+                    );
+                    continue;
+                }
+                // Record first, then end the task, so the summary a device
+                // receives for the ending can say why.
+                write(
+                    Entry::new(now, "not_started")
+                        .task(id)
+                        .at_turn(*turn)
+                        .detail(cause_name(cause)),
+                );
+                end_unstarted(&mut store, id, *turn, task.revision, cause);
             }
             let mut plans = Vec::new();
             for entry in &waiting {
@@ -1027,6 +1112,96 @@ fn end_without_capacity(
     if let Err(error) = applied {
         eprintln!("coder host: auto-start cannot end a task without capacity: {error}");
     }
+}
+
+/// End a queued turn whose owner process never admitted it: the host
+/// cancels it with the cause's sentence. The command identity is fixed per
+/// turn, so a repeat after a crash is an exact retry.
+fn end_unstarted(store: &mut Store, task: &str, turn: u64, revision: u64, cause: StartCause) {
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: if turn > 1 {
+            format!("autostart-not-started-{task}-{turn}")
+        } else {
+            format!("autostart-not-started-{task}")
+        },
+        task_id: task.into(),
+        expected_revision: Some(revision),
+        action: Action::Cancel {
+            reason: format!("{}.", cause.headline()),
+        },
+    };
+    let applied = serde_json::to_vec(&command)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| store.apply(&bytes).map_err(|e| e.to_string()));
+    if let Err(error) = applied {
+        eprintln!("coder host: auto-start cannot end a task that never started: {error}");
+    }
+}
+
+/// A cause's journal name, such as `claude`.
+fn cause_name(cause: StartCause) -> String {
+    serde_json::to_value(cause)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// Whether process `pid` still exists. Unknown (`0`) counts as running, so
+/// only the admission deadline ends its task.
+#[cfg(unix)]
+fn alive(pid: u32) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return true;
+    };
+    if pid <= 0 {
+        return true;
+    }
+    // SAFETY: signal 0 checks for the process and delivers nothing.
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+#[cfg(not(unix))]
+fn alive(_pid: u32) -> bool {
+    true
+}
+
+/// The cause the owner process wrote to the newest launch diagnostic for
+/// `task` made at or after `since` (Unix seconds): the `cause` of its last
+/// JSON line that has one. The launcher names each diagnostic
+/// `repository-launch-TASK-PID-MILLISECONDS.jsonl` in the task store.
+fn launch_cause(store: &Path, task: &str, since: u64) -> Option<StartCause> {
+    use std::io::{Read, Seek, SeekFrom};
+    let prefix = format!("repository-launch-{task}-");
+    let newest = std::fs::read_dir(store)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let rest = name.strip_prefix(&prefix)?.strip_suffix(".jsonl")?;
+            let (pid, millis) = rest.split_once('-')?;
+            pid.parse::<u32>().ok()?;
+            let millis = millis.parse::<u64>().ok()?;
+            (millis / 1000 + 1 >= since).then_some((millis, entry.path()))
+        })
+        .max_by_key(|(millis, _)| *millis)?
+        .1;
+    let mut file = std::fs::File::open(newest).ok()?;
+    let length = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(DIAGNOSTIC_TAIL)))
+        .ok()?;
+    let mut bytes = Vec::new();
+    file.take(DIAGNOSTIC_TAIL).read_to_end(&mut bytes).ok()?;
+    String::from_utf8_lossy(&bytes)
+        .lines()
+        .rev()
+        .find_map(|line| {
+            let value: serde_json::Value = serde_json::from_str(line).ok()?;
+            serde_json::from_value(value.get("cause")?.clone()).ok()
+        })
 }
 
 /// Sweep every [`SWEEP_EVERY`] for as long as the process runs, so a task
@@ -1481,7 +1656,8 @@ mod tests {
         CLOCK.with(|clock| clock.set(clock.get() + seconds));
     }
 
-    /// Records each launch instead of starting a process.
+    /// Records each launch instead of starting a process. Its owner is
+    /// this test process: still running, and never admitting the task.
     #[derive(Default)]
     struct Fake(Arc<Mutex<Vec<PathBuf>>>);
 
@@ -1490,7 +1666,48 @@ mod tests {
             owner::Grant::parse(&std::fs::read(grant).unwrap()).unwrap();
             self.0.lock().unwrap().push(grant.to_path_buf());
             Ok(Launched {
-                owner_process: 4242,
+                owner_process: std::process::id(),
+                grant_digest: "sha256:fake".into(),
+            })
+        }
+    }
+
+    /// A launcher whose owner process exits at once without admitting the
+    /// task, as `microcoder repository` does without a Jev key. It writes
+    /// `diagnostic`, when given, as the owner's last diagnostic line, named
+    /// as the real launcher names it.
+    struct Exiting {
+        launched: Arc<Mutex<Vec<PathBuf>>>,
+        diagnostic: Option<&'static str>,
+    }
+
+    /// The ID of a process that has exited and been reaped.
+    fn exited_process() -> u32 {
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    impl Launch for Exiting {
+        fn launch(&self, _: &Engine, grant: &Path, store: &Path) -> Result<Launched, String> {
+            let parsed = owner::Grant::parse(&std::fs::read(grant).unwrap()).unwrap();
+            self.launched.lock().unwrap().push(grant.to_path_buf());
+            let pid = exited_process();
+            let attempt = self.launched.lock().unwrap().len() as u64;
+            let name = format!(
+                "repository-launch-{}-{pid}-{}.jsonl",
+                parsed.task_id,
+                clock() * 1000 + attempt
+            );
+            let mut text = String::from("starting\n");
+            if let Some(line) = self.diagnostic {
+                text.push_str(line);
+                text.push('\n');
+            }
+            std::fs::write(store.join(name), text).unwrap();
+            Ok(Launched {
+                owner_process: pid,
                 grant_digest: "sha256:fake".into(),
             })
         }
@@ -1515,6 +1732,13 @@ mod tests {
     }
 
     fn setup_with(fetch: usage::Fetch) -> Setup {
+        setup_launching(fetch, |launched| Box::new(Fake(launched)))
+    }
+
+    fn setup_launching(
+        fetch: usage::Fetch,
+        launcher: impl FnOnce(Arc<Mutex<Vec<PathBuf>>>) -> Box<dyn Launch>,
+    ) -> Setup {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("host");
         let store = temp.path().join("tasks");
@@ -1530,7 +1754,7 @@ mod tests {
                 root.clone(),
                 store.clone(),
                 workspaces.clone(),
-                Box::new(Fake(launched.clone())),
+                launcher(launched.clone()),
                 clock,
             )
             .with_probe(|_| Connection::Connected)
@@ -1667,13 +1891,13 @@ mod tests {
                 ("eligible".into(), Some(first.clone())),
                 ("started".into(), Some(first.clone())),
                 ("eligible".into(), Some(second.clone())),
-                // The fake owner never admits, so the first is reported once.
-                ("unadmitted".into(), Some(first.clone())),
+                // The fake owner still runs, so the first waits for it
+                // without holding a slot.
                 ("started".into(), Some(second.clone())),
             ]
         );
         assert_eq!(journal(&s.root)[0].device.as_deref(), Some("phone"));
-        assert_eq!(journal(&s.root)[1].owner_process, Some(4242));
+        assert_eq!(journal(&s.root)[1].owner_process, Some(std::process::id()));
         assert!(
             s.autostart.sweep().iter().all(|e| e.event != "started"),
             "nothing starts twice"
@@ -1848,10 +2072,15 @@ mod tests {
         assert_eq!(
             written,
             [
-                ("unadmitted".into(), Some(first.clone())),
+                // The first's owner still runs, so it keeps waiting, past the
+                // grace, without holding the slot.
                 ("skipped".into(), Some(second.clone())),
                 ("started".into(), Some(third.clone())),
             ]
+        );
+        assert_eq!(
+            Store::open(&s.store).unwrap().show(&first).unwrap().status,
+            Status::Queued
         );
     }
 
@@ -2172,6 +2401,174 @@ mod tests {
         // The first route's model must be the model a task records.
         policy.engine.model = "gpt-6-luna".into();
         assert!(policy.validate().is_err());
+    }
+
+    fn exiting(diagnostic: Option<&'static str>) -> Setup {
+        setup_launching(offline, move |launched| {
+            Box::new(Exiting {
+                launched,
+                diagnostic,
+            })
+        })
+    }
+
+    #[test]
+    fn an_owner_that_exits_without_admitting_ends_the_task_with_its_reason() {
+        let s = exiting(Some(
+            r#"{"error":"no claude binary: install Claude Code or set CLAUDE_BIN","cause":"claude"}"#,
+        ));
+        policy(1).save(&s.root).unwrap();
+        let task = "7".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        assert_eq!(s.launched.lock().unwrap().len(), 1);
+        // Before the fix the task stayed queued forever. The next sweep sees
+        // the owner gone, with the task never admitted, and ends it without
+        // waiting out any grace: a missing key does not fix itself, so
+        // there is no second launch.
+        advance(SWEEP_EVERY.as_secs());
+        s.autostart.sweep();
+        assert_eq!(s.launched.lock().unwrap().len(), 1, "no retry");
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Cancelled);
+        assert_eq!(
+            stored.cancellation_reason.as_deref(),
+            Some("Couldn't start: Claude Code isn't set up on this computer.")
+        );
+        assert_eq!(
+            events(&s.root)[2..],
+            [
+                ("unadmitted".into(), Some(task.clone())),
+                ("not_started".into(), Some(task.clone())),
+            ]
+        );
+        assert_eq!(journal(&s.root)[3].detail.as_deref(), Some("claude"));
+        // The device's summary says why, in words.
+        assert_eq!(
+            s.inbox.current()[0].phase,
+            nostr::activity_summary::Phase::Cancelled
+        );
+        let note = s.inbox.note(&task).unwrap();
+        assert_eq!(
+            note,
+            coder_host::Note::NotStarted {
+                cause: StartCause::Claude
+            }
+        );
+        assert_eq!(
+            note.headline(),
+            "Couldn't start: Claude Code isn't set up on this computer"
+        );
+        // Nothing is decided twice, and the policy's slot is free again.
+        assert!(s.autostart.sweep().is_empty());
+        let next = "8".repeat(64);
+        s.inbox.create(&next, "phone", &create("allowed")).unwrap();
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn an_owner_that_stops_without_a_reason_is_started_once_more_then_ends() {
+        let s = exiting(None);
+        policy(1).save(&s.root).unwrap();
+        let task = "9".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        advance(SWEEP_EVERY.as_secs());
+        // The unexplained stop may be transient: the host starts it again.
+        let first = s.autostart.sweep();
+        assert_eq!(
+            first.iter().map(|e| e.event.as_str()).collect::<Vec<_>>(),
+            ["unadmitted", "retry"]
+        );
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Queued);
+        advance(SWEEP_EVERY.as_secs());
+        let second = s.autostart.sweep();
+        assert_eq!(
+            second.iter().map(|e| e.event.as_str()).collect::<Vec<_>>(),
+            ["started"]
+        );
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
+        // The second owner stops too; the bound is reached, so it ends.
+        advance(SWEEP_EVERY.as_secs());
+        let third = s.autostart.sweep();
+        assert_eq!(
+            third.iter().map(|e| e.event.as_str()).collect::<Vec<_>>(),
+            ["unadmitted", "not_started"]
+        );
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Cancelled);
+        assert_eq!(
+            s.inbox.note(&task),
+            Some(coder_host::Note::NotStarted {
+                cause: StartCause::Stopped
+            })
+        );
+        advance(SWEEP_EVERY.as_secs());
+        assert!(s.autostart.sweep().is_empty());
+    }
+
+    #[test]
+    fn an_owner_that_runs_but_never_admits_ends_the_task_at_the_deadline() {
+        let s = setup();
+        policy(1).save(&s.root).unwrap();
+        let task = "a1".repeat(32);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        advance(ADMISSION_DEADLINE - 1);
+        assert!(
+            s.autostart.sweep().is_empty(),
+            "the owner may still admit it"
+        );
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Queued);
+        advance(1);
+        let ended = s.autostart.sweep();
+        assert_eq!(
+            ended.iter().map(|e| e.event.as_str()).collect::<Vec<_>>(),
+            ["unadmitted", "not_started"]
+        );
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Cancelled);
+        assert_eq!(
+            s.inbox.note(&task),
+            Some(coder_host::Note::NotStarted {
+                cause: StartCause::Timeout
+            })
+        );
+        assert_eq!(
+            s.launched.lock().unwrap().len(),
+            1,
+            "a running owner is not doubled"
+        );
+    }
+
+    #[test]
+    fn a_task_an_earlier_host_left_unadmitted_ends_at_the_next_sweep() {
+        let s = exiting(Some(r#"{"error":"no claude","cause":"claude"}"#));
+        policy(1).save(&s.root).unwrap();
+        let task = "b2".repeat(32);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        // What an earlier host wrote: the task reported once, then left
+        // queued.
+        record(
+            &s.root,
+            &Entry::new(clock(), "unadmitted")
+                .task(&task)
+                .detail("left queued"),
+        )
+        .unwrap();
+        advance(PENDING_GRACE + 1);
+        let ended = s.autostart.sweep();
+        assert_eq!(
+            ended.iter().map(|e| e.event.as_str()).collect::<Vec<_>>(),
+            ["not_started"],
+            "the earlier report is not repeated"
+        );
+        assert_eq!(
+            s.inbox.note(&task),
+            Some(coder_host::Note::NotStarted {
+                cause: StartCause::Claude
+            })
+        );
     }
 
     #[test]

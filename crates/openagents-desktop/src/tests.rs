@@ -183,10 +183,12 @@ fn states() -> Vec<(&'static str, Model)> {
         Task {
             title: "Fix the login test".into(),
             status: "running".into(),
+            reason: None,
         },
         Task {
             title: "Update the README".into(),
             status: "finished".into(),
+            reason: None,
         },
     ];
     let (mut home, _) = model(Screen::Home);
