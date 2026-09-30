@@ -60,6 +60,8 @@ pub enum Request {
     Continue { task: String, text: String },
     /// Ask the person for a project folder.
     Choose,
+    /// What the finished turn changed, as a unified diff.
+    Diff { task: String },
 }
 
 /// Where a task is, as the runner's follower says.
@@ -92,6 +94,8 @@ pub enum Answer {
     Continued,
     /// The folder the person chose, or `None` when they cancelled.
     Folder(Option<String>),
+    /// The unified diff of what the task changed.
+    Diff(String),
 }
 
 // Outcomes compare whole; a line's seconds are never NaN.
@@ -154,6 +158,10 @@ pub struct Run {
     due: Option<Request>,
     /// The task started here and its thread should record it.
     bind: Option<(String, String)>,
+    /// What the last finished turn changed, and the `seq` of its result.
+    diff: Option<(u64, String)>,
+    /// The result a diff was asked for.
+    diff_asked: Option<u64>,
 }
 
 impl Run {
@@ -202,6 +210,8 @@ impl Run {
             poll: now,
             due: None,
             bind: None,
+            diff: None,
+            diff_asked: None,
         }
     }
 
@@ -316,6 +326,14 @@ impl Run {
                 return self.request(Request::Continue { task, text });
             }
         }
+        // A finished turn's change, once, for the "What changed" pane.
+        if let Some(seq) = self.result_seq()
+            && self.diff_asked != Some(seq)
+            && !self.pending.values().any(|p| !mutation(p))
+        {
+            self.diff_asked = Some(seq);
+            return self.request(Request::Diff { task });
+        }
         if now < self.poll {
             return None;
         }
@@ -325,6 +343,30 @@ impl Run {
                 _ => Duration::from_secs(2),
             };
         self.request(Request::Poll { task })
+    }
+
+    /// The `seq` of the last event when it is a result.
+    fn result_seq(&self) -> Option<u64> {
+        self.lines
+            .back()
+            .filter(|line| matches!(line.event, CoderEvent::Result(_)))
+            .map(|line| line.seq)
+    }
+
+    /// Whether the task's last turn finished with a result.
+    #[must_use]
+    pub fn finished(&self) -> bool {
+        self.result_seq().is_some()
+    }
+
+    /// The unified diff of what the finished turn changed, once read.
+    #[must_use]
+    pub fn unified_diff(&self) -> Option<&str> {
+        let seq = self.result_seq()?;
+        self.diff
+            .as_ref()
+            .filter(|(at, _)| *at == seq)
+            .map(|(_, text)| text.as_str())
     }
 
     /// When the run next wants a tick.
@@ -349,6 +391,11 @@ impl Run {
         let answer = match result {
             Ok(answer) => answer,
             Err(error) => {
+                if matches!(request, Request::Diff { .. }) {
+                    // The pane stays closed; the result card still names
+                    // every file.
+                    return false;
+                }
                 if matches!(request, Request::Poll { .. }) {
                     // A read that failed is read again.
                     if self.error.as_deref() != Some(error.as_str()) {
@@ -442,6 +489,11 @@ impl Run {
                 self.due = Some(self.start_request());
             }
             (Request::Choose, Answer::Folder(None)) => {}
+            (Request::Diff { .. }, Answer::Diff(text)) => {
+                if let Some(seq) = self.result_seq() {
+                    self.diff = Some((seq, text));
+                }
+            }
             _ => {
                 self.error = Some("Coder answered another request.".into());
             }
@@ -693,7 +745,10 @@ impl Run {
 }
 
 fn mutation(request: &Request) -> bool {
-    !matches!(request, Request::Poll { .. } | Request::Choose)
+    !matches!(
+        request,
+        Request::Poll { .. } | Request::Choose | Request::Diff { .. }
+    )
 }
 
 /// The turn an event belongs to.

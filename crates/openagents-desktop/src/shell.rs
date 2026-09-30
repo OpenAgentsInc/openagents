@@ -3619,6 +3619,46 @@ mod coder_events {
         }
     }
 
+    /// A finished run's worktree diff opens in the "What changed" pane
+    /// (#10019).
+    #[test]
+    fn a_finished_run_shows_what_changed() {
+        let whole = tasks(QUESTION_THEN_RESULT).remove(0);
+        let mut app = window(&whole, RunState::Ended);
+        let now = Instant::now();
+        let panel = app.chat.as_mut().unwrap();
+        let mut asked = false;
+        for step in 0..20 {
+            if let Some(Request::CoderRun {
+                chat,
+                ticket,
+                request: RunRequest::Diff { task },
+            }) = panel.tick(now + std::time::Duration::from_millis(step * 10))
+            {
+                assert_eq!(task, whole[0].task);
+                panel.run_outcome(
+                    chat,
+                    ticket,
+                    Ok(Answer::Diff(
+                        "diff --git a/test_slugs.py b/test_slugs.py\n--- /dev/null\n+++ b/test_slugs.py\n@@ -0,0 +1,2 @@\n+import unittest\n+x = 1\n".into(),
+                    )),
+                );
+                asked = true;
+                break;
+            }
+        }
+        assert!(asked, "a finished run reads its diff");
+        fn has(node: &Node<openagents_desktop::model::Intent>, key: &str) -> bool {
+            node.key == key
+                || match &node.element {
+                    Element::Stack { children, .. } => children.iter().any(|c| has(c, key)),
+                    _ => false,
+                }
+        }
+        let body = panel.body();
+        assert!(has(&body, "changes-card"), "the What changed card shows");
+    }
+
     #[test]
     fn a_run_s_buttons_can_be_pressed() {
         let others = tasks(OTHER_ENDINGS);

@@ -779,6 +779,51 @@ pub fn changes(worktree: &Path, base: &str) -> Vec<FileChange> {
     out
 }
 
+/// What changed in `worktree` since `base` as one unified diff: tracked
+/// changes, then each new file, at most `max` bytes (cut at a line). The
+/// "What changed" pane reads it; nothing here writes.
+#[must_use]
+pub fn unified_diff(worktree: &Path, base: &str, max: usize) -> String {
+    let run = |args: &[&str]| {
+        git()
+            .arg("-C")
+            .arg(coder_boundary::plain_path(worktree))
+            .args(["-c", "core.quotepath=off"])
+            .args(args)
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+            .unwrap_or_default()
+    };
+    let mut out = run(&["diff", "--no-color", "--no-ext-diff", base]);
+    for path in run(&["ls-files", "--others", "--exclude-standard"])
+        .lines()
+        .filter(|line| !line.is_empty())
+    {
+        if out.len() >= max {
+            break;
+        }
+        // `--no-index` exits 1 when the files differ, which they do.
+        out.push_str(&run(&[
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-index",
+            "--",
+            "/dev/null",
+            path,
+        ]));
+    }
+    if out.len() > max {
+        let mut end = max;
+        while !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        let end = out[..end].rfind('\n').map_or(end, |at| at + 1);
+        out.truncate(end);
+    }
+    out
+}
+
 /// Where a followed task is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
@@ -1176,6 +1221,12 @@ mod tests {
         std::fs::write(top.join("a.txt"), "one\ntwo\n").unwrap();
         std::fs::write(top.join("new.txt"), "x\ny").unwrap();
         let found = changes(&top, &base);
+        let diff = unified_diff(&top, &base, 64 * 1024);
+        assert!(diff.contains("diff --git a/a.txt b/a.txt\n"), "{diff}");
+        assert!(diff.contains("+two\n"), "{diff}");
+        assert!(diff.contains("diff --git a/new.txt b/new.txt\n"), "{diff}");
+        assert!(diff.contains("+x\n+y"), "{diff}");
+        assert!(unified_diff(&top, &base, 40).len() <= 40);
         assert_eq!(
             found,
             vec![

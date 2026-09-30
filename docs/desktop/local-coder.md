@@ -101,7 +101,7 @@ prints:
 | `progress` | The working line: step, bound, Jev's done estimate, and time. |
 | `question` | A **Coder asks** card; the composer answers it. |
 | `approval` | A **Coder asks to go ahead** card with **Approve** and **Deny**; the composer answers in words. |
-| `result` | **Coder finished**: the summary, files changed with `+`/`−` lines, and the worktree, after a "Worked for …" line. |
+| `result` | **Coder finished**: the summary, files changed with `+`/`−` lines, and the worktree, after a "Worked for …" line. The worktree's diff against the run's base (`coder::task::local::unified_diff`) opens in the **What changed** pane. |
 | `failure` | **Coder didn't finish** and why. |
 | `stopped` | The stop, in a line. |
 

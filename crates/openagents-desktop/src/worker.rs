@@ -555,6 +555,15 @@ impl CoderLane {
             Request::Continue { task, text } => {
                 self.local().answer(&task, &text).map(|_| Answer::Continued)
             }
+            Request::Diff { task } => {
+                let record = run::record(self.local().store(), &task)
+                    .ok_or("This task was not started on this computer from a chat.")?;
+                Ok(Answer::Diff(run::unified_diff(
+                    std::path::Path::new(&record.worktree),
+                    &record.base,
+                    openagents_chat_app::changes::MAX_BYTES,
+                )))
+            }
             Request::Choose => unreachable!("the folder chooser runs on the local lane"),
         }
     }

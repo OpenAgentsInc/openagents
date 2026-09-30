@@ -2660,7 +2660,8 @@ impl Panel {
 
     fn show_changes(&self) -> bool {
         self.changes.as_ref().is_some_and(|doc| !doc.is_empty())
-            && self.task().is_some_and(task_chat::Session::finished)
+            && (self.task().is_some_and(task_chat::Session::finished)
+                || self.run().is_some_and(Run::finished))
     }
 
     fn ensure_changes(&mut self) {
@@ -2673,6 +2674,17 @@ impl Panel {
             Replace(u64, Option<String>),
         }
         let next = match self.task() {
+            // A run on this computer: the diff of its worktree, read once
+            // the turn finished.
+            None if let Some(run) = self.run() => {
+                if !run.finished() || run.unified_diff().is_none() {
+                    Next::Clear
+                } else if self.changes.is_some() && self.changes_revision == run.revision {
+                    Next::Unchanged
+                } else {
+                    Next::Replace(run.revision, run.unified_diff().map(str::to_owned))
+                }
+            }
             None => Next::Clear,
             Some(task) => {
                 if !task.finished() {
