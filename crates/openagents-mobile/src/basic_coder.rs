@@ -152,6 +152,107 @@ impl Failure {
     }
 }
 
+/// The prefix of a product knowledge entry's id, which a grounded reply
+/// from an older chat worker cited inline.
+const CITATION_PREFIX: &str = "openagents.";
+
+/// Whether `id` is a knowledge citation: `openagents.connect-computer` or
+/// `openagents.connect-computer@1`, never a domain such as `openagents.com`.
+fn citation_id(id: &str) -> bool {
+    let Some(rest) = id.strip_prefix(CITATION_PREFIX) else {
+        return false;
+    };
+    let (slug, version) = rest.split_once('@').unwrap_or((rest, "1"));
+    !slug.is_empty()
+        && slug != "com"
+        && id.len() <= 96
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
+        && !version.is_empty()
+        && version.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Whether `inside` (a bracket's text) is only citations.
+fn citations_only(inside: &str) -> bool {
+    inside.split([',', ';']).map(str::trim).all(citation_id)
+}
+
+/// Whether an unclosed bracket's text could still become a citation.
+fn could_cite(inside: &str) -> bool {
+    inside.len() <= 200
+        && inside.split([',', ';']).map(str::trim).all(|id| {
+            if id.len() < CITATION_PREFIX.len() {
+                CITATION_PREFIX.starts_with(id)
+            } else {
+                id.starts_with(CITATION_PREFIX)
+                    && id.chars().all(|c| {
+                        c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.' | '@')
+                    })
+            }
+        })
+}
+
+/// `text` without a grounded reply's `[openagents.…]` citations. The chat
+/// worker takes them out itself; this keeps an older worker's from ever
+/// showing. A line that held only citations goes with them, and a space
+/// before a citation goes when punctuation or the line's end follows it.
+/// While `streaming`, a bracket at the end that could still become a
+/// citation waits for the next piece.
+pub(crate) fn without_citations(text: &str, streaming: bool) -> String {
+    if !text.contains('[') {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut lines = text.split_inclusive('\n').peekable();
+    while let Some(line) = lines.next() {
+        let last = lines.peek().is_none();
+        let (body, end) = line
+            .strip_suffix('\n')
+            .map_or((line, ""), |body| (body, "\n"));
+        let mut kept = String::with_capacity(body.len());
+        let mut cited = false;
+        let mut rest = body;
+        while let Some(open) = rest.find('[') {
+            kept.push_str(&rest[..open]);
+            let after = &rest[open + 1..];
+            match after.find(']') {
+                Some(close) if citations_only(&after[..close]) => {
+                    cited = true;
+                    rest = &after[close + 1..];
+                    let next = rest.chars().next();
+                    if next.is_none_or(|c| c.is_whitespace() || ".,;:!?".contains(c)) {
+                        let trimmed = kept.trim_end_matches([' ', '\t']).len();
+                        kept.truncate(trimmed);
+                        if next == Some(' ') && !kept.is_empty() && !kept.ends_with('\n') {
+                            rest = &rest[1..];
+                            kept.push(' ');
+                        } else if next == Some(' ') {
+                            rest = &rest[1..];
+                        }
+                    }
+                }
+                None if streaming && last && end.is_empty() && could_cite(after) => {
+                    rest = "";
+                    let trimmed = kept.trim_end_matches([' ', '\t']).len();
+                    kept.truncate(trimmed);
+                }
+                _ => {
+                    kept.push('[');
+                    rest = after;
+                }
+            }
+        }
+        kept.push_str(rest);
+        if cited && kept.trim().is_empty() {
+            continue;
+        }
+        out.push_str(&kept);
+        out.push_str(end);
+    }
+    out
+}
+
 /// A wait in words: seconds under two minutes, else minutes, else hours.
 fn wait(ms: u64) -> String {
     let seconds = ms.div_ceil(1_000).max(1);
@@ -181,6 +282,8 @@ pub(crate) struct Reply {
     pub meta: Meta,
     /// The next partial's sequence number.
     next: u64,
+    /// The partials exactly as they came, before [`without_citations`].
+    streamed: String,
     /// A gap or repeat stopped the preview; wait for the result.
     unordered: bool,
     /// The worker answered at all.
@@ -381,7 +484,7 @@ impl Reading {
                     });
                     return;
                 };
-                reply.text = truncate(text, MAX_REPLY_BYTES).to_owned();
+                reply.text = without_citations(truncate(text, MAX_REPLY_BYTES), false);
                 reply.model = payload["model"].as_str().map(str::to_owned);
                 reply.meta.resulted(&payload);
                 reply.ranked = payload["ranked"]
@@ -405,8 +508,9 @@ impl Reading {
                     reply.unordered = true;
                     return;
                 }
-                if reply.text.len() + delta.len() <= MAX_REPLY_BYTES {
-                    reply.text.push_str(delta);
+                if reply.streamed.len() + delta.len() <= MAX_REPLY_BYTES {
+                    reply.streamed.push_str(delta);
+                    reply.text = without_citations(&reply.streamed, true);
                 }
                 reply.next += 1;
             }
@@ -691,6 +795,43 @@ mod tests {
         let late = json!({"v": 2, "type": "result", "text": "Other"});
         reading.take(&event(CJ_CONVERSATION_RESULT, late), &mut reply);
         assert_eq!(reply.text, "Hello there!");
+    }
+
+    /// An older worker's `[openagents.…]` citations never show: not in
+    /// the result, not in the streamed preview, and not while a citation is
+    /// split across two partials.
+    #[test]
+    fn citations_from_an_older_worker_never_show() {
+        let raw = "Scan the code [openagents.connect-computer@1].\n\n```bash\nopenagents connect invite\n```\n[openagents.connect-computer@1]\n\nIt joins [openagents.connect-computer@1, openagents.tailnet] at once. See [openagents.com] or [the guide](x).";
+        let want = "Scan the code.\n\n```bash\nopenagents connect invite\n```\n\nIt joins at once. See [openagents.com] or [the guide](x).";
+        assert_eq!(without_citations(raw, false), want);
+        assert_eq!(without_citations("No brackets here.", false), "No brackets here.");
+        assert_eq!(without_citations("Arrays [1, 2] stay", false), "Arrays [1, 2] stay");
+
+        let (me, me_hex, worker, worker_public) = keys();
+        let request = "ab".repeat(32);
+        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
+        let event = |kind, body| answer(&worker, &me_hex, &request, kind, body);
+        for size in [1, 2, 5, 9, 17] {
+            let mut reply = Reply::default();
+            let chars: Vec<char> = raw.chars().collect();
+            for (seq, chunk) in chars.chunks(size).enumerate() {
+                let delta: String = chunk.iter().collect();
+                reading.take(
+                    &event(CJ_CONVERSATION_FEEDBACK, partial(seq as u64, &delta)),
+                    &mut reply,
+                );
+                assert!(
+                    !reply.text.replace("[openagents.com]", "").contains("[openagents"),
+                    "split every {size}: {:?}",
+                    reply.text
+                );
+            }
+            assert_eq!(reply.text, want, "split every {size}");
+            let result = json!({"v": 2, "type": "result", "text": raw});
+            reading.take(&event(CJ_CONVERSATION_RESULT, result), &mut reply);
+            assert_eq!(reply.text, want);
+        }
     }
 
     #[test]

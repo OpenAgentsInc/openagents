@@ -1027,23 +1027,44 @@ const HOLD: usize = 200;
 /// A bracket that is not only citations is shown as written. A space
 /// before a citation is dropped when punctuation follows it
 /// ("credit [gym:note:gym-news]." reads "credit.").
-#[derive(Clone, Debug, Default)]
+///
+/// [`Tidy::citing`] takes out another corpus's citations the same way: the
+/// product knowledge base's `[openagents.connect-computer@1]`
+/// ([`knowledge::product::PREFIX`]). A line that held only citations is
+/// taken out with them.
+#[derive(Clone, Debug)]
 pub struct Tidy {
+    /// The prefix every citation id starts with.
+    prefix: &'static str,
     /// Whitespace not yet shown.
     space: String,
     /// An open bracket and what followed it.
     bracket: String,
     /// A citation was just taken out.
     after: bool,
+    /// How much of `space` came before the citations just taken out, when
+    /// it held a line break: the citations began a line.
+    line: Option<usize>,
 }
 
+impl Default for Tidy {
+    fn default() -> Self {
+        Tidy::citing(CITE_PREFIX)
+    }
+}
+
+/// Bracketed words that look like a product citation but are not one.
+const NOT_CITATIONS: &[&str] = &["openagents.com"];
+
 /// Whether `inside` (a bracket's text) is only citation ids.
-fn citations_only(inside: &str) -> bool {
+fn citations_only(inside: &str, prefix: &str) -> bool {
     let ids: Vec<&str> = inside.split([',', ';']).map(str::trim).collect();
     !ids.is_empty()
         && ids.iter().all(|id| {
-            id.starts_with(CITE_PREFIX)
+            id.starts_with(prefix)
+                && id.len() > prefix.len()
                 && id.len() <= 96
+                && !NOT_CITATIONS.contains(&id.to_ascii_lowercase().as_str())
                 && id
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '-' | '_' | '.' | '@'))
@@ -1051,14 +1072,14 @@ fn citations_only(inside: &str) -> bool {
 }
 
 /// Whether `open` (a bracket so far) could still become a citation.
-fn could_cite(open: &str) -> bool {
+fn could_cite(open: &str, prefix: &str) -> bool {
     let inside = &open[1..];
     let last = inside.rsplit([',', ';']).next().unwrap_or("").trim_start();
     let prefix_ok = |id: &str| {
-        if id.len() < CITE_PREFIX.len() {
-            CITE_PREFIX.starts_with(id)
+        if id.len() < prefix.len() {
+            prefix.starts_with(id)
         } else {
-            id.starts_with(CITE_PREFIX)
+            id.starts_with(prefix)
         }
     };
     open.len() <= HOLD
@@ -1071,6 +1092,18 @@ fn could_cite(open: &str) -> bool {
 }
 
 impl Tidy {
+    /// A tidier for citations whose ids start with `prefix`.
+    #[must_use]
+    pub fn citing(prefix: &'static str) -> Self {
+        Tidy {
+            prefix,
+            space: String::new(),
+            bracket: String::new(),
+            after: false,
+            line: None,
+        }
+    }
+
     /// The text of `delta` that may be shown now.
     pub fn push(&mut self, delta: &str) -> String {
         let mut out = String::new();
@@ -1084,7 +1117,10 @@ impl Tidy {
                 };
                 if c == close {
                     let inside = &self.bracket[1..self.bracket.len() - 1];
-                    if citations_only(inside) {
+                    if citations_only(inside, self.prefix) {
+                        if !self.after {
+                            self.line = self.space.contains('\n').then_some(self.space.len());
+                        }
                         self.after = true;
                     } else {
                         out.push_str(&self.space);
@@ -1093,7 +1129,7 @@ impl Tidy {
                         self.after = false;
                     }
                     self.bracket.clear();
-                } else if !could_cite(&self.bracket) {
+                } else if !could_cite(&self.bracket, self.prefix) {
                     out.push_str(&self.space);
                     out.push_str(&self.bracket);
                     self.space.clear();
@@ -1112,8 +1148,13 @@ impl Tidy {
             }
             if self.after {
                 // "credit [gym:…]." reads "credit.", and a citation that
-                // ended a line leaves no space before the break.
-                if let Some(at) = self.space.find('\n') {
+                // ended a line leaves no space before the break. A line
+                // that held only citations goes with them.
+                if let Some(pre) = self.line
+                    && self.space[pre..].contains('\n')
+                {
+                    self.space.drain(..pre);
+                } else if let Some(at) = self.space.find('\n') {
                     self.space.drain(..at);
                 } else if matches!(c, '.' | ',' | ';' | ':' | '!' | '?') {
                     self.space.clear();
@@ -1132,6 +1173,7 @@ impl Tidy {
 
     /// What is left once the reply ends.
     pub fn finish(&mut self) -> String {
+        let prefix = self.prefix;
         let mut out = String::new();
         if !self.bracket.is_empty() {
             out.push_str(&self.space);
@@ -1141,7 +1183,7 @@ impl Tidy {
         } else if let Some(at) = self.space.find('\n') {
             out.push_str(&self.space[at..]);
         }
-        *self = Tidy::default();
+        *self = Tidy::citing(prefix);
         out
     }
 }
@@ -1149,7 +1191,14 @@ impl Tidy {
 /// `text` with its citations taken out, as [`Tidy`] streams it.
 #[must_use]
 pub fn tidy(text: &str) -> String {
-    let mut tidy = Tidy::default();
+    tidy_citing(text, CITE_PREFIX)
+}
+
+/// `text` with its citations under `prefix` taken out, as [`Tidy`]
+/// streams it.
+#[must_use]
+pub fn tidy_citing(text: &str, prefix: &'static str) -> String {
+    let mut tidy = Tidy::citing(prefix);
     let mut out = tidy.push(text);
     out.push_str(&tidy.finish());
     out

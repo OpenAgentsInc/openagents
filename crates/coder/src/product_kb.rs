@@ -536,6 +536,20 @@ pub fn cited(reply: &str, grounding: &Grounding) -> product::Cited {
     product::check_reply(reply, &references(grounding))
 }
 
+/// A tidier that takes a grounded reply's `[openagents.…]` and
+/// `[openagents.…@N]` citations out as it streams: the citations are for
+/// [`cited`], never for the person reading.
+#[must_use]
+pub fn tidier() -> crate::router::gym::Tidy {
+    crate::router::gym::Tidy::citing(product::PREFIX)
+}
+
+/// `reply` with its product citations taken out, as [`tidier`] streams it.
+#[must_use]
+pub fn tidy(reply: &str) -> String {
+    crate::router::gym::tidy_citing(reply, product::PREFIX)
+}
+
 impl ProductKb for ProductKnowledge<Embedder> {
     fn available(&self) -> bool {
         !self.corpus.base.entries.is_empty()

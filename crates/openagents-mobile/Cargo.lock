@@ -1601,6 +1601,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-boundary"
+version = "0.1.0"
+dependencies = [
+ "errno",
+ "libc",
+ "serde",
+ "sha2 0.10.9",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "coder-computers"
 version = "0.1.0"
 dependencies = [
@@ -1651,6 +1663,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "coder-access",
+ "coder-boundary",
  "coder-connect",
  "coder-history",
  "coder-link",

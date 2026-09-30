@@ -323,3 +323,60 @@ fn the_held_out_questions_name_only_committed_entries() {
         }
     }
 }
+
+/// A grounded reply's `[openagents.…]` citations, with or without a
+/// version, never reach the phone: not in the final text and not in any
+/// streamed piece, however the stream splits them, and a line that held
+/// only citations goes with them. A bracket that is not a citation stays.
+#[test]
+fn product_citations_are_taken_out_as_the_reply_streams() {
+    let cases = [
+        (
+            "Here's how that works. Open the desktop app and scan its code \
+             [openagents.connect-computer@1].\n\n```bash\nopenagents connect invite\n```\n\
+             [openagents.connect-computer@1]\n\nNo Tailscale is needed \
+             [openagents.connect-computer@1, openagents.tailnet@2].",
+            "Here's how that works. Open the desktop app and scan its code.\n\n```bash\n\
+             openagents connect invite\n```\n\nNo Tailscale is needed.",
+        ),
+        (
+            "Install it from [openagents.com] [openagents.get-the-app] and see [the guide](x).",
+            "Install it from [openagents.com] and see [the guide](x).",
+        ),
+        (
+            "Pair it [openagents.connect-computer] and go.",
+            "Pair it and go.",
+        ),
+        ("Arrays like [1, 2] stay [openagents.cli@3]", "Arrays like [1, 2] stay"),
+    ];
+    for (reply, want) in cases {
+        assert_eq!(tidy(reply), want, "{reply}");
+        for size in 1..=9 {
+            let mut stream = tidier();
+            let chars: Vec<char> = reply.chars().collect();
+            let mut out = String::new();
+            for chunk in chars.chunks(size) {
+                let shown = stream.push(&chunk.iter().collect::<String>());
+                assert!(!shown.contains("[openagents.c") || shown.contains("[openagents.com]"));
+                out.push_str(&shown);
+            }
+            out.push_str(&stream.finish());
+            assert_eq!(out, want, "split every {size}");
+        }
+    }
+    // The model's citations are still read before they are taken out.
+    let grounding = Grounding {
+        passages: vec![Passage {
+            id: "openagents.connect-computer@1".into(),
+            title: "Connecting".into(),
+            text: "Scan the code.".into(),
+            source: "knowledge/openagents/openagents.connect-computer.md".into(),
+            relevance: 0.9,
+            answer: None,
+        }],
+        ..Grounding::default()
+    };
+    let read = cited(cases[0].0, &grounding);
+    assert_eq!(read.known, vec!["openagents.connect-computer".to_string()]);
+    assert_eq!(read.unknown, vec!["openagents.tailnet".to_string()]);
+}

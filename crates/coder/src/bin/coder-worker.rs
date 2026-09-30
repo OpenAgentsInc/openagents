@@ -1904,7 +1904,8 @@ impl Job {
         let mut served: Option<Served> = None;
         // A grounded Gym reply's citations are for us: they are taken out
         // as the reply streams, with the items the model was given.
-        let mut tidy: Option<(router::gym::Tidy, Vec<router::gym::Item>)> = None;
+        // A grounded product reply's `[openagents.…]` citations likewise.
+        let mut tidy: Option<(router::gym::Tidy, Cites)> = None;
         // When the turn began, the Gym seam answered, and the model's first
         // words went out: durations for the `router gym reply` line.
         let begun = Instant::now();
@@ -2210,7 +2211,7 @@ impl Job {
                                         record.citations = items.iter().map(Into::into).collect();
                                         record.model = Some(door.model().to_string());
                                     }
-                                    tidy = Some((router::gym::Tidy::default(), items));
+                                    tidy = Some((router::gym::Tidy::default(), Cites::Gym(items)));
                                 }
                                 router::gym::Reply::Model => {
                                     (generating, incoming) = start_model(
@@ -2274,6 +2275,12 @@ impl Job {
                                     if let Some(record) = &mut served {
                                         record.citations = passages.iter().map(Into::into).collect();
                                         record.commit = found.commit.clone();
+                                    }
+                                    if *corpus == router::Corpus::Product {
+                                        tidy = Some((
+                                            coder::product_kb::tidier(),
+                                            Cites::Product(Box::new(found.clone())),
+                                        ));
                                     }
                                     if let Some(shown) = shown {
                                         lead = format!("{}\n\n", shown.text);
@@ -2408,7 +2415,16 @@ impl Job {
                 answered = &mut generating => {
                     return answered.map(|(text, usage)| {
                         let text = match &tidy {
-                            Some((_, items)) => {
+                            Some((_, Cites::Product(grounding))) => {
+                                let cited = coder::product_kb::cited(&text, grounding);
+                                // Ids only, never the reply.
+                                eprintln!(
+                                    "router product reply: cited {:?}, unknown {:?}",
+                                    cited.known, cited.unknown
+                                );
+                                coder::product_kb::tidy(&text)
+                            }
+                            Some((_, Cites::Gym(items))) => {
                                 let cited = router::gym::check_reply(&text, items);
                                 let shown = router::gym::tidy(&text);
                                 let check = router::gym::post_check(&shown);
@@ -2521,6 +2537,14 @@ fn start_model(
             .await
     };
     (Box::pin(generating), incoming)
+}
+
+/// What a tidied grounded reply's citations are checked against.
+enum Cites {
+    /// A `gym.news` reply's items.
+    Gym(Vec<router::gym::Item>),
+    /// A product reply's passages.
+    Product(Box<coder::router::seams::Grounding>),
 }
 
 /// What a seam answered, bounded by its budget.
@@ -4116,6 +4140,52 @@ mod tests {
         assert_eq!(result["tier"], "grounded");
         assert_eq!(result["model"], GEMINI);
         assert_eq!(result["citations"].as_array().unwrap().len(), 1);
+    }
+
+    /// A grounded product reply's `[openagents.…]` citations are read for
+    /// the log and taken out of every streamed piece and the final text,
+    /// even when the stream splits a citation in two.
+    #[tokio::test]
+    async fn product_citations_never_reach_the_phone() {
+        let answers = routed("product.kb", "none", 0.1, "none");
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse")
+            .replace(
+                r"One\nTwo\nThree\nFour\nFive",
+                r"Scan the code [openagents.connect-computer@1].\n[openagents.connect-computer@1]\nNo Tailscale.",
+            )
+            .replace(r#""delta":"One\n""#, r#""delta":"Scan the code [openagents.conn""#)
+            .replace(
+                r#""delta":"Two\nThree\nFour\nFive""#,
+                r#""delta":"ect-computer@1].\n[openagents.connect-computer@1]\nNo Tailscale.""#,
+            );
+        let url = serve_times(2, Duration::from_millis(200), "text/event-stream", stream);
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let mut cited = passage(0.7, None);
+        cited.id = "openagents.connect-computer@1".into();
+        let frames = frames_routed(
+            door,
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("how do I connect a phone", json!({})),
+            Seams {
+                product: Arc::new(Knows(Grounding {
+                    passages: vec![cited],
+                    ..Grounding::default()
+                })),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["tier"], "grounded", "{result}");
+        assert_eq!(result["text"], "Scan the code.\nNo Tailscale.");
+        let streamed: String = of_type(&frames, "partial")
+            .iter()
+            .map(|partial| partial["delta"].as_str().unwrap_or_default().to_string())
+            .collect();
+        // Whatever streamed before the reply ended (the split itself is
+        // `product_kb`'s streaming test) carries no citation.
+        assert!(!streamed.contains("[openagents."), "{streamed:?}");
     }
 
     /// A CLI seam for tests: proposes `argv` with `effect`.
