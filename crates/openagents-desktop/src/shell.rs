@@ -3123,6 +3123,23 @@ mod command_fixtures {
             );
             let (before, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, scale);
             let menu = scene.bounds["command-panel"];
+            let revision = app.view().view().revision;
+            let surfaces: Vec<_> = scene
+                .ops
+                .iter()
+                .filter_map(|op| {
+                    if let rust_native_desktop::layout::Op::Surface { resource, rect, .. } = op {
+                        Some((
+                            resource.clone(),
+                            rect.w,
+                            app.surface_version(resource),
+                            app.surface_size(resource, rect.w),
+                        ))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             for event in [
                 TextInput::Commit("missing menu item"),
                 TextInput::Preedit {
@@ -3135,6 +3152,12 @@ mod command_fixtures {
             }
             for step in 1..=4 {
                 app.tick(now + std::time::Duration::from_millis(step * 500));
+                assert_eq!(app.view().view().revision, revision);
+                for (resource, available, version, size) in &surfaces {
+                    assert!(version.is_some(), "untracked surface {resource}");
+                    assert_eq!(app.surface_version(resource), *version, "{resource}");
+                    assert_eq!(app.surface_size(resource, *available), *size, "{resource}");
+                }
                 let (after, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, scale);
                 assert_eq!(scene.bounds["command-panel"], menu);
                 for key in ["command-rename", "command-pin", "command-archive"] {

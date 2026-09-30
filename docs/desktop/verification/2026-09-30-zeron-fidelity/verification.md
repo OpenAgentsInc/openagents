@@ -501,7 +501,7 @@ The native event loop now avoids requesting a foreground frame for consumed
 keyboard or IME events when the cached view, layout, interaction, and tracked
 surfaces are unchanged. It still redraws editing, selection, focus, menu,
 semantic-view, and surface-height changes, and remains conservative for custom
-surfaces without revisions. This removes surface acquisition from unchanged
+surfaces without revisions. The intended behavior is to remove surface acquisition from unchanged
 input rather than repainting or presenting the same menu again. Backdrop
 animation remains independently scheduled. Input timing records only pending
 foreground work, and IME events now have the same input-duration records as
@@ -514,3 +514,23 @@ Full desktop binary: 62 passed, five native/network/timing checks ignored,
 including pairing captures, keyboard and IME editing, attachments, retained
 repaint parity, and clicks during streaming. Scoped formatting, diff whitespace,
 and strict all-target native-adapter/desktop Clippy pass.
+
+
+The native preview at `dfa97ca990` exposed a remaining invalidation defect:
+19 ignored text/key events produced nine unchanged modal frames and surface
+acquisitions. The menu rows stayed visible, but the redraw optimization did not
+hold in that run. The cache compared a filling transcript's allocated height
+with its intrinsic height, so a stable layout repeatedly appeared resized.
+The adapter now caches intrinsic surface requests separately and compares
+successive requests, including width changes and loss of size information.
+It also caches the normalized scroll offsets after layout. Regression coverage
+checks a 700-point allocated surface with a stable 400-point intrinsic height,
+actual width/height changes, and stable desktop view and surface revisions
+through ignored text, IME, and idle ticks. Native verification of the revised
+preview remains required; these checks do not establish scanout behavior.
+
+
+For the intrinsic-size fix, the native adapter passes 68 checks (one GPU check
+ignored), and the full desktop binary passes 63 checks (five native, network,
+and timing checks ignored). Strict all-target Clippy for both packages, scoped
+formatting, and diff whitespace checks pass.

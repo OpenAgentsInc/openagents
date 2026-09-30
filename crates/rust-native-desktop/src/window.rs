@@ -217,6 +217,7 @@ fn run_shell<A: App>(
         fonts: Fonts::new(),
         scene: None,
         laid_out: None,
+        surface_sizes: Vec::new(),
         interaction: Interaction::default(),
         cursor: PhysicalPosition::new(-1.0, -1.0),
         modifiers: ModifiersState::empty(),
@@ -319,19 +320,64 @@ struct LaidOut {
     overlay: Option<crate::layout::OverlayLayout>,
 }
 
+/// Intrinsic requests remain distinct from the rectangles assigned by layout.
+/// A filling surface can occupy more space without changing its requested size.
+#[derive(Clone, Debug)]
+struct SurfaceSize {
+    resource: String,
+    available: f32,
+    requested: Option<(f32, f32)>,
+}
+
+fn surface_sizes(
+    scene: &Scene,
+    size: impl Fn(&str, f32) -> Option<(f32, f32)>,
+) -> Vec<SurfaceSize> {
+    scene
+        .ops
+        .iter()
+        .filter_map(|op| {
+            if let crate::layout::Op::Surface { resource, rect, .. } = op {
+                Some(SurfaceSize {
+                    resource: resource.clone(),
+                    available: rect.w,
+                    requested: size(resource, rect.w),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn surface_sizes_changed(
+    previous: &[SurfaceSize],
+    size: impl Fn(&str, f32) -> Option<(f32, f32)>,
+) -> bool {
+    previous.iter().any(|cached| {
+        match (cached.requested, size(&cached.resource, cached.available)) {
+            (Some((old_w, old_h)), Some((w, h))) => {
+                (w - old_w).abs() > 0.5 || (h - old_h).abs() > 0.5
+            }
+            (None, None) => false,
+            _ => true,
+        }
+    })
+}
+
 fn input_requires_redraw(
     previous: Option<&LaidOut>,
     current: &LaidOut,
     scene: Option<&Scene>,
     version: impl Fn(&str) -> Option<u64>,
-    size: impl Fn(&str, f32) -> Option<(f32, f32)>,
+    resized_surface: bool,
 ) -> bool {
     previous != Some(current)
+        || resized_surface
         || scene.is_none_or(|scene| {
             scene.ops.iter().any(|op| {
-                matches!(op, crate::layout::Op::Surface { resource, rect, version: cached }
-                    if cached.is_none() || version(resource) != *cached
-                    || size(resource, rect.w).is_some_and(|(_, height)| (height - rect.h).abs() > 0.5))
+                matches!(op, crate::layout::Op::Surface { resource, version: cached, .. }
+                    if cached.is_none() || version(resource) != *cached)
             })
         })
 }
@@ -345,6 +391,7 @@ struct Shell<A: App> {
     fonts: Fonts,
     scene: Option<Scene>,
     laid_out: Option<LaidOut>,
+    surface_sizes: Vec<SurfaceSize>,
     interaction: Interaction,
     cursor: PhysicalPosition<f64>,
     modifiers: ModifiersState,
@@ -533,7 +580,9 @@ impl<A: App> Shell<A> {
             &self.layout_key(),
             self.scene.as_ref(),
             |resource| self.app.surface_version(resource),
-            |resource, available| self.app.surface_size(resource, available),
+            surface_sizes_changed(&self.surface_sizes, |resource, available| {
+                self.app.surface_size(resource, available)
+            }),
         )
     }
 
@@ -541,16 +590,8 @@ impl<A: App> Shell<A> {
     fn scene(&mut self) -> &Scene {
         let (width, height) = self.logical_size();
         let key = self.layout_key();
-        let resized_surface = self.scene.as_ref().is_some_and(|scene| {
-            scene.ops.iter().any(|op| {
-                if let crate::layout::Op::Surface { resource, rect, .. } = op {
-                    self.app
-                        .surface_size(resource, rect.w)
-                        .is_some_and(|(_, height)| (height - rect.h).abs() > 0.5)
-                } else {
-                    false
-                }
-            })
+        let resized_surface = surface_sizes_changed(&self.surface_sizes, |resource, available| {
+            self.app.surface_size(resource, available)
         });
         if self.scene.is_none() || self.laid_out.as_ref() != Some(&key) || resized_surface {
             let started = Instant::now();
@@ -599,8 +640,11 @@ impl<A: App> Shell<A> {
             }
             self.scroll = self.scroll.clamp(0.0, (scene.height - height).max(0.0));
             self.timings.record(Phase::Layout, started.elapsed(), 0, 0);
+            self.surface_sizes = surface_sizes(&scene, |resource, available| {
+                self.app.surface_size(resource, available)
+            });
             self.scene = Some(scene);
-            self.laid_out = Some(key);
+            self.laid_out = Some(self.layout_key());
         }
         self.scene.as_ref().expect("a scene")
     }
@@ -1597,7 +1641,9 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Area, LaidOut, Zoom, input_requires_redraw, placement};
+    use super::{
+        Area, LaidOut, Zoom, input_requires_redraw, placement, surface_sizes, surface_sizes_changed,
+    };
 
     #[test]
     fn unchanged_input_skips_frames_but_editor_and_modal_changes_do_not() {
@@ -1622,13 +1668,7 @@ mod tests {
             ..Scene::default()
         };
         let needs = |current: &LaidOut, scene: &Scene, version| {
-            input_requires_redraw(
-                Some(&cached),
-                current,
-                Some(scene),
-                |_| version,
-                |_, _| None,
-            )
+            input_requires_redraw(Some(&cached), current, Some(scene), |_| version, false)
         };
         assert!(
             !needs(&cached, &scene, Some(7)),
@@ -1643,13 +1683,7 @@ mod tests {
             "losing revision tracking must remain conservative"
         );
         assert!(
-            input_requires_redraw(
-                Some(&cached),
-                &cached,
-                Some(&scene),
-                |_| Some(7),
-                |_, _| Some((20.0, 30.0))
-            ),
+            input_requires_redraw(Some(&cached), &cached, Some(&scene), |_| Some(7), true),
             "surface geometry changes require a frame even with the same drawing revision"
         );
         let mut current = cached.clone();
@@ -1686,15 +1720,41 @@ mod tests {
             &cached,
             Some(&scene),
             |_| Some(7),
-            |_, _| None
+            false
         ));
         assert!(input_requires_redraw(
             Some(&cached),
             &cached,
             None,
             |_| Some(7),
-            |_, _| None
+            false
         ));
+    }
+
+    #[test]
+    fn filling_surface_does_not_invalidate_its_intrinsic_size() {
+        use crate::layout::{Op, Rect, Scene};
+        let scene = Scene {
+            ops: vec![Op::Surface {
+                resource: "transcript".into(),
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 500.0,
+                    h: 700.0,
+                },
+                version: Some(1),
+            }],
+            ..Scene::default()
+        };
+        let cached = surface_sizes(&scene, |_, w| Some((w, 400.0)));
+        assert!(!surface_sizes_changed(&cached, |_, w| Some((w, 400.0))));
+        assert!(surface_sizes_changed(&cached, |_, w| Some((w, 420.0))));
+        assert!(surface_sizes_changed(&cached, |_, w| Some((
+            w - 10.0,
+            400.0
+        ))));
+        assert!(surface_sizes_changed(&cached, |_, _| None));
     }
 
     #[test]
