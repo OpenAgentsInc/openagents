@@ -12,6 +12,8 @@ use crate::App;
 
 pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
+pub(crate) use content::DOCS;
+#[cfg(test)]
 pub(crate) use install::MAC_DMG;
 
 pub(crate) fn routes() -> Router<App> {

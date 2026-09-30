@@ -65,7 +65,46 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 5] = ["/", "/install", "/terms", "/privacy", "/connect"];
+const PAGES: [&str; 14] = [
+    "/",
+    "/install",
+    "/terms",
+    "/privacy",
+    "/connect",
+    "/docs",
+    "/docs/what-is-openagents",
+    "/docs/install",
+    "/docs/connect-a-computer",
+    "/docs/chat",
+    "/docs/coder",
+    "/docs/verse",
+    "/docs/privacy-and-security",
+    "/docs/help",
+];
+
+/// The docs list every guide, each guide links its neighbors, and every
+/// site link in a guide answers `200`.
+#[tokio::test]
+async fn the_docs_list_every_guide_and_their_links_resolve() {
+    let root = tempfile::tempdir().unwrap();
+    let (_, index) = get(router(config(root.path().into())), "/docs").await;
+    for (slug, _) in pages::DOCS {
+        assert!(index.contains(&format!("href=\"/docs/{slug}\"")), "{slug}");
+        let (status, html) =
+            get(router(config(root.path().into())), &format!("/docs/{slug}")).await;
+        assert_eq!(status, StatusCode::OK, "{slug}");
+        for target in html.split("href=\"").skip(1) {
+            let target = &target[..target.find('"').unwrap()];
+            if target.starts_with('/') && !target.starts_with("/static/") {
+                let path = target.split('#').next().unwrap();
+                let (status, _) = get(router(config(root.path().join("tasks"))), path).await;
+                assert_eq!(status, StatusCode::OK, "{slug} links {target}");
+            }
+        }
+    }
+    let (status, _) = get(router(config(root.path().into())), "/docs/nope").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
 
 #[tokio::test]
 async fn every_public_page_answers_in_development() {
@@ -262,8 +301,6 @@ async fn the_removed_sections_are_gone_and_never_linked() {
         "/releases/install-terminal.sh",
         "/install-terminal.sh",
         "/install-terminal.ps1",
-        "/docs",
-        "/docs/install",
         "/doc",
         "/doc/install",
         "/blog",
@@ -277,7 +314,8 @@ async fn the_removed_sections_are_gone_and_never_linked() {
         let (_, html) = get(router(config(root.path().join("tasks"))), page).await;
         for uri in removed {
             assert!(
-                !html.contains(&format!("href=\"{uri}")),
+                !html.contains(&format!("href=\"{uri}\""))
+                    && !html.contains(&format!("href=\"{uri}/")),
                 "{page} links {uri}"
             );
         }

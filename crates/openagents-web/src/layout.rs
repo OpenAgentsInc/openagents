@@ -9,7 +9,7 @@ use axum::response::{Html, IntoResponse, Response};
 pub const COPYRIGHT: &str = "\u{a9} 2026 OpenAgents, Inc.";
 
 /// The sections the header links to, in order.
-pub const SECTIONS: [(&str, &str); 1] = [("Install", "/install")];
+pub const SECTIONS: [(&str, &str); 2] = [("Install", "/install"), ("Docs", "/docs")];
 
 /// Escapes text for HTML content and attribute values.
 #[must_use]
