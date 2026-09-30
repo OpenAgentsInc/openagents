@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use coder_link::{AttemptId, BlockReason, ConnectionId, Failure, HostKey, Report, Stage};
-use coder_reach::channel::UNAUTHENTICATED;
+use coder_reach::channel::{GENERATION_DIFFERS, UNAUTHENTICATED};
 use coder_reach::hints::{Hint, Locality, Transport, select};
 use coder_reach::presence::{ClientProfile, VersionRange};
 use coder_reach::{PROTOCOL_VERSION, Refusal};
@@ -30,7 +30,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use super::iroh::{Dialer, IrohRoute, open_link};
-use super::{Device, Link, Route, fetch_reach, websocket};
+use super::{Device, Link, Reach, Route, fetch_reach, websocket};
 use crate::{Error, unix_time};
 
 /// Outcomes for the application to pass to `Registry::report`.
@@ -264,9 +264,18 @@ impl coder_link::Connector for Connector {
             let healthy = link.ping().await.is_ok();
             // A relay route is a fallback. Its probe fails while a direct
             // route answers, so the supervisor replaces it with that route.
+            // It also follows the host's generation from the presence it
+            // reads: a relay route outlives a host restart.
             let better = matches!(link.route(), Route::Relay(_))
                 && healthy
-                && direct_answers(link.device().clone(), locality, local, iroh, &tls).await;
+                && match fetch_reach(link.device(), link.device().relay()).await {
+                    Ok(reach) => {
+                        link.note_generation(reach.presence.presence.generation);
+                        direct_answers(link.device().clone(), &reach, locality, local, iroh, &tls)
+                            .await
+                    }
+                    Err(_) => false,
+                };
             let report = if healthy && !better {
                 Report::Established(attempt)
             } else {
@@ -403,8 +412,13 @@ fn handshake_outcome(opened: crate::Result<Link>) -> Result<Link, Option<Failure
                 }
                 Refusal::NotAdmitted => Some(Failure::Blocked(BlockReason::Authentication)),
                 Refusal::IdentityMismatch => Some(Failure::Blocked(BlockReason::Authentication)),
-                // Another generation means the host restarted; read presence
-                // again on the next attempt.
+                // The host proved it restarted, and the presence read is
+                // its old one. Try again soon with fresh presence rather
+                // than settle on a relay route to the old generation, which
+                // every terminal opened through it would find lost.
+                Refusal::Stale if refusal.detail == GENERATION_DIFFERS => {
+                    Some(Failure::Unreachable)
+                }
                 _ => None,
             })
         }
@@ -416,14 +430,12 @@ fn handshake_outcome(opened: crate::Result<Link>) -> Result<Link, Option<Failure
 /// now.
 async fn direct_answers(
     device: Arc<Device>,
+    reach: &Reach,
     locality: Locality,
     local: Option<SocketAddr>,
     iroh: Option<(Arc<Dialer>, IrohRoute)>,
     tls: &websocket::Tls,
 ) -> bool {
-    let Ok(reach) = fetch_reach(&device, device.relay()).await else {
-        return false;
-    };
     let generation = reach.presence.presence.generation;
     if let Some((dialer, route)) = &iroh
         && try_iroh(&device, dialer, route, generation).await.is_ok()
@@ -517,5 +529,23 @@ mod tests {
             direct_routes(None, &hints.iter().collect::<Vec<_>>()).len(),
             1
         );
+    }
+
+    #[test]
+    fn a_host_at_another_generation_retries_instead_of_falling_back() {
+        let refused = |code, detail| {
+            handshake_outcome(Err(Error::Reach(coder_reach::Error::new(code, detail))))
+        };
+        // A restarted host proved its key at a generation the presence read
+        // does not name: retry with fresh presence, not the relay.
+        assert!(matches!(
+            refused(Refusal::Stale, GENERATION_DIFFERS),
+            Err(Some(Failure::Unreachable))
+        ));
+        // Other refusals before the key is proven move on to the next route.
+        assert!(matches!(
+            refused(Refusal::Stale, UNAUTHENTICATED),
+            Err(None)
+        ));
     }
 }

@@ -51,8 +51,9 @@ struct Direct {
 pub struct Link {
     device: Arc<Device>,
     route: Route,
-    /// The host generation this route was proven against, when known.
-    generation: Option<u64>,
+    /// The host generation this route was proven against, when known. A
+    /// relay route follows fresh presence ([`Link::refresh_generation`]).
+    generation: Mutex<Option<u64>>,
     direct: Option<Direct>,
     frames_in: mpsc::UnboundedSender<Frame>,
     frames: tokio::sync::Mutex<mpsc::UnboundedReceiver<Frame>>,
@@ -179,7 +180,7 @@ impl Link {
         Ok(Self {
             device,
             route: Route::Direct(address),
-            generation: Some(generation),
+            generation: Mutex::new(Some(generation)),
             direct: Some(Direct {
                 outbound,
                 waiters,
@@ -200,7 +201,7 @@ impl Link {
         Self {
             device,
             route: Route::Relay(relay),
-            generation: None,
+            generation: Mutex::new(None),
             direct: None,
             frames_in,
             frames: tokio::sync::Mutex::new(frames),
@@ -221,8 +222,8 @@ impl Link {
     /// `generation`.
     #[must_use]
     pub fn relay_at(device: Arc<Device>, relay: String, generation: u64) -> Self {
-        let mut link = Self::relay(device, relay);
-        link.generation = Some(generation);
+        let link = Self::relay(device, relay);
+        link.note_generation(generation);
         link
     }
 
@@ -232,7 +233,39 @@ impl Link {
     /// terminal generation derived from it.
     #[must_use]
     pub fn generation(&self) -> Option<u64> {
-        self.generation
+        *lock(&self.generation)
+    }
+
+    /// Read the host's generation again from fresh presence, on a relay
+    /// route, and return the generation this link now names.
+    ///
+    /// A host that restarts closes a direct channel, so the supervisor
+    /// proves a new one against the new generation. A relay route never
+    /// closes: without this, it keeps naming the generation it was proven
+    /// against, and every terminal opened through it after a restart is
+    /// refused as `lost`. A direct channel keeps its handshake's generation.
+    ///
+    /// # Errors
+    /// Reports an unreachable relay or presence that is missing or stale.
+    pub async fn refresh_generation(&self) -> Result<Option<u64>> {
+        let Route::Relay(relay) = &self.route else {
+            return Ok(self.generation());
+        };
+        let reach = super::fetch_reach(&self.device, relay).await?;
+        self.note_generation(reach.presence.presence.generation);
+        Ok(self.generation())
+    }
+
+    /// Follow `generation`, from fresh presence, on a relay route. A
+    /// generation never goes backward; a direct channel keeps its own.
+    pub fn note_generation(&self, generation: u64) {
+        if self.direct.is_some() {
+            return;
+        }
+        let mut held = lock(&self.generation);
+        if held.is_none_or(|held| generation > held) {
+            *held = Some(generation);
+        }
     }
 
     /// The route this link uses.

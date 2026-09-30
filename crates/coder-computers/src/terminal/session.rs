@@ -12,7 +12,10 @@
 //! what the screen missed or reports a gap. A frame that arrives ahead of
 //! the next expected one waits in [`Ordered`]; if the missing frame does
 //! not arrive soon, the task reattaches to repair it. A host that restarted
-//! answers `lost`, which ends the session.
+//! answers `lost`, which ends the session, except for a terminal the host
+//! opened just now: then the link named an older generation (a relay route
+//! outlives a host restart), so the task reads the host's generation from
+//! fresh presence and attaches again.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -52,6 +55,9 @@ const HOLD_LIMIT: Duration = Duration::from_secs(2);
 const LINK_CHECK: Duration = Duration::from_secs(2);
 /// How long to wait before trying an unreachable host again.
 const RETRY: Duration = Duration::from_secs(1);
+/// How many times a session reads presence for a restarted host's new
+/// generation before it reports its new terminal lost.
+const GENERATION_TRIES: u32 = 10;
 
 enum Command {
     Bytes(Vec<u8>),
@@ -313,7 +319,7 @@ async fn drive(
     model: &Arc<Mutex<Model>>,
     commands: &mut mpsc::UnboundedReceiver<Command>,
 ) -> Stop {
-    let (mut link, reference, mut host_size) = match open(links, model, commands).await {
+    let (mut link, mut reference, mut host_size) = match open(links, model, commands).await {
         Ok(opened) => opened,
         Err(stop) => return stop,
     };
@@ -322,6 +328,10 @@ async fn drive(
     let mut ordered = Ordered::new(TerminalState::new(reference.clone(), 1, 1));
     let mut exited = false;
     let mut first = true;
+    // Whether an attach has succeeded, and whether a `lost` refusal of the
+    // first one sent the session to fresh presence for the generation.
+    let mut attached_once = false;
+    let mut rechecked = false;
     loop {
         if !first {
             lock(model).set_phase(Phase::Reconnecting);
@@ -349,6 +359,31 @@ async fn drive(
                 if exited && result.reason == Some(Reason::Closed) {
                     return Stop::Ended(lock(model).phase.clone());
                 }
+                if !attached_once {
+                    if result.reason == Some(Reason::Lost) && !rechecked {
+                        // The host opened this terminal just now, on its
+                        // current generation, so the link named an older
+                        // one: a relay route that outlived a host restart.
+                        // Follow fresh presence and attach again.
+                        rechecked = true;
+                        match until_left(commands, newer_reference(&link, &reference)).await {
+                            Err(stop) => return stop,
+                            Ok(Some(fresh)) => {
+                                reference = fresh;
+                                ordered = Ordered::new(TerminalState::new(reference.clone(), 1, 1));
+                                continue;
+                            }
+                            Ok(None) => {}
+                        }
+                    }
+                    // The host restarted again between opening and
+                    // attaching: the terminal did not survive it.
+                    if rechecked
+                        && matches!(result.reason, Some(Reason::Closed | Reason::Unavailable))
+                    {
+                        return Stop::Ended(Phase::Lost);
+                    }
+                }
                 return Stop::Ended(attach_refusal(result.reason));
             }
             _ => {
@@ -360,6 +395,7 @@ async fn drive(
                 continue;
             }
         };
+        attached_once = true;
         {
             let mut model = lock(model);
             model.route = Some(route(&link));
@@ -415,6 +451,31 @@ async fn drive(
             }
         }
     }
+}
+
+/// The reference to `reference`'s terminal on the host generation fresh
+/// presence names, once it differs from the one `reference` names; `None`
+/// when it does not change soon, or the link is a direct channel, whose
+/// handshake proved its generation.
+async fn newer_reference(link: &Link, reference: &TerminalRef) -> Option<TerminalRef> {
+    if !matches!(link.route(), Route::Relay(_)) {
+        return None;
+    }
+    for attempt in 0..GENERATION_TRIES {
+        if attempt > 0 {
+            tokio::time::sleep(RETRY).await;
+        }
+        if let Ok(Some(generation)) = link.refresh_generation().await {
+            let generation = terminal_generation(link.device().host(), generation);
+            if generation != reference.generation {
+                return Some(TerminalRef {
+                    generation,
+                    terminal: reference.terminal.clone(),
+                });
+            }
+        }
+    }
+    None
 }
 
 fn resize(reference: &TerminalRef, rows: u16, cols: u16) -> TermRequest {

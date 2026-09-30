@@ -45,6 +45,10 @@ pub const REPLAY_CAPACITY: usize = 4_096;
 /// Detail of a refusal the host sent before proving its key. Treat its code
 /// as advisory: anyone on the path could have sent it.
 pub const UNAUTHENTICATED: &str = "host refused before proving its key";
+/// Detail of the client's refusal of a host that proved its key at another
+/// generation than the presence the client read: the host restarted and
+/// the presence is not yet its new one.
+pub const GENERATION_DIFFERS: &str = "host generation differs from presence";
 
 const HELLO: &str = "openagents.reach-hello.v1";
 const HOST_PROOF: &str = "openagents.reach-host-proof.v1";
@@ -623,7 +627,7 @@ async fn client_handshake<S: AsyncRead + AsyncWrite + Unpin>(
     let digest = transcript(&hello, &proof)?;
     verify(HOST_SIGN_LABEL, &digest, &proof.signature, &config.host)?;
     if proof.generation != config.generation {
-        return fail(Refusal::Stale, "host generation differs from presence");
+        return fail(Refusal::Stale, GENERATION_DIFFERS);
     }
     let (c2h, h2c) = session_keys(&eph, &proof.ephemeral, &digest)?;
     let client_proof = ClientProof {

@@ -103,6 +103,15 @@ seconds, so a lost record still yields a higher generation. A damaged
 record refuses to start; it is never reset automatically. `coder-service`
 owns the counter's rules in `coder_service::generation`.
 
+A restart closes every direct channel, and each client connects again
+against the new generation. A direct route that proves the host at another
+generation than the presence the client read makes the client try again
+with fresh presence, instead of settling on the relay at the old one. A
+relay route outlives a restart, so it follows the generation fresh presence
+names; a terminal a client opens through it just after a restart, and
+finds `lost` because the route named the old generation, is attached again
+on the new one.
+
 ## Serve WebSocket direct channels
 
 A client that cannot open a raw TCP connection, such as a web client, uses a
