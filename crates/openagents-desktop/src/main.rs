@@ -224,13 +224,9 @@ fn main() -> ExitCode {
             now,
         );
     }
-    // Nearly the whole display, centered; the views grow with it.
+    // Fill the usable display while preserving logical-point component sizes.
     let window = rust_native_desktop::window::Options {
         fill: Some(WINDOW_FILL),
-        zoom: Some(rust_native_desktop::window::Zoom {
-            design: (1200.0, 840.0),
-            max: 1.6,
-        }),
         size: (1200.0, 840.0),
         min_size: (760.0, 540.0),
         ..rust_native_desktop::window::Options::default()

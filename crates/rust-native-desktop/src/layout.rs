@@ -184,6 +184,27 @@ pub enum WindowLayout {
     #[default]
     Column,
     Split(SplitLayout),
+    /// A bounded application header above the same two-pane semantic tree.
+    HeaderSplit {
+        split: SplitLayout,
+        header_height: u16,
+    },
+}
+impl WindowLayout {
+    pub fn split(self) -> Option<SplitLayout> {
+        match self {
+            Self::Split(split) | Self::HeaderSplit { split, .. } => Some(split),
+            Self::Column => None,
+        }
+    }
+    pub fn header_height(self) -> Option<f32> {
+        match self {
+            Self::HeaderSplit { header_height, .. } if (1..=128).contains(&header_height) => {
+                Some(f32::from(header_height))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Sizing for a leading pane and a content pane, in logical points.
@@ -281,13 +302,30 @@ pub fn lay_out_with_layout<I>(
     height: f32,
     layout: WindowLayout,
 ) -> Scene {
-    let WindowLayout::Split(split) = layout else {
+    let Some(split) = layout.split() else {
         return lay_out_window(view, theme, fonts, sizes, interaction, width, height);
+    };
+    let header_height = layout.header_height().unwrap_or(0.0);
+    let (root, header) = if header_height > 0.0 {
+        match &view.root.element {
+            Element::Stack {
+                axis: Axis::Vertical,
+                children,
+            } if children.len() == 2 => (&children[1], Some(&children[0])),
+            _ => {
+                let mut scene =
+                    lay_out_window(view, theme, fonts, sizes, interaction, width, height);
+                scene.unsupported.insert("window.header_split");
+                return scene;
+            }
+        }
+    } else {
+        (&view.root, None)
     };
     let Element::Stack {
         axis: Axis::Horizontal,
         children,
-    } = &view.root.element
+    } = &root.element
     else {
         let mut scene = lay_out_window(view, theme, fonts, sizes, interaction, width, height);
         scene.unsupported.insert("window.split");
@@ -309,18 +347,22 @@ pub fn lay_out_with_layout<I>(
         scene: Scene::default(),
         paint_clip: None,
     };
+    if let Some(header) = header {
+        engine.place_sized(header, 0.0, 0.0, width, header_height);
+    }
     let leading = if leading_width > 0.0 {
         engine.docked_pane(
             &children[0],
             Rect {
                 x: 0.0,
-                y: 0.0,
+                y: header_height,
                 w: leading_width,
-                h: height,
+                h: height - header_height,
             },
-            12.0,
+            if header.is_some() { 8.0 } else { 12.0 },
             interaction.leading_scroll,
             false,
+            if header.is_some() { 8.0 } else { 16.0 },
         )
     } else {
         ScrollRegion::default()
@@ -329,19 +371,20 @@ pub fn lay_out_with_layout<I>(
         &children[1],
         Rect {
             x: leading_width + 8.0,
-            y: 8.0,
+            y: if header.is_some() { header_height } else { 8.0 },
             w: (width - leading_width - 16.0).max(1.0),
-            h: (height - 16.0).max(1.0),
+            h: (height - header_height - if header.is_some() { 8.0 } else { 16.0 }).max(1.0),
         },
-        20.0,
+        if header.is_some() { 0.0 } else { 20.0 },
         interaction.content_scroll,
         split.center_content,
+        if header.is_some() { 0.0 } else { 16.0 },
     );
     let divider = (leading_width > 0.0).then_some(Rect {
         x: leading_width - 4.0,
-        y: 0.0,
+        y: header_height,
         w: 8.0,
-        h: height,
+        h: height - header_height,
     });
     if let Some(divider) = divider {
         engine.scene.ops.push(Op::Fill {
@@ -436,6 +479,7 @@ impl Engine<'_> {
         inset: f32,
         scroll: f32,
         center: bool,
+        dock_gap: f32,
     ) -> ScrollRegion {
         let Element::Stack { children, .. } = &node.element else {
             unreachable!("checked pane")
@@ -444,7 +488,10 @@ impl Engine<'_> {
         if let Some(color) = node.style.background {
             self.scene.ops.push(Op::Fill {
                 rect,
-                radius: if center { 12.0 } else { 0.0 },
+                radius: node
+                    .style
+                    .radius
+                    .map_or(if center { 12.0 } else { 0.0 }, f32::from),
                 color,
             });
         }
@@ -459,9 +506,9 @@ impl Engine<'_> {
         self.place(&children[0], rect.x + inset, rect.y + inset, width);
         let body_rect = Rect {
             x: rect.x + inset,
-            y: rect.y + inset + header_height + 16.0,
+            y: rect.y + inset + header_height + dock_gap,
             w: width,
-            h: (rect.h - 2.0 * inset - header_height - footer_height - 32.0).max(1.0),
+            h: (rect.h - 2.0 * inset - header_height - footer_height - 2.0 * dock_gap).max(1.0),
         };
         let body_width = if center {
             width.min(self.theme.column)
@@ -1005,7 +1052,11 @@ impl Engine<'_> {
                     .zip(&widths)
                     .map(|(child, width)| self.size(child, *width).1)
                     .collect();
-                let row = heights.iter().copied().fold(0.0, f32::max);
+                let row = heights
+                    .iter()
+                    .copied()
+                    .fold(0.0, f32::max)
+                    .max(height - top - bottom);
                 let total =
                     widths.iter().sum::<f32>() + gap * children.len().saturating_sub(1) as f32;
                 let mut cx = ix

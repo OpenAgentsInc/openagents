@@ -252,6 +252,11 @@ pub trait App {
         let _ = fullscreen;
         None
     }
+
+    /// Reports the native window's current fullscreen state before layout.
+    fn fullscreen_changed(&mut self, fullscreen: bool) {
+        let _ = fullscreen;
+    }
 }
 
 /// Lays out and paints `app`'s current view into a frame `width` by

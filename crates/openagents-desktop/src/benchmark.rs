@@ -162,7 +162,9 @@ impl App for Fixture {
     }
     fn window_layout(&self) -> WindowLayout {
         let mut layout = self.app.window_layout();
-        if let WindowLayout::Split(ref mut split) = layout {
+        if let WindowLayout::Split(ref mut split)
+        | WindowLayout::HeaderSplit { ref mut split, .. } = layout
+        {
             split.leading_width = 280.0;
         }
         layout

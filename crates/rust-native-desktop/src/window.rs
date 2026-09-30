@@ -35,6 +35,50 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
+#[cfg(target_os = "macos")]
+fn position_header_controls(window: &Window, height: f32) {
+    use objc2_app_kit::{NSView, NSWindowButton};
+    use objc2_foundation::NSPoint;
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    // Winit owns this NSView for the live window. This callback runs on the
+    // main event-loop thread, and the borrowed window outlives these accesses.
+    let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+    let Some(native) = view.window() else {
+        return;
+    };
+    let Some(close) = native.standardWindowButton(NSWindowButton::CloseButton) else {
+        return;
+    };
+    // AppKit keeps the window-control container alive with its buttons.
+    let Some(parent) = (unsafe { close.superview() }) else {
+        return;
+    };
+    let mut frame = parent.frame();
+    frame.origin.y += frame.size.height - f64::from(height);
+    frame.size.height = f64::from(height);
+    parent.setFrame(frame);
+    let first = close.frame().origin.x;
+    for kind in [
+        NSWindowButton::CloseButton,
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ] {
+        if let Some(button) = native.standardWindowButton(kind) {
+            let frame = button.frame();
+            button.setFrameOrigin(NSPoint::new(
+                14.0 + frame.origin.x - first,
+                f64::from(height) - 14.0 - frame.size.height,
+            ));
+        }
+    }
+}
+
 /// How long a backdrop waits after the surface skipped a frame.
 const SKIPPED_FRAME_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -345,6 +389,9 @@ impl<A: App> Shell<A> {
         let started = Instant::now();
         let before = self.revision();
         let (width, height) = self.logical_size();
+        if let Some(window) = &self.window {
+            self.app.fullscreen_changed(window.fullscreen().is_some());
+        }
         self.app.viewport(width, height, self.scale());
         self.wake = self.app.tick(Instant::now());
         let previous_scroll = self.interaction.leading_scroll;
@@ -845,6 +892,13 @@ impl<A: App> Shell<A> {
     }
 
     fn resize(&mut self, width: u32, height: u32) {
+        #[cfg(target_os = "macos")]
+        if let Some(window) = &self.window
+            && let Some(height) = self.app.window_layout().header_height()
+        {
+            position_header_controls(window, height);
+        }
+
         if let Some(gpu) = &mut self.gpu {
             gpu.config.width = width.max(1);
             gpu.config.height = height.max(1);
@@ -934,6 +988,14 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.options.min_size.0,
                 self.options.min_size.1,
             ));
+        #[cfg(target_os = "macos")]
+        if self.app.window_layout().header_height().is_some() {
+            use winit::platform::macos::WindowAttributesExtMacOS;
+            attributes = attributes
+                .with_titlebar_transparent(true)
+                .with_title_hidden(true)
+                .with_fullsize_content_view(true);
+        }
         if let Some((width, height)) = self.options.pixel_size {
             attributes = attributes.with_inner_size(winit::dpi::PhysicalSize::new(width, height));
         }
@@ -952,6 +1014,10 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 return;
             }
         };
+        #[cfg(target_os = "macos")]
+        if let Some(height) = self.app.window_layout().header_height() {
+            position_header_controls(&window, height);
+        }
         // The title bar's real height is known only now, and a position
         // given at creation places the inner area on some systems, so the
         // window is centered again by its outer size.
@@ -1103,7 +1169,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     return;
                 }
                 if self.resizing
-                    && let WindowLayout::Split(split) = self.app.window_layout()
+                    && let Some(split) = self.app.window_layout().split()
                 {
                     let (width, _) = self.logical_size();
                     let requested = (position.x as f32 / self.scale())
@@ -1198,6 +1264,20 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                         self.redraw();
                         return;
                     }
+                }
+                if state == ElementState::Pressed
+                    && self.target().is_none()
+                    && self.app.modal_root().is_none()
+                    && self
+                        .app
+                        .window_layout()
+                        .header_height()
+                        .is_some_and(|height| self.cursor.y as f32 / self.scale() < height)
+                {
+                    if let Some(window) = &self.window {
+                        let _ = window.drag_window();
+                    }
+                    return;
                 }
                 let shift = self.modifiers.shift_key();
                 if self.surface(|x, y| match state {

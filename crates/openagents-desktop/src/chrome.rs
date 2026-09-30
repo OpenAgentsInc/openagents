@@ -94,6 +94,7 @@ pub struct State {
     pub page: Page,
     pub sidebar_width: f32,
     pub collapsed: bool,
+    pub fullscreen: bool,
     pub closed_sections: BTreeSet<Section>,
     pub chats: Vec<Chat>,
     pub search: String,
@@ -185,6 +186,7 @@ impl Default for State {
             page: Page::Chat(1),
             sidebar_width: SIDEBAR_DEFAULT,
             collapsed: false,
+            fullscreen: false,
             closed_sections: BTreeSet::from([Section::Archived]),
             chats: examples
                 .into_iter()
@@ -627,7 +629,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     heading.style.text_size = Some(12);
     heading.style.line_height = Some(18);
     let mut header = stack(
-        "shell-content-header",
+        "shell-titlebar",
         Axis::Horizontal,
         Space::Sm,
         vec![
@@ -650,7 +652,18 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             ),
         ],
     );
-    header.style.min_height = Some(28);
+    header.style.min_height = Some(38);
+    header.style.padding_points = Some([
+        4,
+        10,
+        0,
+        if cfg!(target_os = "macos") && !state.fullscreen {
+            88
+        } else {
+            12
+        },
+    ]);
+    header.style.background = Some(SIDEBAR);
     if state.live
         && state.selected().is_some()
         && !prompt
@@ -736,7 +749,11 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         "shell-content",
         Axis::Vertical,
         Space::None,
-        vec![header, body, footer],
+        vec![
+            stack("shell-content-header", Axis::Vertical, Space::None, vec![]),
+            body,
+            footer,
+        ],
     );
     content.style.background = Some(if matches!(state.page, Page::Grid) {
         Color {
@@ -746,11 +763,20 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     } else {
         openagents_chat_app::visual::CANVAS
     });
+    content.style.radius = Some(10);
     stack(
-        "desktop-shell",
-        Axis::Horizontal,
+        "desktop-window",
+        Axis::Vertical,
         Space::None,
-        vec![sidebar(state), content],
+        vec![
+            header,
+            stack(
+                "desktop-shell",
+                Axis::Horizontal,
+                Space::None,
+                vec![sidebar(state), content],
+            ),
+        ],
     )
 }
 

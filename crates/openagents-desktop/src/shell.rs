@@ -202,7 +202,7 @@ impl DesktopApp {
                     .clamp(chrome::SIDEBAR_MIN, chrome::SIDEBAR_MAX)
                     .min((chat.viewport.0 - 360.0).max(0.0))
             };
-            chat.column_width = (chat.viewport.0 - leading - 56.0).clamp(1.0, 768.0);
+            chat.column_width = (chat.viewport.0 - leading - 16.0).clamp(1.0, 768.0);
             chat.show_saved(
                 state.page == Page::Saved,
                 self.model.project().map(|project| project.label.clone()),
@@ -221,6 +221,8 @@ impl DesktopApp {
                 || self.chat.as_ref().is_some_and(|chat| chat.modal()))
             && let Some(chat) = &mut self.chat
             && let rust_native::Element::Stack { children, .. } = &mut root.element
+            && let Some(panes) = children.get_mut(1)
+            && let rust_native::Element::Stack { children, .. } = &mut panes.element
             && let Some(content) = children.get_mut(1)
             && let rust_native::Element::Stack { children, .. } = &mut content.element
         {
@@ -398,15 +400,16 @@ impl App for DesktopApp {
     fn window_layout(&self) -> WindowLayout {
         self.navigation
             .as_ref()
-            .map_or(WindowLayout::Column, |state| {
-                WindowLayout::Split(SplitLayout {
+            .map_or(WindowLayout::Column, |state| WindowLayout::HeaderSplit {
+                header_height: 38,
+                split: SplitLayout {
                     leading_width: state.sidebar_width,
                     min_leading_width: chrome::SIDEBAR_MIN,
                     max_leading_width: chrome::SIDEBAR_MAX,
                     min_content_width: 360.0,
                     collapsed: state.collapsed,
                     center_content: true,
-                })
+                },
             })
     }
 
@@ -738,6 +741,15 @@ impl App for DesktopApp {
             self.present();
         }
         handled
+    }
+
+    fn fullscreen_changed(&mut self, fullscreen: bool) {
+        if let Some(state) = &mut self.navigation
+            && state.fullscreen != fullscreen
+        {
+            state.fullscreen = fullscreen;
+            self.present();
+        }
     }
 
     fn viewport(&mut self, width: f32, height: f32, scale: f32) {
@@ -2092,6 +2104,41 @@ mod chat_management {
         App,
         input::{SurfaceInput, TextInput},
     };
+    #[test]
+    fn native_titlebar_preserves_controls_and_docked_composer_in_both_modes() {
+        let now = Instant::now();
+        let (mut app, _) = DesktopApp::performance_fixture(0, 1, now);
+        for fullscreen in [false, true, false] {
+            app.fullscreen_changed(fullscreen);
+            for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
+                let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert!(scene.unsupported.is_empty());
+                let header = scene.bounds["shell-titlebar"];
+                assert_eq!(header.y, 0.0);
+                assert_eq!(header.h, 38.0);
+                let split = scene.split.as_ref().unwrap();
+                assert!(split.leading.rect.y >= 38.0);
+                let toggle = scene
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == "shell-toggle-sidebar")
+                    .unwrap();
+                assert_eq!(toggle.rect.y + toggle.rect.h / 2.0, 21.0);
+                assert!(
+                    toggle.rect.x
+                        >= if cfg!(target_os = "macos") && !fullscreen {
+                            88.0
+                        } else {
+                            12.0
+                        }
+                );
+                let composer = scene.bounds["chat-composer"];
+                assert!(composer.y + composer.h <= height);
+                assert_eq!(composer.h, 47.0);
+            }
+        }
+    }
+
     #[test]
     fn a_512_project_sidebar_keeps_every_chat_within_the_node_budget() {
         let now = Instant::now();

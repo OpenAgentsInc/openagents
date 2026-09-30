@@ -56,6 +56,14 @@ white on black.
 
 ## Split windows
 
+`WindowLayout::HeaderSplit` places a fixed-height header above both panes.
+Its root is a vertical stack containing the header and the horizontal pane
+stack. The panes scroll below the header; their docked footers remain visible.
+On macOS, the native titlebar is transparent, the standard window controls sit
+inside the header, and dragging an empty header area moves the window.
+`App::fullscreen_changed` reports native fullscreen state before layout so an
+application can adjust the space reserved for those controls.
+
 `App::window_layout` defaults to the centered column. `WindowLayout::Split`
 lays out a horizontal root stack with two vertical pane stacks. Each pane has
 three children: header, scrollable body, and footer. All controls stay ordinary
