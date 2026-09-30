@@ -8594,6 +8594,7 @@ dependencies = [
  "serde",
  "serde_json",
  "swash",
+ "unicode-segmentation",
 ]
 
 [[package]]

@@ -29,6 +29,7 @@
 #[cfg(feature = "window")]
 pub mod backdrop;
 pub mod canvas;
+pub mod composer;
 mod icons;
 pub mod layout;
 pub mod paint;

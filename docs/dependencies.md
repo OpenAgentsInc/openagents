@@ -44,6 +44,19 @@ shipping, retain required license texts, copyright notices, and attribution
 for the dependencies actually distributed. Review bundled native code and
 external assets separately from Cargo's declared license expressions.
 
+## Unicode editing dependency
+
+Rust Native's local editor adds a direct dependency on `unicode-segmentation`
+1.13.3, the version already in both the root and phone lockfiles. It supplies
+Unicode grapheme and word boundaries so movement and deletion preserve emoji
+and combining sequences. The package comes from crates.io and declares
+`MIT OR Apache-2.0`; its license texts remain in the registry package. This
+adds an existing dependency edge without changing the resolved package version.
+
+The editing design is reimplemented from Zeron's public `ComposerInput` at
+`ed3b1aae4a5189eef67143db7b8c5c3ee7a933c5`. No GPUI, Zeron source, assets, or
+new platform runtime are vendored by this foundation.
+
 ## The paste exception
 
 [RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436) reports

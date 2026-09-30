@@ -71,6 +71,13 @@ task-control screens remain open scope. The mobile Gym board does not complete
 the terminal replay migration. The existing UIKit and Android probes remain
 historical feasibility evidence, separate from the delivered readers.
 
+The first RN4 input foundation for
+[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996) adds the shared
+`edit::Editor` and desktop `composer::ComposerDraft`. Headless fixtures cover
+Unicode, directional selection, undo, composition, stale callbacks, and
+submission acknowledgment. Native event wiring, composer painting, clipboard,
+phone editing, and application chat integration remain open; RN4 is partial.
+
 ## Sequence and completion criteria
 
 Open a bounded implementation issue before each follow-on phase. Do not create

@@ -74,6 +74,22 @@ Tab scrolls an offscreen focused control into view. Dragging the seam calls
 or losing focus ends a drag. `App::key_bindings` maps command chords to node
 keys, and the window resolves them against the current validated view.
 
+## Composer editing foundation
+
+[`composer::ComposerDraft`](src/composer.rs) retains a local
+[`rust_native::edit::Editor`](../rust-native/src/edit.rs) across updates of the
+same semantic composer. It checks callback identity and edit sequence, keeps
+IME preedit through rerenders, resolves typed stop actions, and validates sends
+and the composer's own choices. Preparing a send keeps the draft; acceptance
+clears only the submitted edit sequence. Both APIs reimplement Zeron's retained
+composer editing design for
+[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996).
+
+This module runs in headless input fixtures. Window key and IME events,
+clipboard access, focus and caret painting, and the application send callback
+are not connected yet. The support table above still describes the window's
+actual rendering capabilities.
+
 ## Use it
 
 Implement `rust_native_desktop::App` and call
