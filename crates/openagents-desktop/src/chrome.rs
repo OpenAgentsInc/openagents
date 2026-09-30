@@ -359,17 +359,29 @@ fn sidebar(state: &State) -> Node<Intent> {
     new.style.foreground = Some(TEXT);
     let mut header_rows = vec![title, new];
     if state.live {
-        header_rows.push(node(
+        let mut commands = node(
             "sidebar-commands",
             Element::Button {
                 label: "Commands · Cmd/Ctrl+K".into(),
                 enabled: true,
-                icon: None,
+                icon: Some(Icon {
+                    glyph: Glyph::Terminal,
+                    circular: false,
+                    pill: false,
+                }),
                 intent: Intent::Chat {
                     action: crate::chat_action::Action::Palette,
                 },
             },
-        ));
+        );
+        commands.style = Style {
+            background: Some(SIDEBAR),
+            foreground: Some(MUTED),
+            align: Some(TextAlign::Start),
+            weight: Some(TextWeight::Normal),
+            ..Style::default()
+        };
+        header_rows.push(commands);
         header_rows.push(node(
             "chat-search",
             Element::Composer {
@@ -627,7 +639,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         });
     let mut heading = text("shell-page-title", title, TextRole::Body);
     heading.style.weight = Some(TextWeight::Bold);
-    let header = stack(
+    let mut header = stack(
         "shell-content-header",
         Axis::Horizontal,
         Space::Sm,
@@ -659,6 +671,20 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             ),
         ],
     );
+    if state.live
+        && state.selected().is_some()
+        && !prompt
+        && matches!(state.page, Page::Chat(_))
+        && let Element::Stack { children, .. } = &mut header.element
+    {
+        let mut menu = icon_button("chat-menu", "Chat actions", Action::NewChat, Glyph::More);
+        if let Element::Button { intent, .. } = &mut menu.element {
+            *intent = Intent::Chat {
+                action: crate::chat_action::Action::Menu,
+            };
+        }
+        children.push(menu);
+    }
     let body = if prompt {
         crate::screens::root(model, now)
     } else {

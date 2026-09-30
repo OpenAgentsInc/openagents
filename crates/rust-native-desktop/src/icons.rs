@@ -23,6 +23,64 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
             line((0.5, 0.15), (0.5, 0.85));
             line((0.15, 0.5), (0.85, 0.5));
         }
+        Glyph::ArrowUp => {
+            line((0.5, 0.85), (0.5, 0.15));
+            line((0.2, 0.45), (0.5, 0.15));
+            line((0.5, 0.15), (0.8, 0.45));
+        }
+        Glyph::Stop => frame.fill(
+            PxRect {
+                x: rect.x + rect.w * 0.2,
+                y: rect.y + rect.h * 0.2,
+                w: rect.w * 0.6,
+                h: rect.h * 0.6,
+            },
+            rect.w * 0.1,
+            color,
+        ),
+        Glyph::More => {
+            for x in [0.15, 0.45, 0.75] {
+                frame.fill(
+                    PxRect {
+                        x: rect.x + rect.w * x,
+                        y: rect.y + rect.h * 0.45,
+                        w: rect.w * 0.12,
+                        h: rect.h * 0.12,
+                    },
+                    rect.w * 0.06,
+                    color,
+                );
+            }
+        }
+        Glyph::Paperclip => {
+            line((0.38, 0.68), (0.72, 0.34));
+            line((0.72, 0.34), (0.6, 0.22));
+            line((0.6, 0.22), (0.2, 0.62));
+            line((0.2, 0.62), (0.2, 0.8));
+            line((0.2, 0.8), (0.38, 0.9));
+            line((0.38, 0.9), (0.9, 0.38));
+            line((0.9, 0.38), (0.9, 0.18));
+            line((0.9, 0.18), (0.72, 0.08));
+            line((0.72, 0.08), (0.28, 0.52));
+        }
+        Glyph::Clipboard => {
+            line((0.3, 0.2), (0.16, 0.2));
+            line((0.16, 0.2), (0.16, 0.92));
+            line((0.16, 0.92), (0.84, 0.92));
+            line((0.84, 0.92), (0.84, 0.2));
+            line((0.84, 0.2), (0.7, 0.2));
+            frame.stroke(
+                PxRect {
+                    x: rect.x + rect.w * 0.3,
+                    y: rect.y + rect.h * 0.08,
+                    w: rect.w * 0.4,
+                    h: rect.h * 0.24,
+                },
+                rect.w * 0.05,
+                width,
+                color,
+            );
+        }
         Glyph::Compose => {
             line((0.2, 0.7), (0.72, 0.18));
             line((0.72, 0.18), (0.88, 0.34));

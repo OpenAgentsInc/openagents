@@ -2208,7 +2208,7 @@ mod chat_management {
         );
         for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
             let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
-            for key in ["chat-attach", "chat-pin", "chat-rename-start"] {
+            for key in ["chat-attach", "chat-paste-image", "chat-send", "chat-menu"] {
                 let hit = scene.hits.iter().find(|h| h.key == key).unwrap();
                 assert!(hit.rect.y + hit.rect.h <= height, "{key}");
             }
@@ -2248,6 +2248,48 @@ mod command_fixtures {
             std::fs::create_dir_all(&path).unwrap();
             std::fs::write(path.join(format!("{name}.png")), frame.png().unwrap()).unwrap();
         }
+    }
+    #[test]
+    fn the_header_menu_keeps_management_actions_reachable_and_preserves_the_draft() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        key(&mut app, now, "n", true, false);
+        app.text_input(TextInput::Commit("Unsent text  "), now);
+        let (_, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, 1.0);
+        assert!(!scene.hits.iter().any(|hit| hit.key == "chat-archive"));
+        let hit = scene
+            .hits
+            .iter()
+            .find(|hit| hit.key == "chat-menu")
+            .unwrap();
+        assert_eq!(
+            scene.hit(hit.rect.x + 16.0, hit.rect.y + 16.0).unwrap().key,
+            "chat-menu"
+        );
+        let view = app.view().view();
+        let intent = app
+            .view()
+            .activate(&rust_native::Activation {
+                instance: view.instance.clone(),
+                revision: view.revision,
+                node: hit.key.clone(),
+            })
+            .unwrap()
+            .clone();
+        app.activate(intent, now);
+        capture(&mut app, "header-menu-minimum", 760.0, 540.0);
+        let (_, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, 1.0);
+        for key in ["command-rename", "command-pin", "command-archive"] {
+            let hit = scene.hits.iter().find(|hit| hit.key == key).unwrap();
+            assert!(hit.enabled && hit.rect.y + hit.rect.h <= 540.0);
+        }
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Command { key: "pin".into() },
+            },
+            now,
+        );
+        assert!(app.navigation.as_ref().unwrap().chats[0].section == chrome::Section::Pinned);
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Unsent text  ");
     }
     #[test]
     fn keys_palette_context_menu_and_modal_admission_share_one_registry() {

@@ -1057,13 +1057,23 @@ impl Engine<'_> {
             };
             let base = node.style.background.unwrap_or(theme.button);
             let color = node.style.foreground.unwrap_or(theme.text);
-            let color = if enabled { color } else { theme.muted };
+            let color = if enabled {
+                color
+            } else {
+                mix(color, theme.background, 0.5)
+            };
             if base.alpha > 0 || (hovered && enabled) || (pressed && enabled) {
                 self.scene.ops.push(Op::Fill {
                     rect,
-                    radius: 8.0,
-                    color: if hovered || pressed {
-                        mix(theme.background, theme.text, 0.08)
+                    radius: 16.0,
+                    color: if !enabled {
+                        mix(base, theme.background, 0.7)
+                    } else if hovered || pressed {
+                        if base.alpha == 0 {
+                            mix(theme.background, theme.text, 0.08)
+                        } else {
+                            mix(base, theme.background, 0.15)
+                        }
                     } else {
                         base
                     },

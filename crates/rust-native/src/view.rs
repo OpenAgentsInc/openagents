@@ -200,6 +200,16 @@ pub enum Glyph {
     Cloud,
     /// Add something, such as a computer.
     Add,
+    /// Submit or move up.
+    ArrowUp,
+    /// Stop the current work.
+    Stop,
+    /// Attach a file.
+    Paperclip,
+    /// Paste from the clipboard.
+    Clipboard,
+    /// Open additional actions.
+    More,
     /// The current choice among several.
     Check,
     /// Ask a suggested question, such as a follow-up under an answer.

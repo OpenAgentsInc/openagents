@@ -27,6 +27,7 @@ pub struct Field {
     pub draft: ComposerDraft,
     pub focused: bool,
     placeholder: String,
+    unframed: bool,
     paragraph: Option<Rc<Paragraph>>,
     offset: f32,
     dragging: bool,
@@ -47,6 +48,10 @@ impl Field {
         if self.placeholder != placeholder {
             self.placeholder = placeholder.into();
         }
+    }
+    /// Let an enclosing composer card paint the field's background and border.
+    pub fn set_unframed(&mut self, unframed: bool) {
+        self.unframed = unframed;
     }
     /// Grow from one line to eight lines, then scroll within the field.
     pub fn height(&self, width: f32) -> f32 {
@@ -148,6 +153,7 @@ impl Field {
             self.focused,
             self.offset.to_bits(),
             &self.placeholder,
+            self.unframed,
         )
             .hash(&mut hash);
         hash.finish()
@@ -362,17 +368,19 @@ impl Field {
 
     pub fn paint(&mut self, frame: &mut Frame, rect: PxRect, scale: f32, fonts: &mut Fonts) {
         let clip = frame.clip_to(rect);
-        frame.fill(rect, 10.0 * scale, Color::rgb(25, 29, 35));
-        frame.stroke(
-            rect,
-            10.0 * scale,
-            scale,
-            if self.focused {
-                Color::rgb(116, 143, 174)
-            } else {
-                Color::rgb(57, 63, 73)
-            },
-        );
+        if !self.unframed {
+            frame.fill(rect, 10.0 * scale, Color::rgb(25, 29, 35));
+            frame.stroke(
+                rect,
+                10.0 * scale,
+                scale,
+                if self.focused {
+                    Color::rgb(116, 143, 174)
+                } else {
+                    Color::rgb(57, 63, 73)
+                },
+            );
+        }
         let font = font(15.0, Weight::Regular, false);
         let text = self.text().to_owned();
         let paragraph = fonts.editable_paragraph(&text, font, (rect.w / scale - 28.0).max(1.0));

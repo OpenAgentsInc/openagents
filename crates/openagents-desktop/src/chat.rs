@@ -8,8 +8,8 @@ use openagents_chat::service::{Command, Snapshot};
 use openagents_chat_app::projection::{self, Appearance, Projection, Reply};
 use openagents_chat_app::session::Session;
 use openagents_chat_app::task_chat::{self, Action as TaskAction};
-use rust_native::style::{Space, Style};
-use rust_native::{Axis, Element, MessageRole, Node, TextRole, ValidatedView};
+use rust_native::style::{Color, Space, Style, TextWeight};
+use rust_native::{Axis, Element, Glyph, Icon, MessageRole, Node, TextRole, ValidatedView};
 use rust_native_desktop::composer::{
     Submission,
     field::{Action as FieldAction, Field},
@@ -813,6 +813,22 @@ impl Panel {
     pub fn tooltip(&self, key: &str) -> Option<String> {
         if self.modal() {
             return None;
+        }
+        match key {
+            "chat-attach" => return Some("Attach image".into()),
+            "chat-paste-image" => return Some("Paste image or text".into()),
+            "chat-menu" => return Some("Chat actions · Shift+F10".into()),
+            "chat-send" => {
+                return Some(format!(
+                    "{} · Enter",
+                    self.task().map_or("Send", |task| match task.mode() {
+                        openagents_chat_app::coder_tab::Mode::Queue => "Queue",
+                        openagents_chat_app::coder_tab::Mode::Answer => "Answer",
+                        _ => "Send",
+                    })
+                ));
+            }
+            _ => {}
         }
         let id = match key {
             "sidebar-new-chat" | "shell-new-chat" => "new",
@@ -1634,6 +1650,7 @@ impl Panel {
         let placeholder = task.map_or("Message OpenAgents…", task_chat::Session::placeholder);
         if let Some(field) = self.fields.get_mut(&id) {
             field.set_placeholder(placeholder);
+            field.set_unframed(true);
         }
         let draft = self.fields.get(&id).map(|field| {
             if field.draft.editor().is_none() {
@@ -1673,30 +1690,30 @@ impl Panel {
                 focus: self.fields.get(&id).is_some_and(|field| field.focused),
             },
         };
-        let mut buttons = vec![];
-        buttons.push(if busy && task.is_none() {
-            button(
-                "chat-stop",
-                "Stop",
-                Action::Stop,
-                self.state().is_some_and(|state| state.busy),
-            )
-        } else {
-            button(
-                "chat-send",
-                match task_mode {
-                    Some(openagents_chat_app::coder_tab::Mode::Queue) => "Queue",
-                    Some(openagents_chat_app::coder_tab::Mode::Answer) => "Answer",
-                    _ => "Send",
-                },
-                Action::Send,
-                enabled && !busy && task_ready,
-            )
-        });
+        // Reimplemented from Zeron's composer: quiet utilities on the left,
+        // one circular submission control on the right, and management in the header.
+        let mut buttons = vec![
+            icon_button(
+                "chat-attach",
+                "Attach image",
+                Action::AttachImage,
+                !busy,
+                Glyph::Paperclip,
+                false,
+            ),
+            icon_button(
+                "chat-paste-image",
+                "Paste image or text",
+                Action::PasteImage,
+                !busy,
+                Glyph::Clipboard,
+                false,
+            ),
+            text("chat-toolbar-space", "", TextRole::Status),
+        ];
         if let Some(task) = task
             && task.active()
         {
-            buttons.push(button("chat-stop", "Stop Coder", Action::Stop, !busy));
             if let Some(choice) = task.steer_choice() {
                 buttons.push(button(
                     "task-steer",
@@ -1707,37 +1724,38 @@ impl Panel {
                     enabled && !busy,
                 ));
             }
+            buttons.push(icon_button(
+                "chat-stop",
+                "Stop Coder",
+                Action::Stop,
+                !busy,
+                Glyph::Stop,
+                false,
+            ));
         }
-        buttons.push(button(
-            "chat-attach",
-            "Attach image",
-            Action::AttachImage,
-            !busy,
-        ));
-        buttons.push(button(
-            "chat-paste-image",
-            "Paste",
-            Action::PasteImage,
-            !busy,
-        ));
-        buttons.push(button("chat-archive", "Archive", Action::Archive, true));
-        buttons.push(button(
-            "chat-pin",
-            if self
-                .session
-                .summaries
-                .iter()
-                .find(|s| s.id == id)
-                .is_some_and(|s| s.pinned)
-            {
-                "Unpin"
-            } else {
-                "Pin"
-            },
-            Action::Pin,
-            true,
-        ));
-        buttons.push(button("chat-rename-start", "Rename", Action::Rename, true));
+        buttons.push(if busy && task.is_none() {
+            icon_button(
+                "chat-stop",
+                "Stop",
+                Action::Stop,
+                self.state().is_some_and(|state| state.busy),
+                Glyph::Stop,
+                true,
+            )
+        } else {
+            icon_button(
+                "chat-send",
+                match task_mode {
+                    Some(openagents_chat_app::coder_tab::Mode::Queue) => "Queue",
+                    Some(openagents_chat_app::coder_tab::Mode::Answer) => "Answer",
+                    _ => "Send",
+                },
+                Action::Send,
+                enabled && !busy && task_ready,
+                Glyph::ArrowUp,
+                true,
+            )
+        });
         let mut previews = vec![];
         for image in self.session.images.get(&id) {
             let short: String = image.name.chars().take(10).collect();
@@ -1768,8 +1786,18 @@ impl Panel {
         if !previews.is_empty() {
             content.push(stack("image-previews", Axis::Wrap, previews));
         }
-        content.push(composer);
-        content.push(stack("chat-send-controls", Axis::Wrap, buttons));
+        let mut toolbar = stack("chat-send-controls", Axis::Horizontal, buttons);
+        toolbar.style.padding_start = Some(Space::Sm);
+        toolbar.style.padding_end = Some(Space::Sm);
+        toolbar.style.padding_bottom = Some(Space::Sm);
+        let mut card = stack(
+            "chat-composer-card",
+            Axis::Vertical,
+            vec![composer, toolbar],
+        );
+        card.style.background = Some(Color::rgb(25, 29, 35));
+        card.style.gap = Some(Space::None);
+        content.push(card);
         content.push(text(
             "chat-key-hint",
             "Enter to send · Shift+Enter for a new line",
@@ -1825,7 +1853,12 @@ fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
 fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent> {
     Node {
         key: key.into(),
-        style: Style::default(),
+        style: Style {
+            background: Some(Color::rgb(33, 36, 41)),
+            foreground: Some(Color::rgb(195, 200, 208)),
+            weight: Some(TextWeight::Normal),
+            ..Style::default()
+        },
         element: Element::Button {
             label: label.into(),
             enabled,
@@ -1833,6 +1866,37 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
             intent: Intent::Chat { action },
         },
     }
+}
+fn icon_button(
+    key: &str,
+    label: &str,
+    action: Action,
+    enabled: bool,
+    glyph: Glyph,
+    primary: bool,
+) -> Node<Intent> {
+    let mut node = button(key, label, action, enabled);
+    node.style.background = Some(if primary {
+        Color::rgb(230, 232, 235)
+    } else {
+        Color {
+            alpha: 0,
+            ..Color::rgb(0, 0, 0)
+        }
+    });
+    node.style.foreground = Some(if primary {
+        Color::rgb(18, 20, 23)
+    } else {
+        Color::rgb(150, 155, 163)
+    });
+    if let Element::Button { icon, .. } = &mut node.element {
+        *icon = Some(Icon {
+            glyph,
+            circular: true,
+            pill: false,
+        });
+    }
+    node
 }
 
 fn request((ticket, command): (u64, Command)) -> Request {
