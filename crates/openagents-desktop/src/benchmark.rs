@@ -1,6 +1,7 @@
 //! Offline native performance fixture. Never reaches the owner's host or home.
 use crate::shell::DesktopApp;
 use openagents_chat::service::Snapshot;
+use openagents_desktop::chat_action::Action as ChatAction;
 use openagents_desktop::model::Intent;
 use rust_native::ValidatedView;
 use rust_native_desktop::timing::FrameTiming;
@@ -16,6 +17,9 @@ enum Phase {
     Scroll,
     Streaming,
     Sidebar,
+    Composer,
+    Commands,
+    ChatMenu,
     Idle,
 }
 impl Phase {
@@ -24,7 +28,10 @@ impl Phase {
             Self::Warm => Some(Self::Scroll),
             Self::Scroll => Some(Self::Streaming),
             Self::Streaming => Some(Self::Sidebar),
-            Self::Sidebar => Some(Self::Idle),
+            Self::Sidebar => Some(Self::Composer),
+            Self::Composer => Some(Self::Commands),
+            Self::Commands => Some(Self::ChatMenu),
+            Self::ChatMenu => Some(Self::Idle),
             Self::Idle => None,
         }
     }
@@ -141,6 +148,27 @@ impl Fixture {
             self.phase_cpu = resource;
             self.steps = 0;
             self.frames = 0;
+            match phase {
+                Phase::Commands => self.app.activate(
+                    Intent::Chat {
+                        action: ChatAction::Palette,
+                    },
+                    now,
+                ),
+                Phase::ChatMenu => self.app.activate(
+                    Intent::Chat {
+                        action: ChatAction::Menu,
+                    },
+                    now,
+                ),
+                Phase::Idle => self.app.activate(
+                    Intent::Chat {
+                        action: ChatAction::DismissOverlay,
+                    },
+                    now,
+                ),
+                _ => {}
+            }
             if matches!(phase, Phase::Idle) {
                 self.app.text_input(
                     rust_native_desktop::input::TextInput::Commit(&"draft line\n".repeat(1000)),
@@ -208,6 +236,40 @@ impl App for Fixture {
                 );
             }
             Phase::Sidebar => self.sidebar += 30.0,
+            Phase::Composer => {
+                self.app
+                    .text_input(rust_native_desktop::input::TextInput::Commit(" x"), now);
+            }
+            Phase::Commands => {
+                self.app.text_input(
+                    rust_native_desktop::input::TextInput::Key {
+                        key: "a",
+                        text: None,
+                        command: true,
+                        alt: false,
+                        shift: false,
+                    },
+                    now,
+                );
+                self.app.text_input(
+                    rust_native_desktop::input::TextInput::Commit(
+                        ["", "saved", "chat", "new"][self.steps % 4],
+                    ),
+                    now,
+                );
+            }
+            Phase::ChatMenu => {
+                self.app.text_input(
+                    rust_native_desktop::input::TextInput::Key {
+                        key: "ArrowDown",
+                        text: None,
+                        command: false,
+                        alt: false,
+                        shift: false,
+                    },
+                    now,
+                );
+            }
             Phase::Warm | Phase::Idle => self.app.performance_idle(),
         }
         self.steps += 1;

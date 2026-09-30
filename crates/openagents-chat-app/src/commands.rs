@@ -200,7 +200,7 @@ impl Overlay {
         self.window_at(count, 5)
     }
     pub fn window_at(&self, count: usize, visible: usize) -> std::ops::Range<usize> {
-        let visible = visible.clamp(1, 5);
+        let visible = visible.clamp(1, 16);
         let start = self
             .selected
             .min(count.saturating_sub(1))
@@ -256,6 +256,9 @@ mod tests {
         overlay.navigate(true, choices.len());
         assert_eq!(overlay.selected, choices.len() - 1);
         assert!(overlay.window(512).len() <= 5);
+        assert_eq!(overlay.window_at(512, 10).len(), 10);
+        assert_eq!(overlay.window_at(512, usize::MAX).len(), 16);
+        assert_eq!(overlay.window_at(0, 10).len(), 0);
         overlay.query = "setting".into();
         assert_eq!(overlay.entries(&entries).len(), 1);
         overlay.open(Kind::ConfirmArchive);
