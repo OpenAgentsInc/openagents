@@ -23,7 +23,11 @@ use coder_reach::channel::{GrantCheck, GrantRefusal};
 use nostr::domain::Event;
 
 /// How long an operation waits for another local process to release the
-/// access store.
+/// access store. That includes a child process this host, or anything else
+/// in the same process, is starting: a child holds a copy of every open
+/// descriptor until it runs its program, so a store lock taken just before
+/// a spawn stays held in the child for a moment after this process closes
+/// it.
 const BUSY_WAIT: Duration = Duration::from_secs(2);
 
 /// Where a device stands at this host now.
@@ -77,13 +81,33 @@ impl Authority {
             holder: Mutex::new(None),
             snapshot: Mutex::new(Snapshot::default()),
         };
-        authority.host.owner()?;
+        authority.owner()?;
         if authority.devices().is_none() {
             return Err(crate::Error::Config(
                 "the host access store cannot be read".into(),
             ));
         }
         Ok(authority)
+    }
+
+    /// The owner key the store was initialized with, waiting briefly for
+    /// another holder of the store.
+    ///
+    /// # Errors
+    /// Refuses a store that is missing or cannot be read.
+    pub fn owner(&self) -> coder_access::Result<String> {
+        let _serial = self.serialize();
+        busy_retry(|| self.host.owner())
+    }
+
+    /// The host's signing key, waiting briefly for another holder of the
+    /// store.
+    ///
+    /// # Errors
+    /// Refuses a store that is missing or cannot be read.
+    pub fn signing_key(&self) -> coder_access::Result<secp256k1::SecretKey> {
+        let _serial = self.serialize();
+        busy_retry(|| self.host.signing_key())
     }
 
     /// The underlying access store.
@@ -434,5 +458,38 @@ mod tests {
         let _ = checked.send(());
         writer.join().unwrap();
         assert!(matches!(seen, Standing::Active(_)), "{seen:?}");
+    }
+
+    /// A host starts while something else briefly holds its store: a child
+    /// process spawned elsewhere in this process keeps a copy of the lock
+    /// descriptor until it runs its program (#9991: a test host failed to
+    /// start with `conflict` while another test ran `git`). Opening the
+    /// authority and reading its keys wait for the holder like every other
+    /// store operation.
+    #[test]
+    fn opening_waits_for_a_brief_holder_of_the_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let access = temp.path().join("access");
+        let owner = pubkey(&key());
+        Host::new(&access, POLICY).init(&owner).unwrap();
+        let held = std::fs::File::open(access.join("access.lock")).unwrap();
+        held.lock().unwrap();
+        let holder = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            drop(held);
+        });
+        let authority = Authority::open(Host::new(&access, POLICY)).unwrap();
+        holder.join().unwrap();
+        assert_eq!(authority.owner().unwrap(), owner);
+
+        let held = std::fs::File::open(access.join("access.lock")).unwrap();
+        held.lock().unwrap();
+        let holder = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            drop(held);
+        });
+        let secret = authority.signing_key().unwrap();
+        holder.join().unwrap();
+        assert_eq!(secret, authority.host().signing_key().unwrap());
     }
 }

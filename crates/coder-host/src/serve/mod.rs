@@ -135,9 +135,9 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         access.init(&coder_reach::pubkey(&owner))?;
     }
     let authority = Arc::new(Authority::open(access)?);
-    let secret = authority.host().signing_key()?;
+    let secret = authority.signing_key()?;
     let host_key = coder_reach::pubkey(&secret);
-    let owner = authority.host().owner()?;
+    let owner = authority.owner()?;
 
     let mut terminals = coder_pty::host::Config::new();
     bundled_commands_first(&mut terminals.base_env);
