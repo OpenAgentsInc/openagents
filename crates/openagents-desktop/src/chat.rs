@@ -36,7 +36,7 @@ pub struct Panel {
     fields: BTreeMap<String, Field>,
     summaries: Vec<openagents_chat::basic_chats::Summary>,
     pending: BTreeMap<u64, Command>,
-    send: Option<PendingSend>,
+    send: BTreeMap<String, PendingSend>,
     error: Option<String>,
     next_ticket: u64,
     poll: Instant,
@@ -63,7 +63,7 @@ impl Panel {
             fields: BTreeMap::new(),
             summaries: vec![],
             pending: BTreeMap::new(),
-            send: None,
+            send: BTreeMap::new(),
             error: None,
             next_ticket: 1,
             poll: now,
@@ -124,9 +124,9 @@ impl Panel {
     fn busy(&self) -> bool {
         self.state().is_some_and(|state| state.busy)
             || self
-                .send
+                .selected
                 .as_ref()
-                .is_some_and(|send| Some(&send.chat) == self.selected.as_ref())
+                .is_some_and(|id| self.send.contains_key(id))
     }
     fn state(&self) -> Option<&Snapshot> {
         self.selected.as_ref().and_then(|id| self.states.get(id))
@@ -223,7 +223,19 @@ impl Panel {
         };
         match result {
             Err(error) => {
-                self.error = Some(error.to_string());
+                let target = match &command {
+                    Command::List {} => None,
+                    Command::Create { chat }
+                    | Command::Read { chat, .. }
+                    | Command::Send { chat, .. }
+                    | Command::Retry { chat }
+                    | Command::Stop { chat }
+                    | Command::Archive { chat }
+                    | Command::Restore { chat } => Some(chat),
+                };
+                if target.is_none() || target == self.selected.as_ref() {
+                    self.error = Some(error.to_string());
+                }
             }
             Ok(mut snapshot) => {
                 self.listed = true;
@@ -257,8 +269,7 @@ impl Panel {
                         snapshot.turns = earlier;
                         snapshot.start = previous.start;
                     }
-                    if let Some(send) = &self.send
-                        && send.chat == id
+                    if let Some(send) = self.send.get(&id)
                         && snapshot.storage_error.is_none()
                         && snapshot
                             .turns
@@ -269,7 +280,7 @@ impl Panel {
                             let _ = field.draft.accepted(&send.submission);
                             field.focused = true;
                         }
-                        self.send = None;
+                        self.send.remove(&id);
                     }
                     if self.selected.as_ref() == Some(&id)
                         && self.states.get(&id).is_none_or(|previous| {
@@ -283,9 +294,11 @@ impl Panel {
                     }
                     self.states.insert(id, snapshot);
                 }
-                if self.error.is_none() && matches!(command, Command::Archive { .. }) {
-                    self.selected = None;
-                    self.send = None;
+                if self.error.is_none()
+                    && matches!(command, Command::Archive { .. })
+                    && let Some(id) = self.selected.take()
+                {
+                    self.send.remove(&id);
                 }
                 if self.selected.is_none()
                     && let Some(id) = self
@@ -316,7 +329,7 @@ impl Panel {
         let id = self.selected.clone()?;
         match action {
             Action::Send => {
-                if self.send.is_some() {
+                if self.send.contains_key(&id) {
                     return None;
                 }
                 let field = self.field()?;
@@ -328,11 +341,14 @@ impl Panel {
                     request: request.clone(),
                     text: submission.text.clone(),
                 };
-                self.send = Some(PendingSend {
-                    chat: id,
-                    request,
-                    submission,
-                });
+                self.send.insert(
+                    id.clone(),
+                    PendingSend {
+                        chat: id,
+                        request,
+                        submission,
+                    },
+                );
                 self.error = None;
                 Some(self.request(command))
             }
@@ -341,7 +357,7 @@ impl Panel {
                 self.error = None;
                 let command = self
                     .send
-                    .as_ref()
+                    .get(&id)
                     .map_or(Command::Retry { chat: id }, |send| Command::Send {
                         chat: send.chat.clone(),
                         request: send.request.clone(),
@@ -571,7 +587,8 @@ impl Panel {
                         "stream".into(),
                         &Turn::assistant(state.partial.clone(), None),
                     ));
-                } else if state.busy {
+                }
+                if state.busy {
                     rows.push(Node {
                         key: "working".into(),
                         style: Style::default(),
@@ -639,6 +656,23 @@ impl Panel {
             .error
             .clone()
             .or_else(|| self.state().and_then(|state| state.failure.clone()));
+        if self
+            .state()
+            .and_then(|state| state.turns.last())
+            .is_some_and(|turn| turn.stopped && turn.role == Role::Assistant)
+        {
+            children.push(text(
+                "chat-stopped",
+                "Stopped receiving this reply. The hosted worker may still finish.",
+                TextRole::Status,
+            ));
+            children.push(button(
+                "chat-retry-stopped",
+                "Retry reply",
+                Action::Retry,
+                true,
+            ));
+        }
         if let Some(failure) = failure {
             children.push(text("chat-error", failure, TextRole::Status));
             children.push(button("chat-retry", "Try again", Action::Retry, true));

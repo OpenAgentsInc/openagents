@@ -78,6 +78,8 @@ objc2-service-management = { version = "0.3.2", optional = true, default-feature
 libc = "0.2"
 
 [dev-dependencies]
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"
 # Reading the QR code back from painted frames and window captures.
 png = "0.18.1"

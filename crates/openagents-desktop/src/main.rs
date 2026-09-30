@@ -15,6 +15,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod benchmark;
+#[cfg(test)]
+mod chat_test_host;
 #[cfg(not(any(target_os = "linux", windows)))]
 mod mac;
 mod menubar;

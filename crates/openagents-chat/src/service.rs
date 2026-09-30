@@ -214,6 +214,122 @@ mod tests {
         }
     }
 
+    type Call = (Vec<Turn>, Arc<Mutex<Reply>>);
+    #[derive(Default)]
+    struct Controlled {
+        calls: Mutex<Vec<Call>>,
+    }
+    impl Door for Controlled {
+        fn ask(
+            &self,
+            turns: Vec<Turn>,
+            _: Context,
+            reply: Arc<Mutex<Reply>>,
+        ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+            self.calls.lock().unwrap().push((turns, reply));
+            Box::pin(std::future::pending())
+        }
+    }
+
+    #[test]
+    fn independent_streams_stop_retry_and_late_results_stay_bound_to_their_chat() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let door = Arc::new(Controlled::default());
+        let mut chats = BasicChats::new(Some(runtime.handle().clone()), Some(door.clone()), None);
+        let a = "a".repeat(32);
+        let b = "b".repeat(32);
+        for (chat, request, text) in [
+            (a.clone(), "1".repeat(32), "First question"),
+            (b.clone(), "2".repeat(32), "Other question"),
+        ] {
+            apply(&mut chats, Command::Create { chat: chat.clone() }, 1).unwrap();
+            apply(
+                &mut chats,
+                Command::Send {
+                    chat,
+                    request,
+                    text: text.into(),
+                },
+                2,
+            )
+            .unwrap();
+        }
+        let replies: Vec<_> = door
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, reply)| reply.clone())
+            .collect();
+        lock(&replies[0]).text = "A partial".into();
+        lock(&replies[1]).text = "B partial".into();
+        let stopped = apply(&mut chats, Command::Stop { chat: a.clone() }, 3).unwrap();
+        assert!(!stopped.busy);
+        assert!(stopped.turns[1].stopped);
+        assert_eq!(stopped.turns[1].text, "A partial");
+        lock(&replies[0]).text = "Late old result".into();
+        lock(&replies[0]).done = true;
+        let retry = apply(&mut chats, Command::Retry { chat: a.clone() }, 4).unwrap();
+        assert!(retry.busy);
+        assert_eq!(
+            retry.turns.len(),
+            1,
+            "retry keeps exactly one original user message"
+        );
+        assert_eq!(door.calls.lock().unwrap()[2].0[0].text, "First question");
+        assert!(
+            door.calls.lock().unwrap()[2]
+                .0
+                .iter()
+                .all(|turn| !turn.stopped)
+        );
+        let current = door.calls.lock().unwrap()[2].1.clone();
+        lock(&current).text = "A finished".into();
+        lock(&current).done = true;
+        lock(&replies[1]).text = "B finished".into();
+        lock(&replies[1]).done = true;
+        let a_done = apply(
+            &mut chats,
+            Command::Read {
+                chat: a.clone(),
+                before: None,
+            },
+            5,
+        )
+        .unwrap();
+        let b_done = apply(
+            &mut chats,
+            Command::Read {
+                chat: b,
+                before: None,
+            },
+            5,
+        )
+        .unwrap();
+        assert_eq!(a_done.turns[1].text, "A finished");
+        assert_eq!(b_done.turns[1].text, "B finished");
+        assert!(!a_done.turns[1].stopped);
+        apply(
+            &mut chats,
+            Command::Send {
+                chat: a,
+                request: "3".repeat(32),
+                text: "Follow up".into(),
+            },
+            6,
+        )
+        .unwrap();
+        let calls = door.calls.lock().unwrap();
+        assert_eq!(
+            calls[3]
+                .0
+                .iter()
+                .map(|turn| turn.text.as_str())
+                .collect::<Vec<_>>(),
+            ["First question", "A finished", "Follow up"]
+        );
+    }
+
     #[test]
     fn interrupted_writes_recover_without_duplicate_messages_and_metadata_is_atomic() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -356,6 +472,7 @@ mod tests {
         assert!(!stopped.busy);
         assert_eq!(stopped.turns.len(), 2);
         assert_eq!(stopped.turns[1].text, "Some words");
+        assert!(stopped.turns[1].stopped);
         drop(chats);
         let mut chats = BasicChats::new(None, None, Some(open()));
         assert_eq!(apply(&mut chats, send, 5).unwrap().turns.len(), 2);

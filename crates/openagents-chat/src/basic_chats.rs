@@ -555,6 +555,20 @@ impl BasicChats {
 
     /// Ask again for the reply to the last message, after a failure.
     pub fn retry(&mut self, id: &str) {
+        if self.busy(id) || self.get(id).is_some_and(|summary| summary.archived) {
+            return;
+        }
+        if self.turns(id).last().is_some_and(|turn| turn.stopped) {
+            let turns = self.turns.get_mut(id).expect("loaded turns");
+            if turns
+                .last()
+                .is_some_and(|turn| turn.role == Role::Assistant)
+            {
+                turns.pop();
+            } else if let Some(turn) = turns.last_mut() {
+                turn.stopped = false;
+            }
+        }
         let last_is_user = self
             .turns(id)
             .last()
@@ -576,12 +590,31 @@ impl BasicChats {
         if let Some(handle) = stream.handle.take() {
             handle.abort();
         }
-        let (text, meta) = {
+        let (text, meta, complete) = {
             let reply = lock(&stream.reply);
-            (reply.text.clone(), reply.meta.clone())
+            (
+                reply.text.clone(),
+                reply.meta.clone(),
+                reply.done && reply.failure.is_none(),
+            )
         };
         if !text.trim().is_empty() {
             self.answer(id, text, meta, now);
+            if !complete {
+                if let Some(turn) = self.turns.get_mut(id).and_then(|turns| turns.last_mut()) {
+                    turn.stopped = true;
+                }
+                self.save(id);
+            }
+        } else {
+            if let Some(turn) = self.turns.get_mut(id).and_then(|turns| turns.last_mut()) {
+                turn.stopped = true;
+            }
+            self.save(id);
+            self.failures.insert(
+                id.into(),
+                "Stopped receiving this reply. The hosted worker may still finish.".into(),
+            );
         }
     }
 
@@ -669,6 +702,16 @@ impl BasicChats {
             } else {
                 Tail::Streaming(blocks.into_owned())
             };
+        }
+        if self
+            .turns
+            .get(id)
+            .and_then(|turns| turns.last())
+            .is_some_and(|turn| turn.role == Role::User && turn.stopped)
+        {
+            return Tail::Failed(
+                "Stopped receiving this reply. The hosted worker may still finish.".into(),
+            );
         }
         match self.failures.get(id) {
             Some(why) => Tail::Failed(why.clone()),

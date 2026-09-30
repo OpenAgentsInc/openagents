@@ -902,6 +902,255 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "public hosted inference with a scratch identity; paints real streamed snapshots"]
+    fn live_hosted_reply_reaches_desktop_painter() {
+        use openagents_chat::service::{self, Command};
+        use rust_native_desktop::input::TextInput;
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let mut chats = crate::chat_test_host::chats(&runtime, temp.path());
+        let (mut app, now) = chat_fixture(0);
+        let mut panel = openagents_desktop::chat::Panel::new(now);
+        let Request::Chat { ticket, command } = panel.new_chat() else {
+            panic!("create")
+        };
+        let first = service::apply(&mut chats, command, unix_now()).unwrap();
+        let first_id = first.chat.clone().unwrap();
+        panel.outcome(ticket, Ok(first));
+        app.chat = Some(panel);
+        app.present();
+        app.text_input(TextInput::Commit("In about 150 words, explain how a Nostr relay handles signed events and subscriptions."), now);
+        let request = app
+            .chat
+            .as_mut()
+            .unwrap()
+            .action(
+                openagents_desktop::chat_action::Action::Send,
+                app.presenter.view(),
+                now,
+            )
+            .unwrap();
+        let Request::Chat { ticket, command } = request else {
+            panic!("send")
+        };
+        let snapshot = service::apply(&mut chats, command, unix_now()).unwrap();
+        app.chat.as_mut().unwrap().outcome(ticket, Ok(snapshot));
+        app.present();
+        let captures = std::env::var_os("OPENAGENTS_CHAT_CAPTURE_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| temp.path().join("captures"));
+        std::fs::create_dir_all(&captures).unwrap();
+        let start = Instant::now();
+        let mut first_words = None;
+        let mut painted_states = 0;
+        let mut previous = String::new();
+        let mut switched = false;
+        loop {
+            let now = Instant::now();
+            if let Some(Request::Chat { ticket, command }) = app.chat.as_mut().unwrap().tick(now) {
+                let snapshot = service::apply(&mut chats, command, unix_now()).unwrap();
+                assert!(snapshot.failure.is_none(), "{:?}", snapshot.failure);
+                if !snapshot.partial.is_empty() && snapshot.partial != previous {
+                    first_words.get_or_insert(start.elapsed());
+                    previous = snapshot.partial.clone();
+                    painted_states += 1;
+                }
+                let busy = snapshot.busy;
+                app.chat.as_mut().unwrap().outcome(ticket, Ok(snapshot));
+                app.present();
+                if !previous.is_empty() && busy && !switched {
+                    let Request::Chat { ticket, command } = app.chat.as_mut().unwrap().new_chat()
+                    else {
+                        panic!("second chat")
+                    };
+                    let other = service::apply(&mut chats, command, unix_now()).unwrap();
+                    app.chat.as_mut().unwrap().outcome(ticket, Ok(other));
+                    app.present();
+                    rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+                    assert_eq!(
+                        app.chat.as_ref().unwrap().transcript.rows(),
+                        1,
+                        "new chat contains only its welcome"
+                    );
+                    let number = app
+                        .navigation
+                        .as_ref()
+                        .unwrap()
+                        .chats
+                        .iter()
+                        .find(|chat| chat.title.starts_with("In about 150 words"))
+                        .unwrap()
+                        .id;
+                    let Request::Chat { ticket, command } =
+                        app.chat.as_mut().unwrap().select_numeric(number).unwrap()
+                    else {
+                        panic!("return")
+                    };
+                    let returned = service::apply(&mut chats, command, unix_now()).unwrap();
+                    assert_eq!(returned.chat.as_deref(), Some(first_id.as_str()));
+                    app.chat.as_mut().unwrap().outcome(ticket, Ok(returned));
+                    app.present();
+                    switched = true;
+                }
+                if !previous.is_empty() {
+                    let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+                    std::fs::write(
+                        captures.join(if busy {
+                            "streaming.png"
+                        } else {
+                            "completed.png"
+                        }),
+                        frame.png().unwrap(),
+                    )
+                    .unwrap();
+                }
+                if !busy {
+                    assert!(chats.turns(&first_id).last().is_some_and(|turn| turn.role
+                        == openagents_chat::basic_coder::Role::Assistant
+                        && !turn.text.is_empty()));
+                    break;
+                }
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(60),
+                "live reply timed out"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(painted_states >= 2, "no incremental live reply was painted");
+        assert!(
+            switched,
+            "reply completed before a chat switch could be tested"
+        );
+        eprintln!(
+            "desktop live first words={first_words:?}, total={:?}, painted states={painted_states}",
+            start.elapsed()
+        );
+        let request = "9".repeat(32);
+        let followup = service::apply(
+            &mut chats,
+            Command::Send {
+                chat: first_id.clone(),
+                request,
+                text: "Now summarize your previous explanation in one sentence.".into(),
+            },
+            unix_now(),
+        )
+        .unwrap();
+        assert_eq!(followup.turns.len(), 3);
+        let follow_start = Instant::now();
+        while chats.busy(&first_id) {
+            chats.settle(unix_now());
+            assert!(follow_start.elapsed() < Duration::from_secs(60));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(chats.turns(&first_id).len(), 4);
+        assert!(matches!(
+            chats.tail(&first_id),
+            openagents_chat::basic_chats::Tail::None
+        ));
+        eprintln!(
+            "desktop live contextual follow-up total={:?}",
+            follow_start.elapsed()
+        );
+        // All records disappear with the temporary store; no owner list is involved.
+    }
+
+    #[test]
+    fn pending_send_acknowledgements_do_not_clear_another_conversations_draft() {
+        use openagents_chat::{
+            basic_coder::Turn,
+            service::{Command, Snapshot},
+        };
+        use rust_native_desktop::input::TextInput;
+        let (mut app, now) = chat_fixture(0);
+        app.text_input(TextInput::Commit("First draft"), now);
+        let Request::Chat {
+            ticket: first_ticket,
+            command:
+                Command::Send {
+                    chat: first_id,
+                    request: first_request,
+                    ..
+                },
+        } = app
+            .chat
+            .as_mut()
+            .unwrap()
+            .action(
+                openagents_desktop::chat_action::Action::Send,
+                app.presenter.view(),
+                now,
+            )
+            .unwrap()
+        else {
+            panic!("first send")
+        };
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat: second_id },
+        } = app.chat.as_mut().unwrap().new_chat()
+        else {
+            panic!("second chat")
+        };
+        app.chat.as_mut().unwrap().outcome(
+            ticket,
+            Ok(Snapshot {
+                chat: Some(second_id.clone()),
+                ..Snapshot::default()
+            }),
+        );
+        app.present();
+        app.text_input(TextInput::Commit("Second draft"), now);
+        let Request::Chat {
+            ticket: second_ticket,
+            command:
+                Command::Send {
+                    request: second_request,
+                    ..
+                },
+        } = app
+            .chat
+            .as_mut()
+            .unwrap()
+            .action(
+                openagents_desktop::chat_action::Action::Send,
+                app.presenter.view(),
+                now,
+            )
+            .unwrap()
+        else {
+            panic!("independent second send")
+        };
+        let mut first = Turn::user("First draft");
+        first.request = Some(first_request);
+        app.chat.as_mut().unwrap().outcome(
+            first_ticket,
+            Ok(Snapshot {
+                chat: Some(first_id),
+                turns: vec![first],
+                total: 1,
+                ..Snapshot::default()
+            }),
+        );
+        app.present();
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Second draft");
+        let mut second = Turn::user("Second draft");
+        second.request = Some(second_request);
+        app.chat.as_mut().unwrap().outcome(
+            second_ticket,
+            Ok(Snapshot {
+                chat: Some(second_id),
+                turns: vec![second],
+                total: 1,
+                ..Snapshot::default()
+            }),
+        );
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "");
+    }
+
+    #[test]
     fn fresh_store_opens_an_editable_chat_without_setup() {
         use openagents_chat::service::{Command, Snapshot};
         use rust_native_desktop::input::TextInput;

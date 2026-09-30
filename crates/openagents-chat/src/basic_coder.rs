@@ -77,6 +77,9 @@ pub struct Turn {
     /// The local send command that created this turn; never sent to the worker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request: Option<String>,
+    /// Local observation stopped before the worker's terminal result arrived.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 
 impl Turn {
@@ -86,6 +89,7 @@ impl Turn {
             text: text.into(),
             meta: None,
             request: None,
+            stopped: false,
         }
     }
 
@@ -95,6 +99,7 @@ impl Turn {
             text: text.into(),
             meta,
             request: None,
+            stopped: false,
         }
     }
 }

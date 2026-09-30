@@ -7073,6 +7073,8 @@ dependencies = [
  "rqrr",
  "rust-native",
  "rust-native-desktop",
+ "rustls",
+ "secp256k1 0.31.1",
  "semver",
  "serde",
  "serde_json",
