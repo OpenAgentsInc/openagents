@@ -118,6 +118,35 @@ pub enum Action {
     SendQueuedNow(usize),
 }
 
+impl Action {
+    /// Whether a click on this control may end on the revision after the
+    /// one it began on ([`rust_native::Press`]): the controls that must
+    /// work while events stream.
+    #[must_use]
+    pub fn late(&self) -> bool {
+        matches!(
+            self,
+            Self::Stop
+                | Self::Approve
+                | Self::Deny
+                | Self::ChooseFolder
+                | Self::SendQueuedNow(_)
+                | Self::RemoveQueued(_)
+        )
+    }
+}
+
+/// What a row button does and what it does it to: two equal targets do the
+/// same thing, so a click begun on one revision may end on the next.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Target {
+    pub action: Action,
+    pub task: Option<String>,
+    /// The approval answered (its event's `seq`), the queued message sent
+    /// or removed, or why a folder is needed.
+    pub about: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Phase {
     /// Waiting for the adapter to start the task.
@@ -221,6 +250,31 @@ impl Run {
             prompt: self.prompt.clone(),
             dirs: self.dirs.clone(),
         }
+    }
+
+    /// What the row button `key` does now, and to what.
+    #[must_use]
+    pub fn target(&self, key: &str) -> Option<Target> {
+        let action = self.actions.get(key)?.clone();
+        let about = match &action {
+            Action::Approve | Action::Deny => self
+                .asking_approval()
+                .then(|| self.lines.back().map(|line| line.seq.to_string()))
+                .flatten(),
+            Action::SendQueuedNow(index) | Action::RemoveQueued(index) => {
+                self.queue.get(*index).cloned()
+            }
+            Action::ChooseFolder => match &self.phase {
+                Phase::NeedsProject(why) => Some(why.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        Some(Target {
+            action,
+            task: self.task.clone(),
+            about,
+        })
     }
 
     /// Every line seen, oldest first.

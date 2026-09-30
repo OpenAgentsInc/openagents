@@ -55,6 +55,33 @@ pub enum Action {
     PreviousQueue,
 }
 
+impl Action {
+    /// Whether a click on this control may end on the revision after the
+    /// one it began on ([`rust_native::Press`]): the controls that must
+    /// work while the task streams. A queued message's controls name it.
+    #[must_use]
+    pub fn late(&self) -> bool {
+        matches!(
+            self,
+            Self::Stop
+                | Self::Approve
+                | Self::Deny
+                | Self::SendQueuedNow(_)
+                | Self::RemoveQueued(_)
+        )
+    }
+}
+
+/// What a row button does and what it does it to: two equal targets do the
+/// same thing, so a click begun on one revision may end on the next.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Target {
+    pub action: Action,
+    pub task: String,
+    /// The approval answered, as its summary says it.
+    pub about: Option<String>,
+}
+
 pub struct Session {
     pub binding: Spawned,
     pub summary: Option<ActivitySummary>,
@@ -676,6 +703,24 @@ impl Session {
             .find(|item| &item.command == id)?
             .text
             .as_deref()
+    }
+    /// What the row button `key` does now, and to what.
+    #[must_use]
+    pub fn target(&self, key: &str) -> Option<Target> {
+        let action = self.actions.get(key)?.clone();
+        let about = matches!(action, Action::Approve | Action::Deny)
+            .then(|| {
+                self.summary
+                    .as_ref()
+                    .filter(|s| s.attention == Attention::Approval)
+                    .map(|s| s.headline.clone())
+            })
+            .flatten();
+        Some(Target {
+            action,
+            task: self.binding.task.clone(),
+            about,
+        })
     }
     pub fn rows(&mut self) -> Vec<Node<()>> {
         self.actions.clear();

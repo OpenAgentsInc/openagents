@@ -3381,6 +3381,10 @@ mod saved_fixtures {
 /// (`microcoder`'s `local_run` tests write the fixtures), outlined under
 /// `snapshots/dsk-10-coder-*.txt`.
 #[cfg(test)]
+#[path = "late_click_tests.rs"]
+mod late_click_tests;
+
+#[cfg(test)]
 mod coder_events {
     use super::*;
     use openagents_chat::{
@@ -3397,7 +3401,7 @@ mod coder_events {
     const OTHER_ENDINGS: &str =
         include_str!("../../openagents-chat/fixtures/coder-events/other-endings.ndjson");
 
-    fn tasks(text: &str) -> Vec<Vec<Line>> {
+    pub(super) fn tasks(text: &str) -> Vec<Vec<Line>> {
         let mut out: Vec<Vec<Line>> = vec![];
         for line in text.lines() {
             let line: Line = serde_json::from_str(line).unwrap();
@@ -3410,7 +3414,7 @@ mod coder_events {
     }
 
     /// A thread bound to `lines`' task, after one poll that read them.
-    fn window(lines: &[Line], state: RunState) -> DesktopApp {
+    pub(super) fn window(lines: &[Line], state: RunState) -> DesktopApp {
         let mut app = super::tests::chat_fixture(0).0;
         let now = Instant::now();
         let panel = app.chat.as_mut().unwrap();

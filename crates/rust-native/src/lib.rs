@@ -11,6 +11,7 @@ pub mod edit;
 pub mod input;
 pub mod layout;
 pub mod markdown;
+pub mod press;
 pub mod selection;
 pub mod style;
 pub mod surface;
@@ -18,6 +19,7 @@ pub mod syntax;
 pub mod view;
 
 pub use input::{InputError, InputRequest};
+pub use press::Press;
 pub use view::{
     Activation, Axis, ComposerChoice, Earlier, Element, Glyph, Icon, MAX_COMPOSER_CHOICES,
     MessageRole, Node, TextRole, ToolState, ValidatedView, View, ViewError,

@@ -77,6 +77,14 @@ pub struct Panel {
     rows_dirty: bool,
     activated: Vec<String>,
     press_revision: Option<(u64, u64)>,
+    /// The transcript button a press began on, for a release on the next
+    /// revision ([`rust_native::Press`]).
+    press: Option<rust_native::Press<Pressed>>,
+    /// The transcript revision shown: bumped when its rows, the session,
+    /// or the task change.
+    shown: u64,
+    shown_state: (u64, u64, u64),
+    rows_generation: u64,
     queued: Vec<Request>,
     navigation: Option<openagents_chat::router::Screen>,
     notice: Option<String>,
@@ -92,6 +100,25 @@ pub struct Panel {
     changes_scroll: f32,
     changes_revision: u64,
     changes_highlighter: Option<rust_native::syntax::Highlighter>,
+}
+
+/// A transcript button's action and target when a press began on it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Pressed {
+    Task(String, task_chat::Target),
+    Run(String, coder_run::Target),
+    Other(String),
+}
+
+impl Pressed {
+    /// The controls that must work while Coder's events stream.
+    fn late(&self) -> bool {
+        match self {
+            Self::Task(_, target) => target.action.late(),
+            Self::Run(_, target) => target.action.late(),
+            Self::Other(_) => false,
+        }
+    }
 }
 
 impl Panel {
@@ -134,6 +161,10 @@ impl Panel {
             rows_dirty: true,
             activated: vec![],
             press_revision: None,
+            press: None,
+            shown: 0,
+            shown_state: (0, 0, 0),
+            rows_generation: 0,
             queued: vec![],
             navigation: None,
             notice: None,
@@ -302,6 +333,7 @@ impl Panel {
                     .into_iter()
                     .map(Arc::new)
                     .collect();
+                self.rows_generation += 1;
                 let (width, height) = self.transcript_size;
                 if width > 0.0 && height > 0.0 {
                     let _ =
@@ -310,6 +342,7 @@ impl Panel {
                 }
                 self.rows_dirty = false;
             }
+            self.shown();
             children.push(Node {
                 key: "chat-transcript".into(),
                 style: Style::default(),
@@ -633,6 +666,39 @@ impl Panel {
             ticket,
             request,
         })
+    }
+    /// The transcript revision shown now.
+    fn shown(&mut self) -> u64 {
+        let state = (
+            self.session.revision,
+            self.task().map_or(0, |task| task.revision),
+            self.rows_generation,
+        );
+        if state != self.shown_state {
+            self.shown_state = state;
+            self.shown += 1;
+        }
+        self.shown
+    }
+    /// What the transcript button `key` does now, and to what.
+    fn pressed(&self, key: &str) -> Pressed {
+        let chat = self.session.selected.clone().unwrap_or_default();
+        if let Some(target) = self.task().and_then(|task| task.target(key)) {
+            return Pressed::Task(chat, target);
+        }
+        if let Some(target) = self.run().and_then(|run| run.target(key)) {
+            return Pressed::Run(chat, target);
+        }
+        Pressed::Other(key.into())
+    }
+    /// Whether a release on `key` ends `press` with an action, though the
+    /// press began on another revision of the transcript.
+    fn late_release(&mut self, press: &rust_native::Press<Pressed>, key: &str) -> bool {
+        let revision = self.shown();
+        let offered = self.pressed(key);
+        press
+            .release(revision, key, Some(&offered), Pressed::late)
+            .is_some()
     }
     fn task(&self) -> Option<&task_chat::Session> {
         self.tasks.get(self.session.selected.as_ref()?)
@@ -1771,6 +1837,10 @@ impl Panel {
                     self.task().map_or(0, |task| task.revision),
                 ));
             }
+            let released = match event {
+                SurfaceInput::Up { x, y } => Some((x, y)),
+                _ => None,
+            };
             if matches!(event, SurfaceInput::Down { .. })
                 && let Some(field) = self.field()
             {
@@ -1779,11 +1849,16 @@ impl Panel {
             if let Some(action) = self.transcript.pointer(event, &mut self.fonts) {
                 let destination = match action {
                     rust_native_desktop::transcript::Action::Activate(key) => {
+                        if let Some((x, y)) = released {
+                            self.transcript.release_pressed_button(x, y);
+                        }
+                        let press = self.press.take();
                         if self.press_revision.take()
                             == Some((
                                 self.session.revision,
                                 self.task().map_or(0, |task| task.revision),
                             ))
+                            || press.is_some_and(|press| self.late_release(&press, &key))
                         {
                             self.activated.push(key);
                         }
@@ -1822,6 +1897,28 @@ impl Panel {
                             .spawn();
                     }
                 }
+            }
+            // A press on a button remembers what it did and to what.
+            if matches!(event, SurfaceInput::Down { .. }) {
+                let revision = self.shown();
+                self.press = self
+                    .transcript
+                    .pressed_button()
+                    .map(str::to_owned)
+                    .map(|key| rust_native::Press::new(revision, &key, self.pressed(&key)));
+            }
+            // The press's row was replaced while the button was held (a
+            // Coder event landed): the same control, for the same target,
+            // still runs on the next revision when it must work while
+            // events stream.
+            if let Some((x, y)) = released
+                && let Some(key) = self.transcript.release_pressed_button(x, y)
+                && let Some(press) = self.press.take()
+                && self.late_release(&press, &key)
+            {
+                self.press_revision = None;
+                self.activated.push(key);
+                return true;
             }
             return !moved || version != self.transcript.version();
         }
@@ -2327,6 +2424,7 @@ impl Panel {
                     .any(|(old, new)| !Arc::ptr_eq(old, new) && old != new)
             {
                 self.transcript_rows = rows;
+                self.rows_generation += 1;
                 let size = self.transcript_size;
                 if size.0 > 0.0 && size.1 > 0.0 {
                     let _ =
@@ -2336,6 +2434,7 @@ impl Panel {
             }
             self.rows_dirty = false;
         }
+        self.shown();
         let mut controls = vec![];
         if start > 0 && self.task().is_none() {
             controls.push(button(

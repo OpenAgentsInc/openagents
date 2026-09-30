@@ -30,6 +30,8 @@ pub struct Transcript {
     pub relaid: usize,
     pub measured: u64,
     pressed_widget: Option<(String, usize)>,
+    /// The enabled button a press began on, by key, and where it was.
+    pressed_button: Option<(String, PxRect)>,
     pressed_link: Option<(String, usize)>,
     hovered_link: Option<(String, usize)>,
     layout: TranscriptLayout,
@@ -58,6 +60,7 @@ impl Default for Transcript {
             relaid: 0,
             measured: 0,
             pressed_widget: None,
+            pressed_button: None,
             pressed_link: None,
             hovered_link: None,
             layout,
@@ -379,6 +382,23 @@ impl Transcript {
                 self.dragging = false;
                 self.pressed_link = self.link(x, y);
                 self.pressed_widget = self.widget(x, y);
+                self.pressed_button = self.pressed_widget.as_ref().and_then(|(row, index)| {
+                    let at = self.frame.find(row)?;
+                    let top = self.frame.placement(at)?.y - self.offset;
+                    let widget = self.frame.display(at)?.widgets.get(*index)?;
+                    match &widget.kind {
+                        WidgetKind::Button { key, enabled: true } => Some((
+                            key.clone(),
+                            PxRect {
+                                x: widget.x,
+                                y: top + widget.y,
+                                w: widget.w,
+                                h: widget.h,
+                            },
+                        )),
+                        _ => None,
+                    }
+                });
                 if self.pressed_widget.is_some() {
                     self.dragging = false;
                     return None;
@@ -461,6 +481,29 @@ impl Transcript {
             self.version = self.version.wrapping_add(1);
         }
         None
+    }
+
+    /// The enabled button the last press began on, where it was then.
+    /// Replacing its row, or the rows' order, drops the press so it cannot
+    /// activate; a host that admits a late click ([`rust_native::Press`])
+    /// asks here whether a release still lands on the button as it was
+    /// pressed, and gets its key when the transcript still shows an enabled
+    /// button with that key. Each release ends the press.
+    pub fn pressed_button(&self) -> Option<&str> {
+        self.pressed_button.as_ref().map(|(key, _)| key.as_str())
+    }
+
+    /// Ends the press (see [`Transcript::pressed_button`]): its key when
+    /// the release at `x`, `y` is on the button where it was pressed and
+    /// the transcript still shows an enabled button with that key.
+    pub fn release_pressed_button(&mut self, x: f32, y: f32) -> Option<String> {
+        let (key, rect) = self.pressed_button.take()?;
+        (x >= rect.x
+            && x < rect.x + rect.w
+            && y >= rect.y
+            && y < rect.y + rect.h
+            && self.control_bounds(&key).is_some())
+        .then_some(key)
     }
 
     fn widget(&self, x: f32, y: f32) -> Option<(String, usize)> {
@@ -1193,6 +1236,45 @@ mod button_tests {
             transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
             None
         );
+    }
+    #[test]
+    fn a_replaced_press_names_its_button_only_for_a_release_where_it_was_pressed() {
+        let mut transcript = Transcript::default();
+        let mut fonts = Fonts::new();
+        transcript
+            .update(vec![button("Stop", true)], 300.0, 300.0)
+            .unwrap();
+        let (x, y) = position(&transcript);
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(transcript.pressed_button(), Some("card-action"));
+        transcript
+            .update(vec![button("Stop now", true)], 300.0, 300.0)
+            .unwrap();
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            None
+        );
+        assert_eq!(
+            transcript.release_pressed_button(x, y).as_deref(),
+            Some("card-action")
+        );
+        assert_eq!(transcript.release_pressed_button(x, y), None, "once");
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(transcript.release_pressed_button(0.0, 299.0), None);
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        transcript
+            .update(vec![button("Stop", false)], 300.0, 300.0)
+            .unwrap();
+        assert_eq!(transcript.release_pressed_button(x, y), None);
+        transcript.pointer(
+            SurfaceInput::Down {
+                x: 1.0,
+                y: 299.0,
+                shift: false,
+            },
+            &mut fonts,
+        );
+        assert_eq!(transcript.pressed_button(), None);
     }
     #[test]
     fn replacing_a_card_during_a_press_cannot_activate_the_new_action() {

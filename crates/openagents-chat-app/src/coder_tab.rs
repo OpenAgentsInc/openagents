@@ -1002,28 +1002,19 @@ impl CoderTab {
     /// holds was replaced. A streaming reply renders a new view every few
     /// hundred milliseconds, so the tap often names the previous one; it
     /// still stops the reply when the current view's composer offers the
-    /// stop. That is safe because `thread.stop` names the message the
-    /// thread answers now and changes nothing otherwise.
+    /// stop ([`ValidatedView::activate_late`]). That is safe because
+    /// `thread.stop` names the message the thread answers now and changes
+    /// nothing otherwise.
     fn late_thread_stop<'a>(
         &self,
         view: &'a ValidatedView<Intent>,
         event: &Activation,
     ) -> Option<&'a Intent> {
-        let current = view.view();
-        if self.threads.opened().is_none()
-            || event.node != "coder-composer"
-            || event.instance != current.instance
-            || event.revision >= current.revision
-        {
+        if self.threads.opened().is_none() || event.node != "coder-composer" {
             return None;
         }
-        let fresh = Activation {
-            revision: current.revision,
-            ..event.clone()
-        };
-        view.activate(&fresh)
+        view.activate_late(event, |intent| *intent == Intent::Stop)
             .ok()
-            .filter(|intent| **intent == Intent::Stop)
     }
 
     fn running(phase: Phase) -> bool {
