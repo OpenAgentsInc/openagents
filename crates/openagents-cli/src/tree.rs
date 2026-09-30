@@ -92,6 +92,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("chat", Some(crate::chat::USAGE), crate::chat::EFFECTS),
         group("task", Some(coder::task::cli::USAGE), TASK),
         group(
+            "settings",
+            Some(crate::settings::USAGE),
+            crate::settings::EFFECTS,
+        ),
+        group(
             "service",
             Some(crate::service::USAGE),
             crate::service::EFFECTS,

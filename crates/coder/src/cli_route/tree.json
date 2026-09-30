@@ -3073,7 +3073,7 @@
                 ]
               }
             ],
-            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex or Claude Code, whichever is signed in here and has capacity, and its events stream here. --no-run only shows the offer instead.",
+            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex or Claude Code, whichever is signed in here and has capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3932,6 +3932,128 @@
           "open": true,
           "optional": true,
           "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "summary": "What Coder may use on this computer: providers, ask first, and more.",
+      "children": [
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "settings",
+              "show"
+            ],
+            "usage": [
+              "show"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  }
+                ]
+              }
+            ],
+            "summary": "Print every setting, the defaults where none is set.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "get",
+          "leaf": {
+            "path": [
+              "settings",
+              "get"
+            ],
+            "usage": [
+              "get KEY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "get"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KEY"
+                  }
+                ]
+              }
+            ],
+            "summary": "Print one setting.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "set",
+          "leaf": {
+            "path": [
+              "settings",
+              "set"
+            ],
+            "usage": [
+              "set KEY VALUE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "set"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KEY"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "VALUE"
+                  }
+                ]
+              }
+            ],
+            "summary": "Change one setting.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "unset",
+          "leaf": {
+            "path": [
+              "settings",
+              "unset"
+            ],
+            "usage": [
+              "unset KEY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "unset"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KEY"
+                  }
+                ]
+              }
+            ],
+            "summary": "Return one setting to its default.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ]
     },

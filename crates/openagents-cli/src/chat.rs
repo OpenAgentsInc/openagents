@@ -46,6 +46,8 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         own worktree of the Git checkout this command runs in, with Codex or
         Claude Code, whichever is signed in here and has capacity, and its
         events stream here. --no-run only shows the offer instead.
+        `openagents settings` chooses the providers, whether Coder asks
+        first, the project folders, and what its commands may reach.
   follow --thread ID
         Replay the thread's Coder task from its first event and keep
         streaming until it ends. Ctrl-C stops following, not the task.
@@ -188,7 +190,10 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
                 new,
                 &message,
                 Run {
-                    no_run: args.switch("no-run") && !args.switch("run-coder"),
+                    // `--no-run`, or `coder.start: ask_first` in the
+                    // settings, keeps only the offer; `--run-coder` runs.
+                    no_run: (args.switch("no-run") || coder_run::asks_first())
+                        && !args.switch("run-coder"),
                 },
                 timeout,
             )

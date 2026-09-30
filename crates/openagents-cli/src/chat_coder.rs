@@ -32,9 +32,17 @@ pub(super) fn store(backend: &Backend, thread: &str) -> PathBuf {
     }
 }
 
-/// The runner over `backend`'s store.
+/// The runner over `backend`'s store, with the person's settings
+/// (`coder::task::settings`).
 fn runner(backend: &Backend, thread: &str) -> Local {
-    Local::new(store(backend, thread))
+    Local::here(store(backend, thread))
+}
+
+/// Whether a coding reply waits for `openagents chat run-coder` instead of
+/// running at once: the settings' `coder.start` is `ask_first`, or they
+/// cannot be read (the refusal then shows when the person accepts).
+pub(super) fn asks_first() -> bool {
+    Local::here(PathBuf::new()).asks_first()
 }
 
 /// The words that answer a thread's question from this terminal.
@@ -57,10 +65,12 @@ fn flag(backend: &Backend) -> &'static str {
 }
 
 /// Whether a Coder run could start from here now: the directory is a
-/// checkout and a provider is signed in with capacity. Reads only.
+/// checkout that counts as a project in the person's settings, and an
+/// allowed provider is signed in with capacity. Reads only.
 pub(super) fn ready(store: PathBuf) -> bool {
+    let run = Local::here(store);
     let here = std::env::current_dir().ok();
-    here.is_some_and(|dir| local::checkout(&dir).is_ok()) && Local::new(store).ready()
+    here.is_some_and(|dir| run.project(&dir).is_ok()) && run.ready()
 }
 
 /// Start Coder on this computer for the thread `id`, in the checkout the

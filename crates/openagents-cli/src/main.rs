@@ -35,6 +35,7 @@ mod reach;
 mod relay;
 mod service;
 mod session;
+mod settings;
 mod sov;
 mod sov_host;
 mod ssh;
@@ -69,6 +70,7 @@ Chat:
 
 Coder:
   task         Durable local task requests and explicit execution.
+  settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   ssh          Start or adopt a host over SSH and tunnel to it.
 
@@ -162,6 +164,7 @@ fn main() -> ExitCode {
         "playtest" => playtest::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         "service" => service::run(&output, &rest),
+        "settings" => settings::run(&output, &rest),
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
         "prg" => catalog::prg(&output, &rest),

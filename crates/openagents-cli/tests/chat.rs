@@ -403,6 +403,206 @@ async fn chat_streams_routes_continues_threads_and_exports_atif() {
     }
 }
 
+/// `openagents ARGS` as [`openagents`] runs it, from the folder `cwd`.
+async fn openagents_in(cwd: &Path, home: &Path, relay: &str, worker: &str, args: &[&str]) -> Run {
+    let exe = env!("CARGO_BIN_EXE_openagents");
+    let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+    let (cwd, home, relay, worker) = (
+        cwd.to_owned(),
+        home.to_owned(),
+        relay.to_owned(),
+        worker.to_owned(),
+    );
+    tokio::task::spawn_blocking(move || {
+        let output = Command::new(exe)
+            .args(&args)
+            .current_dir(&cwd)
+            .env("HOME", &home)
+            .env("TMPDIR", home.join("tmp"))
+            .env("PATH", "/usr/bin:/bin")
+            .env_remove("OPENAGENTS_CHAT_HOME")
+            .env_remove("OPENAGENTS_SETTINGS")
+            .env_remove("OPENAGENTS_TASKS")
+            .env_remove("CLAUDE_BIN")
+            .env_remove("CODEX_HOME")
+            // An engine to name; every run here is refused before it starts.
+            .env("OPENAGENTS_CODER_CONTROLLER", "/bin/echo")
+            .env_remove("XDG_RUNTIME_DIR")
+            .env("OPENAGENTS_CHAT_RELAY", &relay)
+            .env("OPENAGENTS_CHAT_WORKER", &worker)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        Run {
+            code: output.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }
+    })
+    .await
+    .unwrap()
+}
+
+/// `openagents settings` edits the one settings file (#10036), and each
+/// setting a terminal can observe changes `openagents chat`'s local run:
+/// in a checkout on a computer with no coding agent signed in, the
+/// default run tries Codex and Claude Code, a Claude-only setting names
+/// Claude Code alone, a project-folder setting refuses a checkout outside
+/// it, and `ask_first` keeps only the offer. (What each setting does to a
+/// run that starts is in `crates/coder/src/task/local.rs`.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join("tmp")).unwrap();
+    let top = home.path().join("slugs");
+    std::fs::create_dir_all(&top).unwrap();
+    for args in [
+        vec!["init", "-q"],
+        vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "one",
+        ],
+    ] {
+        assert!(
+            Command::new("git")
+                .args(args)
+                .current_dir(&top)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let worker = SecretKey::from_byte_array([0x53; 32]).unwrap();
+    let worker_hex = hex(&public(&worker).serialize());
+    let (url, _payloads) = relay(worker).await;
+    macro_rules! run {
+        ($($arg:expr),* $(,)?) => {
+            openagents_in(&top, home.path(), &url, &worker_hex, &[$($arg),*]).await
+        };
+    }
+    let file = home.path().join(".openagents/settings.json");
+
+    // No file: every setting is its default.
+    let shown = run!("--json", "settings", "show");
+    assert_eq!(shown.code, 0, "{}", shown.stderr);
+    let shown: Value = serde_json::from_str(&shown.stdout).unwrap();
+    assert_eq!(shown["exists"], false);
+    assert_eq!(
+        shown["settings"],
+        json!({
+            "coder.providers": ["codex", "claude"],
+            "coder.start": "at_once",
+            "coder.usage_threshold_percent": 90,
+            "coder.projects": [],
+            "coder.access": "toolchains",
+        })
+    );
+    let coder_message = |run: &Run| {
+        run.event("coder")["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    // The defaults: Coder runs at once, on Codex or Claude Code.
+    let plain = run!("--json", "chat", "--local", "fix the flaky test");
+    assert_eq!(plain.code, 1, "{}\n{}", plain.stdout, plain.stderr);
+    assert!(
+        coder_message(&plain).contains("Neither Codex nor Claude Code is signed in"),
+        "{}",
+        plain.stdout
+    );
+
+    // Claude Code only.
+    let set = run!("settings", "set", "coder.providers", "claude");
+    assert_eq!(set.code, 0, "{}", set.stderr);
+    assert_eq!(set.stdout.trim(), "coder.providers claude");
+    assert!(file.exists());
+    assert_eq!(run!("settings", "get", "coder.providers").stdout.trim(), "claude");
+    let claude = run!("--json", "chat", "--local", "fix the flaky test");
+    assert_eq!(claude.code, 1);
+    assert!(
+        coder_message(&claude).starts_with("Claude Code is not signed in on this computer, and your settings allow only it."),
+        "{}",
+        claude.stdout
+    );
+
+    // Project folders that do not hold this checkout.
+    let elsewhere = home.path().join("code");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    assert_eq!(
+        run!("settings", "set", "coder.projects", elsewhere.to_str().unwrap()).code,
+        0
+    );
+    let outside = run!("--json", "chat", "--local", "fix the flaky test");
+    assert_eq!(outside.code, 1);
+    assert!(
+        coder_message(&outside).contains("is not in one of your project folders"),
+        "{}",
+        outside.stdout
+    );
+
+    // Ask first: the reply offers Coder and nothing runs.
+    assert_eq!(run!("settings", "set", "coder.start", "ask_first").code, 0);
+    let asked = run!("--json", "chat", "--local", "fix the flaky test");
+    assert_eq!(asked.code, 0, "{}\n{}", asked.stdout, asked.stderr);
+    assert_eq!(asked.event("offer")["offer"]["offer"], "run_coder");
+    assert!(!asked.stdout.contains("\"event\":\"coder\""));
+    // `--run-coder` still runs at once, into the same refusals.
+    let forced = run!("--json", "chat", "--local", "--run-coder", "fix the flaky test");
+    assert_eq!(forced.code, 1);
+    assert!(coder_message(&forced).contains("is not in one of your project folders"));
+
+    // Bad values change nothing; unknown keys are usage errors.
+    assert_eq!(run!("settings", "set", "coder.access", "root").code, 1);
+    assert_eq!(run!("settings", "set", "coder.providers", "vertex").code, 1);
+    assert_eq!(run!("settings", "get", "coder.model").code, 64);
+    assert_eq!(run!("settings", "frob").code, 64);
+    assert_eq!(run!("settings", "set", "coder.access", "full").code, 0);
+    assert_eq!(
+        run!("settings", "set", "coder.usage_threshold_percent", "off").code,
+        0
+    );
+    let saved: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(saved["schema"], "openagents.settings.v1");
+    assert_eq!(saved["coder"]["access"], "full");
+    assert_eq!(saved["coder"]["usage_threshold_percent"], Value::Null);
+
+    // Every setting unset: the run is the default one again.
+    for key in [
+        "coder.providers",
+        "coder.start",
+        "coder.usage_threshold_percent",
+        "coder.projects",
+        "coder.access",
+    ] {
+        assert_eq!(run!("settings", "unset", key).code, 0, "{key}");
+    }
+    let again = run!("--json", "chat", "--local", "fix the flaky test");
+    assert_eq!(again.code, 1);
+    assert_eq!(coder_message(&again), coder_message(&plain));
+
+    // A broken file is named, never read as the defaults.
+    std::fs::write(&file, "{").unwrap();
+    let broken = run!("--json", "chat", "--local", "fix the flaky test");
+    assert_eq!(broken.code, 0, "a broken file asks first");
+    assert!(!broken.stdout.contains("\"event\":\"coder\""));
+    let accepted = run!("--json", "chat", "--local", "--run-coder", "fix the flaky test");
+    assert!(
+        coder_message(&accepted).contains("settings.json are not valid"),
+        "{}",
+        accepted.stdout
+    );
+    assert_eq!(run!("settings", "show").code, 1);
+}
+
 /// The public chat worker, from a throwaway identity, the way the smoke in
 /// `docs/deployment/chat-worker.md` runs it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
