@@ -100,6 +100,15 @@ actual rendering capabilities.
 
 ## Use it
 
+Interactive GPU layers can name a registered surface with `Backdrop::surface`.
+The window supplies its destination rectangle and scale, renders on the same
+device, and composites only into that rectangle. `Backdrop::look` can request
+full resolution without dimming or blur. Ordinary backdrop defaults remain the
+same. `App::native_input` receives physical key presses and releases, buttons,
+relative mouse motion, focus, and cancellation before editor dispatch. The app
+consumes only events its viewport owns and requests cursor capture explicitly;
+capture or GPU failure returns to the app for cleanup.
+
 Implement `rust_native_desktop::App` and call
 `rust_native_desktop::window::run(app, Options::default())`.
 [`openagents-desktop`](../openagents-desktop/) is the first application.

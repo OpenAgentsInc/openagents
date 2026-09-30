@@ -34,6 +34,20 @@ pub struct Gpu<'a> {
 
 /// A picture the window draws behind its views.
 pub trait Backdrop {
+    /// A registered surface to draw into, or the whole window for a backdrop.
+    fn surface(&self) -> Option<&str> {
+        None
+    }
+
+    /// The current destination in logical points and pixels per point.
+    fn viewport(&mut self, rect: crate::Rect, scale: f32) {
+        let _ = (rect, scale);
+    }
+
+    /// Override the backdrop treatment for an interactive layer.
+    fn look(&self) -> Option<Look> {
+        None
+    }
     /// Called once with a waker before the first frame.
     fn start(&mut self, waker: Waker) {
         let _ = waker;
@@ -145,7 +159,7 @@ pub fn composite(views: &Frame, backdrop: &Frame, background: Color, dim: f32) -
 
 /// The compositing pass's uniforms: the background color, one backdrop
 /// texel in texture coordinates, the dim, and the blur's reach.
-fn uniforms(background: Color, texel: [f32; 2], look: Look) -> Vec<u8> {
+fn uniforms(background: Color, texel: [f32; 2], look: Look, region: [f32; 4]) -> Vec<u8> {
     let channel = |value: u8| f32::from(value) / 255.0;
     [
         channel(background.red),
@@ -156,6 +170,10 @@ fn uniforms(background: Color, texel: [f32; 2], look: Look) -> Vec<u8> {
         texel[1],
         look.dim,
         look.blur,
+        region[0],
+        region[1],
+        region[2],
+        region[3],
     ]
     .iter()
     .flat_map(|value| value.to_le_bytes())
@@ -175,6 +193,7 @@ pub(crate) struct Compositor {
     group: Option<wgpu::BindGroup>,
     window: (u32, u32),
     backdrop_size: (u32, u32),
+    region: [f32; 4],
 }
 
 impl Compositor {
@@ -246,7 +265,7 @@ impl Compositor {
         });
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("rust-native-desktop backdrop"),
-            size: 32,
+            size: 48,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -260,6 +279,7 @@ impl Compositor {
             group: None,
             window: (0, 0),
             backdrop_size: (0, 0),
+            region: [0.0, 0.0, 1.0, 1.0],
         }
     }
 
@@ -271,8 +291,15 @@ impl Compositor {
         width: u32,
         height: u32,
         look: Look,
+        region: crate::PxRect,
     ) -> bool {
-        let backdrop_size = look.backdrop_size(width, height);
+        self.region = [
+            region.x / width as f32,
+            region.y / height as f32,
+            region.w / width as f32,
+            region.h / height as f32,
+        ];
+        let backdrop_size = look.backdrop_size(region.w.max(1.0) as u32, region.h.max(1.0) as u32);
         if self.group.is_some()
             && self.window == (width, height)
             && self.backdrop_size == backdrop_size
@@ -416,7 +443,7 @@ impl Compositor {
         queue.write_buffer(
             &self.uniforms,
             0,
-            &uniforms(background, texel, look.clamped()),
+            &uniforms(background, texel, look.clamped(), self.region),
         );
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("rust-native-desktop backdrop"),
@@ -456,6 +483,32 @@ fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interactive_layer_keeps_its_destination_and_unmodified_pixels() {
+        let look = Look {
+            dim: 0.0,
+            blur: 0.0,
+            scale: 1.0,
+        };
+        assert_eq!(look.backdrop_size(800, 600), (800, 600));
+        assert_eq!(
+            composite_pixel([35, 120, 200], Color::rgb(0, 0, 0), look.dim, [0; 4]),
+            [35, 120, 200]
+        );
+        let bytes = uniforms(
+            Color::rgb(0, 0, 0),
+            [0.01, 0.01],
+            look,
+            [0.2, 0.1, 0.7, 0.8],
+        );
+        assert_eq!(bytes.len(), 48);
+        let region: Vec<f32> = bytes[32..]
+            .chunks_exact(4)
+            .map(|value| f32::from_le_bytes(value.try_into().unwrap()))
+            .collect();
+        assert_eq!(region, [0.2, 0.1, 0.7, 0.8]);
+    }
 
     #[test]
     fn an_opaque_view_pixel_wins_and_a_clear_one_shows_the_dimmed_backdrop() {

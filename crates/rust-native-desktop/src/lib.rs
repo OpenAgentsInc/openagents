@@ -151,6 +151,28 @@ pub trait App {
         false
     }
 
+    /// Physical input before ordinary text or pointer dispatch. Return true
+    /// only when the application's interactive viewport owns the event.
+    fn native_input(&mut self, event: input::NativeInput<'_>, now: Instant) -> bool {
+        let _ = (event, now);
+        false
+    }
+
+    /// Whether an interactive viewport currently requests a hidden, grabbed cursor.
+    fn cursor_capture(&self) -> bool {
+        false
+    }
+
+    /// Native capture failed; the application must release its held controls.
+    fn capture_failed(&mut self, now: Instant) {
+        let _ = now;
+    }
+
+    /// The GPU layer failed; dispose its effects before returning to plain UI.
+    fn graphics_failed(&mut self, error: &str, now: Instant) {
+        let _ = (error, now);
+    }
+
     /// Pointer input in a registered surface, with coordinates in local points.
     fn surface_input(&mut self, resource: &str, event: input::SurfaceInput, now: Instant) -> bool {
         let _ = (resource, event, now);

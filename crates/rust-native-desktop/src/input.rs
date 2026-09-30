@@ -1,5 +1,39 @@
 //! Native input translated into portable desktop editing events.
 
+/// Physical controls for an application-owned interactive viewport. Key codes
+/// use the native physical key's name, independent of typed text and IME.
+#[derive(Clone, Copy, Debug)]
+pub enum NativeInput<'a> {
+    Key {
+        code: &'a str,
+        pressed: bool,
+        repeat: bool,
+        command: bool,
+        alt: bool,
+    },
+    Button {
+        button: u16,
+        pressed: bool,
+        x: f32,
+        y: f32,
+    },
+    Cursor {
+        x: f32,
+        y: f32,
+    },
+    Motion {
+        dx: f32,
+        dy: f32,
+    },
+    Wheel {
+        lines: f32,
+        x: f32,
+        y: f32,
+    },
+    Focus(bool),
+    Cancel,
+}
+
 /// A text key or IME callback. No keyboard callback sends a network request itself.
 pub enum TextInput<'a> {
     Key {

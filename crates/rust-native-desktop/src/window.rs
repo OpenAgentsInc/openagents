@@ -20,7 +20,7 @@
 //! application only the intent that view carried.
 
 use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
-use crate::input::{SurfaceInput, TextInput};
+use crate::input::{NativeInput, SurfaceInput, TextInput};
 use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_layout};
 use crate::text::Fonts;
 use crate::timing::{FrameTiming, Phase, Timings};
@@ -30,10 +30,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition};
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{
+    DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent,
+};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
+use winit::window::{CursorGrabMode, CursorIcon, Fullscreen, Window, WindowId};
 
 #[cfg(target_os = "macos")]
 fn position_header_controls(window: &Window, height: f32) {
@@ -227,6 +229,7 @@ fn run_shell<A: App>(
         resizing: false,
         timings: Timings::from_env(),
         captured_surface: None,
+        captured_cursor: false,
     };
     event_loop
         .run_app(&mut shell)
@@ -335,6 +338,7 @@ struct Shell<A: App> {
     resizing: bool,
     timings: Timings,
     captured_surface: Option<(String, crate::layout::Rect)>,
+    captured_cursor: bool,
 }
 
 impl<A: App> Shell<A> {
@@ -394,6 +398,7 @@ impl<A: App> Shell<A> {
         }
         self.app.viewport(width, height, self.scale());
         self.wake = self.app.tick(Instant::now());
+        self.sync_capture();
         let previous_scroll = self.interaction.leading_scroll;
         if let Some(offset) = self
             .app
@@ -442,6 +447,31 @@ impl<A: App> Shell<A> {
             self.redraw();
         }
         self.timings.record(Phase::Tick, started.elapsed(), 0, 0);
+    }
+
+    fn sync_capture(&mut self) {
+        let capture = self.visible && self.app.cursor_capture();
+        if capture == self.captured_cursor {
+            return;
+        }
+        let Some(window) = &self.window else {
+            return;
+        };
+        if capture {
+            if window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined))
+                .is_err()
+            {
+                self.app.capture_failed(Instant::now());
+                window.set_cursor_visible(true);
+                return;
+            }
+        } else {
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+        }
+        window.set_cursor_visible(!capture);
+        self.captured_cursor = capture;
     }
 
     fn revision(&self) -> (String, u64) {
@@ -738,6 +768,8 @@ impl<A: App> Shell<A> {
     /// Drops a backdrop that failed, leaving the plain window.
     fn drop_backdrop(&mut self, error: &str) {
         eprintln!("the backdrop stopped: {error}");
+        self.app.graphics_failed(error, Instant::now());
+        self.sync_capture();
         self.backdrop = None;
         self.redraw();
     }
@@ -753,8 +785,41 @@ impl<A: App> Shell<A> {
         else {
             return Ok(());
         };
-        let look = if self.backdrop.is_some() {
-            self.options.look
+        let scale = self.scale();
+        let surface = self
+            .backdrop
+            .as_ref()
+            .and_then(|backdrop| backdrop.surface())
+            .map(str::to_owned);
+        let region = surface
+            .as_ref()
+            .and_then(|resource| {
+                self.scene().ops.iter().find_map(|op| match op {
+                    crate::layout::Op::Surface {
+                        resource: found,
+                        rect,
+                        ..
+                    } if found == resource => Some(*rect),
+                    _ => None,
+                })
+            })
+            .unwrap_or(crate::Rect {
+                x: 0.0,
+                y: 0.0,
+                w: width as f32 / scale,
+                h: height as f32 / scale,
+            });
+        if let Some(backdrop) = &mut self.backdrop {
+            backdrop.viewport(region, scale);
+        }
+        let pixels = crate::PxRect {
+            x: (region.x * scale).round().max(0.0),
+            y: (region.y * scale).round().max(0.0),
+            w: (region.w * scale).round().max(1.0),
+            h: (region.h * scale).round().max(1.0),
+        };
+        let look = if let Some(backdrop) = &self.backdrop {
+            backdrop.look().unwrap_or(self.options.look)
         } else {
             Look {
                 dim: 1.0,
@@ -766,7 +831,7 @@ impl<A: App> Shell<A> {
         {
             let gpu = self.gpu.as_ref().expect("the gpu");
             let compositor = self.compositor.as_mut().expect("a compositor");
-            if compositor.fit(&gpu.device, width, height, look) {
+            if compositor.fit(&gpu.device, width, height, look, pixels) {
                 self.painted = false;
             }
         }
@@ -1082,6 +1147,65 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        let scale = self.scale();
+        let x = self.cursor.x as f32 / scale;
+        let y = self.cursor.y as f32 / scale;
+        let key;
+        let native = match &event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                key = match event.physical_key {
+                    winit::keyboard::PhysicalKey::Code(code) => format!("{code:?}"),
+                    _ => String::new(),
+                };
+                Some(NativeInput::Key {
+                    code: &key,
+                    pressed: event.state == ElementState::Pressed,
+                    repeat: event.repeat,
+                    command: self.modifiers.super_key() || self.modifiers.control_key(),
+                    alt: self.modifiers.alt_key(),
+                })
+            }
+            WindowEvent::MouseInput { state, button, .. } => Some(NativeInput::Button {
+                button: match button {
+                    MouseButton::Left => 0,
+                    MouseButton::Right => 1,
+                    MouseButton::Middle => 2,
+                    MouseButton::Back => 3,
+                    MouseButton::Forward => 4,
+                    MouseButton::Other(n) => n.saturating_add(5),
+                },
+                pressed: *state == ElementState::Pressed,
+                x,
+                y,
+            }),
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = *position;
+                Some(NativeInput::Cursor {
+                    x: position.x as f32 / scale,
+                    y: position.y as f32 / scale,
+                })
+            }
+            WindowEvent::MouseWheel { delta, .. } => Some(NativeInput::Wheel {
+                x,
+                y,
+                lines: match delta {
+                    MouseScrollDelta::LineDelta(_, y) => *y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                },
+            }),
+            WindowEvent::Focused(on) => Some(NativeInput::Focus(*on)),
+            WindowEvent::CloseRequested
+            | WindowEvent::Resized(_)
+            | WindowEvent::ScaleFactorChanged { .. } => Some(NativeInput::Cancel),
+            _ => None,
+        };
+        if native.is_some_and(|input| self.app.native_input(input, Instant::now())) {
+            self.app.input(Instant::now());
+            self.tick();
+            self.request_frame();
+            return;
+        }
+        self.sync_capture();
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::DroppedFile(path) => {
@@ -1324,6 +1448,27 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        if self.captured_cursor
+            && let DeviceEvent::MouseMotion { delta: (dx, dy) } = event
+        {
+            let scale = self
+                .window
+                .as_ref()
+                .map_or(1.0, |window| window.scale_factor()) as f32;
+            if self.app.native_input(
+                NativeInput::Motion {
+                    dx: dx as f32 / scale,
+                    dy: dy as f32 / scale,
+                },
+                Instant::now(),
+            ) {
+                self.sync_capture();
+                self.request_frame();
+            }
         }
     }
 }

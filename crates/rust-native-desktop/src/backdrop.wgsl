@@ -8,6 +8,7 @@ struct Look {
     texel: vec2<f32>,
     dim: f32,
     blur: f32,
+    region: vec4<f32>,
 };
 
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
@@ -31,6 +32,7 @@ fn vs(@builtin(vertex_index) index: u32) -> Varying {
 
 @fragment
 fn fs(in: Varying) -> @location(0) vec4<f32> {
+    let uv = (in.uv - look.region.xy) / max(look.region.zw, vec2<f32>(0.0001));
     // A 3x3 tent blur, `blur` texels apart, over the bilinear upscale.
     var sum = vec3<f32>(0.0);
     var weight = 0.0;
@@ -38,11 +40,12 @@ fn fs(in: Varying) -> @location(0) vec4<f32> {
         for (var x = -1; x <= 1; x++) {
             let w = (2.0 - f32(abs(x))) * (2.0 - f32(abs(y)));
             let offset = vec2<f32>(f32(x), f32(y)) * look.texel * look.blur;
-            sum += w * textureSampleLevel(backdrop, filtered, in.uv + offset, 0.0).rgb;
+            sum += w * textureSampleLevel(backdrop, filtered, uv + offset, 0.0).rgb;
             weight += w;
         }
     }
-    let base = mix(sum / weight, look.background.rgb, look.dim);
+    let inside = all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0));
+    let base = select(look.background.rgb, mix(sum / weight, look.background.rgb, look.dim), inside);
     let view = textureLoad(views, vec2<i32>(in.position.xy), 0);
     return vec4<f32>(view.rgb + base * (1.0 - view.a), 1.0);
 }
