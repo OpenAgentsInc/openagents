@@ -285,3 +285,29 @@ Retained captures: [palette at 1,200 points](keycaps-palette-1200.png),
 [jump pill at 1,200 points](jump-pill-1200.png), and
 [jump pill at 760 points](jump-pill-760.png). Frosted surfaces, empty-chat
 docking, tabs, and the sidebar profile remain open fidelity work.
+
+## Occluded surface uploads
+
+Three native keycap runs are incomplete: [initial](native-keycaps-incomplete.json),
+[visible attempt](native-keycaps-partial-visible.json), and
+[repeat](native-keycaps-partial-repeat.json). Some phases have no submitted
+frames or insufficient samples; these are not passing benchmark results.
+Two runs record peak RSS near 1.4 GiB while acquisition repeatedly fails.
+The visible attempt records 184.7 MiB and all phases, but only 36 scroll
+samples.
+
+Inspection identifies a renderer ordering problem: `write_texture` runs
+before surface acquisition, while a skipped acquisition returns without
+submitting the queue. Pending upload allocations can accumulate across
+retries. The renderer now acquires first, so an occluded, timed-out, lost,
+or outdated surface queues no foreground upload. Failed acquisitions also
+appear in the bounded, content-free timings log and the native report.
+
+The report retains at most 512 skipped-frame samples and counts dropped
+samples separately. It marks coverage explicitly and returns an error unless
+the first five active phases each contain at least 90 submitted samples,
+the chat menu contains 20, and both first menu frames are present. The
+short-lived benchmark window stays above other windows while it samples;
+ordinary product windows retain their existing window level. The benchmark
+coverage regression, 60 adapter tests, scoped formatting, and strict
+all-target Clippy pass. Native verification follows the merged build.

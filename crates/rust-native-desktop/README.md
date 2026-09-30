@@ -136,3 +136,13 @@ thread. Drawing preserves the current damage clip.
 The desktop adapter supports button shortcut hints, independent glyph sizes,
 glyph spacing and tint, and monospaced labels. Shortcut hints remain display
 metadata; typed application intents and key admission own execution.
+
+## Skipped native frames
+
+The renderer acquires a native surface before painting or uploading changed
+foreground pixels. A skipped acquisition leaves the last submitted texture
+intact and queues no upload. `App::frame_skipped` reports the closed failure
+reason and acquisition duration; `App::frame_presented` reports successful
+CPU work and submission. Neither callback measures GPU completion or scanout.
+The opt-in timings log records each acquisition outcome without application
+content.

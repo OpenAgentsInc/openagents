@@ -12,6 +12,10 @@ pub enum Phase {
     Paint,
     Upload,
     Acquire,
+    SurfaceOccluded,
+    SurfaceTimeout,
+    SurfaceOutdated,
+    SurfaceLost,
     Present,
     Frame,
     InputToPresent,
@@ -35,6 +39,22 @@ pub struct FrameTiming {
     pub present_us: u64,
     pub damaged_pixels: u64,
     pub regions: usize,
+}
+
+/// A native surface that cannot supply a frame. No pixels are uploaded.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub struct FrameSkip {
+    pub reason: SkipReason,
+    pub acquire_us: u64,
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    Occluded,
+    Timeout,
+    Outdated,
+    Lost,
 }
 
 /// Keeps the last 512 samples. An optional bounded writer never blocks rendering.

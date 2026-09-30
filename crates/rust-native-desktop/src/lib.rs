@@ -269,6 +269,11 @@ pub trait App {
         let _ = (resource, frame, rect);
     }
 
+    /// Local diagnostics when the native surface skips a frame before uploading pixels.
+    fn frame_skipped(&mut self, timing: timing::FrameSkip) {
+        let _ = timing;
+    }
+
     /// Local diagnostics after a frame was submitted to the native surface.
     fn frame_presented(&mut self, timing: timing::FrameTiming) {
         let _ = timing;

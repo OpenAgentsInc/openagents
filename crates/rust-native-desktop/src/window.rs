@@ -106,6 +106,8 @@ pub struct Options {
     pub pixel_size: Option<(u32, u32)>,
     /// Override pixels per view point for rendering fixtures.
     pub render_scale: Option<f32>,
+    /// Keep a short-lived rendering fixture above other windows while it samples.
+    pub fixture_frontmost: bool,
 }
 
 impl Default for Options {
@@ -118,6 +120,7 @@ impl Default for Options {
             look: Look::default(),
             pixel_size: None,
             render_scale: None,
+            fixture_frontmost: false,
         }
     }
 }
@@ -788,6 +791,51 @@ impl<A: App> Shell<A> {
         else {
             return Ok(());
         };
+        // Acquire before painting or queuing texture writes. A skipped surface
+        // has no submission to flush wgpu's pending upload allocations.
+        let acquiring = Instant::now();
+        let gpu = self.gpu.as_ref().expect("the gpu");
+        let outcome = gpu.surface.get_current_texture();
+        timing.acquire_us = acquiring.elapsed().as_micros() as u64;
+        self.timings
+            .record(Phase::Acquire, acquiring.elapsed(), 0, 0);
+        let skipped = match &outcome {
+            wgpu::CurrentSurfaceTexture::Outdated => Some(crate::timing::SkipReason::Outdated),
+            wgpu::CurrentSurfaceTexture::Lost => Some(crate::timing::SkipReason::Lost),
+            wgpu::CurrentSurfaceTexture::Occluded => Some(crate::timing::SkipReason::Occluded),
+            wgpu::CurrentSurfaceTexture::Timeout => Some(crate::timing::SkipReason::Timeout),
+            _ => None,
+        };
+        if let Some(reason) = skipped {
+            let phase = match reason {
+                crate::timing::SkipReason::Occluded => Phase::SurfaceOccluded,
+                crate::timing::SkipReason::Timeout => Phase::SurfaceTimeout,
+                crate::timing::SkipReason::Outdated => Phase::SurfaceOutdated,
+                crate::timing::SkipReason::Lost => Phase::SurfaceLost,
+            };
+            self.timings.record(phase, acquiring.elapsed(), 0, 0);
+            self.app.frame_skipped(crate::timing::FrameSkip {
+                reason,
+                acquire_us: timing.acquire_us,
+            });
+        }
+        let texture = match outcome {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                gpu.surface.configure(&gpu.device, &gpu.config);
+                self.request_frame();
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => {
+                // Try again a little later, not in a loop.
+                self.hold = Some(Instant::now() + SKIPPED_FRAME_WAIT);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err("the surface failed validation".to_string());
+            }
+        };
         let scale = self.scale();
         let surface = self
             .backdrop
@@ -876,29 +924,8 @@ impl<A: App> Shell<A> {
                 .record(Phase::Upload, uploading.elapsed(), pixels, regions.len());
             self.painted = true;
         }
-        let acquiring = Instant::now();
-        let gpu = self.gpu.as_ref().expect("the gpu");
-        let texture = match gpu.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                gpu.surface.configure(&gpu.device, &gpu.config);
-                self.request_frame();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => {
-                // Try again a little later, not in a loop.
-                self.hold = Some(Instant::now() + SKIPPED_FRAME_WAIT);
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                return Err("the surface failed validation".to_string());
-            }
-        };
-        timing.acquire_us = acquiring.elapsed().as_micros() as u64;
-        self.timings
-            .record(Phase::Acquire, acquiring.elapsed(), 0, 0);
         let presenting = Instant::now();
+        let gpu = self.gpu.as_ref().expect("the gpu");
         let output = texture.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(gpu.encoded),
             ..Default::default()
@@ -1048,6 +1075,9 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.options.min_size.0,
                 self.options.min_size.1,
             ));
+        if self.options.fixture_frontmost {
+            attributes = attributes.with_window_level(winit::window::WindowLevel::AlwaysOnTop);
+        }
         #[cfg(target_os = "macos")]
         if self.app.window_layout().header_height().is_some() {
             use winit::platform::macos::WindowAttributesExtMacOS;

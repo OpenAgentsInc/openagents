@@ -4,13 +4,13 @@ use openagents_chat::service::Snapshot;
 use openagents_desktop::chat_action::Action as ChatAction;
 use openagents_desktop::model::Intent;
 use rust_native::ValidatedView;
-use rust_native_desktop::timing::FrameTiming;
+use rust_native_desktop::timing::{FrameSkip, FrameTiming};
 use rust_native_desktop::{App, Frame, PxRect, Theme, WindowLayout};
 use serde::Serialize;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum Phase {
     Warm,
@@ -74,6 +74,11 @@ struct Sample {
     relaid: usize,
 }
 #[derive(Serialize)]
+struct Skipped {
+    phase: Phase,
+    frame: FrameSkip,
+}
+#[derive(Serialize)]
 struct PhaseResult {
     phase: Phase,
     seconds: f64,
@@ -83,6 +88,7 @@ struct PhaseResult {
 #[derive(Serialize)]
 struct Report {
     schema: &'static str,
+    complete: bool,
     platform: &'static str,
     points: (f32, f32),
     scale: f32,
@@ -92,7 +98,36 @@ struct Report {
     samples: Vec<Sample>,
     /// First submitted frames after opening the command palette and chat menu.
     openings: Vec<Sample>,
+    skipped: Vec<Skipped>,
+    skipped_dropped: u64,
     phases: Vec<PhaseResult>,
+}
+fn check_coverage(samples: &[Sample], openings: &[Sample]) -> Result<(), String> {
+    for (phase, minimum) in [
+        (Phase::Scroll, 90),
+        (Phase::Streaming, 90),
+        (Phase::Sidebar, 90),
+        (Phase::Composer, 90),
+        (Phase::Commands, 90),
+        (Phase::ChatMenu, 20),
+    ] {
+        let count = samples
+            .iter()
+            .filter(|sample| sample.phase == phase)
+            .count();
+        if count < minimum {
+            return Err(format!(
+                "incomplete native benchmark: {phase:?} has {count} submitted samples; need {minimum}"
+            ));
+        }
+    }
+    if ![Phase::Commands, Phase::ChatMenu]
+        .into_iter()
+        .all(|phase| openings.iter().any(|sample| sample.phase == phase))
+    {
+        return Err("incomplete native benchmark: missing first menu frames".into());
+    }
+    Ok(())
 }
 
 struct Fixture {
@@ -108,6 +143,8 @@ struct Fixture {
     last_step_us: u64,
     samples: Vec<Sample>,
     openings: Vec<Sample>,
+    skipped: Vec<Skipped>,
+    skipped_dropped: u64,
     results: Vec<PhaseResult>,
     done: bool,
     sidebar: f32,
@@ -129,6 +166,8 @@ impl Fixture {
             last_step_us: 0,
             samples: Vec::with_capacity(500),
             openings: Vec::with_capacity(2),
+            skipped: Vec::with_capacity(512),
+            skipped_dropped: 0,
             results: vec![],
             done: false,
             sidebar: 0.0,
@@ -323,6 +362,16 @@ impl App for Fixture {
         self.frames += 1;
         self.last_step_us = 0;
     }
+    fn frame_skipped(&mut self, frame: FrameSkip) {
+        if self.skipped.len() < 512 {
+            self.skipped.push(Skipped {
+                phase: self.phase,
+                frame,
+            });
+        } else {
+            self.skipped_dropped += 1;
+        }
+    }
     fn exit_requested(&self) -> bool {
         self.done
     }
@@ -347,6 +396,7 @@ pub fn run(directory: &Path, minimum: bool, scale: f32, backdrop: bool) -> Resul
     let options = rust_native_desktop::window::Options {
         pixel_size: Some(((points.0 * scale) as u32, (points.1 * scale) as u32)),
         render_scale: Some(scale),
+        fixture_frontmost: true,
         min_size: (1.0, 1.0),
         ..Default::default()
     };
@@ -373,9 +423,7 @@ pub fn run(directory: &Path, minimum: bool, scale: f32, backdrop: bool) -> Resul
         .ok_or("fixture ended without a report")?;
     let bytes = serde_json::to_vec_pretty(&report).map_err(|error| error.to_string())?;
     std::fs::write(directory.join("native.json"), bytes).map_err(|error| error.to_string())?;
-    if report.samples.is_empty() {
-        return Err("no presented frames were measured".into());
-    }
+    check_coverage(&report.samples, &report.openings)?;
     println!("wrote offline native timings to {}", directory.display());
     Ok(())
 }
@@ -393,6 +441,7 @@ impl Drop for Reporting {
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(Report {
             schema: "openagents.desktop.performance.v1",
+            complete: check_coverage(&self.fixture.samples, &self.fixture.openings).is_ok(),
             platform: std::env::consts::OS,
             points: self.points,
             scale: self.scale,
@@ -401,10 +450,13 @@ impl Drop for Reporting {
             chats: 500,
             samples: std::mem::take(&mut self.fixture.samples),
             openings: std::mem::take(&mut self.fixture.openings),
+            skipped: std::mem::take(&mut self.fixture.skipped),
+            skipped_dropped: self.fixture.skipped_dropped,
             phases: std::mem::take(&mut self.fixture.results),
         });
     }
 }
+
 impl App for Reporting {
     type Intent = Intent;
     fn title(&self) -> String {
@@ -446,7 +498,50 @@ impl App for Reporting {
     fn frame_presented(&mut self, t: FrameTiming) {
         self.fixture.frame_presented(t)
     }
+    fn frame_skipped(&mut self, t: FrameSkip) {
+        self.fixture.frame_skipped(t)
+    }
     fn exit_requested(&self) -> bool {
         self.fixture.exit_requested()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(phase: Phase) -> Sample {
+        Sample {
+            phase,
+            frame: FrameTiming::default(),
+            step_us: 0,
+            rows: 3300,
+            visible_rows: 10,
+            relaid: 0,
+        }
+    }
+
+    #[test]
+    fn coverage_refuses_occluded_runs_and_missing_opening_frames() {
+        let mut samples = vec![];
+        for phase in [
+            Phase::Scroll,
+            Phase::Streaming,
+            Phase::Sidebar,
+            Phase::Composer,
+            Phase::Commands,
+            Phase::ChatMenu,
+        ] {
+            samples.extend((0..115).map(|_| sample(phase)));
+        }
+        let openings = vec![sample(Phase::Commands), sample(Phase::ChatMenu)];
+        assert!(check_coverage(&samples, &openings).is_ok());
+        assert!(check_coverage(&samples, &[]).is_err());
+        samples.retain(|sample| sample.phase != Phase::Sidebar);
+        assert!(
+            check_coverage(&samples, &openings)
+                .unwrap_err()
+                .contains("Sidebar has 0")
+        );
     }
 }
