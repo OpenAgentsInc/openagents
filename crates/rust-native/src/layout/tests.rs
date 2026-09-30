@@ -1173,3 +1173,59 @@ mod sources {
         source::retire("test-long:chat");
     }
 }
+
+/// A text row's `style.align` places its lines: at the start by default,
+/// centered, or at the end of the content band.
+#[test]
+fn a_text_row_follows_its_alignment() {
+    let x = |align: Option<crate::style::TextAlign>| {
+        let mut row = node(
+            "t",
+            Element::Text {
+                value: "Short".into(),
+                role: TextRole::Body,
+            },
+        );
+        row.style.align = align;
+        let mut layout = TranscriptLayout::new();
+        layout
+            .update(update(vec![row], 400.0), &mut FixedMeasurer::default())
+            .unwrap();
+        layout.display(0).unwrap().runs[0].x
+    };
+    let start = x(None);
+    let center = x(Some(crate::style::TextAlign::Center));
+    let end = x(Some(crate::style::TextAlign::End));
+    assert_eq!(start, content_band(400.0).0);
+    assert!(start < center && center < end, "{start} {center} {end}");
+}
+
+/// A table a little wider than the row, once its columns wrap at the
+/// readable width, wraps a little more instead of scrolling sideways; a
+/// much wider one still scrolls.
+#[test]
+fn a_table_just_too_wide_wraps_instead_of_scrolling() {
+    let table = |cells: usize| {
+        let long = "word ".repeat(30);
+        let header = vec!["h"; cells].join("|");
+        let rule = vec!["---"; cells].join("|");
+        let row = vec![long.trim(); cells].join("|");
+        node(
+            "t",
+            Element::Markdown {
+                blocks: markdown::parse(&format!("|{header}|\n|{rule}|\n|{row}|")),
+            },
+        )
+    };
+    // Three columns capped at the readable width: 780 points of cells.
+    let scrolls = |width: f32| {
+        let mut layout = TranscriptLayout::new();
+        layout
+            .update(update(vec![table(3)], width), &mut FixedMeasurer::default())
+            .unwrap();
+        !layout.display(0).unwrap().scrollers.is_empty()
+    };
+    let side = 2.0 * rows::SIDE_MARGIN;
+    assert!(!scrolls(720.0 + side), "780 of cells in 720 points wraps");
+    assert!(scrolls(600.0 + side), "780 of cells in 600 points scrolls");
+}

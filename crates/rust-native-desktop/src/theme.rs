@@ -68,6 +68,28 @@ impl Default for Theme {
     }
 }
 
+impl Theme {
+    /// The OpenAgents apps' theme: the desktop shell and the deck paint
+    /// with it, so a change here changes both. Near-black, with white and
+    /// gradations of white; the same values as the transcript palette.
+    pub fn openagents() -> Theme {
+        Theme {
+            font_family: rust_native::layout::display::FontFamily::Geist,
+            background: Color::rgb(9, 11, 14),
+            text: Color::rgb(230, 232, 235),
+            muted: Color::rgb(150, 155, 163),
+            rule: Color::rgb(43, 47, 53),
+            focus: Color::rgb(184, 207, 231),
+            button_radius: 7.0,
+            body: 13.0,
+            heading: 26.0,
+            status: 11.0,
+            column: 620.0,
+            ..Theme::default()
+        }
+    }
+}
+
 /// The points a semantic space stands for.
 pub fn space(space: Option<Space>) -> f32 {
     match space {

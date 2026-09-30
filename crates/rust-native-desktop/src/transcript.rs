@@ -741,7 +741,7 @@ impl Transcript {
     }
 }
 
-fn ink(ink: Ink) -> Color {
+pub(crate) fn ink(ink: Ink) -> Color {
     match ink {
         Ink::Rgba([red, green, blue, alpha]) => Color {
             red,

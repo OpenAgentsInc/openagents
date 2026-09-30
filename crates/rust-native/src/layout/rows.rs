@@ -566,12 +566,16 @@ impl Ctx<'_> {
                 *width = width.max(self.natural(&para) + 20.0);
             }
         }
-        // Columns wrap at a readable width; a table still wider than the row
-        // scrolls sideways.
+        // Columns wrap at a readable width. A table then no more than a
+        // tenth wider than the row wraps its widest columns a little more;
+        // one wider still scrolls sideways.
         let most = MAX_COLUMN_WIDTH * self.typography.size(15.0) / 15.0;
         let capped: Vec<f32> = natural.iter().map(|n| n.min(most)).collect();
-        let widths = if capped.iter().sum::<f32>() <= w {
+        let capped_w = capped.iter().sum::<f32>();
+        let widths = if capped_w <= w {
             fit_columns(&natural, w)
+        } else if capped_w <= w * 1.1 {
+            fit_columns(&capped, w)
         } else {
             capped
         };
@@ -697,7 +701,11 @@ impl Ctx<'_> {
                     y,
                     wrap,
                     if mono { 2.0 } else { 3.0 },
-                    AlignX::Start,
+                    match node.style.align {
+                        Some(crate::style::TextAlign::Center) => AlignX::Center,
+                        Some(crate::style::TextAlign::End) => AlignX::End,
+                        _ => AlignX::Start,
+                    },
                 )
                 .0
             }

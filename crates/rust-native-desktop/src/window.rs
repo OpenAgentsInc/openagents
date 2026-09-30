@@ -33,7 +33,7 @@ use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::window::{CursorIcon, Window, WindowId};
+use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
 /// How long a backdrop waits after the surface skipped a frame.
 const SKIPPED_FRAME_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
@@ -356,6 +356,14 @@ impl<A: App> Shell<A> {
             self.interaction.leading_scroll = offset.max(0.0);
         }
         if let Some(window) = &self.window {
+            let fullscreen = window.fullscreen().is_some();
+            if let Some(on) = self
+                .app
+                .fullscreen_request(fullscreen)
+                .filter(|on| *on != fullscreen)
+            {
+                window.set_fullscreen(on.then_some(Fullscreen::Borderless(None)));
+            }
             let cursor = self.app.ime_cursor();
             window.set_ime_allowed(cursor.is_some());
             if let Some((x, y)) = cursor {

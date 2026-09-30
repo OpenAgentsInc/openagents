@@ -369,20 +369,7 @@ impl App for DesktopApp {
         if self.navigation.is_none() {
             return Theme::default();
         }
-        Theme {
-            font_family: rust_native::layout::display::FontFamily::Geist,
-            background: Color::rgb(9, 11, 14),
-            text: Color::rgb(230, 232, 235),
-            muted: Color::rgb(150, 155, 163),
-            rule: Color::rgb(43, 47, 53),
-            focus: Color::rgb(184, 207, 231),
-            button_radius: 7.0,
-            body: 13.0,
-            heading: 26.0,
-            status: 11.0,
-            column: 620.0,
-            ..Theme::default()
-        }
+        Theme::openagents()
     }
 
     fn window_layout(&self) -> WindowLayout {

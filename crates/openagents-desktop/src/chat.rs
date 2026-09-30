@@ -1630,24 +1630,17 @@ impl Panel {
                 .iter()
                 .find(|image| resource == format!("image:{}", image.id))
         }) {
-            let width = (image.preview_width as f32 * scale).round() as usize;
-            let height = (image.preview_height as f32 * scale).round() as usize;
-            for y in 0..height {
-                for x in 0..width {
-                    let sx = (x as f32 / scale) as usize;
-                    let sy = (y as f32 / scale) as usize;
-                    let at = (sy.min(image.preview_height as usize - 1)
-                        * image.preview_width as usize
-                        + sx.min(image.preview_width as usize - 1))
-                        * 4;
-                    let p = &image.preview[at..at + 4];
-                    frame.blend(
-                        rect.x as i64 + x as i64,
-                        rect.y as i64 + y as i64,
-                        rust_native::style::Color::rgb(p[0], p[1], p[2]),
-                        f32::from(p[3]) / 255.0,
-                    );
-                }
+            if let Ok(preview) = rust_native_desktop::image::Image::from_rgba(
+                image.preview_width,
+                image.preview_height,
+                image.preview.to_vec(),
+            ) {
+                let size = PxRect {
+                    w: image.preview_width as f32 * scale,
+                    h: image.preview_height as f32 * scale,
+                    ..rect
+                };
+                rust_native_desktop::image::paint(frame, &preview, size);
             }
             return true;
         }

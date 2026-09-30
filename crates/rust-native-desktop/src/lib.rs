@@ -31,9 +31,11 @@ pub mod backdrop;
 pub mod canvas;
 pub mod composer;
 mod icons;
+pub mod image;
 pub mod input;
 pub mod layout;
 pub mod paint;
+pub mod rich;
 pub mod text;
 pub mod theme;
 pub mod timing;
@@ -240,6 +242,15 @@ pub trait App {
     /// Whether the application asked to close its window.
     fn exit_requested(&self) -> bool {
         false
+    }
+
+    /// A fullscreen change the application asks for, given whether the
+    /// window is fullscreen now: `Some(true)` to enter, `Some(false)` to
+    /// leave. Asked after every tick; answer `None` once the change is
+    /// made.
+    fn fullscreen_request(&mut self, fullscreen: bool) -> Option<bool> {
+        let _ = fullscreen;
+        None
     }
 }
 
