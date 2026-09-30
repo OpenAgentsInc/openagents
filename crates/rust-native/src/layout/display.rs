@@ -190,7 +190,11 @@ pub enum WidgetKind {
     /// An application button; activation returns only its semantic node key.
     Button { key: String, enabled: bool },
     /// A code block's copy control.
-    Copy { text: String },
+    Copy {
+        text: String,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        icon: bool,
+    },
     /// A tap target that expands or collapses the tool row `key`.
     Toggle { key: String, expanded: bool },
     /// A disclosure chevron.

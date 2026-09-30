@@ -157,6 +157,20 @@ impl Ctx<'_> {
         spacing: f32,
         align: AlignX,
     ) -> (f32, f32) {
+        self.para_with_height(para, x, y, wrap, spacing, align, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn para_with_height(
+        &mut self,
+        para: &Para,
+        x: f32,
+        y: f32,
+        wrap: Wrap,
+        spacing: f32,
+        align: AlignX,
+        line_height: Option<f32>,
+    ) -> (f32, f32) {
         if para.text.is_empty() {
             return (0.0, 0.0);
         }
@@ -198,7 +212,7 @@ impl Ctx<'_> {
         let mut top = y;
         let mut widest: f32 = 0.0;
         for (number, line) in measured.lines.iter().enumerate() {
-            let fixed_height = self.typography.metrics.body_line_height > 0
+            let fixed_body = self.typography.metrics.body_line_height > 0
                 && runs.iter().any(|run| {
                     !run.font.mono
                         && (run.font.size - self.typography.size(self.body_size())).abs() < 0.01
@@ -206,6 +220,7 @@ impl Ctx<'_> {
                 && runs
                     .iter()
                     .all(|run| run.font.size <= self.typography.size(self.body_size()) + 0.01);
+            let fixed_height = line_height.is_some() || fixed_body;
             if number > 0 && !fixed_height {
                 top += spacing;
             }
@@ -236,8 +251,9 @@ impl Ctx<'_> {
             };
             let measured_height = line.ascent + line.descent + line.leading;
             let height = if fixed_height {
-                self.typography
-                    .size(f32::from(self.typography.metrics.body_line_height))
+                self.typography.size(
+                    line_height.unwrap_or(f32::from(self.typography.metrics.body_line_height)),
+                )
             } else {
                 measured_height
             };
@@ -345,6 +361,22 @@ impl Ctx<'_> {
     fn block(&mut self, block: &Block, x: f32, y: f32, w: f32, ink: Ink) -> f32 {
         match block {
             Block::Heading { level, spans } => {
+                if let Some(metrics) = self.typography.metrics.markdown {
+                    let [size, height] =
+                        metrics.headings[usize::from(*level).saturating_sub(1).min(3)];
+                    let para = self.spans(spans, f32::from(size), Weight::Semibold, ink, 1.0);
+                    return self
+                        .para_with_height(
+                            &para,
+                            x,
+                            y,
+                            Wrap::At(w),
+                            0.0,
+                            AlignX::Start,
+                            Some(f32::from(height)),
+                        )
+                        .0;
+                }
                 let (size, weight) = match level {
                     1 => (22.0, Weight::Bold),
                     2 => (19.0, Weight::Bold),
@@ -480,43 +512,69 @@ impl Ctx<'_> {
         ink: Ink,
     ) -> f32 {
         let code = text.strip_suffix('\n').unwrap_or(text);
+        let metrics = self.typography.metrics.markdown;
+        let copy_icon = metrics.is_some_and(|metrics| metrics.copy_icon);
         let code = if code.is_empty() { " " } else { code };
         let mut frame = rect(x, y, w, 0.0, 10.0);
         frame.fill = Some(Ink::Role(ColorRole::Surface));
         frame.stroke = Some(Ink::Role(ColorRole::Border));
         let frame_index = self.out.rects.len();
         self.out.rects.push(frame);
-        let label = language.filter(|l| !l.is_empty()).unwrap_or("code");
-        let label_style = self.style(12.0, Weight::Semibold, SECONDARY);
+        let label = language
+            .filter(|l| !l.is_empty())
+            .unwrap_or(if metrics.is_some() { "" } else { "code" });
+        let label_size = metrics.map_or(12.0, |metrics| f32::from(metrics.code_label_size));
+        let label_style = self.style(
+            label_size,
+            if metrics.is_some() {
+                Weight::Regular
+            } else {
+                Weight::Semibold
+            },
+            SECONDARY,
+        );
         let label_para = Para::plain(label, label_style);
         // The header and its Copy control grow with the caption size.
-        let grow = self.typography.size(12.0) / 12.0;
-        let copy_w = (72.0 * grow).min(w / 2.0).ceil();
+        let grow = self.typography.size(label_size) / label_size;
+        let copy_w = ((if copy_icon { 24.0 } else { 72.0 }) * grow)
+            .min(w / 2.0)
+            .ceil();
         let mark = self.out.mark();
         let (label_h, _) = self.para(
             &label_para,
-            x + 12.0,
-            y,
+            x + if metrics.is_some() { 13.0 } else { 12.0 },
+            y + if metrics.is_some() { 1.0 } else { 0.0 },
             Wrap::Clip(Some((w - 24.0 - copy_w).max(1.0))),
             0.0,
             AlignX::Start,
         );
-        let header = 32.0f32.max((label_h + 14.0).ceil());
+        let header = metrics.map_or_else(
+            || 32.0f32.max((label_h + 14.0).ceil()),
+            |metrics| f32::from(metrics.code_header_height) * grow,
+        );
         self.out
             .shift(mark, 0.0, ((header - label_h) / 2.0).max(0.0));
         self.widget(
-            x + w - 8.0 - copy_w,
-            y,
+            x + w - if copy_icon { 6.0 } else { 8.0 } - copy_w,
+            y + if copy_icon {
+                (header - 22.0 * grow) / 2.0
+            } else {
+                0.0
+            },
             copy_w,
-            header,
+            if copy_icon { 22.0 * grow } else { header },
             WidgetKind::Copy {
                 text: text.to_owned(),
+                icon: copy_icon,
             },
         );
         let mut rule = rect(x, y + header, w, 1.0, 0.0);
         rule.fill = Some(Ink::Role(ColorRole::Border));
         self.out.rects.push(rule);
-        let style = TextStyle::new(self.font(13.0, Weight::Regular, false, true), ink);
+        let code_size = metrics.map_or(13.0, |metrics| {
+            f32::from(metrics.code_size_half_points) / 2.0
+        });
+        let style = TextStyle::new(self.font(code_size, Weight::Regular, false, true), ink);
         let para = Para::plain(code, style);
         if let Some(language) = language {
             self.out.code_blocks.push(super::display::CodeBlock {
@@ -526,15 +584,17 @@ impl Ctx<'_> {
         }
         // Code keeps its lines; a block wider than the row scrolls sideways.
         let mark = self.out.mark();
-        let (text_h, widest) = self.para(
+        let padding_y = metrics.map_or(12.0, |metrics| f32::from(metrics.code_padding_y));
+        let (text_h, widest) = self.para_with_height(
             &para,
-            x + 12.0,
-            y + header + 13.0,
+            x + if metrics.is_some() { 13.0 } else { 12.0 },
+            y + header + 1.0 + padding_y,
             Wrap::Clip(Some(MAX_SCROLL_WIDTH)),
             3.0,
             AlignX::Start,
+            metrics.map(|metrics| f32::from(metrics.code_line_height)),
         );
-        let height = header + 1.0 + 24.0 + text_h;
+        let height = header + if metrics.is_some() { 2.0 } else { 1.0 } + 2.0 * padding_y + text_h;
         self.out.rects[frame_index].h = height;
         // Inside the one-point border, below the header rule.
         self.scroller(

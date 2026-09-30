@@ -136,6 +136,32 @@ pub struct Metrics {
     pub bubble_max_percent: u8,
     pub bubble_radius: u16,
     pub bubble_tail_radius: u16,
+    pub markdown: Option<MarkdownMetrics>,
+}
+
+/// Scoped Markdown dimensions. Each heading is [font size, line height].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MarkdownMetrics {
+    pub headings: [[u16; 2]; 4],
+    /// Half-point units allow fractional code sizes without unstable float hashing.
+    pub code_size_half_points: u16,
+    pub code_line_height: u16,
+    pub code_header_height: u16,
+    pub code_label_size: u16,
+    pub code_padding_y: u16,
+    pub copy_icon: bool,
+}
+impl MarkdownMetrics {
+    fn valid(self) -> bool {
+        self.headings
+            .iter()
+            .all(|[size, height]| (1..=400).contains(size) && (1..=800).contains(height))
+            && (2..=800).contains(&self.code_size_half_points)
+            && (1..=800).contains(&self.code_line_height)
+            && (24..=128).contains(&self.code_header_height)
+            && (1..=128).contains(&self.code_label_size)
+            && self.code_padding_y <= 128
+    }
 }
 impl Default for Metrics {
     fn default() -> Self {
@@ -148,6 +174,7 @@ impl Default for Metrics {
             bubble_max_percent: 0,
             bubble_radius: 18,
             bubble_tail_radius: 4,
+            markdown: None,
         }
     }
 }
@@ -161,6 +188,7 @@ impl Metrics {
             && self.bubble_max_percent <= 100
             && self.bubble_radius <= 128
             && self.bubble_tail_radius <= 128
+            && self.markdown.is_none_or(MarkdownMetrics::valid)
     }
 }
 

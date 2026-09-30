@@ -141,3 +141,24 @@ for the chat menu. Frame submission p50/p99: scroll 3.105/3.674 ms, streaming
 5.584/6.406 ms, and chat menu 0.984/1.073 ms. Idle CPU is 2.22% of one core;
 peak RSS is 206.2 MiB. This is CPU submission timing, not GPU completion or
 scanout. [Retained report](native-controls.json).
+
+
+The foreground fix landed as `2c83ae4daf`. Its optimized build passed, and
+the refreshed scratch preview opened, filtered, and switched menus successfully.
+The [post-fix native report](native-menu-fix.json) records commands p50/p99
+5.972/6.779 ms and chat-menu selection 1.213/1.404 ms. Idle CPU is 2.23% of
+one core. The older fixture remains open to preserve its temporary chats.
+
+## Markdown dimensions
+
+Reimplement Zeron's heading and code dimensions as optional shared layout
+metrics: heading font/line sizes 19/27, 16/24, 15/22, and 14/22 in semibold;
+code 12.5/18, 28-point header, 11-point language label, ten-point vertical
+padding, and a 24×22 copy control. Default callers retain their existing
+metrics and serialized copy widgets. Copy retains the original code bytes.
+The copy glyph is still awaiting the exact Solar asset pass.
+
+Shared application: 104 tests passed; core: 87 passed and three opt-in checks
+ignored, including the now-fixed CoreText corpus digest check; desktop adapter:
+57 passed. Strict all-target Clippy passed for core, adapter, shared application,
+and desktop. This remains a component slice of open #10029.

@@ -1,6 +1,6 @@
 //! Main chat values reimplemented from Zeron's public dark theme and components.
 //! Reference: zeronsh/zeron 50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4 (MIT).
-use rust_native::layout::{Metrics, display::ColorRole};
+use rust_native::layout::{MarkdownMetrics, Metrics, display::ColorRole};
 use rust_native::style::Color;
 
 pub const CANVAS: Color = Color::rgb(6, 6, 6);
@@ -32,6 +32,15 @@ pub const TRANSCRIPT: Metrics = Metrics {
     bubble_max_percent: 80,
     bubble_radius: 16,
     bubble_tail_radius: 16,
+    markdown: Some(MarkdownMetrics {
+        headings: [[19, 27], [16, 24], [15, 22], [14, 22]],
+        code_size_half_points: 25,
+        code_line_height: 18,
+        code_header_height: 28,
+        code_label_size: 11,
+        code_padding_y: 10,
+        copy_icon: true,
+    }),
 };
 
 #[cfg(test)]
@@ -44,6 +53,58 @@ mod tests {
     };
     use rust_native::style::Style;
     use rust_native::{Element, MessageRole, Node};
+
+    #[test]
+    fn reference_heading_and_code_metrics_preserve_copy_bytes() {
+        use rust_native::layout::display::{Weight, WidgetKind};
+        let node = Node {
+            key: "markdown".into(),
+            style: Style::default(),
+            element: Element::Markdown {
+                blocks: rust_native::markdown::parse(
+                    "# Heading one\n\n## Heading two\n\n### Heading three\n\n#### Heading four\n\n```rust\nlet answer = 42;\n```",
+                ),
+            },
+        };
+        let mut layout = TranscriptLayout::new();
+        layout.set_font_family(FontFamily::Geist);
+        layout.set_metrics(TRANSCRIPT).unwrap();
+        layout
+            .update(
+                Update {
+                    width: 768.0,
+                    scale: 1.0,
+                    rows: vec![node],
+                    order: Some(vec!["markdown".into()]),
+                    ..Update::default()
+                },
+                &mut FixedMeasurer::default(),
+            )
+            .unwrap();
+        let frame = layout.frame();
+        let row = frame.display(0).unwrap();
+        for size in [19.0, 16.0, 15.0, 14.0] {
+            assert!(
+                row.styles
+                    .iter()
+                    .any(|s| s.font.size == size && s.font.weight == Weight::Semibold)
+            );
+        }
+        assert!(
+            row.styles
+                .iter()
+                .any(|s| s.font.size == 12.5 && s.font.mono)
+        );
+        let code = row
+            .rects
+            .iter()
+            .find(|r| r.fill == Some(Ink::Role(ColorRole::Surface)))
+            .unwrap();
+        assert_eq!(code.h, 68.0);
+        let copy=row.widgets.iter().find(|w| matches!(&w.kind, WidgetKind::Copy {text,icon:true} if text == "let answer = 42;\n")).unwrap();
+        assert_eq!((copy.w, copy.h), (24.0, 22.0));
+        assert_eq!(copy.y - code.y, 3.0);
+    }
 
     #[test]
     fn reference_body_and_bubble_geometry_use_one_shared_reading_band() {

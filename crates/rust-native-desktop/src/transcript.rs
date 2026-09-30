@@ -420,7 +420,7 @@ impl Transcript {
                             WidgetKind::Button { key, enabled: true } => {
                                 Some(Action::Activate(key))
                             }
-                            WidgetKind::Copy { text } => Some(Action::Copy(text)),
+                            WidgetKind::Copy { text, .. } => Some(Action::Copy(text)),
                             WidgetKind::Earlier { loading: false } => Some(Action::Earlier),
                             WidgetKind::Toggle { key, expanded } => {
                                 if expanded {
@@ -696,6 +696,35 @@ impl Transcript {
                 }
                 let color = self.ink(Ink::Role(ColorRole::Secondary));
                 match &widget.kind {
+                    WidgetKind::Copy { icon: true, .. } => {
+                        let unit = bounds.h / 22.0;
+                        let icon = PxRect {
+                            x: bounds.x + (bounds.w - 12.0 * unit) / 2.0,
+                            y: bounds.y + (bounds.h - 12.0 * unit) / 2.0,
+                            w: 12.0 * unit,
+                            h: 12.0 * unit,
+                        };
+                        let stroke = 0.75 * unit;
+                        frame.stroke(
+                            PxRect {
+                                x: icon.x + 1.3 * unit,
+                                y: icon.y + 1.3 * unit,
+                                w: 7.4 * unit,
+                                h: 7.4 * unit,
+                            },
+                            1.5 * unit,
+                            stroke,
+                            color,
+                        );
+                        let front = PxRect {
+                            x: icon.x + 3.3 * unit,
+                            y: icon.y + 3.3 * unit,
+                            w: 7.2 * unit,
+                            h: 7.2 * unit,
+                        };
+                        frame.fill(front, 1.5 * unit, self.ink(Ink::Role(ColorRole::Surface)));
+                        frame.stroke(front, 1.5 * unit, stroke, color);
+                    }
                     WidgetKind::Copy { .. } => {
                         let paragraph = fonts.paragraph(
                             "Copy",
@@ -976,7 +1005,7 @@ mod tests {
         assert_eq!(transcript.height(), height);
         assert!(Arc::ptr_eq(&frame, &transcript.frame));
         assert!(transcript.frame.display(0).unwrap().widgets.iter().any(|widget|
-            matches!(&widget.kind,WidgetKind::Copy {text} if text == "// Café\nfn main() { let answer = 42; println!(\"hello\"); }\n")));
+            matches!(&widget.kind,WidgetKind::Copy {text,..} if text == "// Café\nfn main() { let answer = 42; println!(\"hello\"); }\n")));
         let mut pixels = Frame::transparent(600, 1100);
         transcript.paint(
             &mut pixels,
