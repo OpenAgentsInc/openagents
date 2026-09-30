@@ -50,9 +50,10 @@ impl Policy {
     /// the relay's own event bound.
     pub const DEFAULT_REQUEST_BYTES: usize = 96 * 1024;
 
-    /// Reads `day=40,minute=6,total=3000[,bytes=98304]`. Every limit but
+    /// Reads `day=40,minute=600,total=3000[,bytes=98304]`. Every limit but
     /// `bytes` is required and must be positive, and a key's day cannot
-    /// exceed the total: a typo in the one setting that bounds an open
+    /// exceed the total. A minute above the day is allowed: the day then
+    /// binds first, and the minute only stops a flood: a typo in the one setting that bounds an open
     /// worker's spend must stop the worker, not loosen it.
     ///
     /// # Errors
@@ -99,9 +100,6 @@ impl Policy {
         };
         if policy.per_key_day > policy.total_day {
             return Err("day cannot exceed total".into());
-        }
-        if policy.per_key_minute > policy.per_key_day {
-            return Err("minute cannot exceed day".into());
         }
         Ok(policy)
     }
@@ -342,13 +340,19 @@ mod tests {
                 .max_request_bytes,
             10
         );
+        // A flood limit above the day is allowed; the day binds first.
+        assert_eq!(
+            Policy::parse("day=40,minute=600,total=3000")
+                .unwrap()
+                .per_key_minute,
+            600
+        );
         for bad in [
             "",
             "day=40,minute=6",
             "day=40,minute=6,total=0",
             "day=40,minute=6,total=-1",
             "day=40,minute=6,total=10",
-            "day=4,minute=6,total=10",
             "day=40,minute=6,total=3000,hours=2",
             "day=40,day=41,minute=6,total=3000",
             "day",

@@ -187,7 +187,7 @@ has to answer a key nobody has seen, so it is open under a quota instead
 
 | Limit | Deployed value | Refusal |
 | --- | --- | --- |
-| Jobs per caller key in any 60 seconds | 6 | `rate_limited`, with `retry_after_ms` |
+| Jobs per caller key in any 60 seconds | 40, equal to the day so it never binds first (`minute=600` once the release after `7ae2a4dd41` is live) | `rate_limited`, with `retry_after_ms` |
 | Jobs per caller key per UTC day | 40 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Jobs for every caller together per UTC day | 3,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Request ciphertext | 96 KiB | `limit_exceeded` |
@@ -196,6 +196,10 @@ has to answer a key nobody has seen, so it is open under a quota instead
 - The total is the spend bound. A caller can mint any number of Nostr keys,
   so the per-key limits keep one person from using the day, and the total
   caps the day's cost however many keys arrive.
+- The minute limit is only a flood guard. One message can take several jobs
+  (chat, rank, judge), so a tight per-minute limit refused people typing at
+  a normal pace; the day limits bound the spend, and nobody short of a
+  flood sees "You're sending messages quickly".
 - A metered caller gets conversation jobs only: a delegation is refused
   `not_admitted`, and execution requests are ignored. Keys on
   `CODER_WORKER_ALLOW` are not metered.
