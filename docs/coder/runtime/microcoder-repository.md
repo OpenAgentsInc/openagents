@@ -286,6 +286,48 @@ shell, `PATH`, and variable names only. The task store and the common Git
 directory are no longer protected from commands. A container grant refuses
 full access. [Full access](host-autostart.md#full-access) covers it.
 
+`"access": "toolchains"` is what a person running Coder on their own computer
+gets (`coder::task::local`, from `openagents chat` or the desktop chat;
+[#10045](https://github.com/OpenAgentsInc/openagents/issues/10045)). The write
+boundary is unchanged: commands write only in the granted worktree and the
+private scratch, the task store and common Git directory stay sealed, and
+`HOME` and `TMPDIR` are the scratch. Reads stay confined, but the confinement
+also admits this computer's developer toolchains, which
+`coder_boundary::toolchains` derives at admission from the person's `PATH`
+and toolchain variables (`CARGO_HOME`, `RUSTUP_HOME`, `NVM_DIR`, `PYENV_ROOT`,
+`GOPATH`, `GOROOT`, `BUN_INSTALL`, `DENO_INSTALL`, `DENO_DIR`, `DEVELOPER_DIR`),
+which the launcher carries to the engine process as
+`OPENAGENTS_TOOLCHAIN_<NAME>`, and the known roots:
+
+| Toolchain | Readable |
+| --- | --- |
+| Xcode and Command Line Tools (macOS) | the selected developer directory (`DEVELOPER_DIR`, else `xcode-select -p`) as its whole `.app`, every `/Applications/Xcode*.app`, `/Library/Developer/CommandLineTools`, `/private/var/db/xcode_select_link`, `/private/var/select`, and the license record `/Library/Preferences/com.apple.dt.Xcode.plist` |
+| Homebrew | `/opt/homebrew`, `/usr/local`; on Linux `/home/linuxbrew/.linuxbrew` |
+| rustup and cargo | `RUSTUP_HOME` (else `~/.rustup`); `CARGO_HOME/bin`, `registry`, and `git` (never the cargo root, which may hold `credentials.toml`) |
+| Node | `NVM_DIR/versions`, the npm cache `~/.npm/_cacache` |
+| Python | `PYENV_ROOT` (else `~/.pyenv`), uv's `~/.local/share/uv` and `~/.cache/uv`, pip's caches |
+| Go, Bun, Deno | `GOPATH/bin` and `pkg/mod`, `GOROOT`; `BUN_INSTALL` (else `~/.bun`); `DENO_INSTALL`, `DENO_DIR` and Deno's caches |
+| Nix and Linux | `/nix/store`, `/nix/var/nix/profiles`, `/run/current-system`, `/etc/profiles/per-user`, `/etc/static`, `~/.nix-profile`, `/opt`, and the directory `/etc/resolv.conf` resolves into |
+| Every directory on `PATH` | outside the home directory, a `bin` or `sbin` with its prefix (`/usr/local` for `/usr/local/bin`) unless the prefix is hidden (`.cargo`); inside it, or then, the directory itself and the directories its linked entries resolve into |
+| The repository's common Git directory | readable, so Git works in the worktree; it stays sealed against writes |
+
+Only existing paths are kept, each resolved through its links, with no entry
+beneath another. The list never names the root, the home directory or an
+ancestor of it (`HOME` or the account database's home), nor a directory
+that holds the task store or the Git directory. The commands' `PATH` is the person's `PATH`, then known tool
+directories it lacks (`~/.cargo/bin`, pyenv's shims, nvm's default version,
+`~/.bun/bin`, `~/.deno/bin`, `GOPATH/bin`, `~/.local/bin`, Homebrew), then the
+system `PATH`, each kept only where the boundary can read it. `RUSTUP_HOME`,
+`PYENV_ROOT`, and `UV_PYTHON_INSTALL_DIR` point at the real installations, so
+tools find them from the scratch `HOME`; on macOS `xcrun_db` puts `xcrun`'s
+lookup cache in the scratch instead of the user's temporary directory. The
+network is open, so package managers can fetch into the worktree (a `.venv`,
+`target/`, `node_modules`) or the scratch. The admission records
+`host_network` and `workspace_system_and_toolchains`, and its trace step notes
+the whole allow list (`toolchains`: `reads` with each path's source, `path`,
+and the variable names in `environment`) and the resulting `PATH`
+(`command_environment`, `source: toolchains`). A container grant refuses it.
+
 Admission also refuses a workspace that is not the top level of its Git
 checkout, such as an empty directory inside another repository.
 

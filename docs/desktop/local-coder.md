@@ -78,6 +78,14 @@ capacity; Coder's own worktree of the project's `HEAD`; the same engine,
 failover, and ATIF recording as a host's auto-start. Reopening a chat never
 starts a run.
 
+Its commands can use what is installed on this computer
+([#10045](https://github.com/OpenAgentsInc/openagents/issues/10045)): Xcode's
+`python3` and `git`, Homebrew's `rg`, rustup's `cargo`, nvm's `node`, and the
+rest, with network access, while they still write only in Coder's worktree
+and scratch. The allow list is derived from what is installed and recorded in
+the run's ATIF; [Microcoder's repository
+host](../coder/runtime/microcoder-repository.md) lists it.
+
 The project is a default, never a gate: the chat's own project, then this
 computer's projects (the one **Phones and computers** shows first), then the
 project Coder last started in (`<tasks>/local/last-project`). When none of
