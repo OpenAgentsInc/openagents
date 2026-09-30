@@ -1013,9 +1013,7 @@ impl CoderTab {
         view: &'a ValidatedView<Intent>,
         event: &Activation,
     ) -> Option<&'a Intent> {
-        if self.threads.opened().is_none() {
-            return None;
-        }
+        self.threads.opened()?;
         let node = event.node.as_str();
         view.activate_late(event, |intent| match intent {
             Intent::Stop => node == "coder-composer",
