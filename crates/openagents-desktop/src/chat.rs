@@ -26,6 +26,9 @@ use std::time::Instant;
 
 pub const TRANSCRIPT: &str = "chat-transcript";
 pub const COMPOSER: &str = "composer:chat-composer";
+/// The read-only change pane. The resource carries no file bytes.
+pub const CHANGES: &str = "changes-lines";
+const CHANGES_LINE: f32 = 18.0;
 
 pub const COMMAND_QUERY: &str = "composer:command-query";
 pub const SEARCH: &str = "composer:chat-search";
@@ -73,6 +76,12 @@ pub struct Panel {
         rust_native_desktop::composer::Stamp,
         std::sync::mpsc::Receiver<crate::chat_images::Result>,
     )>,
+    changes: Option<openagents_chat_app::changes::Document>,
+    changes_bound: bool,
+    changes_open: bool,
+    changes_scroll: f32,
+    changes_revision: u64,
+    changes_highlighter: Option<rust_native::syntax::Highlighter>,
 }
 
 impl Panel {
@@ -116,6 +125,12 @@ impl Panel {
             notice: None,
             waker: None,
             image_input: None,
+            changes: None,
+            changes_bound: false,
+            changes_open: false,
+            changes_scroll: 0.0,
+            changes_revision: 0,
+            changes_highlighter: None,
         }
     }
     fn import_image(&mut self, source: crate::chat_images::Source) {
@@ -625,6 +640,11 @@ impl Panel {
         self.transcript_size = (0.0, 0.0);
         self.rows_dirty = true;
         self.notice = None;
+        self.changes = None;
+        self.changes_bound = false;
+        self.changes_open = false;
+        self.changes_scroll = 0.0;
+        self.changes_revision = 0;
     }
     pub fn select_numeric(&mut self, id: u64) -> Option<Request> {
         let id = self
@@ -855,6 +875,15 @@ impl Panel {
             | Action::SavedRetry
             | Action::SavedList => None,
             Action::Palette | Action::Menu | Action::DismissOverlay | Action::Command { .. } => {
+                None
+            }
+            Action::Card { key } if key == "changes-open" && self.show_changes() => {
+                self.changes_open = true;
+                self.changes_scroll = 0.0;
+                None
+            }
+            Action::Card { key } if key == "changes-close" => {
+                self.changes_open = false;
                 None
             }
             Action::Card { key } => {
@@ -1558,6 +1587,17 @@ impl Panel {
             }
             return true;
         }
+        if resource == CHANGES {
+            if let SurfaceInput::Wheel { dy, .. } = event {
+                let viewport = self.changes_viewport();
+                let limit = self
+                    .changes
+                    .as_ref()
+                    .map_or(0.0, |doc| doc.scroll_limit(viewport, CHANGES_LINE));
+                self.changes_scroll = (self.changes_scroll - dy).clamp(0.0, limit);
+            }
+            return !matches!(event, SurfaceInput::Move { .. });
+        }
         false
     }
     pub fn next_wake(&self, now: Instant) -> Instant {
@@ -1572,6 +1612,11 @@ impl Panel {
             SEARCH => Some(self.search.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
+            CHANGES => Some(
+                (self.changes_scroll.to_bits() as u64)
+                    ^ u64::from(u8::from(self.changes_open))
+                    ^ self.changes.as_ref().map_or(0, |doc| doc.len() as u64),
+            ),
             COMPOSER => self
                 .session
                 .selected
@@ -1624,6 +1669,7 @@ impl Panel {
                     - self.image_height(available))
                 .max(40.0),
             )),
+            CHANGES => Some((available, self.changes_viewport())),
             COMPOSER => Some((available, composer_height)),
             resource if resource.starts_with("image:") => self
                 .session
@@ -1691,6 +1737,10 @@ impl Panel {
                 self.transcript_size = size;
             }
             self.transcript.paint(frame, rect, scale, &mut self.fonts);
+            return true;
+        }
+        if resource == CHANGES {
+            self.paint_changes(frame, rect, scale);
             return true;
         }
         if resource == COMPOSER {
@@ -1946,6 +1996,7 @@ impl Panel {
         if self.saved_visible {
             return self.saved_body();
         }
+        self.ensure_changes();
         let start = self.state().map_or(0, |state| state.start);
         if self.rows_dirty {
             let task_rows = self
@@ -2039,8 +2090,20 @@ impl Panel {
         if let Some(notice) = &self.notice {
             children.push(text("chat-notice", notice, TextRole::Status));
         }
+        if self.show_changes() {
+            children.push(self.changes_card());
+        }
         let mut body = stack("chat-body", Axis::Vertical, children);
         body.style.fill_height = Some(true);
+        if self.changes_open && self.show_changes() {
+            let mut split = stack(
+                "chat-split",
+                Axis::Horizontal,
+                vec![body, self.changes_pane()],
+            );
+            split.style.fill_height = Some(true);
+            return split;
+        }
         body
     }
     pub fn footer(&mut self) -> Node<Intent> {
@@ -2279,6 +2342,223 @@ impl Panel {
         footer.style.padding_end = Some(Space::Md);
         footer
     }
+    /// Whether the change pane is open beside the conversation.
+    #[must_use]
+    pub fn changes_open(&self) -> bool {
+        self.changes_open && self.show_changes()
+    }
+
+    /// Bind a finished task's unified diff. The card stays hidden until the
+    /// task's summary says the work is finished.
+    pub fn bind_changes(&mut self, diff: &str) {
+        self.changes = Some(openagents_chat_app::changes::parse(diff));
+        self.changes_bound = true;
+        self.changes_open = false;
+        self.changes_scroll = 0.0;
+    }
+
+    fn show_changes(&self) -> bool {
+        self.changes.as_ref().is_some_and(|doc| !doc.is_empty())
+            && self.task().is_some_and(task_chat::Session::finished)
+    }
+
+    fn ensure_changes(&mut self) {
+        if self.changes_bound {
+            return;
+        }
+        enum Next {
+            Clear,
+            Unchanged,
+            Replace(u64, Option<String>),
+        }
+        let next = match self.task() {
+            None => Next::Clear,
+            Some(task) => {
+                if !task.finished() {
+                    Next::Clear
+                } else if self.changes.is_some() && self.changes_revision == task.revision {
+                    Next::Unchanged
+                } else {
+                    Next::Replace(task.revision, task.unified_diff().map(str::to_owned))
+                }
+            }
+        };
+        match next {
+            Next::Unchanged => {}
+            Next::Clear => {
+                self.changes = None;
+                self.changes_open = false;
+            }
+            Next::Replace(revision, text) => {
+                self.changes_revision = revision;
+                self.changes = text.as_deref().map(openagents_chat_app::changes::parse);
+                if self
+                    .changes
+                    .as_ref()
+                    .is_none_or(openagents_chat_app::changes::Document::is_empty)
+                {
+                    self.changes_open = false;
+                }
+            }
+        }
+    }
+
+    fn changes_viewport(&self) -> f32 {
+        (self.viewport.1 - 180.0).max(40.0)
+    }
+
+    fn changes_card(&self) -> Node<Intent> {
+        let summary = self
+            .changes
+            .as_ref()
+            .map(openagents_chat_app::changes::Document::summary)
+            .unwrap_or_default();
+        let mut card = stack(
+            "changes-card",
+            Axis::Vertical,
+            vec![
+                text("changes-title", "What changed", TextRole::Heading),
+                text("changes-summary", summary, TextRole::Status),
+                button(
+                    "changes-open",
+                    "What changed",
+                    Action::Card {
+                        key: "changes-open".into(),
+                    },
+                    true,
+                ),
+            ],
+        );
+        card.style.background = Some(openagents_chat_app::visual::SELECTED);
+        card.style.padding_top = Some(Space::Sm);
+        card.style.padding_bottom = Some(Space::Sm);
+        card.style.padding_start = Some(Space::Sm);
+        card.style.padding_end = Some(Space::Sm);
+        card.style.radius = Some(10);
+        card
+    }
+
+    fn changes_pane(&self) -> Node<Intent> {
+        let summary = self
+            .changes
+            .as_ref()
+            .map(openagents_chat_app::changes::Document::summary)
+            .unwrap_or_default();
+        let mut pane = stack(
+            "changes-pane",
+            Axis::Vertical,
+            vec![
+                text("changes-pane-title", "What changed", TextRole::Heading),
+                text("changes-pane-summary", summary, TextRole::Status),
+                button(
+                    "changes-close",
+                    "Close",
+                    Action::Card {
+                        key: "changes-close".into(),
+                    },
+                    true,
+                ),
+                Node {
+                    key: "changes-lines".into(),
+                    style: Style {
+                        fill_height: Some(true),
+                        ..Style::default()
+                    },
+                    element: Element::Surface {
+                        label: "What changed".into(),
+                        resource: CHANGES.into(),
+                    },
+                },
+            ],
+        );
+        pane.style.background = Some(openagents_chat_app::visual::CANVAS);
+        pane.style.fill_height = Some(true);
+        pane.style.min_height = Some(200);
+        pane
+    }
+
+    fn paint_changes(&mut self, frame: &mut Frame, rect: PxRect, scale: f32) {
+        let viewport = rect.h / scale.max(0.01);
+        let (first, count) = self.changes.as_ref().map_or((0, 0), |doc| {
+            doc.window(self.changes_scroll, viewport, CHANGES_LINE)
+        });
+        if count == 0 {
+            return;
+        }
+        if self.changes_highlighter.is_none() {
+            self.changes_highlighter = Some(rust_native::syntax::Highlighter::default());
+        }
+        let highlighter = self.changes_highlighter.take().expect("highlighter");
+        if let Some(doc) = self.changes.as_mut() {
+            doc.ensure_spans(first, count, &highlighter);
+        }
+        self.changes_highlighter = Some(highlighter);
+        let visible: Vec<_> = self
+            .changes
+            .as_ref()
+            .map(|doc| {
+                doc.lines()
+                    .iter()
+                    .skip(first)
+                    .take(count)
+                    .map(|line| {
+                        (
+                            line.kind,
+                            line.text.clone(),
+                            line.spans.clone().unwrap_or_default(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let font = rust_native::layout::display::Font {
+            size: 13.0,
+            weight: rust_native::layout::display::Weight::Regular,
+            family: rust_native::layout::display::FontFamily::Geist,
+            italic: false,
+            mono: true,
+        };
+        let line_px = CHANGES_LINE * scale;
+        for (index, (kind, text, spans)) in visible.iter().enumerate() {
+            let top = rect.y + index as f32 * line_px;
+            let gutter = match kind {
+                openagents_chat_app::changes::Kind::Add => Some(Color::rgb(28, 48, 34)),
+                openagents_chat_app::changes::Kind::Remove => Some(Color::rgb(58, 32, 36)),
+                _ => None,
+            };
+            if let Some(color) = gutter {
+                frame.fill(
+                    PxRect {
+                        x: rect.x,
+                        y: top,
+                        w: rect.w,
+                        h: line_px,
+                    },
+                    0.0,
+                    color,
+                );
+            }
+            let color = match kind {
+                openagents_chat_app::changes::Kind::Add => Color::rgb(163, 190, 140),
+                openagents_chat_app::changes::Kind::Remove => Color::rgb(191, 120, 120),
+                openagents_chat_app::changes::Kind::File => openagents_chat_app::visual::TEXT,
+                openagents_chat_app::changes::Kind::Hunk
+                | openagents_chat_app::changes::Kind::Meta => openagents_chat_app::visual::MUTED,
+                openagents_chat_app::changes::Kind::Context => openagents_chat_app::visual::TEXT,
+            };
+            self.fonts.draw_highlighted_run(
+                frame,
+                text,
+                font,
+                rect.x + 8.0 * scale,
+                top + line_px * 0.78,
+                scale,
+                color,
+                spans,
+                0,
+            );
+        }
+    }
 }
 fn chat_transcript() -> Transcript {
     let mut transcript = Transcript::default();
@@ -2345,6 +2625,7 @@ fn appearance() -> Appearance<'static> {
         status_style: Style::default(),
     }
 }
+
 fn message(key: String, turn: &Turn) -> Node<()> {
     projection::message(
         &key,
@@ -2584,5 +2865,180 @@ mod task_tests {
         );
         assert_eq!(panel.draft(), "original newer");
         assert!(!panel.busy());
+    }
+
+    fn finish(panel: &mut Panel) {
+        let task = panel.tasks.get_mut("chat").expect("task");
+        let host = task.binding.host.clone();
+        let subject = task.binding.task.clone();
+        task.summary = Some(
+            activity_summary::encode(&SummaryDraft {
+                host: &host,
+                subject_kind: SubjectKind::Task,
+                subject: &subject,
+                sequence: 8,
+                phase: Phase::Completed,
+                headline: "Coder finished",
+                attention: Attention::Completed,
+                updated_at: task_chat::unix_now(),
+            })
+            .unwrap(),
+        );
+    }
+
+    fn five_thousand_lines() -> String {
+        let mut diff = String::from(
+            "diff --git a/src/answer.rs b/src/answer.rs\n--- a/src/answer.rs\n+++ b/src/answer.rs\n@@ -1 +1,4996 @@\n fn keep() {}\n",
+        );
+        for index in 0..4995 {
+            diff.push_str(&format!("+fn line_{index}() {{ return {index}; }}\n"));
+        }
+        diff
+    }
+
+    fn walk(node: &Node<Intent>, visit: &mut impl FnMut(&Node<Intent>)) {
+        visit(node);
+        if let Element::Stack { children, .. } = &node.element {
+            for child in children {
+                walk(child, visit);
+            }
+        }
+    }
+
+    #[test]
+    fn a_finished_task_diff_opens_in_a_read_only_pane_and_scrolls_by_line() {
+        let (mut panel, now) = panel();
+        panel.bind_changes(&five_thousand_lines());
+        let hidden = panel.body();
+        let mut keys = Vec::new();
+        walk(&hidden, &mut |node| keys.push(node.key.clone()));
+        assert!(!keys.iter().any(|key| key == "changes-card"));
+        finish(&mut panel);
+        let card = panel.body();
+        keys.clear();
+        walk(&card, &mut |node| {
+            keys.push(node.key.clone());
+            if let Element::Text { value, .. } | Element::Button { label: value, .. } =
+                &node.element
+            {
+                assert!(crate::words::banned_in(value).is_empty(), "{value}");
+            }
+        });
+        assert!(keys.iter().any(|key| key == "changes-card"));
+        assert!(keys.iter().any(|key| key == "changes-open"));
+        assert!(!keys.iter().any(|key| key == "changes-pane"));
+        let view = mount(&mut panel, 3);
+        assert!(
+            panel
+                .action(
+                    Action::Card {
+                        key: "changes-open".into(),
+                    },
+                    &view,
+                    now,
+                )
+                .is_none()
+        );
+        assert!(panel.changes_open());
+        let open = panel.body();
+        keys.clear();
+        let mut nodes = 0usize;
+        let mut composer = false;
+        walk(&open, &mut |node| {
+            nodes += 1;
+            keys.push(node.key.clone());
+            if matches!(node.element, Element::Composer { .. }) {
+                composer = true;
+            }
+        });
+        assert!(keys.iter().any(|key| key == "changes-pane"));
+        assert!(keys.iter().any(|key| key == "changes-close"));
+        assert!(!composer);
+        assert!(nodes < 40, "{nodes}");
+        let doc = panel.changes.as_ref().expect("diff");
+        assert_eq!(doc.len(), 5_000);
+        let (first, count) =
+            doc.window(panel.changes_scroll, panel.changes_viewport(), CHANGES_LINE);
+        assert_eq!(first, 0);
+        assert!(count < 80);
+        assert!(count < doc.len());
+        panel.surface(
+            CHANGES,
+            SurfaceInput::Wheel {
+                x: 10.0,
+                y: 10.0,
+                dx: 0.0,
+                dy: -18.0 * 120.0,
+            },
+            now,
+        );
+        let (next, shown) = panel.changes.as_ref().unwrap().window(
+            panel.changes_scroll,
+            panel.changes_viewport(),
+            CHANGES_LINE,
+        );
+        assert!(next > first);
+        assert!(shown < 80);
+        let limit = panel
+            .changes
+            .as_ref()
+            .unwrap()
+            .scroll_limit(panel.changes_viewport(), CHANGES_LINE);
+        panel.surface(
+            CHANGES,
+            SurfaceInput::Wheel {
+                x: 10.0,
+                y: 10.0,
+                dx: 0.0,
+                dy: -(limit + 5_000.0),
+            },
+            now,
+        );
+        let (last, shown) = panel.changes.as_ref().unwrap().window(
+            panel.changes_scroll,
+            panel.changes_viewport(),
+            CHANGES_LINE,
+        );
+        assert_eq!(last + shown, 5_000);
+        let mut frame = Frame::new(320, 96, Color::rgb(6, 6, 6));
+        assert!(panel.paint(
+            CHANGES,
+            &mut frame,
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 320.0,
+                h: 96.0,
+            },
+        ));
+        assert!(
+            frame
+                .pixels
+                .chunks(4)
+                .any(|pixel| pixel[0] != 6 || pixel[1] != 6 || pixel[2] != 6),
+            "the visible lines paint"
+        );
+        let colored = panel
+            .changes
+            .as_ref()
+            .unwrap()
+            .lines()
+            .iter()
+            .any(|line| line.spans.as_ref().is_some_and(|spans| !spans.is_empty()));
+        assert!(colored, "visible code lines carry syntax spans");
+        let view = mount(&mut panel, 4);
+        panel.action(
+            Action::Card {
+                key: "changes-close".into(),
+            },
+            &view,
+            now,
+        );
+        assert!(!panel.changes_open());
+        let closed = panel.body();
+        keys.clear();
+        walk(&closed, &mut |node| keys.push(node.key.clone()));
+        assert!(!keys.iter().any(|key| key == "changes-pane"));
+        assert!(keys.iter().any(|key| key == "changes-card"));
     }
 }

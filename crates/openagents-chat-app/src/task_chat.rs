@@ -114,6 +114,13 @@ impl Session {
             .as_ref()
             .is_some_and(|s| matches!(s.phase, Phase::Running | Phase::Waiting | Phase::Queued))
     }
+    /// Whether the task's summary says the work finished.
+    #[must_use]
+    pub fn finished(&self) -> bool {
+        self.summary
+            .as_ref()
+            .is_some_and(|summary| summary.phase == Phase::Completed)
+    }
     pub fn next_wake(&self, now: Instant) -> Instant {
         self.poll.max(now + Duration::from_millis(100))
     }
@@ -647,6 +654,18 @@ impl Session {
             self.failed = Some(request);
             self.revision += 1;
         }
+    }
+    /// The last unified diff in this task's loaded rows, when one was recorded.
+    #[must_use]
+    pub fn unified_diff(&self) -> Option<&str> {
+        self.rows.iter().rev().find_map(|row| {
+            let text = match &row.entry {
+                conversation::Entry::Message { text, .. } => text.as_str(),
+                conversation::Entry::Tool { body, .. } => body.as_str(),
+                conversation::Entry::Delegate { .. } => return None,
+            };
+            crate::changes::extract(text)
+        })
     }
     pub fn editing_text(&self) -> Option<&str> {
         let id = self.editing.as_ref()?;

@@ -202,7 +202,8 @@ impl DesktopApp {
                     .clamp(chrome::SIDEBAR_MIN, chrome::SIDEBAR_MAX)
                     .min((chat.viewport.0 - 360.0).max(0.0))
             };
-            chat.column_width = (chat.viewport.0 - leading - 16.0).clamp(1.0, 768.0);
+            let pane = if chat.changes_open() { 420.0 } else { 0.0 };
+            chat.column_width = (chat.viewport.0 - leading - pane - 16.0).clamp(1.0, 768.0);
             chat.show_saved(
                 state.page == Page::Saved,
                 self.model.project().map(|project| project.label.clone()),

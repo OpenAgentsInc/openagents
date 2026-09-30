@@ -115,3 +115,15 @@ to send it to that provider's own usage endpoint.
 The ring and the route cards reimplement Zeron's account usage rings (public
 MIT zeronsh/zeron) in Rust Native. The shared strip lives in
 `openagents-chat-app`. Mounting it on a phone remains part of #10028.
+
+## What changed
+
+A finished Coder task that recorded a unified diff shows a **What changed**
+card. Opening the card shows that diff in a pane on the right. The pane is
+read-only: it can scroll and close, and it cannot edit the change.
+
+The shared parser in `openagents-chat-app` keeps the lines. The desktop paints
+only the lines that fit in the pane, one line at a time, and applies syntax
+spans as color. Spans do not change the line height. The card and the pane
+reimplement Zeron's unified diff pane (public MIT zeronsh/zeron) in Rust
+Native. Mounting the card on a phone remains part of #10028.
