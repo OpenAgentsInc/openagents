@@ -1250,35 +1250,14 @@ impl CoderTab {
                     .and_then(|id| self.basic.last_meta(id))
                     .is_some_and(|meta| meta.offers.contains(&Offer::OpenScreen { screen }));
                 if offered {
+                    let draft = self
+                        .talk
+                        .as_ref()
+                        .and_then(|id| crate::gym::Gym::draft_of(self.basic.turns(id)))
+                        .is_some();
                     match screen {
-                        Screen::GymPublish => {
-                            if let Some(run) = self.gym.latest_result().map(|r| r.id.clone()) {
-                                self.gym.sheet = Some(crate::gym::Sheet::Publish { run });
-                            }
-                        }
-                        Screen::GymResult => {
-                            if let Some(run) = self.gym.latest_result().map(|r| r.id.clone()) {
-                                self.gym.sheet = Some(crate::gym::Sheet::Result { run });
-                            }
-                        }
-                        Screen::GymTestSet => {
-                            let id = self.talk.clone();
-                            let draft = id
-                                .as_ref()
-                                .and_then(|id| crate::gym::Gym::draft_of(self.basic.turns(id)));
-                            let source = match (draft, id) {
-                                (Some(_), Some(talk)) => {
-                                    Some(crate::eval_cards::TestSetSource::Draft { talk })
-                                }
-                                _ => self.gym.latest_result().map(|run| {
-                                    crate::eval_cards::TestSetSource::Run {
-                                        run: run.id.clone(),
-                                    }
-                                }),
-                            };
-                            if let Some(source) = source {
-                                self.gym.sheet = Some(crate::gym::Sheet::TestSet(source));
-                            }
+                        Screen::GymPublish | Screen::GymResult | Screen::GymTestSet => {
+                            self.gym.open_screen(screen, self.talk.as_deref(), draft);
                         }
                         // With no computer, the Computers offer is Connect a
                         // computer: the scanner.
@@ -1573,128 +1552,18 @@ impl CoderTab {
     /// A tap on a Gym button: a card's, a sheet's, the menu's, or the first
     /// run's. Only an ID the last view minted does anything.
     pub fn gym_tap(&mut self, id: &str, mut computers: Option<&mut Computers>, chats: &mut Chats) {
-        use crate::eval_cards::Action;
-        use crate::gym::{Effect, FirstRun, Sheet};
-        let Some(action) = self.gym.actions.get(id).cloned() else {
-            return;
-        };
+        use crate::gym::{Effect, FirstRun};
         let computer = self
             .ready_computer(computers.as_deref())
             .map(|host| host.label.clone());
-        let effect = match action {
-            Action::Start {
-                talk,
-                turn,
-                offer,
-                tool,
-                purpose,
-            } => {
-                let draft = crate::gym::Gym::draft_of(self.basic.turns(&talk));
-                self.gym.start(
-                    &talk,
-                    turn,
-                    &offer,
-                    &tool,
-                    purpose,
-                    draft,
-                    computer.as_deref(),
-                    None,
-                )
-            }
-            Action::Stop { run } => {
-                self.gym.sheet = Some(Sheet::Stop { run });
-                Effect::None
-            }
-            Action::ConfirmStop { run } => {
-                self.gym.sheet = None;
-                self.gym.stop(&run)
-            }
-            Action::Retry { run } => self.gym.again(&run, computer.as_deref(), false),
-            Action::FullRun { run } => {
-                self.gym.sheet = None;
-                self.gym.again(&run, computer.as_deref(), true)
-            }
-            Action::Details { run } => {
-                self.gym.sheet = Some(Sheet::Result { run });
-                Effect::None
-            }
-            Action::TestSet { source } => {
-                self.gym.sheet = Some(Sheet::TestSet(source));
-                Effect::None
-            }
-            Action::Publish { run } => {
-                self.gym.sheet = Some(Sheet::Publish { run });
-                Effect::None
-            }
-            Action::ConfirmPublish { run } => self.gym.publish(&run),
-            Action::CloseSheet | Action::Nice => {
-                let closing = self.gym.sheet.take();
-                // FLOW-01: after the first result, Add to the Gym or Not
-                // now ends the guided path at the menu.
-                if matches!(closing, Some(Sheet::Publish { .. }))
-                    && self.gym.first_run() == FirstRun::Chat
-                    && self.gym.first_result().is_some()
-                {
-                    self.hub();
-                }
-                Effect::None
-            }
-            Action::LooksGood { talk } => {
-                self.gym.sheet = None;
-                Effect::Say {
-                    talk,
-                    text: crate::gym::LOOKS_GOOD.into(),
-                }
-            }
-            Action::ChangeIt { .. } => Effect::Compose {
-                text: crate::gym::CHANGE.into(),
-            },
-            Action::Say { text, fresh } => {
-                self.gym.sheet = None;
-                match (&self.talk, fresh) {
-                    (Some(talk), false) => Effect::Say {
-                        talk: talk.clone(),
-                        text,
-                    },
-                    _ => Effect::Fresh { text },
-                }
-            }
-            Action::OpenCoder { host, task } => Effect::OpenCoder { host, task },
-            Action::ConnectComputer => Effect::ConnectComputer,
-            Action::Share { text } => {
-                self.gym.share(text);
-                Effect::None
-            }
-            Action::Chat => {
-                self.gym.sheet = None;
-                self.gym.credit_seen();
-                Effect::OpenChat {
-                    talk: self.gym.waiting().map(|run| run.talk.clone()),
-                }
-            }
-            Action::Profile => {
-                self.gym.sheet = Some(Sheet::Profile);
-                Effect::None
-            }
-            Action::VerseGym => Effect::VerseGym,
-            Action::ChooseCoder => {
-                self.gym.set_first_run(FirstRun::EndCard);
-                Effect::None
-            }
-            Action::LetsGo => {
-                self.gym.set_first_run(FirstRun::Chat);
-                Effect::Fresh {
-                    text: crate::first_run::FIRST_MESSAGE.into(),
-                }
-            }
-            Action::NotNow => {
-                self.gym.opt_out();
-                Effect::None
-            }
-            Action::SkipFirstRun => {
-                self.gym.set_first_run(FirstRun::Done);
-                Effect::Menu
-            }
+        let basic = &mut self.basic;
+        let Some(effect) = self.gym.tap(
+            id,
+            |talk| crate::gym::Gym::draft_of(basic.turns(talk)),
+            self.talk.as_deref(),
+            computer.as_deref(),
+        ) else {
+            return;
         };
         let first_chat = matches!(effect, Effect::Fresh { .. })
             && self.gym.first_run() == FirstRun::Chat

@@ -1283,6 +1283,161 @@ impl Gym {
     }
 
     // ------------------------------------------------------------------
+    // Taps.
+
+    /// What a tap on the Gym button `id` does to the Gym's own state, and
+    /// what it asks the chat around it to do. The phone's Coder tab and
+    /// the desktop's chat both call this, so a button does the same thing
+    /// on each; they differ only in how they carry out the [`Effect`].
+    /// `None` when the last view didn't mint `id`.
+    ///
+    /// `draft_of` reads a conversation's draft ([`Gym::draft_of`] of its
+    /// turns); `open` is the conversation on screen; `computer` names the
+    /// ready computer a run may go to.
+    pub fn tap(
+        &mut self,
+        id: &str,
+        draft_of: impl FnOnce(&str) -> Option<Value>,
+        open: Option<&str>,
+        computer: Option<&str>,
+    ) -> Option<Effect> {
+        let action = self.actions.get(id).cloned()?;
+        Some(match action {
+            Action::Start {
+                talk,
+                turn,
+                offer,
+                tool,
+                purpose,
+            } => {
+                let draft = draft_of(&talk);
+                self.start(&talk, turn, &offer, &tool, purpose, draft, computer, None)
+            }
+            Action::Stop { run } => {
+                self.sheet = Some(Sheet::Stop { run });
+                Effect::None
+            }
+            Action::ConfirmStop { run } => {
+                self.sheet = None;
+                self.stop(&run)
+            }
+            Action::Retry { run } => self.again(&run, computer, false),
+            Action::FullRun { run } => {
+                self.sheet = None;
+                self.again(&run, computer, true)
+            }
+            Action::Details { run } => {
+                self.sheet = Some(Sheet::Result { run });
+                Effect::None
+            }
+            Action::TestSet { source } => {
+                self.sheet = Some(Sheet::TestSet(source));
+                Effect::None
+            }
+            Action::Publish { run } => {
+                self.sheet = Some(Sheet::Publish { run });
+                Effect::None
+            }
+            Action::ConfirmPublish { run } => self.publish(&run),
+            Action::CloseSheet | Action::Nice => {
+                let closing = self.sheet.take();
+                // FLOW-01: after the first result, Add to the Gym or Not
+                // now ends the guided path at the menu.
+                if matches!(closing, Some(Sheet::Publish { .. }))
+                    && self.first_run() == FirstRun::Chat
+                    && self.first_result().is_some()
+                {
+                    Effect::Menu
+                } else {
+                    Effect::None
+                }
+            }
+            Action::LooksGood { talk } => {
+                self.sheet = None;
+                Effect::Say {
+                    talk,
+                    text: LOOKS_GOOD.into(),
+                }
+            }
+            Action::ChangeIt { .. } => Effect::Compose {
+                text: CHANGE.into(),
+            },
+            Action::Say { text, fresh } => {
+                self.sheet = None;
+                match (open, fresh) {
+                    (Some(talk), false) => Effect::Say {
+                        talk: talk.to_owned(),
+                        text,
+                    },
+                    _ => Effect::Fresh { text },
+                }
+            }
+            Action::OpenCoder { host, task } => Effect::OpenCoder { host, task },
+            Action::ConnectComputer => Effect::ConnectComputer,
+            Action::Share { text } => {
+                self.share(text);
+                Effect::None
+            }
+            Action::Chat => {
+                self.sheet = None;
+                self.credit_seen();
+                Effect::OpenChat {
+                    talk: self.waiting().map(|run| run.talk.clone()),
+                }
+            }
+            Action::Profile => {
+                self.sheet = Some(Sheet::Profile);
+                Effect::None
+            }
+            Action::VerseGym => Effect::VerseGym,
+            Action::ChooseCoder => {
+                self.set_first_run(FirstRun::EndCard);
+                Effect::None
+            }
+            Action::LetsGo => {
+                self.set_first_run(FirstRun::Chat);
+                Effect::Fresh {
+                    text: crate::first_run::FIRST_MESSAGE.into(),
+                }
+            }
+            Action::NotNow => {
+                self.opt_out();
+                Effect::None
+            }
+            Action::SkipFirstRun => {
+                self.set_first_run(FirstRun::Done);
+                Effect::Menu
+            }
+        })
+    }
+
+    /// Open the Gym sheet a router offer names (`open_screen` for
+    /// `GymResult`, `GymPublish`, or `GymTestSet`): the latest result, or
+    /// the open conversation's draft (`open`, whose draft is `draft`) else
+    /// the latest result's test set. Whether an offer named it is the
+    /// caller's check. `false` for any other screen, or with nothing to
+    /// show.
+    pub fn open_screen(&mut self, screen: Screen, open: Option<&str>, draft: bool) -> bool {
+        let latest = self.latest_result().map(|run| run.id.clone());
+        let sheet = match screen {
+            Screen::GymPublish => latest.map(|run| Sheet::Publish { run }),
+            Screen::GymResult => latest.map(|run| Sheet::Result { run }),
+            Screen::GymTestSet => match (draft, open) {
+                (true, Some(talk)) => Some(Sheet::TestSet(TestSetSource::Draft {
+                    talk: talk.to_owned(),
+                })),
+                _ => latest.map(|run| Sheet::TestSet(TestSetSource::Run { run })),
+            },
+            _ => None,
+        };
+        let opened = sheet.is_some();
+        if opened {
+            self.sheet = sheet;
+        }
+        opened
+    }
+
+    // ------------------------------------------------------------------
     // Cards in a chat.
 
     /// The cards `talk` shows under its newest reply, drawn now; each is a

@@ -1,6 +1,6 @@
 //! Typed reply actions and semantic card rows shared by chat adapters.
 use crate::coder_tab::Availability;
-use crate::eval_cards::{Button, CardView, Tone};
+use crate::eval_cards::{Button, CardView, Compare, Item, SheetView, Tone};
 use crate::gym::{Gym, Here};
 use openagents_chat::router::{Meta, Offer, Screen};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -222,18 +222,7 @@ pub fn card<I>(view: &CardView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
         text("badge", badge.clone(), TextRole::Status, true);
     }
     if let Some(compare) = &view.compare {
-        text(
-            "compare",
-            format!(
-                "{}: {}\n{}: {}",
-                compare.without_label,
-                compare.without.as_deref().unwrap_or("Not known yet"),
-                compare.with_label,
-                compare.with
-            ),
-            TextRole::Body,
-            true,
-        );
+        text("compare", compare_text(compare), TextRole::Body, true);
     }
     for (index, line) in view.lines.iter().enumerate() {
         text(
@@ -248,30 +237,9 @@ pub fn card<I>(view: &CardView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
         );
     }
     for (index, item) in view.items.iter().enumerate() {
-        let marks = item
-            .marks
-            .iter()
-            .map(|mark| match *mark {
-                "check" => "✓",
-                "cross" => "✕",
-                "wait" => "…",
-                "dot" => "•",
-                _ => "",
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
         text(
             &format!("item-{index}"),
-            format!(
-                "{marks} {}{}{}",
-                item.text,
-                item.detail
-                    .as_ref()
-                    .map_or(String::new(), |detail| format!("\n{detail}")),
-                item.trailing
-                    .as_ref()
-                    .map_or(String::new(), |value| format!(" · {value}"))
-            ),
+            item_text(item),
             TextRole::Body,
             false,
         );
@@ -309,6 +277,142 @@ pub fn card<I>(view: &CardView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
     }
     Node {
         key: prefix.clone(),
+        style: Style {
+            background: Some(Color::rgb(26, 29, 34)),
+            padding_top: Some(Space::Md),
+            padding_bottom: Some(Space::Md),
+            padding_start: Some(Space::Md),
+            padding_end: Some(Space::Md),
+            ..Style::default()
+        },
+        element: Element::Stack {
+            axis: Axis::Vertical,
+            children: rows,
+        },
+    }
+}
+
+fn compare_text(compare: &Compare) -> String {
+    format!(
+        "{}: {}\n{}: {}",
+        compare.without_label,
+        compare.without.as_deref().unwrap_or("Not known yet"),
+        compare.with_label,
+        compare.with
+    )
+}
+
+fn item_text(item: &Item) -> String {
+    let marks = item
+        .marks
+        .iter()
+        .map(|mark| match *mark {
+            "check" => "✓",
+            "cross" => "✕",
+            "wait" => "…",
+            "dot" => "•",
+            _ => "",
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "{marks} {}{}{}",
+        item.text,
+        item.detail
+            .as_ref()
+            .map_or(String::new(), |detail| format!("\n{detail}")),
+        item.trailing
+            .as_ref()
+            .map_or(String::new(), |value| format!(" · {value}"))
+    )
+}
+
+/// Mount the exact sheet value the phone draws over its chat (`SCR-05`,
+/// `SCR-06`, `SCR-11`, `SCR-20`, `SCR-21`, the stop confirmation), as a
+/// card under the reply: a surface without sheets shows it in place.
+pub fn sheet<I>(view: &SheetView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
+    let prefix = format!("sheet-{}", view.id);
+    let mut rows = vec![];
+    let mut text = |suffix: &str, value: String, role: TextRole, strong: bool| {
+        rows.push(Node {
+            key: format!("{prefix}-{suffix}"),
+            style: Style {
+                weight: strong.then_some(TextWeight::Bold),
+                ..Style::default()
+            },
+            element: Element::Text { value, role },
+        });
+    };
+    text("title", view.title.clone(), TextRole::Heading, true);
+    if let Some(headline) = &view.headline {
+        text("headline", headline.clone(), TextRole::Body, true);
+    }
+    if let Some(big) = &view.big {
+        text("big", big.clone(), TextRole::Heading, true);
+    }
+    if let Some(compare) = &view.compare {
+        text("compare", compare_text(compare), TextRole::Body, true);
+    }
+    for (at, section) in view.sections.iter().enumerate() {
+        if let Some(heading) = &section.heading {
+            text(
+                &format!("section-{at}-heading"),
+                heading.clone(),
+                TextRole::Status,
+                true,
+            );
+        }
+        for (index, line) in section.lines.iter().enumerate() {
+            text(
+                &format!("section-{at}-line-{index}"),
+                line.text.clone(),
+                if line.tone == Tone::Quiet {
+                    TextRole::Status
+                } else {
+                    TextRole::Body
+                },
+                line.tone == Tone::Strong,
+            );
+        }
+        for (index, item) in section.items.iter().enumerate() {
+            text(
+                &format!("section-{at}-item-{index}"),
+                item_text(item),
+                TextRole::Body,
+                false,
+            );
+        }
+    }
+    if let Some(bar) = &view.bar {
+        text(
+            "bar",
+            format!("{}: {} of {}", bar.label, bar.value, bar.max),
+            TextRole::Status,
+            false,
+        );
+    }
+    if let Some(next) = &view.next {
+        text("next", next.clone(), TextRole::Body, false);
+    }
+    if view.busy {
+        rows.push(Node {
+            key: format!("{prefix}-working"),
+            style: Style::default(),
+            element: Element::Working {
+                label: "Working…".into(),
+            },
+        });
+    }
+    for button in view
+        .primary
+        .iter()
+        .chain(&view.secondary)
+        .chain(&view.close)
+    {
+        rows.push(card_button(button, intent(&button.id)));
+    }
+    Node {
+        key: prefix,
         style: Style {
             background: Some(Color::rgb(26, 29, 34)),
             padding_top: Some(Space::Md),
@@ -375,6 +479,18 @@ impl Cards {
                     }));
                 }
             }
+        }
+        // The Gym sheet on screen, from the same state the phone draws it
+        // from, under the cards.
+        let draft = match self.gym.sheet_talk() {
+            Some(talk) if snapshot.chat.as_deref() == Some(talk) => Gym::draft_of(&snapshot.turns),
+            _ => None,
+        };
+        if let Some(view) = self.gym.sheet_view(draft) {
+            let actions = &mut self.actions;
+            rows.push(sheet(&view, |id| {
+                actions.insert(id.into(), Action::Gym { id: id.into() });
+            }));
         }
         let meta = crate::projection::actionable(&snapshot.turns, busy, failed);
         let mut reply = reply_actions_for(
@@ -501,12 +617,32 @@ impl Cards {
     }
 }
 
-/// Card mounting precedes host execution and Gym integration in their own slices.
+/// What a card button asks the surface around the chat to do.
+#[derive(Debug)]
 pub enum Effect {
     Requests(Vec<(u64, openagents_chat::service::Command)>),
     Navigate(Screen),
     Notice(String),
     Draft(String),
+    /// A Gym run goes to Coder on the ready computer: start a Coder task
+    /// with `prompt`, then report it with [`crate::gym::Gym::on_computer`]
+    /// for `run`, as the phone does.
+    GymCoder {
+        run: String,
+        prompt: String,
+    },
+    /// Send `text` to a Gym run's Coder task, or, with `stop`, stop it.
+    GymCommand {
+        host: String,
+        task: String,
+        text: String,
+        stop: bool,
+    },
+    /// Open a Gym run's Coder chat.
+    OpenCoder {
+        host: String,
+        task: String,
+    },
     None,
 }
 impl crate::session::Session {
@@ -515,6 +651,23 @@ impl crate::session::Session {
             return Effect::None;
         };
         let snapshot = self.state().cloned().unwrap_or_default();
+        // The Gym's buttons and sheets do what they do on the phone
+        // (`Gym::tap`), even while a reply streams.
+        match &action {
+            Action::Gym { id } => return self.gym_tap(id, &snapshot),
+            Action::OpenScreen { screen }
+                if matches!(
+                    screen,
+                    Screen::GymResult | Screen::GymPublish | Screen::GymTestSet
+                ) =>
+            {
+                let draft = Gym::draft_of(&snapshot.turns).is_some();
+                let open = self.selected.clone();
+                self.cards.gym.open_screen(*screen, open.as_deref(), draft);
+                return Effect::None;
+            }
+            _ => {}
+        }
         if action == Action::Retry {
             return self
                 .retry()
@@ -556,35 +709,7 @@ impl crate::session::Session {
             Action::RunCli { .. } => {
                 return Effect::Notice("Connect a computer to run this command.".into());
             }
-            Action::Gym { id } => {
-                let Some(action) = self.cards.gym.actions.get(&id).cloned() else {
-                    return Effect::None;
-                };
-                match action {
-                    crate::eval_cards::Action::VerseGym => {
-                        return Effect::Navigate(Screen::VerseGym);
-                    }
-                    crate::eval_cards::Action::ConnectComputer => {
-                        return Effect::Navigate(Screen::Computers);
-                    }
-                    crate::eval_cards::Action::ChangeIt { .. } => {
-                        return Effect::Draft(crate::gym::CHANGE.into());
-                    }
-                    crate::eval_cards::Action::Say { text, fresh } => {
-                        let mut requests = vec![];
-                        if fresh {
-                            requests.push(self.new_chat());
-                        }
-                        if let Some(send) =
-                            self.submit(uuid::Uuid::new_v4().simple().to_string(), text)
-                        {
-                            requests.push(send);
-                        }
-                        return Effect::Requests(requests);
-                    }
-                    _ => return Effect::Notice("This Gym action needs a connected runner.".into()),
-                }
-            }
+            Action::Gym { .. } => return Effect::None,
         };
         if let Some(reason) = self
             .selected
@@ -608,6 +733,68 @@ impl crate::session::Session {
             requests.push(send);
         }
         Effect::Requests(requests)
+    }
+}
+
+impl crate::session::Session {
+    /// A Gym button: the phone's own [`Gym::tap`], its effect carried out
+    /// with this session's requests, or handed to the surface.
+    fn gym_tap(&mut self, id: &str, snapshot: &openagents_chat::service::Snapshot) -> Effect {
+        use crate::gym::Effect as Gym;
+        let open = self.selected.clone();
+        let turns = &snapshot.turns;
+        let Some(effect) = self.cards.gym.tap(
+            id,
+            |talk| {
+                (open.as_deref() == Some(talk))
+                    .then(|| crate::gym::Gym::draft_of(turns))
+                    .flatten()
+            },
+            open.as_deref(),
+            snapshot.ready_computer.as_deref(),
+        ) else {
+            return Effect::None;
+        };
+        let say = |session: &mut Self, text: String| {
+            session
+                .submit(uuid::Uuid::new_v4().simple().to_string(), text)
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        match effect {
+            Gym::None | Gym::Menu => Effect::None,
+            Gym::Say { talk, text } => {
+                self.select(&talk);
+                Effect::Requests(say(self, text))
+            }
+            Gym::Fresh { text } => {
+                let mut requests = vec![self.new_chat()];
+                requests.extend(say(self, text));
+                Effect::Requests(requests)
+            }
+            Gym::Compose { text } => Effect::Draft(text),
+            Gym::Computer { run, prompt } => Effect::GymCoder { run, prompt },
+            Gym::Command {
+                host,
+                task,
+                text,
+                stop,
+            } => Effect::GymCommand {
+                host,
+                task,
+                text,
+                stop,
+            },
+            Gym::OpenCoder { host, task } => Effect::OpenCoder { host, task },
+            Gym::ConnectComputer => Effect::Navigate(Screen::Computers),
+            Gym::OpenChat { talk } => {
+                if let Some(talk) = talk {
+                    self.select(&talk);
+                }
+                Effect::None
+            }
+            Gym::VerseGym => Effect::Navigate(Screen::VerseGym),
+        }
     }
 }
 

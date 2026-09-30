@@ -4347,3 +4347,8 @@ mod coder_events {
         );
     }
 }
+
+/// Gym and eval cards through the desktop chat (#10020).
+#[cfg(test)]
+#[path = "gym_card_tests.rs"]
+mod gym_card_tests;

@@ -649,6 +649,57 @@ impl Panel {
             self.rows_dirty = true;
         }
     }
+    /// A Gym run that goes to Coder (`gym::Effect::Computer`): on the
+    /// desktop the ready computer is this one, so the test set runs as
+    /// the open chat's Coder run, and the Gym records where, as the phone
+    /// records its computer's task.
+    fn gym_coder(&mut self, run: &str, prompt: &str) {
+        let started = match self.session.selected.clone() {
+            Some(chat) if !self.runs.contains_key(&chat) => {
+                let label = self
+                    .session
+                    .states
+                    .get(&chat)
+                    .and_then(|state| state.ready_computer.clone())
+                    .unwrap_or_else(|| "This computer".into());
+                self.runs.insert(
+                    chat.clone(),
+                    Run::start(
+                        &chat,
+                        "Gym test",
+                        prompt,
+                        self.coder_projects.clone(),
+                        Instant::now(),
+                    ),
+                );
+                Ok((coder_run::LOCAL.to_owned(), label, chat))
+            }
+            Some(_) => {
+                Err("Coder is already working in this chat. Try again when it's done.".into())
+            }
+            None => Err("Open a chat to run this.".into()),
+        };
+        self.session.cards.gym.on_computer(run, started);
+    }
+    /// A Gym run's follow-up or stop (`gym::Effect::Command`), sent to its
+    /// Coder run on this computer.
+    fn gym_command(&mut self, host: &str, task: &str, text: &str, stop: bool) -> Option<Request> {
+        let run = self
+            .runs
+            .get_mut(task)
+            .filter(|_| host == coder_run::LOCAL)?;
+        let action = if stop {
+            RunAction::Stop
+        } else {
+            RunAction::Send
+        };
+        let (ticket, request) = run.action(action, if stop { "" } else { text })?;
+        Some(Request::CoderRun {
+            chat: task.to_owned(),
+            ticket,
+            request,
+        })
+    }
     /// The runner's answer for a chat's run.
     pub fn run_outcome(
         &mut self,
@@ -1408,7 +1459,39 @@ impl Panel {
                         }
                         None
                     }
-                    openagents_chat_app::cards::Effect::None => None,
+                    openagents_chat_app::cards::Effect::GymCoder { run, prompt } => {
+                        self.rows_dirty = true;
+                        self.gym_coder(&run, &prompt);
+                        None
+                    }
+                    openagents_chat_app::cards::Effect::GymCommand {
+                        host,
+                        task,
+                        text,
+                        stop,
+                    } => {
+                        self.rows_dirty = true;
+                        self.gym_command(&host, &task, &text, stop)
+                    }
+                    openagents_chat_app::cards::Effect::OpenCoder { host, task } => {
+                        self.rows_dirty = true;
+                        // A Gym run on this computer is the Coder run in
+                        // its own chat.
+                        if host == coder_run::LOCAL && self.runs.contains_key(&task) {
+                            let previous = self.session.selected.clone();
+                            if self.session.select(&task) {
+                                self.selected_changed(previous);
+                            }
+                        } else {
+                            self.notice = Some("Open this Coder chat on your phone.".into());
+                        }
+                        None
+                    }
+                    // A Gym sheet opened or closed, or its state changed.
+                    openagents_chat_app::cards::Effect::None => {
+                        self.rows_dirty = true;
+                        None
+                    }
                 }
             }
             Action::AttachImage => {

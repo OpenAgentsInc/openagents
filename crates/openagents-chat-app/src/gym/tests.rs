@@ -1938,3 +1938,290 @@ fn desktop_and_phone_show_identical_worker_card_values() {
         }
     }
 }
+
+/// Desktop parity (#10020): the desktop's chat mounts these cards through
+/// [`crate::session::Session`] and its buttons go through the same
+/// [`Gym::tap`] as the phone's Coder tab.
+mod desktop {
+    use super::*;
+    use crate::cards::Effect as DesktopEffect;
+    use crate::session::Session;
+    use openagents_chat::service::Snapshot;
+    use std::time::Instant;
+
+    /// Card and sheet values without their minted IDs, which name each
+    /// surface's own conversation.
+    fn plain(value: impl Serialize) -> Value {
+        fn strip(value: &mut Value) {
+            match value {
+                Value::Object(fields) => {
+                    fields.remove("id");
+                    fields.values_mut().for_each(strip);
+                }
+                Value::Array(values) => values.iter_mut().for_each(strip),
+                _ => {}
+            }
+        }
+        let mut value = serde_json::to_value(value).unwrap();
+        strip(&mut value);
+        value
+    }
+
+    /// What each of a card's buttons does, by label, as a variant name.
+    fn does(gym: &Gym, card: &CardView) -> Vec<(String, String)> {
+        card.primary
+            .iter()
+            .chain(&card.secondary)
+            .chain(&card.chips)
+            .map(|button| {
+                let action = gym.actions.get(&button.id).expect("a minted action");
+                let name = format!("{action:?}");
+                let name = name.split([' ', '{', '(']).next().unwrap().to_owned();
+                (button.label.clone(), name)
+            })
+            .collect()
+    }
+
+    struct Desktop {
+        session: Session,
+        chat: String,
+    }
+
+    impl Desktop {
+        /// A desktop chat whose newest reply carries `feedback`.
+        fn new(feedback: &[Value], computer: Option<&str>) -> Self {
+            let mut meta = crate::router::Meta::default();
+            for body in feedback {
+                match body["type"].as_str() {
+                    Some("judgment") => meta.judged(body),
+                    Some("result") => meta.resulted(body),
+                    Some("offer") => {
+                        meta.offers.extend(crate::router::Offer::parse(body));
+                    }
+                    _ => meta.carded(body),
+                }
+            }
+            let chat = "a".repeat(32);
+            let mut session = Session::new(Instant::now());
+            session.select(&chat);
+            session.states.insert(
+                chat.clone(),
+                Snapshot {
+                    chat: Some(chat.clone()),
+                    turns: vec![
+                        crate::basic_coder::Turn::user("Ask"),
+                        crate::basic_coder::Turn::assistant("An answer", Some(meta)),
+                    ],
+                    total: 2,
+                    ready_computer: computer.map(Into::into),
+                    ..Default::default()
+                },
+            );
+            let mut desktop = Self { session, chat };
+            desktop.rows();
+            desktop
+        }
+
+        /// The chat's rows, as the desktop mounts them each pass.
+        fn rows(&mut self) -> String {
+            let snapshot = self.session.states[&self.chat].clone();
+            let rows = self.session.cards.rows_with(&snapshot, false, None);
+            serde_json::to_string(&rows).unwrap()
+        }
+
+        fn card(&mut self, kind: &str) -> CardView {
+            self.rows();
+            self.session
+                .cards
+                .gym
+                .cards()
+                .values()
+                .find(|card| card.kind == kind)
+                .cloned()
+                .unwrap_or_else(|| panic!("no {kind} card"))
+        }
+
+        fn tap(&mut self, id: &str) -> DesktopEffect {
+            let effect = self.session.card_action(id);
+            self.rows();
+            effect
+        }
+    }
+
+    /// Run a test set from a tool card: both surfaces show the same card
+    /// with the same buttons doing the same things, and the tap leaves the
+    /// same run card behind.
+    #[test]
+    fn starting_a_test_from_chat_matches_the_phone() {
+        let feedback = [judgment("eval.run"), wire("card-tool"), wire("start-eval")];
+        let worker = Worker::default();
+        let mut phone = Phone::new(&worker, None).returning();
+        phone.tap("menu.chat");
+        asked(&mut phone, &worker, "Ask", "An answer", &feedback);
+        let mut desktop = Desktop::new(&feedback, None);
+
+        let (phone_tool, desktop_tool) = (phone.card("tool"), desktop.card("tool"));
+        assert_eq!(plain(&phone_tool), plain(&desktop_tool));
+        assert_eq!(
+            does(&phone.tab.gym, &phone_tool),
+            does(&desktop.session.cards.gym, &desktop_tool)
+        );
+
+        phone.tap(&phone_tool.primary.unwrap().id);
+        let effect = desktop.tap(&desktop_tool.primary.unwrap().id);
+        assert!(matches!(effect, DesktopEffect::None), "{effect:?}");
+        let (phone_run, desktop_run) = (phone.card("run"), desktop.card("run"));
+        assert_eq!(plain(&phone_run), plain(&desktop_run));
+        assert_eq!(
+            does(&phone.tab.gym, &phone_run),
+            does(&desktop.session.cards.gym, &desktop_run)
+        );
+        assert_eq!(desktop_run.chips[0].label, "Connect a computer");
+        // Connect a computer goes to the computers screen on each.
+        phone.tap(&phone_run.chips[0].id);
+        assert_eq!(phone.tab.take_go(), Some(crate::coder_tab::Go::Connect));
+        assert!(matches!(
+            desktop.tap(&desktop_run.chips[0].id),
+            DesktopEffect::Navigate(crate::router::Screen::Computers)
+        ));
+        // A button the last pass didn't mint does nothing.
+        assert!(matches!(desktop.tap("invented"), DesktopEffect::None));
+    }
+
+    /// With a ready computer the run goes to Coder there, with the phone's
+    /// own prompt; once started, the card follows that Coder task.
+    #[test]
+    fn a_run_on_the_ready_computer_hands_coder_the_phones_prompt() {
+        let feedback = [judgment("eval.run"), wire("card-tool"), wire("start-eval")];
+        let mut desktop = Desktop::new(&feedback, Some("Studio Mac"));
+        let start = desktop.card("tool").primary.unwrap().id;
+        let DesktopEffect::GymCoder { run, prompt } = desktop.tap(&start) else {
+            panic!("a Coder run")
+        };
+        let mut phone = Gym::empty();
+        let Effect::Computer { prompt: phones, .. } = phone.start(
+            "talk",
+            1,
+            &wire("start-eval"),
+            "Project map",
+            Purpose::Test,
+            None,
+            Some("Studio Mac"),
+            None,
+        ) else {
+            panic!("the phone's computer run")
+        };
+        assert_eq!(
+            prompt.replace(&run, "RUN"),
+            phones.replace(&phone.runs()[0].id, "RUN")
+        );
+        desktop.session.cards.gym.on_computer(
+            &run,
+            Ok((
+                crate::coder_run::LOCAL.into(),
+                "Studio Mac".into(),
+                desktop.chat.clone(),
+            )),
+        );
+        let card = desktop.card("run");
+        assert_eq!(card.secondary[0].label, "Open Coder on Studio Mac");
+        assert!(matches!(
+            desktop.tap(&card.secondary[0].id),
+            DesktopEffect::OpenCoder { host, task }
+                if host == crate::coder_run::LOCAL && task == desktop.chat
+        ));
+        let stop = card
+            .secondary
+            .iter()
+            .find(|button| button.label == "Stop")
+            .expect("stop")
+            .id
+            .clone();
+        desktop.rows();
+        desktop.tap(&stop);
+        // Stop asks first, in the same sheet the phone shows.
+        let rows = desktop.rows();
+        let sheet = desktop.session.cards.gym.sheet_view(None).expect("a sheet");
+        assert_eq!(sheet.kind, "stop");
+        assert!(rows.contains(&sheet.title));
+        let confirm = sheet.primary.unwrap().id;
+        desktop.rows();
+        match desktop.tap(&confirm) {
+            DesktopEffect::GymCommand {
+                host, task, stop, ..
+            } => {
+                assert_eq!(host, crate::coder_run::LOCAL);
+                assert_eq!(task, desktop.chat);
+                assert!(stop);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The draft's sheet (`SCR-21`) and its buttons: the desktop mounts
+    /// the phone's own sheet under the cards and its buttons do the same.
+    #[test]
+    fn the_test_set_sheet_matches_the_phone() {
+        let feedback = [
+            judgment("eval.author"),
+            wire("card-draft"),
+            result_fields("eval.author"),
+        ];
+        let reply = "Here are the tests.\n\nAre these the right tests? Tap Looks good, or tell us what to change.";
+        let worker = Worker::default();
+        let mut phone = Phone::new(&worker, None).returning();
+        phone.tap("menu.chat");
+        asked(&mut phone, &worker, "Ask", reply, &feedback);
+        let mut desktop = Desktop::new(&feedback, None);
+        if let Some(turn) = desktop
+            .session
+            .states
+            .get_mut(&desktop.chat)
+            .and_then(|state| state.turns.last_mut())
+        {
+            turn.text = reply.into();
+        }
+        let (phone_draft, desktop_draft) = (phone.card("draft"), desktop.card("draft"));
+        assert_eq!(plain(&phone_draft), plain(&desktop_draft));
+        assert_eq!(
+            does(&phone.tab.gym, &phone_draft),
+            does(&desktop.session.cards.gym, &desktop_draft)
+        );
+
+        let phone_sheet = phone
+            .tap(&phone_draft.secondary[1].id)
+            .sheet
+            .expect("the phone's sheet");
+        desktop.tap(&desktop_draft.secondary[1].id);
+        let rows = desktop.rows();
+        let snapshot = desktop.session.states[&desktop.chat].clone();
+        let desktop_sheet = desktop
+            .session
+            .cards
+            .gym
+            .sheet_view(Gym::draft_of(&snapshot.turns))
+            .expect("the desktop's sheet");
+        assert_eq!(plain(&phone_sheet), plain(&desktop_sheet));
+        assert_eq!(desktop_sheet.kind, "test_set");
+        for button in desktop_sheet
+            .primary
+            .iter()
+            .chain(&desktop_sheet.secondary)
+            .chain(&desktop_sheet.close)
+        {
+            assert!(rows.contains(&button.label), "{}", button.label);
+        }
+        assert!(rows.contains(&desktop_sheet.title));
+        desktop.rows();
+        // Looks good sends the approval in this chat, as on the phone.
+        let good = desktop_sheet.primary.unwrap().id;
+        let DesktopEffect::Requests(requests) = desktop.tap(&good) else {
+            panic!("a send")
+        };
+        assert!(matches!(
+            &requests[..],
+            [(_, openagents_chat::service::Command::Send { text, .. })] if text == LOOKS_GOOD
+        ));
+        assert!(desktop.session.cards.gym.sheet.is_none());
+    }
+}
