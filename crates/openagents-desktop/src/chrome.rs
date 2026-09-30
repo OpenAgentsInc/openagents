@@ -682,8 +682,8 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         && !prompt
         && matches!(state.page, Page::Chat(_))
         && (model.engine.is_some() || model.engine_note.is_some());
-    if show_engine {
-        header.key = "shell-heading-row".into();
+    // The titlebar stays one line. The strip sits in the content slot under it.
+    let content_header = if show_engine {
         let mut lines = Vec::new();
         if let Some(report) = &model.engine {
             lines.push(openagents_chat_app::engine::strip(report));
@@ -691,16 +691,15 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         if let Some(note) = &model.engine_note {
             lines.push(text("shell-engine-note", note.clone(), TextRole::Status));
         }
-        header = stack(
+        stack("shell-content-header", Axis::Vertical, Space::Xs, lines)
+    } else {
+        stack(
             "shell-content-header",
             Axis::Vertical,
-            Space::Sm,
-            vec![
-                header,
-                stack("shell-engine", Axis::Vertical, Space::Xs, lines),
-            ],
-        );
-    }
+            Space::None,
+            Vec::new(),
+        )
+    };
     let body = if prompt {
         crate::screens::root(model, now)
     } else {
@@ -772,11 +771,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         "shell-content",
         Axis::Vertical,
         Space::None,
-        vec![
-            stack("shell-content-header", Axis::Vertical, Space::None, vec![]),
-            body,
-            footer,
-        ],
+        vec![content_header, body, footer],
     );
     content.style.background = Some(if matches!(state.page, Page::Grid) {
         Color {

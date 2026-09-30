@@ -11,7 +11,8 @@ library compile. Mounting the strip on a phone remains part of
 
 ## What the window shows
 
-On a live chat, the one-line heading stays. Under it, the window shows this
+On a live chat, the 38-point titlebar stays one line. The strip is the
+content header under it. The window shows this
 computer's `autostart.json` routes in order, the model on each route, whether
 Codex and Claude Code are signed in, and each probed usage window. The window
 sends `engine_status` and receives percents and reset times. It cannot change
