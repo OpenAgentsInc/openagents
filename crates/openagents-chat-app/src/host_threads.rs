@@ -32,7 +32,11 @@
 //! A thread that delegated Coder work names the task
 //! ([`ThreadCoder`](coder_host::access::thread::ThreadCoder)); the Coder
 //! tab opens that task's chat through the computer's history observer, the
-//! same read path that carries a task's events.
+//! same read path that carries a task's events. A Coder run `openagents
+//! chat` started on the computer names the computer itself when its host
+//! serves that run's task store; otherwise the page says it ran outside the
+//! host ([`ThreadOutside`](coder_host::access::thread::ThreadOutside)) and
+//! the phone offers no Coder control for it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -303,6 +307,9 @@ pub struct Shown {
     /// Earlier turns are loading.
     pub loading_earlier: bool,
     pub coder: Option<coder_host::access::thread::ThreadCoder>,
+    /// Coder work the thread ran on the computer outside its host, which
+    /// this phone can neither open nor stop.
+    pub outside: Option<coder_host::access::thread::ThreadOutside>,
     /// A reply streams and the computer can stop it for this device: the
     /// stop control shows only then.
     pub stoppable: bool,
@@ -703,6 +710,7 @@ impl HostThreads {
             loading: page.is_none() && open.error.is_none(),
             loading_earlier: open.loading_earlier,
             coder: page.and_then(|page| page.coder.clone()),
+            outside: page.and_then(|page| page.outside.clone()),
             stoppable: open.can_stop == Some(true) && !open.stopping && open.answering().is_some(),
             stopped_here: open.stopped_here,
             runnable: open.can_run != Some(false),
@@ -904,6 +912,7 @@ mod tests {
         turns: Vec<ThreadTurn>,
         streaming: Option<usize>,
         coder: Option<coder_host::access::thread::ThreadCoder>,
+        outside: Option<coder_host::access::thread::ThreadOutside>,
     }
 
     fn user(text: &str, request: Option<&str>) -> ThreadTurn {
@@ -969,6 +978,7 @@ mod tests {
                 partial,
                 failure: None,
                 coder: state.coder.clone(),
+                outside: state.outside.clone(),
             })
         }
         fn send(

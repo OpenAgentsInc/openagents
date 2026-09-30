@@ -253,6 +253,7 @@ fn thread_reads_need_observe_sends_need_operate_and_reads_are_not_retained() {
         partial: String::new(),
         failure: None,
         coder: None,
+        outside: None,
     };
     let answer = Outcome::Thread {
         thread: Box::new(page.clone()),

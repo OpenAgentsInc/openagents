@@ -2867,6 +2867,14 @@ impl CoderTab {
                 },
             ));
             children.push(wrap("thread-coder", pills));
+        } else if let Some(outside) = &shown.outside {
+            // A run `openagents chat` started on the computer, in a task
+            // store its host does not serve: said plainly, with no control
+            // that could not reach it.
+            children.push(status(
+                "thread-coder-outside",
+                &outside_words(&label, outside.project.as_deref()),
+            ));
         }
         let operates = Self::operates(computers, &shown.host);
         let (token, _) = self.tokens(&[]);
@@ -3718,6 +3726,24 @@ fn body(key: &str, value: &str) -> Node<Intent> {
     text(key, value, TextRole::Body, WHITE, false)
 }
 
+/// What a phone says about Coder work a computer's thread ran outside that
+/// computer's host.
+fn outside_words(computer: &str, project: Option<&str>) -> String {
+    let computer = if computer == "A computer" {
+        "the computer"
+    } else {
+        computer
+    };
+    let task = project.map_or_else(
+        || "Coder task".to_owned(),
+        |p| format!("Coder task for {p}"),
+    );
+    format!(
+        "This thread's {task} ran on {computer} outside its OpenAgents host, so this phone can't \
+         open or stop it. Follow it on {computer} with openagents chat follow."
+    )
+}
+
 fn status(key: &str, value: &str) -> Node<Intent> {
     text(key, value, TextRole::Status, GRAY, false)
 }
@@ -3863,6 +3889,7 @@ mod tests {
                 partial: String::new(),
                 failure: None,
                 coder: None,
+                outside: None,
             })
         }
         fn send(

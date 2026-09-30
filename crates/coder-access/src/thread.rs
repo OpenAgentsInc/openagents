@@ -68,6 +68,20 @@ pub struct ThreadCoder {
     pub at: Option<u64>,
 }
 
+/// Coder work the thread ran on this computer outside the host: a local
+/// run (`openagents chat`) whose task store is not the one the host
+/// serves, so no device can open, follow, or stop it through the host. A
+/// device says so plainly and offers no Coder control for it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreadOutside {
+    /// The Coder task's ID in that other store.
+    pub task: String,
+    pub project: Option<String>,
+    /// When the thread started it, in Unix seconds.
+    pub at: Option<u64>,
+}
+
 /// One thread's row in the list.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -155,6 +169,11 @@ pub struct ThreadPage {
     /// Why the last message has no reply, when it has none.
     pub failure: Option<String>,
     pub coder: Option<ThreadCoder>,
+    /// Coder work the thread ran on this computer outside the host. Absent
+    /// unless the thread names a local run the host's task store does not
+    /// hold, so an older page, and every other page, omits it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outside: Option<ThreadOutside>,
 }
 
 /// Whether `id` is a thread or send ID: 32 lowercase hex characters, as the
@@ -185,6 +204,20 @@ fn title(value: &str) -> Result<()> {
 impl ThreadCoder {
     fn validate(&self) -> Result<()> {
         crate::protocol::public(&self.host)?;
+        crate::protocol::identity(&self.task).map_err(crate::Error::from)?;
+        if self
+            .project
+            .as_ref()
+            .is_some_and(|project| project.len() > 128 || project.chars().any(char::is_control))
+        {
+            return fail(Code::Bounds, "Coder project exceeds its bound");
+        }
+        Ok(())
+    }
+}
+
+impl ThreadOutside {
+    fn validate(&self) -> Result<()> {
         crate::protocol::identity(&self.task).map_err(crate::Error::from)?;
         if self
             .project
@@ -230,6 +263,12 @@ impl ThreadPage {
         {
             return fail(Code::Bounds, "failure exceeds its bound");
         }
+        if self.coder.is_some() && self.outside.is_some() {
+            return fail(Code::Malformed, "a thread names one Coder task");
+        }
+        self.outside
+            .as_ref()
+            .map_or(Ok(()), ThreadOutside::validate)?;
         self.coder.as_ref().map_or(Ok(()), ThreadCoder::validate)
     }
 }
@@ -373,6 +412,7 @@ mod tests {
             partial: "é".repeat(40_000),
             failure: None,
             coder: None,
+            outside: None,
         };
         fit(&mut page);
         assert!(serde_json::to_vec(&page).unwrap().len() <= MAX_PAGE_BYTES);
@@ -430,6 +470,7 @@ mod tests {
             partial: String::new(),
             failure: None,
             coder: None,
+            outside: None,
         };
         fit(&mut page);
         assert!(serde_json::to_vec(&page).unwrap().len() <= MAX_PAGE_BYTES);
@@ -468,5 +509,53 @@ mod tests {
             ..one
         };
         assert!(over.validate().is_err());
+    }
+
+    #[test]
+    fn a_local_run_outside_the_host_is_named_only_when_present() {
+        let page = ThreadPage {
+            thread: "c".repeat(32),
+            title: "Rain".into(),
+            start: 0,
+            total: 0,
+            turns: vec![],
+            busy: false,
+            partial: String::new(),
+            failure: None,
+            coder: None,
+            outside: None,
+        };
+        // Every page without an outside run encodes as an older page did,
+        // and an older page decodes with none.
+        let bare = serde_json::to_value(&page).unwrap();
+        assert!(bare.get("outside").is_none());
+        let old: ThreadPage = serde_json::from_value(bare).unwrap();
+        assert_eq!(old, page);
+
+        let outside = ThreadPage {
+            outside: Some(ThreadOutside {
+                task: "d".repeat(64),
+                project: Some("checkout".into()),
+                at: Some(1),
+            }),
+            ..page.clone()
+        };
+        assert!(outside.validate().is_ok());
+        let back: ThreadPage =
+            serde_json::from_value(serde_json::to_value(&outside).unwrap()).unwrap();
+        assert_eq!(back, outside);
+        let both = ThreadPage {
+            coder: Some(ThreadCoder {
+                host: "e".repeat(64),
+                task: "d".repeat(64),
+                project: None,
+                at: None,
+            }),
+            ..outside.clone()
+        };
+        assert!(both.validate().is_err());
+        let mut bad = outside;
+        bad.outside.as_mut().unwrap().task = "local".into();
+        assert!(bad.validate().is_err());
     }
 }

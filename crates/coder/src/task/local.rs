@@ -1140,6 +1140,79 @@ mod tests {
             .with_controller(std::env::current_exe().unwrap())
     }
 
+    /// Starts nothing: the task stays queued, as a run whose engine has
+    /// not admitted it yet.
+    struct Held;
+
+    impl Launch for Held {
+        fn launch(&self, _: &Engine, _: &Path, _: &Path) -> Result<autostart::Launched, String> {
+            Ok(autostart::Launched {
+                owner_process: std::process::id(),
+                grant_digest: "sha256:held".into(),
+            })
+        }
+    }
+
+    /// A host serving this store names a chat's local run as its own task
+    /// (#10043), and a paired phone's interrupt stops it; a host serving
+    /// another store, or asked for another thread, leaves it outside.
+    #[test]
+    fn a_host_on_the_same_store_holds_the_local_run_and_a_phone_stops_it() {
+        use coder_host::Tasks as _;
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let thread = "4c".repeat(16);
+        let run = local(dir.path(), both).with_launcher(Box::new(Held));
+        let record = run
+            .start(&top, "Fix the parser", "Fix the parser.", Some(&thread))
+            .unwrap();
+        let host = super::super::remote::Inbox::new(run.store(), BTreeMap::new());
+        assert!(host.local_run(&record.task, &thread));
+        assert!(!host.local_run(&record.task, &"5d".repeat(16)));
+        assert!(!host.local_run(&"e".repeat(64), &thread));
+        let elsewhere = tempfile::tempdir().unwrap();
+        let other =
+            super::super::remote::Inbox::new(elsewhere.path().join("tasks"), BTreeMap::new());
+        assert!(!other.local_run(&record.task, &thread));
+
+        // The host lists it, so a device follows its summary.
+        assert!(host.current().iter().any(|task| task.task == record.task));
+        let phone = coder_host::Principal {
+            device: "ab".repeat(32),
+            grant: Some("1".repeat(64)),
+            epoch: Some(0),
+        };
+        let current = Store::open(run.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+        let stopped = host
+            .command(
+                &phone,
+                &coder_host::TaskCommand {
+                    command: "7".repeat(64),
+                    task: record.task.clone(),
+                    action: coder_host::CommandAction::Interrupt,
+                    based_on: current.revision,
+                    text: "Stopped from a phone.".into(),
+                    emulate: false,
+                    issued_at: autostart::unix_now(),
+                },
+                &|_: &coder_host::Principal| true,
+            )
+            .unwrap();
+        assert_eq!(stopped.task, record.task);
+        let after = Store::open(run.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+        assert!(
+            matches!(after.status, Status::Cancelled | Status::CancelRequested),
+            "{:?}",
+            after.status
+        );
+    }
+
     #[test]
     fn codex_first_then_claude_code_with_the_reason() {
         let dir = tempfile::tempdir().unwrap();

@@ -9,10 +9,18 @@
 //! host is the wire form in `coder_access::thread`: titles, turns, the reply
 //! streaming, a link to Coder work, and each turn's offers, cards, and
 //! follow-up chips. The router's typed judgment stays on the host.
+//!
+//! A Coder run `openagents chat` started on this computer is bound to its
+//! thread under the host name `local`. When the host's task owner holds
+//! that task (the run used the store the host serves), the link names the
+//! host's own key, so a device opens, follows, and stops it like any task
+//! here. Otherwise the page says the run is outside the host, and a device
+//! offers no control for it.
 
 use coder_access::Code;
 use coder_access::thread::{
-    self, MAX_THREADS, MAX_TITLE, ThreadCoder, ThreadPage, ThreadRole, ThreadRow, ThreadTurn,
+    self, MAX_THREADS, MAX_TITLE, ThreadCoder, ThreadOutside, ThreadPage, ThreadRole, ThreadRow,
+    ThreadTurn,
 };
 use openagents_chat::basic_chats::{Spawned, Summary};
 use openagents_chat::basic_coder::{Role, Turn};
@@ -61,7 +69,7 @@ pub(crate) fn list(shared: &Shared) -> Result<Vec<ThreadRow>, Code> {
         .collect();
     rows.sort_by(|a, b| b.updated.cmp(&a.updated).then_with(|| a.id.cmp(&b.id)));
     rows.truncate(MAX_THREADS);
-    let mut rows: Vec<ThreadRow> = rows.iter().map(row).collect();
+    let mut rows: Vec<ThreadRow> = rows.iter().map(|summary| row(shared, summary)).collect();
     // Long titles on every row could outgrow one reply; drop the oldest.
     while serde_json::to_vec(&rows).map_or(true, |bytes| bytes.len() > thread::MAX_PAGE_BYTES) {
         rows.pop();
@@ -83,7 +91,7 @@ pub(crate) fn read(shared: &Shared, id: &str, before: Option<u64>) -> Result<Thr
         },
     )?;
     let summary = find(shared, id, &snapshot)?;
-    Ok(page(&summary, &snapshot))
+    Ok(page(shared, &summary, &snapshot))
 }
 
 /// `thread.send`: append `text` to `id` under the device's send ID, which
@@ -180,7 +188,15 @@ fn title(title: &str) -> String {
     clean[..end].to_owned()
 }
 
-fn coder(spawned: Option<&Spawned>) -> Option<ThreadCoder> {
+/// Where a thread's Coder link points, as a device may use it.
+enum Link {
+    /// A task on a Coder host: this one, or another.
+    Host(ThreadCoder),
+    /// A local run in a task store this host does not serve.
+    Outside(ThreadOutside),
+}
+
+fn link(shared: &Shared, thread: &str, spawned: Option<&Spawned>) -> Option<Link> {
     let spawned = spawned?;
     let project = spawned
         .project
@@ -192,22 +208,43 @@ fn coder(spawned: Option<&Spawned>) -> Option<ThreadCoder> {
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     };
-    (hex(&spawned.host) && hex(&spawned.task)).then(|| ThreadCoder {
-        host: spawned.host.clone(),
+    if !hex(&spawned.task) {
+        return None;
+    }
+    let host = if spawned.host == openagents_chat::thread::LOCAL_HOST {
+        if !shared.tasks.local_run(&spawned.task, thread) {
+            return Some(Link::Outside(ThreadOutside {
+                task: spawned.task.clone(),
+                project,
+                at: spawned.at,
+            }));
+        }
+        shared.host_key.clone()
+    } else if hex(&spawned.host) {
+        spawned.host.clone()
+    } else {
+        return None;
+    };
+    Some(Link::Host(ThreadCoder {
+        host,
         task: spawned.task.clone(),
         project,
         at: spawned.at,
-    })
+    }))
 }
 
-fn row(summary: &Summary) -> ThreadRow {
+fn row(shared: &Shared, summary: &Summary) -> ThreadRow {
+    let coder = match link(shared, &summary.id, summary.coder.as_ref()) {
+        Some(Link::Host(coder)) => Some(coder),
+        _ => None,
+    };
     ThreadRow {
         thread: summary.id.clone(),
         title: title(&summary.title),
         started: summary.started,
         updated: summary.updated,
         pinned: summary.pinned,
-        coder: coder(summary.coder.as_ref()),
+        coder,
     }
 }
 
@@ -290,7 +327,16 @@ fn answer_tag(text: &str) -> bool {
         })
 }
 
-fn page(summary: &Summary, snapshot: &Snapshot) -> ThreadPage {
+fn page(shared: &Shared, summary: &Summary, snapshot: &Snapshot) -> ThreadPage {
+    let (coder, outside) = match link(
+        shared,
+        &summary.id,
+        snapshot.coder.as_ref().or(summary.coder.as_ref()),
+    ) {
+        Some(Link::Host(coder)) => (Some(coder), None),
+        Some(Link::Outside(outside)) => (None, Some(outside)),
+        None => (None, None),
+    };
     let mut page = ThreadPage {
         thread: summary.id.clone(),
         title: title(&summary.title),
@@ -304,7 +350,8 @@ fn page(summary: &Summary, snapshot: &Snapshot) -> ThreadPage {
             String::new()
         },
         failure: snapshot.failure.clone(),
-        coder: coder(snapshot.coder.as_ref().or(summary.coder.as_ref())),
+        coder,
+        outside,
     };
     thread::fit(&mut page);
     page

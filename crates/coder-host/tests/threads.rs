@@ -653,3 +653,241 @@ async fn a_phone_runs_coder_from_a_host_threads_offer() {
     );
     host.running.shutdown().await;
 }
+
+/// A task owner whose store holds one local run (`openagents chat` on this
+/// computer, bound to its thread as host `local`) and records the commands
+/// devices send it.
+struct LocalStore {
+    task: String,
+    thread: String,
+    commands: std::sync::Mutex<Vec<(String, coder_host::TaskCommand)>>,
+}
+
+impl coder_host::Tasks for LocalStore {
+    fn create(
+        &self,
+        _: &str,
+        _: &str,
+        _: &coder_host::TaskCreate,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        Err(Code::Unavailable)
+    }
+
+    fn steer(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: u64,
+        _: &str,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        Err(Code::Unavailable)
+    }
+
+    fn cancel(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: u64,
+        _: &str,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        Err(Code::Unavailable)
+    }
+
+    fn command(
+        &self,
+        principal: &coder_host::Principal,
+        command: &coder_host::TaskCommand,
+        _: coder_host::Standing<'_>,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        if command.task != self.task {
+            return Err(Code::Forbidden);
+        }
+        self.commands
+            .lock()
+            .unwrap()
+            .push((principal.device.clone(), command.clone()));
+        Ok(coder_host::TaskRef {
+            task: self.task.clone(),
+            revision: 3,
+            phase: nostr::activity_summary::Phase::Cancelled,
+        })
+    }
+
+    fn current(&self) -> Vec<coder_host::TaskRef> {
+        vec![coder_host::TaskRef {
+            task: self.task.clone(),
+            revision: 2,
+            phase: nostr::activity_summary::Phase::Running,
+        }]
+    }
+
+    fn local_run(&self, task: &str, thread: &str) -> bool {
+        task == self.task && thread == self.thread
+    }
+}
+
+/// #10043: a Coder run `openagents chat` started on this computer is bound
+/// to its thread as host `local`. A host whose task store holds it names
+/// itself as that task's host, so a paired phone sees the task, stops the
+/// thread's reply, and stops the task with its own interrupt. A local run
+/// in a store the host does not serve reaches the phone only as `outside`,
+/// with no Coder link to use.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_local_run_on_the_hosts_store_is_visible_and_stoppable_from_a_phone() {
+    let worker = support::key();
+    let (door, _payloads) = chat_worker::start(worker).await;
+    let thread = "6f".repeat(16);
+    let task = "a7".repeat(32);
+    let tasks = std::sync::Arc::new(LocalStore {
+        task: task.clone(),
+        thread: thread.clone(),
+        commands: std::sync::Mutex::new(vec![]),
+    });
+    let host = host_with(Options {
+        chat_door: Some(ChatDoor {
+            relay: door,
+            worker: chat_worker::worker_key(&worker),
+        }),
+        tasks: Some(tasks.clone()),
+        ..Options::default()
+    })
+    .await;
+    let own = host.running.host_key().to_owned();
+
+    // `openagents chat` binds its local run to the thread over the socket.
+    let outside_thread = "8a".repeat(16);
+    let elsewhere = "b8".repeat(32);
+    for (chat_id, bound) in [(&thread, &task), (&outside_thread, &elsewhere)] {
+        chat(
+            &host,
+            Command::Create {
+                chat: chat_id.clone(),
+            },
+        )
+        .await;
+        let snapshot = chat(
+            &host,
+            Command::BindCoder {
+                chat: chat_id.clone(),
+                host: openagents_chat::thread::LOCAL_HOST.into(),
+                task: bound.clone(),
+                project: Some("proj".into()),
+            },
+        )
+        .await;
+        assert_eq!(snapshot.coder.unwrap().host, "local");
+    }
+
+    let phone = Phone::new().await;
+    let (_, code) = host.code().await;
+    let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
+    let device = phone.device(access.unwrap());
+    let link = phone.link(&host, &device).await.unwrap();
+
+    // The list and the page name this host as the task's host.
+    let Outcome::Threads { threads } = link.call(Operation::ListThreads {}).await.unwrap() else {
+        panic!("a list")
+    };
+    let row = threads.iter().find(|row| row.thread == thread).unwrap();
+    let linked = row.coder.as_ref().expect("the row names its task");
+    assert_eq!(
+        (linked.host.as_str(), linked.task.as_str()),
+        (own.as_str(), task.as_str())
+    );
+    assert_eq!(linked.project.as_deref(), Some("proj"));
+    let page = read(&link, &thread).await.unwrap();
+    assert_eq!(page.coder.as_ref(), Some(linked));
+    assert!(page.outside.is_none());
+    assert!(
+        !serde_json::to_value(&page)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("outside"),
+        "a page an older phone reads carries no new field"
+    );
+
+    // `thread.stop` works on that thread: the no-op probe, then a reply
+    // stopped while it streams.
+    let probe = stop(&link, &thread, Some("99".repeat(16))).await.unwrap();
+    assert!(matches!(probe, Outcome::Dispatched { .. }));
+    let send = "3f".repeat(16);
+    link.call(Operation::SendThread {
+        thread: thread.clone(),
+        request: send.clone(),
+        text: "Tell me slowly about rain".into(),
+    })
+    .await
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !read(&link, &thread).await.unwrap().busy {
+        assert!(Instant::now() < deadline, "the reply never streamed");
+        tokio::time::sleep(Duration::from_millis(40)).await;
+    }
+    stop(&link, &thread, Some(send)).await.unwrap();
+    let stopped = read(&link, &thread).await.unwrap();
+    assert!(!stopped.busy && stopped.turns.last().unwrap().stopped);
+    assert_eq!(
+        stopped.coder.as_ref().map(|c| c.host.as_str()),
+        Some(own.as_str())
+    );
+
+    // Stop Coder too: the task's own interrupt, on this host.
+    let interrupt = coder_host::TaskCommand {
+        command: "c1".repeat(32),
+        task: task.clone(),
+        action: coder_host::CommandAction::Interrupt,
+        based_on: 2,
+        text: "Stopped from a phone.".into(),
+        emulate: false,
+        issued_at: now(),
+    };
+    link.call(Operation::CommandTask {
+        command: interrupt.clone(),
+    })
+    .await
+    .unwrap();
+    let commands = tasks.commands.lock().unwrap().clone();
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].1, interrupt);
+    // An observe-only phone sees the task but may not stop it.
+    let (_watcher, watching) = observer(&host).await;
+    assert_eq!(
+        read(&watching, &thread)
+            .await
+            .unwrap()
+            .coder
+            .map(|c| c.host),
+        Some(own.clone())
+    );
+    let refused = watching
+        .call(Operation::CommandTask {
+            command: coder_host::TaskCommand {
+                command: "c2".repeat(32),
+                ..interrupt
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refusal(&refused),
+        Some((Code::MissingRight, Some(Right::Operate)))
+    );
+    assert_eq!(tasks.commands.lock().unwrap().len(), 1);
+
+    // A local run in a store this host does not serve: no link, and the
+    // page says it ran outside the host.
+    let row = threads
+        .iter()
+        .find(|row| row.thread == outside_thread)
+        .unwrap();
+    assert!(row.coder.is_none());
+    let page = read(&link, &outside_thread).await.unwrap();
+    assert!(page.coder.is_none());
+    let outside = page.outside.expect("the page says where it ran");
+    assert_eq!(outside.task, elsewhere);
+    assert_eq!(outside.project.as_deref(), Some("proj"));
+    host.running.shutdown().await;
+}

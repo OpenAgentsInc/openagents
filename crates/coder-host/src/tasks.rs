@@ -265,6 +265,16 @@ pub trait Tasks: Send + Sync {
     fn stamp(&self) -> Option<Vec<u8>> {
         None
     }
+
+    /// Whether this owner's task store holds `task` as a local run on this
+    /// computer (`openagents chat`, a thread's binding with host `local`)
+    /// for the chat thread `thread`. When it does, the host names itself as
+    /// the task's host on that thread, so a device opens, follows, and
+    /// stops it as any task here. The default, `false`, leaves such a run
+    /// outside the host.
+    fn local_run(&self, _task: &str, _thread: &str) -> bool {
+        false
+    }
 }
 
 /// A host without a task owner. Every task operation refuses as

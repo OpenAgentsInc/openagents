@@ -1893,6 +1893,7 @@ struct HostThreadsFake {
     /// Every stop asked, by send ID.
     stops: std::sync::Mutex<Vec<Option<String>>>,
     coder: Option<coder_host::access::thread::ThreadCoder>,
+    outside: Option<coder_host::access::thread::ThreadOutside>,
 }
 
 impl openagents_chat_app::host_threads::Link for HostThreadsFake {
@@ -1964,6 +1965,7 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
             },
             failure: None,
             coder: self.coder.clone(),
+            outside: self.outside.clone(),
         })
     }
 
@@ -2224,6 +2226,44 @@ fn a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder
     let commands = script.lock().unwrap().commands.clone();
     assert_eq!(commands.len(), 1, "{commands:?}");
     assert_eq!(commands[0].0, coder_host::CommandAction::Interrupt);
+}
+
+/// #10043: a Coder run `openagents chat` started on the computer, in a task
+/// store its host does not serve, is said plainly, with no Open Coder or
+/// Stop Coder too control that could not reach it.
+#[test]
+fn a_local_run_outside_the_computers_host_is_said_plainly_with_no_dead_controls() {
+    let mut fixture = Fixture::hosts();
+    let studio = fixture
+        .computers
+        .snapshot()
+        .hosts
+        .iter()
+        .find(|host| host.label == "Studio Mac")
+        .expect("Studio Mac")
+        .key
+        .clone();
+    let fake = std::sync::Arc::new(HostThreadsFake {
+        host: studio,
+        slow: true,
+        outside: Some(coder_host::access::thread::ThreadOutside {
+            task: "a7".repeat(32),
+            project: Some("proj".into()),
+            at: None,
+        }),
+        ..HostThreadsFake::default()
+    });
+    let chat = stream_a_computers_reply(&mut fixture, fake);
+    let words = node(&chat, "thread-coder-outside").expect("the outside run is said");
+    let text = words.to_string();
+    assert!(
+        text.contains("Coder task for proj ran on Studio Mac outside its OpenAgents host"),
+        "{text}"
+    );
+    assert!(text.contains("can't open or stop it"), "{text}");
+    for control in ["thread-coder-open", "thread-coder-stop"] {
+        assert!(node(&chat, control).is_none(), "{control}");
+    }
 }
 
 #[test]

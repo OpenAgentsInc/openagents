@@ -423,6 +423,17 @@ impl Tasks for Inbox {
         None
     }
 
+    /// A local run lives in this store when the store holds its task and
+    /// the run's own record beside it (`local/<task>.json`), made for that
+    /// thread or for none.
+    fn local_run(&self, task: &str, thread: &str) -> bool {
+        let Some(record) = super::local::record(&self.store, task) else {
+            return false;
+        };
+        record.thread.as_deref().is_none_or(|bound| bound == thread)
+            && Store::open(&self.store).is_ok_and(|store| store.show(task).is_ok())
+    }
+
     fn cancel(
         &self,
         key: &str,

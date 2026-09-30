@@ -724,7 +724,18 @@ parser already accepts, each at most 8 KiB. The router's typed judgment
 (tier, answer, route, bank, and judgment text) stays on the host. `busy`
 says a reply is streaming, `partial` is the reply so far (empty when none),
 and `failure` why the last message has no reply, at most 1,024 bytes, or
-null. A `threads` or `thread` outcome encodes in at most 48 KiB, so a reply
+null. A Coder run that `openagents chat` started on the host's computer is
+bound to its thread under the host name `local`. When the host's task store
+holds that task, together with the run's own record for that thread, the
+host names its own key as `coder.host` in the row and the page, so a
+device opens the task's chat through the history observer, follows its
+events, and stops it with the task's own interrupt, exactly as for any task
+on this host. When the run used another task store, `coder` is null and the
+page carries `outside`: `{task, project, at}`, the task in that other store,
+with the same bounds as `coder`. A page never carries both, and `outside`
+is omitted when absent, so every other page encodes as before and an older
+page has none. A device shows `outside` as words that say the run is on
+that computer outside its host, with no Coder control for it. A `threads` or `thread` outcome encodes in at most 48 KiB, so a reply
 fits one relay frame: the host drops the oldest turns' extras first, then
 drops the oldest turns, then keeps only the end of a single turn or partial
 that is still too large, marked with `…`. A device reads the reply as it
@@ -1244,4 +1255,13 @@ that already names a Coder task shows no second **Run Coder** chip.
 the Run Coder offer, the follow-up chip, and the card, with no judgment
 on the page, and `thread.run` starts one task that the owner reads back
 on the socket. A second `thread.run` returns the same task. An
-`observe`-only device is refused the run.
+`observe`-only device is refused the run. In the same file a thread whose
+Coder run `openagents chat` started on the computer, bound as host `local`
+in the task store the host serves, names the host's own key in the row and
+the page; a phone stops the thread's reply and sends the task's interrupt
+(**Stop Coder too**), which reaches the task owner, while an
+`observe`-only device reads the link and is refused the interrupt; a run in
+a store the host does not serve comes back as `outside` with no link. The
+phone shows it as words, with no Open Coder or Stop Coder too control
+(`a_local_run_outside_the_computers_host_is_said_plainly_with_no_dead_controls`
+in `crates/openagents-mobile/src/coder_tab_tests.rs`).
