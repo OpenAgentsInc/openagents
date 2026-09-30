@@ -325,9 +325,9 @@ command cards in chat (`terminal.open`, `crates/openagents-mobile/src/cli_run.rs
 reviews, and the phone's own device list, invitations, and **Remove**
 (`access_read`, `access_admin`). The code is shown only on the owner's
 unlocked screen, so the phone that scans it is the owner's. A phone keeps a
-grant only with exactly those rights, or with the rights earlier codes
-carried (`observe,operate`, with or without `terminal`) from a computer not
-yet updated. To narrow a phone, the owner removes it.
+grant only with exactly those rights; the narrower sets earlier codes
+carried (`observe,operate`, with or without `terminal`) are refused. To
+narrow a phone, the owner removes it.
 
 **No typed short code.** The first draft let a person type the first eight
 characters of the `EndpointId`. That is not an iroh feature (lookup is by the
