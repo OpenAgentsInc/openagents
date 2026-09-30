@@ -28,8 +28,9 @@ desktop visual, menu, or painter change.
 - **Folder chooser.** The common item dialog (`IFileOpenDialog` with
   `FOS_PICKFOLDERS`, through `rfd`), replacing a PowerShell
   `FolderBrowserDialog` whose answer passed through the console code page.
-- **Notifications.** Coder's desktop notifications are Linux's for now
-  (#10026); on Windows, as on the Mac, a notice is dropped. No toast yet.
+- **Notifications.** Coder's desktop notifications were Linux's (#10026)
+  when this landed; macOS followed in #10061 and Windows toasts in #10062
+  (see [../2026-09-30-windows-notifications/verification.md](../2026-09-30-windows-notifications/verification.md)).
 - **Local runs.** The window sets `HOME` from `USERPROFILE` as `coder.exe`
   does, so the in-process runner finds `~/.openagents`. The `toolchains`
   sandbox (#10045) on Windows is the AppContainer with the network and no

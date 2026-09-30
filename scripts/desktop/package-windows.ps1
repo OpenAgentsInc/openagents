@@ -56,6 +56,10 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 # Stable for every release: it is how Windows Installer finds the version
 # an upgrade replaces. Never change it.
 $UpgradeCode = "5B1759D8-E627-4987-8844-1923D7B2D16F"
+# The AppUserModelID Coder's toasts show under, on the Start menu shortcut
+# and registered for the user; the app's notices::WINDOWS_APP_ID and the
+# .sh use the same one.
+$AppId = "OpenAgents.Desktop"
 # Built binary name -> installed name. The window first.
 $Binaries = [ordered]@{
     "openagents-desktop.exe" = "OpenAgents.exe"
@@ -194,9 +198,15 @@ $files        <RegistryValue Root="HKCU" Key="Software\OpenAgents\Desktop" Name=
       </Component>
 $runEntry      <Component Id="StartMenu" Directory="ProgramMenuFolder">
         <Shortcut Id="StartMenuShortcut" Name="OpenAgents" Target="[INSTALLFOLDER]OpenAgents.exe"
-                  WorkingDirectory="INSTALLFOLDER" />
+                  WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="$AppId" />
+        </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\OpenAgents\Desktop" Name="StartMenuShortcut"
                        Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="Notifications" Directory="ProgramMenuFolder">
+        <RegistryValue Root="HKCU" Key="Software\Classes\AppUserModelId\$AppId" Name="DisplayName"
+                       Type="string" Value="OpenAgents" KeyPath="yes" />
       </Component>
     </ComponentGroup>
     <Feature Id="Main">

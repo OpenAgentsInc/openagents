@@ -29,17 +29,6 @@ pub fn control_path() -> Option<std::path::PathBuf> {
 #[cfg(target_os = "macos")]
 pub use crate::mac_notify::{listen_notifications, notify, notify_now};
 
-/// Desktop notifications are Linux's and macOS's for now (#10026, #10061);
-/// elsewhere a notice is dropped.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub fn notify(_: openagents_desktop::notices::Notice) {}
-
-/// See [`notify`]: no notification clicks to listen for here.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub fn listen_notifications() {}
-
-/// See [`notify`]: no notification service here.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub fn notify_now(_: &openagents_desktop::notices::Notice) -> Option<&'static str> {
-    None
-}
+/// Windows's notifications are toasts (#10062).
+#[cfg(windows)]
+pub use crate::win_notify::{listen_notifications, notify, notify_now};

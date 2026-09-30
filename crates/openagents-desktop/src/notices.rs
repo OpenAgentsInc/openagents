@@ -4,7 +4,8 @@
 //!
 //! This decides *when*; the platform delivers (on Linux the desktop portal,
 //! else `org.freedesktop.Notifications`; on macOS the notification center,
-//! through [`deliver`] and a [`Center`]). A chat seen for the first time is
+//! through [`deliver`] and a [`Center`]; on Windows a toast, the same way,
+//! under [`WINDOWS_APP_ID`]). A chat seen for the first time is
 //! only recorded, so opening the app on finished work notifies nothing, and
 //! a status that does not change notifies nothing again. Nothing here reads
 //! a message: the notice says what Coder is doing, under the chat's title.
@@ -81,6 +82,90 @@ pub fn mac_click<'a>(id: &'a str, action: &str) -> Option<&'a str> {
     (action == MAC_DEFAULT_ACTION)
         .then(|| chat_of(id))
         .flatten()
+}
+
+/// The AppUserModelID Windows shows this app's toasts under. The MSI puts
+/// it on the Start menu shortcut (`System.AppUserModel.ID`) and registers
+/// it under `HKCU\Software\Classes\AppUserModelId`, and the app claims it
+/// at startup (`SetCurrentProcessExplicitAppUserModelID`); all three must
+/// match (`scripts/desktop/package-windows.sh` and `.ps1`).
+pub const WINDOWS_APP_ID: &str = "OpenAgents.Desktop";
+
+/// The toast group every Coder notice is posted under on Windows.
+pub const WINDOWS_GROUP: &str = "coder";
+
+/// The longest toast tag Windows accepts.
+const WINDOWS_TAG_MAX: usize = 64;
+
+/// The toast tag for notice `id`: the ID itself (`coder-<chat>`), so a
+/// newer toast for a chat replaces the older one. An ID longer than Windows
+/// allows becomes `coder-` and a stable hash of it, still one tag a chat.
+#[must_use]
+pub fn windows_tag(id: &str) -> String {
+    if id.len() <= WINDOWS_TAG_MAX {
+        return id.to_owned();
+    }
+    // FNV-1a, 64-bit: stable across runs and builds.
+    let hash = id.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    format!("{PREFIX}{hash:016x}")
+}
+
+fn xml_escaped(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&apos;"),
+            // XML 1.0 has no other control characters.
+            c if c.is_control() && !matches!(c, '\t' | '\n' | '\r') => {}
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+/// The toast XML for `notice`: its title and body and nothing else, the
+/// notice's ID as the activation arguments (`launch`), foreground
+/// activation, and a sound only when Coder waits for the person.
+#[must_use]
+pub fn windows_toast_xml(notice: &Notice) -> String {
+    let audio = if notice.urgent {
+        ""
+    } else {
+        "<audio silent=\"true\"/>"
+    };
+    format!(
+        "<toast launch=\"{}\" activationType=\"foreground\"><visual><binding template=\"ToastGeneric\">\
+         <text>{}</text><text>{}</text></binding></visual>{audio}</toast>",
+        xml_escaped(&notice.id),
+        xml_escaped(&notice.title),
+        xml_escaped(&notice.body),
+    )
+}
+
+/// The chat a toast click opens: the activation `arguments` (the toast's
+/// `launch`, the notice's ID) name a Coder notice's chat.
+#[must_use]
+pub fn windows_click(arguments: &str) -> Option<&str> {
+    chat_of(arguments)
+}
+
+/// Windows's `NotificationSetting` for this app as a [`Permission`]:
+/// `Enabled` (0) is granted; turned off for the app (1), for the user (2),
+/// by group policy (3), or by the manifest (4) is denied. Windows never
+/// asks the person, so the first notice shows at once when on.
+#[must_use]
+pub fn windows_permission(setting: i32) -> Permission {
+    match setting {
+        0 => Permission::Granted,
+        1..=4 => Permission::Denied,
+        _ => Permission::Unavailable,
+    }
 }
 
 /// The chat a notice's ID names, if it is a Coder notice.
@@ -390,6 +475,100 @@ mod tests {
         );
         assert_eq!(mac_click("openagents-test", MAC_DEFAULT_ACTION), None);
         assert_eq!(mac_click("coder-", MAC_DEFAULT_ACTION), None);
+    }
+
+    #[test]
+    fn a_windows_toast_says_only_the_title_and_status_and_carries_the_notice_id() {
+        let mut notices = Notices::default();
+        let chat = |status| vec![("c1".to_owned(), "Fix <login> & \"auth\"".to_owned(), status)];
+        notices.observe(chat(Status::Working), false);
+        let asked = notices.observe(chat(Status::Question), false).remove(0);
+        assert_eq!(
+            windows_toast_xml(&asked),
+            "<toast launch=\"coder-c1\" activationType=\"foreground\"><visual>\
+             <binding template=\"ToastGeneric\"><text>Fix &lt;login&gt; &amp; &quot;auth&quot;</text>\
+             <text>Coder asked a question</text></binding></visual></toast>"
+        );
+        let finished = Notice {
+            urgent: false,
+            ..asked.clone()
+        };
+        assert!(windows_toast_xml(&finished).ends_with("<audio silent=\"true\"/></toast>"));
+        // A control character in a title never reaches the XML.
+        let odd = Notice {
+            title: "a\u{1}b".into(),
+            ..asked
+        };
+        assert!(windows_toast_xml(&odd).contains("<text>ab</text>"));
+    }
+
+    #[test]
+    fn a_newer_windows_toast_for_a_chat_replaces_the_older_one() {
+        // The tag is the notice's ID, the same for every notice of a chat.
+        let mut notices = Notices::default();
+        notices.observe(chat(Status::Working), false);
+        let asked = notices.observe(chat(Status::Approval), false).remove(0);
+        notices.observe(chat(Status::Working), false);
+        let done = notices.observe(chat(Status::Finished), false).remove(0);
+        assert_eq!(windows_tag(&asked.id), "coder-c1");
+        assert_eq!(windows_tag(&asked.id), windows_tag(&done.id));
+        // A chat ID too long for a tag still has one tag, its own.
+        let long = format!("coder-{}", "x".repeat(80));
+        let other = format!("coder-{}", "y".repeat(80));
+        assert!(windows_tag(&long).len() <= 64);
+        assert_eq!(windows_tag(&long), windows_tag(&long.clone()));
+        assert_ne!(windows_tag(&long), windows_tag(&other));
+        assert_eq!(windows_tag(&"c".repeat(64)), "c".repeat(64));
+    }
+
+    #[test]
+    fn a_click_on_a_windows_toast_opens_its_chat() {
+        let mut notices = Notices::default();
+        notices.observe(chat(Status::Working), false);
+        let done = notices.observe(chat(Status::Finished), false).remove(0);
+        // The activation arguments are the toast's `launch`, its ID.
+        assert!(windows_toast_xml(&done).starts_with("<toast launch=\"coder-c1\""));
+        assert_eq!(windows_click(&done.id), Some("c1"));
+        assert_eq!(windows_click("openagents-test"), None);
+        assert_eq!(windows_click(""), None);
+        assert_eq!(windows_click("coder-"), None);
+    }
+
+    #[test]
+    fn windows_notifications_turned_off_show_nothing() {
+        assert_eq!(windows_permission(0), Permission::Granted);
+        for off in 1..=4 {
+            assert_eq!(windows_permission(off), Permission::Denied);
+        }
+        assert_eq!(windows_permission(9), Permission::Unavailable);
+        // Off in Windows's settings: the center is asked and posts nothing.
+        let notice = Notice {
+            id: "coder-c1".into(),
+            title: "Fix the login bug".into(),
+            body: "Coder finished".into(),
+            urgent: false,
+        };
+        let off = MockCenter::new(windows_permission(1), None);
+        assert_eq!(delivered(&off, notice.clone()), Delivery::Denied);
+        assert_eq!(off.calls(), ["authorize"]);
+        // Not installed from the MSI (no AppUserModelID): nothing either.
+        let unregistered = MockCenter::new(Permission::Unavailable, None);
+        assert_eq!(delivered(&unregistered, notice), Delivery::Unavailable);
+        assert_eq!(unregistered.calls(), ["authorize"]);
+    }
+
+    #[test]
+    fn both_installers_give_the_shortcut_the_app_id_the_app_claims() {
+        let sh = include_str!("../../../scripts/desktop/package-windows.sh");
+        let ps1 = include_str!("../../../scripts/desktop/package-windows.ps1");
+        assert!(sh.contains(&format!("app_id=\"{WINDOWS_APP_ID}\"")));
+        assert!(sh.contains(r"ShortcutAppId\tStartMenuShortcut\tSystem.AppUserModel.ID\t%s"));
+        assert!(sh.contains(r"Software\\Classes\\AppUserModelId\\$app_id"));
+        assert!(ps1.contains(&format!("$AppId = \"{WINDOWS_APP_ID}\"")));
+        assert!(
+            ps1.contains(r#"<ShortcutProperty Key="System.AppUserModel.ID" Value="$AppId" />"#)
+        );
+        assert!(ps1.contains(r"Software\Classes\AppUserModelId\$AppId"));
     }
 
     #[test]

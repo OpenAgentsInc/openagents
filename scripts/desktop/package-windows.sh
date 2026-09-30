@@ -34,7 +34,10 @@
 # The MSI is the .ps1's: per user (no administrator prompt) in
 # %LOCALAPPDATA%\Programs\OpenAgents, the same UpgradeCode, the Run entry
 # "OpenAgents" (OpenAgents.exe --start-host) owned by the MSI so an
-# uninstall removes it, a Start menu shortcut, a major upgrade that
+# uninstall removes it, a Start menu shortcut carrying the app's
+# AppUserModelID (OpenAgents.Desktop, also registered under
+# HKCU\Software\Classes\AppUserModelId, so Coder's toasts show), a major
+# upgrade that
 # replaces any earlier version, and the app opened when an interactive or
 # progress-bar install finishes (the updater installs with /passive).
 # Writes OpenAgents-VERSION-x64.msi, OpenAgents-VERSION-windows-x64.zip,
@@ -49,6 +52,9 @@ target="x86_64-pc-windows-gnu"
 # Stable for every release: it is how Windows Installer finds the version
 # an upgrade replaces. The .ps1 uses the same one. Never change it.
 upgrade_code="5B1759D8-E627-4987-8844-1923D7B2D16F"
+# The AppUserModelID Coder's toasts show under; the app's
+# notices::WINDOWS_APP_ID and the .ps1 use the same one.
+app_id="OpenAgents.Desktop"
 
 version=""
 out=""
@@ -98,6 +104,7 @@ else
 fi
 command -v zip >/dev/null || die "zip is not on PATH"
 [[ "$msi" == 0 ]] || command -v wixl >/dev/null || die "wixl (msitools) is not on PATH, or pass --no-msi"
+[[ "$msi" == 0 ]] || command -v msibuild >/dev/null || die "msibuild (msitools) is not on PATH, or pass --no-msi"
 
 target_dir="${CARGO_TARGET_DIR:-$root/target}"
 [[ -n "$out" ]] || out="$target_dir/desktop/windows"
@@ -202,11 +209,18 @@ $files          <RegistryValue Root="HKCU" Key="Software\\OpenAgents\\Desktop" N
         <RegistryValue Root="HKCU" Key="Software\\OpenAgents\\Desktop" Name="StartMenuShortcut"
                        Type="integer" Value="1" KeyPath="yes" />
       </Component>
+      <!-- The toasts' AppUserModelID, registered for this user; the app
+           claims the same ID at startup (notices::WINDOWS_APP_ID). -->
+      <Component Id="Notifications" Guid="C5E0B9A4-6F2D-4E8B-9A71-3D2F8C4B7E15" Win64="yes">
+        <RegistryValue Root="HKCU" Key="Software\\Classes\\AppUserModelId\\$app_id" Name="DisplayName"
+                       Type="string" Value="OpenAgents" KeyPath="yes" />
+      </Component>
     </DirectoryRef>
     <Feature Id="Main" Level="1">
       <ComponentRef Id="Binaries" />
       <ComponentRef Id="StartAtSignIn" />
       <ComponentRef Id="StartMenu" />
+      <ComponentRef Id="Notifications" />
     </Feature>
     <!-- Open the app after an interactive or progress-bar install (the
          updater's /passive), so the code shows without another step. -->
@@ -220,6 +234,16 @@ EOF
   msi_file="$out/OpenAgents-$version-x64.msi"
   rm -f "$msi_file"
   wixl -a x64 -o "$msi_file" "$work/OpenAgents.wxs"
+  # wixl has no <ShortcutProperty>: add the Start menu shortcut's
+  # System.AppUserModel.ID as an MsiShortcutProperty row (Windows Installer
+  # 5.0, which the package requires) with msibuild.
+  {
+    printf 'MsiShortcutProperty\tShortcut_\tPropertyKey\tPropVariantValue\r\n'
+    printf 's72\ts72\ts0\ts0\r\n'
+    printf 'MsiShortcutProperty\tMsiShortcutProperty\r\n'
+    printf 'ShortcutAppId\tStartMenuShortcut\tSystem.AppUserModel.ID\t%s\r\n' "$app_id"
+  } >"$work/MsiShortcutProperty.idt"
+  msibuild "$msi_file" -i "$work/MsiShortcutProperty.idt"
   sign "$msi_file" "OpenAgents"
   artifacts+=("$msi_file")
 fi

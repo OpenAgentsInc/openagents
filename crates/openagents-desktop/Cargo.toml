@@ -85,6 +85,10 @@ keyring = { version = "=4.2.0", optional = true }
 # control pipe, and the lock check (`src/platform/windows.rs`).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Registry", "Win32_System_StationsAndDesktops", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+# Coder's notifications as WinRT toasts and the process's AppUserModelID
+# (`src/win_notify.rs`). The release `accesskit_windows` already brings in,
+# so the graph gains nothing new.
+windows = { version = "0.62.2", default-features = false, features = ["std", "Data_Xml_Dom", "Foundation", "UI_Notifications", "Win32_System_Com", "Win32_UI_Shell"] }
 
 # Watch and Play use the shared Grid. Verse does not
 # build for Windows, where the window keeps its plain background.

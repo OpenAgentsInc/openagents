@@ -30,6 +30,8 @@ mod platform;
 mod shell;
 mod strip;
 mod updates;
+#[cfg(windows)]
+mod win_notify;
 mod worker;
 
 use openagents_desktop::control::{HostControl, SocketControl};
@@ -63,7 +65,7 @@ Usage: openagents-desktop [options]
   --check-update       say whether a newer release is published (Linux, Windows)
   --update             install a newer release now: an AppImage replaces itself,
                        the Windows MSI installs after exit (Linux, Windows)
-  --notify-test        show a test notification and say how it was delivered (Linux, macOS)
+  --notify-test        show a test notification and say how it was delivered
   --open-deck ID       open the deck filed under ID in the slide viewer at launch,
                        for testing (for example three-devdays-later)
   --help               this text";
@@ -166,6 +168,9 @@ fn main() -> ExitCode {
         // SAFETY: no other thread exists yet.
         unsafe { std::env::set_var("HOME", profile) };
     }
+    // The app the Start menu shortcut names, so toasts show as its own.
+    #[cfg(windows)]
+    win_notify::claim_app_id();
     let args: Vec<String> = std::env::args().skip(1).collect();
     reduce_motion();
     #[cfg(windows)]

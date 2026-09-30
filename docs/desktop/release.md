@@ -356,8 +356,17 @@ keeps its plain background. Coder's desktop notifications are Linux's
 ([#10026](https://github.com/OpenAgentsInc/openagents/issues/10026)) and the
 Mac's ([#10061](https://github.com/OpenAgentsInc/openagents/issues/10061),
 through the notification center, asked for on the first notice); on Windows
-a notice is dropped, so there is no toast yet
-([#10062](https://github.com/OpenAgentsInc/openagents/issues/10062)).
+they are toasts
+([#10062](https://github.com/OpenAgentsInc/openagents/issues/10062)) under
+the AppUserModelID `OpenAgents.Desktop`, which both MSIs put on the Start
+menu shortcut (`System.AppUserModel.ID`; the `.sh` adds the
+`MsiShortcutProperty` row with msitools' `msibuild`, since wixl has no
+`<ShortcutProperty>`) and register under
+`HKCU\Software\Classes\AppUserModelId`, and which the app claims at
+startup. A `.zip` copy has no registration and shows no toasts. A click on a
+toast opens its chat while the app runs; with no COM activator, a click in
+Action Center after the app quit opens nothing. `OpenAgents.exe
+--notify-test` shows a test toast and says how it went.
 Copy and paste use the Windows
 clipboard API as Unicode text; the folder chooser is the common item
 dialog (`IFileOpenDialog`); IME composition comes from winit, and a
