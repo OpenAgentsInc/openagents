@@ -40,6 +40,9 @@ pub enum Command {
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
     pub chats: Vec<Summary>,
+    /// Bounded digests shared with the phone's non-repeated suggestion policy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub used: Vec<String>,
     pub chat: Option<String>,
     /// Index of the oldest included turn; read before this for earlier turns.
     pub start: usize,
@@ -147,6 +150,7 @@ fn snapshot(
 ) -> Result<Snapshot, String> {
     let mut snapshot = Snapshot {
         chats: chats.list().to_vec(),
+        used: chats.used_markers().to_vec(),
         storage_error: chats.storage_error.clone(),
         ..Snapshot::default()
     };

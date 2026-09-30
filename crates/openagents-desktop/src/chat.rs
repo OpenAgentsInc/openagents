@@ -5,6 +5,8 @@ use crate::control::ControlResult;
 use crate::model::{Intent, Request};
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::service::{Command, Snapshot};
+use openagents_chat_app::projection::{self, Appearance, Projection, Reply};
+use openagents_chat_app::session::Session;
 use rust_native::style::{Space, Style};
 use rust_native::{Axis, Element, MessageRole, Node, TextRole, ValidatedView};
 use rust_native_desktop::composer::{
@@ -18,74 +20,49 @@ use rust_native_desktop::{
     transcript::Transcript,
 };
 use std::collections::BTreeMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub const TRANSCRIPT: &str = "chat-transcript";
 pub const COMPOSER: &str = "composer:chat-composer";
 
-struct PendingSend {
-    chat: String,
-    request: String,
-    submission: Submission,
-}
-
 pub struct Panel {
-    selected: Option<String>,
+    session: Session,
     ids: BTreeMap<String, u64>,
-    states: BTreeMap<String, Snapshot>,
     fields: BTreeMap<String, Field>,
-    summaries: Vec<openagents_chat::basic_chats::Summary>,
-    pending: BTreeMap<u64, Command>,
-    send: BTreeMap<String, PendingSend>,
-    error: Option<String>,
-    next_ticket: u64,
-    poll: Instant,
+    submissions: BTreeMap<String, (String, Submission)>,
     born: Instant,
     pub viewport: (f32, f32, f32),
     pub transcript: Transcript,
     fonts: Fonts,
     transcript_rows: Vec<Node<()>>,
-    parsed: BTreeMap<String, (Turn, Node<()>)>,
+    projection: Projection,
     transcript_size: (f32, f32),
     composer_rect: Option<PxRect>,
-    reading: bool,
     rows_dirty: bool,
     waker: Option<rust_native_desktop::Waker>,
-    listed: bool,
 }
 
 impl Panel {
     pub fn new(now: Instant) -> Self {
         Self {
-            selected: None,
+            session: Session::new(now),
             ids: BTreeMap::new(),
-            states: BTreeMap::new(),
             fields: BTreeMap::new(),
-            summaries: vec![],
-            pending: BTreeMap::new(),
-            send: BTreeMap::new(),
-            error: None,
-            next_ticket: 1,
-            poll: now,
+            submissions: BTreeMap::new(),
             born: now,
-            listed: false,
             viewport: (1200.0, 840.0, 1.0),
             transcript: Transcript::default(),
             fonts: Fonts::new(),
             transcript_rows: vec![],
-            parsed: BTreeMap::new(),
+            projection: Projection::default(),
             transcript_size: (0.0, 0.0),
             composer_rect: None,
-            reading: false,
             rows_dirty: true,
             waker: None,
         }
     }
     fn request(&mut self, command: Command) -> Request {
-        let ticket = self.next_ticket;
-        self.next_ticket += 1;
-        self.pending.insert(ticket, command.clone());
-        Request::Chat { ticket, command }
+        request(self.session.request(command))
     }
     pub fn start(&mut self, waker: rust_native_desktop::Waker) {
         for field in self.fields.values_mut() {
@@ -98,74 +75,59 @@ impl Panel {
         for field in self.fields.values_mut() {
             field.poll_clipboard(at_ms);
         }
-        if now < self.poll
-            || self
-                .pending
-                .values()
-                .any(|command| matches!(command, Command::List { .. } | Command::Read { .. }))
-        {
-            return None;
+        let previous = self.session.selected.clone();
+        let outcome = self.session.tick(now).map(request);
+        if previous != self.session.selected {
+            self.selected_changed(previous);
         }
-        self.poll = now + Duration::from_millis(if self.busy() { 100 } else { 1000 });
-        if self.listed && self.selected.is_none() && self.error.is_none() {
-            return Some(self.new_chat());
-        }
-        Some(
-            self.request(
-                self.selected
-                    .as_ref()
-                    .map_or(Command::List {}, |chat| Command::Read {
-                        chat: chat.clone(),
-                        before: None,
-                    }),
-            ),
-        )
+        outcome
     }
     fn busy(&self) -> bool {
-        self.state().is_some_and(|state| state.busy)
-            || self
-                .selected
-                .as_ref()
-                .is_some_and(|id| self.send.contains_key(id))
+        self.session.busy()
     }
     fn state(&self) -> Option<&Snapshot> {
-        self.selected.as_ref().and_then(|id| self.states.get(id))
+        self.session.state()
     }
     /// The selected conversation's local draft, separate from saved messages.
     pub fn draft(&self) -> &str {
-        self.selected
+        self.session
+            .selected
             .as_ref()
             .and_then(|id| self.fields.get(id))
             .map_or("", Field::text)
     }
     fn field(&mut self) -> Option<&mut Field> {
-        let id = self.selected.as_ref()?;
+        let id = self.session.selected.as_ref()?;
         self.fields.get_mut(id)
     }
     pub fn new_chat(&mut self) -> Request {
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        self.select(&id);
-        self.request(Command::Create { chat: id })
+        let previous = self.session.selected.clone();
+        let result = request(self.session.new_chat());
+        self.selected_changed(previous);
+        result
     }
     fn select(&mut self, id: &str) {
-        if self.selected.as_deref() != Some(id) {
-            if let Some(field) = self.field() {
-                field.input(TextInput::FocusLost, 0);
-            }
-            self.selected = Some(id.into());
-            let field = self.fields.entry(id.into()).or_default();
+        let previous = self.session.selected.clone();
+        if self.session.select(id) {
+            self.selected_changed(previous);
+        }
+    }
+    fn selected_changed(&mut self, previous: Option<String>) {
+        if let Some(field) = previous.and_then(|id| self.fields.get_mut(&id)) {
+            field.input(TextInput::FocusLost, 0);
+        }
+        if let Some(id) = &self.session.selected {
+            let field = self.fields.entry(id.clone()).or_default();
             field.focused = true;
             if let Some(waker) = &self.waker {
                 field.start(waker.clone());
             }
-            self.error = None;
-            self.transcript = Transcript::default();
-            self.transcript_rows.clear();
-            self.parsed.clear();
-            self.transcript_size = (0.0, 0.0);
-            self.reading = false;
-            self.rows_dirty = true;
         }
+        self.transcript = Transcript::default();
+        self.transcript_rows.clear();
+        self.projection = Projection::default();
+        self.transcript_size = (0.0, 0.0);
+        self.rows_dirty = true;
     }
     pub fn select_numeric(&mut self, id: u64) -> Option<Request> {
         let id = self
@@ -181,19 +143,20 @@ impl Panel {
         }))
     }
     pub fn sync_sidebar(&mut self, state: &mut State) {
-        for summary in &self.summaries {
+        for summary in &self.session.summaries {
             if !self.ids.contains_key(&summary.id) {
                 let id = self.ids.values().max().copied().unwrap_or(0) + 1;
                 self.ids.insert(summary.id.clone(), id);
             }
         }
-        if let Some(selected) = &self.selected
+        if let Some(selected) = &self.session.selected
             && !self.ids.contains_key(selected)
         {
             let id = self.ids.values().max().copied().unwrap_or(0) + 1;
             self.ids.insert(selected.clone(), id);
         }
         let chats = self
+            .session
             .summaries
             .iter()
             .map(|summary| Chat {
@@ -210,7 +173,8 @@ impl Panel {
         let selecting = matches!(state.page, crate::chrome::Page::Chat(_));
         state.sync_chats(
             chats,
-            self.selected
+            self.session
+                .selected
                 .as_ref()
                 .and_then(|id| self.ids.get(id))
                 .copied()
@@ -218,98 +182,24 @@ impl Panel {
         );
     }
     pub fn outcome(&mut self, ticket: u64, result: ControlResult<Snapshot>) {
-        let Some(command) = self.pending.remove(&ticket) else {
-            return;
-        };
-        match result {
-            Err(error) => {
-                let target = match &command {
-                    Command::List {} => None,
-                    Command::Create { chat }
-                    | Command::Read { chat, .. }
-                    | Command::Send { chat, .. }
-                    | Command::Retry { chat }
-                    | Command::Stop { chat }
-                    | Command::Archive { chat }
-                    | Command::Restore { chat } => Some(chat),
-                };
-                if target.is_none() || target == self.selected.as_ref() {
-                    self.error = Some(error.to_string());
-                }
+        let previous = self.session.selected.clone();
+        let revision = self.session.revision;
+        let accepted = self
+            .session
+            .outcome(ticket, result.map_err(|error| error.to_string()));
+        for (_, request) in accepted {
+            if let Some((id, submission)) = self.submissions.remove(&request)
+                && let Some(field) = self.fields.get_mut(&id)
+            {
+                let _ = field.draft.accepted(&submission);
+                field.focused = true;
             }
-            Ok(mut snapshot) => {
-                self.listed = true;
-                self.error = snapshot
-                    .storage_error
-                    .as_ref()
-                    .map(|_| "Couldn't save chat. Check available disk space.".into());
-                self.summaries = snapshot.chats.clone();
-                if let Some(id) = snapshot.chat.clone() {
-                    if matches!(
-                        command,
-                        Command::Read {
-                            before: Some(_),
-                            ..
-                        }
-                    ) {
-                        if let Some(previous) = self.states.get(&id)
-                            && snapshot.start + snapshot.turns.len() == previous.start
-                        {
-                            snapshot.turns.extend(previous.turns.clone());
-                        }
-                    } else if self.reading
-                        && let Some(previous) = self.states.get(&id)
-                        && previous.start <= snapshot.start
-                        && previous.total <= snapshot.total
-                    {
-                        let count = snapshot.start - previous.start;
-                        let mut earlier =
-                            previous.turns[..count.min(previous.turns.len())].to_vec();
-                        earlier.extend(snapshot.turns);
-                        snapshot.turns = earlier;
-                        snapshot.start = previous.start;
-                    }
-                    if let Some(send) = self.send.get(&id)
-                        && snapshot.storage_error.is_none()
-                        && snapshot
-                            .turns
-                            .iter()
-                            .any(|turn| turn.request.as_deref() == Some(&send.request))
-                    {
-                        if let Some(field) = self.fields.get_mut(&id) {
-                            let _ = field.draft.accepted(&send.submission);
-                            field.focused = true;
-                        }
-                        self.send.remove(&id);
-                    }
-                    if self.selected.as_ref() == Some(&id)
-                        && self.states.get(&id).is_none_or(|previous| {
-                            previous.turns != snapshot.turns
-                                || previous.start != snapshot.start
-                                || previous.busy != snapshot.busy
-                                || previous.partial != snapshot.partial
-                        })
-                    {
-                        self.rows_dirty = true;
-                    }
-                    self.states.insert(id, snapshot);
-                }
-                if self.error.is_none()
-                    && matches!(command, Command::Archive { .. })
-                    && let Some(id) = self.selected.take()
-                {
-                    self.send.remove(&id);
-                }
-                if self.selected.is_none()
-                    && let Some(id) = self
-                        .summaries
-                        .iter()
-                        .find(|summary| !summary.archived)
-                        .map(|summary| summary.id.clone())
-                {
-                    self.select(&id);
-                }
-            }
+        }
+        if previous != self.session.selected {
+            self.selected_changed(previous);
+        }
+        if revision != self.session.revision {
+            self.rows_dirty = true;
         }
     }
     pub fn mounted(&mut self, view: &ValidatedView<Intent>) {
@@ -326,58 +216,25 @@ impl Panel {
         view: &ValidatedView<Intent>,
         now: Instant,
     ) -> Option<Request> {
-        let id = self.selected.clone()?;
+        let id = self.session.selected.clone()?;
         match action {
             Action::Send => {
-                if self.send.contains_key(&id) {
-                    return None;
-                }
                 let field = self.field()?;
                 let stamp = field.draft.stamp().ok()?;
                 let submission = field.draft.submission(view, &stamp, None).ok()?;
-                let request = uuid::Uuid::new_v4().simple().to_string();
-                let command = Command::Send {
-                    chat: id.clone(),
-                    request: request.clone(),
-                    text: submission.text.clone(),
-                };
-                self.send.insert(
-                    id.clone(),
-                    PendingSend {
-                        chat: id,
-                        request,
-                        submission,
-                    },
-                );
-                self.error = None;
-                Some(self.request(command))
+                let id = self.session.selected.clone()?;
+                let send_id = uuid::Uuid::new_v4().simple().to_string();
+                let command = self
+                    .session
+                    .submit(send_id.clone(), submission.text.clone())?;
+                self.submissions.insert(send_id, (id, submission));
+                Some(request(command))
             }
             Action::Stop => Some(self.request(Command::Stop { chat: id })),
-            Action::Retry => {
-                self.error = None;
-                let command = self
-                    .send
-                    .get(&id)
-                    .map_or(Command::Retry { chat: id }, |send| Command::Send {
-                        chat: send.chat.clone(),
-                        request: send.request.clone(),
-                        text: send.submission.text.clone(),
-                    });
-                Some(self.request(command))
-            }
+            Action::Retry => self.session.retry().map(request),
             Action::Restore => Some(self.request(Command::Restore { chat: id })),
             Action::Archive => Some(self.request(Command::Archive { chat: id })),
-            Action::Earlier => {
-                let before = self.state()?.start;
-                if before == 0 {
-                    return None;
-                }
-                self.reading = true;
-                Some(self.request(Command::Read {
-                    chat: id,
-                    before: Some(before),
-                }))
-            }
+            Action::Earlier => self.session.earlier().map(request),
             Action::Latest => {
                 self.transcript.jump_to_tail();
                 None
@@ -472,6 +329,7 @@ impl Panel {
         if resource == COMPOSER {
             if matches!(event, SurfaceInput::Move { .. })
                 && self
+                    .session
                     .selected
                     .as_ref()
                     .and_then(|id| self.fields.get(id))
@@ -480,7 +338,7 @@ impl Panel {
                 return false;
             }
             let at = now.duration_since(self.born).as_millis() as u64;
-            if let Some(id) = self.selected.clone()
+            if let Some(id) = self.session.selected.clone()
                 && let Some(field) = self.fields.get_mut(&id)
             {
                 field.pointer(event, &mut self.fonts, at);
@@ -490,12 +348,13 @@ impl Panel {
         false
     }
     pub fn next_wake(&self, now: Instant) -> Instant {
-        self.poll.max(now + Duration::from_millis(100))
+        self.session.next_wake(now)
     }
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
             TRANSCRIPT => Some(self.transcript.version()),
             COMPOSER => self
+                .session
                 .selected
                 .as_ref()
                 .and_then(|id| self.fields.get(id))
@@ -505,6 +364,7 @@ impl Panel {
     }
     pub fn size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
         let composer_height = self
+            .session
             .selected
             .as_ref()
             .and_then(|id| self.fields.get(id))
@@ -527,7 +387,7 @@ impl Panel {
                     self.transcript
                         .update(self.transcript_rows.clone(), size.0, size.1)
                 {
-                    self.error = Some(format!("Couldn't lay out conversation: {error}"));
+                    self.session.error = Some(format!("Couldn't lay out conversation: {error}"));
                     #[cfg(test)]
                     panic!("chat layout failed: {error}");
                 }
@@ -538,7 +398,7 @@ impl Panel {
         }
         if resource == COMPOSER {
             self.composer_rect = Some(rect);
-            if let Some(id) = &self.selected
+            if let Some(id) = &self.session.selected
                 && let Some(field) = self.fields.get_mut(id)
             {
                 field.paint(frame, rect, scale, &mut self.fonts);
@@ -548,7 +408,11 @@ impl Panel {
         false
     }
     pub fn cursor(&self) -> Option<(f64, f64)> {
-        let field = self.selected.as_ref().and_then(|id| self.fields.get(id))?;
+        let field = self
+            .session
+            .selected
+            .as_ref()
+            .and_then(|id| self.fields.get(id))?;
         if !field.focused {
             return None;
         }
@@ -566,38 +430,18 @@ impl Panel {
                 .state()
                 .map(|state| state.turns.clone())
                 .unwrap_or_default();
-            let mut rows: Vec<Node<()>> = turns
-                .iter()
-                .enumerate()
-                .map(|(index, turn)| {
-                    let key = format!("turn-{}", start + index);
-                    let entry = self
-                        .parsed
-                        .entry(key.clone())
-                        .or_insert_with(|| (turn.clone(), message(key.clone(), turn)));
-                    if entry.0 != *turn {
-                        *entry = (turn.clone(), message(key, turn));
-                    }
-                    entry.1.clone()
-                })
-                .collect();
-            if let Some(state) = self.state() {
-                if !state.partial.is_empty() {
-                    rows.push(message(
-                        "stream".into(),
-                        &Turn::assistant(state.partial.clone(), None),
-                    ));
-                }
-                if state.busy {
-                    rows.push(Node {
-                        key: "working".into(),
-                        style: Style::default(),
-                        element: Element::Working {
-                            label: "OpenAgents is replying…".into(),
-                        },
-                    });
-                }
-            }
+            let state = self.session.state();
+            let mut rows = self.projection.rows(
+                &turns,
+                start,
+                Reply {
+                    partial: state.map_or("", |state| state.partial.as_str()),
+                    busy: state.is_some_and(|state| state.busy),
+                    // The desktop presents retry controls beside the failure.
+                    failure: None,
+                },
+                &appearance(),
+            );
             if rows.is_empty() {
                 rows.push(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None)));
             }
@@ -632,13 +476,14 @@ impl Panel {
                 resource: TRANSCRIPT.into(),
             },
         }];
-        if let Some(meta) = self
-            .state()
-            .and_then(|state| state.turns.last())
-            .filter(|turn| turn.role == Role::Assistant)
-            .and_then(|turn| turn.meta.as_ref())
-        {
-            for (index, followup) in meta.followups.iter().enumerate() {
+        if let Some(meta) = self.state().and_then(|state| {
+            projection::actionable(
+                &state.turns,
+                self.busy(),
+                state.failure.is_some() || self.session.error.is_some(),
+            )
+        }) {
+            for (index, followup) in projection::followups(meta, &self.state().unwrap().used) {
                 controls.push(button(
                     &format!("chat-followup-{index}"),
                     &followup.label,
@@ -653,6 +498,7 @@ impl Panel {
             children.push(stack("chat-reading-controls", Axis::Horizontal, controls));
         }
         let failure = self
+            .session
             .error
             .clone()
             .or_else(|| self.state().and_then(|state| state.failure.clone()));
@@ -680,7 +526,7 @@ impl Panel {
         stack("chat-body", Axis::Vertical, children)
     }
     pub fn footer(&mut self) -> Node<Intent> {
-        let Some(id) = self.selected.clone() else {
+        let Some(id) = self.session.selected.clone() else {
             return text(
                 "chat-no-selection",
                 "Choose New chat to start.",
@@ -688,6 +534,7 @@ impl Panel {
             );
         };
         let archived = self
+            .session
             .summaries
             .iter()
             .find(|summary| summary.id == id)
@@ -741,26 +588,29 @@ impl Panel {
         )
     }
 }
-fn message(key: String, turn: &Turn) -> Node<()> {
-    Node {
-        key: key.clone(),
-        style: Style::default(),
-        element: Element::Message {
-            role: if turn.role == Role::User {
-                MessageRole::User
-            } else {
-                MessageRole::Assistant
-            },
-            note: None,
-            children: vec![Node {
-                key: format!("{key}-body"),
-                style: Style::default(),
-                element: Element::Markdown {
-                    blocks: rust_native::markdown::parse(&turn.text),
-                },
-            }],
-        },
+fn appearance() -> Appearance<'static> {
+    Appearance {
+        prefix: "turn-",
+        body_suffix: "-body",
+        streaming_key: "stream".into(),
+        working_key: "working",
+        working_label: "OpenAgents is replying…",
+        failed_key: "talk-failed",
+        markdown_style: Style::default(),
+        status_style: Style::default(),
     }
+}
+fn message(key: String, turn: &Turn) -> Node<()> {
+    projection::message(
+        &key,
+        if turn.role == Role::User {
+            MessageRole::User
+        } else {
+            MessageRole::Assistant
+        },
+        rust_native::markdown::parse(&turn.text),
+        &appearance(),
+    )
 }
 fn stack(key: &str, axis: Axis, children: Vec<Node<Intent>>) -> Node<Intent> {
     Node {
@@ -793,4 +643,8 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
             intent: Intent::Chat { action },
         },
     }
+}
+
+fn request((ticket, command): (u64, Command)) -> Request {
+    Request::Chat { ticket, command }
 }

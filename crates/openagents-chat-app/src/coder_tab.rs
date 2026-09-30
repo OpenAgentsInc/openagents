@@ -51,7 +51,6 @@
 use std::sync::{Arc, Mutex};
 
 use crate::basic_chats::{BasicChats, Tail, handoff};
-use crate::basic_coder::Role as TurnRole;
 use crate::chats::{Chats, Head};
 use crate::cli_run::{self, RemoteCli};
 use crate::coder_list::{List, Row, Store};
@@ -364,6 +363,7 @@ pub struct CoderTab {
     pulled: bool,
     /// Conversations with the basic Coder.
     basic: BasicChats,
+    projection: crate::projection::Projection,
     /// The open basic conversation.
     talk: Option<String>,
     /// The tab shows: the app opens on it.
@@ -418,6 +418,7 @@ impl CoderTab {
             echoed: 0,
             pulled: false,
             basic: BasicChats::empty(),
+            projection: crate::projection::Projection::default(),
             talk: None,
             shown: true,
             go: None,
@@ -2338,51 +2339,42 @@ impl CoderTab {
         {
             children.insert(0, back);
         }
+        let partial = self.basic.partial(id);
         let turns = self.basic.turns(id);
         let mut children = vec![header];
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
         let skipped = turns.len().saturating_sub(limit);
-        let mut rows: Vec<Node<Intent>> = turns
-            .iter()
-            .enumerate()
-            .skip(skipped)
-            .map(|(index, turn)| {
-                let role = match turn.role {
-                    TurnRole::User => MessageRole::User,
-                    TurnRole::Assistant => MessageRole::Assistant,
-                };
-                message(
-                    &format!("talk-m{index}"),
-                    role,
-                    rust_native::markdown::parse(&turn.text),
-                )
-            })
-            .collect();
-        match tail {
-            Tail::None => {}
-            // Until the reply's result arrives, a spinner under the reply
-            // says we are still at work: before its first words, and after
-            // any part of it, such as the opener, that shows first.
-            Tail::Thinking => rows.push(working()),
-            Tail::Streaming(blocks) => {
-                rows.push(message(
-                    &format!("talk-m{}", turns.len()),
-                    MessageRole::Assistant,
-                    blocks,
-                ));
-                rows.push(working());
-            }
-            Tail::Failed(why) => rows.push(node(
-                "talk-failed",
-                Element::Message {
-                    role: MessageRole::System,
-                    note: None,
-                    children: vec![status("talk-failed-text", &why)],
+        let failure = match &tail {
+            Tail::Failed(why) => Some(why.as_str()),
+            _ => None,
+        };
+        let mut rows: Vec<Node<Intent>> = self.projection.rows(
+            &turns[skipped..],
+            skipped,
+            crate::projection::Reply {
+                busy,
+                partial: &partial,
+                failure,
+            },
+            &crate::projection::Appearance {
+                prefix: "talk-m",
+                body_suffix: "-md",
+                streaming_key: format!("talk-m{}", turns.len()),
+                working_key: "talk-working",
+                working_label: "Working…",
+                failed_key: "talk-failed",
+                status_style: Style {
+                    foreground: Some(GRAY),
+                    ..Style::default()
                 },
-            )),
-        }
+                markdown_style: Style {
+                    foreground: Some(WHITE),
+                    ..Style::default()
+                },
+            },
+        );
         let failed = rows.last().is_some_and(|row| row.key == "talk-failed");
         // What a proposed command printed scrolls with the conversation,
         // so a long result never pushes the composer off the screen.
@@ -2427,11 +2419,7 @@ impl CoderTab {
         // is the phone's own. None of it shows while the reply streams, and
         // nothing about Coder on a computer shows unless the reply offered
         // it: no standing Run Coder or Open Coder buttons above the field.
-        let meta = if failed || busy {
-            None
-        } else {
-            self.basic.last_meta(id)
-        };
+        let meta = crate::projection::actionable(self.basic.turns(id), busy, failed).cloned();
         let offers = meta
             .as_ref()
             .map(|meta| meta.offers.clone())
@@ -2498,24 +2486,17 @@ impl CoderTab {
         if let Some(meta) = meta.as_ref() {
             // Suggested next questions under a prepared answer, but none
             // already used on this device: tapped, typed, or answered.
-            let chips: Vec<Node<Intent>> = meta
-                .followups
-                .iter()
-                .enumerate()
-                .filter(|(_, followup)| {
-                    !self
-                        .basic
-                        .used(followup.answer.as_deref(), &[&followup.label])
-                })
-                .map(|(index, followup)| {
-                    pill(
-                        &format!("coder-followup-{index}"),
-                        &clip(&followup.label, 60),
-                        Glyph::Ask,
-                        Intent::Followup { index },
-                    )
-                })
-                .collect();
+            let chips: Vec<Node<Intent>> =
+                crate::projection::followups(meta, self.basic.used_markers())
+                    .map(|(index, followup)| {
+                        pill(
+                            &format!("coder-followup-{index}"),
+                            &clip(&followup.label, 60),
+                            Glyph::Ask,
+                            Intent::Followup { index },
+                        )
+                    })
+                    .collect();
             if !chips.is_empty() {
                 children.push(wrap("coder-followups", chips));
             }
@@ -3272,39 +3253,6 @@ fn cli_output_row(argv: &[String], lines: &[String]) -> Node<Intent> {
                     }],
                 },
             }],
-        },
-    )
-}
-
-/// One message of a basic conversation, drawn from its parsed Markdown.
-fn message(
-    key: &str,
-    role: MessageRole,
-    blocks: Vec<rust_native::markdown::Block>,
-) -> Node<Intent> {
-    node(
-        key,
-        Element::Message {
-            role,
-            note: None,
-            children: vec![Node {
-                key: format!("{key}-md"),
-                style: Style {
-                    foreground: Some(WHITE),
-                    ..Style::default()
-                },
-                element: Element::Markdown { blocks },
-            }],
-        },
-    )
-}
-
-/// The row under a reply that is still coming: a spinner and what it means.
-fn working() -> Node<Intent> {
-    node(
-        "talk-working",
-        Element::Working {
-            label: "Working…".into(),
         },
     )
 }

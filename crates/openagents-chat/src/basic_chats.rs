@@ -116,6 +116,15 @@ const MAX_SUGGESTION_CHARS: usize = 120;
 /// The store key of the used suggestions.
 const USED_KEY: &str = "used-suggestions";
 
+/// Whether a suggestion's stable ID or normalized words have been used.
+pub fn suggestion_used(markers: &[String], id: Option<&str>, words: &[&str]) -> bool {
+    id.is_some_and(|id| markers.contains(&id_mark(id)))
+        || words
+            .iter()
+            .filter_map(|text| words_mark(text))
+            .any(|mark| markers.contains(&mark))
+}
+
 /// The mark of a suggestion's ID: a bank ID without its `@version`, so a
 /// new version of an answer is the same suggestion.
 fn id_mark(id: &str) -> String {
@@ -222,11 +231,12 @@ impl BasicChats {
     /// Whether the suggestion `id`, or one whose chip reads or sends any of
     /// `words`, was used on this device.
     pub fn used(&self, id: Option<&str>, words: &[&str]) -> bool {
-        id.is_some_and(|id| self.used.contains(&id_mark(id)))
-            || words
-                .iter()
-                .filter_map(|text| words_mark(text))
-                .any(|mark| self.used.contains(&mark))
+        suggestion_used(&self.used, id, words)
+    }
+
+    /// Bounded suggestion digests; adapters never need the original words.
+    pub fn used_markers(&self) -> &[String] {
+        &self.used
     }
 
     /// Mark the suggestion `id` used: it never shows again on this device.

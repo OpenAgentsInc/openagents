@@ -5,6 +5,8 @@ presentation: conversation lists, retained Coder transcripts, suggestions,
 router offers, Coder target selection, command outbox, queue and question state,
 and Gym cards. It carries the existing Rust implementation from the phone into
 one shared library. The phone preserves its imports through re-exports.
+The desktop consumes the shared client session and transcript projection,
+leaving native editing, focus, clipboard callbacks, and painting in its adapter.
 
 The crate calls the existing Coder client and authority checks. A conversation
 remains hosted OpenAgents chat until an explicit offered action dispatches Coder
