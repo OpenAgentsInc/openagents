@@ -554,3 +554,39 @@ openagents-product@0ced76d89147 (60 entries)`. With
 
 No reply contained `[openagents.`, `coder link`, `coder pair`, or an
 eight-character code.
+
+Release `7ae2a4dd41` (2026-09-30) routes a bare "Do I need Tailscale?" to
+product knowledge ([#9997](https://github.com/OpenAgentsInc/openagents/issues/9997)):
+the `product.kb` rubric in `router/rubric.rs` covers connecting a phone or
+a computer and what connecting needs, Tailscale included, which moves the
+question set to `chat-router-v3@c86d4a2ebeb2` with a refit
+`calibration-v2.json` (held-out route accuracy 0.889 before and after;
+[the measurement](../coder/measurements/2026-09-30-product-kb-connect-needs.md)).
+It was built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/7ae2a4dd41` with the current
+`knowledge/openagents/` (60 entries, the same files as `3691fb2e1c`;
+copied with `COPYFILE_DISABLE=1`, no `._*` files) and `codebase-kb.gz`
+from `3691fb2e1c`, checked with `--check` under the chat environment ("the
+configuration is safe to deploy"), and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; the environment file and unit
+did not change, `coder-worker.service` and `/opt/coder-worker/current`
+were not touched, and `3691fb2e1c` stays in `releases/` for rollback. The
+log names `router chat-router-v3@c86d4a2ebeb2 (Live), bank
+chat-answers-v1@a04859020455 with 58 answers` and `calibration off: raw
+probabilities`. With `live_basic_coder_streams_a_reply` and
+`OPENAGENTS_TEST_CHAT_MESSAGE`:
+
+- "Do I need Tailscale?" answered in 1.05 s from the knowledge base (route
+  `product.kb` at 0.98, answer `openagents.tailnet@2`): "No, you don't
+  need Tailscale. Your phone connects to your computer by scanning the QR
+  code in OpenAgents for Mac, …".
+- "Do I need Tailscale to connect my Mac?" answered in 1.26 s with the
+  same `openagents.tailnet@2` answer (route `product.kb` at 1.0).
+- "How do I connect a phone" answered in 1.15 s from
+  `openagents.connect-computer@2` (route `product.kb` at 0.97): "Open
+  OpenAgents for Mac and it shows a QR code. …".
+- "What is Tailscale's pricing?" stayed `general` (0.95) and the model
+  answered with Tailscale's plans; "Write a haiku about rain" stayed
+  `general` (1.0) with the "Here's a draft." opener and a haiku.
+
+No reply contained `[openagents.`.
