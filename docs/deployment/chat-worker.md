@@ -605,3 +605,28 @@ arrived piece by piece; and after the app was quit and relaunched, the
 chat was in Chats and opened with both replies. Build 33 was uploaded
 with `build.sh upload` at 2026-09-29T22:17:14-07:00 and is `VALID`, in
 Internal Testers (`IN_BETA_TESTING`).
+
+TestFlight build 34 (1.0.0, archived from `270688fabe`, 2026-09-30)
+changes no worker release. Since build 33 the phone's chat controller, chat
+state and transcript projection, router offers and chat cards, chat
+management, the encrypted chat store binding, and Coder dispatch moved into
+the shared `crates/openagents-chat-app` and `crates/openagents-chat` crates
+(`72123d8364`, `81abef60b3`, `43ac875c90`, `6bede2ea46`, `20689a18f3`,
+`11cc80897e`, `b8aa0ef52a`, `6dc7ecb717`, `5f5e7dbe9b`). The mobile tests
+(142 passed), `openagents-chat` (31), and `openagents-chat-app` (84) pass.
+On a fresh iPhone 17 Pro simulator (iOS 26.5, deleted afterwards) the
+build-33 app (`3406cb3c49`) was installed first and used for two chats,
+then build 34 was installed over it against the live chat worker
+(`7ae2a4dd41`): both build-33 chats were in Chats and opened with their
+replies, and "Who are you?", already used in build 33, was no longer
+suggested; tapping outside the composer dismissed the keyboard; a tapped
+suggestion ("What model is this?") answered and did not return on the next
+new chat; "Who are you" answered "We are OpenAgents. …" and "How do I
+connect a phone" answered "Open OpenAgents for Mac and it shows a QR code.
+…" with no `[openagents.` tag; "Explain in three short paragraphs how HTTP
+caching works" showed Working, then a partial reply, then the full three
+paragraphs; "Run the tests in my repository and fix the failing one"
+answered "That needs a computer. …" with a **Connect a computer** chip; and
+after the app was quit and relaunched, all five chats were in Chats and
+opened with their messages. Build 34 was uploaded with `build.sh upload`
+at 2026-09-30T07:02:37-07:00 and is `VALID`, in Internal Testers (`IN_BETA_TESTING`).
