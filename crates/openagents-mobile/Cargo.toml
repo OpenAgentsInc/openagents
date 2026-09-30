@@ -10,6 +10,7 @@ description = "Rust-owned application state and native bridge for the OpenAgents
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+openagents-chat = { path = "../openagents-chat" }
 # Coder's Computers screens, live host client, encrypted store, and phone
 # terminal screen: enrollment, presence, direct channels, and commands.
 coder-computers = { path = "../coder-computers" }

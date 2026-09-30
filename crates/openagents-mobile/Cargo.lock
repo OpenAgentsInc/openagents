@@ -1624,6 +1624,7 @@ dependencies = [
  "coder-ui",
  "coder-vt",
  "nostr",
+ "openagents-chat",
  "rust-native",
  "secp256k1 0.31.1",
  "serde",
@@ -5233,6 +5234,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
+name = "openagents-chat"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "nostr-transport",
+ "playtest",
+ "rust-native",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "openagents-connect"
 version = "0.1.0"
 dependencies = [
@@ -5270,6 +5287,7 @@ dependencies = [
  "ndk-sys",
  "nostr",
  "nostr-transport",
+ "openagents-chat",
  "openagents-connect",
  "playtest",
  "qrcodegen",
@@ -6390,6 +6408,7 @@ dependencies = [
  "serde",
  "serde_json",
  "swash",
+ "unicode-segmentation",
 ]
 
 [[package]]

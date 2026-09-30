@@ -7,6 +7,7 @@
 //! runtime, execute an intent, or render a native screen. See the crate's
 //! docs for implemented and planned layers.
 
+pub mod edit;
 pub mod input;
 pub mod layout;
 pub mod markdown;

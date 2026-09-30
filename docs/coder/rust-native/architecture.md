@@ -240,6 +240,15 @@ virtualized content at the adapter stage.
 
 ## Native text input and long content
 
+The shared `rust_native::edit::Editor` now supplies local Unicode editing,
+directional selection, bounded undo/redo, checked UTF-8/UTF-16 conversion, and
+IME composition as one undo step. The desktop's `composer::ComposerDraft`
+binds it to the existing semantic composer with view and edit revision checks.
+This is the first input foundation for
+[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996); window events,
+painting, application submission, and phone adapter integration remain pending.
+See the [editing contract](../../../crates/rust-native/docs/spec.md#local-text-editing).
+
 Do not add a text field as a string property plus an unversioned change
 callback. The contract must account for native editing, selection, composition,
 dictation, secure text, autocorrection, and programmatic replacement. Keep a
@@ -251,8 +260,8 @@ programmatic update. Specify offset units at each boundary: the terminal uses
 UTF-8 byte offsets with grapheme-aware movement, while native APIs can use
 UTF-16 indices. Conversion must reject invalid boundaries and preserve emoji
 and composed text. Submit is a distinct typed intent and still checks current
-task authority. Input support remains planned until these rules and focused
-fixtures exist.
+task authority. The headless editing fixtures cover draft reconciliation and
+composition; they do not establish native input or platform accessibility.
 
 Lists and transcripts need stable item identities, windows/cursors, selection,
 copy/export, and access to full retained text. Preserve Gym's recorded versus

@@ -96,6 +96,41 @@ The shared core owns neither network access, persistence, a palette, clock sourc
 credentials, nor task execution. Platform objects belong to adapters;
 application-specific components and effects belong to their application.
 
+## Local text editing
+
+`edit::Editor` implements bounded local editing for adapters. It reimplements
+Zeron's composer editing design with directional selection, grapheme and word
+movement, logical line movement, multiline replacement, and bounded undo/redo.
+Selections and replacement ranges use UTF-8 byte offsets on character
+boundaries. Keyboard movement and deletion at a caret preserve whole graphemes.
+The UTF-16 conversion helpers reject invalid offsets, including positions
+inside surrogate pairs.
+
+IME preedit owns a marked range and retains the text and selection from before
+composition. Updates replace that range; commit records the composition as one
+undo step; cancellation restores the earlier state. A failed edit changes no
+text, selection, history, or revision. The caller supplies monotonic elapsed
+milliseconds for undo coalescing; the editor owns no clock. Text is bounded by
+the input's byte limit, and each undo and redo history is bounded at 128 steps
+and 512 KiB of retained text. This is an in-process API, not a new view schema.
+
+`rust_native_desktop::composer::ComposerDraft` binds this editor to a validated
+`Composer` node. Rerenders with the same instance, node, and input token preserve
+local editing state and ignore the view's initial draft. Input callbacks name
+the applied view revision, an editing lifetime, and the editor's revision.
+A new token resets the editor; disposal retires the lifetime. Submissions check
+the current composer, its enabled/busy state, its own choice tokens, composition,
+and byte bound. An accepted submission clears only its exact editing sequence,
+so it never discards text typed afterwards. Domain admission and message
+idempotency remain application responsibilities.
+
+These APIs establish the editing foundation for
+[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996). Native window
+key/IME events, clipboard access, caret and selection painting, visual line
+movement, platform accessibility, and phone editing adapters remain pending.
+The desktop window still reports `Composer` as unsupported until those parts
+are connected.
+
 ## Transcript layout
 
 The `layout` module lays out a `Transcript`'s rows on the adapter's behalf.

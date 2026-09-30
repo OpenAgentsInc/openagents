@@ -15,6 +15,7 @@ live = ["dep:coder-host", "dep:tokio"]
 ssh = ["live", "dep:coder-ssh"]
 
 [dependencies]
+openagents-chat = { path = "../openagents-chat" }
 coder-access = { path = "../coder-access", default-features = false }
 # Local QR rendering only; no host store.
 coder-connect = { path = "../coder-connect", default-features = false, features = ["qr"] }
