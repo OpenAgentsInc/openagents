@@ -31,6 +31,7 @@
 //! - [`words`]: the words no screen may show.
 //! - [`qr`]: the code's QR modules.
 //! - [`fake`]: an in-process host for tests and `--fake-host`.
+//! - [`folder`]: choosing a folder, and the order Linux tries choosers in.
 //! - [`migrate`]: adopting an old-style setup through `coder host adopt`.
 //! - `update`: the signed-manifest updater (the `app` feature).
 
@@ -40,6 +41,7 @@ pub mod chrome;
 pub mod codes;
 pub mod control;
 pub mod fake;
+pub mod folder;
 pub mod migrate;
 pub mod model;
 pub mod qr;

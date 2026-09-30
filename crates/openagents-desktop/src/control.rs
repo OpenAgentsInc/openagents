@@ -91,10 +91,106 @@ pub trait HostControl: Send {
     fn set_autostart(&mut self, policy: Autostart) -> ControlResult<Autostart>;
     fn projects(&mut self) -> ControlResult<Vec<Project>>;
     fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>>;
+    /// Takes the project `label` off the host; the host drops it from the
+    /// auto-start policy too.
+    fn remove_project(&mut self, label: &str) -> ControlResult<Vec<Project>>;
     /// The phone nearby waiting for a click (`DSK-04`), if any.
     fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>>;
     /// **Connect** or **Don't connect** for the nearby request `id`.
     fn nearby_decide(&mut self, id: u64, connect: bool) -> ControlResult<()>;
+}
+
+/// Why [`pick_project`] stopped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PickError {
+    /// The host would not take the folder.
+    Folder,
+    /// The folder is in, but the old project or the switch did not follow.
+    Setting,
+}
+
+/// How many times a call after a project change is tried while the host
+/// starts again, and how long apart.
+const AGAIN: (u32, Duration) = (20, Duration::from_millis(250));
+
+/// Runs `call`, trying again while the host is starting again after a
+/// project change (it is unreachable for a moment).
+fn again<T>(
+    control: &mut dyn HostControl,
+    mut call: impl FnMut(&mut dyn HostControl) -> ControlResult<T>,
+) -> ControlResult<T> {
+    let mut tries = 1;
+    loop {
+        match call(control) {
+            Err(ControlError::Unreachable) if tries < AGAIN.0 => {
+                tries += 1;
+                std::thread::sleep(AGAIN.1);
+            }
+            result => return result,
+        }
+    }
+}
+
+/// The label the host gave the folder at `path`: the one project that was
+/// not there before, else (a folder it already had) the one whose picked
+/// folder or path is `path`.
+fn label_of(before: &[Project], after: &[Project], path: &str) -> Option<String> {
+    let new: Vec<&Project> = after
+        .iter()
+        .filter(|project| before.iter().all(|old| old.label != project.label))
+        .collect();
+    if let [only] = new.as_slice() {
+        return Some(only.label.clone());
+    }
+    let canonical = std::fs::canonicalize(path)
+        .ok()
+        .map(|path| path.display().to_string());
+    after
+        .iter()
+        .find(|project| {
+            [project.folder.as_deref(), Some(project.path.as_str())]
+                .into_iter()
+                .flatten()
+                .any(|held| held == path || Some(held) == canonical.as_deref())
+        })
+        .map(|project| project.label.clone())
+}
+
+/// Makes the folder at `path` the project the window shows: admits it,
+/// takes off `replace` (the project it shows now, when it is another one),
+/// and points the auto-start policy at the new project's label, the one
+/// the host gave it, with the switch `autostart`. The policy keeps any
+/// other project the host still admits and names no project the host no
+/// longer has, so a phone's task in the shown project starts when the
+/// switch is on.
+pub fn pick_project(
+    control: &mut dyn HostControl,
+    path: &str,
+    replace: Option<&str>,
+    autostart: bool,
+) -> Result<(), PickError> {
+    let before = again(control, |c| c.projects()).unwrap_or_default();
+    let mut after = control.add_project(path).map_err(|_| PickError::Folder)?;
+    let label = label_of(&before, &after, path).ok_or(PickError::Setting)?;
+    if let Some(old) = replace.filter(|old| *old != label) {
+        after = again(control, |c| c.remove_project(old)).map_err(|_| PickError::Setting)?;
+    }
+    let policy = again(control, |c| c.autostart()).map_err(|_| PickError::Setting)?;
+    let mut projects: Vec<String> = policy
+        .projects
+        .into_iter()
+        .filter(|held| *held != label && after.iter().any(|project| project.label == *held))
+        .collect();
+    projects.push(label);
+    again(control, |c| {
+        c.set_autostart(Autostart {
+            enabled: autostart,
+            projects: projects.clone(),
+            max_running: policy.max_running.max(1),
+        })
+    })
+    .map(|_| ())
+    .map_err(|_| PickError::Setting)
 }
 
 /// The blocking client for the host's socket. One connection a request.
@@ -267,6 +363,15 @@ impl HostControl for SocketControl {
 
     fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>> {
         match self.call(Op::ProjectAdd { path: path.into() })? {
+            Reply::Projects { projects } => Ok(projects),
+            _ => unexpected(),
+        }
+    }
+
+    fn remove_project(&mut self, label: &str) -> ControlResult<Vec<Project>> {
+        match self.call(Op::ProjectRemove {
+            label: label.into(),
+        })? {
             Reply::Projects { projects } => Ok(projects),
             _ => unexpected(),
         }

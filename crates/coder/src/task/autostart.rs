@@ -1271,6 +1271,7 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
      [--memory-mib N] [--read-only] [--controller PATH]
      [--decision-endpoint URL] [--decision-model ID]
      [--probe-usage] [--usage-threshold PERCENT] [--full-access]
+     [--keep-engine]
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
                        Each --route admits a provider (codex, claude,
@@ -1287,6 +1288,10 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        with no sandbox, network access, and your
                        login-shell environment. Use it only on your own
                        computer.
+                       --keep-engine keeps an existing policy's engine
+                       (controller, routes, access, usage probes, and
+                       limits) and changes only the workspaces and N; the
+                       other options then set up a first policy only.
   off                  Stop starting tasks; queued tasks stay queued.
 Every command takes --root DIR (default ~/.openagents/host). The policy is
 off until `on` runs.";
@@ -1314,9 +1319,12 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
     let mut read_only = false;
     let mut full_access = false;
     let mut probe_usage = false;
+    let mut keep_engine = false;
     let mut rest = rest.iter();
     while let Some(arg) = rest.next() {
-        if arg == "--read-only" {
+        if arg == "--keep-engine" {
+            keep_engine = true;
+        } else if arg == "--read-only" {
             read_only = true;
         } else if arg == "--full-access" {
             full_access = true;
@@ -1409,69 +1417,89 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 })
             };
             let max_running = number(take_one(&mut values, "--max-running")?, "--max-running", 1)?;
-            let max_steps = number(take_one(&mut values, "--max-steps")?, "--max-steps", 24)?;
-            let wall_seconds = number(
-                take_one(&mut values, "--wall-seconds")?,
-                "--wall-seconds",
-                1800,
-            )?;
-            let memory_mib = number(take_one(&mut values, "--memory-mib")?, "--memory-mib", 4096)?;
-            let controller = match take_one(&mut values, "--controller")? {
-                Some(path) => PathBuf::from(path),
-                None => default_controller()?,
+            // The desktop's switch changes only which projects start and how
+            // many at once; the engine the owner set up (its controller,
+            // routes, access, usage probes) stays as it is.
+            let kept = if keep_engine {
+                Policy::load(&root)?.map(|policy| policy.engine)
+            } else {
+                None
             };
-            let controller = controller
-                .canonicalize()
-                .map_err(|_| format!("the controller {} does not exist", controller.display()))?;
-            let routes = values
-                .remove("--route")
-                .unwrap_or_default()
-                .iter()
-                .map(|route| parse_route(route))
-                .collect::<std::result::Result<Vec<Route>, String>>()?;
-            let model = take_one(&mut values, "--model")?;
-            let model = match (routes.first(), model) {
-                (Some(_), Some(_)) => {
-                    return Err(
-                        "usage: give --model or --route, not both; name the Codex model as --route codex:MODEL"
-                            .into(),
-                    );
+            let engine = if let Some(engine) = kept {
+                for name in ENGINE_FLAGS {
+                    values.remove(name);
                 }
-                (Some(first), None) => first.model.clone(),
-                (None, model) => model.unwrap_or_else(|| "gpt-6-luna".into()),
-            };
-            let engine = Engine {
-                adapter: adapter::NAME.into(),
-                controller,
-                model,
-                effort: Some(take_one(&mut values, "--effort")?.unwrap_or_else(|| "medium".into())),
-                max_steps: usize::try_from(max_steps).map_err(|_| "--max-steps is too large")?,
-                wall_seconds,
-                memory_bytes: memory_mib.saturating_mul(1024 * 1024),
-                write_workspace: !read_only,
-                decision_endpoint: take_one(&mut values, "--decision-endpoint")?
-                    .unwrap_or_else(|| "https://api.typesafe.ai".into()),
-                decision_model: take_one(&mut values, "--decision-model")?
-                    .unwrap_or_else(|| DEFAULT_DECISION_MODEL.into()),
-                routes,
-                usage_probe: None,
-                access: if full_access {
-                    adapter::Access::Full
-                } else {
-                    adapter::Access::Boundary
-                },
-            };
-            let threshold = take_one(&mut values, "--usage-threshold")?;
-            let mut engine = engine;
-            if probe_usage || threshold.is_some() {
-                let threshold_percent = match threshold {
-                    Some(value) => value
-                        .parse::<u8>()
-                        .map_err(|_| "usage: --usage-threshold takes a percent, 1 to 100")?,
-                    None => usage::DEFAULT_THRESHOLD_PERCENT,
+                engine
+            } else {
+                let max_steps = number(take_one(&mut values, "--max-steps")?, "--max-steps", 24)?;
+                let wall_seconds = number(
+                    take_one(&mut values, "--wall-seconds")?,
+                    "--wall-seconds",
+                    1800,
+                )?;
+                let memory_mib =
+                    number(take_one(&mut values, "--memory-mib")?, "--memory-mib", 4096)?;
+                let controller = match take_one(&mut values, "--controller")? {
+                    Some(path) => PathBuf::from(path),
+                    None => default_controller()?,
                 };
-                engine.usage_probe = Some(UsageProbe { threshold_percent });
-            }
+                let controller = controller.canonicalize().map_err(|_| {
+                    format!("the controller {} does not exist", controller.display())
+                })?;
+                let routes = values
+                    .remove("--route")
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|route| parse_route(route))
+                    .collect::<std::result::Result<Vec<Route>, String>>()?;
+                let model = take_one(&mut values, "--model")?;
+                let model = match (routes.first(), model) {
+                    (Some(_), Some(_)) => {
+                        return Err(
+                            "usage: give --model or --route, not both; name the Codex model as --route codex:MODEL"
+                                .into(),
+                        );
+                    }
+                    (Some(first), None) => first.model.clone(),
+                    (None, model) => model.unwrap_or_else(|| "gpt-6-luna".into()),
+                };
+                let engine = Engine {
+                    adapter: adapter::NAME.into(),
+                    controller,
+                    model,
+                    effort: Some(
+                        take_one(&mut values, "--effort")?.unwrap_or_else(|| "medium".into()),
+                    ),
+                    max_steps: usize::try_from(max_steps)
+                        .map_err(|_| "--max-steps is too large")?,
+                    wall_seconds,
+                    memory_bytes: memory_mib.saturating_mul(1024 * 1024),
+                    write_workspace: !read_only,
+                    decision_endpoint: take_one(&mut values, "--decision-endpoint")?
+                        .unwrap_or_else(|| "https://api.typesafe.ai".into()),
+                    decision_model: take_one(&mut values, "--decision-model")?
+                        .unwrap_or_else(|| DEFAULT_DECISION_MODEL.into()),
+                    routes,
+                    usage_probe: None,
+                    access: if full_access {
+                        adapter::Access::Full
+                    } else {
+                        adapter::Access::Boundary
+                    },
+                };
+                let threshold = take_one(&mut values, "--usage-threshold")?;
+                let mut engine = engine;
+                if probe_usage || threshold.is_some() {
+                    let threshold_percent = match threshold {
+                        Some(value) => value
+                            .parse::<u8>()
+                            .map_err(|_| "usage: --usage-threshold takes a percent, 1 to 100")?,
+                        None => usage::DEFAULT_THRESHOLD_PERCENT,
+                    };
+                    engine.usage_probe = Some(UsageProbe { threshold_percent });
+                }
+                engine
+            };
             if let Some(name) = values.keys().next() {
                 return Err(format!("usage: {name} does not apply to on"));
             }
@@ -1523,6 +1551,21 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
     }
     Ok(())
 }
+
+/// The options of `on` that set up the engine, which `--keep-engine` leaves
+/// to an existing policy.
+const ENGINE_FLAGS: [&str; 10] = [
+    "--model",
+    "--route",
+    "--effort",
+    "--max-steps",
+    "--wall-seconds",
+    "--memory-mib",
+    "--controller",
+    "--decision-endpoint",
+    "--decision-model",
+    "--usage-threshold",
+];
 
 /// `PROVIDER:MODEL`, where the provider is one of the closed set.
 fn parse_route(text: &str) -> std::result::Result<Route, String> {
@@ -2193,6 +2236,91 @@ mod tests {
         let recorded: Vec<String> = journal(&root).into_iter().map(|e| e.event).collect();
         assert_eq!(recorded, ["policy_on", "policy_off"]);
         assert_eq!(cli(&args(&["on"])), 2);
+    }
+
+    /// The desktop's switch (`on --keep-engine`, through the host's control
+    /// socket) changes only the workspaces and the number running; the
+    /// owner's engine settings stay, full access and usage probes included.
+    #[test]
+    fn the_desktop_switch_keeps_the_owners_engine_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let (one, two) = (dir.path().join("one"), dir.path().join("two"));
+        std::fs::create_dir_all(&one).unwrap();
+        std::fs::create_dir_all(&two).unwrap();
+        coder_host::settings::ServeSettings::new(
+            vec!["wss://relay.example/".into()],
+            BTreeMap::from([
+                ("one".into(), one.canonicalize().unwrap()),
+                ("two".into(), two.canonicalize().unwrap()),
+            ]),
+        )
+        .save(&root)
+        .unwrap();
+        let controller = std::env::current_exe().unwrap();
+        let controller = controller.to_string_lossy().into_owned();
+        let root_arg = root.to_string_lossy().into_owned();
+        let run = |list: &[&str]| {
+            let mut args: Vec<String> = list.iter().map(|a| (*a).to_owned()).collect();
+            args.extend(["--root".into(), root_arg.clone()]);
+            cli(&args)
+        };
+        // The owner's own policy, set up on the host.
+        assert_eq!(
+            run(&[
+                "on",
+                "--workspace",
+                "one",
+                "--controller",
+                &controller,
+                "--read-only",
+                "--full-access",
+                "--probe-usage",
+                "--usage-threshold",
+                "80",
+                "--route",
+                "claude:claude-opus-5-5",
+                "--max-steps",
+                "40",
+            ]),
+            0
+        );
+        let owners = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(owners.engine.access, adapter::Access::Full);
+        // The switch, as the control socket runs it: other routes, and no
+        // controller or access of its own.
+        let switch = |extra: &[&str]| {
+            let mut list = vec![
+                "on",
+                "--keep-engine",
+                "--workspace",
+                "two",
+                "--max-running",
+                "3",
+                "--route",
+                "codex:gpt-6-luna",
+                "--route",
+                "claude:claude-opus-5-5",
+            ];
+            list.extend_from_slice(extra);
+            run(&list)
+        };
+        assert_eq!(switch(&[]), 0);
+        let after = Policy::load(&root).unwrap().unwrap();
+        assert!(after.enabled);
+        assert_eq!(after.workspaces, ["two"]);
+        assert_eq!(after.max_running, 3);
+        assert_eq!(after.engine, owners.engine);
+        // Off and on again keeps it too.
+        assert_eq!(run(&["off"]), 0);
+        assert_eq!(switch(&[]), 0);
+        assert_eq!(Policy::load(&root).unwrap().unwrap().engine, owners.engine);
+        // With no policy yet, the switch's options set up the first one.
+        std::fs::remove_file(root.join("autostart.json")).unwrap();
+        assert_eq!(switch(&["--controller", &controller, "--read-only"]), 0);
+        let first = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(first.engine.access, adapter::Access::Boundary);
+        assert_eq!(first.routes().len(), 2);
     }
 
     /// Full access is the owner's choice, made with a command on the host,

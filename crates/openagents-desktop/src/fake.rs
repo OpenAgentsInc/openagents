@@ -329,7 +329,21 @@ impl HostControl for FakeHost {
     }
 
     fn set_autostart(&mut self, policy: Autostart) -> ControlResult<Autostart> {
-        self.state().autostart = Some(policy.clone());
+        let mut state = self.state();
+        // As the host's `coder host autostart on` does: every label must
+        // be a project it admits.
+        if policy.enabled
+            && policy
+                .projects
+                .iter()
+                .any(|label| state.projects.iter().all(|project| project.label != *label))
+        {
+            return Err(ControlError::Refused {
+                code: "forbidden".into(),
+                message: "the host admits no project with that label".into(),
+            });
+        }
+        state.autostart = Some(policy.clone());
         Ok(policy)
     }
 
@@ -339,22 +353,48 @@ impl HostControl for FakeHost {
 
     fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>> {
         let mut state = self.state();
-        let label = std::path::Path::new(path).file_name().map_or_else(
+        let base = std::path::Path::new(path).file_name().map_or_else(
             || path.to_string(),
             |name| name.to_string_lossy().into_owned(),
         );
         // As the host does: the picked folder is admitted as the host's
-        // worktree of it, and the listing names both.
+        // worktree of it, under its name, or NAME-2, NAME-3... when another
+        // project holds that name, and the listing names both, by label.
         if !state
             .projects
             .iter()
             .any(|project| project.folder.as_deref() == Some(path))
         {
+            let mut label = base.clone();
+            let mut n = 2;
+            while state.projects.iter().any(|project| project.label == label) {
+                label = format!("{base}-{n}");
+                n += 1;
+            }
             state.projects.push(Project {
-                path: format!("/Users/kai/.openagents/host/projects/{label}-1a2b3c4d"),
+                path: format!("/Users/kai/.openagents/host/projects/{base}-1a2b3c4d"),
                 label,
                 folder: Some(path.into()),
             });
+            state.projects.sort_by(|a, b| a.label.cmp(&b.label));
+        }
+        Ok(state.projects.clone())
+    }
+
+    fn remove_project(&mut self, label: &str) -> ControlResult<Vec<Project>> {
+        let mut state = self.state();
+        let before = state.projects.len();
+        state.projects.retain(|project| project.label != label);
+        if state.projects.len() == before {
+            return Err(ControlError::Refused {
+                code: "unavailable".into(),
+                message: "no project has that label".into(),
+            });
+        }
+        // As the host does: the policy stops naming a removed project.
+        if let Some(policy) = &mut state.autostart {
+            policy.projects.retain(|held| held != label);
+            policy.enabled &= !policy.projects.is_empty();
         }
         Ok(state.projects.clone())
     }

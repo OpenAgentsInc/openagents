@@ -166,22 +166,28 @@ pub fn clear_if(text: &str) {
     }
 }
 
-/// Asks the person for a folder with the system's chooser. `None` when
-/// they cancel.
-pub fn choose_folder() -> Option<PathBuf> {
-    let output = Command::new("osascript")
+/// Asks the person for a folder with the system's chooser.
+pub fn choose_folder() -> openagents_desktop::folder::Chosen {
+    use openagents_desktop::folder::Chosen;
+    let Ok(output) = Command::new("osascript")
         .args([
             "-e",
             "POSIX path of (choose folder with prompt \"Choose the folder that holds your code\")",
         ])
         .output()
-        .ok()?;
+    else {
+        return Chosen::Unavailable;
+    };
     if !output.status.success() {
-        return None;
+        return Chosen::Cancelled;
     }
-    let path = String::from_utf8(output.stdout).ok()?;
+    let path = String::from_utf8_lossy(&output.stdout);
     let path = path.trim().trim_end_matches('/');
-    (!path.is_empty()).then(|| PathBuf::from(path))
+    if path.is_empty() {
+        Chosen::Cancelled
+    } else {
+        Chosen::Folder(PathBuf::from(path))
+    }
 }
 
 /// Whether Codex and Claude Code are signed in for this user.

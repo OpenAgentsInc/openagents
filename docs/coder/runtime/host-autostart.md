@@ -38,6 +38,7 @@ coder host autostart on --workspace openagents --max-running 1
 | `--full-access` | Off | Run each task's commands as you, with no sandbox, network access, and your login-shell environment. For your own computer only. See [Full access](#full-access). |
 | `--controller PATH` | `microcoder` beside `coder`, else `~/.openagents/bin/microcoder` | The engine executable. |
 | `--decision-endpoint URL`, `--decision-model ID` | `https://api.typesafe.ai`, `jev-1.13.0` | The Jev client the engine's grant names. Use an exact version: the engine refuses a reply whose model differs from the admitted one, so an alias such as `jev-latest` fails at the first judgment. |
+| `--keep-engine` | Off | Keep an existing policy's engine (controller, routes, access, usage probes, and limits) and change only the workspaces and `--max-running`; the engine options then set up a first policy only. The desktop app's "Let my phone start Coder here" switch runs `on --keep-engine`, so it never undoes `--full-access`, `--probe-usage`, or a controller you set. Removing a project from the desktop app also takes its label off the policy, and turns the policy off when no project is left. |
 
 Every command also takes `--root DIR` for a host root other than
 `~/.openagents/host`. `on` refuses a label the host does not admit, and a

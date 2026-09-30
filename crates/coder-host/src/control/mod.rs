@@ -340,13 +340,19 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             }
         }
         Op::OwnerImport { secret } => owner_import(shared, &secret),
-        Op::ProjectRemove { label } => change_projects(shared, |settings| {
-            settings
-                .workspaces
-                .remove(&label)
-                .map(|_| ())
-                .ok_or_else(|| Error::Config("no project has that label".into()))
-        }),
+        Op::ProjectRemove { label } => {
+            let reply = change_projects(shared, |settings| {
+                settings
+                    .workspaces
+                    .remove(&label)
+                    .map(|_| ())
+                    .ok_or_else(|| Error::Config("no project has that label".into()))
+            });
+            if matches!(reply, Reply::Projects { .. }) {
+                forget_in_policy(shared, &label);
+            }
+            reply
+        }
     }
 }
 
@@ -734,7 +740,9 @@ const ROUTES: [&str; 2] = ["codex:gpt-6-luna", "claude:claude-opus-5-5"];
 
 /// Change the policy through the host's own `coder host autostart`
 /// command, which checks every bound and records the change; a request on
-/// this socket is a command on the host.
+/// this socket is a command on the host. It changes whether the policy is
+/// on, its projects, and how many run at once, and keeps the rest of the
+/// file (the engine the owner set up) as it is.
 fn autostart_set(
     shared: &Shared,
     policy: &Autostart,
@@ -759,7 +767,10 @@ fn autostart_set(
         if policy.projects.is_empty() {
             return Err(boxed("malformed", "turning auto-start on needs a project"));
         }
-        command.arg("on");
+        // Only the projects and the number running change: the engine the
+        // owner set up (controller, routes, full access, usage probes)
+        // stays. The routes below set up a first policy only.
+        command.args(["on", "--keep-engine"]);
         for project in &policy.projects {
             command.args(["--workspace", project]);
         }
@@ -789,6 +800,33 @@ fn autostart_set(
         ));
     }
     autostart_get(shared)
+}
+
+/// Take a removed project off the auto-start policy, so the policy never
+/// names a project the host no longer has: a phone's task there would never
+/// start, and the switch would read as on for nothing. With no project
+/// left, the policy is turned off. A host that cannot change the policy
+/// leaves it; the next change of the switch names only projects it has.
+fn forget_in_policy(shared: &Shared, label: &str) {
+    let Ok(policy) = autostart_get(shared) else {
+        return;
+    };
+    if !policy.projects.iter().any(|held| held == label) {
+        return;
+    }
+    let projects: Vec<String> = policy
+        .projects
+        .into_iter()
+        .filter(|held| held != label)
+        .collect();
+    let _ = autostart_set(
+        shared,
+        &Autostart {
+            enabled: policy.enabled && !projects.is_empty(),
+            projects,
+            max_running: policy.max_running.clamp(1, 8),
+        },
+    );
 }
 
 fn hex(bytes: &[u8]) -> String {

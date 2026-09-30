@@ -20,7 +20,7 @@
 
 use crate::platform;
 use openagents_desktop::codes::Action;
-use openagents_desktop::control::{ControlError, HostControl};
+use openagents_desktop::control::{ControlError, HostControl, PickError};
 use openagents_desktop::fake::FakeHost;
 use openagents_desktop::model::{Agent, Agents, Outcome, Refreshed, Request, Started, Task};
 use rust_native_desktop::Waker;
@@ -185,13 +185,24 @@ impl HostLane {
                     message: "Couldn't remove that phone. Try again.".into(),
                 })
             }
-            Request::AddProject { path } => self
-                .control
-                .add_project(&path.to_string_lossy())
-                .err()
-                .map(|_| Outcome::Failed {
-                    message: "Coder couldn't use that folder. Choose another one.".into(),
-                }),
+            Request::AddProject {
+                path,
+                replace,
+                autostart,
+            } => openagents_desktop::control::pick_project(
+                self.control.as_mut(),
+                &path.to_string_lossy(),
+                replace.as_deref(),
+                autostart,
+            )
+            .err()
+            .map(|error| Outcome::Failed {
+                message: match error {
+                    PickError::Folder => "Coder couldn't use that folder. Choose another one.",
+                    PickError::Setting => "Couldn't change that setting. Try again.",
+                }
+                .into(),
+            }),
             Request::SetAutostart(policy) => {
                 self.control
                     .set_autostart(policy)

@@ -204,17 +204,19 @@ pub fn clear_if(text: &str) {
     }
 }
 
-/// Asks the person for a folder with the system's chooser. `None` when
-/// they cancel.
-pub fn choose_folder() -> Option<PathBuf> {
+/// Asks the person for a folder with the system's chooser.
+pub fn choose_folder() -> openagents_desktop::folder::Chosen {
+    use openagents_desktop::folder::Chosen;
     let path = powershell(
         "Add-Type -AssemblyName System.Windows.Forms; \
          $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
          $d.Description = 'Choose the folder that holds your code'; \
          if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }",
-    )?;
-    let path = path.trim();
-    (!path.is_empty()).then(|| PathBuf::from(path))
+    );
+    match path.as_deref().map(str::trim) {
+        Some(path) if !path.is_empty() => Chosen::Folder(PathBuf::from(path)),
+        _ => Chosen::Cancelled,
+    }
 }
 
 /// Whether Codex and Claude Code are signed in for this user. On Windows

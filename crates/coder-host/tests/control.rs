@@ -453,6 +453,7 @@ async fn auto_start_changes_run_the_hosts_own_command() {
             "host",
             "autostart",
             "on",
+            "--keep-engine",
             "--workspace",
             "site",
             "--max-running",
@@ -481,6 +482,44 @@ async fn auto_start_changes_run_the_hosts_own_command() {
         panic!("refused")
     };
     assert_eq!(code, "bounds");
+
+    // Removing a project the policy names takes it off the policy (here
+    // the last one, so the policy goes off); removing another leaves the
+    // policy alone.
+    let folder = host.root.join("folder");
+    std::fs::create_dir_all(&folder).unwrap();
+    coder_host::settings::ServeSettings::new(
+        vec![host.relay.clone()],
+        std::collections::BTreeMap::from([
+            ("site".into(), folder.clone()),
+            ("docs".into(), folder),
+        ]),
+    )
+    .save(&host.root)
+    .unwrap();
+    std::fs::remove_file(host.root.join("args")).unwrap();
+    let remove = |label: &str| {
+        call(
+            &host.socket,
+            Op::ProjectRemove {
+                label: label.into(),
+            },
+        )
+    };
+    let Reply::Projects { projects } = remove("docs").await.unwrap() else {
+        panic!("projects")
+    };
+    assert_eq!(projects.len(), 1);
+    assert!(!host.root.join("args").exists());
+    let Reply::Projects { projects } = remove("site").await.unwrap() else {
+        panic!("projects")
+    };
+    assert!(projects.is_empty());
+    let args = std::fs::read_to_string(host.root.join("args")).unwrap();
+    assert_eq!(
+        args.lines().collect::<Vec<_>>(),
+        ["host", "autostart", "off", "--root", root.as_str()]
+    );
     host.running.shutdown().await;
 }
 

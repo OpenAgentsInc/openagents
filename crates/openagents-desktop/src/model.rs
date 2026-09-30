@@ -10,6 +10,7 @@
 
 use crate::codes::{Action, Codes, Conditions};
 use crate::control::{Autostart, Device, NearbyPrompt, Project, Status};
+pub use crate::folder::Chosen;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -22,6 +23,10 @@ pub const FAST_POLL: Duration = Duration::from_secs(2);
 pub const SLOW_POLL: Duration = Duration::from_secs(5);
 /// How often Coder's tasks and sign-ins are read.
 pub const CODER_POLL: Duration = Duration::from_secs(15);
+/// What the project row says when no folder chooser opened, with the way
+/// forward.
+pub const NO_CHOOSER: &str = "No folder chooser opened on this computer. \
+     Install zenity or kdialog, or start the desktop portal, then choose again.";
 /// How long a copied code stays on the clipboard.
 pub const CLIPBOARD_LIFE: Duration = Duration::from_secs(60);
 /// How long Coder may go without answering before the screens say so and
@@ -89,8 +94,13 @@ pub enum Request {
     Revoke {
         device: String,
     },
+    /// Make the folder at `path` the shown project
+    /// ([`crate::control::pick_project`]): it replaces `replace`, and the
+    /// switch follows it, on when `autostart`.
     AddProject {
         path: PathBuf,
+        replace: Option<String>,
+        autostart: bool,
     },
     SetAutostart(Autostart),
     /// Put `code` on the clipboard.
@@ -126,7 +136,15 @@ impl std::fmt::Debug for Request {
                 other => write!(f, "Code({other:?})"),
             },
             Request::Revoke { device } => write!(f, "Revoke {{ {device} }}"),
-            Request::AddProject { path } => write!(f, "AddProject {{ {} }}", path.display()),
+            Request::AddProject {
+                path,
+                replace,
+                autostart,
+            } => write!(
+                f,
+                "AddProject {{ {}, replace: {replace:?}, autostart: {autostart} }}",
+                path.display()
+            ),
             Request::SetAutostart(policy) => write!(f, "SetAutostart({policy:?})"),
             Request::ChooseFolder => f.write_str("ChooseFolder"),
             Request::Coder => f.write_str("Coder"),
@@ -198,7 +216,7 @@ pub enum Outcome {
     Failed {
         message: String,
     },
-    Folder(Option<PathBuf>),
+    Folder(Chosen),
     Coder {
         agents: Agents,
         tasks: Vec<Task>,
@@ -352,11 +370,13 @@ impl Model {
         self.host.as_ref().and_then(|host| host.projects.first())
     }
 
-    /// Whether phones may start Coder here.
+    /// Whether phones may start Coder here: the policy is on and names the
+    /// shown project, so the switch follows the project on screen.
     pub fn autostart(&self) -> bool {
-        self.host
-            .as_ref()
-            .is_some_and(|host| host.autostart.enabled && !host.autostart.projects.is_empty())
+        let (Some(host), Some(project)) = (&self.host, self.project()) else {
+            return false;
+        };
+        host.autostart.enabled && host.autostart.projects.contains(&project.label)
     }
 
     /// Brings the model up to `now`.
@@ -626,8 +646,12 @@ impl Model {
                 self.problem = Some(message);
                 Vec::new()
             }
-            Outcome::Folder(None) => Vec::new(),
-            Outcome::Folder(Some(path)) => {
+            Outcome::Folder(Chosen::Cancelled) => Vec::new(),
+            Outcome::Folder(Chosen::Unavailable) => {
+                self.problem = Some(NO_CHOOSER.into());
+                Vec::new()
+            }
+            Outcome::Folder(Chosen::Folder(path)) => {
                 if !path.join(".git").exists() {
                     self.problem = Some(
                         "That folder isn't a Git project. Choose the folder that holds your code."
@@ -636,27 +660,23 @@ impl Model {
                     return Vec::new();
                 }
                 self.problem = None;
-                let mut requests = vec![Request::AddProject { path: path.clone() }];
-                // Picking the first project turns the switch on.
-                let label = path
-                    .file_name()
-                    .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-                let mut projects: Vec<String> = self
+                // The chosen folder replaces the one project shown, and the
+                // switch follows it; picking the first project turns it on.
+                let replace = self
                     .host
                     .as_ref()
-                    .map(|host| host.projects.iter().map(|p| p.label.clone()).collect())
-                    .unwrap_or_default();
-                if !projects.contains(&label) {
-                    projects.push(label);
-                }
-                let enabled = self.autostart() || self.project().is_none();
-                requests.push(Request::SetAutostart(Autostart {
-                    enabled,
-                    projects,
-                    max_running: 1,
-                }));
-                requests.push(Request::Refresh);
-                requests
+                    .filter(|host| host.projects.len() == 1)
+                    .and_then(|host| host.projects.first())
+                    .map(|project| project.label.clone());
+                let autostart = self.autostart() || self.project().is_none();
+                vec![
+                    Request::AddProject {
+                        path,
+                        replace,
+                        autostart,
+                    },
+                    Request::Refresh,
+                ]
             }
             Outcome::Coder { agents, tasks } => {
                 self.agents = agents;
@@ -689,7 +709,7 @@ mod tests {
         pub start: Instant,
         pub now: Instant,
         pub clipboard: Option<String>,
-        pub folder: Option<PathBuf>,
+        pub folder: Chosen,
         /// How many times the model asked to start Coder.
         pub starts: usize,
     }
@@ -703,7 +723,7 @@ mod tests {
                 start,
                 now: start,
                 clipboard: None,
-                folder: None,
+                folder: Chosen::Cancelled,
                 starts: 0,
             }
         }
@@ -750,8 +770,17 @@ mod tests {
                         let _ = self.host.revoke(&device);
                         None
                     }
-                    Request::AddProject { path } => {
-                        let _ = self.host.add_project(&path.to_string_lossy());
+                    Request::AddProject {
+                        path,
+                        replace,
+                        autostart,
+                    } => {
+                        let _ = crate::control::pick_project(
+                            &mut self.host,
+                            &path.to_string_lossy(),
+                            replace.as_deref(),
+                            autostart,
+                        );
                         None
                     }
                     Request::SetAutostart(policy) => {
@@ -1002,13 +1031,13 @@ mod tests {
         assert!(!rig.model.autostart());
         // A folder that is not a Git checkout is refused with a reason.
         let plain = tempfile::tempdir().expect("a folder");
-        rig.folder = Some(plain.path().to_path_buf());
+        rig.folder = Chosen::Folder(plain.path().to_path_buf());
         rig.click(Intent::ChooseFolder);
         assert!(rig.model.problem.is_some());
         assert!(rig.model.project().is_none());
         let repo = tempfile::tempdir().expect("a folder");
         std::fs::create_dir(repo.path().join(".git")).expect("a .git");
-        rig.folder = Some(repo.path().to_path_buf());
+        rig.folder = Chosen::Folder(repo.path().to_path_buf());
         rig.click(Intent::ChooseFolder);
         assert!(rig.model.problem.is_none());
         assert!(rig.model.project().is_some());
@@ -1017,6 +1046,109 @@ mod tests {
         rig.click(Intent::Done);
         assert!(!rig.model.autostart());
         assert_eq!(rig.model.screen, Screen::Home);
+    }
+
+    /// A Git checkout named `name` in a fresh folder.
+    fn checkout(name: &str) -> (tempfile::TempDir, PathBuf) {
+        let parent = tempfile::tempdir().expect("a folder");
+        let path = parent.path().join(name);
+        std::fs::create_dir_all(path.join(".git")).expect("a .git");
+        (parent, path)
+    }
+
+    /// A rig with a phone connected, on the connected screen.
+    fn connected_rig() -> Rig {
+        let mut rig = Rig::new();
+        rig.tick(0);
+        rig.tick(1);
+        let code = rig.model.codes.shown().expect("a code").invitation.clone();
+        rig.host.redeem(&code, "Kai's iPhone").expect("the scan");
+        rig.tick(3);
+        rig
+    }
+
+    /// Choosing another folder replaces the shown project, and the switch
+    /// follows it, even when the host labels the new one `NAME-2` because
+    /// the old one held the name.
+    #[test]
+    fn choosing_another_folder_replaces_the_project_and_the_switch_follows_it() {
+        let mut rig = connected_rig();
+        let (_first_parent, first) = checkout("openagents");
+        rig.folder = Chosen::Folder(first);
+        rig.click(Intent::ChooseFolder);
+        assert_eq!(
+            rig.model.project().map(|p| p.label.as_str()),
+            Some("openagents")
+        );
+        assert!(rig.model.autostart());
+
+        let (_second_parent, second) = checkout("openagents");
+        rig.folder = Chosen::Folder(second.clone());
+        rig.click(Intent::ChooseFolder);
+        assert!(rig.model.problem.is_none());
+        let projects = rig.host.clone().projects().expect("projects");
+        assert_eq!(projects.len(), 1, "{projects:?}");
+        assert_eq!(projects[0].label, "openagents-2");
+        assert_eq!(
+            projects[0].folder.as_deref(),
+            Some(second.to_string_lossy().as_ref())
+        );
+        let policy = rig.host.clone().autostart().expect("a policy");
+        assert!(policy.enabled);
+        assert_eq!(policy.projects, ["openagents-2"]);
+        assert!(rig.model.autostart());
+
+        // With the switch off, the new project comes in off.
+        rig.click(Intent::ToggleAutostart);
+        rig.tick(20);
+        assert!(!rig.model.autostart());
+        let (_third_parent, third) = checkout("website");
+        rig.folder = Chosen::Folder(third);
+        rig.click(Intent::ChooseFolder);
+        assert_eq!(
+            rig.model.project().map(|p| p.label.as_str()),
+            Some("website")
+        );
+        assert!(!rig.model.autostart());
+        assert!(!rig.host.clone().autostart().expect("a policy").enabled);
+        rig.click(Intent::ToggleAutostart);
+        rig.tick(40);
+        assert!(rig.model.autostart());
+        assert_eq!(
+            rig.host.clone().autostart().expect("a policy").projects,
+            ["website"]
+        );
+    }
+
+    /// A policy that names only a project the host no longer has shows as
+    /// off, not as on for a project whose tasks never start.
+    #[test]
+    fn a_policy_for_a_project_that_is_gone_shows_off() {
+        let mut rig = connected_rig();
+        let (_parent, path) = checkout("openagents");
+        rig.folder = Chosen::Folder(path);
+        rig.click(Intent::ChooseFolder);
+        assert!(rig.model.autostart());
+        let host = rig.model.host.as_mut().expect("a host");
+        host.autostart.projects = vec!["gone".into()];
+        assert!(host.autostart.enabled);
+        assert!(!rig.model.autostart());
+    }
+
+    /// With no folder chooser on the computer, the button says so instead
+    /// of doing nothing.
+    #[test]
+    fn with_no_folder_chooser_the_screen_says_so() {
+        let mut rig = connected_rig();
+        rig.folder = Chosen::Unavailable;
+        rig.click(Intent::ChooseFolder);
+        assert_eq!(rig.model.problem.as_deref(), Some(NO_CHOOSER));
+        assert!(rig.model.project().is_none());
+        // Cancelling says nothing.
+        rig.model.problem = None;
+        rig.folder = Chosen::Cancelled;
+        rig.click(Intent::ChooseFolder);
+        assert!(rig.model.problem.is_none());
     }
 
     #[test]

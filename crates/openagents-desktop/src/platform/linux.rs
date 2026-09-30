@@ -22,6 +22,7 @@
 //! None of this reads a secret. The sign-in check looks only at whether a
 //! credential file exists, never its contents.
 
+use openagents_desktop::folder::{self, Chosen};
 use openagents_desktop::migrate::Keys;
 use openagents_desktop::model::{Agent, Agents};
 use std::io::{self, Write};
@@ -394,37 +395,116 @@ pub fn clear_if(text: &str) {
     }
 }
 
-/// Asks the person for a folder with the desktop's chooser (`zenity`,
-/// else `kdialog`). `None` when they cancel or neither is installed.
-pub fn choose_folder() -> Option<PathBuf> {
-    const PROMPT: &str = "Choose the folder that holds your code";
+/// Asks the person for a folder: the desktop portal's chooser first, then
+/// `zenity`, then `kdialog` ([`openagents_desktop::folder::choose`]).
+/// [`Chosen::Unavailable`] when none of them opens. Blocks until the person
+/// answers, so the worker runs it on its own thread.
+pub fn choose_folder() -> Chosen {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
-    let attempts: [(&str, Vec<&str>); 2] = [
-        (
-            "zenity",
-            vec!["--file-selection", "--directory", "--title", PROMPT],
-        ),
-        (
-            "kdialog",
-            vec!["--getexistingdirectory", &home, "--title", PROMPT],
-        ),
-    ];
-    for (program, args) in attempts {
-        let Ok(output) = Command::new(program)
-            .args(&args)
+    folder::choose(&mut SystemChoosers, &home)
+}
+
+/// This computer's folder choosers.
+struct SystemChoosers;
+
+impl folder::Choosers for SystemChoosers {
+    fn portal(&mut self) -> Option<Chosen> {
+        portal::choose_folder()
+    }
+
+    fn command(&mut self, program: &str, args: &[String]) -> Option<Chosen> {
+        let output = Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output()
-        else {
-            continue;
-        };
-        if !output.status.success() {
-            return None;
-        }
-        let path = String::from_utf8(output.stdout).ok()?;
-        let path = path.trim().trim_end_matches('/');
-        return (!path.is_empty()).then(|| PathBuf::from(path));
+            .ok()?;
+        folder::from_command(output.status.code(), &output.stdout)
     }
-    None
+}
+
+/// The desktop portal's file chooser
+/// (`org.freedesktop.portal.FileChooser.OpenFile`), over the session bus.
+mod portal {
+    use openagents_desktop::folder::{self, Chosen};
+    use std::collections::HashMap;
+    use zbus::blocking::{Connection, Proxy, proxy::Builder};
+    use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
+
+    const DESTINATION: &str = "org.freedesktop.portal.Desktop";
+    const PATH: &str = "/org/freedesktop/portal/desktop";
+
+    fn proxy<'a>(
+        connection: &Connection,
+        path: &'a str,
+        interface: &'static str,
+    ) -> zbus::Result<Proxy<'a>> {
+        Builder::new(connection)
+            .destination(DESTINATION)?
+            .path(path)?
+            .interface(interface)?
+            .cache_properties(zbus::proxy::CacheProperties::No)
+            .build()
+    }
+
+    /// The request object the portal answers on for `token`
+    /// (`/org/freedesktop/portal/desktop/request/SENDER/TOKEN`).
+    pub(super) fn request_path(unique_name: &str, token: &str) -> String {
+        let sender = unique_name.trim_start_matches(':').replace('.', "_");
+        format!("{PATH}/request/{sender}/{token}")
+    }
+
+    /// Asks through the portal. `None` when there is no session bus, no
+    /// portal, or no chooser behind it, or it ended without asking;
+    /// otherwise the person's answer.
+    pub(super) fn choose_folder() -> Option<Chosen> {
+        let connection = Connection::session().ok()?;
+        let unique = connection.unique_name()?.as_str().to_owned();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.subsec_nanos());
+        let token = format!("openagents_{}_{nanos}", std::process::id());
+        let expected = request_path(&unique, &token);
+        // Listen before asking, so a fast answer is not missed.
+        let request = proxy(&connection, &expected, "org.freedesktop.portal.Request").ok()?;
+        let mut responses = request.receive_signal("Response").ok()?;
+        let chooser = proxy(&connection, PATH, "org.freedesktop.portal.FileChooser").ok()?;
+        let mut options: HashMap<&str, Value<'_>> = HashMap::new();
+        options.insert("handle_token", Value::from(token.as_str()));
+        options.insert("modal", Value::from(true));
+        options.insert("directory", Value::from(true));
+        options.insert("multiple", Value::from(false));
+        let handle: OwnedObjectPath = chooser
+            .call("OpenFile", &("", folder::PROMPT, options))
+            .ok()?;
+        // A portal older than handle tokens answers on a path of its own.
+        let other;
+        if handle.as_str() != expected {
+            other = proxy(
+                &connection,
+                handle.as_str(),
+                "org.freedesktop.portal.Request",
+            )
+            .ok()?;
+            responses = other.receive_signal("Response").ok()?;
+        }
+        let message = responses.next()?;
+        let (response, results): (u32, HashMap<String, OwnedValue>) =
+            message.body().deserialize().ok()?;
+        match response {
+            0 => {
+                let uris = results.get("uris")?.try_clone().ok()?;
+                let uris: Vec<String> = uris.try_into().ok()?;
+                Some(
+                    uris.first()
+                        .and_then(|uri| folder::from_uri(uri))
+                        .map_or(Chosen::Cancelled, Chosen::Folder),
+                )
+            }
+            1 => Some(Chosen::Cancelled),
+            _ => None,
+        }
+    }
 }
 
 /// Whether Codex and Claude Code are signed in for this user. On Linux
@@ -463,6 +543,14 @@ mod tests {
             };
             Ok((true, stdout.into()))
         }
+    }
+
+    #[test]
+    fn the_portal_answers_on_the_senders_request_path() {
+        assert_eq!(
+            portal::request_path(":1.42", "openagents_7_9"),
+            "/org/freedesktop/portal/desktop/request/1_42/openagents_7_9"
+        );
     }
 
     #[test]

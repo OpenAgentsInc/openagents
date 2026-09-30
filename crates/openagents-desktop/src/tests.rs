@@ -167,6 +167,18 @@ fn states() -> Vec<(&'static str, Model)> {
     };
     states.push(("dsk-02-connected-unnamed", scanned));
 
+    // No folder chooser opened (a Linux desktop without one).
+    let (mut no_chooser, _) = model(Screen::Connected {
+        device: device.clone(),
+    });
+    no_chooser.host = Some(host(
+        vec![phone('d', "Kai's iPhone", false, 5)],
+        false,
+        false,
+    ));
+    no_chooser.problem = Some(crate::model::NO_CHOOSER.into());
+    states.push(("dsk-02-no-folder-chooser", no_chooser));
+
     let (mut picked, _) = model(Screen::Connected { device });
     picked.host = Some(host(vec![phone('d', "Kai's iPhone", true, 5)], true, true));
     picked.agents = Agents::default();

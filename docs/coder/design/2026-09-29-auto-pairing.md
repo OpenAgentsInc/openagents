@@ -212,6 +212,11 @@ name for one step.
 - The login item uses `SMAppService` through `objc2-service-management`
   0.3.2; the keychain uses `keyring` 4.2.0 (macOS Keychain, Windows
   Credential Manager, Secret Service on Linux). Both pass `deny.toml`.
+- On Linux the folder chooser asks the desktop portal
+  (`org.freedesktop.portal.FileChooser`) first, over the session bus with
+  `zbus` 5.19, the release and features `keyring`'s Secret Service store
+  already brings in, then `zenity`, then `kdialog`. With none, the screen
+  says no folder chooser opened and how to get one.
 - No web view, no Electron, no Tauri: product code here is Rust
   ([AGENTS.md](../../../AGENTS.md)).
 
