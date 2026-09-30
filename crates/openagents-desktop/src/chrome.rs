@@ -336,8 +336,14 @@ fn action(
         align: Some(TextAlign::Start),
         weight: Some(TextWeight::Normal),
         radius: Some(8),
-        text_size: Some(12),
-        line_height: Some(16),
+        text_size: Some(if multiline { 13 } else { 12 }),
+        line_height: Some(if multiline { 17 } else { 16 }),
+        button_detail: multiline.then_some(rust_native::style::ButtonDetail {
+            text_size: 11,
+            line_height: 16,
+            color: MUTED,
+            leading: true,
+        }),
         button_padding: Some([8, 6]),
         min_height: Some(if multiline { 45 } else { 28 }),
         ..Style::default()

@@ -311,3 +311,26 @@ short-lived benchmark window stays above other windows while it samples;
 ordinary product windows retain their existing window level. The benchmark
 coverage regression, 60 adapter tests, scoped formatting, and strict
 all-target Clippy pass. Native verification follows the merged build.
+
+## Acquisition-first native follow-up
+
+The [merged-build report](native-acquire-first-incomplete.json) remains
+incomplete: 245 occluded acquisitions prevented the commands and chat-menu
+phases from submitting frames. Peak RSS is 189.7 MiB, compared with about
+1.4 GiB in the earlier skipped-acquisition runs. This supports the upload
+ordering fix's memory bound; it does not establish a complete timing pass.
+The benchmark rejects the missing coverage.
+
+## Sidebar context and title
+
+Reimplemented Zeron's two-line sidebar typography: the context appears first
+at 11 points with 16-point line height, followed by the title at 13 points
+with 17-point line height. Each line ellipsizes independently while the
+semantic button retains its complete label. A leading glyph aligns with the
+title. The 45-point chat row stays fixed. Captures:
+[default](sidebar-type-1200.png) and [minimum](sidebar-type-760.png).
+
+Five chat-management checks, 88 core tests (one benchmark ignored), 60 desktop
+adapter tests, scoped formatting, and strict all-target Clippy pass. The
+product regression checks context order, both font sizes and line heights,
+and the fixed row height at both window sizes.

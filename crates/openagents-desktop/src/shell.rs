@@ -2587,6 +2587,52 @@ mod chat_management {
         input::{SurfaceInput, TextInput},
     };
     #[test]
+    fn sidebar_context_precedes_the_title_without_wrapping_the_row() {
+        let (mut app, _) = DesktopApp::performance_fixture(0, 1, Instant::now());
+        let row = app.navigation.as_ref().unwrap().chats[0].clone();
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            let bounds = scene.bounds[&format!("sidebar-chat-{}", row.id)];
+            assert_eq!(bounds.h, 45.0);
+            let runs: Vec<_> = scene
+                .ops
+                .iter()
+                .filter_map(|op| {
+                    if let rust_native_desktop::layout::Op::Text {
+                        paragraph, x, y, ..
+                    } = op
+                        && *x >= bounds.x
+                        && *x < bounds.x + bounds.w
+                        && *y >= bounds.y
+                        && *y < bounds.y + bounds.h
+                    {
+                        Some((paragraph, *y))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert_eq!(runs.len(), 2);
+            assert_eq!(runs[0].0.text, row.detail);
+            assert_eq!(runs[0].0.font.size, 11.0);
+            assert_eq!(runs[0].0.line_height, 16.0);
+            assert_eq!(runs[1].0.text, row.title);
+            assert_eq!(runs[1].0.font.size, 13.0);
+            assert_eq!(runs[1].0.line_height, 17.0);
+            assert_eq!(runs[1].1 - runs[0].1, 16.0);
+            assert!(runs.iter().all(|(paragraph, _)| paragraph.lines.len() == 1));
+            if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
+                let path = std::path::PathBuf::from(path);
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(
+                    path.join(format!("sidebar-type-{width}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+        }
+    }
+    #[test]
     fn native_titlebar_preserves_controls_and_docked_composer_in_both_modes() {
         let now = Instant::now();
         let (mut app, _) = DesktopApp::performance_fixture(0, 1, now);

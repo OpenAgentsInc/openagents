@@ -661,7 +661,61 @@ fn checkbox_state(icon: Option<rust_native::Icon>) -> Option<bool> {
     }
 }
 
+struct ButtonText {
+    runs: Vec<(Rc<Paragraph>, bool)>,
+    width: f32,
+    height: f32,
+}
 impl Engine<'_> {
+    fn button_text(
+        &mut self,
+        label: &str,
+        style: &Style,
+        width: f32,
+        icon_width: f32,
+    ) -> ButtonText {
+        if let Some(detail) = style.button_detail
+            && let Some((title, secondary)) = label.split_once('\n')
+        {
+            let title = self
+                .fonts
+                .ellipsized(title, self.text_font(TextRole::Body, style), width);
+            let title = self.paragraph(&title, TextRole::Body, style, None);
+            let secondary_style = Style {
+                text_size: Some(detail.text_size),
+                line_height: Some(detail.line_height),
+                weight: Some(TextWeight::Normal),
+                ..*style
+            };
+            let secondary_width = width + if detail.leading { icon_width } else { 0.0 };
+            let secondary = self.fonts.ellipsized(
+                secondary,
+                self.text_font(TextRole::Body, &secondary_style),
+                secondary_width,
+            );
+            let secondary = self.paragraph(&secondary, TextRole::Body, &secondary_style, None);
+            let width = (title.width + icon_width)
+                .max(secondary.width + if detail.leading { 0.0 } else { icon_width });
+            let height = title.height + secondary.height;
+            let runs = if detail.leading {
+                vec![(secondary, true), (title, false)]
+            } else {
+                vec![(title, false), (secondary, true)]
+            };
+            ButtonText {
+                runs,
+                width,
+                height,
+            }
+        } else {
+            let paragraph = self.paragraph(label, TextRole::Body, style, Some(width));
+            ButtonText {
+                width: paragraph.width + icon_width,
+                height: paragraph.height,
+                runs: vec![(paragraph, false)],
+            }
+        }
+    }
     fn docked_pane<I>(
         &mut self,
         node: &Node<I>,
@@ -883,20 +937,20 @@ impl Engine<'_> {
                     } else {
                         0.0
                     };
-                    let paragraph = self.paragraph(
+                    let paragraph = self.button_text(
                         label,
-                        TextRole::Body,
                         &Style {
                             weight: node.style.weight.or(Some(TextWeight::Bold)),
                             ..node.style
                         },
-                        Some((inner - 2.0 * button_pad.0 - icon_width - badge_width).max(1.0)),
+                        (inner - 2.0 * button_pad.0 - icon_width - badge_width).max(1.0),
+                        icon_width,
                     );
                     (
                         if node.style.align == Some(TextAlign::Start) {
                             inner
                         } else {
-                            paragraph.width + 2.0 * button_pad.0 + icon_width + badge_width
+                            paragraph.width + 2.0 * button_pad.0 + badge_width
                         },
                         paragraph.height + 2.0 * button_pad.1,
                     )
@@ -1576,11 +1630,11 @@ impl Engine<'_> {
                 weight: node.style.weight.or(Some(TextWeight::Bold)),
                 ..node.style
             };
-            let paragraph = self.paragraph(
+            let paragraph = self.button_text(
                 label,
-                TextRole::Body,
                 &style,
-                Some((inner - 2.0 * button_pad.0 - icon_width - badge_width).max(1.0)),
+                (inner - 2.0 * button_pad.0 - icon_width - badge_width).max(1.0),
+                icon_width,
             );
             rect = Rect {
                 x,
@@ -1588,7 +1642,7 @@ impl Engine<'_> {
                 w: if node.style.align == Some(TextAlign::Start) {
                     inner
                 } else {
-                    paragraph.width + 2.0 * button_pad.0 + icon_width + badge_width
+                    paragraph.width + 2.0 * button_pad.0 + badge_width
                 },
                 h: (paragraph.height + 2.0 * button_pad.1)
                     .max(node.style.min_height.map_or(0.0, f32::from)),
@@ -1614,6 +1668,18 @@ impl Engine<'_> {
                 radius,
                 color: fill,
             });
+            let mut primary_y = y + (rect.h - paragraph.height) / 2.0;
+            for (run, secondary) in &paragraph.runs {
+                if !secondary {
+                    break;
+                }
+                primary_y += run.height;
+            }
+            let primary_height = paragraph
+                .runs
+                .iter()
+                .find(|(_, secondary)| !secondary)
+                .map_or(paragraph.height, |(run, _)| run.height);
             if let Some(icon) = icon {
                 if icon.glyph == rust_native::Glyph::ArrowDown {
                     let arrow = self.paragraph(
@@ -1638,7 +1704,9 @@ impl Engine<'_> {
                     self.scene.ops.push(Op::Glyph {
                         rect: Rect {
                             x: x + button_pad.0,
-                            y: y + (rect.h - f32::from(node.style.glyph_size.unwrap_or(16))) / 2.0,
+                            y: primary_y
+                                + (primary_height - f32::from(node.style.glyph_size.unwrap_or(16)))
+                                    / 2.0,
                             w: f32::from(node.style.glyph_size.unwrap_or(16)),
                             h: f32::from(node.style.glyph_size.unwrap_or(16)),
                         },
@@ -1648,15 +1716,36 @@ impl Engine<'_> {
                     });
                 }
             }
-            let text_y = y + (rect.h - paragraph.height) / 2.0;
-            self.text(
-                paragraph,
-                x + button_pad.0 + icon_width,
-                text_y,
-                rect.w - 2.0 * button_pad.0 - icon_width - badge_width,
-                node.style.align.unwrap_or(TextAlign::Center),
-                color,
-            );
+            let mut text_y = y + (rect.h - paragraph.height) / 2.0;
+            for (run, secondary) in paragraph.runs {
+                let leading = secondary
+                    && node
+                        .style
+                        .button_detail
+                        .is_some_and(|detail| detail.leading);
+                let offset = if leading { 0.0 } else { icon_width };
+                let ink = if secondary {
+                    node.style.button_detail.map_or(color, |detail| {
+                        if enabled {
+                            detail.color
+                        } else {
+                            mix(detail.color, fill, 0.5)
+                        }
+                    })
+                } else {
+                    color
+                };
+                let height = run.height;
+                self.text(
+                    run,
+                    x + button_pad.0 + offset,
+                    text_y,
+                    rect.w - 2.0 * button_pad.0 - offset - badge_width,
+                    node.style.align.unwrap_or(TextAlign::Center),
+                    ink,
+                );
+                text_y += height;
+            }
         }
         if let Some(badge) = badge {
             let text_width = badge.iter().map(|p| p.width).sum::<f32>();
