@@ -58,7 +58,8 @@ pub struct Options {
     pub workspace: bool,
     /// The program that changes the auto-start policy.
     pub autostart: Option<PathBuf>,
-    /// Issue chat invitations beside grants redeemed over iroh.
+    /// Serve read-only Coder chats on the relay and issue invitations to
+    /// them: beside grants redeemed over iroh, and on `chats.invite`.
     pub chats: bool,
 }
 
@@ -114,6 +115,7 @@ pub async fn host_with(options: Options) -> Host {
                 ..coder_history::Config::default()
             },
         });
+        config.serve_chats = true;
     }
     let running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
     Host {
@@ -296,4 +298,43 @@ impl Phone {
     pub fn device(&self, access: Access) -> Arc<Device> {
         Arc::new(Device::new(access, self.secret, POLICY).unwrap())
     }
+}
+
+/// Ask the host for a chat invitation over `link` (`chats.invite`).
+pub async fn invite_chats(link: &Link) -> coder_host::Result<(String, u64)> {
+    match link
+        .call(coder_host::access::protocol::Operation::InviteChats {})
+        .await?
+    {
+        coder_host::access::protocol::Outcome::Chats {
+            invitation,
+            expires_at,
+        } => Ok((invitation, expires_at)),
+        other => panic!("not a chat invitation: {other:?}"),
+    }
+}
+
+/// Redeem a `coder-pair:` invitation as `secret` against the host's chat
+/// observer and read its Coder chat catalog, as the phone's Coder tab
+/// does: the invitation is usable, not only well formed.
+pub async fn read_chats(invitation: &str, secret: &SecretKey) -> coder_connect::ConnectionCode {
+    let code = tokio::time::timeout(
+        Duration::from_secs(30),
+        coder_connect::pairing::redeem(invitation, secret, POLICY),
+    )
+    .await
+    .expect("the observer answers")
+    .expect("the chat invitation redeems");
+    let client = coder_connect::Client::new_with_policy(code.clone(), *secret, POLICY).unwrap();
+    let page = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.observe(coder_connect::Query::Catalog(
+            coder_history::CatalogRequest::default(),
+        )),
+    )
+    .await
+    .expect("the catalog answers")
+    .expect("the catalog reads");
+    assert!(matches!(page, coder_connect::Observation::Catalog(_)));
+    code
 }

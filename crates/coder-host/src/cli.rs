@@ -659,6 +659,13 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         config.serve_chats = !admission
             .as_ref()
             .is_some_and(|admission| admission.chats.is_some());
+    } else if let Some(chats) = admission
+        .as_ref()
+        .and_then(|admission| admission.chats.clone())
+    {
+        // Tailnet admission serves the observer; `chats.invite` issues from
+        // the same store, so a device renews its chats over any link.
+        config.chats = Some(chats);
     }
 
     raise_open_file_limit();

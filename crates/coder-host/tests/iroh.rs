@@ -116,6 +116,89 @@ async fn a_phone_that_pairs_over_iroh_gets_a_chat_invitation_and_a_refused_one_d
     plain.running.shutdown().await;
 }
 
+/// A chat grant lasts 29 days; a phone asks again well before it ends.
+const CHAT_GRANT_SECS: u64 = 29 * 24 * 60 * 60;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_phone_paired_over_iroh_reads_its_chats_and_renews_them_on_its_link() {
+    let host = support::host_with(support::Options {
+        chats: true,
+        ..support::Options::default()
+    })
+    .await;
+    let (_, code) = host.code(false).await;
+    let phone = Phone::new().await;
+    let (invitation, pending, answer) = phone.answer(&code, &host.relay, now()).await;
+    let reply: nostr::domain::Event =
+        serde_json::from_str(answer.reply.as_deref().unwrap()).unwrap();
+    let access = coder_host::access::client::finish_redeem(
+        &invitation,
+        &pending,
+        &reply,
+        &phone.secret,
+        now(),
+        support::POLICY,
+    )
+    .unwrap();
+    // The invitation the enroll reply carried reads the host's Coder chats.
+    let first = support::read_chats(&answer.chats.unwrap(), &phone.secret).await;
+    assert!(first.expires_at.abs_diff(now() + CHAT_GRANT_SECS) <= 60);
+    // Before that grant ends the phone asks again on its link, as a phone
+    // paired by any other path does, and the new invitation reads too.
+    let device = phone.device(access);
+    let link = phone.link(&host, &device).await.unwrap();
+    let (again, expires_at) = support::invite_chats(&link).await.unwrap();
+    assert!(expires_at.abs_diff(now() + CHAT_GRANT_SECS) <= 60);
+    let renewed = support::read_chats(&again, &phone.secret).await;
+    assert_ne!(renewed.grant, first.grant);
+    host.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_phone_that_redeems_a_code_on_the_relay_gets_its_chats_from_chats_invite() {
+    let host = support::host_with(support::Options {
+        chats: true,
+        ..support::Options::default()
+    })
+    .await;
+    let (_, code) = host.code(false).await;
+    // iroh cannot connect, so the phone redeems the same code on the relay,
+    // whose answer carries no chat invitation.
+    let phone = Phone::new().await;
+    let enrolled = coder_host::client::iroh::enroll_on_relay(
+        &code.encode(),
+        &host.relay,
+        &phone.secret,
+        support::POLICY,
+    )
+    .await
+    .unwrap();
+    assert!(enrolled.chats.is_none());
+    assert!(enrolled.access.grant.rights.contains(Right::Observe));
+    // It asks on the relay, where it now talks to the computer.
+    let device = phone.device(enrolled.access);
+    let link = coder_host::client::Link::relay(device, host.relay.clone());
+    let (invitation, _) = support::invite_chats(&link).await.unwrap();
+    support::read_chats(&invitation, &phone.secret).await;
+    host.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_host_that_serves_no_chats_refuses_chats_invite_as_unavailable() {
+    let host = host().await;
+    let (_, code) = host.code(false).await;
+    let phone = Phone::new().await;
+    let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
+    let device = phone.device(access.unwrap());
+    let link = phone.link(&host, &device).await.unwrap();
+    let error = support::invite_chats(&link).await.unwrap_err();
+    assert!(
+        matches!(&error, Error::Access(e) if e.code == Code::Unavailable),
+        "{error:?}"
+    );
+    host.running.shutdown().await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_phone_whose_clock_is_off_by_thirty_seconds_still_pairs_and_works() {
     let host = host().await;

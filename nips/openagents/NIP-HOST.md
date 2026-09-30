@@ -629,6 +629,7 @@ A request is `openagents.host-request.v1`:
 | `workspace.list` | `operate` | `workspaces` |
 | `spend.list` | `operate` | `spends` |
 | `spend.settle` | `operate` | `settled` |
+| `chats.invite` | `observe` | `chats` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -640,6 +641,15 @@ most 128 bytes, never a path. `terminal.open` carries `{cols, rows}`, each
 host. A host with no task owner refuses it as `unavailable`, and an older
 host that predates it refuses it as `malformed` or `unsupported`; a client
 then asks for the label instead of offering a list.
+`chats.invite` carries nothing and returns `{invitation, expires_at}`: a
+single-use `coder-pair:` invitation of at most 4,096 bytes to the host's
+read-only Coder chats, the same one the iroh enroll reply and
+[tailnet admission](#tailnet-admission) carry, and when the chat grant it
+carries ends. It admits only the host's Coder task store. A device holding
+`observe` asks for one after pairing by any path whose answer carried none
+(nearby approval, or a connect code redeemed on the relay), and again before
+its chat grant ends. A host that serves no chats refuses it as
+`unavailable`, and an older host as `malformed` or `unsupported`.
 `task.steer` carries `{task, revision, prompt}` and `task.cancel` carries
 `{task, revision, reason}`: the host-issued task ID from a `task.create`
 receipt, the task revision the device last read, and a replacement prompt of
@@ -1048,7 +1058,8 @@ device now holds a current grant with `observe`, the reply may also carry
 `chats`: a single-use `coder-pair:` invitation to the host's read-only Coder
 chats, the same one [tailnet admission](#tailnet-admission) hands over, so a
 phone reads the tasks it starts there. A refused device gets none, and a
-redemption on the relay carries none. The info step above is not yet served, so the
+redemption on the relay carries none; that device, a device paired nearby,
+and any device whose chat grant nears its end ask with `chats.invite`. The info step above is not yet served, so the
 device signs the relay it uses by default, which a desktop host serves.
 `crates/coder-host/tests/iroh.rs` and `tests/control.rs` cover a
 redemption over iroh, a second device refused `forbidden`, a terminal only

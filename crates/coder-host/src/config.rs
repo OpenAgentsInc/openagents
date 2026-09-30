@@ -161,8 +161,9 @@ pub struct Config {
     pub control: Option<Control>,
     /// The computer's name, shown on a connect code and a phone's list.
     pub label: String,
-    /// Read-only Coder chats for phones that pair with a connect code: a
-    /// grant redeemed on the iroh enroll ALPN comes with a chat invitation.
+    /// Read-only Coder chats for paired phones: a grant redeemed on the
+    /// iroh enroll ALPN comes with a chat invitation, and any device holding
+    /// `observe`, however it paired, gets one from `chats.invite`.
     /// `serve_chats` also serves the history observer on the relay; it is
     /// off when tailnet admission already serves it from this process.
     pub chats: Option<crate::tailnet::Chats>,

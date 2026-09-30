@@ -55,7 +55,30 @@ fn principal(device: &str, grant: Option<(&str, u64)>) -> crate::tasks::Principa
     }
 }
 
+/// A single-use `coder-pair:` invitation to this host's read-only Coder
+/// chats, naming the host's primary relay, and when its chat grant ends.
+/// Every pairing path reaches the same invitation: the iroh enroll reply
+/// carries one, and `chats.invite` issues one to a device holding
+/// `observe`, however it paired. `unavailable` when the host serves no
+/// chats.
+pub(crate) fn chat_invitation(config: &crate::config::Config) -> Result<(String, u64), Code> {
+    let chats = config.chats.clone().ok_or(Code::Unavailable)?;
+    let relay = config.primary().map_err(|_| Code::Unavailable)?.to_owned();
+    let now = crate::unix_time().map_err(|_| Code::Unavailable)?;
+    let expires_at = now.saturating_add(crate::tailnet::CHAT_GRANT_SECS);
+    coder_connect::host::Host::new(&chats.observer, config.policy)
+        .invite(&relay, chats.sources, now, expires_at)
+        .map(|invitation| (invitation, expires_at))
+        .map_err(|_| Code::Unavailable)
+}
+
 impl Dispatch for Dispatcher {
+    /// A chat invitation for a device the access layer admitted with
+    /// `observe`.
+    fn chats(&mut self, _device: &str, _now: u64) -> Result<(String, u64), Code> {
+        chat_invitation(&self.shared.config)
+    }
+
     /// The book of agent spend requests the phone answers.
     fn spends(&mut self) -> Option<&mut dyn coder_access::host::Spends> {
         Some(&mut self.spends)

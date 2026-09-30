@@ -125,6 +125,53 @@ async fn the_click_on_the_computer_grants_the_nearby_phone() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_nearby_phone_reads_its_chats_with_an_invitation_from_chats_invite() {
+    let host = support::host_with(support::Options {
+        chats: true,
+        ..support::Options::default()
+    })
+    .await;
+    let phone = Phone::new().await;
+    let (shown, _on_phone) = oneshot::channel();
+    let clicker = async {
+        let prompt = prompt(&host).await;
+        call(
+            &host.socket,
+            Op::NearbyDecide {
+                id: prompt.id,
+                connect: true,
+                terminal: false,
+            },
+        )
+        .await
+        .unwrap();
+    };
+    let (outcome, ()) = tokio::join!(pair(&host, &phone, shown), clicker);
+    let DeviceOutcome::Approved {
+        host_now, event, ..
+    } = outcome
+    else {
+        panic!("not approved: {outcome:?}");
+    };
+    let event: Event = serde_json::from_value(event).unwrap();
+    let access = Access::from_authorization(
+        event,
+        &phone.secret,
+        host.running.host_key(),
+        host_now,
+        POLICY,
+    )
+    .unwrap();
+    // The nearby exchange carries no chat invitation; the phone asks for one
+    // on its new link, and it reads the host's Coder chats.
+    let device = phone.device(access);
+    let link = phone.link(&host, &device).await.unwrap();
+    let (invitation, _) = support::invite_chats(&link).await.unwrap();
+    support::read_chats(&invitation, &phone.secret).await;
+    host.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dont_connect_grants_nothing() {
     let host = host().await;
     let phone = Phone::new().await;

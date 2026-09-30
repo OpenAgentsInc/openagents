@@ -23,6 +23,7 @@ mod app;
 mod basic_chats;
 mod basic_coder;
 mod basic_link;
+mod chat_invites;
 // Debug builds only: offline fixtures for simulator and emulator screenshots.
 // A release build does not compile them.
 #[cfg(any(debug_assertions, test))]

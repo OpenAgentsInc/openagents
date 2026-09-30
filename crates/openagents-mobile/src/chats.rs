@@ -3,8 +3,10 @@
 //! lists, kept across a relaunch, and the client the Coder tab reads each
 //! task's transcript through.
 //!
-//! A computer pairs for reading through tailnet admission, whose answer
-//! carries a chat pairing linked to the machine's Computers host key; a host
+//! A computer pairs for reading through a `coder-pair:` invitation linked
+//! to the machine's Computers host key: the iroh enroll reply's, tailnet
+//! admission's, or one the phone asks for with `chats.invite` on any other
+//! path and before a chat grant ends ([`crate::chat_invites`]); a host
 //! grant never admits a history read by itself. Reads run in the
 //! background; the host polls with `snapshot`.
 //!
@@ -226,8 +228,9 @@ impl Chats {
         }
     }
 
-    /// Pair from a `coder-pair:` string that tailnet admission handed over,
-    /// named `label` and linked to the machine's Computers host key `linked`.
+    /// Pair from a `coder-pair:` string that tailnet admission, the iroh
+    /// enroll reply, or `chats.invite` handed over, named `label` and linked
+    /// to the machine's Computers host key `linked`.
     pub fn pair(
         &mut self,
         text: String,
@@ -249,13 +252,14 @@ impl Chats {
             let Ok(code) = code else { return };
             let host = code.host.clone();
             let mut guard = lock(&state);
-            // Paired again: its chats keep showing while they are read.
-            let known = guard
+            // Paired again: its chats keep showing while they are read, and a
+            // renewal that names no direct address keeps the one it had.
+            let (known, direct) = guard
                 .computers
                 .iter_mut()
                 .find(|c| c.saved.code.host == host)
-                .map(|c| std::mem::take(&mut c.chats))
-                .unwrap_or_default();
+                .map(|c| (std::mem::take(&mut c.chats), direct.or(c.saved.direct)))
+                .unwrap_or((Vec::new(), direct));
             guard.computers.retain(|c| c.saved.code.host != host);
             let saved = Saved {
                 code,

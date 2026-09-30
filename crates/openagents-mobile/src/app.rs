@@ -721,6 +721,10 @@ pub struct App {
     /// How agent spend requests reach the computers; `None` without the
     /// live client.
     spend_transport: Option<Arc<dyn crate::spend::Transport>>,
+    /// Chat invitations asked of computers paired without a current one.
+    chat_invites: crate::chat_invites::Invites,
+    /// How those asks reach the computers; `None` without the live client.
+    chat_asker: Option<Arc<dyn crate::chat_invites::Asker>>,
     trainer: crate::trainer::Trainer,
     /// Report a problem, My reports, and the playtest log.
     playtest: crate::playtest::Playtest,
@@ -845,6 +849,12 @@ impl App {
         let spend_transport = terminals.clone().map(|terminals| {
             Arc::new(crate::spend::Live::new(terminals, runtime.handle().clone()))
                 as Arc<dyn crate::spend::Transport>
+        });
+        let chat_asker = terminals.clone().map(|terminals| {
+            Arc::new(crate::chat_invites::Live::new(
+                terminals,
+                runtime.handle().clone(),
+            )) as Arc<dyn crate::chat_invites::Asker>
         });
         let remote_cli = terminals.clone().map(|terminals| {
             Arc::new(crate::cli_run::Live::new(
@@ -987,6 +997,8 @@ impl App {
             },
             spend,
             spend_transport,
+            chat_invites: crate::chat_invites::Invites::default(),
+            chat_asker,
             trainer: crate::trainer::Trainer::default(),
             playtest: crate::playtest::Playtest::live(
                 Cache::open(&config.state_dir.join("playtest"), &secret).ok(),
@@ -1658,6 +1670,7 @@ impl App {
                         .ok()
                         .map(|ip| std::net::SocketAddr::from((ip, coder_host::tailnet::PORT)));
                     if let Some(chats) = admission.chats.clone() {
+                        self.chat_invites.got(&admission.host);
                         self.chats
                             .pair(chats, label, admission.host.clone(), direct);
                     }
@@ -1699,6 +1712,32 @@ impl App {
         let value = serde_json::to_value(view.view()).ok();
         self.tailnet_view = Some(view);
         value
+    }
+
+    /// Pair the chat invitations that arrived, and ask each computer this
+    /// phone may observe, and holds no chat pairing for that lasts another
+    /// day, for one: a computer paired nearby or on the relay, whose answer
+    /// carried none, or one whose chat grant is near its end.
+    fn renew_chats(&mut self) {
+        for (host, label, invitation) in self.chat_invites.take() {
+            self.chats.pair(invitation, label, host, None);
+        }
+        let (Some(asker), Some(computers)) = (self.chat_asker.clone(), &self.computers) else {
+            return;
+        };
+        let soon = now().saturating_add(24 * 60 * 60);
+        let snapshot = computers.snapshot();
+        let chats = &self.chats;
+        let wanted = crate::chat_invites::wanted(
+            snapshot
+                .hosts
+                .iter()
+                .map(|host| (host.key.as_str(), host.label.as_str(), &host.enrollment)),
+            |host| chats.linked(host, soon),
+        );
+        if !wanted.is_empty() {
+            self.chat_invites.ask(wanted, asker);
+        }
     }
 
     /// Read agents' spend requests from the computers this phone may
@@ -1761,11 +1800,13 @@ impl App {
             }
             // Its Coder chats, so a task started there reads back here.
             if let Some(chats) = paired.chats.clone() {
+                self.chat_invites.got(&paired.host);
                 self.chats
                     .pair(chats, paired.label.clone(), paired.host.clone(), None);
             }
             self.coder.prefer(paired.host);
         }
+        self.renew_chats();
         self.poll_spends();
         let tailnet = self.render_tailnet();
         // Chat commands that waited for their computer try again.

@@ -142,6 +142,7 @@ fn every_operation_has_a_fixture() {
         "task.queue",
         "spend.list",
         "spend.settle",
+        "chats.invite",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }
@@ -177,4 +178,27 @@ fn workspace_lists_are_sorted_distinct_and_bounded() {
         Operation::ListWorkspaces {}.required(),
         Some(coder_access::Right::Operate)
     );
+}
+
+#[test]
+fn chats_invite_requires_observe_and_answers_only_a_chat_invitation() {
+    use coder_access::protocol::{MAX_CHAT_INVITATION, Operation, Outcome};
+    let op = Operation::InviteChats {};
+    assert_eq!(op.name(), "chats.invite");
+    assert_eq!(op.required(), Some(coder_access::Right::Observe));
+    let chats = |invitation: String| Outcome::Chats {
+        invitation,
+        expires_at: 1_790_000_000,
+    };
+    let good = chats("coder-pair:AAAA".into());
+    assert!(good.validate().is_ok());
+    assert!(good.answers(&op));
+    assert!(!good.answers(&Operation::ListWorkspaces {}));
+    for bad in [
+        chats("coder-host:AAAA".into()),
+        chats(format!("coder-pair:{}", "A".repeat(MAX_CHAT_INVITATION))),
+        chats("coder-pair:\u{e9}".into()),
+    ] {
+        assert_eq!(bad.validate().expect_err("refused").code, Code::Malformed);
+    }
 }

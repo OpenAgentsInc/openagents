@@ -58,8 +58,12 @@ coder-service service install --host-key "$(coder host public-key)"
 The read-only history observer in `coder-connect` stays a separate
 capability with its own key under `~/.openagents/coder-connect/` and its own
 `coder-pair:` pairing. A host grant never admits an observer read, and an
-observer grant never admits a host operation. The host process serves the
-observer in-process only with tailnet admission and chats on (below).
+observer grant never admits a host operation, except that NIP-HOST
+`chats.invite` hands a device holding `observe` a `coder-pair:` invitation.
+The host process serves the observer in-process with tailnet admission and
+chats on (below), or with iroh on and a Coder task directory; the iroh enroll
+reply carries an invitation, and a device paired any other way, or whose
+chat grant nears its end, asks with `chats.invite`.
 
 ## Tailnet admission
 

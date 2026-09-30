@@ -529,6 +529,12 @@ pub enum Operation {
     /// Record the sender's receipt for one of those requests.
     #[serde(rename = "spend.settle")]
     SettleSpend { receipt: Box<crate::spend::Receipt> },
+    /// Ask for a single-use `coder-pair:` invitation to the host's
+    /// read-only Coder chats, so the sender reads the tasks it starts. A
+    /// device asks after pairing by any path and again before the chat
+    /// grant ends.
+    #[serde(rename = "chats.invite")]
+    InviteChats {},
 }
 impl Operation {
     pub fn name(&self) -> &'static str {
@@ -550,6 +556,7 @@ impl Operation {
             Self::QueueTask { .. } => "task.queue",
             Self::ListSpends { .. } => "spend.list",
             Self::SettleSpend { .. } => "spend.settle",
+            Self::InviteChats {} => "chats.invite",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -563,6 +570,7 @@ impl Operation {
             | Self::CancelInvite { .. }
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
+            Self::InviteChats {} => Some(Right::Observe),
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -611,7 +619,7 @@ impl Operation {
                 grant_expires_at, ..
             } => safe(*grant_expires_at)?,
             Self::CancelInvite { invitation } => identity(invitation).map_err(Error::from)?,
-            Self::ListDevices {} | Self::ListWorkspaces {} => {}
+            Self::ListDevices {} | Self::ListWorkspaces {} | Self::InviteChats {} => {}
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
                 text(&task.title, 200)?;
@@ -773,7 +781,16 @@ pub enum Outcome {
     Settled {
         receipt: Box<crate::spend::Receipt>,
     },
+    /// A single-use `coder-pair:` invitation to the host's read-only Coder
+    /// chats (`chats.invite`), and when the chat grant it carries ends.
+    Chats {
+        invitation: String,
+        expires_at: u64,
+    },
 }
+
+/// The longest `coder-pair:` invitation a `chats` outcome carries.
+pub const MAX_CHAT_INVITATION: usize = 4096;
 
 /// The most workspace labels a `workspaces` outcome carries.
 pub const MAX_WORKSPACES: usize = 64;
@@ -820,6 +837,13 @@ impl Outcome {
         if let Self::Settled { receipt } = self {
             receipt.validate()?;
         }
+        if let Self::Chats { invitation, .. } = self
+            && (!invitation.starts_with(coder_connect::pairing::PREFIX)
+                || invitation.len() > MAX_CHAT_INVITATION
+                || !invitation.is_ascii())
+        {
+            return fail(Code::Malformed, "not a chat invitation");
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -845,7 +869,8 @@ impl Outcome {
             | (Operation::Revoke { .. }, Self::Revoked { .. })
             | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
             (Operation::QueueTask { task, .. }, Self::Queue { queue }) => queue.task == *task,
-            (Operation::ListSpends { .. }, Self::Spends { .. }) => true,
+            (Operation::ListSpends { .. }, Self::Spends { .. })
+            | (Operation::InviteChats {}, Self::Chats { .. }) => true,
             (Operation::SettleSpend { receipt }, Self::Settled { receipt: recorded }) => {
                 recorded.request == receipt.request && recorded.grant == receipt.grant
             }

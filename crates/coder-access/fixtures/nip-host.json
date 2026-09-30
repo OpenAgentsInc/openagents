@@ -328,6 +328,20 @@
         "kind": "workspace.list"
       }
     },
+    "request_chats_invite": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "chats.invite"
+      }
+    },
     "request_spend_list": {
       "v": "openagents.host-request.v1",
       "requires": [],

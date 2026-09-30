@@ -1593,6 +1593,7 @@ dependencies = [
  "coder-connect",
  "nostr",
  "nostr-transport",
+ "private-fs",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -1626,6 +1627,7 @@ dependencies = [
  "coder-history",
  "nostr",
  "nostr-transport",
+ "private-fs",
  "qrcodegen",
  "secp256k1 0.31.1",
  "serde",
@@ -1657,6 +1659,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "openagents-connect",
+ "private-fs",
  "rustls",
  "secp256k1 0.31.1",
  "serde",
@@ -5692,6 +5695,13 @@ dependencies = [
  "fixed-hash",
  "impl-codec",
  "uint",
+]
+
+[[package]]
+name = "private-fs"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

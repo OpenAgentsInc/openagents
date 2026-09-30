@@ -162,3 +162,106 @@ fn a_phone_pairs_over_loopback_iroh_then_creates_a_task_over_iroh() {
     assert_eq!(created.len(), 1);
     assert_eq!(created[0].workspace, "checkout");
 }
+
+/// A connect code redeemed on the relay, because this phone has no iroh
+/// path, carries no chat invitation. The phone asks for one on the link
+/// the service keeps (`chats.invite`, as the app does for any computer it
+/// holds no current chat pairing for), and the invitation reads the
+/// computer's Coder chats.
+#[test]
+fn a_phone_paired_on_the_relay_asks_for_its_chats_on_its_link() {
+    use coder_host::access::protocol::{Operation, Outcome};
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(3)
+        .enable_all()
+        .build()
+        .unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let (relay, _relay_task, _events) = runtime.block_on(relay::start());
+
+    // The computer serves iroh on loopback and its Coder chats on the relay.
+    let access = temp.path().join("access");
+    let store = Host::new(&access, POLICY);
+    let host_key = store.init(&coder_host::reach::pubkey(&key())).unwrap();
+    let tasks_dir = temp.path().join("tasks");
+    std::fs::create_dir_all(&tasks_dir).unwrap();
+    let mut config = Config::new(access, vec![relay.clone()], 3);
+    config.policy = POLICY;
+    config.iroh = Some(Iroh::loopback());
+    config.label = "Studio Mac".into();
+    config.chats = Some(coder_host::tailnet::Chats {
+        observer: temp.path().join("observer"),
+        sources: coder_connect::coder_history::Config {
+            coder: Some(tasks_dir),
+            ..coder_connect::coder_history::Config::default()
+        },
+    });
+    config.serve_chats = true;
+    let running = runtime
+        .block_on(coder_host::start(config, Arc::new(Recorder::default())))
+        .unwrap();
+    let addr = running.iroh_addr().expect("the host serves iroh");
+    let rights = Rights::new([Right::Observe, Right::Operate]).unwrap();
+    let issued = store.invite(&relay, rights, now(), now() + 86_400).unwrap();
+    let code = ConnectCode::from_invitation(
+        CodeParts {
+            host: host_key.clone(),
+            endpoint: addr.id,
+            issued_at: issued.issued_at,
+            relay: None,
+            addrs: addr.ip_addrs().copied().collect(),
+            label: "Studio Mac".into(),
+        },
+        &issued.id,
+        &issued.capability,
+    )
+    .unwrap()
+    .encode();
+
+    // The phone has no iroh key, so the code goes on the relay.
+    let mut settings = Settings::new(Platform::Phone);
+    settings.policy = POLICY;
+    settings.locality = Locality::OtherMachine;
+    settings.refresh_every = Duration::from_secs(1);
+    settings.connect_relay = relay.clone();
+    let secret = key();
+    let phone = Live::open(
+        settings,
+        secret,
+        Box::new(MemoryStore::default()),
+        runtime.handle().clone(),
+    )
+    .unwrap();
+    let paired = runtime
+        .block_on(phone.pairing().pair(&code))
+        .unwrap_or_else(|failure| panic!("{failure:?}"));
+    assert_eq!(paired.over, PairedOver::Relay);
+    assert!(paired.chats.is_none());
+
+    let links = phone.terminals().links(&host_key);
+    let deadline = Instant::now() + WAIT;
+    let link = loop {
+        if let Ok(link) = links() {
+            break link;
+        }
+        assert!(Instant::now() < deadline, "the phone never connected");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let Outcome::Chats { invitation, .. } = runtime
+        .block_on(link.call(Operation::InviteChats {}))
+        .unwrap()
+    else {
+        panic!("a chat invitation")
+    };
+    let chats = runtime
+        .block_on(coder_connect::pairing::redeem(&invitation, &secret, POLICY))
+        .expect("the chat invitation redeems");
+    let client = coder_connect::Client::new_with_policy(chats, secret, POLICY).unwrap();
+    let page = runtime
+        .block_on(client.observe(coder_connect::Query::Catalog(
+            coder_connect::coder_history::CatalogRequest::default(),
+        )))
+        .expect("the catalog reads");
+    assert!(matches!(page, coder_connect::Observation::Catalog(_)));
+}

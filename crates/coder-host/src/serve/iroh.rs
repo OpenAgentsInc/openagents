@@ -252,14 +252,13 @@ fn serve_chats(
 /// only when it now holds a current grant with `observe`: a device the
 /// host refused never gets one. `None` when this host serves no chats.
 async fn chat_invitation(shared: &Arc<Shared>, request: &str) -> Option<String> {
-    let chats = shared.config.chats.clone()?;
-    let relay = shared.config.primary().ok()?.to_owned();
-    let policy = shared.config.policy;
+    shared.config.chats.as_ref()?;
     let event: Event = serde_json::from_str(request).ok()?;
     let device = event.pubkey;
-    let authority = shared.authority.clone();
+    let shared = shared.clone();
     tokio::task::spawn_blocking(move || {
-        let admitted = authority
+        let admitted = shared
+            .authority
             .local(|host, now| host.devices(now))
             .ok()?
             .into_iter()
@@ -271,15 +270,9 @@ async fn chat_invitation(shared: &Arc<Shared>, request: &str) -> Option<String> 
         if !admitted {
             return None;
         }
-        let now = unix_time().ok()?;
-        coder_connect::host::Host::new(&chats.observer, policy)
-            .invite(
-                &relay,
-                chats.sources,
-                now,
-                now.saturating_add(crate::tailnet::CHAT_GRANT_SECS),
-            )
+        super::dispatch::chat_invitation(&shared.config)
             .ok()
+            .map(|(invitation, _)| invitation)
     })
     .await
     .ok()

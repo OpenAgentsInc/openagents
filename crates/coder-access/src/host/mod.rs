@@ -76,6 +76,13 @@ pub trait Dispatch: Send {
     fn spends(&mut self) -> Option<&mut dyn Spends> {
         None
     }
+    /// A single-use `coder-pair:` invitation to the host's read-only Coder
+    /// chats for `device`, which holds `observe`, and when the chat grant it
+    /// carries ends (`chats.invite`). A host that serves no chats has none
+    /// to offer.
+    fn chats(&mut self, _device: &str, _now: u64) -> std::result::Result<(String, u64), Code> {
+        Err(Code::Unavailable)
+    }
 }
 /// Where the host keeps agent spend requests (phase 1 agent spending). The
 /// host has checked the sender's `operate` right, and for `spend.list` that
@@ -719,6 +726,22 @@ impl Host {
                     }
                 }
             }
+            Operation::InviteChats {} => match dispatch.chats(&p.key, now) {
+                Ok((invitation, expires_at)) => {
+                    let outcome = Outcome::Chats {
+                        invitation,
+                        expires_at,
+                    };
+                    match outcome.validate() {
+                        Ok(()) => Ok(outcome),
+                        Err(_) => Err(Error::new(
+                            Code::Unavailable,
+                            "the chat invitation is invalid",
+                        )),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host serves no chats")),
+            },
             Operation::SettleSpend { receipt } => {
                 match dispatch.spends().map(|s| s.settle(&p.key, receipt, now)) {
                     Some(Ok(recorded)) => {
