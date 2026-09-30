@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "33",
+        title: "Shared chat code",
+        what_to_test: "Nothing should look different. In a new chat, ask \"Who are you\" and \"How do I connect a phone\": both replies should stream in, and the second should describe scanning the QR code in OpenAgents for Mac. Then close the app fully and open it again: the chat should still be in your chat history.",
+        items: &[Item {
+            title: "Chat runs on shared code",
+            detail: "The chat now runs on the same shared code the desktop app will use. Nothing you see should change.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "32",
         title: "Right answers about connecting",
         what_to_test: "In a new chat, ask \"How do I connect a phone\" and \"Do I need Tailscale?\": the replies should describe scanning the QR code in OpenAgents for Mac (from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg), with no Tailscale steps, no commands to run, and no [openagents.…] tags anywhere in the reply. Then connect your Mac: open OpenAgents for Mac, and on the phone tap Account, Computers, Connect a computer and scan the code, or scan it with the iPhone Camera. Both screens should say the computer is connected.",
