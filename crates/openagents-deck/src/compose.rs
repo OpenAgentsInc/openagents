@@ -777,7 +777,15 @@ mod tests {
         let rich = title.rich().unwrap();
         let drawn = (rich.inset() + rich.natural_width()) / 2.0;
         let middle = title.x + drawn * title.magnification;
-        assert!((middle - WIDTH / 2.0).abs() < 2.0, "centered at {middle}");
+        assert!(
+            (middle - WIDTH / 2.0).abs() < 2.0,
+            "centered at {middle}: x {} inset {} natural {} width {} mag {}",
+            title.x,
+            rich.inset(),
+            rich.natural_width(),
+            rich.width(),
+            title.magnification
+        );
         let foot = slide.parts.iter().find(|p| p.kind == "foot").unwrap();
         assert_eq!(foot.text, "1 / 1");
     }

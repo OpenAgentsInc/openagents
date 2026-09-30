@@ -49,11 +49,7 @@ impl Rich {
 
     /// As [`Rich::new`], in the bundled font pair `family`, such as a
     /// [`crate::Theme`]'s `font_family`.
-    pub fn in_family(
-        node: Node<()>,
-        width: f32,
-        family: FontFamily,
-    ) -> Result<Rich, LayoutError> {
+    pub fn in_family(node: Node<()>, width: f32, family: FontFamily) -> Result<Rich, LayoutError> {
         let width = width.clamp(1.0, READING_WIDTH);
         // The row layout keeps a side margin inside the width it gets; ask
         // for that much more, so the content band is `width`.
