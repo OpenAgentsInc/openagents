@@ -17,6 +17,101 @@ mod support;
 use support::{Options, host_with};
 use support::{Phone, call, host, now};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn local_chat_records_restore_through_the_private_socket_after_restart() {
+    use openagents_chat::service::Command;
+    let host = host().await;
+    let id = "4".repeat(32);
+    let Reply::Chat { snapshot } = call(
+        &host.socket,
+        Op::Chat {
+            command: Command::Create { chat: id.clone() },
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("created chat")
+    };
+    assert_eq!(snapshot.chat.as_ref(), Some(&id));
+    assert_eq!(snapshot.chats[0].title, "New chat");
+    assert!(!snapshot.busy);
+    let secret = host.store.signing_key().unwrap();
+    host.running.shutdown().await;
+    // Seed completed synthetic turns through the same encrypted cache format.
+    // No worker call, owner home, or public relay participates in this fixture.
+    let cache =
+        openagents_chat::cache::Cache::open(&host.root.join("basic-chats"), &secret).unwrap();
+    let mut summary = snapshot.chats[0].clone();
+    summary.title = "A saved conversation".into();
+    summary.updated += 1;
+    cache
+        .write(
+            &format!("basic-{id}"),
+            &serde_json::json!({
+                "summary": summary,
+                "turns": [openagents_chat::basic_coder::Turn::user("Synthetic question"),
+                    openagents_chat::basic_coder::Turn::assistant("Synthetic answer", None)]
+            }),
+        )
+        .unwrap();
+    let mut config = coder_host::config::Config::new(
+        host.temp.path().join("access"),
+        vec![host.relay.clone()],
+        4,
+    );
+    config.policy = support::POLICY;
+    config.iroh = Some(coder_host::config::Iroh::loopback());
+    config.control = Some(coder_host::config::Control {
+        path: host.socket.clone(),
+        root: host.root.clone(),
+        autostart: None,
+        uid: coder_host::control::own_uid(),
+    });
+    let running = coder_host::start(config, std::sync::Arc::new(coder_host::NoTasks))
+        .await
+        .unwrap();
+    let Reply::Chat { snapshot } = call(
+        &host.socket,
+        Op::Chat {
+            command: Command::Read {
+                chat: id.clone(),
+                before: None,
+            },
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("restored chat")
+    };
+    assert_eq!(snapshot.turns.len(), 2);
+    assert_eq!(snapshot.turns[1].text, "Synthetic answer");
+    assert_eq!(snapshot.chats[0].title, "A saved conversation");
+    assert!(snapshot.storage_error.is_none());
+    let Reply::Chat { snapshot } = call(
+        &host.socket,
+        Op::Chat {
+            command: Command::Archive { chat: id.clone() },
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("archive")
+    };
+    assert!(snapshot.chats[0].archived);
+    let Reply::Chat { snapshot } = call(
+        &host.socket,
+        Op::Chat {
+            command: Command::Restore { chat: id },
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("restore")
+    };
+    assert!(!snapshot.chats[0].archived);
+    running.shutdown().await;
+}
+
 #[cfg(unix)]
 fn mode(path: &std::path::Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777

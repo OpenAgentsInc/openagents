@@ -902,6 +902,40 @@ mod tests {
     }
 
     #[test]
+    fn fresh_store_opens_an_editable_chat_without_setup() {
+        use openagents_chat::service::{Command, Snapshot};
+        use rust_native_desktop::input::TextInput;
+        let (mut app, now) = chat_fixture(0);
+        let mut panel = openagents_desktop::chat::Panel::new(now);
+        let Request::Chat {
+            ticket,
+            command: Command::List {},
+        } = panel.tick(now).unwrap()
+        else {
+            panic!("list")
+        };
+        panel.outcome(ticket, Ok(Snapshot::default()));
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat },
+        } = panel.tick(now + Duration::from_secs(2)).unwrap()
+        else {
+            panic!("fresh chat")
+        };
+        panel.outcome(
+            ticket,
+            Ok(Snapshot {
+                chat: Some(chat),
+                ..Snapshot::default()
+            }),
+        );
+        app.chat = Some(panel);
+        app.present();
+        assert!(app.text_input(TextInput::Commit("Ready to chat"), now));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Ready to chat");
+    }
+
+    #[test]
     fn transcript_click_cancels_marked_composer_text() {
         use rust_native_desktop::input::{SurfaceInput, TextInput};
         let (mut app, now) = chat_fixture(30);
@@ -923,6 +957,7 @@ mod tests {
             now
         ));
         assert_eq!(app.chat.as_ref().unwrap().draft(), "saved draft");
+        app.present();
         assert!(!app.text_input(TextInput::Commit("late candidate"), now));
         assert_eq!(app.chat.as_ref().unwrap().draft(), "saved draft");
     }

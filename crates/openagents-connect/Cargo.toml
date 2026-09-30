@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Connect a phone to a computer over iroh: the endpoint, the enroll and reach ALPNs, the openagents-connect: QR payload, and the local control protocol."
 
 [dependencies]
+openagents-chat = { path = "../openagents-chat" }
 base64 = "0.22"
 coder-reach = { path = "../coder-reach" }
 iroh = { workspace = true }

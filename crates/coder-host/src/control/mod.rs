@@ -264,6 +264,7 @@ fn host_refused(error: &Error) -> Reply {
 /// store's lock and may wait briefly for another local process.
 fn answer(shared: &Shared, op: Op) -> Reply {
     match op {
+        Op::Chat { command } => chat(shared, command),
         Op::Status {} => status(shared),
         Op::InviteCreate {} => invite(shared),
         Op::InviteCancel { invitation } => {
@@ -835,4 +836,46 @@ fn hex(bytes: &[u8]) -> String {
         let _ = write!(out, "{b:02x}");
         out
     })
+}
+
+/// A hosted chat is local data and grants no computer execution authority.
+fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
+    use openagents_chat::{
+        basic_chats::BasicChats,
+        basic_coder::{RELAY, Relay, WORKER},
+        cache::Cache,
+    };
+    let mut state = shared
+        .chats
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    if state.is_none() {
+        let Some(control) = shared.config.control.as_ref() else {
+            return refused("unavailable", "This host has no local chat storage.");
+        };
+        let store = match Cache::open(&control.root.join("basic-chats"), &shared.secret) {
+            Ok(store) => store,
+            Err(_) => return refused("unavailable", "Couldn't open encrypted chat storage."),
+        };
+        let door = match Relay::new(RELAY, WORKER, shared.secret) {
+            Ok(door) => door,
+            Err(_) => return refused("unavailable", "Couldn't configure chat."),
+        };
+        *state = Some(BasicChats::new(
+            Some(tokio::runtime::Handle::current()),
+            Some(Arc::new(door)),
+            Some(store),
+        ));
+    }
+    let chats = state.as_mut().expect("initialized chat state");
+    match openagents_chat::service::apply(
+        chats,
+        command,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs()),
+    ) {
+        Ok(snapshot) => Reply::Chat { snapshot },
+        Err(message) => refused("chat", message),
+    }
 }

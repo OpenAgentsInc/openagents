@@ -5259,6 +5259,7 @@ dependencies = [
  "getrandom 0.3.4",
  "iroh",
  "iroh-mdns-address-lookup",
+ "openagents-chat",
  "serde",
  "serde_json",
  "sha2 0.11.0",

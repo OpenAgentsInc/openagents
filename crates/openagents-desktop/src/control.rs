@@ -359,6 +359,16 @@ fn unexpected<T>() -> ControlResult<T> {
 }
 
 impl HostControl for SocketControl {
+    fn chat(
+        &mut self,
+        command: openagents_chat::service::Command,
+    ) -> ControlResult<openagents_chat::service::Snapshot> {
+        match self.call(Op::Chat { command })? {
+            Reply::Chat { snapshot } => Ok(snapshot),
+            _ => unexpected(),
+        }
+    }
+
     fn status(&mut self) -> ControlResult<Status> {
         match self.call(Op::Status {})? {
             Reply::Status(status) => Ok(status),

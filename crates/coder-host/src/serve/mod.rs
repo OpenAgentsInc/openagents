@@ -58,6 +58,7 @@ const RELAY_READY_WAIT: Duration = Duration::from_secs(10);
 
 /// State every serving task shares.
 pub(crate) struct Shared {
+    pub(crate) chats: std::sync::Mutex<Option<openagents_chat::basic_chats::BasicChats>>,
     pub(crate) config: Config,
     pub(crate) authority: Arc<Authority>,
     pub(crate) secret: SecretKey,
@@ -166,6 +167,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         config.handshake_timeout,
     ));
     let shared = Arc::new(Shared {
+        chats: std::sync::Mutex::new(None),
         default_workspace: config
             .workspaces
             .keys()

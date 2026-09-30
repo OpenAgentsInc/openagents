@@ -53,6 +53,9 @@ pub struct Summary {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Saved {
     turns: Vec<Turn>,
+    /// The record and its list metadata commit together. Older records omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    summary: Option<Summary>,
 }
 
 /// A reply streaming into a conversation.
@@ -77,6 +80,10 @@ pub struct BasicChats {
     wake: crate::Wake,
     /// The last encrypted storage failure, if any.
     pub storage_error: Option<String>,
+    storage_errors: BTreeMap<String, String>,
+    dirty: BTreeSet<String>,
+    dirty_index: bool,
+    corrupt_index: bool,
     runtime: Option<Handle>,
     door: Option<Arc<dyn Door>>,
     store: Option<Cache>,
@@ -150,17 +157,47 @@ const RANK_AT_LEAST: usize = 2;
 impl BasicChats {
     /// Conversations kept in `store`, answered through `door` on `runtime`.
     pub fn new(runtime: Option<Handle>, door: Option<Arc<dyn Door>>, store: Option<Cache>) -> Self {
-        let index: Vec<Summary> = store
+        let loaded = store
             .as_ref()
-            .and_then(|store| store.read("basic-index").ok().flatten())
-            .unwrap_or_default();
+            .map_or(Ok(None), |store| store.read("basic-index"));
+        let corrupt_index = loaded.is_err();
+        let mut storage_errors = BTreeMap::new();
+        if let Err(error) = &loaded {
+            storage_errors.insert("basic-index".into(), error.clone());
+        }
+        let mut index: Vec<Summary> = loaded.ok().flatten().unwrap_or_default();
+        // Recover a record committed before a crash that interrupted the list write.
+        if let Some(store) = &store
+            && let Ok(keys) = store.keys("basic-")
+        {
+            for key in keys.into_iter().filter(|key| key.len() == 38) {
+                if let Ok(Some(saved)) = store.read::<Saved>(&key)
+                    && let Some(summary) = saved.summary
+                    && key == item(&summary.id)
+                {
+                    if let Some(previous) = index.iter_mut().find(|row| row.id == summary.id) {
+                        if summary.updated >= previous.updated {
+                            *previous = summary;
+                        }
+                    } else {
+                        index.push(summary);
+                    }
+                }
+            }
+            index.sort_by_key(|row| std::cmp::Reverse(row.updated));
+            index.truncate(MAX_TALKS);
+        }
         let used: Vec<String> = store
             .as_ref()
             .and_then(|store| store.read(USED_KEY).ok().flatten())
             .unwrap_or_default();
         Self {
             wake: Arc::new(|| {}),
-            storage_error: None,
+            storage_error: storage_errors.values().next().cloned(),
+            storage_errors,
+            dirty: BTreeSet::new(),
+            dirty_index: false,
+            corrupt_index,
             runtime,
             door,
             store,
@@ -227,11 +264,32 @@ impl BasicChats {
     /// The conversation's turns, read from the store the first time.
     pub fn turns(&mut self, id: &str) -> &[Turn] {
         if !self.turns.contains_key(id) {
-            let saved: Saved = self
+            let key = item(id);
+            let loaded = self
                 .store
                 .as_ref()
-                .and_then(|store| store.read(&item(id)).ok().flatten())
-                .unwrap_or_default();
+                .map_or(Ok(None), |store| store.read::<Saved>(&key));
+            let saved = match loaded {
+                Ok(saved) => {
+                    self.storage_errors.remove(&key);
+                    self.storage_error = self.storage_errors.values().next().cloned();
+                    match saved {
+                        Some(saved) => saved,
+                        None if self.get(id).is_some() && self.store.is_some() => {
+                            self.storage_errors
+                                .insert(key, "Saved conversation is missing.".into());
+                            self.storage_error = self.storage_errors.values().next().cloned();
+                            return &[];
+                        }
+                        None => Saved::default(),
+                    }
+                }
+                Err(error) => {
+                    self.storage_errors.insert(key, error);
+                    self.storage_error = self.storage_errors.values().next().cloned();
+                    return &[];
+                }
+            };
             self.turns.insert(id.to_owned(), saved.turns);
         }
         self.turns.get(id).map_or(&[], Vec::as_slice)
@@ -357,8 +415,15 @@ impl BasicChats {
 
     /// Create an empty local conversation with a caller-selected stable ID.
     pub fn create(&mut self, id: &str, now: u64) -> bool {
-        if self.get(id).is_some() || self.index.len() >= MAX_TALKS {
+        if self.corrupt_index || self.get(id).is_some() {
             return false;
+        }
+        if self.index.len() >= MAX_TALKS {
+            let Some(oldest) = self.index.iter().rposition(|summary| summary.archived) else {
+                return false;
+            };
+            let gone = self.index.remove(oldest);
+            self.turns.remove(&gone.id);
         }
         self.index.insert(
             0,
@@ -382,7 +447,8 @@ impl BasicChats {
         if let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id) {
             summary.archived = true;
         }
-        self.save_index();
+        self.turns(id);
+        self.save(id);
     }
 
     /// Restore an archived conversation to the current list.
@@ -390,7 +456,8 @@ impl BasicChats {
         if let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id) {
             summary.archived = false;
         }
-        self.save_index();
+        self.turns(id);
+        self.save(id);
     }
 
     /// The current reply text, without completing the turn.
@@ -404,7 +471,7 @@ impl BasicChats {
     /// Start a conversation with `text` and ask for the reply.
     pub fn start(&mut self, text: &str, now: u64) -> Option<String> {
         let text = text.trim();
-        if text.is_empty() {
+        if self.corrupt_index || text.is_empty() {
             return None;
         }
         let id = uuid::Uuid::new_v4().simple().to_string();
@@ -454,6 +521,9 @@ impl BasicChats {
             return false;
         }
         self.turns(id);
+        if self.corrupt_index || self.storage_errors.contains_key(&item(id)) {
+            return false;
+        }
         if let Some(turns) = self.turns.get_mut(id) {
             let mut turn = Turn::user(text);
             turn.request = request;
@@ -490,7 +560,10 @@ impl BasicChats {
             .last()
             .is_some_and(|turn| turn.role == Role::User);
         if last_is_user && !self.busy(id) {
-            self.ask(id);
+            self.save(id);
+            if self.storage_error.is_none() {
+                self.ask(id);
+            }
         }
     }
 
@@ -622,7 +695,8 @@ impl BasicChats {
             });
         }
         self.touch(id, now);
-        self.save_index();
+        self.turns(id);
+        self.save(id);
     }
 
     /// Move `id` to the top of the list with the time of its last message.
@@ -635,33 +709,85 @@ impl BasicChats {
     }
 
     fn save(&mut self, id: &str) {
+        if self.corrupt_index
+            || self.storage_errors.contains_key(&item(id)) && !self.dirty.contains(id)
+        {
+            return;
+        }
+        self.dirty.insert(id.into());
+        let summary = self.get(id).cloned();
         if let Some(turns) = self.turns.get_mut(id) {
-            // Keep what the store can hold: the newest turns.
-            while turns.len() > MAX_TURNS
-                || turns.len() > 1
-                    && turns.iter().map(|turn| turn.text.len()).sum::<usize>() > MAX_TALK_BYTES
+            // Count escape expansion once per turn, retaining whole newest turns.
+            let sizes: Vec<usize> = turns
+                .iter()
+                .map(|turn| {
+                    serde_json::to_vec(turn).map_or(usize::MAX / MAX_TURNS, |bytes| bytes.len())
+                })
+                .collect();
+            let overhead = serde_json::to_vec(&Saved {
+                turns: vec![],
+                summary: summary.clone(),
+            })
+            .map_or(MAX_TALK_BYTES, |bytes| bytes.len());
+            let mut bytes = sizes.iter().sum::<usize>() + overhead + turns.len().saturating_sub(1);
+            let mut remove = 0;
+            while turns.len() - remove > MAX_TURNS
+                || turns.len() - remove > 1 && bytes > MAX_TALK_BYTES
             {
-                turns.remove(0);
+                bytes = bytes.saturating_sub(sizes[remove] + 1);
+                remove += 1;
             }
-            if let Some(store) = &self.store {
-                let _ = store
-                    .write(
-                        &item(id),
-                        &Saved {
-                            turns: turns.clone(),
-                        },
-                    )
-                    .map_err(|error| self.storage_error = Some(error));
+            turns.drain(..remove);
+            let key = item(id);
+            let result = self.store.as_ref().map_or(Ok(()), |store| {
+                store.write(
+                    &key,
+                    &Saved {
+                        turns: turns.clone(),
+                        summary,
+                    },
+                )
+            });
+            match result {
+                Ok(()) => {
+                    self.storage_errors.remove(&key);
+                    self.dirty.remove(id);
+                }
+                Err(error) => {
+                    self.storage_errors.insert(key, error);
+                }
             }
         }
         self.save_index();
     }
 
     fn save_index(&mut self) {
-        if let Some(store) = &self.store
-            && let Err(error) = store.write("basic-index", &self.index)
-        {
-            self.storage_error = Some(error);
+        if !self.corrupt_index {
+            match self
+                .store
+                .as_ref()
+                .map_or(Ok(()), |store| store.write("basic-index", &self.index))
+            {
+                Ok(()) => {
+                    self.storage_errors.remove("basic-index");
+                    self.dirty_index = false;
+                }
+                Err(error) => {
+                    self.storage_errors.insert("basic-index".into(), error);
+                    self.dirty_index = true;
+                }
+            }
+        }
+        self.storage_error = self.storage_errors.values().next().cloned();
+    }
+
+    /// Retry interrupted writes without appending or resending a message.
+    pub fn flush_pending(&mut self) {
+        for id in self.dirty.iter().cloned().collect::<Vec<_>>() {
+            self.save(&id);
+        }
+        if self.dirty_index {
+            self.save_index();
         }
     }
 }
@@ -802,6 +928,28 @@ mod tests {
             }
         }
         panic!("the reply never ended");
+    }
+
+    #[test]
+    fn retention_counts_json_escapes_and_keeps_whole_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = secp256k1::SecretKey::from_byte_array([5; 32]).unwrap();
+        let mut chats = BasicChats::new(None, None, Some(Cache::open(dir.path(), &key).unwrap()));
+        let id = "5".repeat(32);
+        assert!(chats.create(&id, 1));
+        let text = "\u{0001}".repeat(20 * 1024);
+        chats.turns.insert(
+            id.clone(),
+            vec![Turn::user(&text), Turn::assistant(text.clone(), None)],
+        );
+        chats.save(&id);
+        assert!(chats.storage_error.is_none());
+        assert_eq!(chats.turns(&id).len(), 1);
+        assert_eq!(chats.turns(&id)[0].text, text);
+        drop(chats);
+        let mut reopened =
+            BasicChats::new(None, None, Some(Cache::open(dir.path(), &key).unwrap()));
+        assert_eq!(reopened.turns(&id)[0].text, text);
     }
 
     #[test]

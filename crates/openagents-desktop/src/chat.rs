@@ -51,6 +51,7 @@ pub struct Panel {
     reading: bool,
     rows_dirty: bool,
     waker: Option<rust_native_desktop::Waker>,
+    listed: bool,
 }
 
 impl Panel {
@@ -67,6 +68,7 @@ impl Panel {
             next_ticket: 1,
             poll: now,
             born: now,
+            listed: false,
             viewport: (1200.0, 840.0, 1.0),
             transcript: Transcript::default(),
             fonts: Fonts::new(),
@@ -105,6 +107,9 @@ impl Panel {
             return None;
         }
         self.poll = now + Duration::from_millis(if self.busy() { 100 } else { 1000 });
+        if self.listed && self.selected.is_none() && self.error.is_none() {
+            return Some(self.new_chat());
+        }
         Some(
             self.request(
                 self.selected
@@ -221,6 +226,7 @@ impl Panel {
                 self.error = Some(error.to_string());
             }
             Ok(mut snapshot) => {
+                self.listed = true;
                 self.error = snapshot
                     .storage_error
                     .as_ref()
@@ -253,6 +259,7 @@ impl Panel {
                     }
                     if let Some(send) = &self.send
                         && send.chat == id
+                        && snapshot.storage_error.is_none()
                         && snapshot
                             .turns
                             .iter()
@@ -276,7 +283,7 @@ impl Panel {
                     }
                     self.states.insert(id, snapshot);
                 }
-                if matches!(command, Command::Archive { .. }) {
+                if self.error.is_none() && matches!(command, Command::Archive { .. }) {
                     self.selected = None;
                     self.send = None;
                 }
@@ -671,7 +678,7 @@ impl Panel {
                 }),
                 choices: vec![],
                 draft,
-                focus: true,
+                focus: self.fields.get(&id).is_some_and(|field| field.focused),
             },
         };
         let mut buttons = vec![text(

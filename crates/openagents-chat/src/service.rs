@@ -64,6 +64,7 @@ fn identity(id: &str) -> bool {
 /// Rejects invalid IDs, missing conversations, conflicting commands, a busy
 /// conversation, or a failed encrypted write. No operation executes commands.
 pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snapshot, String> {
+    chats.flush_pending();
     chats.settle(now);
     let (id, before) = match command {
         Command::List {} => (None, None),
@@ -158,6 +159,7 @@ fn snapshot(
         let end = before.unwrap_or(turns.len()).min(turns.len());
         snapshot.start = end.saturating_sub(16);
         snapshot.turns = turns[snapshot.start..end].to_vec();
+        snapshot.storage_error = chats.storage_error.clone();
         snapshot.busy = chats.busy(&id);
         snapshot.partial = chats.partial(&id);
         if let Tail::Failed(why) = chats.tail(&id) {
@@ -210,6 +212,118 @@ mod tests {
                 std::future::pending::<()>().await;
             })
         }
+    }
+
+    #[test]
+    fn interrupted_writes_recover_without_duplicate_messages_and_metadata_is_atomic() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let key = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+        let open = || Cache::open(dir.path(), &key).unwrap();
+        let mut chats = BasicChats::new(
+            Some(runtime.handle().clone()),
+            Some(Arc::new(Waiting)),
+            Some(open()),
+        );
+        let id = "7".repeat(32);
+        apply(&mut chats, Command::Create { chat: id.clone() }, 1).unwrap();
+        let path = dir.path().join(format!("basic-{id}.cache"));
+        let previous = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let send = Command::Send {
+            chat: id.clone(),
+            request: "8".repeat(32),
+            text: "Keep this exactly".into(),
+        };
+        assert!(apply(&mut chats, send.clone(), 2).is_err());
+        assert!(!chats.busy(&id));
+        assert_eq!(chats.turns(&id).len(), 1);
+        std::fs::remove_dir(&path).unwrap();
+        std::fs::write(&path, previous).unwrap();
+        let saved = apply(&mut chats, send, 3).unwrap();
+        assert!(saved.storage_error.is_none());
+        assert_eq!(saved.turns.len(), 1);
+        // A durable unanswered message has an explicit retry, rather than an automatic resend.
+        assert!(saved.failure.is_some());
+        apply(&mut chats, Command::Retry { chat: id.clone() }, 4).unwrap();
+        for _ in 0..100 {
+            if !chats.partial(&id).is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        apply(&mut chats, Command::Stop { chat: id.clone() }, 5).unwrap();
+        apply(&mut chats, Command::Archive { chat: id.clone() }, 6).unwrap();
+        drop(chats);
+        // The record restores its title and archive state even if a crash lost the auxiliary list.
+        std::fs::remove_file(dir.path().join("basic-index.cache")).unwrap();
+        let mut reopened = BasicChats::new(None, None, Some(open()));
+        let recovered = apply(
+            &mut reopened,
+            Command::Read {
+                chat: id,
+                before: None,
+            },
+            7,
+        )
+        .unwrap();
+        assert_eq!(recovered.turns.len(), 2);
+        assert_eq!(recovered.chats[0].title, "Keep this exactly");
+        assert!(recovered.chats[0].archived);
+    }
+
+    #[test]
+    fn corrupt_storage_is_reported_and_never_replaced_with_an_empty_chat() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = secp256k1::SecretKey::from_byte_array([6; 32]).unwrap();
+        let open = || Cache::open(dir.path(), &key).unwrap();
+        let mut chats = BasicChats::new(None, None, Some(open()));
+        let id = "6".repeat(32);
+        apply(&mut chats, Command::Create { chat: id.clone() }, 1).unwrap();
+        drop(chats);
+        let path = dir.path().join(format!("basic-{id}.cache"));
+        std::fs::write(&path, "damaged").unwrap();
+        let mut chats = BasicChats::new(None, None, Some(open()));
+        let read = apply(
+            &mut chats,
+            Command::Read {
+                chat: id.clone(),
+                before: None,
+            },
+            2,
+        )
+        .unwrap();
+        assert!(read.storage_error.is_some());
+        assert!(
+            apply(
+                &mut chats,
+                Command::Send {
+                    chat: id,
+                    request: "7".repeat(32),
+                    text: "Don't overwrite".into()
+                },
+                3
+            )
+            .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "damaged");
+        std::fs::write(dir.path().join("basic-index.cache"), "damaged index").unwrap();
+        let mut chats = BasicChats::new(None, None, Some(open()));
+        assert!(
+            apply(
+                &mut chats,
+                Command::Create {
+                    chat: "8".repeat(32)
+                },
+                4
+            )
+            .is_err()
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("basic-index.cache")).unwrap(),
+            "damaged index"
+        );
     }
 
     #[test]

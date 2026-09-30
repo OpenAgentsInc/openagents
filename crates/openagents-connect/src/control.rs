@@ -73,6 +73,10 @@ impl Request {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Op {
+    /// Hosted chat; admitted only as this machine's local operator.
+    Chat {
+        command: openagents_chat::service::Command,
+    },
     /// The host's identity, reachability, and counts.
     Status {},
     /// Create a host invitation and its `openagents-connect:` code. A QR
@@ -134,6 +138,10 @@ impl Response {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    /// A bounded hosted chat page and current streaming state.
+    Chat {
+        snapshot: openagents_chat::service::Snapshot,
+    },
     Status(Status),
     /// `code` is the `openagents-connect:` text. It carries a bearer
     /// capability: show it only in the code window.

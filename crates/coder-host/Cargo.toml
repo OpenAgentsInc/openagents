@@ -13,6 +13,7 @@ default = ["host"]
 # disables default features and keeps `client`, `mailbox`, and `message`.
 host = [
     "coder-access/host",
+    "dep:openagents-chat",
     "coder-connect/host",
     "coder-history/host",
     "coder-pty/host",
@@ -26,6 +27,7 @@ host = [
 ]
 
 [dependencies]
+openagents-chat = { path = "../openagents-chat", optional = true }
 # The `coder-host:` layout of a connect code's invitation.
 base64 = "0.22"
 coder-access = { path = "../coder-access", default-features = false }
