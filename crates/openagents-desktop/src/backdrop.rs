@@ -19,6 +19,8 @@
 
 use rust_native_desktop::backdrop::{Backdrop, FORMAT, Gpu};
 use rust_native_desktop::wgpu;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use verse::render::Layer;
 use verse::spectator::Overlook;
@@ -93,6 +95,15 @@ impl Pace {
         }
     }
 
+    /// "Reduce motion" changed while the window shows: turned on, one still
+    /// frame is drawn and the camera stops; turned off, it moves again.
+    pub fn set_reduce_motion(&mut self, reduce_motion: bool) {
+        if self.reduce_motion != reduce_motion {
+            self.reduce_motion = reduce_motion;
+            self.still_drawn = false;
+        }
+    }
+
     /// Whether the picture is still: the camera does not move.
     pub fn still(&self) -> bool {
         self.reduce_motion
@@ -114,21 +125,46 @@ pub struct GridBackdrop {
     pace: Pace,
     started: Instant,
     reduce_motion: Box<dyn Fn() -> bool>,
+    /// The system's setting, read when the window last showed.
+    system: bool,
+    /// The app's own "Reduce motion" (Settings, #10021), followed live.
+    preference: Option<Arc<AtomicBool>>,
 }
 
 impl GridBackdrop {
     /// Watches the Grid on `relay`. `reduce_motion` reads the system's
     /// "Reduce motion" setting.
     pub fn new(relay: &str, reduce_motion: Box<dyn Fn() -> bool>) -> GridBackdrop {
+        let system = reduce_motion();
         GridBackdrop {
             overlook: Overlook::new(relay),
             layer: None,
             // The backdrop draws no text; the renderer still needs an atlas.
             atlas: verse::ui::Atlas::new(12.0),
-            pace: Pace::new(reduce_motion()),
+            pace: Pace::new(system),
             started: Instant::now(),
             reduce_motion,
+            system,
+            preference: None,
         }
+    }
+
+    /// Also keeps the picture still while `preference` is set, and follows
+    /// it as it changes, without waiting for the window to show again.
+    pub fn follow(mut self, preference: Arc<AtomicBool>) -> GridBackdrop {
+        self.preference = Some(preference);
+        self.pace.set_reduce_motion(self.wanted());
+        self
+    }
+
+    /// Whether the picture should be still: the system's setting or the
+    /// app's.
+    fn wanted(&self) -> bool {
+        self.system
+            || self
+                .preference
+                .as_ref()
+                .is_some_and(|preference| preference.load(Ordering::Relaxed))
     }
 
     /// Whether a relay connection is open.
@@ -139,19 +175,22 @@ impl GridBackdrop {
     /// Release spectator reads when an interactive player owns the viewport.
     pub fn pause(&mut self, now: Instant) {
         self.overlook.pause();
-        self.pace.shown(false, (self.reduce_motion)(), now);
+        self.system = (self.reduce_motion)();
+        self.pace.shown(false, self.wanted(), now);
     }
 }
 
 impl Backdrop for GridBackdrop {
     fn shown(&mut self, visible: bool, now: Instant) {
-        self.pace.shown(visible, (self.reduce_motion)(), now);
+        self.system = (self.reduce_motion)();
+        self.pace.shown(visible, self.wanted(), now);
         if visible {
             self.overlook.resume();
         }
     }
 
     fn next_frame(&mut self, now: Instant) -> Option<Instant> {
+        self.pace.set_reduce_motion(self.wanted());
         let due = self.pace.next_frame();
         if self.pace.idle(now) {
             self.overlook.pause();
@@ -254,5 +293,26 @@ mod tests {
         assert!(!pace.still());
         pace.drawn(start + Duration::from_secs(3), true);
         assert!(pace.next_frame().is_some());
+    }
+
+    #[test]
+    fn the_apps_reduce_motion_applies_while_the_window_shows() {
+        let start = Instant::now();
+        let mut pace = Pace::new(false);
+        pace.drawn(start, true);
+        assert_eq!(pace.next_frame(), Some(start + FRAME));
+        // Turned on in Settings: one still frame, then none.
+        pace.set_reduce_motion(true);
+        assert!(pace.still());
+        assert!(pace.next_frame().is_some());
+        pace.drawn(start + FRAME, true);
+        assert_eq!(pace.next_frame(), None);
+        // The same value again changes nothing.
+        pace.set_reduce_motion(true);
+        assert_eq!(pace.next_frame(), None);
+        // Turned off: the camera moves again at once.
+        pace.set_reduce_motion(false);
+        assert!(!pace.still());
+        assert_eq!(pace.next_frame(), Some(start + FRAME + FRAME));
     }
 }

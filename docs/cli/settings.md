@@ -38,8 +38,19 @@ A file that does not parse, has another schema, has an unknown `coder` key,
 or a value outside these sets is never read as the defaults: a local run
 refuses and names the file, a coding reply asks first, and
 `openagents settings` refuses to overwrite it. Other top-level sections are
-kept when the file is saved, so the desktop's own settings (#10021) can live
-beside these.
+kept when the file is saved, so the desktop's own settings (#10021) live
+beside these, in the `app` section:
+
+```json
+"app": { "text_size": "larger", "reduce_motion": true, "notifications": false }
+```
+
+`text_size` is `smaller`, `default`, `larger`, or `largest` (90, 100, 115, or
+130 percent); `reduce_motion` keeps the Grid behind the window still besides
+the system's own setting; `notifications` turns Coder's desktop notifications
+off. A missing or unreadable `app` section is the defaults (default size,
+reduce motion off, notifications on); nothing in it opens anything up
+(`openagents_chat_app::preferences`).
 
 ## Commands
 
@@ -66,8 +77,11 @@ nothing; an unknown key or command exits 64.
   `--run-coder` still runs.
 - The desktop: its Coder lane reads the file when it first starts a run
   (restart the app to pick up a change), and the chat panel reads
-  `coder.start` each time a reply is judged coding work. The Settings page
-  (#10021) will edit the same file through `coder::task::settings`.
+  `coder.start` each time a reply is judged coding work. Its Settings page
+  (#10021) reads the `app` section at launch, applies each change at once,
+  and saves it through `coder::task::settings`, which leaves a file it
+  refuses untouched (the page then says the choice lasts until OpenAgents
+  quits).
 - A host on this computer: whether its chats tell the router this computer
   can run Coder (`coder::task::local::ready_here`) uses the allowed
   providers.

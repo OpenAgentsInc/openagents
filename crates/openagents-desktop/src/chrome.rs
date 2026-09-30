@@ -118,6 +118,8 @@ pub struct State {
     pub projects: std::collections::BTreeMap<u64, String>,
     /// A newer release to offer on Settings.
     pub update: Option<Update>,
+    /// Settings' page and preferences ([`crate::settings`]).
+    pub settings: crate::settings::Settings,
     next_chat: u64,
 }
 
@@ -203,6 +205,7 @@ impl Default for State {
             search: String::new(),
             projects: std::collections::BTreeMap::new(),
             update: None,
+            settings: crate::settings::Settings::default(),
             page: Page::Chat(1),
             sidebar_width: SIDEBAR_DEFAULT,
             collapsed: false,
@@ -286,6 +289,14 @@ impl State {
         if width.is_finite() {
             self.sidebar_width = width.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
         }
+    }
+
+    /// Whether the pairing screens show: Phones and computers, on its own
+    /// or as a page of Settings. Leaving them cancels a shown code.
+    pub fn shows_computers(&self) -> bool {
+        self.page == Page::Computers
+            || (self.page == Page::Settings
+                && self.settings.pane == crate::settings::Pane::Computers)
     }
 
     pub fn selected(&self) -> Option<&Chat> {
@@ -638,38 +649,6 @@ fn placeholder(state: &State) -> Node<Intent> {
     body
 }
 
-/// Settings' version line and, when a newer release is offered, its line
-/// and button.
-fn update_rows(update: Option<&Update>) -> Vec<Node<Intent>> {
-    let mut rows = vec![text(
-        "settings-version",
-        format!("Version {}", env!("CARGO_PKG_VERSION")),
-        TextRole::Status,
-    )];
-    if let Some(update) = update {
-        let (line, label) = if update.ready {
-            (
-                format!("OpenAgents {} is ready.", update.version),
-                format!("Restart to update to {}", update.version),
-            )
-        } else {
-            (
-                format!("OpenAgents {} is available.", update.version),
-                format!("Download {}", update.version),
-            )
-        };
-        rows.push(text("settings-update-line", line, TextRole::Body));
-        rows.push(action(
-            "settings-update",
-            label,
-            Action::Update,
-            None,
-            false,
-        ));
-    }
-    rows
-}
-
 /// The shell wraps the existing computer screens without changing their intents.
 pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     let prompt = model.nearby().is_some();
@@ -789,36 +768,12 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 body
             }
             Page::Computers => crate::screens::root(model, now),
-            Page::Settings => stack(
-                "shell-settings",
-                Axis::Vertical,
-                Space::Md,
-                vec![
-                    text(
-                        "shell-settings-title",
-                        "OpenAgents desktop",
-                        TextRole::Heading,
-                    ),
-                    text(
-                        "shell-settings-line",
-                        if state.live {
-                            "Chats are encrypted on this computer. Your connected phones and computers use your existing setup."
-                        } else {
-                            "Chats in this preview are examples. Your connected phones and computers use your existing setup."
-                        },
-                        TextRole::Body,
-                    ),
-                    action(
-                        "settings-computers",
-                        "Manage phones and computers",
-                        Action::Computers,
-                        Some(Glyph::Computer),
-                        false,
-                    ),
-                ]
-                .into_iter()
-                .chain(update_rows(state.update.as_ref()))
-                .collect(),
+            Page::Settings => crate::settings::view(
+                &state.settings,
+                state.live,
+                state.update.as_ref(),
+                model,
+                now,
             ),
         }
     };

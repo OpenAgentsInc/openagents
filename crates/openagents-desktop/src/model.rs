@@ -102,6 +102,8 @@ pub enum Intent {
     Chat { action: crate::chat_action::Action },
     /// Navigate the desktop shell without starting work.
     Navigate { action: crate::chrome::Action },
+    /// A choice on Settings ([`crate::settings`]).
+    Settings { action: crate::settings::Action },
     /// "Can't scan? Copy a code instead".
     CopyCode,
     /// Bring the code back after it was hidden.
@@ -619,7 +621,7 @@ impl Model {
         self.codes.input(now);
         match intent {
             Intent::Grid { .. } | Intent::Chat { .. } => Vec::new(),
-            Intent::Navigate { .. } => Vec::new(),
+            Intent::Navigate { .. } | Intent::Settings { .. } => Vec::new(),
             Intent::CopyCode => match self.codes.shown() {
                 Some(shown) => {
                     let code = shown.text.clone();

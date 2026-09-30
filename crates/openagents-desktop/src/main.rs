@@ -264,6 +264,8 @@ fn main() -> ExitCode {
         )
     };
     let mut app = DesktopApp::window(model, context);
+    // Settings' choices, kept beside Coder's (#10021).
+    app.use_settings_file(coder::task::settings::path());
     #[cfg(not(windows))]
     let backdrop = backdrop(&options, &mut app);
     #[cfg(windows)]
@@ -316,6 +318,7 @@ fn backdrop(
     app.set_grid(grid.clone());
     let watch = (!options.no_backdrop).then(|| {
         openagents_desktop::backdrop::GridBackdrop::new(&relay, Box::new(platform::reduce_motion))
+            .follow(app.reduce_motion())
     });
     Some(Box::new(openagents_desktop::grid::Layer::new(grid, watch)))
 }

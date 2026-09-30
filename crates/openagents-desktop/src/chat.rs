@@ -992,6 +992,43 @@ impl Panel {
             before: None,
         }))
     }
+    /// Draws the transcript's text at `size` (Settings, #10021), laying
+    /// the rows out again at once.
+    pub fn set_text_size(&mut self, size: openagents_chat_app::preferences::TextSize) {
+        if self.transcript.set_metrics(size.transcript()).is_ok() {
+            let (width, height) = self.transcript_size;
+            if width > 0.0 && height > 0.0 {
+                let _ = self
+                    .transcript
+                    .update_shared(self.transcript_rows.clone(), width, height);
+            }
+            self.rows_dirty = true;
+        }
+    }
+    /// The archived chats Settings lists, newest first
+    /// ([`openagents_chat_app::chat_list::archived`]).
+    pub fn archived(&self) -> Vec<crate::settings::Archived> {
+        openagents_chat_app::chat_list::archived(&self.session.summaries)
+            .into_iter()
+            .map(|summary| crate::settings::Archived {
+                id: summary.id.clone(),
+                title: summary.title.clone(),
+            })
+            .collect()
+    }
+    /// Restores an archived chat without opening it: the shared restore
+    /// command the chat menu sends for the open chat.
+    pub fn restore(&mut self, chat: &str) -> Option<Request> {
+        self.session
+            .summaries
+            .iter()
+            .any(|summary| summary.id == chat && summary.archived)
+            .then(|| {
+                self.request(Command::Restore {
+                    chat: chat.to_owned(),
+                })
+            })
+    }
     pub fn sync_sidebar(&mut self, state: &mut State) {
         let mut next = self.ids.values().max().copied().unwrap_or(0) + 1;
         for summary in &self.session.summaries {

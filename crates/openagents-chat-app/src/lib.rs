@@ -13,6 +13,7 @@ pub mod first_run;
 pub mod gym;
 pub mod host_threads;
 pub mod outbox;
+pub mod preferences;
 pub mod transcripts;
 pub mod wake;
 

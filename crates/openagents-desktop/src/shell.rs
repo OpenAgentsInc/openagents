@@ -13,6 +13,9 @@ use rust_native_desktop::{
 };
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "settings_shell.rs"]
+mod settings_shell;
+
 /// The largest the code draws, in points.
 pub const CODE_SIDE: f32 = 360.0;
 
@@ -214,7 +217,7 @@ impl DesktopApp {
             return;
         };
         let notices = self.notices.observe(chat.coder_statuses(), self.focused);
-        if self.live && !self.fixture {
+        if self.live && !self.fixture && self.notifications_on() {
             for notice in notices {
                 crate::platform::notify(notice);
             }
@@ -272,6 +275,7 @@ impl DesktopApp {
                 self.model.project().map(|project| project.label.clone()),
             );
             chat.sync_sidebar(state);
+            state.settings.set_archived(chat.archived());
         }
         let mut root = self.navigation.as_ref().map_or_else(
             || root(&self.model, unix_now()),
@@ -477,9 +481,10 @@ impl App for DesktopApp {
     }
 
     fn theme(&self) -> Theme {
-        if self.navigation.is_none() {
+        let Some(state) = &self.navigation else {
             return Theme::default();
-        }
+        };
+        let size = state.settings.preferences.text_size;
         Theme {
             icons: rust_native_desktop::theme::IconSet::Solar,
             font_family: rust_native::layout::display::FontFamily::Geist,
@@ -490,9 +495,9 @@ impl App for DesktopApp {
             focus: Color::rgb(184, 207, 231),
             button_radius: 7.0,
             icon_size: 28.0,
-            body: 14.0,
-            heading: 26.0,
-            status: 12.0,
+            body: size.scale(14.0),
+            heading: size.scale(26.0),
+            status: size.scale(12.0),
             column: 768.0,
             ..Theme::openagents()
         }
@@ -710,6 +715,10 @@ impl App for DesktopApp {
             self.present();
             return;
         }
+        if let Intent::Settings { action } = intent {
+            self.settings_action(action, now);
+            return;
+        }
         if let Intent::Navigate { action } = intent {
             if action == chrome::Action::Update {
                 crate::updates::act();
@@ -754,7 +763,7 @@ impl App for DesktopApp {
                 } else {
                     state.activate(action);
                 }
-                if state.page != Page::Computers
+                if !state.shows_computers()
                     && self.model.screen == openagents_desktop::model::Screen::Connect
                 {
                     let requests = self.model.activate(Intent::Back, now);
@@ -769,7 +778,9 @@ impl App for DesktopApp {
             self.present();
             return;
         }
-        if let Some(state) = &mut self.navigation {
+        if let Some(state) = &mut self.navigation
+            && !state.shows_computers()
+        {
             state.page = Page::Computers;
         }
         let requests = self.model.activate(intent, now);

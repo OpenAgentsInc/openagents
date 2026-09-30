@@ -28,6 +28,7 @@
 //! - [`codes`]: when a code shows, rotates, and is cancelled.
 //! - [`model`]: the window's state, clicks, and requests.
 //! - [`screens`]: the screens as Rust Native views.
+//! - [`settings`]: the Settings pages and the preferences they show.
 //! - [`words`]: the words no screen may show.
 //! - [`qr`]: the code's QR modules.
 //! - [`fake`]: an in-process host for tests and `--fake-host`.
@@ -50,6 +51,7 @@ pub mod model;
 pub mod notices;
 pub mod qr;
 pub mod screens;
+pub mod settings;
 #[cfg(feature = "app")]
 pub mod update;
 pub mod words;

@@ -63,6 +63,54 @@ pub fn badge(action: &Action, macos: bool) -> Option<&'static str> {
     }
 }
 
+/// One shortcut [`shortcut`] admits, as a Settings list shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Binding {
+    pub label: &'static str,
+    pub key: &'static str,
+    /// Cmd on macOS, Ctrl elsewhere.
+    pub command: bool,
+    pub shift: bool,
+    pub action: Action,
+}
+
+/// Every shortcut [`shortcut`] admits in a window, in the order a list
+/// shows them. Read-only: the keys are not rebindable.
+pub fn bindings() -> Vec<Binding> {
+    let binding = |label, key, command, shift, action| Binding {
+        label,
+        key,
+        command,
+        shift,
+        action,
+    };
+    vec![
+        binding("New chat", "N", true, false, Action::NewChat),
+        binding("Search chats", "F", true, false, Action::Search),
+        binding("Commands", "K", true, false, Action::Palette),
+        binding("Settings", ",", true, false, Action::Settings),
+        binding("Stop receiving reply", ".", true, false, Action::Stop),
+        binding("Next chat", "Tab", true, false, Action::Cycle(false)),
+        binding("Previous chat", "Tab", true, true, Action::Cycle(true)),
+        binding("Chat actions", "F10", false, true, Action::Menu),
+    ]
+}
+
+/// How `binding` reads on this platform: `Cmd+Shift+Tab` on macOS,
+/// `Ctrl+Shift+Tab` elsewhere. Words, not the ⌘ symbol, which not every
+/// app font draws.
+pub fn chord(binding: &Binding, macos: bool) -> String {
+    let mut parts = vec![];
+    if binding.command {
+        parts.push(if macos { "Cmd" } else { "Ctrl" });
+    }
+    if binding.shift {
+        parts.push("Shift");
+    }
+    parts.push(binding.key);
+    parts.join("+")
+}
+
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub key: String,
@@ -251,6 +299,25 @@ mod tests {
             Some(Action::Cycle(true))
         );
     }
+    #[test]
+    fn every_listed_shortcut_is_one_the_window_admits() {
+        let bindings = bindings();
+        assert_eq!(bindings.len(), 8);
+        for binding in &bindings {
+            assert_eq!(
+                shortcut(binding.key, binding.command, binding.shift, Scope::Window),
+                Some(binding.action.clone()),
+                "{}",
+                binding.label
+            );
+        }
+        let previous = &bindings[6];
+        assert_eq!(chord(previous, true), "Cmd+Shift+Tab");
+        assert_eq!(chord(previous, false), "Ctrl+Shift+Tab");
+        assert_eq!(chord(&bindings[0], true), "Cmd+N");
+        assert_eq!(chord(&bindings[7], false), "Shift+F10");
+    }
+
     #[test]
     fn overlays_wrap_focus_and_keep_windows_bounded() {
         let entries = registry(&[], None, false);

@@ -50,6 +50,17 @@ pub fn search<'a>(summaries: &'a [Summary], query: &str) -> Vec<&'a Summary> {
     rows
 }
 
+/// The archived conversations a Settings list offers to restore, most
+/// recently changed first. Display metadata only, as [`search`].
+pub fn archived(summaries: &[Summary]) -> Vec<&Summary> {
+    let mut rows: Vec<_> = summaries
+        .iter()
+        .filter(|summary| summary.archived)
+        .collect();
+    rows.sort_by_key(|summary| (std::cmp::Reverse(summary.updated), summary.id.as_str()));
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +92,14 @@ mod tests {
         assert_eq!(group(sorted[0]), Group::Pinned);
         assert_eq!(group(sorted[1]), Group::Project("Rocket".into()));
         assert_eq!(group(sorted[511]), Group::Archived);
+        rows[5].archived = true;
+        let archived = archived(&rows);
+        assert_eq!(
+            archived
+                .iter()
+                .map(|row| row.title.as_str())
+                .collect::<Vec<_>>(),
+            ["Chat 5", "Chat 1"]
+        );
     }
 }
