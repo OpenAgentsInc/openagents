@@ -103,7 +103,15 @@ impl Env for Repository<'_> {
             .flatten()
             .map(|bytes| cut(&String::from_utf8_lossy(&bytes), crate::env::FILE_MAX, 0))
     }
+
+    fn stopped(&self) -> bool {
+        self.host.cancelled()
+    }
 }
+
+/// What an interrupted or unsent call says: the task stopped, not the
+/// provider failed.
+const STOPPED: &str = "The task was cancelled or reached its host deadline.";
 
 /// The step's reply as the model writes it, appended to the transcript a
 /// paragraph at a time (see the module documentation).
@@ -189,11 +197,16 @@ impl<G: Generate> Generate for RecordedGenerator<'_, G> {
             "provider":config.provider,"endpoint":config.generation_endpoint});
         let sequence = match self.host.effect("generation", request) {
             Ok(sequence) => sequence,
+            // A stopped task admits no call; the loop sees the stop and
+            // ends without counting this as a failed reply.
+            Err(_) if self.host.cancelled() => {
+                return refused_generation(&config.model, false, STOPPED);
+            }
             Err(error) => return refused_generation(&config.model, false, &error.to_string()),
         };
         let mut generated = tokio::select! {
             biased;
-            _=self.host.wait_cancelled()=>refused_generation(&config.model,true,"The task was cancelled or reached its host deadline."),
+            _=self.host.wait_cancelled()=>refused_generation(&config.model,true,STOPPED),
             generated=self.inner.generate(system,prompt)=>generated,
         };
         if config.provider == "codex"
@@ -305,8 +318,13 @@ impl<J: Judge> Judge for RecordedJudge<'_, J> {
         let sequence = match self.host.effect("decision", request) {
             Ok(sequence) => sequence,
             Err(error) => {
+                let error = if self.host.cancelled() {
+                    STOPPED.to_owned()
+                } else {
+                    error.to_string()
+                };
                 return Judgment {
-                    error: Some(error.to_string()),
+                    error: Some(error),
                     ..Judgment::free()
                 };
             }
@@ -314,7 +332,7 @@ impl<J: Judge> Judge for RecordedJudge<'_, J> {
         let mut judgment = tokio::select! {
             biased;
             _=self.host.wait_cancelled()=>Judgment {
-                error:Some("The task was cancelled or reached its host deadline.".into()),
+                error:Some(STOPPED.into()),
                 cost_unknown:Some("interrupted decision request may still consume tokens".into()),
                 ..Judgment::default()
             },

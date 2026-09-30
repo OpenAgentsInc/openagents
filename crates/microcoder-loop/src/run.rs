@@ -223,6 +223,12 @@ pub enum Ending {
     Asked {
         ask: Ask,
     },
+    /// The run was stopped from outside the loop ([`Env::stopped`]): its
+    /// task was cancelled, reached its host's deadline, or its host
+    /// refused to go on. The loop makes no model call after it sees the
+    /// stop; a call already in flight counts as interrupted, its cost
+    /// unknown, not as a failed reply.
+    Stopped,
 }
 
 /// What the loop reports as it runs.
@@ -1147,6 +1153,9 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut checked: Vec<String> = Vec::new();
     let mut step = 0usize;
     let ending = loop {
+        if env.stopped() {
+            break Ending::Stopped;
+        }
         if limits.max_steps.is_some_and(|max| step >= max) {
             break Ending::StepLimit;
         }
@@ -1271,6 +1280,11 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             }
         };
         model.generated(&generated, &format!("step {step} model"));
+        // A stop while the model wrote the step: the call was interrupted,
+        // not failed, and nothing it said is used.
+        if env.stopped() {
+            break Ending::Stopped;
+        }
         observer.event(
             started.elapsed().as_secs_f64(),
             &Event::Generated {
@@ -1387,8 +1401,11 @@ or set finished to true if the task is complete."
         let mut results = Vec::new();
         let mut skipped = Vec::new();
         let mut failed = false;
+        // A stop while a command runs skips the rest: the host would refuse
+        // them.
+        let mut stopped = false;
         for command in &action.commands {
-            if failed {
+            if failed || stopped {
                 skipped.push(command.clone());
                 continue;
             }
@@ -1396,6 +1413,7 @@ or set finished to true if the task is complete."
                 .run(command, Duration::from_secs(limits.command_seconds))
                 .await;
             failed = !result.ok();
+            stopped = env.stopped();
             observer.event(
                 started.elapsed().as_secs_f64(),
                 &Event::Ran {
@@ -1411,6 +1429,9 @@ or set finished to true if the task is complete."
             results,
             skipped,
         });
+        if stopped {
+            break Ending::Stopped;
+        }
         // An empty list keeps the files already in view, read fresh.
         let paths: Vec<String> = if action.view.is_empty() {
             state.files.iter().map(|(path, _)| path.clone()).collect()

@@ -1412,3 +1412,216 @@ async fn a_question_ends_the_turn_only_when_someone_can_answer() {
     assert_eq!(outcome.ending, Ending::Finished);
     assert_eq!(ran, ["ls"]);
 }
+
+/// [`Fake`], stopped from outside once `stop` is set: by a command named
+/// `stop here`, or by whoever holds the flag.
+struct Stoppable<'a> {
+    fake: Fake,
+    stop: &'a std::cell::Cell<bool>,
+}
+
+impl Env for Stoppable<'_> {
+    async fn read(&self, path: &str) -> Option<String> {
+        self.fake.read(path).await
+    }
+
+    async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
+        if command == "stop here" {
+            self.stop.set(true);
+        }
+        self.fake.run(command, deadline).await
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.get()
+    }
+}
+
+/// A model whose second call is cut short by a stop: it sets the flag and
+/// comes back as an interrupted request, the way a task owner's recorded
+/// generator does.
+struct CutShort<'a> {
+    calls: std::cell::Cell<usize>,
+    stop: &'a std::cell::Cell<bool>,
+}
+
+impl Generate for CutShort<'_> {
+    async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+        self.calls.set(self.calls.get() + 1);
+        if self.calls.get() == 1 {
+            return Generated {
+                action: Ok(act("work", &["make"], false)),
+                model: "fake".into(),
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                usd: Some(0.01),
+                known_usd: 0.01,
+                cost_unknown: None,
+                usd_upper: Some(0.01),
+                cost_basis: crate::models::Basis::ListPrice,
+                milliseconds: 1,
+            };
+        }
+        self.stop.set(true);
+        crate::failover::refused_generation(
+            "fake",
+            true,
+            "The task was cancelled or reached its host deadline.",
+        )
+    }
+}
+
+fn generated_events(log: &Log) -> Vec<&Generated> {
+    log.0
+        .iter()
+        .filter_map(|event| match event {
+            Event::Generated { generated, .. } => Some(generated),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_stop_while_a_command_runs_ends_the_loop_with_no_further_model_call() {
+    let stop = std::cell::Cell::new(false);
+    let script = Script::new(vec![
+        Ok(act("work", &["stop here", "never run"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let env = Stoppable {
+        fake: Fake {
+            ran: RefCell::new(Vec::new()),
+        },
+        stop: &stop,
+    };
+    let mut log = Log::default();
+    let (set, route) = (question_set(), route_set());
+    let models = Models {
+        generator: &script,
+        judge: &jev(0.1),
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let (state, outcome) = run(
+        state(),
+        "Solve this task.",
+        &env,
+        &models,
+        &plain(),
+        &mut log,
+    )
+    .await;
+    assert_eq!(outcome.ending, Ending::Stopped);
+    assert_eq!(
+        script.prompts.borrow().len(),
+        1,
+        "no model call after the stop"
+    );
+    assert_eq!(*env.fake.ran.borrow(), ["stop here"]);
+    assert_eq!(state.actions[0].skipped, ["never run"]);
+    let generated = generated_events(&log);
+    assert_eq!(generated.len(), 1);
+    assert!(
+        generated.iter().all(|g| g.action.is_ok()),
+        "no failed reply"
+    );
+    assert!(matches!(log.0.last(), Some(Event::Ended { .. })));
+    assert_eq!(
+        serde_json::to_value(&outcome).unwrap()["ending"]["reason"],
+        "stopped"
+    );
+}
+
+#[tokio::test]
+async fn a_model_call_cut_short_by_a_stop_is_interrupted_not_failed() {
+    let stop = std::cell::Cell::new(false);
+    let generator = CutShort {
+        calls: std::cell::Cell::new(0),
+        stop: &stop,
+    };
+    let env = Stoppable {
+        fake: Fake {
+            ran: RefCell::new(Vec::new()),
+        },
+        stop: &stop,
+    };
+    let mut log = Log::default();
+    let (set, route) = (question_set(), route_set());
+    let models = Models {
+        generator: &generator,
+        judge: &jev(0.1),
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let (_, outcome) = run(
+        state(),
+        "Solve this task.",
+        &env,
+        &models,
+        &plain(),
+        &mut log,
+    )
+    .await;
+    assert_eq!(outcome.ending, Ending::Stopped);
+    assert_eq!(generator.calls.get(), 2, "the stop admits no third call");
+    assert_eq!(*env.fake.ran.borrow(), ["make"]);
+    // The interrupted call is no reply: only the first step's is recorded.
+    let generated = generated_events(&log);
+    assert_eq!(generated.len(), 1);
+    assert!(generated[0].action.is_ok());
+    // Its cost stays unknown in the outcome, not zero.
+    assert_eq!(outcome.model_usd, None);
+    assert!(
+        outcome
+            .cost_unknown
+            .iter()
+            .any(|unknown| unknown.at == "step 2 model"
+                && unknown.reason == "interrupted model request may still consume tokens")
+    );
+    let ended = log
+        .0
+        .iter()
+        .filter(|event| matches!(event, Event::Ended { .. }))
+        .count();
+    assert_eq!(ended, 1);
+}
+
+#[tokio::test]
+async fn a_stop_before_the_first_step_makes_no_model_call() {
+    let stop = std::cell::Cell::new(true);
+    let script = Script::new(vec![Ok(act("done", &[], true))]);
+    let env = Stoppable {
+        fake: Fake {
+            ran: RefCell::new(Vec::new()),
+        },
+        stop: &stop,
+    };
+    let mut log = Log::default();
+    let (set, route) = (question_set(), route_set());
+    let judge = jev(0.1);
+    let models = Models {
+        generator: &script,
+        judge: &judge,
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let (_, outcome) = run(
+        state(),
+        "Solve this task.",
+        &env,
+        &models,
+        &plain(),
+        &mut log,
+    )
+    .await;
+    assert_eq!(outcome.ending, Ending::Stopped);
+    assert!(script.prompts.borrow().is_empty());
+    assert!(judge.asked.borrow().is_empty());
+    assert_eq!(outcome.steps, 0);
+}

@@ -30,6 +30,15 @@ pub trait Env {
     /// there's no such file. A relative path is from the working
     /// directory.
     fn read(&self, path: &str) -> impl std::future::Future<Output = Option<String>>;
+
+    /// Whether the run was stopped from outside the loop: its task was
+    /// cancelled, reached its host's deadline, or its host refused to go
+    /// on. Once it is true the loop makes no further model call or command
+    /// and ends with [`crate::run::Ending::Stopped`]. A place nothing stops
+    /// from outside never is.
+    fn stopped(&self) -> bool {
+        false
+    }
 }
 
 /// A local working directory.

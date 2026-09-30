@@ -444,6 +444,9 @@ impl Observer for Terminal {
                     Ending::TestsHeld => {
                         "every acceptance test passing for several steps in a row".to_string()
                     }
+                    Ending::Stopped => {
+                        "a stop from outside (cancelled, or the host's deadline)".to_string()
+                    }
                 };
                 let embeddings = if outcome.embedding_usd != Some(0.0) {
                     format!(" · embeddings {}", dollars(outcome.embedding_usd, 6))

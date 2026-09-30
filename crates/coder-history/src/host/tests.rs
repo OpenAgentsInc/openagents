@@ -976,6 +976,20 @@ fn coder_loop_events_project_as_replies_commands_and_endings() {
             false
         )
     );
+    // A task stopped from outside the loop (#10050) says so in the words
+    // the event stream's `stopped` uses.
+    assert_eq!(
+        view(&event(serde_json::json!({"event": "ended", "outcome": {
+            "ending": {"reason": "stopped"}, "steps": 2, "seconds": 12.0
+        }}))),
+        (
+            "message".into(),
+            s("system"),
+            None,
+            "Coder stopped: the task was cancelled or reached its time limit.".into(),
+            false
+        )
+    );
 
     // A run that worked, built from microcoder's structs. A working step's
     // rationale is the loop's own note.

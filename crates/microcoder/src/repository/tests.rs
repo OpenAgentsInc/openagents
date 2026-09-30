@@ -320,6 +320,69 @@ async fn cancel_after_dispatch(store: &Path) {
         .unwrap();
 }
 
+/// A cancelled turn as every surface shows it: the event stream the CLI
+/// and apps follow ([`openagents_chat::coder_events`]) and the thread's
+/// history records (`coder_history`). Exactly one `stopped` ends it; no
+/// failure and no failed model call come from the cancel.
+fn assert_one_clean_stop(store: &Path, task: &task::Task) {
+    use openagents_chat::coder_events::{CoderEvent, Mapper};
+    let trace = store.join(&task.run.as_ref().unwrap().admission.trace_file);
+    let raw = std::fs::read_to_string(&trace).unwrap();
+    assert!(!raw.contains("cannot make this transition"), "{raw}");
+    let steps = atif::log::read(&trace).unwrap().document()["steps"]
+        .as_array()
+        .cloned()
+        .unwrap();
+    let mut mapper = Mapper::new(1, None);
+    let mut events: Vec<CoderEvent> = steps.iter().flat_map(|step| mapper.step(step)).collect();
+    let ending = &task.run.as_ref().unwrap().result.as_ref().unwrap().ending;
+    assert_eq!(ending, "cancelled_or_host_refusal");
+    events.push(mapper.end(ending, Vec::new(), "", "", None));
+    let names: Vec<&str> = events.iter().map(CoderEvent::name).collect();
+    assert_eq!(
+        names.iter().filter(|name| **name == "stopped").count(),
+        1,
+        "{names:?}"
+    );
+    assert!(!names.contains(&"failure"), "{names:?}");
+    // The history reads the trajectory's log records, a line each.
+    let history: Vec<String> = raw
+        .lines()
+        .filter_map(|line| coder_history::readable_record_full(line.as_bytes()))
+        .map(|readable| readable.text)
+        .collect();
+    assert!(
+        history
+            .iter()
+            .all(|text| !text.contains("The model call failed")),
+        "{history:?}"
+    );
+    let stops: Vec<&String> = history
+        .iter()
+        .filter(|text| text.starts_with("Coder stopped"))
+        .collect();
+    assert_eq!(
+        stops,
+        ["Coder stopped: the task was cancelled or reached its time limit."],
+        "{history:?}"
+    );
+    // The loop's own record of the end says it was stopped from outside.
+    let ended: Vec<&Value> = steps
+        .iter()
+        .filter_map(|step| step.pointer("/extra/microcoder/event"))
+        .filter(|event| event["event"] == "ended")
+        .collect();
+    assert_eq!(ended.len(), 1);
+    assert_eq!(ended[0]["outcome"]["ending"]["reason"], "stopped");
+    let failed = steps
+        .iter()
+        .filter_map(|step| step.pointer("/extra/microcoder/event"))
+        .filter(|event| event["event"] == "generated")
+        .filter(|event| event["generated"]["action"].get("Err").is_some())
+        .count();
+    assert_eq!(failed, 0, "no failed model call is recorded for the cancel");
+}
+
 #[tokio::test]
 async fn cancellation_reaps_the_current_command_and_dispatches_no_followup() {
     let (_root, store, grant) = fixture();
@@ -331,6 +394,7 @@ async fn cancellation_reaps_the_current_command_and_dispatches_no_followup() {
     );
     let result = result.unwrap();
     assert_eq!(result.execution, task::Execution::Stopped);
+    assert_one_clean_stop(&store, &result);
     assert!(result.run.unwrap().result.unwrap().group_clear);
     assert_eq!(generator.calls.get(), 1);
     assert!(task::artifact::read(&store, "fixture", Path::new("result.txt")).is_err());
@@ -457,7 +521,9 @@ async fn interrupted_model_request_keeps_unknown_cost_and_starts_no_command() {
             .unwrap();
     };
     let (task, ()) = tokio::join!(run(host, &generator, &JudgeFixture), cancel);
-    assert_eq!(task.unwrap().execution, task::Execution::Stopped);
+    let task = task.unwrap();
+    assert_eq!(task.execution, task::Execution::Stopped);
+    assert_one_clean_stop(&store, &task);
     let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
     assert!(trace.contains("interrupted model request may still consume tokens"));
     assert!(!trace.contains("Supervised command started"));
@@ -1557,6 +1623,12 @@ async fn a_question_ends_the_turn_waiting_and_the_first_answer_continues_it() {
 #[tokio::test]
 async fn a_store_another_process_holds_is_not_a_stop() {
     let (_root, store, grant) = fixture();
+    // Holding the store spends the lock wait from the turn's wall time; the
+    // fixture's eight seconds would leave too little for the run under a
+    // loaded test machine, where it would end as stopped by its deadline.
+    let mut grant = task::owner::Grant::parse(&grant).unwrap();
+    grant.wall_seconds = 60;
+    let grant = serde_json::to_vec(&grant).unwrap();
     let host = Host::admit(&store, &grant).await.unwrap();
     assert!(!host.cancelled());
     // Hold the store past the lock wait, as a slow disk sync can.
@@ -1937,5 +2009,120 @@ mod local_run {
         );
         endings.extend(lines);
         fixture("other-endings", root.path(), &endings);
+    }
+
+    /// Starts the owner of each launched turn on its own thread and returns
+    /// at once, as a real launch does, so the turn can be stopped while it
+    /// runs. The thread says how many model calls the turn made.
+    struct Detached {
+        script: Mutex<Option<Script>>,
+        owner: Mutex<Option<std::thread::JoinHandle<usize>>>,
+    }
+
+    impl Launch for Detached {
+        fn launch(&self, _: &Engine, grant: &Path, store: &Path) -> Result<Launched, String> {
+            let bytes = std::fs::read(grant).map_err(|e| e.to_string())?;
+            let script = self.script.lock().unwrap().take().ok_or("no script")?;
+            let store = store.to_path_buf();
+            let owner = std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                runtime.block_on(async {
+                    let codex = lane("gpt-6-luna", 0.0, script);
+                    let claude = lane("claude-opus-5-5", 0.1, Vec::new());
+                    let host = Host::admit(&store, &bytes).await.unwrap();
+                    run_routes(
+                        host,
+                        store.clone(),
+                        vec![
+                            (route("codex", "gpt-6-luna"), &codex),
+                            (route("claude", "claude-opus-5-5"), &claude),
+                        ],
+                        &JudgeFixture,
+                        during_limit,
+                    )
+                    .await
+                    .unwrap();
+                    codex.calls.get() + claude.calls.get()
+                })
+            });
+            *self.owner.lock().unwrap() = Some(owner);
+            Ok(Launched {
+                owner_process: std::process::id(),
+                grant_digest: String::new(),
+            })
+        }
+    }
+
+    /// #10050: `openagents chat stop` (or a phone's Stop Coder too) while a
+    /// command runs. The turn makes no model call after the stop and ends
+    /// with exactly one `stopped`, with no failure or failed model call.
+    #[test]
+    fn a_turn_stopped_while_its_command_runs_ends_once_as_stopped() {
+        let root = tempfile::tempdir().unwrap();
+        let top = checkout(root.path());
+        let store = root.path().join("tasks");
+        let launcher = std::sync::Arc::new(Detached {
+            script: Mutex::new(Some(vec![
+                Ok(write("sleep 30")),
+                Ok(write("printf 'x' > after.txt")),
+                Ok(finished("Done.")),
+            ])),
+            owner: Mutex::new(None),
+        });
+        struct Shared(std::sync::Arc<Detached>);
+        impl Launch for Shared {
+            fn launch(&self, e: &Engine, g: &Path, s: &Path) -> Result<Launched, String> {
+                self.0.launch(e, g, s)
+            }
+        }
+        let local = Local::new(store.clone())
+            .with_probe(signed_in)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(Shared(launcher.clone())));
+        let record = local
+            .start(&top, "slow", "run the slow thing", None)
+            .unwrap();
+        let trace = store.join(format!("{}.1.atif.jsonl", record.task));
+        let started = std::time::Instant::now();
+        while !std::fs::read_to_string(&trace)
+            .unwrap_or_default()
+            .contains("Supervised command started")
+        {
+            assert!(
+                started.elapsed() < Duration::from_secs(20),
+                "no command started"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        local.stop(&record.task).unwrap();
+        let (lines, state) = drain(&local, &record.task);
+        let calls = launcher
+            .owner
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(calls, 1, "no model call after the stop");
+        assert_eq!(state, State::Ended);
+        let seen = names(&lines);
+        assert_eq!(
+            seen.iter().filter(|n| **n == "stopped").count(),
+            1,
+            "{seen:?}"
+        );
+        assert_eq!(seen.last(), Some(&"stopped"));
+        assert!(!seen.contains(&"failure"), "{seen:?}");
+        for line in &lines {
+            let text = serde_json::to_string(line).unwrap();
+            assert!(!text.contains("cannot make this transition"), "{text}");
+        }
+        let task = Store::open(&store).unwrap().show(&record.task).unwrap();
+        assert_one_clean_stop(&store, &task);
+        assert!(!Path::new(&record.worktree).join("after.txt").exists());
     }
 }

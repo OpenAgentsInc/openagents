@@ -361,7 +361,8 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
 ///   acceptance test, naming each command by its first line.
 /// - `ended`: a `system` record, `Coder finished in N steps.` as a
 ///   `task_complete` status record, or a `Coder stopped: ` message with the
-///   reason.
+///   reason (for a stop from outside, the loop's `stopped` ending, that the
+///   task was cancelled or reached its time limit).
 ///
 /// Returns None for every other event, which the caller projects as an
 /// `adapter` record.
@@ -524,6 +525,10 @@ fn microcoder(
                         300
                     )
                 ),
+                // Stopped from outside: cancelled, or the host's deadline.
+                "stopped" => {
+                    "Coder stopped: the task was cancelled or reached its time limit.".to_owned()
+                }
                 other => format!("Coder stopped: {}", trim(&other.replace('_', " "), 64).0),
             };
             Some(("message", Some("system"), None, text))
