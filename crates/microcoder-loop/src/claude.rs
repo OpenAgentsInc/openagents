@@ -35,8 +35,11 @@
 //! have cost what the report says, or an unknown amount when there is no
 //! report.
 //!
-//! The binary is `CLAUDE_BIN`, else `claude` on `PATH`, else
-//! `~/.local/bin/claude`, where Claude Code's installer puts it.
+//! The binary is `CLAUDE_BIN`, else the first `claude` [`locate`] finds:
+//! on `PATH`, in the folders Claude Code's installers, npm, and Homebrew
+//! put it, or on the owner's login-shell `PATH`. A host a service manager
+//! starts (launchd gives `/usr/bin:/bin`) has none of those on its own
+//! `PATH`.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -186,22 +189,185 @@ fn find_binary() -> Result<PathBuf, String> {
             ))
         };
     }
-    let on_path = std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths)
+    locate().ok_or_else(|| {
+        "no claude binary: set CLAUDE_BIN, or install Claude Code and run `claude` to log in".into()
+    })
+}
+
+/// Folders under `HOME` where Claude Code, npm, or a Node version manager
+/// may put `claude`, in the order [`locate`] tries them.
+const HOME_DIRS: &[&str] = &[
+    ".local/bin",
+    ".claude/local",
+    ".npm-global/bin",
+    ".volta/bin",
+    ".bun/bin",
+];
+
+/// System folders Homebrew (Apple silicon, then Intel) and the Node
+/// installer's npm put `claude` in.
+const SYSTEM_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
+
+/// The `claude` binary this process would run, ignoring `CLAUDE_BIN`: the
+/// first found on `PATH`, in `~/.local/bin` (Claude Code's installer),
+/// `~/.claude/local` (its local install), the npm global prefix's `bin`
+/// (`NPM_CONFIG_PREFIX` or `prefix=` in `~/.npmrc`), `~/.npm-global/bin`,
+/// `~/.volta/bin`, `~/.bun/bin`, Homebrew's and npm's system folders, the
+/// newest nvm Node's `bin`, and last the owner's login-shell `PATH`, asked
+/// once a process and only when nothing else has one.
+#[must_use]
+pub fn locate() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|home| home.is_absolute());
+    let path = std::env::var_os("PATH");
+    let prefix = std::env::var_os("NPM_CONFIG_PREFIX")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from);
+    search(
+        home.as_deref(),
+        path.as_deref(),
+        prefix,
+        SYSTEM_DIRS,
+        login_path,
+    )
+}
+
+/// [`locate`] over the given `HOME`, `PATH`, npm prefix, and system
+/// folders, with `login_path` called only when every other folder misses.
+fn search(
+    home: Option<&Path>,
+    path: Option<&std::ffi::OsStr>,
+    prefix: Option<PathBuf>,
+    system: &[&str],
+    login_path: impl FnOnce() -> Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    let mut dirs: Vec<PathBuf> = path
+        .map(|path| std::env::split_paths(path).collect())
+        .unwrap_or_default();
+    if let Some(home) = home {
+        dirs.extend(HOME_DIRS.iter().map(|dir| home.join(dir)));
+        if let Some(prefix) = prefix.or_else(|| npmrc_prefix(home)) {
+            dirs.push(prefix.join("bin"));
+        }
+    }
+    dirs.extend(system.iter().map(PathBuf::from));
+    if let Some(home) = home {
+        dirs.extend(nvm_bins(home));
+    }
+    let found = |dirs: &mut dyn Iterator<Item = PathBuf>| {
+        dirs.filter(|dir| dir.is_absolute())
             .map(|dir| dir.join("claude"))
-            .find(|path| path.is_file())
+            .find(|candidate| candidate.is_file())
+    };
+    found(&mut dirs.into_iter()).or_else(|| {
+        let path = login_path()?;
+        found(&mut std::env::split_paths(&path))
+    })
+}
+
+/// The npm global prefix `~/.npmrc` sets (`prefix=...`), with `~/` and
+/// `${HOME}` read as `home`.
+fn npmrc_prefix(home: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(home.join(".npmrc")).ok()?;
+    text.lines().rev().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        if key.trim() != "prefix" {
+            return None;
+        }
+        let value = value.trim().trim_matches('"');
+        let value = value.replace("${HOME}", &home.to_string_lossy());
+        let path = match value.strip_prefix("~/") {
+            Some(rest) => home.join(rest),
+            None => PathBuf::from(value),
+        };
+        path.is_absolute().then_some(path)
+    })
+}
+
+/// Each nvm-installed Node's `bin`, newest version first.
+fn nvm_bins(home: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(home.join(".nvm/versions/node")) else {
+        return Vec::new();
+    };
+    let mut versions: Vec<(Vec<u64>, PathBuf)> = entries
+        .filter_map(Result::ok)
+        .map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let version = name
+                .trim_start_matches('v')
+                .split('.')
+                .map(|part| part.parse().unwrap_or(0))
+                .collect();
+            (version, entry.path().join("bin"))
+        })
+        .collect();
+    versions.sort_by(|a, b| b.0.cmp(&a.0));
+    versions.into_iter().map(|(_, bin)| bin).collect()
+}
+
+/// The owner's login-shell `PATH`, asked once a process.
+fn login_path() -> Option<std::ffi::OsString> {
+    static PATH: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    PATH.get_or_init(ask_login_shell).clone()
+}
+
+/// Printed before the `PATH`, so text a profile prints first is skipped.
+#[cfg(unix)]
+const LOGIN_MARKER: &str = "__OPENAGENTS_LOGIN_PATH__";
+
+/// Runs `$SHELL -l -i -c` for its `PATH`, giving it at most five seconds.
+#[cfg(unix)]
+fn ask_login_shell() -> Option<std::ffi::OsString> {
+    use std::io::Read;
+    let shell = std::env::var_os("SHELL")
+        .map(PathBuf::from)
+        .filter(|shell| shell.is_absolute() && shell.is_file())?;
+    let mut child = std::process::Command::new(&shell)
+        .args(["-l", "-i", "-c"])
+        .arg(format!("printf '%s%s' {LOGIN_MARKER} \"$PATH\""))
+        .env("TERM", "dumb")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut text = Vec::new();
+        let _ = stdout.by_ref().take(1024 * 1024).read_to_end(&mut text);
+        text
     });
-    if let Some(path) = on_path {
-        return Ok(path);
-    }
-    let local = std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/bin/claude"));
-    match local {
-        Some(path) if path.is_file() => Ok(path),
-        _ => Err(
-            "no claude binary: set CLAUDE_BIN or put claude on PATH; run `claude login` there"
-                .into(),
-        ),
-    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    let text = reader.join().ok()?;
+    status.filter(std::process::ExitStatus::success)?;
+    login_path_from(&String::from_utf8_lossy(&text))
+}
+
+#[cfg(not(unix))]
+fn ask_login_shell() -> Option<std::ffi::OsString> {
+    None
+}
+
+/// The `PATH` after the marker in a login shell's output.
+#[cfg(unix)]
+fn login_path_from(text: &str) -> Option<std::ffi::OsString> {
+    let (_, path) = text.rsplit_once(LOGIN_MARKER)?;
+    let path = path.trim();
+    (!path.is_empty()).then(|| path.into())
 }
 
 /// The fields of Claude Code's `result` event this reads.
@@ -726,6 +892,91 @@ const STRUCTURED_OUTPUT: &str = "StructuredOutput";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn install(dir: &Path) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let binary = dir.join("claude");
+        std::fs::write(&binary, "").unwrap();
+        binary
+    }
+
+    #[test]
+    fn claude_is_found_where_npm_and_homebrew_put_it_without_a_path() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let brew = root.path().join("opt/homebrew/bin");
+        let brew_str = brew.to_str().unwrap().to_owned();
+        let bare = std::ffi::OsString::from("/usr/bin:/bin");
+        let never = || -> Option<std::ffi::OsString> { panic!("asked the login shell") };
+        let fails = || None;
+        let look = |prefix: Option<PathBuf>| {
+            search(
+                Some(&home),
+                Some(&bare),
+                prefix,
+                &[brew_str.as_str()],
+                fails,
+            )
+        };
+
+        assert_eq!(look(None), None);
+        // Homebrew's folder, off a launchd PATH.
+        let brewed = install(&brew);
+        assert_eq!(look(None), Some(brewed.clone()));
+        // The Claude Code installer's folder comes before Homebrew's.
+        let local = install(&home.join(".claude/local"));
+        assert_eq!(
+            search(Some(&home), Some(&bare), None, &[brew_str.as_str()], never),
+            Some(local.clone())
+        );
+        std::fs::remove_file(&local).unwrap();
+        // The npm global prefix, from NPM_CONFIG_PREFIX or ~/.npmrc.
+        let npm = install(&root.path().join("npm/bin"));
+        assert_eq!(look(Some(root.path().join("npm"))), Some(npm.clone()));
+        std::fs::write(home.join(".npmrc"), "color=false\nprefix=~/.npm-packages\n").unwrap();
+        let npmrc = install(&home.join(".npm-packages/bin"));
+        assert_eq!(look(None), Some(npmrc));
+        // PATH still comes first.
+        let on_path = install(&root.path().join("on-path"));
+        let path = std::env::join_paths([root.path().join("on-path")]).unwrap();
+        assert_eq!(
+            search(Some(&home), Some(&path), None, &[], never),
+            Some(on_path)
+        );
+    }
+
+    #[test]
+    fn the_newest_nvm_node_and_then_the_login_shell_path_are_tried() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let bare = std::ffi::OsString::from("/usr/bin:/bin");
+        let shell_dir = root.path().join("shell");
+        let from_shell = install(&shell_dir);
+        let login = || Some(std::env::join_paths([&shell_dir]).unwrap());
+        assert_eq!(
+            search(Some(&home), Some(&bare), None, &[], login),
+            Some(from_shell)
+        );
+        install(&home.join(".nvm/versions/node/v9.11.2/bin"));
+        let newest = install(&home.join(".nvm/versions/node/v22.3.0/bin"));
+        install(&home.join(".nvm/versions/node/v20.18.1/bin"));
+        assert_eq!(
+            search(Some(&home), Some(&bare), None, &[], login),
+            Some(newest)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_login_path_is_read_after_the_marker() {
+        let text = format!("Welcome!\n{LOGIN_MARKER}/opt/homebrew/bin:/usr/bin\n");
+        assert_eq!(
+            login_path_from(&text),
+            Some("/opt/homebrew/bin:/usr/bin".into())
+        );
+        assert_eq!(login_path_from("no marker"), None);
+    }
 
     #[test]
     fn defaults_map_to_the_alias_and_names_pass_through() {

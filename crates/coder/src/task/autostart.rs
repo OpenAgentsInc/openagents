@@ -519,6 +519,12 @@ impl Launch for Process {
         if let Some(home) = std::env::var_os("HOME") {
             command.env("HOME", home);
         }
+        // A host a service manager starts has a short PATH, and the engine
+        // gets a shorter one, so the host names the `claude` it finds
+        // (npm, Homebrew, or the login shell's PATH) for the engine.
+        if let Some(claude) = claude_binary() {
+            command.env(microcoder_loop::claude::BIN_VAR, claude);
+        }
         // The judge's client must name the decision model the grant admits.
         if engine.decision_model != "jev-latest" {
             command.env("TYPESAFE_DEFAULT_MODEL", &engine.decision_model);
@@ -553,6 +559,20 @@ impl Launch for Process {
             grant_digest: value["grant_digest"].as_str().unwrap_or("").to_owned(),
         })
     }
+}
+
+/// The `claude` binary the engine runs: `CLAUDE_BIN` when it names a file,
+/// else the one [`microcoder_loop::claude::locate`] finds (which asks the
+/// login shell at most once a process).
+fn claude_binary() -> Option<PathBuf> {
+    if let Some(named) = std::env::var_os(microcoder_loop::claude::BIN_VAR)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+    {
+        return Some(named);
+    }
+    microcoder_loop::claude::locate()
 }
 
 /// The host's auto-starter: shared by the inbox and its periodic sweep.

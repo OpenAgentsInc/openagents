@@ -56,7 +56,8 @@ fn host(devices: Vec<Device>, project: bool, autostart: bool) -> Refreshed {
     let projects = if project {
         vec![Project {
             label: "website".into(),
-            path: "/Users/kai/code/website".into(),
+            path: "/Users/kai/.openagents/host/projects/website-1a2b3c4d".into(),
+            folder: Some("/Users/kai/code/website".into()),
         }]
     } else {
         vec![]
@@ -343,6 +344,39 @@ fn the_code_text_is_never_a_word_on_screen() {
                 "{name} shows the code"
             );
         }
+    }
+}
+
+/// `DSK-02` and Home show the folder the person picked, never the host's
+/// worktree of it; a project the host lists without one shows its path.
+#[test]
+fn the_picked_folder_shows_not_the_hosts_worktree() {
+    let connected = Screen::Connected {
+        device: "d".repeat(64),
+    };
+    for screen in [connected, Screen::Home] {
+        let (mut model, _) = model(screen);
+        model.host = Some(host(
+            vec![phone('d', "Kai's iPhone", false, 60)],
+            true,
+            true,
+        ));
+        model.reached = true;
+        let shown = outline(&view_of(&model));
+        assert!(
+            shown.contains("body \"/Users/kai/code/website\""),
+            "{shown}"
+        );
+        assert!(!shown.contains(".openagents"), "{shown}");
+
+        let refreshed = model.host.as_mut().expect("a host");
+        refreshed.projects[0].folder = None;
+        refreshed.projects[0].path = "/Users/kai/code/site-worktree".into();
+        let shown = outline(&view_of(&model));
+        assert!(
+            shown.contains("body \"/Users/kai/code/site-worktree\""),
+            "{shown}"
+        );
     }
 }
 

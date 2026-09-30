@@ -655,8 +655,9 @@ impl Connection {
 /// - **Codex**: `$CODEX_HOME/auth.json` or `~/.codex/auth.json` holds a
 ///   ChatGPT login whose access token is not about to expire, as
 ///   `codex_transport::codex::Login::load` requires before a request.
-/// - **Claude**: a `claude` binary (`CLAUDE_BIN`, `PATH`, or
-///   `~/.local/bin/claude`) and a Claude Code sign-in: the account record in
+/// - **Claude**: a `claude` binary (`CLAUDE_BIN`, else
+///   [`crate::claude::locate`]: `PATH`, the folders Claude Code, npm, and
+///   Homebrew install it in, or the login shell's `PATH`) and a Claude Code sign-in: the account record in
 ///   `~/.claude.json`, or `~/.claude/.credentials.json`. The credential
 ///   itself, in the macOS keychain or that file, is not read.
 ///
@@ -716,9 +717,10 @@ pub fn probe(provider: Provider) -> Connection {
             }
         }
         Provider::Claude => {
-            if claude_binary(home.as_deref()).is_none() {
+            if claude_binary().is_none() {
                 return Connection::Missing(
-                    "no claude binary in CLAUDE_BIN, PATH, or ~/.local/bin".into(),
+                    "no claude binary in CLAUDE_BIN, PATH, the install folders, or the login shell's PATH"
+                        .into(),
                 );
             }
             let Some(home) = home else {
@@ -743,20 +745,11 @@ pub fn cloud_connection(setting: Option<&str>) -> Connection {
     }
 }
 
-fn claude_binary(home: Option<&Path>) -> Option<PathBuf> {
+fn claude_binary() -> Option<PathBuf> {
     if let Some(named) = std::env::var_os("CLAUDE_BIN").filter(|v| !v.is_empty()) {
         return Some(PathBuf::from(named)).filter(|path| path.is_file());
     }
-    std::env::var_os("PATH")
-        .and_then(|paths| {
-            std::env::split_paths(&paths)
-                .map(|dir| dir.join("claude"))
-                .find(|path| path.is_file())
-        })
-        .or_else(|| {
-            home.map(|home| home.join(".local/bin/claude"))
-                .filter(|p| p.is_file())
-        })
+    crate::claude::locate()
 }
 
 /// Claude Code keeps the signed-in account's metadata (not the credential)

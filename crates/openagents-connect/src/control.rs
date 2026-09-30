@@ -243,7 +243,21 @@ pub struct NearbyPrompt {
 #[serde(deny_unknown_fields)]
 pub struct Project {
     pub label: String,
+    /// Where Coder works: the host's worktree of the picked folder, or the
+    /// folder itself when it was already such a worktree.
     pub path: String,
+    /// The folder the person picked, when `path` is the host's worktree of
+    /// it. Screens show this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+}
+
+impl Project {
+    /// The folder to show the person: the one they picked, else `path`.
+    #[must_use]
+    pub fn shown(&self) -> &str {
+        self.folder.as_deref().unwrap_or(&self.path)
+    }
 }
 
 /// Send a request and read its response, on one connection.

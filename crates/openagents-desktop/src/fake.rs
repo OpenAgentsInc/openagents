@@ -336,10 +336,17 @@ impl HostControl for FakeHost {
             || path.to_string(),
             |name| name.to_string_lossy().into_owned(),
         );
-        if !state.projects.iter().any(|project| project.path == path) {
+        // As the host does: the picked folder is admitted as the host's
+        // worktree of it, and the listing names both.
+        if !state
+            .projects
+            .iter()
+            .any(|project| project.folder.as_deref() == Some(path))
+        {
             state.projects.push(Project {
+                path: format!("/Users/kai/.openagents/host/projects/{label}-1a2b3c4d"),
                 label,
-                path: path.into(),
+                folder: Some(path.into()),
             });
         }
         Ok(state.projects.clone())

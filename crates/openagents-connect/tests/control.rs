@@ -126,7 +126,8 @@ fn replies_round_trip() {
         Reply::Projects {
             projects: vec![Project {
                 label: "openagents".into(),
-                path: "/Users/kai/work/openagents".into(),
+                path: "/Users/kai/.openagents/host/projects/openagents-1a2b3c4d".into(),
+                folder: Some("/Users/kai/work/openagents".into()),
             }],
         },
         Reply::Owner {

@@ -538,9 +538,31 @@ fn projects(root: &Path) -> Result<Vec<Project>> {
         .into_iter()
         .map(|(label, path)| Project {
             label,
+            folder: picked_folder(root, &path).map(|folder| folder.display().to_string()),
             path: path.display().to_string(),
         })
         .collect())
+}
+
+/// The folder the person picked, for a project the host admitted as its
+/// own worktree of it (`HOST_ROOT/projects/NAME-HASH`): the checkout whose
+/// Git directory holds the worktree's record. `None` for any other path.
+fn picked_folder(host_root: &Path, path: &Path) -> Option<PathBuf> {
+    let projects = host_root.join("projects");
+    let under = |root: &Path| path.parent() == Some(root);
+    if !under(&projects) && !std::fs::canonicalize(&projects).is_ok_and(|p| under(&p)) {
+        return None;
+    }
+    let link = std::fs::read_to_string(path.join(".git")).ok()?;
+    let gitdir = path.join(link.strip_prefix("gitdir:")?.trim());
+    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
+        Ok(common) => gitdir.join(common.trim()),
+        Err(_) => gitdir.parent()?.parent()?.to_path_buf(),
+    };
+    let common = std::fs::canonicalize(common).ok()?;
+    (common.file_name()? == ".git")
+        .then(|| common.parent().map(Path::to_path_buf))
+        .flatten()
 }
 
 /// Change the recorded projects, then ask the host to start again, since

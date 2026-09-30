@@ -236,6 +236,18 @@ async fn a_project_change_is_recorded_and_asks_the_host_to_start_again() {
     let admitted = std::path::PathBuf::from(&projects[0].path);
     assert!(admitted.starts_with(host.root.canonicalize().unwrap().join("projects")));
     assert!(admitted.join(".git").is_file());
+    // The desktop shows the folder the person picked, not the worktree.
+    assert_eq!(
+        projects[0].folder.as_deref(),
+        Some(
+            checkout
+                .canonicalize()
+                .unwrap()
+                .display()
+                .to_string()
+                .as_str()
+        )
+    );
     assert_eq!(
         std::fs::read_to_string(admitted.join("README.md")).unwrap(),
         "site\n"

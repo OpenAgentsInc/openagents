@@ -269,13 +269,14 @@ fn phone_name(label: &str) -> &str {
     }
 }
 
-/// The project row: the folder and **Choose folder…**, with the reason a
-/// folder was refused under it.
+/// The project row: the folder the person picked (never the host's
+/// worktree of it) and **Choose folder…**, with the reason a folder was
+/// refused under it.
 fn project_row(model: &Model) -> Vec<Node<Intent>> {
     let mut rows = Vec::new();
     let (path, label) = match model.project() {
         Some(project) => (
-            text("project-path", &project.path, TextRole::Body),
+            text("project-path", project.shown(), TextRole::Body),
             "Choose another folder…",
         ),
         None => (
