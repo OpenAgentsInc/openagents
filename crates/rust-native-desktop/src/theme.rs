@@ -8,6 +8,8 @@ use rust_native::style::{Color, Space};
 /// The colors and sizes a view is painted with, in points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
+    /// The bundled font pair used by semantic controls.
+    pub font_family: rust_native::layout::display::FontFamily,
     /// The window's field.
     pub background: Color,
     /// Primary text.
@@ -45,6 +47,7 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Theme {
         Theme {
+            font_family: Default::default(),
             background: Color::rgb(0, 0, 0),
             text: Color::rgb(245, 245, 245),
             muted: Color::rgb(150, 150, 150),

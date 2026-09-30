@@ -74,14 +74,15 @@ pub struct Panel {
 
 impl Panel {
     pub fn new(now: Instant) -> Self {
+        let transcript = chat_transcript();
         Self {
             commands: openagents_chat_app::commands::Overlay::default(),
             saved: openagents_chat_app::retained::Session::default(),
             saved_visible: false,
             saved_project: None,
-            command_query: Field::with_placeholder("Find a command or chat…"),
+            command_query: chat_field("Find a command or chat…"),
             command_token: String::new(),
-            search: Field::with_placeholder("Search chats…"),
+            search: chat_field("Search chats…"),
             rename: None,
             rename_pending: None,
             rename_focus: 0,
@@ -95,7 +96,7 @@ impl Panel {
             task_editor: BTreeMap::new(),
             born: now,
             viewport: (1200.0, 840.0, 1.0),
-            transcript: Transcript::default(),
+            transcript,
             fonts: Fonts::new(),
             transcript_rows: vec![],
             projection: Projection::default(),
@@ -521,7 +522,7 @@ impl Panel {
         );
         if editing && let Some(text) = task.editing_text().map(str::to_owned) {
             *self.task_editor.entry(chat.clone()).or_default() += 1;
-            let mut field = Field::with_placeholder(task.placeholder());
+            let mut field = chat_field(task.placeholder());
             // The replacement text mounts with the new editing token in footer().
             field.focused = true;
             if let Some(wake) = self.waker.clone() {
@@ -596,13 +597,13 @@ impl Panel {
             let field = self
                 .fields
                 .entry(id.clone())
-                .or_insert_with(|| Field::with_placeholder("Message OpenAgents…"));
+                .or_insert_with(|| chat_field("Message OpenAgents…"));
             field.focused = true;
             if let Some(waker) = &self.waker {
                 field.start(waker.clone());
             }
         }
-        self.transcript = Transcript::default();
+        self.transcript = chat_transcript();
         if let Some(waker) = &self.waker {
             let wake = waker.clone();
             self.transcript.start(Arc::new(move || wake.wake()));
@@ -939,7 +940,7 @@ impl Panel {
                     field.focused = false;
                 }
                 self.search.focused = false;
-                let mut field = Field::with_placeholder("Chat title");
+                let mut field = chat_field("Chat title");
                 if let Some(wake) = self.waker.clone() {
                     field.start(wake);
                 }
@@ -1032,7 +1033,7 @@ impl Panel {
         }
         self.commands.open(kind);
         self.command_token = uuid::Uuid::new_v4().simple().to_string();
-        self.command_query = Field::with_placeholder("Find a command or chat…");
+        self.command_query = chat_field("Find a command or chat…");
         self.command_query.focused = true;
         if let Some(wake) = self.waker.clone() {
             self.command_query.start(wake);
@@ -2095,6 +2096,18 @@ impl Panel {
         stack("chat-footer", Axis::Vertical, content)
     }
 }
+fn chat_transcript() -> Transcript {
+    let mut transcript = Transcript::default();
+    transcript.set_font_family(rust_native::layout::display::FontFamily::Geist);
+    transcript
+}
+
+fn chat_field(placeholder: &str) -> Field {
+    let mut field = Field::with_placeholder(placeholder);
+    field.set_font_family(rust_native::layout::display::FontFamily::Geist);
+    field
+}
+
 fn appearance() -> Appearance<'static> {
     Appearance {
         prefix: "turn-",

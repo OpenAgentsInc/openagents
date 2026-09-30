@@ -68,7 +68,7 @@ pub struct Fonts {
     measurer: ShapingMeasurer,
     shape: ShapeContext,
     scale: ScaleContext,
-    faces: [FontRef<'static>; 4],
+    faces: [FontRef<'static>; 20],
     paragraphs: HashMap<(String, u64, u32), Rc<Paragraph>>,
     paragraph_bytes: usize,
     advances: HashMap<(String, u64), f32>,
@@ -88,11 +88,13 @@ fn font_bits(font: Font) -> u64 {
         | (font.weight as u64) << 32
         | u64::from(font.italic) << 40
         | u64::from(font.mono) << 41
+        | (font.family as u64) << 42
 }
 
 /// A regular or bold font at `size`.
 pub fn font(size: f32, weight: Weight, mono: bool) -> Font {
     Font {
+        family: Default::default(),
         size,
         weight,
         italic: false,

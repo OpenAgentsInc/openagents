@@ -28,6 +28,7 @@ pub struct Field {
     pub focused: bool,
     placeholder: String,
     unframed: bool,
+    font_family: rust_native::layout::display::FontFamily,
     paragraph: Option<Rc<Paragraph>>,
     offset: f32,
     dragging: bool,
@@ -43,6 +44,18 @@ impl Field {
             placeholder: placeholder.into(),
             ..Self::default()
         }
+    }
+    pub fn set_font_family(&mut self, family: rust_native::layout::display::FontFamily) {
+        if self.font_family != family {
+            self.font_family = family;
+            self.paragraph = None;
+            *self.measured_height.borrow_mut() = None;
+        }
+    }
+    fn font(&self) -> rust_native::layout::display::Font {
+        let mut font = font(15.0, Weight::Regular, false);
+        font.family = self.font_family;
+        font
     }
     pub fn set_placeholder(&mut self, placeholder: &str) {
         if self.placeholder != placeholder {
@@ -63,7 +76,7 @@ impl Field {
             return *height;
         }
         use rust_native::layout::{MeasureRun, Measurer, shape::ShapingMeasurer};
-        let font = font(15.0, Weight::Regular, false);
+        let font = self.font();
         let mut measurer = ShapingMeasurer::new();
         let measured = measurer.measure(
             text,
@@ -154,6 +167,7 @@ impl Field {
             self.offset.to_bits(),
             &self.placeholder,
             self.unframed,
+            self.font_family,
         )
             .hash(&mut hash);
         hash.finish()
@@ -381,7 +395,7 @@ impl Field {
                 },
             );
         }
-        let font = font(15.0, Weight::Regular, false);
+        let font = self.font();
         let text = self.text().to_owned();
         let paragraph = fonts.editable_paragraph(&text, font, (rect.w / scale - 28.0).max(1.0));
         let height = paragraph.line_height();
@@ -527,7 +541,14 @@ mod tests {
 
     #[test]
     fn each_trailing_space_moves_the_caret_and_remains_selectable() {
+        use rust_native::layout::display::FontFamily;
+        for family in [FontFamily::Inter, FontFamily::Geist] {
+            check_trailing_spaces(family);
+        }
+    }
+    fn check_trailing_spaces(family: rust_native::layout::display::FontFamily) {
         let mut field = field();
+        field.set_font_family(family);
         let mut fonts = Fonts::new();
         let mut frame = Frame::transparent(400, 100);
         let rect = PxRect {

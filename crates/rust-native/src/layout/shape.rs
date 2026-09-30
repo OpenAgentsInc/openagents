@@ -1,13 +1,12 @@
 //! Text shaping in Rust with bundled fonts, so a platform needs no text
 //! engine callback to lay out a transcript.
 //!
-//! The transcript draws with four bundled OFL faces: Inter and Inter Italic
-//! for text, and JetBrains Mono and JetBrains Mono Italic for code. All four
-//! are variable fonts. [`FontSpec`] names the exact face and variation values
-//! for a display-list font, so the adapter paints the same outlines that
-//! [`ShapingMeasurer`] measured: `wght` is 400, 500, 600, or 700; Inter's
-//! `opsz` follows the size between 14 and 32; and code turns off contextual
-//! alternates (`calt`), so operators never become ligatures.
+//! Inter and JetBrains Mono remain the default variable-font pair. A scoped
+//! Geist family uses Zeron's exact static Geist and Geist Mono faces for each
+//! weight and italic combination. All bundled fonts use the SIL Open Font
+//! License. [`FontSpec`] binds measured and painted outlines to the same face.
+//! Variable faces receive `wght` and `opsz` values; static faces select the
+//! authored weight. Code disables contextual alternates (`calt`).
 //!
 //! Lines break at Unicode line-break opportunities (UAX #14, with CoreText's
 //! break between a word's closing slash and a digit), greedily, as CoreText's
@@ -19,18 +18,34 @@
 //! characters and emoji, else 0.6 em. The ground-truth test in
 //! `shape::tests` checks the breaks against CoreText's for the same fonts.
 
-use super::display::{Font, Weight};
+use super::display::{Font, FontFamily, Weight};
 use super::measure::{Line, MeasureRun, Measured, Measurer};
 use swash::shape::ShapeContext;
 use swash::text::cluster::Boundary;
 use swash::{FontRef, Metrics};
 
 /// The bundled faces, by [`FontSpec::face`].
-pub const FACES: [&[u8]; 4] = [
+pub const FACES: [&[u8]; 20] = [
     include_bytes!("../../fonts/InterVariable.ttf"),
     include_bytes!("../../fonts/InterVariable-Italic.ttf"),
     include_bytes!("../../fonts/JetBrainsMono-Variable.ttf"),
     include_bytes!("../../fonts/JetBrainsMono-Italic-Variable.ttf"),
+    include_bytes!("../../fonts/Geist.ttf"),
+    include_bytes!("../../fonts/Geist-Medium.ttf"),
+    include_bytes!("../../fonts/Geist-SemiBold.ttf"),
+    include_bytes!("../../fonts/Geist-Bold.ttf"),
+    include_bytes!("../../fonts/Geist-Italic.ttf"),
+    include_bytes!("../../fonts/Geist-MediumItalic.ttf"),
+    include_bytes!("../../fonts/Geist-SemiBoldItalic.ttf"),
+    include_bytes!("../../fonts/Geist-BoldItalic.ttf"),
+    include_bytes!("../../fonts/GeistMono.ttf"),
+    include_bytes!("../../fonts/GeistMono-Medium.ttf"),
+    include_bytes!("../../fonts/GeistMono-SemiBold.ttf"),
+    include_bytes!("../../fonts/GeistMono-Bold.ttf"),
+    include_bytes!("../../fonts/GeistMono-Italic.ttf"),
+    include_bytes!("../../fonts/GeistMono-MediumItalic.ttf"),
+    include_bytes!("../../fonts/GeistMono-SemiBoldItalic.ttf"),
+    include_bytes!("../../fonts/GeistMono-BoldItalic.ttf"),
 ];
 
 /// Distance between default tab stops, in points.
@@ -39,8 +54,8 @@ pub const TAB_INTERVAL: f64 = 28.0;
 /// How to draw a display-list font with the bundled faces.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FontSpec {
-    /// Index into [`FACES`]: 0 Inter, 1 Inter Italic, 2 JetBrains Mono,
-    /// 3 JetBrains Mono Italic.
+    /// Index into [`FACES`]. The first four are the default variable faces;
+    /// the remaining sixteen are Geist's sans/mono, upright/italic weights.
     pub face: usize,
     pub size: f32,
     /// The `wght` axis value.
@@ -59,12 +74,17 @@ impl FontSpec {
             Weight::Semibold => 600.0,
             Weight::Bold => 700.0,
         };
-        let face = usize::from(font.mono) * 2 + usize::from(font.italic);
+        let face = match font.family {
+            FontFamily::Inter => usize::from(font.mono) * 2 + usize::from(font.italic),
+            FontFamily::Geist => {
+                4 + usize::from(font.mono) * 8 + usize::from(font.italic) * 4 + font.weight as usize
+            }
+        };
         Self {
             face,
             size: font.size,
             weight,
-            optical: if font.mono {
+            optical: if font.mono || font.family == FontFamily::Geist {
                 0.0
             } else {
                 font.size.clamp(14.0, 32.0)
@@ -77,7 +97,7 @@ impl FontSpec {
 /// A [`Measurer`] that shapes with the bundled faces. Keep one per thread.
 pub struct ShapingMeasurer {
     context: ShapeContext,
-    fonts: [FontRef<'static>; 4],
+    fonts: [FontRef<'static>; 20],
 }
 
 impl Default for ShapingMeasurer {

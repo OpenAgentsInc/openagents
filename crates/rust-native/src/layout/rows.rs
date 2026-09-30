@@ -122,6 +122,7 @@ fn rect(x: f32, y: f32, w: f32, h: f32, radius: f32) -> Rect {
 impl Ctx<'_> {
     fn font(&self, size: f32, weight: Weight, italic: bool, mono: bool) -> Font {
         Font {
+            family: self.typography.family,
             size: self.typography.size(size),
             weight,
             italic,

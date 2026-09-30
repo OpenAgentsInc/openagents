@@ -13,11 +13,28 @@ use serde::Serialize;
 pub struct Font {
     pub size: f32,
     pub weight: Weight,
+    /// The bundled sans and monospace pair.
+    #[serde(skip_serializing_if = "FontFamily::is_default")]
+    pub family: FontFamily,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub italic: bool,
     /// A fixed-pitch face.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub mono: bool,
+}
+
+/// A bundled family pair. The default keeps existing adapter typography.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FontFamily {
+    #[default]
+    Inter,
+    Geist,
+}
+impl FontFamily {
+    fn is_default(&self) -> bool {
+        *self == Self::Inter
+    }
 }
 
 impl Font {
@@ -26,6 +43,7 @@ impl Font {
             | (self.weight as u64) << 32
             | u64::from(self.italic) << 40
             | u64::from(self.mono) << 41
+            | (self.family as u64) << 42
     }
 }
 

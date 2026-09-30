@@ -516,7 +516,9 @@ impl Engine<'_> {
             TextRole::Code | TextRole::Terminal => (self.theme.code, Weight::Regular, true),
             TextRole::Body | TextRole::Markdown => (self.theme.body, Weight::Regular, false),
         };
-        font(size, if bold { Weight::Bold } else { weight }, mono)
+        let mut font = font(size, if bold { Weight::Bold } else { weight }, mono);
+        font.family = self.theme.font_family;
+        font
     }
 
     fn text_color(&self, role: TextRole, style: &Style) -> Color {

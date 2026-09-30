@@ -751,6 +751,7 @@ mod ffi {
             .iter()
             .map(|r| MeasureRun {
                 font: display::Font {
+                    family: Default::default(),
                     size: r.size,
                     weight: display::Weight::Regular,
                     italic: r.italic != 0,

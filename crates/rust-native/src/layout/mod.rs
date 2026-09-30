@@ -126,6 +126,7 @@ impl Update {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Typography {
     scale: f32,
+    family: display::FontFamily,
     /// Sorted by nominal size, without repeats.
     curve: Vec<(f32, f32)>,
 }
@@ -134,6 +135,7 @@ impl Default for Typography {
     fn default() -> Self {
         Self {
             scale: 1.0,
+            family: Default::default(),
             curve: vec![],
         }
     }
@@ -161,6 +163,7 @@ impl Typography {
         points.dedup_by(|a, b| a.0 == b.0);
         Ok(Self {
             scale,
+            family: Default::default(),
             curve: points,
         })
     }
@@ -188,7 +191,7 @@ impl Typography {
             .iter()
             .map(|(a, b)| (a.to_bits(), b.to_bits()))
             .collect();
-        hash_of(&(self.scale.to_bits(), bits))
+        hash_of(&(self.scale.to_bits(), bits, self.family))
     }
 }
 
@@ -348,6 +351,7 @@ fn rows_in(tops: &[f32], height: impl Fn(usize) -> f32, y0: f32, y1: f32) -> Ran
 /// transcript, on one thread.
 pub struct TranscriptLayout {
     width: f32,
+    family: display::FontFamily,
     typography: Typography,
     rows: Vec<Row>,
     keys: Arc<Vec<String>>,
@@ -372,6 +376,7 @@ impl TranscriptLayout {
     pub fn new() -> Self {
         Self {
             width: 0.0,
+            family: Default::default(),
             typography: Typography::default(),
             rows: vec![],
             keys: Arc::default(),
@@ -382,6 +387,11 @@ impl TranscriptLayout {
             frame: None,
             pulled: None,
         }
+    }
+
+    /// Select a bundled font pair. The next update invalidates measured rows.
+    pub fn set_font_family(&mut self, family: display::FontFamily) {
+        self.family = family;
     }
 
     /// Applies an update and lays out the rows it invalidates.
@@ -395,7 +405,8 @@ impl TranscriptLayout {
         if !update.width.is_finite() || !(1.0..=16_384.0).contains(&update.width) {
             return Err(LayoutError::Geometry);
         }
-        let typography = Typography::new(update.scale, &update.curve)?;
+        let mut typography = Typography::new(update.scale, &update.curve)?;
+        typography.family = self.family;
         let expanded: HashSet<String> = update.expanded.into_iter().collect();
         if let Some(name) = update.source {
             if update.order.is_some() || !update.rows.is_empty() || update.earlier.is_some() {

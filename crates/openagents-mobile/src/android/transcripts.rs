@@ -173,6 +173,7 @@ pub(crate) fn display(id: i64, index: i32) -> Result<Vec<u8>, BridgeError> {
 pub(crate) fn font_spec(size: f32, weight: i32, italic: bool, mono: bool) -> [f32; 4] {
     use rust_native::layout::display::{Font, Weight};
     let spec = FontSpec::of(Font {
+        family: Default::default(),
         size,
         weight: match weight {
             1 => Weight::Medium,

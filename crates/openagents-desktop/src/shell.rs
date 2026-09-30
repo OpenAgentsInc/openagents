@@ -370,6 +370,7 @@ impl App for DesktopApp {
             return Theme::default();
         }
         Theme {
+            font_family: rust_native::layout::display::FontFamily::Geist,
             background: Color::rgb(9, 11, 14),
             text: Color::rgb(230, 232, 235),
             muted: Color::rgb(150, 155, 163),

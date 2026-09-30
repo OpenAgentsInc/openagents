@@ -287,3 +287,14 @@ or task-execution authority.
 Native drawing is distinct from native text and controls. Keep accessible
 labels and controls in the semantic tree or platform controls. A GPU drawing
 surface does not make its pixels, geometry, or custom text accessible by itself.
+
+## Bundled font selection
+
+A display-list `Font` defaults to the Inter and JetBrains Mono family pair.
+A scoped `FontFamily::Geist` uses bundled Geist and Geist Mono static faces for
+regular, medium, semibold, and bold text, including italic variants. Every face
+is available under the retained SIL Open Font License. `FontSpec` selects the
+same exact face for shaping and painting. Family participates in measurement
+and glyph cache identity. `TranscriptLayout::set_font_family` invalidates
+measured rows on the next update; it does not mutate a published frame.
+The existing font-spec C ABI continues to select the default pair.

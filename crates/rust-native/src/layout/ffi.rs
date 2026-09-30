@@ -258,6 +258,7 @@ pub extern "C" fn rust_native_font_spec(
     monospace: u8,
 ) -> RustNativeFontSpec {
     let spec = super::shape::FontSpec::of(super::display::Font {
+        family: Default::default(),
         size,
         weight: match weight {
             1 => Weight::Medium,

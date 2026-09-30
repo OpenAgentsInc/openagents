@@ -308,6 +308,7 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
 #[test]
 fn a_paragraph_breaks_at_spaces_and_keeps_trailing_space_on_the_line() {
     let font = Font {
+        family: Default::default(),
         size: 17.0,
         weight: Weight::Regular,
         italic: false,
@@ -437,4 +438,78 @@ fn the_c_interface_shapes_without_a_measurer_and_hands_out_the_fonts() {
     assert_eq!(summary["count"], 6);
     assert!(summary["height"].as_f64().unwrap() > 100.0);
     unsafe { rust_native_layout_destroy(handle) };
+}
+
+#[test]
+fn geist_selects_each_authored_face_and_family_changes_invalidate_measurement() {
+    use super::super::display::FontFamily;
+    let mut measurer = ShapingMeasurer::new();
+    let mut faces = std::collections::BTreeSet::new();
+    for mono in [false, true] {
+        for italic in [false, true] {
+            for weight in [
+                Weight::Regular,
+                Weight::Medium,
+                Weight::Semibold,
+                Weight::Bold,
+            ] {
+                let font = Font {
+                    family: FontFamily::Geist,
+                    size: 14.0,
+                    weight,
+                    italic,
+                    mono,
+                };
+                let spec = FontSpec::of(font);
+                assert!(faces.insert(spec.face));
+                assert_eq!(spec.optical, 0.0);
+                let measured = measurer
+                    .measure(
+                        "Exactly the same font",
+                        &[MeasureRun {
+                            font,
+                            start16: 0,
+                            end16: 21,
+                        }],
+                        Some(400.0),
+                    )
+                    .unwrap();
+                assert_eq!(measured.lines.len(), 1);
+                assert!(measured.lines[0].width > 40.0);
+            }
+        }
+    }
+    assert_eq!(faces.len(), 16);
+    let row = node(
+        "font-test".into(),
+        Element::Text {
+            value: "Typography and spacing".into(),
+            role: TextRole::Body,
+        },
+    );
+    let mut layout = TranscriptLayout::new();
+    let update = || Update {
+        width: 400.0,
+        scale: 1.0,
+        order: Some(vec![row.key.clone()]),
+        rows: vec![row.clone()],
+        ..Update::default()
+    };
+    layout.update(update(), &mut measurer).unwrap();
+    let old = layout.frame();
+    assert_eq!(
+        old.display(0).unwrap().styles[0].font.family,
+        FontFamily::Inter
+    );
+    layout.set_font_family(FontFamily::Geist);
+    assert_eq!(layout.update(update(), &mut measurer).unwrap().relaid, 1);
+    assert_eq!(
+        layout.frame().display(0).unwrap().styles[0].font.family,
+        FontFamily::Geist
+    );
+    assert_eq!(
+        old.display(0).unwrap().styles[0].font.family,
+        FontFamily::Inter
+    );
+    assert_eq!(layout.update(update(), &mut measurer).unwrap().relaid, 0);
 }

@@ -74,6 +74,11 @@ impl Default for Transcript {
 }
 
 impl Transcript {
+    pub fn set_font_family(&mut self, family: rust_native::layout::display::FontFamily) {
+        self.layout.set_font_family(family);
+        self.rows.clear();
+        self.version = self.version.wrapping_add(1);
+    }
     pub fn start(&mut self, wake: Arc<dyn Fn() + Send + Sync>) {
         self.wake = Some(wake);
     }
