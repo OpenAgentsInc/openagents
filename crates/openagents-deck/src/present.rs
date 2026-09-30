@@ -362,6 +362,7 @@ pub fn paint_slide(
                 image,
                 width,
                 height,
+                grow,
             } => {
                 let area = PxRect {
                     x: px,
@@ -369,9 +370,10 @@ pub fn paint_slide(
                     w: width * scale,
                     h: height * scale,
                 };
-                // As large as fits, but never past one image pixel a
-                // screen pixel: a screenshot stays as sharp as it was.
-                let at = rust_native_desktop::image::fit(image.width, image.height, area, 1.0);
+                // As large as fits, but never past `grow` screen pixels an
+                // image pixel (1 unless the slide asks for more), so a
+                // screenshot stays sharp.
+                let at = rust_native_desktop::image::fit(image.width, image.height, area, *grow);
                 rust_native_desktop::image::paint(frame, image, at);
             }
         }

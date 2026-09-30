@@ -79,6 +79,8 @@ pub enum Content {
         image: Arc<Image>,
         width: f32,
         height: f32,
+        /// How many times its native size it may grow (the slide's `scale`).
+        grow: f32,
     },
 }
 
@@ -560,6 +562,7 @@ fn image_part(slide: &Slide, height: f32) -> Part {
                 image: Arc::new(image),
                 width: COLUMN,
                 height: height.max(1.0),
+                grow: f32::from(slide.scale.unwrap_or(1)),
             },
             magnification: 1.0,
             x: MARGIN_X,

@@ -64,6 +64,17 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
             Some(("row", value)) => slide.rows.push(row(value)),
             Some(("step", value)) => slide.steps.push(value.to_string()),
             Some(("notes", value)) => slide.notes.push(value.to_string()),
+            Some(("scale", value)) => {
+                slide.scale = Some(
+                    value
+                        .parse::<u8>()
+                        .ok()
+                        .filter(|scale| (1..=4).contains(scale))
+                        .ok_or_else(|| {
+                            format!("slide {number}: scale is a whole number from 1 to 4")
+                        })?,
+                );
+            }
             _ => {
                 body.push_str(line);
                 body.push('\n');
@@ -92,7 +103,7 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
 /// The keys a line may open with.
 const KEYS: &[&str] = &[
     "layout", "id", "title", "lead", "kicker", "source", "note", "metric", "column", "row", "step",
-    "notes",
+    "notes", "scale",
 ];
 
 /// The key and the value of a directive line, when the line is one. A key

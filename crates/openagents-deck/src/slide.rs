@@ -130,6 +130,9 @@ pub struct Slide {
     pub notes: Vec<String>,
     /// The image an image slide shows.
     pub image: Option<SlideImage>,
+    /// How many times its native size an image slide's image may grow,
+    /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
+    pub scale: Option<u8>,
 }
 
 /// An image a slide shows: `![alt](path)` in the script, on a line by
@@ -147,6 +150,10 @@ pub const ASSETS: &[(&str, &[u8])] = &[
     (
         "assets/important.png",
         include_bytes!("../decks/assets/important.png"),
+    ),
+    (
+        "assets/marketplace.png",
+        include_bytes!("../decks/assets/marketplace.png"),
     ),
     (
         "assets/ethan1.png",
