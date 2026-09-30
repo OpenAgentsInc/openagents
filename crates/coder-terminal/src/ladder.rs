@@ -2,7 +2,7 @@
 //!
 //! A terminal either knows truecolor, knows a 256-color palette, or honors
 //! `NO_COLOR` and knows none. The [`Ladder`] detects which and translates the
-//! four amber tones into concrete colors — exact RGB, the nearest cube
+//! four white tones into concrete colors — exact RGB, the nearest cube
 //! entries, or plain dim text.
 //!
 //! One ladder serves every terminal in this repository. Where a surface
@@ -16,10 +16,10 @@ use ratatui::style::{Color, Modifier, Style};
 /// The color depth the terminal supports.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Colors {
-    /// 24-bit RGB — the ambers render exactly.
+    /// 24-bit RGB — the whites render exactly.
     #[default]
     True,
-    /// The 256-color palette — ambers render as their nearest cube entries.
+    /// The 256-color palette — whites render as their nearest cube entries.
     Indexed,
     /// Color off (`NO_COLOR`) — tone falls back to modifiers.
     None,
@@ -121,7 +121,7 @@ impl Ladder {
         }
     }
 
-    /// The near-black field the ambers sit on, at this terminal.
+    /// The near-black field the whites sit on, at this terminal.
     pub fn background(self) -> Color {
         match self.colors {
             Colors::True => rgb(NEAR_BLACK),
@@ -148,20 +148,20 @@ pub const fn rgb(color: u32) -> Color {
     Color::Rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
 }
 
-/// The indexed entry nearest to each amber on the 256-color cube.
+/// The indexed entry nearest to each white on the 256-color cube.
 const fn indexed(intensity: Intensity) -> Color {
     match intensity {
-        Intensity::Quarter => Color::Indexed(58),
-        Intensity::Half => Color::Indexed(94),
-        Intensity::ThreeQuarters => Color::Indexed(136),
-        Intensity::Full => Color::Indexed(214),
+        Intensity::Quarter => Color::Indexed(239),
+        Intensity::Half => Color::Indexed(245),
+        Intensity::ThreeQuarters => Color::Indexed(251),
+        Intensity::Full => Color::Indexed(231),
     }
 }
 
 /// The indexed entry nearest to [`NEAR_BLACK`].
 const INDEXED_BACKGROUND: u8 = 232;
 /// The indexed entry nearest to [`NEAR_BLACK_TINT`].
-const INDEXED_SELECTION: u8 = 235;
+const INDEXED_SELECTION: u8 = 234;
 
 /// Strips foreground and background color from a style, keeping every other
 /// attribute — glyphs, modifiers, and the like.
@@ -214,18 +214,18 @@ mod tests {
     }
 
     #[test]
-    fn truecolor_renders_the_exact_amber() {
+    fn truecolor_renders_the_exact_white() {
         let style = Ladder::new(Colors::True).style(Intensity::Full);
-        assert_eq!(style.fg, Some(Color::Rgb(0xff, 0xb0, 0x00)));
+        assert_eq!(style.fg, Some(Color::Rgb(0xff, 0xff, 0xff)));
     }
 
     #[test]
     fn indexed_renders_the_nearest_cube_entry() {
         let ladder = Ladder::new(Colors::Indexed);
-        assert_eq!(ladder.style(Intensity::Full).fg, Some(Color::Indexed(214)));
+        assert_eq!(ladder.style(Intensity::Full).fg, Some(Color::Indexed(231)));
         assert_eq!(
             ladder.style(Intensity::Quarter).fg,
-            Some(Color::Indexed(58))
+            Some(Color::Indexed(239))
         );
         assert_eq!(ladder.background(), Color::Indexed(232));
     }
@@ -282,7 +282,7 @@ mod tests {
         );
         assert_eq!(
             Ladder::new(Colors::Indexed).selection(),
-            Color::Indexed(235)
+            Color::Indexed(234)
         );
         assert_eq!(Ladder::new(Colors::None).selection(), Color::Reset);
     }

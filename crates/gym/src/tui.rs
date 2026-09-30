@@ -1778,7 +1778,7 @@ mod tests {
         assert!(Intensity::Half < Intensity::ThreeQuarters);
         assert!(Intensity::ThreeQuarters < Intensity::Full);
         assert_eq!(Intensity::ALL.len(), 4);
-        assert_eq!(Intensity::Full.color(), 0xffb000);
+        assert_eq!(Intensity::Full.color(), 0xffffff);
     }
 
     #[test]

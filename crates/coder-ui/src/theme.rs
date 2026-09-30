@@ -1,13 +1,13 @@
-//! Coder's amber theme, shared by its application surfaces.
+//! Coder's white theme, shared by its application surfaces.
 //!
-//! The terminal speaks in one hue: amber over a near-black field. Every
+//! The terminal speaks in one hue: white over a near-black field. Every
 //! distinction the interface draws — prompt against draft, status rail
 //! against rule, a dimmed older turn — is a difference in *how bright* the
-//! same amber burns, never a second color.
+//! same white burns, never a second color.
 
 use serde::{Deserialize, Serialize};
 
-/// One step of the amber ladder.
+/// One step of the white ladder.
 ///
 /// The order is the ladder: `Quarter` is the faintest tone, `Full` the
 /// brightest. `PartialOrd` and `Ord` order by brightness.
@@ -16,13 +16,13 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "snake_case")]
 pub enum Intensity {
-    /// 25% amber — receded: the oldest scrollback, a disabled affordance.
+    /// 25% white — receded: the oldest scrollback, a disabled affordance.
     Quarter,
-    /// 50% amber — quiet: comments, rules, secondary rails.
+    /// 50% white — quiet: comments, rules, secondary rails.
     Half,
-    /// 75% amber — present: prose, strings, focused text.
+    /// 75% white — present: prose, strings, focused text.
     ThreeQuarters,
-    /// 100% amber — loud: the prompt, the caret, a keyword, an error.
+    /// 100% white — loud: the prompt, the caret, a keyword, an error.
     #[default]
     Full,
 }
@@ -36,13 +36,13 @@ impl Intensity {
         Intensity::Full,
     ];
 
-    /// The amber of this step, as a packed RGB value.
+    /// The white of this step, as a packed RGB value.
     pub const fn color(self) -> u32 {
         match self {
-            Intensity::Quarter => 0x463100,
-            Intensity::Half => 0x835b00,
-            Intensity::ThreeQuarters => 0xc18600,
-            Intensity::Full => 0xffb000,
+            Intensity::Quarter => 0x4a4a4a,
+            Intensity::Half => 0x8a8a8a,
+            Intensity::ThreeQuarters => 0xc8c8c8,
+            Intensity::Full => 0xffffff,
         }
     }
 
@@ -67,10 +67,10 @@ impl Intensity {
     }
 }
 
-/// The near-black field every amber tone sits on.
-pub const NEAR_BLACK: u32 = 0x080600;
+/// The near-black field every white tone sits on.
+pub const NEAR_BLACK: u32 = 0x0a0a0a;
 /// The near-black tint a selected cell brightens to.
-pub const NEAR_BLACK_TINT: u32 = 0x211700;
+pub const NEAR_BLACK_TINT: u32 = 0x1a1a1a;
 
 #[cfg(test)]
 mod tests {
@@ -91,8 +91,8 @@ mod tests {
     }
 
     #[test]
-    fn each_step_owns_its_amber() {
-        assert_eq!(Intensity::Full.color(), 0xffb000);
-        assert_eq!(Intensity::Quarter.color(), 0x463100);
+    fn each_step_owns_its_white() {
+        assert_eq!(Intensity::Full.color(), 0xffffff);
+        assert_eq!(Intensity::Quarter.color(), 0x4a4a4a);
     }
 }
