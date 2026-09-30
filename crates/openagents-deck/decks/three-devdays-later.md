@@ -93,3 +93,11 @@ row: DEC | Decisions | **RUN** | Durable Runs
 row: EVAL | Evaluations | **SESS** | Engine Sessions
 row: EXT | Extensions | **WORK** | Work Tracking
 row: KB | Knowledge Base | **XP** | Experience Points
+
+---
+
+layout: title
+id: v1
+kicker: 2026.10.01
+title: OpenAgents v1.0.0
+source: the owner's closing slide for the talk, 2026-09-30
