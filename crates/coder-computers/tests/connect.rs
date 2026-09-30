@@ -9,7 +9,7 @@ use std::sync::Arc;
 use base64::Engine as _;
 use coder_access::host::{Host, Unconnected};
 use coder_access::protocol::{HostInvitation, INVITATION_PREFIX};
-use coder_access::{RelayPolicy, Right, Rights};
+use coder_access::{RelayPolicy, Rights};
 use coder_computers::ComputersService;
 use coder_computers::connect::PairedOver;
 use coder_computers::live::{FileStore, Live, Saved, Settings, Store};
@@ -34,7 +34,7 @@ fn key() -> SecretKey {
 }
 
 fn rights() -> Rights {
-    Rights::new([Right::Observe, Right::Operate]).unwrap()
+    Rights::pairing()
 }
 
 fn hex(bytes: &[u8]) -> String {
