@@ -32,6 +32,7 @@ pub mod interaction;
 pub mod local;
 pub mod owner;
 pub mod remote;
+pub mod settings;
 pub mod usage;
 pub mod view;
 /// Per-engine steering semantics; see [`coder_delegate::steering`].

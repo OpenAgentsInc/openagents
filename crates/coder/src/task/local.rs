@@ -22,6 +22,10 @@
 //!   store's capacity book and, when the store holds a fresh usage
 //!   reading, one near its limit ([`Policy::choose`]). The start says which
 //!   provider it chose and why.
+//! - **The person's settings.** [`Local::here`] reads the local capability
+//!   settings ([`settings`]): which providers may run and in what order,
+//!   the usage threshold, which folders are projects, and what commands
+//!   may reach. With no settings file it runs exactly as above.
 //! - **One event stream.** [`Follow`] reads the task's trajectories and its
 //!   store record and yields [`openagents_chat::coder_events`] lines, the
 //!   stream the CLI prints and the apps render. A finished turn replays
@@ -43,11 +47,12 @@ use super::autostart::{self, Choice, Engine, Launch, Policy, Route, UsageProbe};
 use super::capacity::{self, Connection, Provider};
 use super::{
     Action, COMMAND_SCHEMA, Command, RequestedConfiguration, Status, Store, TaskIntent, Workspace,
-    adapter, owner, usage,
+    adapter, owner, settings, usage,
 };
 
-/// The routes a local run admits, in preference order: Codex, then Claude
-/// Code, with the models the desktop's auto-start switch admits.
+/// The routes a local run admits by default, in preference order: Codex,
+/// then Claude Code, with the models the desktop's auto-start switch
+/// admits. The settings' `coder.providers` replaces them.
 pub const ROUTES: [(Provider, &str); 2] = [
     (Provider::Codex, "gpt-6-luna"),
     (Provider::Claude, "claude-opus-5-5"),
@@ -253,6 +258,9 @@ pub struct Local {
     probe: fn(Provider) -> Connection,
     now: fn() -> u64,
     controller: Option<PathBuf>,
+    /// The person's settings, or why they could not be read: a run then
+    /// refuses rather than falling back to the defaults.
+    settings: Result<settings::Coder, String>,
 }
 
 impl std::fmt::Debug for Local {
@@ -279,7 +287,71 @@ impl Local {
             probe: capacity::probe,
             now: autostart::unix_now,
             controller: None,
+            settings: Ok(settings::Coder::default()),
         }
+    }
+
+    /// [`Local::new`] with the person's settings from [`settings::path`]:
+    /// what `openagents chat`, the desktop, and a host on this computer
+    /// run.
+    #[must_use]
+    pub fn here(store: PathBuf) -> Self {
+        Local::new(store).with_settings_result(settings::load().map(|s| s.coder))
+    }
+
+    /// Run with `settings` instead of the defaults.
+    #[must_use]
+    pub fn with_settings(self, settings: settings::Coder) -> Self {
+        self.with_settings_result(Ok(settings))
+    }
+
+    fn with_settings_result(mut self, settings: Result<settings::Coder, String>) -> Self {
+        self.settings = settings.and_then(|coder| coder.validate().map(|()| coder));
+        self
+    }
+
+    /// The settings this runner uses.
+    ///
+    /// # Errors
+    /// Why the settings file could not be read.
+    pub fn settings(&self) -> Result<&settings::Coder, String> {
+        self.settings.as_ref().map_err(Clone::clone)
+    }
+
+    /// Whether a coding request from a chat waits for the person to
+    /// accept the offer (`coder.start: ask_first`). A settings file that
+    /// cannot be read asks first, so its refusal shows when the person
+    /// accepts.
+    #[must_use]
+    pub fn asks_first(&self) -> bool {
+        self.settings
+            .as_ref()
+            .map_or(true, |s| s.start == settings::Start::AskFirst)
+    }
+
+    /// The Git checkout `dir` is in, when it counts as a project here:
+    /// [`checkout`], within one of the settings' project folders when they
+    /// name any.
+    ///
+    /// # Errors
+    /// A plain sentence: not a checkout, no commit, outside the project
+    /// folders, or unreadable settings.
+    pub fn project(&self, dir: &Path) -> Result<Checkout, String> {
+        let settings = self.settings()?;
+        let found = checkout(dir)?;
+        if settings.admits_project(&found.top) {
+            return Ok(found);
+        }
+        Err(format!(
+            "{} is not in one of your project folders ({}), so Coder does not work there. Add              it with `openagents settings set coder.projects …`.",
+            found.top.display(),
+            settings
+                .projects
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
     }
 
     /// Start turns with `launcher` instead of a detached engine process.
@@ -320,14 +392,8 @@ impl Local {
             Some(path) => path.clone(),
             None => controller()?,
         };
-        let routes: Vec<Route> = ROUTES
-            .iter()
-            .map(|(provider, model)| Route {
-                provider: *provider,
-                model: (*model).into(),
-                effort: None,
-            })
-            .collect();
+        let settings = self.settings()?;
+        let routes: Vec<Route> = settings.routes()?;
         let policy = Policy {
             schema: autostart::POLICY_SCHEMA.into(),
             enabled: true,
@@ -347,10 +413,10 @@ impl Local {
                 routes,
                 // Honors a fresh reading the store already holds, from a
                 // host's usage probe; this asks no provider.
-                usage_probe: Some(UsageProbe {
-                    threshold_percent: usage::DEFAULT_THRESHOLD_PERCENT,
-                }),
-                access: adapter::Access::Toolchains,
+                usage_probe: settings
+                    .usage_threshold_percent
+                    .map(|threshold_percent| UsageProbe { threshold_percent }),
+                access: settings.access,
             },
             changed_at: (self.now)(),
         };
@@ -368,6 +434,20 @@ impl Local {
         let book = capacity::Book::load(&self.store);
         let readings = usage::Book::load(&self.store);
         let probe = self.probe;
+        let routes = policy.routes();
+        let names: Vec<Provider> = routes.iter().fold(Vec::new(), |mut out, route| {
+            if !out.contains(&route.provider) {
+                out.push(route.provider);
+            }
+            out
+        });
+        // A one-route policy starts without probing (`Policy::choose`); a
+        // person's own run says plainly that its one provider is missing.
+        if routes.len() == 1
+            && let Connection::Missing(_) = probe(routes[0].provider)
+        {
+            return Err(unconnected(&names));
+        }
         match policy.choose(&book, &readings, &probe, now) {
             Choice::Start { order } => {
                 let reason = reason(policy, &order, &book, &readings, probe, now);
@@ -379,11 +459,7 @@ impl Local {
                     .map(|at| format!("; the earliest resets {}", coder_events::utc(at)))
                     .unwrap_or_default()
             )),
-            Choice::Unconnected { .. } => Err(
-                "Neither Codex nor Claude Code is signed in on this computer. Sign in to one \
-                 (`codex login`, or run `claude` and log in) and try again."
-                    .into(),
-            ),
+            Choice::Unconnected { .. } => Err(unconnected(&names)),
         }
     }
 
@@ -409,7 +485,7 @@ impl Local {
         prompt: &str,
         thread: Option<&str>,
     ) -> Result<Record, String> {
-        let checkout = checkout(dir)?;
+        let checkout = self.project(dir)?;
         let policy = self.policy(&checkout.name)?;
         let (order, reason) = self.choose(&policy)?;
         let now = (self.now)();
@@ -616,7 +692,44 @@ impl Local {
             seen: 0,
             now: self.now,
             ended: None,
+            providers: self
+                .settings
+                .as_ref()
+                .map(settings::Coder::provider_list)
+                .unwrap_or_else(|_| ROUTES.iter().map(|(p, _)| *p).collect()),
         }
+    }
+}
+
+/// Why no admitted provider can start: none of `providers` is signed in.
+fn unconnected(providers: &[Provider]) -> String {
+    let how = |provider: Provider| match provider {
+        Provider::Codex => "`codex login`",
+        Provider::Claude => "run `claude` and log in",
+        Provider::Devin => "`devin auth login`",
+        Provider::OpenCode => "install `opencode` and run `opencode auth login`",
+        Provider::Vertex => "turn on the OpenAgents cloud",
+    };
+    match providers {
+        [Provider::Codex, Provider::Claude] | [Provider::Claude, Provider::Codex] => {
+            "Neither Codex nor Claude Code is signed in on this computer. Sign in to one \
+             (`codex login`, or run `claude` and log in) and try again."
+                .into()
+        }
+        [one] => format!(
+            "{} is not signed in on this computer, and your settings allow only it. Sign in \
+             ({}) or allow another provider (`openagents settings set coder.providers …`).",
+            settings::provider_name(*one),
+            how(*one)
+        ),
+        many => format!(
+            "None of the coding agents your settings allow ({}) is signed in on this computer. \
+             Sign in to one and try again.",
+            many.iter()
+                .map(|p| settings::provider_name(*p))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -636,7 +749,7 @@ pub fn ready_here() -> bool {
     {
         return ready;
     }
-    let ready = Local::new(default_store()).ready();
+    let ready = Local::here(default_store()).ready();
     *cache = Some((now, ready));
     ready
 }
@@ -654,6 +767,7 @@ fn reason(
     now: u64,
 ) -> String {
     let chosen = order[0].provider;
+    let threshold = policy.engine.usage_probe.as_ref().map(|p| p.threshold_percent);
     let name = |provider: Provider| coder_events::provider_name(&json!(provider.as_str()));
     let mut passed = Vec::new();
     for route in policy.routes() {
@@ -672,7 +786,9 @@ fn reason(
                     .unwrap_or_else(|| "limit".into()),
                 coder_events::utc(refusal.until)
             ));
-        } else if readings.near_limit(route.provider, usage::DEFAULT_THRESHOLD_PERCENT, now) {
+        } else if let Some(threshold) = threshold
+            && readings.near_limit(route.provider, threshold, now)
+        {
             passed.push(format!(
                 "{who} is near its usage limit ({})",
                 readings.describe(route.provider, now)
@@ -854,6 +970,9 @@ pub struct Follow {
     /// the task: a later poll emits nothing more until another turn
     /// starts.
     ended: Option<State>,
+    /// The providers the run admits, whose earliest reset a `no_capacity`
+    /// ending names.
+    providers: Vec<Provider>,
 }
 
 impl Follow {
@@ -986,7 +1105,7 @@ impl Follow {
                     let resets_at = (result.ending == capacity::NO_CAPACITY_ENDING)
                         .then(|| {
                             let book = capacity::Book::load(&self.store);
-                            book.earliest_reset(&[Provider::Codex, Provider::Claude], (self.now)())
+                            book.earliest_reset(&self.providers, (self.now)())
                         })
                         .flatten();
                     let end = mapper.end(
@@ -1259,6 +1378,232 @@ mod tests {
                 .unwrap_err()
                 .contains("Neither Codex nor Claude Code is signed in")
         );
+    }
+
+    fn claude_only() -> settings::Coder {
+        settings::Coder {
+            providers: vec![settings::Choice::new(Provider::Claude)],
+            ..settings::Coder::default()
+        }
+    }
+
+    /// No settings file and the default settings are the same run (#10036):
+    /// the same routes, threshold, access, and start as before settings
+    /// existed.
+    #[test]
+    fn the_default_settings_change_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let plain = local(dir.path(), both);
+        let set = local(dir.path(), both).with_settings(settings::Coder::default());
+        let missing = settings::Settings::load(&dir.path().join("none.json")).unwrap();
+        let loaded = local(dir.path(), both).with_settings(missing.coder);
+        for run in [&plain, &set, &loaded] {
+            let mut policy = run.policy("proj").unwrap();
+            policy.changed_at = 0;
+            let routes: Vec<(Provider, String)> = policy
+                .engine
+                .routes
+                .iter()
+                .map(|r| (r.provider, r.model.clone()))
+                .collect();
+            assert_eq!(
+                routes,
+                ROUTES
+                    .iter()
+                    .map(|(p, m)| (*p, (*m).to_owned()))
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(policy.engine.model, ROUTES[0].1);
+            assert_eq!(
+                policy.engine.usage_probe.as_ref().map(|p| p.threshold_percent),
+                Some(usage::DEFAULT_THRESHOLD_PERCENT)
+            );
+            assert_eq!(policy.engine.access, adapter::Access::Toolchains);
+            assert!(!run.asks_first());
+            let mut first = plain.policy("proj").unwrap();
+            first.changed_at = 0;
+            assert_eq!(policy, first);
+        }
+    }
+
+    /// `coder.providers` decides which providers may run and in what
+    /// order, each still only when signed in here.
+    #[test]
+    fn the_providers_setting_admits_and_orders_the_routes() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = local(dir.path(), both).with_settings(claude_only());
+        let policy = run.policy("proj").unwrap();
+        let (order, reason) = run.choose(&policy).unwrap();
+        assert_eq!(order.len(), 1);
+        assert_eq!(order[0].provider, Provider::Claude);
+        assert_eq!(order[0].model, "claude-opus-5-5");
+        assert_eq!(reason, "Claude Code is signed in and has capacity.");
+
+        // Codex signed in, but only Claude Code allowed: nothing runs.
+        fn only_codex(provider: Provider) -> Connection {
+            match provider {
+                Provider::Codex => Connection::Connected,
+                _ => Connection::Missing("no login".into()),
+            }
+        }
+        let refused = local(dir.path(), only_codex).with_settings(claude_only());
+        let why = refused
+            .choose(&refused.policy("proj").unwrap())
+            .unwrap_err();
+        assert!(
+            why.starts_with("Claude Code is not signed in on this computer, and your settings allow only it."),
+            "{why}"
+        );
+        assert!(!refused.ready());
+
+        // Claude Code first, then Codex.
+        let order_set = settings::Coder {
+            providers: vec![
+                settings::Choice::new(Provider::Claude),
+                "codex:gpt-6-sol".parse().unwrap(),
+            ],
+            ..settings::Coder::default()
+        };
+        let run = local(dir.path(), both).with_settings(order_set);
+        let policy = run.policy("proj").unwrap();
+        assert_eq!(policy.engine.model, "claude-opus-5-5");
+        let (order, _) = run.choose(&policy).unwrap();
+        assert_eq!(
+            order.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            vec!["claude:claude-opus-5-5", "codex:gpt-6-sol"]
+        );
+
+        // OpenCode and Devin are routes like the others.
+        let agents = settings::Coder {
+            providers: vec![
+                "opencode:anthropic/claude-sonnet-5".parse().unwrap(),
+                settings::Choice::new(Provider::Devin),
+            ],
+            ..settings::Coder::default()
+        };
+        let run = local(dir.path(), both).with_settings(agents);
+        let policy = run.policy("proj").unwrap();
+        let (order, reason) = run.choose(&policy).unwrap();
+        assert_eq!(order[0].provider, Provider::OpenCode);
+        assert_eq!(order[1].provider, Provider::Devin);
+        assert_eq!(order[1].model, acp_client::devin::DEFAULT_MODEL);
+        assert_eq!(reason, "OpenCode is signed in and has capacity.");
+        let none = local(dir.path(), nobody).with_settings(run.settings().unwrap().clone());
+        assert!(
+            none.choose(&policy)
+                .unwrap_err()
+                .contains("None of the coding agents your settings allow (OpenCode, Devin)")
+        );
+    }
+
+    /// `coder.usage_threshold_percent` is the reading at which a provider
+    /// is passed over; `null` ignores readings.
+    #[test]
+    fn the_usage_threshold_setting_decides_when_a_reading_passes_a_provider_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = autostart::unix_now();
+        let book = usage::Book {
+            schema: usage::SCHEMA.into(),
+            entries: vec![usage::Entry {
+                provider: Provider::Codex,
+                attempted_at: now,
+                next_probe_at: now + 600,
+                reading: Some(usage::Reading {
+                    provider: Provider::Codex,
+                    observed_at: now,
+                    windows: vec![usage::Window {
+                        window: usage::WindowName::Primary,
+                        used_fraction: 0.8,
+                        resets_at: Some(now + 3600),
+                        length_seconds: None,
+                    }],
+                    limit_reached: false,
+                    plan: None,
+                }),
+                failure: None,
+            }],
+        };
+        std::fs::create_dir_all(dir.path().join("tasks")).unwrap();
+        std::fs::write(
+            dir.path().join("tasks").join(usage::FILE),
+            serde_json::to_vec(&book).unwrap(),
+        )
+        .unwrap();
+        let first = |threshold: Option<u8>| {
+            let run = local(dir.path(), both).with_settings(settings::Coder {
+                usage_threshold_percent: threshold,
+                ..settings::Coder::default()
+            });
+            let policy = run.policy("proj").unwrap();
+            assert_eq!(
+                policy.engine.usage_probe.as_ref().map(|p| p.threshold_percent),
+                threshold
+            );
+            let (order, reason) = run.choose(&policy).unwrap();
+            (order[0].provider, reason)
+        };
+        // 80% used: under the default 90%, Codex still runs.
+        assert_eq!(first(Some(90)).0, Provider::Codex);
+        let (provider, reason) = first(Some(75));
+        assert_eq!(provider, Provider::Claude);
+        assert!(reason.starts_with("Codex is near its usage limit"), "{reason}");
+        assert_eq!(first(None).0, Provider::Codex);
+    }
+
+    /// `coder.projects` names which checkouts count as projects; a run
+    /// outside them does not start.
+    #[test]
+    fn the_projects_setting_decides_which_checkouts_are_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let elsewhere = tempfile::tempdir().unwrap();
+        let only_elsewhere = settings::Coder {
+            projects: vec![elsewhere.path().canonicalize().unwrap()],
+            ..settings::Coder::default()
+        };
+        let run = local(dir.path(), both)
+            .with_settings(only_elsewhere)
+            .with_launcher(Box::new(Held));
+        let why = run.start(&top, "t", "add a test", None).unwrap_err();
+        assert!(why.contains("is not in one of your project folders"), "{why}");
+        assert!(!dir.path().join("worktrees").exists());
+        let inside = settings::Coder {
+            projects: vec![dir.path().canonicalize().unwrap()],
+            ..settings::Coder::default()
+        };
+        let run = local(dir.path(), both)
+            .with_settings(inside)
+            .with_launcher(Box::new(Held));
+        assert_eq!(run.project(&top.join(".")).unwrap().name, "proj");
+        run.start(&top, "t", "add a test", None).unwrap();
+    }
+
+    /// `coder.access` is what a run's commands may reach, and
+    /// `coder.start` whether a chat asks first.
+    #[test]
+    fn the_access_and_start_settings_reach_the_policy_and_the_chat() {
+        let dir = tempfile::tempdir().unwrap();
+        for access in [
+            adapter::Access::Toolchains,
+            adapter::Access::Full,
+            adapter::Access::Boundary,
+        ] {
+            let run = local(dir.path(), both).with_settings(settings::Coder {
+                access,
+                ..settings::Coder::default()
+            });
+            assert_eq!(run.policy("proj").unwrap().engine.access, access);
+        }
+        let run = local(dir.path(), both).with_settings(settings::Coder {
+            start: settings::Start::AskFirst,
+            ..settings::Coder::default()
+        });
+        assert!(run.asks_first());
+        // Settings that cannot be read ask first and refuse to run.
+        let broken = local(dir.path(), both).with_settings_result(Err("bad file".into()));
+        assert!(broken.asks_first());
+        assert!(!broken.ready());
+        assert_eq!(broken.policy("proj").unwrap_err(), "bad file");
     }
 
     #[test]
