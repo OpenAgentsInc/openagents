@@ -65,6 +65,7 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
         path: host.socket.clone(),
         root: host.root.clone(),
         autostart: None,
+        tasks: host.temp.path().join("tasks"),
         uid: coder_host::control::own_uid(),
     });
     let running = coder_host::start(config, std::sync::Arc::new(coder_host::NoTasks))
@@ -618,6 +619,146 @@ async fn auto_start_changes_run_the_hosts_own_command() {
     host.running.shutdown().await;
 }
 
+fn call_records(root: &std::path::Path) -> Vec<Vec<String>> {
+    let text = std::fs::read_to_string(root.join("calls")).unwrap_or_default();
+    text.split("\n\n")
+        .filter(|block| !block.trim().is_empty())
+        .map(|block| block.lines().map(str::to_owned).collect())
+        .collect()
+}
+
+fn engine_report_json(refresh_due: bool) -> String {
+    serde_json::json!({
+        "enabled": true,
+        "adapter": "microcoder-repository",
+        "model": "gpt-6-luna",
+        "routes": [],
+        "accounts": [
+            {"provider": "codex", "name": "Codex", "signed_in": true},
+            {"provider": "claude", "name": "Claude Code", "signed_in": false}
+        ],
+        "refresh_due": refresh_due
+    })
+    .to_string()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn engine_status_without_a_coder_program_is_refused() {
+    let host = host().await;
+    let Reply::Refused { code, message } = call(&host.socket, Op::EngineStatus {}).await.unwrap()
+    else {
+        panic!("refused");
+    };
+    assert_eq!(code, "unavailable");
+    assert_eq!(message, "This computer cannot read Coder's engine.");
+    host.running.shutdown().await;
+}
+
+/// The stand-in prints a cached report and records a detached refresh.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn engine_status_reads_a_cached_report_and_refreshes_in_the_background() {
+    let bin = tempfile::tempdir().unwrap();
+    let program = bin.path().join("coder");
+    std::fs::write(
+        &program,
+        r#"#!/bin/sh
+root=
+refresh=0
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--root" ]; then root=$arg; fi
+  if [ "$arg" = "--refresh" ]; then refresh=1; fi
+  prev=$arg
+done
+if [ -z "$root" ]; then echo "missing root" >&2; exit 1; fi
+printf '%s\n' "$@" >> "$root/calls"
+printf '\n' >> "$root/calls"
+if [ "$refresh" = 1 ]; then exit 0; fi
+cat "$root/report.json"
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let host = host_with(Options {
+        autostart: Some(program),
+        ..Options::default()
+    })
+    .await;
+    std::fs::create_dir_all(&host.root).unwrap();
+    let tasks = host.temp.path().join("tasks");
+    std::fs::write(host.root.join("report.json"), engine_report_json(false)).unwrap();
+    let Reply::EngineStatus { report } = call(&host.socket, Op::EngineStatus {}).await.unwrap()
+    else {
+        panic!("engine");
+    };
+    assert!(!report.refresh_due);
+    assert_eq!(report.model, "gpt-6-luna");
+    let root = host.root.display().to_string();
+    assert_eq!(
+        call_records(&host.root),
+        [vec![
+            "host".to_owned(),
+            "autostart".to_owned(),
+            "status".to_owned(),
+            "--root".to_owned(),
+            root.clone(),
+            "--store".to_owned(),
+            tasks.display().to_string(),
+        ]]
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        call_records(&host.root)
+            .iter()
+            .all(|args| !args.iter().any(|arg| arg == "--refresh"))
+    );
+
+    std::fs::write(host.root.join("report.json"), engine_report_json(true)).unwrap();
+    let Reply::EngineStatus { report } = call(&host.socket, Op::EngineStatus {}).await.unwrap()
+    else {
+        panic!("engine");
+    };
+    assert!(report.refresh_due);
+    let started = std::time::Instant::now();
+    let mut refreshed = false;
+    while started.elapsed() < Duration::from_secs(2) {
+        refreshed = call_records(&host.root)
+            .iter()
+            .any(|args| args.iter().any(|arg| arg == "--refresh"));
+        if refreshed {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(refreshed, "a due reading starts status --refresh");
+    let refreshes = call_records(&host.root)
+        .iter()
+        .filter(|args| args.iter().any(|arg| arg == "--refresh"))
+        .count();
+
+    let mut leaked = serde_json::from_str::<serde_json::Value>(&engine_report_json(true)).unwrap();
+    leaked["access_token"] = serde_json::json!("secret");
+    std::fs::write(
+        host.root.join("report.json"),
+        serde_json::to_string(&leaked).unwrap(),
+    )
+    .unwrap();
+    let Reply::Refused { code, message } = call(&host.socket, Op::EngineStatus {}).await.unwrap()
+    else {
+        panic!("refused");
+    };
+    assert_eq!(code, "malformed");
+    assert_eq!(message, "Coder's engine report was unreadable.");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let after = call_records(&host.root)
+        .iter()
+        .filter(|args| args.iter().any(|arg| arg == "--refresh"))
+        .count();
+    assert_eq!(after, refreshes, "a bad report does not start a refresh");
+    host.running.shutdown().await;
+}
+
 /// On Windows the control channel is a pipe only this user opens: the host
 /// serves this user's requests over it, and while it runs no second host
 /// can bind the name. Wine does not enforce the first-instance flag, so the
@@ -635,6 +776,7 @@ async fn the_pipe_serves_this_user_and_a_second_host_cannot_bind_it() {
             path: host.socket.clone(),
             root: host.root.clone(),
             autostart: None,
+            tasks: host.temp.path().join("tasks"),
             uid: coder_host::control::own_uid(),
         };
         let started = std::time::Instant::now();

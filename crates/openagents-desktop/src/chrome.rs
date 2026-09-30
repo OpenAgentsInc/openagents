@@ -678,6 +678,29 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         }
         children.push(menu);
     }
+    let show_engine = state.live
+        && !prompt
+        && matches!(state.page, Page::Chat(_))
+        && (model.engine.is_some() || model.engine_note.is_some());
+    if show_engine {
+        header.key = "shell-heading-row".into();
+        let mut lines = Vec::new();
+        if let Some(report) = &model.engine {
+            lines.push(openagents_chat_app::engine::strip(report));
+        }
+        if let Some(note) = &model.engine_note {
+            lines.push(text("shell-engine-note", note.clone(), TextRole::Status));
+        }
+        header = stack(
+            "shell-content-header",
+            Axis::Vertical,
+            Space::Sm,
+            vec![
+                header,
+                stack("shell-engine", Axis::Vertical, Space::Xs, lines),
+            ],
+        );
+    }
     let body = if prompt {
         crate::screens::root(model, now)
     } else {
@@ -783,6 +806,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_native::{Element, Node};
 
     #[test]
     fn new_chats_are_bounded_and_reopen_their_section() {
@@ -833,5 +857,83 @@ mod tests {
                 .validate()
                 .expect("valid view");
         }
+    }
+
+    fn contains(node: &Node<Intent>, key: &str) -> bool {
+        if node.key == key {
+            return true;
+        }
+        match &node.element {
+            Element::Stack { children, .. } => children.iter().any(|child| contains(child, key)),
+            _ => false,
+        }
+    }
+
+    fn has_button(node: &Node<Intent>) -> bool {
+        match &node.element {
+            Element::Button { .. } => true,
+            Element::Stack { children, .. } => children.iter().any(has_button),
+            _ => false,
+        }
+    }
+
+    fn find<'a>(node: &'a Node<Intent>, key: &str) -> Option<&'a Node<Intent>> {
+        if node.key == key {
+            return Some(node);
+        }
+        match &node.element {
+            Element::Stack { children, .. } => children.iter().find_map(|child| find(child, key)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn the_chat_header_shows_the_engine_and_cannot_change_it() {
+        use crate::control::{EngineReport, EngineRoute, RouteUsage, UsageWindow};
+        use crate::model::{Agent, Screen};
+        let mut model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let plain = root(&State::default(), &model, 0);
+        assert!(contains(&plain, "shell-content-header"));
+        assert!(!contains(&plain, "engine-strip"));
+        model.engine = Some(EngineReport {
+            enabled: true,
+            adapter: "microcoder-repository".into(),
+            model: "gpt-6-luna".into(),
+            routes: vec![EngineRoute {
+                provider: "codex".into(),
+                name: "Codex".into(),
+                model: "gpt-6-luna".into(),
+                signed_in: true,
+                usage: RouteUsage::Windows {
+                    windows: vec![UsageWindow {
+                        name: "primary".into(),
+                        label: "Primary".into(),
+                        used_percent: 72,
+                        resets_at: Some(1_791_050_824),
+                        resets: Some("2026-10-03 18:07 UTC".into()),
+                    }],
+                    limit_reached: false,
+                    used_percent: 72,
+                },
+            }],
+            accounts: vec![],
+            usage_probe: Some(90),
+            refresh_due: false,
+        });
+        model.engine_note = Some("Coder's engine report was unreadable.".into());
+        let root = root(&State::empty(), &model, 0);
+        let words = crate::screens::words(&root);
+        assert!(words.iter().any(|word| word.contains("Codex")));
+        assert!(words.iter().any(|word| word.contains("gpt-6-luna")));
+        assert!(words.iter().any(|word| word.contains("72%")));
+        assert!(words.iter().any(|word| word.contains("unreadable")));
+        for value in &words {
+            assert!(crate::words::banned_in(value).is_empty(), "{value}");
+        }
+        let strip = find(&root, "engine-strip").expect("the strip");
+        assert!(!has_button(strip));
+        rust_native::View::new("shell-engine", 1, root)
+            .validate()
+            .expect("valid view");
     }
 }

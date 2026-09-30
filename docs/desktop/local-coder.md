@@ -98,3 +98,20 @@ These local file reads do not extend phone observer authority. The existing
 NIP history connection continues to expose only Coder sources. The portable
 reader and continuation factory compile in the phone's Rust library; native
 phone mounting remains part of #10028.
+
+## Engine and usage
+
+The chat header shows the engine, the model, whether Codex and Claude Code
+are signed in, and each usage window. Those values come from this computer's
+`autostart.json` routes and the usage book. The window sends `engine_status`
+and receives percents and reset times. It cannot change the engine, the
+model, or a credential, and it does not read a provider token.
+
+The host answers from a cached report. When a reading is due and usage probes
+are on, the host runs `coder host autostart status --refresh` in the
+background, in the Coder process. A probe reads a token only then, and only
+to send it to that provider's own usage endpoint.
+
+The ring and the route cards reimplement Zeron's account usage rings (public
+MIT zeronsh/zeron) in Rust Native. The shared strip lives in
+`openagents-chat-app`. Mounting it on a phone remains part of #10028.

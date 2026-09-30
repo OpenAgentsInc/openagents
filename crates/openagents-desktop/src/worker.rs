@@ -343,6 +343,7 @@ impl HostLane {
                 .map(|_| Outcome::Failed {
                     message: "That phone stopped asking. Ask again from the phone.".into(),
                 }),
+            Request::Engine => Some(Outcome::Engine(self.control.engine_status())),
             other => unreachable!("{other:?} runs on the local lane"),
         }
     }

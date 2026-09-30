@@ -16,8 +16,9 @@
 //! in-process one.
 
 pub use openagents_connect::control::{
-    Autostart, Device, MAX_MESSAGE_BYTES, NearbyPrompt, Op, Project, Reply, Request, Response,
-    SOCKET_NAME, Status, VERSION, socket_path, socket_path_for,
+    Autostart, Device, EngineAccount, EngineReport, EngineRoute, MAX_MESSAGE_BYTES, NearbyPrompt,
+    Op, Project, Reply, Request, Response, RouteUsage, SOCKET_NAME, Status, UsageWindow, VERSION,
+    socket_path, socket_path_for,
 };
 use serde::Serialize;
 use std::io::{Read, Write};
@@ -133,6 +134,11 @@ pub trait HostControl: Send {
     fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>>;
     /// **Connect** or **Don't connect** for the nearby request `id`.
     fn nearby_decide(&mut self, id: u64, connect: bool) -> ControlResult<()>;
+    /// Coder's engine, model, sign-in, and usage. The default leaves the
+    /// header unchanged: a stand-in host has nothing to show.
+    fn engine_status(&mut self) -> ControlResult<EngineReport> {
+        Err(ControlError::Unreachable)
+    }
 }
 
 /// Why [`pick_project`] stopped.
@@ -494,6 +500,13 @@ impl HostControl for SocketControl {
     fn status(&mut self) -> ControlResult<Status> {
         match self.call(Op::Status {})? {
             Reply::Status(status) => Ok(status),
+            _ => unexpected(),
+        }
+    }
+
+    fn engine_status(&mut self) -> ControlResult<EngineReport> {
+        match self.call(Op::EngineStatus {})? {
+            Reply::EngineStatus { report } => Ok(report),
             _ => unexpected(),
         }
     }

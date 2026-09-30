@@ -97,6 +97,7 @@ pub async fn host_with(options: Options) -> Host {
         path: socket.clone(),
         root: root.clone(),
         autostart: options.autostart,
+        tasks: temp.path().join("tasks"),
         uid: options.uid,
     });
     config.label = "Studio Mac".into();

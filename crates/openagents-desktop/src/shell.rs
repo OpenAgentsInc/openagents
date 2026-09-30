@@ -709,6 +709,9 @@ impl App for DesktopApp {
     }
 
     fn surface_version(&self, resource: &str) -> Option<u64> {
+        if let Some(percent) = parse_ring(resource) {
+            return Some(u64::from(percent));
+        }
         if resource == chrome::MARK {
             return Some(0);
         }
@@ -781,6 +784,9 @@ impl App for DesktopApp {
         {
             return Some(size);
         }
+        if parse_ring(resource).is_some() {
+            return Some((22.0_f32.min(available), 22.0));
+        }
         if resource == chrome::MARK {
             return Some((64.0_f32.min(available), 64.0));
         }
@@ -796,6 +802,16 @@ impl App for DesktopApp {
             .as_mut()
             .is_some_and(|chat| chat.paint(resource, frame, rect))
         {
+            return;
+        }
+        if let Some(percent) = parse_ring(resource) {
+            let track = Color::rgb(58, 64, 73);
+            let fill = if percent >= 90 {
+                Color::rgb(214, 168, 92)
+            } else {
+                Color::rgb(220, 225, 233)
+            };
+            frame.usage_ring(rect, f32::from(percent) / 100.0, track, fill);
             return;
         }
         if resource == chrome::MARK {
@@ -838,6 +854,14 @@ impl App for DesktopApp {
         };
         paint_code(frame, rect, modules);
     }
+}
+
+/// `engine-ring:{provider}:{percent}`, with `percent` from 0 to 100.
+fn parse_ring(resource: &str) -> Option<u8> {
+    let rest = resource.strip_prefix("engine-ring:")?;
+    let (_, percent) = rest.rsplit_once(':')?;
+    let percent = percent.parse().ok()?;
+    (percent <= 100).then_some(percent)
 }
 
 /// Paints `modules` black on a white rounded square filling `rect`, with
@@ -891,6 +915,31 @@ mod tests {
             DesktopApp::inline_shell(Model::new(now, Screen::Connect, Agent::Enabled), context);
         app.tick(now);
         (app, fake, now)
+    }
+
+    #[test]
+    fn the_usage_ring_paints_from_its_resource() {
+        use rust_native::style::Color;
+        use rust_native_desktop::{App, Frame, PxRect};
+        let (mut app, _, _) = preview();
+        assert_eq!(
+            app.surface_size("engine-ring:codex:72", 100.0),
+            Some((22.0, 22.0))
+        );
+        assert_eq!(app.surface_version("engine-ring:codex:72"), Some(72));
+        assert_eq!(app.surface_version("engine-ring:codex:101"), None);
+        let mut frame = Frame::new(24, 24, Color::rgb(0, 0, 0));
+        app.paint_surface(
+            "engine-ring:codex:100",
+            &mut frame,
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 24.0,
+                h: 24.0,
+            },
+        );
+        assert_eq!(frame.pixel(12, 1), [214, 168, 92]);
     }
 
     /// The window as `--fake-host` runs it (worker threads, the shell,

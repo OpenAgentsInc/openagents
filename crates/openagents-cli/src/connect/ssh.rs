@@ -1854,6 +1854,7 @@ mod tests {
             path: socket.clone(),
             root: root.join("host"),
             autostart: None,
+            tasks: root.join("tasks"),
             uid: coder_host::control::own_uid(),
         });
         config.label = "Headless Box".into();

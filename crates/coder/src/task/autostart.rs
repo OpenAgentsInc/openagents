@@ -41,6 +41,10 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use openagents_connect::control::{
+    EngineAccount, EngineReport, EngineRoute, RouteUsage, UsageWindow,
+};
+
 use super::capacity::{self, Connection, Provider};
 use super::usage;
 use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};
@@ -1253,6 +1257,208 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::result::Result<(), String> {
     std::fs::rename(&temporary, path).map_err(|_| format!("cannot replace {}", path.display()))
 }
 
+/// Read the usage book an engine report shows.
+///
+/// When the policy's usage probe is off, or there is no policy, this
+/// returns an empty book and does not call `fetch`. A cached read loads
+/// `usage.json`. A refresh probes only the admitted providers that have a
+/// usage endpoint, and only when the probe is on.
+#[must_use]
+pub fn usage_book(
+    policy: Option<&Policy>,
+    store: &Path,
+    now: u64,
+    refresh: bool,
+    fetch: usage::Fetch,
+) -> usage::Book {
+    let Some(policy) = policy else {
+        return usage::Book::default();
+    };
+    if policy.engine.usage_probe.is_none() {
+        return usage::Book::default();
+    }
+    if !refresh {
+        return usage::Book::load(store);
+    }
+    let mut providers: Vec<Provider> = policy
+        .routes()
+        .into_iter()
+        .map(|route| route.provider)
+        .filter(|provider| Provider::PROBED.contains(provider))
+        .collect();
+    providers.sort();
+    providers.dedup();
+    usage::refresh(store, &providers, now, fetch)
+}
+
+/// The read-only engine report for one computer.
+///
+/// `signed_in` says whether each provider's local login is present. The
+/// report carries provider names, model ids, percents, and reset times. It
+/// carries no credential, account identifier, or controller path.
+#[must_use]
+pub fn engine_report(
+    policy: Option<&Policy>,
+    now: u64,
+    signed_in: &dyn Fn(Provider) -> bool,
+    usage: &usage::Book,
+) -> EngineReport {
+    let Some(policy) = policy else {
+        return EngineReport {
+            enabled: false,
+            adapter: String::new(),
+            model: String::new(),
+            routes: Vec::new(),
+            accounts: account_lines(signed_in),
+            usage_probe: None,
+            refresh_due: false,
+        };
+    };
+    let probes = policy.engine.usage_probe.is_some();
+    let routes = policy.routes();
+    let refresh_due = probes
+        && routes.iter().any(|route| {
+            Provider::PROBED.contains(&route.provider) && usage.due(route.provider, now)
+        });
+    EngineReport {
+        enabled: policy.enabled,
+        adapter: bound(&policy.engine.adapter, 64),
+        model: bound(&policy.engine.model, 128),
+        routes: routes
+            .iter()
+            .map(|route| EngineRoute {
+                provider: route.provider.as_str().into(),
+                name: provider_name(route.provider).into(),
+                model: bound(&route.model, 128),
+                signed_in: signed_in(route.provider),
+                usage: route_usage(probes, route.provider, usage, now),
+            })
+            .collect(),
+        accounts: account_lines(signed_in),
+        usage_probe: policy
+            .engine
+            .usage_probe
+            .as_ref()
+            .map(|probe| probe.threshold_percent),
+        refresh_due,
+    }
+}
+
+fn account_lines(signed_in: &dyn Fn(Provider) -> bool) -> Vec<EngineAccount> {
+    [Provider::Codex, Provider::Claude]
+        .into_iter()
+        .map(|provider| EngineAccount {
+            provider: provider.as_str().into(),
+            name: provider_name(provider).into(),
+            signed_in: signed_in(provider),
+        })
+        .collect()
+}
+
+fn route_usage(probes: bool, provider: Provider, usage: &usage::Book, now: u64) -> RouteUsage {
+    if !probes {
+        return RouteUsage::Off;
+    }
+    if !Provider::PROBED.contains(&provider) {
+        return RouteUsage::Unsupported;
+    }
+    if let Some(reading) = usage.reading(provider, now) {
+        let windows = reading
+            .windows
+            .iter()
+            .map(|window| UsageWindow {
+                name: window.window.as_str().into(),
+                label: window_label(window.window).into(),
+                used_percent: percent(window.used_fraction),
+                resets_at: window.resets_at,
+                resets: window.resets_at.and_then(reset_text),
+            })
+            .collect();
+        let used_percent = reading
+            .fullest()
+            .map(|window| percent(window.used_fraction))
+            .unwrap_or(0);
+        return RouteUsage::Windows {
+            windows,
+            limit_reached: reading.limit_reached,
+            used_percent,
+        };
+    }
+    let reason = usage
+        .entry(provider)
+        .and_then(|entry| entry.failure)
+        .map(|failure| failure.as_str())
+        .unwrap_or("not_probed");
+    RouteUsage::Unknown {
+        reason: reason.into(),
+    }
+}
+
+fn provider_name(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Codex => "Codex",
+        Provider::Claude => "Claude Code",
+        Provider::Devin => "Devin",
+        Provider::OpenCode => "OpenCode",
+        Provider::Vertex => "Vertex",
+    }
+}
+
+fn window_label(name: usage::WindowName) -> &'static str {
+    match name {
+        usage::WindowName::FiveHour => "5 hours",
+        usage::WindowName::SevenDay => "7 days",
+        usage::WindowName::Primary => "Primary",
+        usage::WindowName::Secondary => "Secondary",
+    }
+}
+
+fn percent(fraction: f64) -> u8 {
+    if !fraction.is_finite() || fraction <= 0.0 {
+        return 0;
+    }
+    let rounded = (fraction * 100.0).round();
+    if rounded >= 100.0 {
+        100
+    } else {
+        // `rounded` is in 1..=99.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            rounded as u8
+        }
+    }
+}
+
+fn reset_text(at: u64) -> Option<String> {
+    let text = capacity::utc(at);
+    text.chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '-' | ':' | ' ' | 'U' | 'T' | 'C'))
+        .then_some(text)
+}
+
+fn bound(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_owned();
+    }
+    let mut end = max;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_owned()
+}
+
+fn providers_of(policy: Option<&Policy>) -> Vec<Provider> {
+    let mut providers = vec![Provider::Codex, Provider::Claude];
+    if let Some(policy) = policy {
+        for route in policy.routes() {
+            if !providers.contains(&route.provider) {
+                providers.push(route.provider);
+            }
+        }
+    }
+    providers
+}
+
 pub fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1265,6 +1471,14 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        (from DIR, default ~/.openagents/tasks), and usage
                        windows, and the latest decisions. Usage is probed
                        when the policy probes it or --probe-usage is given.
+  status [--store DIR] [--refresh]
+                       Print one JSON report: the engine routes in order,
+                       whether Codex and Claude Code are signed in, and
+                       each probed usage window as percents and reset
+                       times. The report has no credential. --refresh asks
+                       a provider only when this policy's usage probe is
+                       on. DIR is the task store (default
+                       ~/.openagents/tasks).
   on --workspace LABEL [--workspace LABEL]... [--max-running N]
      [--model ID | --route PROVIDER:MODEL [--route PROVIDER:MODEL]...]
      [--effort low|medium|high|xhigh] [--max-steps N] [--wall-seconds N]
@@ -1313,13 +1527,14 @@ pub fn cli(args: &[String]) -> u8 {
 
 fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
     let Some((command, rest)) = args.split_first() else {
-        return Err("usage: give show, on, or off".into());
+        return Err("usage: give show, status, on, or off".into());
     };
     let mut values: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut read_only = false;
     let mut full_access = false;
     let mut probe_usage = false;
     let mut keep_engine = false;
+    let mut refresh = false;
     let mut rest = rest.iter();
     while let Some(arg) = rest.next() {
         if arg == "--keep-engine" {
@@ -1330,6 +1545,8 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             full_access = true;
         } else if arg == "--probe-usage" {
             probe_usage = true;
+        } else if arg == "--refresh" {
+            refresh = true;
         } else if arg == "--help" {
             println!("{USAGE}");
             return Ok(());
@@ -1393,6 +1610,37 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     serde_json::to_string(entry).map_err(|e| e.to_string())?
                 );
             }
+        }
+        "status" => {
+            // Reject engine-changing flags before any sign-in or usage probe.
+            if read_only || full_access || keep_engine || probe_usage {
+                return Err("usage: status does not take that option".into());
+            }
+            if let Some(name) = values.keys().find(|name| name.as_str() != "--store") {
+                return Err(format!("usage: {name} does not apply to status"));
+            }
+            let store = match take_one(&mut values, "--store")? {
+                Some(store) => PathBuf::from(store),
+                None => PathBuf::from(std::env::var_os("HOME").ok_or("HOME is not set")?)
+                    .join(".openagents/tasks"),
+            };
+            let policy = Policy::load(&root)?;
+            let mut signed_in = BTreeMap::new();
+            for provider in providers_of(policy.as_ref()) {
+                let connected = matches!(capacity::probe(provider), Connection::Connected);
+                signed_in.insert(provider, connected);
+            }
+            let book = usage_book(policy.as_ref(), &store, now, refresh, usage::fetch);
+            let report = engine_report(
+                policy.as_ref(),
+                now,
+                &|provider| signed_in.get(&provider).copied().unwrap_or(false),
+                &book,
+            );
+            println!(
+                "{}",
+                serde_json::to_string(&report).map_err(|error| error.to_string())?
+            );
         }
         "off" => {
             let Some(mut policy) = Policy::load(&root)? else {
@@ -3030,5 +3278,173 @@ mod tests {
             .detail
             .unwrap();
         assert!(detail.contains("unknown (probe: network)"), "{detail}");
+    }
+
+    fn explode(_: Provider) -> Result<usage::Response, usage::Failure> {
+        panic!("a usage probe ran");
+    }
+
+    fn unauthorized(_: Provider) -> Result<usage::Response, usage::Failure> {
+        Err(usage::Failure::Unauthorized)
+    }
+
+    #[test]
+    fn the_engine_report_matches_the_policy_and_the_usage_book() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_572_210;
+        let policy = probed(90);
+        let book = usage_book(Some(&policy), dir.path(), now, true, recorded);
+        let report = engine_report(
+            Some(&policy),
+            now,
+            &|provider| provider == Provider::Codex,
+            &book,
+        );
+        let json = serde_json::to_string(&report).unwrap();
+        for secret in [
+            "owner@example.invalid",
+            "account-redacted",
+            "user-redacted",
+            "access_token",
+            CONTROLLER,
+            "\"plan\"",
+        ] {
+            assert!(!json.contains(secret), "{secret} leaked into {json}");
+        }
+        assert_eq!(report.usage_probe, Some(90));
+        assert!(!report.refresh_due);
+        assert_eq!(report.accounts[0].name, "Codex");
+        assert!(report.accounts[0].signed_in);
+        assert_eq!(report.accounts[1].name, "Claude Code");
+        assert!(!report.accounts[1].signed_in);
+        let codex = &report.routes[0];
+        assert_eq!(codex.name, "Codex");
+        assert_eq!(codex.model, "gpt-6-luna");
+        assert!(codex.signed_in);
+        let RouteUsage::Windows {
+            windows,
+            limit_reached,
+            used_percent,
+        } = &codex.usage
+        else {
+            panic!("{:?}", codex.usage);
+        };
+        assert!(*limit_reached);
+        assert_eq!(*used_percent, 100);
+        assert_eq!(windows[0].label, "Primary");
+        let resets = windows[0].resets.as_deref().unwrap();
+        assert!(
+            resets
+                .chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, '-' | ':' | ' ' | 'U' | 'T' | 'C')),
+            "{resets}"
+        );
+        let claude = &report.routes[1];
+        assert!(!claude.signed_in);
+        let RouteUsage::Windows {
+            windows,
+            limit_reached,
+            used_percent,
+        } = &claude.usage
+        else {
+            panic!("{:?}", claude.usage);
+        };
+        assert!(!*limit_reached);
+        assert_eq!(*used_percent, 66);
+        assert_eq!(windows[0].label, "5 hours");
+        assert_eq!(windows[0].used_percent, 4);
+        assert_eq!(windows[1].label, "7 days");
+        assert_eq!(windows[1].used_percent, 66);
+    }
+
+    #[test]
+    fn usage_limits_stay_off_until_the_owner_turns_probes_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let policy = routed(1);
+        let book = usage_book(Some(&policy), dir.path(), 1, true, explode);
+        let report = engine_report(Some(&policy), 1, &|_| false, &book);
+        assert!(
+            report
+                .routes
+                .iter()
+                .all(|route| route.usage == RouteUsage::Off)
+        );
+        assert!(!report.refresh_due);
+        assert_eq!(report.usage_probe, None);
+    }
+
+    #[test]
+    fn a_cached_report_does_not_probe_and_says_when_a_reading_is_due() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_572_210;
+        let policy = probed(90);
+        let book = usage_book(Some(&policy), dir.path(), now, false, explode);
+        let report = engine_report(Some(&policy), now, &|_| false, &book);
+        assert!(report.refresh_due);
+        assert!(report.routes.iter().all(|route| {
+            matches!(&route.usage, RouteUsage::Unknown { reason } if reason == "not_probed")
+        }));
+    }
+
+    #[test]
+    fn without_a_policy_the_report_still_names_the_accounts() {
+        let dir = tempfile::tempdir().unwrap();
+        let book = usage_book(None, dir.path(), 1, true, explode);
+        let report = engine_report(None, 1, &|provider| provider == Provider::Claude, &book);
+        assert!(!report.enabled);
+        assert!(report.routes.is_empty());
+        assert!(!report.refresh_due);
+        assert_eq!(report.accounts[0].name, "Codex");
+        assert!(!report.accounts[0].signed_in);
+        assert!(report.accounts[1].signed_in);
+    }
+
+    #[test]
+    fn a_provider_without_a_usage_endpoint_is_unsupported() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut policy = policy(1);
+        policy.engine.routes = vec![Route {
+            provider: Provider::Devin,
+            model: "default".into(),
+            effort: None,
+        }];
+        policy.engine.usage_probe = Some(UsageProbe {
+            threshold_percent: 90,
+        });
+        let book = usage_book(Some(&policy), dir.path(), 1, true, explode);
+        let report = engine_report(Some(&policy), 1, &|_| true, &book);
+        assert_eq!(report.routes[0].usage, RouteUsage::Unsupported);
+        assert!(!report.refresh_due);
+    }
+
+    #[test]
+    fn a_refused_probe_reports_its_closed_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_572_210;
+        let policy = probed(90);
+        let book = usage_book(Some(&policy), dir.path(), now, true, unauthorized);
+        let report = engine_report(Some(&policy), now, &|_| false, &book);
+        assert!(report.routes.iter().all(|route| {
+            matches!(&route.usage, RouteUsage::Unknown { reason } if reason == "unauthorized")
+        }));
+    }
+
+    #[test]
+    fn status_help_does_not_probe() {
+        assert_eq!(cli(&["status".into(), "--help".into()]), 0);
+    }
+
+    #[test]
+    fn status_rejects_a_probe_flag_before_it_reads_a_login() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            cli(&[
+                "status".into(),
+                "--probe-usage".into(),
+                "--root".into(),
+                dir.path().to_string_lossy().into_owned(),
+            ]),
+            2
+        );
     }
 }

@@ -5,8 +5,8 @@ use std::path::Path;
 
 use openagents_connect::Code;
 use openagents_connect::control::{
-    self, Autostart, Device, MAX_MESSAGE_BYTES, Op, Project, Reply, Request, Response, Status,
-    VERSION, socket_path_for,
+    self, Autostart, Device, EngineReport, MAX_MESSAGE_BYTES, Op, Project, Reply, Request,
+    Response, Status, VERSION, socket_path_for,
 };
 use openagents_connect::wire::{read_message, write_message};
 use serde_json::json;
@@ -45,6 +45,7 @@ fn every_op() -> Vec<Op> {
         Op::OwnerImport {
             secret: "33".repeat(32),
         },
+        Op::EngineStatus {},
     ]
 }
 
@@ -104,12 +105,29 @@ fn unknown_operations_and_fields_do_not_parse() {
         json!({"v": VERSION, "id": 1, "op": {"kind": "invite_create", "rights": ["observe"]}}),
         json!({"v": VERSION, "id": 1, "op": {"kind": "nearby_decide", "id": 7, "connect": true, "terminal": false}}),
         json!({"v": VERSION, "id": 1, "op": {"kind": "status"}, "grant": "x"}),
+        json!({"v": VERSION, "id": 1, "op": {"kind": "engine_status", "access_token": "x"}}),
     ] {
         assert!(
             serde_json::from_value::<Request>(text.clone()).is_err(),
             "{text}"
         );
     }
+}
+
+#[test]
+fn an_engine_report_cannot_carry_a_credential() {
+    let mut value = serde_json::to_value(EngineReport {
+        enabled: false,
+        adapter: String::new(),
+        model: String::new(),
+        routes: vec![],
+        accounts: vec![],
+        usage_probe: None,
+        refresh_due: false,
+    })
+    .unwrap();
+    value["access_token"] = json!("secret");
+    assert!(serde_json::from_value::<EngineReport>(value).is_err());
 }
 
 #[test]
@@ -153,6 +171,17 @@ fn replies_round_trip() {
                 enabled: false,
                 projects: vec![],
                 max_running: 1,
+            },
+        },
+        Reply::EngineStatus {
+            report: EngineReport {
+                enabled: false,
+                adapter: String::new(),
+                model: String::new(),
+                routes: vec![],
+                accounts: vec![],
+                usage_probe: None,
+                refresh_due: false,
             },
         },
         Reply::Projects {

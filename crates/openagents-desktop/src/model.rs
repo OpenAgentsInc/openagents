@@ -9,7 +9,9 @@
 //! it is showing, which is on the screen anyway.
 
 use crate::codes::{Action, Codes, Conditions};
-use crate::control::{Autostart, Device, NearbyPrompt, PickError, Project, Status};
+use crate::control::{
+    Autostart, ControlError, Device, EngineReport, NearbyPrompt, PickError, Project, Status,
+};
 pub use crate::folder::Chosen;
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -23,6 +25,10 @@ pub const FAST_POLL: Duration = Duration::from_secs(2);
 pub const SLOW_POLL: Duration = Duration::from_secs(5);
 /// How often Coder's tasks and sign-ins are read.
 pub const CODER_POLL: Duration = Duration::from_secs(15);
+/// How often the window reads Coder's engine and usage.
+pub const ENGINE_POLL: Duration = Duration::from_secs(60);
+/// How soon to read again while a usage refresh is due.
+pub const ENGINE_WAIT: Duration = Duration::from_secs(2);
 /// What the project row says when no folder chooser opened, with the way
 /// forward.
 pub const NO_CHOOSER: &str = "No folder chooser opened on this computer. \
@@ -167,6 +173,8 @@ pub enum Request {
     ChooseFolder,
     /// Whether Codex and Claude Code are signed in, and the recent tasks.
     Coder,
+    /// Coder's engine, model, sign-in, and usage. Read-only.
+    Engine,
     OpenLoginItems,
     /// Start Coder under this app, upgrading an earlier setup silently
     /// first ([`crate::migrate::start`]). Sent once, on launch.
@@ -204,6 +212,7 @@ impl std::fmt::Debug for Request {
             Request::SetAutostart(policy) => write!(f, "SetAutostart({policy:?})"),
             Request::ChooseFolder => f.write_str("ChooseFolder"),
             Request::Coder => f.write_str("Coder"),
+            Request::Engine => f.write_str("Engine"),
             Request::OpenLoginItems => f.write_str("OpenLoginItems"),
             Request::Start => f.write_str("Start"),
             Request::NearbyDecide { id, connect } => {
@@ -295,6 +304,8 @@ pub enum Outcome {
         agents: Agents,
         tasks: Vec<Task>,
     },
+    /// The engine report, or why this read failed.
+    Engine(crate::control::ControlResult<EngineReport>),
     Copied,
     Started(Started),
 }
@@ -321,6 +332,7 @@ fn outcome_name(outcome: &Outcome) -> &'static str {
         Outcome::Folder(_) => "Folder",
         Outcome::Picked(_) => "Picked",
         Outcome::Coder { .. } => "Coder",
+        Outcome::Engine(_) => "Engine",
         Outcome::Copied => "Copied",
         Outcome::Started(_) => "Started",
     }
@@ -349,6 +361,10 @@ pub struct Model {
     pub reached: bool,
     pub agents: Agents,
     pub tasks: Vec<Task>,
+    /// The latest engine report. `None` until one arrives.
+    pub engine: Option<EngineReport>,
+    /// Why the latest engine read failed, when the window can say.
+    pub engine_note: Option<String>,
     pub agent: Agent,
     /// One quiet line about how Coder started, when it matters.
     pub note: Option<String>,
@@ -367,6 +383,8 @@ pub struct Model {
     next_poll: Instant,
     /// When Coder's tasks and sign-ins are next read.
     next_coder: Instant,
+    /// When the engine report is next read.
+    next_engine: Instant,
     /// Clipboard entries to clear, and when.
     clear: Vec<(String, Instant)>,
     /// Whether [`Request::Start`] is still to be sent.
@@ -402,6 +420,8 @@ impl Model {
             reached: false,
             agents: Agents::default(),
             tasks: Vec::new(),
+            engine: None,
+            engine_note: None,
             agent,
             note: None,
             confirming: None,
@@ -413,6 +433,7 @@ impl Model {
             known: None,
             next_poll: now,
             next_coder: now,
+            next_engine: now,
             clear: Vec::new(),
             start,
             restartable: start,
@@ -502,6 +523,10 @@ impl Model {
             };
             self.next_poll = now + wait;
         }
+        if self.screen != Screen::Connect && now >= self.next_engine {
+            requests.push(Request::Engine);
+            self.next_engine = now + ENGINE_POLL;
+        }
         let conditions = self.conditions();
         requests.extend(
             self.codes
@@ -537,6 +562,9 @@ impl Model {
         }
         for (_, at) in &self.clear {
             wake = wake.min(*at);
+        }
+        if self.screen != Screen::Connect {
+            wake = wake.min(self.next_engine);
         }
         wake
     }
@@ -813,6 +841,23 @@ impl Model {
                 self.tasks = tasks;
                 Vec::new()
             }
+            Outcome::Engine(Ok(report)) => {
+                if report.refresh_due {
+                    self.next_engine = now + ENGINE_WAIT;
+                }
+                self.engine = Some(report);
+                self.engine_note = None;
+                Vec::new()
+            }
+            Outcome::Engine(Err(ControlError::Unreachable)) => Vec::new(),
+            Outcome::Engine(Err(ControlError::Refused { message, .. })) => {
+                self.engine_note = Some(message);
+                Vec::new()
+            }
+            Outcome::Engine(Err(ControlError::Malformed)) => {
+                self.engine_note = Some("Coder's engine report was unreadable.".into());
+                Vec::new()
+            }
             Outcome::Copied => Vec::new(),
             Outcome::Started(started) => {
                 self.starting = false;
@@ -949,6 +994,7 @@ mod tests {
                             reason: None,
                         }],
                     }),
+                    Request::Engine => Some(Outcome::Engine(Err(ControlError::Unreachable))),
                     Request::OpenLoginItems => None,
                     Request::Start => {
                         self.starts += 1;
@@ -1023,6 +1069,54 @@ mod tests {
         rig.tick(0);
         assert_eq!(rig.model.agent, Agent::Enabled);
         assert!(rig.model.codes.shown().is_some());
+    }
+
+    #[test]
+    fn the_window_reads_the_engine_and_cannot_change_it() {
+        use crate::control::EngineReport;
+        let start = Instant::now();
+        let mut home = Model::new(start, Screen::Home, Agent::Enabled);
+        let requests = home.tick(start);
+        assert!(requests.contains(&Request::Engine));
+        assert!(
+            !requests
+                .iter()
+                .any(|request| matches!(request, Request::SetAutostart(_)))
+        );
+        let mut connect = Model::new(start, Screen::Connect, Agent::Enabled);
+        assert!(!connect.tick(start).contains(&Request::Engine));
+        let report = EngineReport {
+            enabled: true,
+            adapter: String::new(),
+            model: "gpt-6-luna".into(),
+            routes: vec![],
+            accounts: vec![],
+            usage_probe: None,
+            refresh_due: true,
+        };
+        let followed = home.outcome(Outcome::Engine(Ok(report.clone())), start);
+        assert!(followed.is_empty());
+        assert_eq!(home.engine.as_ref(), Some(&report));
+        assert!(home.engine_note.is_none());
+        assert!(home.next_wake() <= start + ENGINE_WAIT);
+        home.outcome(
+            Outcome::Engine(Err(ControlError::Unreachable)),
+            start + ENGINE_WAIT,
+        );
+        assert_eq!(home.engine.as_ref(), Some(&report));
+        assert!(home.engine_note.is_none());
+        home.outcome(
+            Outcome::Engine(Err(ControlError::Refused {
+                code: "unavailable".into(),
+                message: "This computer cannot read Coder's engine.".into(),
+            })),
+            start,
+        );
+        assert_eq!(
+            home.engine_note.as_deref(),
+            Some("This computer cannot read Coder's engine.")
+        );
+        assert_eq!(home.engine.as_ref(), Some(&report));
     }
 
     /// A host that never answers: "Starting…" for [`STALL`], then a plain

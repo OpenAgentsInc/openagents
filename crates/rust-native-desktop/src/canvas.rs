@@ -108,6 +108,51 @@ impl Frame {
         self.pixels[at + 3] = ((255 * a + under * (256 - a)) >> 8) as u8;
     }
 
+    /// A usage ring. `used` is the clockwise share from the top, 0 to 1.
+    /// The track is the rest of the ring. A zero share paints only the track.
+    pub fn usage_ring(&mut self, rect: PxRect, used: f32, track: Color, fill: Color) {
+        let used = if used.is_finite() {
+            used.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let outer = rect.w.min(rect.h) / 2.0;
+        if outer <= 0.0 {
+            return;
+        }
+        let cx = rect.x + rect.w / 2.0;
+        let cy = rect.y + rect.h / 2.0;
+        let width = (outer * 0.22).max(1.5);
+        let inner = (outer - width).max(0.0);
+        let x0 = rect.x.floor() as i64;
+        let y0 = rect.y.floor() as i64;
+        let x1 = (rect.x + rect.w).ceil() as i64;
+        let y1 = (rect.y + rect.h).ceil() as i64;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let px = x as f32 + 0.5 - cx;
+                let py = y as f32 + 0.5 - cy;
+                let dist = px.hypot(py);
+                let coverage = (outer - dist + 0.5)
+                    .clamp(0.0, 1.0)
+                    .min((dist - inner + 0.5).clamp(0.0, 1.0));
+                if coverage <= 0.0 {
+                    continue;
+                }
+                let mut turns = px.atan2(-py) / (2.0 * std::f32::consts::PI);
+                if turns < 0.0 {
+                    turns += 1.0;
+                }
+                let color = if used >= 1.0 || turns < used {
+                    fill
+                } else {
+                    track
+                };
+                self.blend(x, y, color, coverage);
+            }
+        }
+    }
+
     /// Restricts subsequent drawing to a rectangle, or removes the restriction.
     pub(crate) fn set_clip(&mut self, clip: Option<PxRect>) {
         self.clip = clip;
@@ -446,5 +491,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_usage_ring_starts_at_the_top_and_runs_clockwise() {
+        let rect = PxRect {
+            x: 0.0,
+            y: 0.0,
+            w: 24.0,
+            h: 24.0,
+        };
+        let track = Color::rgb(58, 64, 73);
+        let fill = Color::rgb(214, 168, 92);
+        let mut empty = Frame::new(24, 24, Color::rgb(0, 0, 0));
+        empty.usage_ring(rect, 0.0, track, fill);
+        assert_eq!(empty.pixel(12, 1), [58, 64, 73]);
+        assert_eq!(empty.pixel(22, 12), [58, 64, 73]);
+        let mut full = Frame::new(24, 24, Color::rgb(0, 0, 0));
+        full.usage_ring(rect, 1.0, track, fill);
+        assert_eq!(full.pixel(12, 1), [214, 168, 92]);
+        let mut half = Frame::new(24, 24, Color::rgb(0, 0, 0));
+        half.usage_ring(rect, 0.5, track, fill);
+        assert_eq!(half.pixel(22, 12), [214, 168, 92]);
     }
 }

@@ -653,6 +653,11 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.keys = connect.keys;
     config.iroh = connect.iroh;
     config.control = connect.control;
+    if let Some(control) = config.control.as_mut() {
+        // The parser builds this before `--tasks` is in scope. The engine
+        // report reads the same task store `serve` already chose.
+        control.tasks = tasks_dir.clone();
+    }
     config.label = connect.label;
     // The same override `openagents chat` honours, so a scratch host and the
     // command reach one worker.
@@ -997,6 +1002,9 @@ fn connect_options(options: &mut Options, root: &Path) -> Result<Connect> {
         path,
         root: root.to_path_buf(),
         autostart: autostart_program(),
+        // `serve` replaces this with `--tasks`. The parser does not have
+        // that directory.
+        tasks: PathBuf::new(),
         uid: crate::control::own_uid(),
     });
     let label = match options.one("--label")? {

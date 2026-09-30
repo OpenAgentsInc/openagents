@@ -82,6 +82,13 @@ latest decisions, and whether each model provider is connected, has
 capacity, and how much of each usage window it has used; pass `--store DIR`
 when the task store is not `~/.openagents/tasks`. It probes usage when the
 policy does, or once when you pass `--probe-usage`.
+
+`coder host autostart status` prints one JSON report of those same routes,
+whether Codex and Claude Code are signed in, and each probed usage window as
+percents and reset times. The report has no credential. `--refresh` asks a
+provider only when this policy's usage probe is on. `--store DIR` names the
+task store (default `~/.openagents/tasks`). The desktop reads that report.
+
 Deleting `autostart.json` also turns it off.
 
 ## What it does
@@ -372,7 +379,10 @@ the command line.
   records the reset Claude Code's stream reports. With probes, a reading
   reorders routes, and supplies the reset only for a refusal that reported
   none.
-- The phone does not show probed windows yet; read them with
-  `coder host autostart show`.
+- The desktop chat header shows probed windows read-only. The phone compiles
+  the same strip; mounting it on a phone remains part of
+  [#10028](https://github.com/OpenAgentsInc/openagents/issues/10028).
+  `coder host autostart show` and `coder host autostart status` still print
+  the windows.
 - A task the policy ended for lack of capacity stays ended. Create it again
   after the reset.

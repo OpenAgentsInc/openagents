@@ -11,6 +11,7 @@ test-support = []
 
 [dependencies]
 openagents-chat = { path = "../openagents-chat" }
+openagents-connect = { path = "../openagents-connect" }
 coder-computers = { path = "../coder-computers" }
 coder-host = { path = "../coder-host", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }

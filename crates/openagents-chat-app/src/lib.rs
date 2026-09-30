@@ -7,6 +7,7 @@ pub mod cli_run;
 pub mod coder_list;
 pub mod coder_tab;
 pub mod conversation;
+pub mod engine;
 pub mod eval_cards;
 pub mod first_run;
 pub mod gym;

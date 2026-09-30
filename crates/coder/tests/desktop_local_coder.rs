@@ -34,6 +34,7 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
         path: socket.clone(),
         root: root.clone(),
         autostart: None,
+        tasks: tasks.clone(),
         uid: coder_host::control::own_uid(),
     });
     config.chats = Some(coder_host::tailnet::Chats {
@@ -317,6 +318,7 @@ async fn desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_ident
         path: socket.clone(),
         root: root.clone(),
         autostart: Some(root.clone()),
+        tasks: tasks.clone(),
         uid: coder_host::control::own_uid(),
     });
     let running = coder_host::start(config.clone(), inbox.clone())
@@ -443,6 +445,7 @@ async fn saved_sessions_continue_with_context_through_the_durable_coder_broker()
         path: socket.clone(),
         root: temp.path().join("host"),
         autostart: None,
+        tasks: tasks.clone(),
         uid: coder_host::control::own_uid(),
     });
     config.chats = Some(coder_host::tailnet::Chats {

@@ -45,6 +45,8 @@ tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"]
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 nostr = { version = "0.1.0", path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
+# The read-only engine report (`task::autostart::engine_report`).
+openagents-connect = { path = "../openagents-connect" }
 plugin = { path = "../plugin" }
 receipts = { path = "../receipts" }
 
@@ -55,7 +57,6 @@ private-fs = { path = "../private-fs" }
 [dev-dependencies]
 openagents-chat-app = { path = "../openagents-chat-app" }
 openagents-chat = { path = "../openagents-chat" }
-openagents-connect = { path = "../openagents-connect" }
 openagents-desktop = { path = "../openagents-desktop", default-features = false }
 coder-history = { path = "../coder-history" }
 coder-connect = { path = "../coder-connect" }

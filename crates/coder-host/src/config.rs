@@ -99,8 +99,12 @@ pub struct Control {
     pub root: PathBuf,
     /// The `coder` program that changes the auto-start policy, as the
     /// owner's own `coder host autostart` command does. `None` refuses
-    /// auto-start changes over the socket as unavailable.
+    /// auto-start changes over the socket as unavailable. The same program
+    /// reads the engine report.
     pub autostart: Option<PathBuf>,
+    /// The task store the engine report reads. `coder host serve` sets it
+    /// from `--tasks` (default `~/.openagents/tasks`).
+    pub tasks: PathBuf,
     /// The user ID a peer must have; the host's own unless a test says
     /// otherwise.
     pub uid: u32,

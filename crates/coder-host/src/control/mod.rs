@@ -9,8 +9,9 @@
 //! client's token user (see [`windows`]). A caller that passes is the local operator, which
 //! NIP-HOST treats as the owner acting with a command on the host: it can
 //! create and cancel invitations (connect codes), list and revoke devices,
-//! get and set the auto-start policy and the projects, and read status. No
-//! device, grant, relay message, or direct channel reaches this socket.
+//! get and set the auto-start policy and the projects, read the engine
+//! report, and read status. No device, grant, relay message, or direct
+//! channel reaches this socket.
 //!
 //! Every action goes through the same grant store as a device's request,
 //! under this process's store lock. A revocation wakes every open channel,
@@ -18,10 +19,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use coder_access::Rights;
 use openagents_connect::control::{
-    self, Autostart, Device, Op, Project, Reply, Request, Response, Status,
+    self, Autostart, Device, EngineReport, Op, Project, Reply, Request, Response, Status,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Semaphore;
@@ -377,6 +379,81 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             }
             reply
         }
+        Op::EngineStatus {} => engine_status(shared),
+    }
+}
+
+/// One background usage refresh at a time. A second `engine_status` while
+/// one is running does not start another.
+static ENGINE_REFRESH: AtomicBool = AtomicBool::new(false);
+
+/// A cached engine report. When a reading is due, a detached `status
+/// --refresh` updates the usage book for the next read. The socket answer
+/// does not wait on a provider.
+fn engine_status(shared: &Shared) -> Reply {
+    let Some(control) = shared.config.control.as_ref() else {
+        return refused("unavailable", "This computer cannot read Coder's engine.");
+    };
+    let Some(program) = control.autostart.as_ref() else {
+        return refused("unavailable", "This computer cannot read Coder's engine.");
+    };
+    match run_engine_status(program, &control.root, &control.tasks) {
+        Ok(report) => {
+            if report.refresh_due {
+                spawn_engine_refresh(program, &control.root, &control.tasks);
+            }
+            Reply::EngineStatus { report }
+        }
+        Err(()) => refused("malformed", "Coder's engine report was unreadable."),
+    }
+}
+
+fn run_engine_status(
+    program: &Path,
+    root: &Path,
+    tasks: &Path,
+) -> std::result::Result<EngineReport, ()> {
+    let output = std::process::Command::new(program)
+        .args(["host", "autostart", "status", "--root"])
+        .arg(root)
+        .arg("--store")
+        .arg(tasks)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|_| ())?;
+    if !output.status.success() || output.stdout.len() > control::MAX_MESSAGE_BYTES {
+        return Err(());
+    }
+    let text = String::from_utf8(output.stdout).map_err(|_| ())?;
+    serde_json::from_str(text.trim()).map_err(|_| ())
+}
+
+fn spawn_engine_refresh(program: &Path, root: &Path, tasks: &Path) {
+    if ENGINE_REFRESH.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let program = program.to_path_buf();
+    let root = root.to_path_buf();
+    let tasks = tasks.to_path_buf();
+    let started = std::thread::Builder::new()
+        .name("engine-refresh".into())
+        .spawn(move || {
+            let child = std::process::Command::new(&program)
+                .args(["host", "autostart", "status", "--refresh", "--root"])
+                .arg(&root)
+                .arg("--store")
+                .arg(&tasks)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            if let Ok(mut child) = child {
+                let _ = child.wait();
+            }
+            ENGINE_REFRESH.store(false, Ordering::Release);
+        });
+    if started.is_err() {
+        ENGINE_REFRESH.store(false, Ordering::Release);
     }
 }
 

@@ -114,6 +114,9 @@ pub enum Op {
     AutostartGet {},
     /// Replace the auto-start policy.
     AutostartSet { policy: Autostart },
+    /// Coder's engine, model, sign-in, and usage on this computer.
+    /// Read-only: the answer has no credential and changes nothing.
+    EngineStatus {},
     /// The projects (workspaces) the host admits.
     ProjectList {},
     /// Admit a Git checkout as a project.
@@ -195,6 +198,10 @@ pub enum Reply {
     Autostart {
         policy: Autostart,
     },
+    /// The engine report from `engine_status`.
+    EngineStatus {
+        report: EngineReport,
+    },
     Projects {
         projects: Vec<Project>,
     },
@@ -258,6 +265,85 @@ pub struct Autostart {
     pub projects: Vec<String>,
     /// Most auto-started tasks at once, 1 to 8.
     pub max_running: u8,
+}
+
+/// Coder's engine and usage on one computer. Percents and reset times only:
+/// no credential, account identifier, or controller path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EngineReport {
+    pub enabled: bool,
+    /// The engine adapter name, such as `microcoder-repository`. The window
+    /// does not show it.
+    pub adapter: String,
+    /// The policy's model, truncated.
+    pub model: String,
+    pub routes: Vec<EngineRoute>,
+    /// Codex, then Claude Code, whether or not a route names them.
+    pub accounts: Vec<EngineAccount>,
+    /// The usage-probe threshold, in percent, when the owner turned probes on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_probe: Option<u8>,
+    /// A probed provider is due for a refresh. The window ignores this; the
+    /// host uses it to start a background read.
+    pub refresh_due: bool,
+}
+
+/// One provider login, without any secret.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EngineAccount {
+    /// `codex` or `claude`.
+    pub provider: String,
+    /// The name on screen, such as `Codex` or `Claude Code`.
+    pub name: String,
+    pub signed_in: bool,
+}
+
+/// One admitted route, in the policy's preference order.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EngineRoute {
+    pub provider: String,
+    pub name: String,
+    /// The route's model, truncated.
+    pub model: String,
+    pub signed_in: bool,
+    pub usage: RouteUsage,
+}
+
+/// How much of a route's usage limit is used.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RouteUsage {
+    /// The owner has not turned usage probes on.
+    Off,
+    /// This provider has no usage endpoint.
+    Unsupported,
+    /// No fresh reading. `reason` is a closed code, never provider text.
+    Unknown { reason: String },
+    /// Fresh windows. `used_percent` is the fullest window.
+    Windows {
+        windows: Vec<UsageWindow>,
+        limit_reached: bool,
+        used_percent: u8,
+    },
+}
+
+/// One usage window, as percents and a reset time.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UsageWindow {
+    /// `five_hour`, `seven_day`, `primary`, or `secondary`.
+    pub name: String,
+    /// The words on screen, such as `5 hours` or `Primary`.
+    pub label: String,
+    pub used_percent: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<u64>,
+    /// `YYYY-MM-DD HH:MM UTC`, when the provider said when the window resets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets: Option<String>,
 }
 
 /// A phone nearby that wants to connect (`DSK-04`).
