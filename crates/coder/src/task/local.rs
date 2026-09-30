@@ -511,7 +511,9 @@ impl Local {
         let current = Store::open(&self.store)
             .and_then(|store| store.show(task))
             .map_err(|e| e.to_string())?;
-        if !matches!(current.status, Status::Finished) {
+        // A turn that ended, however it ended (finished, asked, failed,
+        // or stopped), continues; a running one does not.
+        if !matches!(current.status, Status::Finished | Status::Cancelled) {
             return Err("Coder is still working on this task; wait for it to ask.".into());
         }
         let policy = self.policy(&record.project)?;
@@ -613,9 +615,34 @@ impl Local {
             mapper: None,
             seen: 0,
             now: self.now,
+            ended: None,
         }
     }
 }
+
+/// Whether Coder could start on this computer now over
+/// [`default_store`]: [`Local::ready`], read at most every
+/// [`READY_EVERY`] seconds. A host's chat asks it on every command, so it
+/// tells the chat router a coding request can run here without a
+/// registered project.
+#[must_use]
+pub fn ready_here() -> bool {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<(u64, bool)>> = Mutex::new(None);
+    let now = autostart::unix_now();
+    let mut cache = CACHE.lock().unwrap_or_else(|poison| poison.into_inner());
+    if let Some((at, ready)) = *cache
+        && now.saturating_sub(at) < READY_EVERY
+    {
+        return ready;
+    }
+    let ready = Local::new(default_store()).ready();
+    *cache = Some((now, ready));
+    ready
+}
+
+/// How long [`ready_here`] keeps its answer, in seconds.
+pub const READY_EVERY: u64 = 15;
 
 /// Why the first route of `order` was chosen, in a sentence.
 fn reason(
@@ -778,6 +805,10 @@ pub struct Follow {
     /// Steps of the current turn already mapped.
     seen: usize,
     now: fn() -> u64,
+    /// The current turn's ending was already emitted, and where it left
+    /// the task: a later poll emits nothing more until another turn
+    /// starts.
+    ended: Option<State>,
 }
 
 impl Follow {
@@ -809,6 +840,17 @@ impl Follow {
                 .and_then(|store| store.show(&self.task))
                 .map_err(|e| e.to_string())?;
             let mut record = record(&self.store, &self.task);
+            if let Some(state) = self.ended {
+                let runs = task.earlier.len() + usize::from(task.run.is_some());
+                if task.turn() > self.turn && runs >= self.turn {
+                    self.turn += 1;
+                    self.mapper = None;
+                    self.seen = 0;
+                    self.ended = None;
+                } else {
+                    return Ok((out, state));
+                }
+            }
             if self.mapper.is_none() {
                 if let Some(started) = record.as_ref().and_then(|r| r.started(self.turn)) {
                     self.line(started, &mut out);
@@ -825,6 +867,7 @@ impl Follow {
                         message: "Coder stopped before the turn started.".into(),
                     });
                     self.line(event, &mut out);
+                    self.ended = Some(State::Ended);
                     return Ok((out, State::Ended));
                 }
                 let since = record
@@ -839,6 +882,7 @@ impl Follow {
                         resets_at: None,
                     });
                     self.line(event, &mut out);
+                    self.ended = Some(State::Ended);
                     return Ok((out, State::Ended));
                 }
                 if since > 0 && (self.now)().saturating_sub(since) > ADMISSION_WAIT {
@@ -849,6 +893,7 @@ impl Follow {
                         resets_at: None,
                     });
                     self.line(event, &mut out);
+                    self.ended = Some(State::Ended);
                     return Ok((out, State::Ended));
                 }
                 return Ok((out, State::Running));
@@ -921,14 +966,13 @@ impl Follow {
                 self.seen = 0;
                 continue;
             }
-            return Ok((
-                out,
-                if waiting {
-                    State::Waiting
-                } else {
-                    State::Ended
-                },
-            ));
+            let state = if waiting {
+                State::Waiting
+            } else {
+                State::Ended
+            };
+            self.ended = Some(state);
+            return Ok((out, state));
         }
     }
 }

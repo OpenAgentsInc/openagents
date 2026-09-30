@@ -195,6 +195,7 @@ async fn host(arguments: &[String]) -> u8 {
             Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
         },
     );
+    coder_host::control::set_local_coder(coder::task::local::ready_here);
     coder_host::cli::run(arguments, open).await
 }
 

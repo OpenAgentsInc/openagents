@@ -957,6 +957,25 @@ pub(crate) enum ChatRefusal {
 }
 
 /// Apply one chat service command to the host's threads: the store in
+/// Whether Coder can start on this computer for the person at it, without
+/// a registered project: set once by the program serving the host
+/// (`coder::task::local::ready_here`). Unset, only a registered project
+/// makes the computer ready.
+static LOCAL_CODER: std::sync::OnceLock<fn() -> bool> = std::sync::OnceLock::new();
+
+/// Tell the host's chats how to ask whether Coder can start here
+/// ([`LOCAL_CODER`]). The first call wins.
+pub fn set_local_coder(ready: fn() -> bool) {
+    let _ = LOCAL_CODER.set(ready);
+}
+
+/// Whether a coding request in a chat can run on this computer: a
+/// registered project with the host's keys, or Coder's local run.
+fn computer_ready(shared: &Shared) -> bool {
+    (shared.config.keys.is_some() && !shared.config.workspaces.is_empty())
+        || LOCAL_CODER.get().is_some_and(|ready| ready())
+}
+
 /// `<host root>/basic-chats`, opened on first use. The local operator
 /// socket and a granted device's `thread.*` operations share it.
 pub(crate) fn apply_chat(
@@ -997,7 +1016,7 @@ pub(crate) fn apply_chat(
     let chats = state.as_mut().expect("initialized chat state");
     chats.set_context(openagents_chat::router::Context {
         surface: openagents_chat::router::Surface::Desktop,
-        computer_ready: shared.config.keys.is_some() && !shared.config.workspaces.is_empty(),
+        computer_ready: computer_ready(shared),
         ..openagents_chat::router::Context::default()
     });
     let mut snapshot = openagents_chat::service::apply(
@@ -1008,13 +1027,12 @@ pub(crate) fn apply_chat(
             .map_or(0, |elapsed| elapsed.as_secs()),
     )
     .map_err(ChatRefusal::Chat)?;
-    snapshot.ready_computer =
-        (shared.config.keys.is_some() && !shared.config.workspaces.is_empty()).then(|| {
-            if shared.config.label.is_empty() {
-                "This computer".into()
-            } else {
-                shared.config.label.clone()
-            }
-        });
+    snapshot.ready_computer = computer_ready(shared).then(|| {
+        if shared.config.label.is_empty() {
+            "This computer".into()
+        } else {
+            shared.config.label.clone()
+        }
+    });
     Ok(snapshot)
 }

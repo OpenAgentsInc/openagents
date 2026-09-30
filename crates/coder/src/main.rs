@@ -379,6 +379,9 @@ async fn start() -> ExitCode {
                 Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
             },
         );
+        // A coding request in a chat runs Coder here when a coding agent
+        // is signed in, with no registered project.
+        coder_host::control::set_local_coder(coder::task::local::ready_here);
         return ExitCode::from(coder_host::cli::run(&arguments[1..], open).await);
     }
     match cli::parse(&arguments) {

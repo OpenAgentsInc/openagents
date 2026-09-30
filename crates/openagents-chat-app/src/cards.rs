@@ -381,7 +381,10 @@ impl Cards {
             reply
                 .chips
                 .retain(|chip| !matches!(chip.action, Action::RunCoder | Action::ConnectComputer));
-            reply.notice = Some((
+            // A run on this computer shows its own events
+            // (`crate::coder_run`); only a handoff to a host's policy says
+            // where it went.
+            reply.notice = (coder.host != crate::coder_run::LOCAL).then(|| (
                 "coder-dispatched".into(),
                 format!(
                     "Task sent to Coder{}. The computer's auto-start policy controls execution.",

@@ -1643,6 +1643,47 @@ mod local_run {
         lines.iter().map(|line| line.event.name()).collect()
     }
 
+    /// The scripted stream as the desktop's transcript test reads it
+    /// (`crates/openagents-chat/fixtures/coder-events/NAME.ndjson`), with
+    /// this run's temporary directory named `/tmp/scratch`. It is written
+    /// under `UPDATE_FIXTURES=1`; otherwise the fixture must hold the same
+    /// events, in order, as this run.
+    fn fixture(name: &str, root: &Path, lines: &[Line]) {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../openagents-chat/fixtures/coder-events")
+            .join(format!("{name}.ndjson"));
+        let mut roots = vec![root.display().to_string()];
+        if let Ok(real) = root.canonicalize() {
+            roots.insert(0, real.display().to_string());
+        }
+        let mut text = String::new();
+        for line in lines {
+            let mut json = serde_json::to_string(line).unwrap();
+            for root in &roots {
+                json = json.replace(root.as_str(), "/tmp/scratch");
+            }
+            text.push_str(&json);
+            text.push('\n');
+        }
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, text).unwrap();
+            return;
+        }
+        let kept = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("no {}; run with UPDATE_FIXTURES=1", path.display()));
+        let kept: Vec<Line> = kept
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(
+            names(&kept),
+            names(lines),
+            "{} is out of date; run with UPDATE_FIXTURES=1",
+            path.display()
+        );
+    }
+
     #[test]
     fn a_chat_run_streams_every_event_and_replays_identically() {
         let root = tempfile::tempdir().unwrap();
@@ -1760,6 +1801,12 @@ mod local_run {
         // `follow` of the finished task replays every event identically.
         let (again, _) = drain(&local, &record.task);
         assert_eq!(again, whole);
+        // A follower that already emitted the ending emits nothing more:
+        // the desktop keeps polling an ended task for a later turn.
+        let mut follow = local.follow(&record.task, Some(&"a".repeat(32)), Some("answer".into()));
+        assert_eq!(follow.poll().unwrap(), (whole.clone(), State::Ended));
+        assert_eq!(follow.poll().unwrap(), (vec![], State::Ended));
+        fixture("question-then-result", root.path(), &whole);
     }
 
     #[test]
@@ -1791,6 +1838,7 @@ mod local_run {
             (state, *names(&lines).last().unwrap()),
             (State::Waiting, "approval")
         );
+        let mut endings = lines;
 
         let exhausted = local.start(&top, "tidy", "tidy up", None).unwrap();
         let (lines, state) = drain(&local, &exhausted.task);
@@ -1802,6 +1850,7 @@ mod local_run {
             failure.ending.as_deref(),
             Some(capacity::NO_CAPACITY_ENDING)
         );
+        endings.extend(lines);
 
         // A turn stopped before it started ends as stopped.
         let idle = Local::new(root.path().join("tasks-idle"))
@@ -1828,5 +1877,7 @@ mod local_run {
             (state, *names(&lines).last().unwrap()),
             (State::Ended, "stopped")
         );
+        endings.extend(lines);
+        fixture("other-endings", root.path(), &endings);
     }
 }
