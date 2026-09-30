@@ -512,3 +512,45 @@ no capability for that yet. Anyone can add one and test it in the Gym, so
 everyone can see whether it helps."; "Who are you?" still answered from the
 bank. The record is
 [the build 25 record](../extensions/measurements/2026-09-29-build-25-chat-first.md).
+
+Release `3691fb2e1c` (2026-09-29) fixes the answer to "How do I connect a
+phone" ([#9995](https://github.com/OpenAgentsInc/openagents/issues/9995)):
+the product knowledge entries describe QR pairing with OpenAgents for Mac
+instead of the removed Tailscale and eight-character-code setup, and a
+grounded product reply's `[openagents.…]` citations are logged (`router
+product reply: cited […], unknown […]`) and taken out of every streamed
+piece and the final text. It was built with `cargo zigbuild` as above,
+installed as `/opt/coder-worker/releases/3691fb2e1c` with the current
+`knowledge/openagents/` (60 entries; copied with `COPYFILE_DISABLE=1`, no
+`._*` files) and `codebase-kb.gz` from `375cef66ef`, checked with `--check`
+under the chat environment ("the configuration is safe to deploy"), and put
+live by moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, `coder-worker.service` and
+`/opt/coder-worker/current` were not touched, and `375cef66ef` stays in
+`releases/` for rollback. (`223a2c5a85` was live for a few minutes with a
+route-description edit the live router does not read, then the symlink went
+back to `3691fb2e1c`.) The log names `product kb
+openagents-product@0ced76d89147 (60 entries)`. With
+`live_basic_coder_streams_a_reply` and `OPENAGENTS_TEST_CHAT_MESSAGE`:
+
+- "How do I connect a phone" answered in 1.09 s from the knowledge base
+  (tier `canned`, answer `openagents.connect-computer@2`): "Open OpenAgents
+  for Mac and it shows a QR code. Scan it with your iPhone Camera, or in our
+  app tap Account, Computers, Connect a computer and point it at the code.
+  Both screens then say the computer is connected. No Tailscale and no
+  commands. On the same Wi-Fi, the Mac can also show up under Nearby: tap
+  it, check both screens show the same six-digit code, and click Connect on
+  the Mac. Can't scan? Click Copy a code instead and paste it in the app."
+- "Do I need Tailscale to connect my Mac?" answered from
+  `openagents.tailnet@2`: "No, you don't need Tailscale. …". A bare "Do I
+  need Tailscale?" is still judged `general` by the router and the model
+  explains Tailscale in general, with no OpenAgents steps; widening the
+  `product.kb` route in `router/rubric.rs` moves the question set's digest
+  and needs a new calibration run, so it is a follow-up.
+- "How do I connect a Linux server that has no screen to the app?" was a
+  grounded model reply naming `openagents connect invite` and `openagents
+  connect --ssh HOST`; the worker logged `router product reply: cited
+  ["openagents.cli"], unknown []`, and the reply showed no tag.
+
+No reply contained `[openagents.`, `coder link`, `coder pair`, or an
+eight-character code.
