@@ -403,6 +403,8 @@ pub struct SplitLayout {
     pub min_content_width: f32,
     pub collapsed: bool,
     pub center_content: bool,
+    /// Center an empty content pane's footer instead of docking it at the bottom.
+    pub center_footer: bool,
 }
 
 impl SplitLayout {
@@ -549,6 +551,7 @@ pub fn lay_out_with_layout<I>(
             if header.is_some() { 8.0 } else { 12.0 },
             interaction.leading_scroll,
             false,
+            false,
             if header.is_some() { 8.0 } else { 16.0 },
         )
     } else {
@@ -565,6 +568,7 @@ pub fn lay_out_with_layout<I>(
         if header.is_some() { 0.0 } else { 20.0 },
         interaction.content_scroll,
         split.center_content,
+        split.center_footer,
         if header.is_some() { 0.0 } else { 16.0 },
     );
     let divider = (leading_width > 0.0).then_some(Rect {
@@ -716,6 +720,7 @@ impl Engine<'_> {
             }
         }
     }
+    #[allow(clippy::too_many_arguments)]
     fn docked_pane<I>(
         &mut self,
         node: &Node<I>,
@@ -723,6 +728,7 @@ impl Engine<'_> {
         inset: f32,
         scroll: f32,
         center: bool,
+        center_footer: bool,
         dock_gap: f32,
     ) -> ScrollRegion {
         let Element::Stack { children, .. } = &node.element else {
@@ -813,7 +819,14 @@ impl Engine<'_> {
         self.place(
             &children[2],
             rect.x + inset + (width - footer_width) / 2.0,
-            rect.y + rect.h - inset - footer_height,
+            if center_footer {
+                (rect.y + (rect.h - footer_height) / 2.0 + 8.0).clamp(
+                    rect.y + inset + header_height,
+                    (rect.y + rect.h - inset - footer_height).max(rect.y + inset + header_height),
+                )
+            } else {
+                rect.y + rect.h - inset - footer_height
+            },
             footer_width,
         );
         self.scene.ops.push(Op::PopClip);
@@ -2030,6 +2043,7 @@ mod tests {
                 min_content_width: 360.0,
                 collapsed,
                 center_content: true,
+                center_footer: false,
             }),
         )
     }
@@ -2119,6 +2133,7 @@ mod tests {
             min_content_width: 360.0,
             collapsed: false,
             center_content: true,
+            center_footer: false,
         };
         assert_eq!(split.width_at(960.0), 400.0);
         assert_eq!(split.width_at(500.0), 140.0);

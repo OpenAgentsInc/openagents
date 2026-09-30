@@ -376,3 +376,27 @@ parity across 24 transitions at both scales. Core: 88 passed, one ignored.
 Adapter: 60 passed, the explicit GPU check is ignored in the ordinary suite
 and passed separately in the previous slice. Strict all-target Clippy and
 scoped formatting pass.
+
+## Empty conversation docking
+
+Reimplemented Zeron's quiet empty canvas with a centered composer, including
+its 8-point offset. The desktop no longer inserts a synthetic welcome message
+or the four large starter buttons. Shared phone suggestions remain available
+to the phone hosts; real reply actions and cards remain in desktop chats.
+The composer docks at the bottom when the conversation has rows, preserving
+the same editor lifetime, draft, selection, and typed submission. Attachments
+and expanded drafts fit at both sizes. Archived chats and task views retain
+their existing docking. Captures: [default](empty-chat-1200.png) and
+[minimum](empty-chat-760.png).
+
+The geometry regression checks the empty reading pane, centered field's
+visible input region, and bottom docking after a reply while retaining
+trailing spaces in the draft. The card interaction fixture now exercises
+a real reply's follow-up instead of an empty-state starter button. The
+full desktop binary suite passes: 58 tests, with five native/network/timing
+checks explicitly ignored. Adapter: 60 passed, one explicit GPU check ignored.
+Strict scoped all-target Clippy and formatting pass.
+
+This preserves the shared host's existing empty-chat persistence behavior.
+Zeron's draft route creates its conversation on first submission; OpenAgents
+still uses its already-created host thread for that draft.

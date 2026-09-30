@@ -3,14 +3,14 @@ use crate::chat_action::Action;
 use crate::chrome::{Chat, Section, State};
 use crate::control::ControlResult;
 use crate::model::{Intent, Request};
-use openagents_chat::basic_coder::{Role, Turn};
+use openagents_chat::basic_coder::Role;
 use openagents_chat::service::{Command, Snapshot};
 use openagents_chat_app::coder_run::{self, Action as RunAction, Run};
-use openagents_chat_app::projection::{self, Appearance, Projection, Reply};
+use openagents_chat_app::projection::{Appearance, Projection, Reply};
 use openagents_chat_app::session::Session;
 use openagents_chat_app::task_chat::{self, Action as TaskAction};
 use rust_native::style::{Color, Space, Style, TextWeight};
-use rust_native::{Axis, Element, Glyph, Icon, MessageRole, Node, TextRole, ValidatedView};
+use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole, ValidatedView};
 use rust_native_desktop::composer::{
     Submission,
     field::{Action as FieldAction, Field},
@@ -2619,9 +2619,6 @@ impl Panel {
                     },
                     &appearance(),
                 );
-                if rows.is_empty() {
-                    rows.push(Arc::new(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None))));
-                }
                 let run_rows = self
                     .session
                     .selected
@@ -2645,6 +2642,7 @@ impl Panel {
                         .rows_with(snapshot, busy, self.session.error.as_deref())
                         .into_iter()
                         // A run here replaces the offer to start one.
+                        .filter(|row| !row.key.starts_with("coder-suggest-"))
                         .filter(|row| run_rows.is_none() || row.key != "coder-run")
                         .map(Arc::new),
                 );
@@ -2713,6 +2711,22 @@ impl Panel {
             return split;
         }
         body
+    }
+    /// Empty conversations keep the composer in the reading pane's center.
+    pub fn composer_centered(&self) -> bool {
+        !self.saved_visible
+            && self.rename.is_none()
+            && self.transcript_rows.is_empty()
+            && !self.busy()
+            && self.task().is_none()
+            && self.run().is_none()
+            && self.session.selected.as_ref().is_some_and(|id| {
+                !self
+                    .session
+                    .summaries
+                    .iter()
+                    .any(|summary| &summary.id == id && summary.archived)
+            })
     }
     pub fn footer(&mut self) -> Node<Intent> {
         if self.saved_visible {
@@ -3278,18 +3292,6 @@ fn appearance() -> Appearance<'static> {
     }
 }
 
-fn message(key: String, turn: &Turn) -> Node<()> {
-    projection::message(
-        &key,
-        if turn.role == Role::User {
-            MessageRole::User
-        } else {
-            MessageRole::Assistant
-        },
-        rust_native::markdown::parse(&turn.text),
-        &appearance(),
-    )
-}
 fn command_surface(key: &str, label: &str, resource: &str) -> Node<Intent> {
     Node {
         key: key.into(),

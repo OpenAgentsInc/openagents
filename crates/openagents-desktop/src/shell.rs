@@ -489,6 +489,12 @@ impl App for DesktopApp {
                     min_content_width: 360.0,
                     collapsed: state.collapsed,
                     center_content: true,
+                    center_footer: matches!(state.page, Page::Chat(_))
+                        && self.model.nearby().is_none()
+                        && self
+                            .chat
+                            .as_ref()
+                            .is_some_and(|chat| chat.composer_centered()),
                 },
             })
     }
@@ -1663,8 +1669,7 @@ mod tests {
                     app.present();
                     rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
                     // The new chat holds no turns, and none of the streaming
-                    // chat's words reach its screen (its welcome and starter
-                    // questions are its only rows).
+                    // chat's words reach its blank screen.
                     assert!(chats.turns(&other_id).is_empty(), "new chat has no turns");
                     // The sidebar rightly lists the first chat's title, so
                     // check for the streamed reply's own words.
@@ -2387,17 +2392,18 @@ mod card_fixtures {
 
     #[test]
     fn cards_mount_paint_and_admit_only_their_current_buttons() {
-        let mut app = super::tests::chat_fixture(0).0;
         let now = Instant::now();
-        let create = app.chat.as_mut().unwrap().new_chat();
-        app.send(vec![create], now);
-        app.present();
+        let (mut app, mut snapshot) = DesktopApp::performance_fixture(2, 1, now);
+        let mut meta = Meta::default();
+        meta.followups.push(openagents_chat::router::Followup {
+            label: "Who are you?".into(),
+            answer: None,
+        });
+        snapshot.turns = vec![Turn::user("Hello"), Turn::assistant("Hello", Some(meta))];
+        app.performance_stream(snapshot, now + std::time::Duration::from_secs(2));
         rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
         let panel = app.chat.as_mut().unwrap();
-        let bounds = panel
-            .transcript
-            .control_bounds("coder-suggest-meta.who")
-            .unwrap();
+        let bounds = panel.transcript.control_bounds("coder-followup-0").unwrap();
         let x = bounds.x + bounds.w / 2.0;
         let y = bounds.y + bounds.h / 2.0;
         assert!(app.surface_input(
@@ -2596,6 +2602,51 @@ mod chat_management {
         App,
         input::{SurfaceInput, TextInput},
     };
+    #[test]
+    fn empty_chat_centers_the_draft_and_a_real_reply_docks_it() {
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let now = Instant::now();
+            let (mut app, mut snapshot) = DesktopApp::performance_fixture(0, 1, now);
+            app.text_input(TextInput::Commit("Keep this draft  "), now);
+            let (frame, empty) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            assert_eq!(app.performance_counts().0, 0);
+            let composer = empty.bounds["chat-composer-card"];
+            assert_eq!(composer.h, 49.0);
+            let pane = empty.split.unwrap().content.rect;
+            let footer_height = empty.bounds["chat-footer"].h;
+            assert!(
+                (composer.y + composer.h / 2.0 - pane.y - (pane.h + footer_height) / 2.0 - 8.0)
+                    .abs()
+                    < 0.01,
+                "composer {composer:?}, reading clip {pane:?}, footer {footer_height}"
+            );
+            assert!(
+                empty
+                    .surface_rect(openagents_desktop::chat::COMPOSER)
+                    .unwrap()
+                    .contains(composer.x + 50.0, composer.y + 20.0)
+            );
+            if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
+                let path = std::path::PathBuf::from(path);
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(
+                    path.join(format!("empty-chat-{width}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+            snapshot.total = 2;
+            snapshot.turns = vec![
+                openagents_chat::basic_coder::Turn::user("Hello"),
+                openagents_chat::basic_coder::Turn::assistant("A real reply", None),
+            ];
+            app.performance_stream(snapshot, now + std::time::Duration::from_secs(2));
+            let (_, conversation) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            let docked = conversation.bounds["chat-composer-card"];
+            assert_eq!(docked.y + docked.h, height - 8.0);
+            assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+        }
+    }
     #[test]
     fn sidebar_context_precedes_the_title_without_wrapping_the_row() {
         let (mut app, _) = DesktopApp::performance_fixture(0, 1, Instant::now());
