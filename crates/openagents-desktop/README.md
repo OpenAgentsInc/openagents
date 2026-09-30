@@ -96,6 +96,13 @@ bins/openagents-desktop-macos/bundle.sh
 open target/release/OpenAgents.app
 ```
 
+The app's version is the phone app's, in lockstep: `MARKETING_VERSION` in
+[`bins/openagents-ios/host/project.yml`](../../bins/openagents-ios/host/project.yml)
+is the source of truth, and this crate's `version` must equal it
+([`tests/version_lockstep.rs`](tests/version_lockstep.rs); see
+[release](../../docs/desktop/release.md#version)). 1.0.0 is the first such
+release; 0.1.0 installs update to it.
+
 The script builds `openagents-desktop`, `coder`, and `microcoder` for this
 Mac and assembles `OpenAgents.app` with the login agent's plist, signed ad
 hoc. `SKIP_CODER=1` leaves the Coder binaries out. The signed, notarized

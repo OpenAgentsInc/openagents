@@ -203,9 +203,17 @@ assemble_app() {
   local package="${DESKTOP_PACKAGE:-openagents-desktop}"
   local bin="${DESKTOP_BIN:-$package}"
   local version exe app_bin coder_bin micro_bin cli_bin
-  version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml" |
+  # The version is the phone app's marketing version (MARKETING_VERSION in
+  # bins/openagents-ios/host/project.yml), which the desktop crate's version
+  # must equal, so the updater's running version and the bundle's agree.
+  local crate_version
+  version="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "could not read MARKETING_VERSION from bins/openagents-ios/host/project.yml"
+  crate_version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml" |
     sed -n "s/.*\"name\":\"$package\",\"version\":\"\([^\"]*\)\".*/\1/p")"
-  version="${version:-0.1.0}"
+  if [[ "$package" == openagents-desktop && "$crate_version" != "$version" ]]; then
+    die "openagents-desktop is $crate_version but the phone app is $version; change crates/openagents-desktop/Cargo.toml to match"
+  fi
 
   if [[ -n "$bin_dir" ]]; then
     step "taking $bin, coder, microcoder, openagents from $bin_dir"

@@ -75,11 +75,9 @@ function Fail([string]$Message) {
 }
 
 if (-not $Version) {
-    $inPackage = $false
-    foreach ($line in Get-Content (Join-Path $Root "Cargo.toml")) {
-        if ($line -match '^\[workspace\.package\]') { $inPackage = $true; continue }
-        if ($line -match '^\[') { $inPackage = $false }
-        if ($inPackage -and $line -match '^version\s*=\s*"([^"]+)"') { $Version = $Matches[1]; break }
+    # The phone app's marketing version, which the desktop app shares.
+    foreach ($line in Get-Content (Join-Path $Root "bins/openagents-ios/host/project.yml")) {
+        if ($line -match '^\s*MARKETING_VERSION:\s*([0-9][0-9.]*)\s*$') { $Version = $Matches[1]; break }
     }
 }
 # Windows Installer versions are three or four numeric fields, each small.

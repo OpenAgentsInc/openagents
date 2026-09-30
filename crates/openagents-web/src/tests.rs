@@ -130,7 +130,7 @@ async fn the_install_page_covers_the_mac_the_iphone_and_pairing() {
     let root = tempfile::tempdir().unwrap();
     let (status, body) = get(router(config(root.path().into())), "/install").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/0.1.0/OpenAgents-0.1.0.dmg"));
+    assert!(body.contains("https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg"));
     assert!(body.contains("macOS 13 or later"));
     assert!(body.contains("<strong>Applications</strong>"));
     assert!(body.contains(pages::TESTFLIGHT));

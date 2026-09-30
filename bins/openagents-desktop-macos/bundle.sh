@@ -37,9 +37,13 @@ if [[ "${SKIP_CODER:-0}" != "1" ]]; then
   packages+=(-p coder -p microcoder -p openagents-cli)
 fi
 cargo build --release "${packages[@]}" --manifest-path "$root/Cargo.toml"
-version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml" |
+# The version is the phone app's marketing version (MARKETING_VERSION in
+# bins/openagents-ios/host/project.yml); the crate's version must match it.
+version="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Could not read MARKETING_VERSION from bins/openagents-ios/host/project.yml.' >&2; exit 1; }
+crate_version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml" |
   sed -n 's/.*"name":"openagents-desktop","version":"\([^"]*\)".*/\1/p')"
-version="${version:-0.1.0}"
+[[ "$crate_version" == "$version" ]] || { echo "openagents-desktop is $crate_version but the phone app is $version; change crates/openagents-desktop/Cargo.toml to match" >&2; exit 1; }
 build="$(git -C "$root" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 rm -rf "$app"

@@ -19,10 +19,10 @@ use crate::App;
 use crate::layout::{boxed, page};
 
 /// The published desktop version this page links.
-pub(crate) const MAC_VERSION: &str = "0.1.0";
+pub(crate) const MAC_VERSION: &str = "1.0.0";
 
 /// The published `.dmg`, a universal build for Apple silicon and Intel.
-pub(crate) const MAC_DMG: &str = "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/0.1.0/OpenAgents-0.1.0.dmg";
+pub(crate) const MAC_DMG: &str = "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/install", get(install)).route(

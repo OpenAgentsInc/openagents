@@ -15,7 +15,8 @@
 #          [--skip-build] [--no-appimage] [--no-deb]
 #          [--appimage-runtime FILE]
 #
-#   --version V            package version (default: the workspace version)
+#   --version V            package version (default: the phone app's MARKETING_VERSION
+#                          in bins/openagents-ios/host/project.yml)
 #   --out DIR              output directory (default: target/desktop/linux)
 #   --skip-build           package the binaries already in the target dir
 #   --no-appimage          skip the AppImage
@@ -64,7 +65,7 @@ done
 [[ "$(uname -s)" == Linux ]] || { echo "package-linux: run this on Linux" >&2; exit 1; }
 
 if [[ -z "$version" ]]; then
-  version="$(awk '/^\[workspace.package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/"/,"",$3); print $3; exit}' "$root/Cargo.toml")"
+  version="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
 fi
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+~-][0-9A-Za-z.+~-]+)?$ ]] \
   || { echo "package-linux: bad version '$version'" >&2; exit 1; }

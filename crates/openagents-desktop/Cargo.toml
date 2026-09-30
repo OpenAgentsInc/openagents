@@ -4,7 +4,11 @@
 # to the host only through the local control socket and holds no secret key.
 [package]
 name = "openagents-desktop"
-version.workspace = true
+# The app's version, in lockstep with the phone app's marketing version:
+# MARKETING_VERSION in bins/openagents-ios/host/project.yml is the source
+# of truth (Android reads it too). Change both together;
+# tests/version_lockstep.rs fails when they differ.
+version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true

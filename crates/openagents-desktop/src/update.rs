@@ -1171,6 +1171,25 @@ mod tests {
     }
 
     #[test]
+    fn a_0_1_0_install_upgrades_to_1_0_0() {
+        // The first public build was 0.1.0; the desktop app then joined the
+        // phone app's version, 1.0.0. Installed 0.1.0 apps must take it.
+        let installed = Version::parse("0.1.0").unwrap();
+        let Check::Available(release) =
+            decide(&manifest("1.0.0", &"a".repeat(64), 10), &installed, "arm64").unwrap()
+        else {
+            panic!("expected 0.1.0 to update to 1.0.0");
+        };
+        assert_eq!(release.version, Version::parse("1.0.0").unwrap());
+        let running = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+        assert!(running >= Version::parse("1.0.0").unwrap());
+        assert!(matches!(
+            decide(&manifest("0.1.0", &"a".repeat(64), 10), &running, "arm64"),
+            Err(UpdateError::Downgrade { .. })
+        ));
+    }
+
+    #[test]
     fn an_update_has_to_match_the_architecture() {
         let current = Version::parse("1.0.0").unwrap();
         let mut m = manifest("1.1.0", &"a".repeat(64), 10);

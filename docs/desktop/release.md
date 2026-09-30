@@ -30,6 +30,23 @@ Notarization credentials, first match wins:
   operator's local `appstoreconnect.env`. Keep the `.p8` out of the repo and
   out of logs; the script passes only its path.
 
+## Version
+
+The desktop app ships at the OpenAgents phone app's version, in lockstep
+(`INVARIANTS.md`, App versions). The one source of truth is
+`MARKETING_VERSION` in `bins/openagents-ios/host/project.yml`, the
+TestFlight version, which the Android build also reads. The packaging
+scripts read it, and `crates/openagents-desktop/Cargo.toml`'s `version`
+(the updater's running version) and `bins/openagents-desktop-macos/Info.plist`
+must equal it: the scripts refuse a mismatch, and
+`cargo test -p openagents-desktop --test version_lockstep` fails on one.
+To change the version, change `MARKETING_VERSION`, the desktop crate's
+`version`, the Mac `Info.plist`, and Android's fallback `versionName` in
+`build.gradle.kts` together.
+
+The first public desktop build was 0.1.0; 1.0.0 is the first in lockstep.
+The updater compares versions as semver, so installed 0.1.0 apps take 1.0.0.
+
 ## Release
 
 ```sh
@@ -42,6 +59,22 @@ submission IDs, signing authority, architectures, and the `.dmg`'s SHA-256.
 A run takes the release builds plus two notarization round trips (usually
 one to five minutes each).
 
+Then publish the `.dmg` and the signed update manifest:
+
+```sh
+v=1.0.0   # MARKETING_VERSION
+scripts/desktop/sign-manifest.sh --version $v --app target/desktop-release/OpenAgents.app --upload
+gcloud storage cp target/desktop-release/OpenAgents-$v.dmg \
+  gs://openagentsgemini-oa-updates/desktop/macos/$v/OpenAgents-$v.dmg
+```
+
+`sign-manifest.sh` zips the app, signs the manifest with the Ed25519 key
+kept outside the repository, uploads the zip to `desktop/macos/<version>/`,
+and then `desktop/macos/manifest.json`. The download link is
+`https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/<version>/OpenAgents-<version>.dmg`;
+the website's `MAC_VERSION` and `MAC_DMG` (`crates/openagents-web/src/pages/install.rs`)
+point at it.
+
 What it does, in order:
 
 1. **Build.** `cargo build --release --locked` of `openagents-desktop`,
@@ -53,7 +86,7 @@ What it does, in order:
 
    ```text
    OpenAgents.app/Contents/
-     Info.plist                      com.openagents.desktop, version from Cargo
+     Info.plist                      com.openagents.desktop, the phone app's version
      MacOS/OpenAgents                the window and menu bar
      MacOS/coder                     runs `coder host serve` as a launchd agent
      MacOS/microcoder
@@ -69,8 +102,8 @@ What it does, in order:
    `Info.plist`, `com.openagents.desktop.host.plist`, and the entitlements
    files come from `bins/openagents-desktop-macos/`, the same files the quick
    local build (`bins/openagents-desktop-macos/bundle.sh`) uses; the
-   version is the crate's and the build number is the commit count, as
-   there. The icon is `AppIcon.icns` from that folder if present, otherwise
+   version is the phone app's (see [Version](#version)) and the build
+   number is the commit count, as there. The icon is `AppIcon.icns` from that folder if present, otherwise
    scaled from the iOS app icon. Missing files fall back to defaults
    written by the script.
 3. **Sign**, inner code first and never with `--deep`: every other Mach-O in
