@@ -55,7 +55,7 @@ pub struct Panel {
     pub column_width: f32,
     pub transcript: Transcript,
     fonts: Fonts,
-    transcript_rows: Vec<Node<()>>,
+    transcript_rows: Vec<Arc<Node<()>>>,
     projection: Projection,
     transcript_size: (f32, f32),
     composer_rect: Option<PxRect>,
@@ -262,12 +262,18 @@ impl Panel {
                 TextRole::Status,
             ));
             if self.rows_dirty {
-                self.transcript_rows = self.saved.reader.project();
+                self.transcript_rows = self
+                    .saved
+                    .reader
+                    .project()
+                    .into_iter()
+                    .map(Arc::new)
+                    .collect();
                 let (width, height) = self.transcript_size;
                 if width > 0.0 && height > 0.0 {
-                    let _ = self
-                        .transcript
-                        .update(self.transcript_rows.clone(), width, height);
+                    let _ =
+                        self.transcript
+                            .update_shared(self.transcript_rows.clone(), width, height);
                 }
                 self.rows_dirty = false;
             }
@@ -1652,7 +1658,7 @@ impl Panel {
             if size != self.transcript_size {
                 if let Err(error) =
                     self.transcript
-                        .update(self.transcript_rows.clone(), size.0, size.1)
+                        .update_shared(self.transcript_rows.clone(), size.0, size.1)
                 {
                     self.session.error = Some(format!("Couldn't lay out conversation: {error}"));
                     #[cfg(test)]
@@ -1787,11 +1793,11 @@ impl Panel {
                 .and_then(|id| self.tasks.get_mut(id))
                 .map(task_chat::Session::rows);
             let rows = if let Some(rows) = task_rows {
-                rows
+                rows.into_iter().map(Arc::new).collect()
             } else {
                 let state = self.session.state();
                 let turns = state.map_or(&[][..], |state| state.turns.as_slice());
-                let mut rows = self.projection.rows(
+                let mut rows = self.projection.shared_rows(
                     turns,
                     start,
                     Reply {
@@ -1806,7 +1812,7 @@ impl Panel {
                     &appearance(),
                 );
                 if rows.is_empty() {
-                    rows.push(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None)));
+                    rows.push(Arc::new(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None))));
                 }
                 let busy = self.busy();
                 let fallback = Snapshot {
@@ -1819,20 +1825,28 @@ impl Panel {
                     .as_ref()
                     .and_then(|id| self.session.states.get(id))
                     .unwrap_or(&fallback);
-                rows.extend(self.session.cards.rows_with(
-                    snapshot,
-                    busy,
-                    self.session.error.as_deref(),
-                ));
+                rows.extend(
+                    self.session
+                        .cards
+                        .rows_with(snapshot, busy, self.session.error.as_deref())
+                        .into_iter()
+                        .map(Arc::new),
+                );
                 rows
             };
-            if self.transcript_rows != rows {
+            if self.transcript_rows.len() != rows.len()
+                || self
+                    .transcript_rows
+                    .iter()
+                    .zip(&rows)
+                    .any(|(old, new)| !Arc::ptr_eq(old, new) && old != new)
+            {
                 self.transcript_rows = rows;
                 let size = self.transcript_size;
                 if size.0 > 0.0 && size.1 > 0.0 {
-                    let _ = self
-                        .transcript
-                        .update(self.transcript_rows.clone(), size.0, size.1);
+                    let _ =
+                        self.transcript
+                            .update_shared(self.transcript_rows.clone(), size.0, size.1);
                 }
             }
             self.rows_dirty = false;

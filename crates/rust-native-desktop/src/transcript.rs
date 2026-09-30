@@ -35,7 +35,7 @@ pub struct Transcript {
     layout: TranscriptLayout,
     measurer: ShapingMeasurer,
     frame: Arc<rust_native::layout::Frame>,
-    rows: HashMap<String, Node<()>>,
+    rows: HashMap<String, Arc<Node<()>>>,
     order: Vec<String>,
     height: f32,
     offset: f32,
@@ -142,6 +142,15 @@ impl Transcript {
         width: f32,
         height: f32,
     ) -> Result<(), rust_native::layout::LayoutError> {
+        self.update_shared(rows.into_iter().map(Arc::new).collect(), width, height)
+    }
+    /// Update shared immutable rows without copying unchanged Markdown trees.
+    pub fn update_shared(
+        &mut self,
+        rows: Vec<Arc<Node<()>>>,
+        width: f32,
+        height: f32,
+    ) -> Result<(), rust_native::layout::LayoutError> {
         let anchor = self
             .frame
             .rows_in(self.offset, self.offset + 1.0)
@@ -155,8 +164,12 @@ impl Transcript {
         let order: Vec<String> = rows.iter().map(|row| row.key.clone()).collect();
         let changed: Vec<Node<()>> = rows
             .iter()
-            .filter(|row| self.rows.get(&row.key) != Some(*row))
-            .cloned()
+            .filter(|row| {
+                self.rows
+                    .get(&row.key)
+                    .is_none_or(|previous| !Arc::ptr_eq(previous, row) && previous != *row)
+            })
+            .map(|row| (**row).clone())
             .collect();
         if self
             .pressed_widget
@@ -420,7 +433,7 @@ impl Transcript {
                                     .iter()
                                     .filter_map(|key| self.rows.get(key).cloned())
                                     .collect();
-                                let _ = self.update(rows, self.frame.width(), self.height);
+                                let _ = self.update_shared(rows, self.frame.width(), self.height);
                                 None
                             }
                             _ => None,

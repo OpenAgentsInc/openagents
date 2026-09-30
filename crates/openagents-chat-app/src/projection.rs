@@ -4,6 +4,7 @@ use rust_native::markdown::{Block, IncrementalMarkdown};
 use rust_native::style::Style;
 use rust_native::{Element, MessageRole, Node};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// Adapter names and colors; message semantics remain shared.
 pub struct Appearance<'a> {
@@ -21,6 +22,8 @@ pub struct Appearance<'a> {
 pub struct Projection {
     parsed: BTreeMap<usize, (Turn, Vec<Block>)>,
     partial: IncrementalMarkdown,
+    shared: BTreeMap<usize, (Turn, Arc<Node<()>>)>,
+    shared_appearance: Option<(String, String, Style)>,
 }
 
 pub struct Reply<'a> {
@@ -61,6 +64,68 @@ impl Projection {
                 appearance,
             ));
         }
+        rows.extend(self.tail(turns, reply, appearance));
+        rows
+    }
+
+    /// Reuse immutable settled rows when only the streamed tail changes.
+    pub fn shared_rows(
+        &mut self,
+        turns: &[Turn],
+        start: usize,
+        reply: Reply<'_>,
+        appearance: &Appearance<'_>,
+    ) -> Vec<Arc<Node<()>>> {
+        let profile = (
+            appearance.prefix.to_owned(),
+            appearance.body_suffix.to_owned(),
+            appearance.markdown_style,
+        );
+        if self.shared_appearance.as_ref() != Some(&profile) {
+            self.shared.clear();
+            self.shared_appearance = Some(profile);
+        }
+        self.shared
+            .retain(|index, _| *index >= start && *index < start + turns.len());
+        let mut rows = Vec::with_capacity(turns.len() + 2);
+        for (offset, turn) in turns.iter().enumerate() {
+            let index = start + offset;
+            let make = || {
+                (
+                    turn.clone(),
+                    Arc::new(message(
+                        &format!("{}{index}", appearance.prefix),
+                        if turn.role == Role::User {
+                            MessageRole::User
+                        } else {
+                            MessageRole::Assistant
+                        },
+                        rust_native::markdown::parse(&turn.text),
+                        appearance,
+                    )),
+                )
+            };
+            let entry = self.shared.entry(index).or_insert_with(make);
+            if entry.0 != *turn {
+                *entry = make();
+            }
+            rows.push(entry.1.clone());
+        }
+        rows.extend(
+            self.tail(turns, reply, appearance)
+                .into_iter()
+                .map(Arc::new),
+        );
+        rows
+    }
+
+    fn tail<I>(
+        &mut self,
+        turns: &[Turn],
+        reply: Reply<'_>,
+        appearance: &Appearance<'_>,
+    ) -> Vec<Node<I>> {
+        let mut rows = vec![];
         self.partial.set(reply.partial);
         if !reply.partial.is_empty() {
             rows.push(message(
@@ -194,6 +259,44 @@ mod tests {
             markdown_style: Style::default(),
             status_style: Style::default(),
         }
+    }
+
+    #[test]
+    fn a_streamed_tail_reuses_settled_rows_and_changed_sources_replace_only_their_row() {
+        let mut turns: Vec<_> = (0..3300)
+            .map(|index| Turn::assistant(format!("Reply {index} with **bold** and `code`."), None))
+            .collect();
+        let appearance = appearance();
+        let mut projection = Projection::default();
+        let reply = |partial| Reply {
+            busy: true,
+            partial,
+            failure: None,
+        };
+        let first = projection.shared_rows(&turns, 0, reply("First"), &appearance);
+        let streamed = projection.shared_rows(&turns, 0, reply("First word"), &appearance);
+        assert!(
+            first[..3300]
+                .iter()
+                .zip(&streamed)
+                .all(|(a, b)| Arc::ptr_eq(a, b))
+        );
+        assert_ne!(first[3300], streamed[3300]);
+        turns[100] = Turn::user("Corrected source");
+        let corrected = projection.shared_rows(&turns, 0, reply("First word"), &appearance);
+        assert!(!Arc::ptr_eq(&streamed[100], &corrected[100]));
+        assert!(Arc::ptr_eq(&streamed[101], &corrected[101]));
+        let mut uncached = Projection::default();
+        let ordinary: Vec<Node<()>> = uncached.rows(&turns, 0, reply("First word"), &appearance);
+        assert!(
+            ordinary
+                .iter()
+                .zip(&corrected)
+                .all(|(a, b)| a == b.as_ref())
+        );
+        let earlier = projection.shared_rows(&turns[..200], 0, reply(""), &appearance);
+        assert!(Arc::ptr_eq(&earlier[0], &corrected[0]));
+        assert_eq!(projection.shared.len(), 200);
     }
 
     #[test]
