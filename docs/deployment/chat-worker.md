@@ -668,3 +668,23 @@ paths need a paired computer and were covered by the mobile tests, not on
 the simulator. Build 35 was uploaded with `build.sh upload` at
 2026-09-30T14:51:16-07:00 and is `VALID`, in Internal Testers
 (`IN_BETA_TESTING`).
+
+TestFlight build 36 (1.0.0, archived from `1a2ccbb256`, 2026-09-30)
+changes no worker release. Since build 35 the phone composer edits
+through the shared editor (a whole emoji or accented letter deletes at
+once, Undo and Redo in the field's edit menu), saved chat cards open a
+native pin/unpin and archive/restore menu, photos attach to the draft,
+transcript code blocks take syntax colors, and a refused send keeps the
+draft (`dd6ab030a9`, `e9ef828c54`, #10028). The mobile tests (150
+passed), `openagents-chat-app` (117), and `openagents-chat` (48) pass. On a
+fresh iPhone 17 Pro simulator (iOS 26.5, deleted afterwards) build 36
+launched, the changelog showed 1.0.0 (36), "Who are you" answered "We are
+OpenAgents. …", and a request for a Rust function was answered by the live
+chat worker with a colored `rust` code block. A photo attached through the
+`--coder-tap attach:` hook showed above the composer with **Remove**, and
+sending with it showed "Hosted chat accepts text only. Remove the images to
+send." with the photo kept. `SharedContractsUITests` (composer grapheme
+delete and Undo, card menu Pin and Unpin with an attached image, code
+colors) passed on the same simulator against the chat fixture. Build 36 was
+uploaded with `build.sh upload` at 2026-09-30T15:21:03-07:00 and is
+`VALID`, in Internal Testers (`IN_BETA_TESTING`).
