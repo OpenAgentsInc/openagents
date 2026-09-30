@@ -19,6 +19,11 @@
 //!   changes to files that were already dirty — without asking the
 //!   version-control tool the observation is meant to check.
 //!
+//! - [`toolchains`] finds this computer's developer toolchains, from the
+//!   person's `PATH` and the known toolchain roots, as a read allow list
+//!   and a search path for a read-confined boundary whose command should
+//!   be able to use what is installed here.
+//!
 //! This is filesystem write enforcement, plus network denial when the
 //! caller asks for it with [`Spec::offline`], and read confinement when
 //! the caller asks for it with [`Spec::confining_reads`] or
@@ -29,6 +34,7 @@
 pub mod boundary;
 pub mod cmdline;
 pub mod snapshot;
+pub mod toolchains;
 #[cfg(windows)]
 pub mod windows;
 
@@ -38,3 +44,4 @@ pub use boundary::{
 };
 pub use cmdline::plain_path;
 pub use snapshot::{Change, Fault, Limits, Snapshot, Verdict, compare};
+pub use toolchains::Toolchains;

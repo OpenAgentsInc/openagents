@@ -643,6 +643,95 @@ mod enforced {
         let error = boundary.command("sh", ["-c", "true"]).unwrap_err();
         assert!(matches!(error, Error::Relative(_)), "{error}");
     }
+
+    /// A read-confined boundary over this computer's toolchains
+    /// (`coder_boundary::toolchains`, what a local Coder run uses): every
+    /// developer tool that runs here outside the boundary runs inside it
+    /// too, and writes still land only in the checkout and the scratch.
+    #[test]
+    fn a_toolchain_boundary_runs_this_computers_tools_and_writes_only_its_checkout() {
+        use coder_boundary::Toolchains;
+        use coder_boundary::toolchains::Host;
+        if !backend() {
+            return;
+        }
+        let checkout = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let toolchains = Toolchains::derive(&Host::this_computer());
+        let mut spec = Boundary::writing(checkout.path())
+            .readable(checkout.path())
+            .protecting(outside.path())
+            .owned_scratch_under(std::env::temp_dir());
+        for read in &toolchains.reads {
+            spec = spec.readable(&read.path);
+        }
+        let boundary = spec.build().unwrap();
+        let scratch = boundary.scratch().unwrap().to_path_buf();
+        let path = boundary.search_path(
+            &std::env::join_paths(
+                toolchains
+                    .path
+                    .iter()
+                    .cloned()
+                    .chain([PathBuf::from("/usr/bin"), PathBuf::from("/bin")]),
+            )
+            .unwrap(),
+        );
+        let environment = |command: &mut std::process::Command| {
+            command
+                .env_clear()
+                .env("PATH", &path)
+                .env("HOME", &scratch)
+                .env("TMPDIR", &scratch)
+                .env("xcrun_db", scratch.join("xcrun_db"))
+                .envs(toolchains.environment.iter().map(|(k, v)| (k, v)))
+                .current_dir(checkout.path())
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped());
+        };
+        let mut checked = Vec::new();
+        for (tool, script) in [
+            ("git", "git --version"),
+            ("rg", "rg --version"),
+            ("python3", "python3 --version"),
+            ("cargo", "cargo --version"),
+            ("node", "node --version"),
+            ("go", "go version"),
+        ] {
+            // Only a tool that runs here unboxed, with the same
+            // environment, is one the boundary must let run.
+            let mut plain = std::process::Command::new("/bin/sh");
+            plain.args(["-c", script]);
+            environment(&mut plain);
+            if !plain.status().is_ok_and(|status| status.success()) {
+                continue;
+            }
+            let mut boxed = boundary.command("/bin/sh", ["-c", script]).unwrap();
+            environment(&mut boxed);
+            own_group(&mut boxed);
+            let mut child = boxed.spawn().unwrap();
+            let mut stderr = child.stderr.take().unwrap();
+            let ending = wait(&mut child, Duration::from_secs(60));
+            let mut text = String::new();
+            let _ = stderr.read_to_string(&mut text);
+            assert_eq!(ending, Ending::Exited(Some(0)), "{tool}: {text}");
+            checked.push(tool);
+        }
+        eprintln!("ran inside the toolchain boundary: {checked:?}");
+
+        let inside = checkout.path().join("written");
+        let denied = outside.path().join("written");
+        let (ending, stderr) = run(
+            &boundary,
+            "if printf x > \"$1\" 2>/dev/null; then exit 11; fi; printf x > \"$2\" || exit 12",
+            &[denied.clone(), inside.clone()],
+            checkout.path(),
+        );
+        assert_eq!(ending, Ending::Exited(Some(0)), "stderr: {stderr}");
+        assert!(!denied.exists(), "a toolchain boundary let a write out");
+        assert!(inside.exists(), "the checkout was not writable");
+    }
 }
 
 /// The Windows half: the launcher starts the command in the boundary's

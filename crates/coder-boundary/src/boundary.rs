@@ -35,6 +35,19 @@
 //! can test whether a path exists but can't list a directory or read a
 //! file outside the set.
 //!
+//! # Toolchains
+//!
+//! A read-confined boundary whose command should use what is installed on
+//! the computer, as a person's local Coder run does, is handed that
+//! computer's developer toolchains as readable paths
+//! ([`crate::toolchains::Toolchains::derive`]): Xcode and the Command Line
+//! Tools, Homebrew, rustup, a Node or Python version manager, Go, Bun,
+//! Deno, package caches, and on Linux the Nix store and system profile.
+//! On macOS each is one more `(allow file-read* (subpath …))` after the
+//! read deny; on Linux one more `--ro-bind` over the empty root. They are
+//! reads only: the write rules above are unchanged, so such a command
+//! still writes only its checkout, writable paths, and scratch.
+//!
 //! # Windows
 //!
 //! [`Spec::build`] makes an AppContainer profile of the boundary's own,
