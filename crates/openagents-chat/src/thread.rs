@@ -45,6 +45,9 @@ pub const MODEL: &str = "openagents-chat-worker";
 pub const ROUTER_EXTRA: &str = "openagents.chat.router";
 /// The extra key under which a delegated Coder task is kept.
 pub const CODER_EXTRA: &str = "openagents.chat.coder";
+/// The host a thread's binding names for a Coder run this computer
+/// started for the person at it.
+pub const LOCAL_HOST: &str = "local";
 
 /// A whole thread: its row in the list and every turn it keeps, oldest
 /// first.
@@ -148,6 +151,15 @@ pub fn door() -> String {
 /// The thread as one `ATIF-v1.8` document, written by `version` of the
 /// exporting program.
 pub fn trajectory(thread: &Thread, version: &str) -> Value {
+    trajectory_with(thread, version, Vec::new())
+}
+
+/// [`trajectory`], carrying the delegated Coder task's own trajectories
+/// (one ATIF document per turn, oldest first) inside the thread's, as
+/// `subagent_trajectories`: the delegating step's reference then names the
+/// first one by its `trajectory_id`, so a reader has every step the task
+/// took without the computer that ran it.
+pub fn trajectory_with(thread: &Thread, version: &str, tasks: Vec<Value>) -> Value {
     let summary = &thread.summary;
     let mut session = atif::Session::opening(&summary.id, MODEL, &door(), "", version);
     session.directive = summary.title.clone();
@@ -212,21 +224,35 @@ pub fn trajectory(thread: &Thread, version: &str) -> Value {
     {
         // ATIF links a delegation from an observation result. The task's
         // first attempt writes `<task>.1.atif.jsonl` on the host that ran it.
+        let content = if coder.host == LOCAL_HOST {
+            format!("Coder task {} on this computer", coder.task)
+        } else {
+            format!("Coder task {} on computer {}", coder.task, coder.host)
+        };
+        let mut reference = json!({
+            "session_id": coder.task,
+            "trajectory_path": format!("{}.1.atif.jsonl", coder.task),
+            "extra": {
+                "host": coder.host,
+                "task": coder.task,
+                "project": coder.project,
+            },
+        });
+        if let Some(first) = tasks.first() {
+            reference["session_id"] = first["session_id"].clone();
+            reference["trajectory_id"] = first["trajectory_id"].clone();
+            reference["extra"]["turns"] = json!(tasks.len());
+        }
         let result = json!({
-            "content": format!("Coder task {} on computer {}", coder.task, coder.host),
-            "subagent_trajectory_ref": [{
-                "session_id": coder.task,
-                "trajectory_path": format!("{}.1.atif.jsonl", coder.task),
-                "extra": {
-                    "host": coder.host,
-                    "task": coder.task,
-                    "project": coder.project,
-                },
-            }],
+            "content": content,
+            "subagent_trajectory_ref": [reference],
         });
         match step["observation"]["results"].as_array_mut() {
             Some(results) => results.push(result),
             None => step["observation"] = json!({ "results": [result] }),
+        }
+        if !tasks.is_empty() {
+            document["subagent_trajectories"] = Value::Array(tasks);
         }
     }
     document
@@ -392,6 +418,35 @@ mod tests {
         );
         assert_eq!(document["extra"]["state"], "ended");
         assert_eq!(document["extra"]["directive"], "How do I connect a phone");
+    }
+
+    #[test]
+    fn a_local_task_travels_inside_the_thread() {
+        let mut thread = thread();
+        if let Some(coder) = thread.summary.coder.as_mut() {
+            coder.host = LOCAL_HOST.into();
+        }
+        let task = json!({
+            "schema_version": "ATIF-v1.8",
+            "session_id": "task-1-1",
+            "trajectory_id": "task-1-1",
+            "agent": {"name": "microcoder-repository", "version": "0.1.0"},
+            "steps": [{"step_id": 1, "source": "user", "message": "add a test"}],
+        });
+        let document = trajectory_with(&thread, "test", vec![task.clone()]);
+        assert!(atif::validate(&document).is_empty(), "{document}");
+        assert_eq!(document["subagent_trajectories"][0], task);
+        let result = &document["steps"][3]["observation"]["results"][0];
+        assert_eq!(result["content"], "Coder task task-1 on this computer");
+        let link = &result["subagent_trajectory_ref"][0];
+        assert_eq!(link["trajectory_id"], "task-1-1");
+        assert_eq!(link["extra"]["turns"], 1);
+        // Without embedded trajectories, nothing is added.
+        assert!(
+            trajectory(&thread, "test")
+                .get("subagent_trajectories")
+                .is_none()
+        );
     }
 
     #[test]

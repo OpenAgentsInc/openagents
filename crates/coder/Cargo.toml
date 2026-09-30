@@ -28,6 +28,8 @@ knowledge = { path = "../knowledge" }
 # and the codebase route's OpenRouter composer.
 openrouter = { path = "../openrouter" }
 microcoder-loop = { path = "../microcoder-loop" }
+# The Coder event stream every surface shows (`task::local`).
+openagents-chat = { path = "../openagents-chat" }
 codex-transport = { path = "../codex-transport" }
 crossterm = { version = "0.29", features = ["event-stream"] }
 futures-util = "0.3"
@@ -56,7 +58,6 @@ private-fs = { path = "../private-fs" }
 
 [dev-dependencies]
 openagents-chat-app = { path = "../openagents-chat-app" }
-openagents-chat = { path = "../openagents-chat" }
 openagents-desktop = { path = "../openagents-desktop", default-features = false }
 coder-history = { path = "../coder-history" }
 coder-connect = { path = "../coder-connect" }

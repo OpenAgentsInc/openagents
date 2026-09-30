@@ -5771,6 +5771,7 @@ dependencies = [
  "libc",
  "microcoder-loop",
  "nostr",
+ "openagents-chat",
  "openrouter",
  "reqwest 0.12.28",
  "rusqlite",

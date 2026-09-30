@@ -3038,7 +3038,7 @@
               "send"
             ],
             "usage": [
-              "send MESSAGE [--thread ID] [--run-coder] [--timeout SECONDS]"
+              "send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]"
             ],
             "forms": [
               {
@@ -3060,7 +3060,7 @@
                   },
                   {
                     "kind": "option",
-                    "name": "run-coder",
+                    "name": "no-run",
                     "optional": true
                   },
                   {
@@ -3073,7 +3073,104 @@
                 ]
               }
             ],
-            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. --run-coder accepts an offer to run Coder for the thread, as `run-coder` does.",
+            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex or Claude Code, whichever is signed in here and has capacity, and its events stream here. --no-run only shows the offer instead.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "follow",
+          "leaf": {
+            "path": [
+              "chat",
+              "follow"
+            ],
+            "usage": [
+              "follow --thread ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "follow"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Replay the thread's Coder task from its first event and keep streaming until it ends. Ctrl-C stops following, not the task.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "stop",
+          "leaf": {
+            "path": [
+              "chat",
+              "stop"
+            ],
+            "usage": [
+              "stop --thread ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "stop"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop the thread's running Coder task.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "answer",
+          "leaf": {
+            "path": [
+              "chat",
+              "answer"
+            ],
+            "usage": [
+              "answer --thread ID TEXT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "answer"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Answer the question Coder asked, and follow the turn it starts.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3203,7 +3300,7 @@
                 ]
               }
             ],
-            "summary": "Accept OpenAgents' offer to run Coder on this computer for the thread, through this computer's host.",
+            "summary": "Run Coder on this computer for the thread's last offer, as send does.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3220,7 +3317,7 @@
         },
         {
           "kind": "option",
-          "name": "run-coder",
+          "name": "no-run",
           "optional": true,
           "repeated": true
         },

@@ -36,6 +36,8 @@ tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"]
 
 [dev-dependencies]
 tempfile = "3"
+# The Coder event stream a local run's fixture test reads.
+openagents-chat = { path = "../openagents-chat" }
 # Signed extension evaluation fixtures for the referee's tests.
 xp-ledger = { path = "../xp-ledger", features = ["fixtures"] }
 # The engine's OpenCode database a refusal test writes.

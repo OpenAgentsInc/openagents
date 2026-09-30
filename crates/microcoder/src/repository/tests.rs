@@ -1515,3 +1515,318 @@ async fn a_store_another_process_holds_is_not_a_stop() {
     .unwrap();
     assert_eq!(task.execution, task::Execution::Finished);
 }
+
+/// A chat's local run (`coder::task::local`) with scripted provider output:
+/// the shared start writes the grant, this launcher runs the owner at once
+/// with scripted routes instead of starting `microcoder`, and the shared
+/// follower turns the recorded turns into the event stream the CLI, the
+/// desktop, and the phone show.
+mod local_run {
+    use super::*;
+    use coder::task::autostart::{Engine, Launch, Launched};
+    use coder::task::local::{Local, State};
+    use openagents_chat::coder_events::{CoderEvent, Line};
+    use std::sync::Mutex;
+
+    type Script = Vec<Result<NextAction, Refusal>>;
+
+    /// Runs each launched turn in this process with the next scripted
+    /// Codex and Claude Code replies.
+    struct Scripted(Mutex<VecDeque<(Script, Script)>>);
+
+    impl Launch for Scripted {
+        fn launch(&self, _: &Engine, grant: &Path, store: &Path) -> Result<Launched, String> {
+            let bytes = std::fs::read(grant).map_err(|e| e.to_string())?;
+            let (codex, claude) = self.0.lock().unwrap().pop_front().ok_or("no script")?;
+            let store = store.to_path_buf();
+            std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                runtime.block_on(async {
+                    let codex = lane("gpt-6-luna", 0.0, codex);
+                    let claude = lane("claude-opus-5-5", 0.1, claude);
+                    let host = Host::admit(&store, &bytes).await.unwrap();
+                    run_routes(
+                        host,
+                        store.clone(),
+                        vec![
+                            (route("codex", "gpt-6-luna"), &codex),
+                            (route("claude", "claude-opus-5-5"), &claude),
+                        ],
+                        &JudgeFixture,
+                        during_limit,
+                    )
+                    .await
+                    .unwrap();
+                });
+            })
+            .join()
+            .map_err(|_| "the scripted owner panicked".to_owned())?;
+            Ok(Launched {
+                owner_process: std::process::id(),
+                grant_digest: String::new(),
+            })
+        }
+    }
+
+    fn signed_in(_: Provider) -> capacity::Connection {
+        capacity::Connection::Connected
+    }
+
+    fn checkout(root: &Path) -> std::path::PathBuf {
+        let top = root.join("slugs");
+        std::fs::create_dir_all(&top).unwrap();
+        std::fs::write(
+            top.join("slugs.py"),
+            "def slugify(text):\n    return text\n",
+        )
+        .unwrap();
+        for args in [
+            vec!["init", "-q"],
+            vec!["add", "slugs.py"],
+            vec![
+                "-c",
+                "user.name=F",
+                "-c",
+                "user.email=f@example.invalid",
+                "commit",
+                "-qm",
+                "one",
+            ],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&top)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        top
+    }
+
+    fn asking(reply: &str, ask: crate::models::Ask) -> NextAction {
+        NextAction {
+            reply: reply.into(),
+            ask,
+            finished: false,
+            ..done()
+        }
+    }
+
+    fn finished(reply: &str) -> NextAction {
+        NextAction {
+            reply: reply.into(),
+            ..done()
+        }
+    }
+
+    /// Every event until the task ends or asks.
+    fn drain(local: &Local, task: &str) -> (Vec<Line>, State) {
+        let mut follow = local.follow(task, Some(&"a".repeat(32)), Some("answer".into()));
+        let mut lines = Vec::new();
+        for _ in 0..200 {
+            let (more, state) = follow.poll().unwrap();
+            lines.extend(more);
+            if state != State::Running {
+                return (lines, state);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("the task never ended: {lines:?}");
+    }
+
+    fn names(lines: &[Line]) -> Vec<&'static str> {
+        lines.iter().map(|line| line.event.name()).collect()
+    }
+
+    #[test]
+    fn a_chat_run_streams_every_event_and_replays_identically() {
+        let root = tempfile::tempdir().unwrap();
+        let top = checkout(root.path());
+        let store = root.path().join("tasks");
+        let script = VecDeque::from([
+            // Turn 1: Codex refuses for its usage limit, Claude Code writes
+            // the test and asks.
+            (
+                vec![Err(Refusal::codex(429, LIMIT, during_limit()).unwrap())],
+                vec![
+                    Ok(write("printf 'import unittest\\n' > test_slugs.py")),
+                    Ok(asking(
+                        "Should the test cover empty input too?",
+                        crate::models::Ask::Question,
+                    )),
+                ],
+            ),
+            // Turn 2, after the answer: Codex is still refused in the
+            // book, so Claude Code starts, and finishes.
+            (
+                vec![],
+                vec![
+                    Ok(write("printf 'x = 1\\n' >> test_slugs.py")),
+                    Ok(finished("I added test_slugs.py.")),
+                ],
+            ),
+        ]);
+        let local = Local::new(store.clone())
+            .with_probe(signed_in)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(Scripted(Mutex::new(script))));
+        let record = local
+            .start(
+                &top,
+                "add a unit test for slugify",
+                "add a unit test for slugify",
+                Some(&"a".repeat(32)),
+            )
+            .unwrap();
+        let (turn_one, state) = drain(&local, &record.task);
+        assert_eq!(state, State::Waiting);
+        let seen = names(&turn_one);
+        for name in [
+            "coder_started",
+            "step",
+            "progress",
+            "provider_switched",
+            "output",
+            "question",
+        ] {
+            assert!(seen.contains(&name), "{name} missing from {seen:?}");
+        }
+        let CoderEvent::CoderStarted(started) = &turn_one[0].event else {
+            panic!("{:?}", turn_one[0])
+        };
+        assert_eq!(started.provider, "codex");
+        assert_eq!(started.reason, "Codex is signed in and has capacity.");
+        assert_eq!(started.fallbacks, ["claude:claude-opus-5-5"]);
+        let switched = turn_one
+            .iter()
+            .find_map(|line| match &line.event {
+                CoderEvent::ProviderSwitched(s) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(switched.to.as_deref(), Some("claude:claude-opus-5-5"));
+        assert_eq!(switched.resets_at, Some(RESET));
+        let CoderEvent::Question(asked) = &turn_one.last().unwrap().event else {
+            panic!()
+        };
+        assert_eq!(asked.text, "Should the test cover empty input too?");
+        assert_eq!(asked.answer.as_deref(), Some("answer"));
+        // Sequence numbers count from one without gaps.
+        assert!(
+            turn_one
+                .iter()
+                .enumerate()
+                .all(|(i, l)| l.seq == i as u64 + 1)
+        );
+
+        // The answer starts turn 2 on Claude Code, and says why.
+        local.answer(&record.task, "Yes, cover it.").unwrap();
+        let (whole, state) = drain(&local, &record.task);
+        assert_eq!(state, State::Ended);
+        assert_eq!(
+            &whole[..turn_one.len()],
+            &turn_one[..],
+            "turn 1 replays identically"
+        );
+        let second: Vec<&Line> = whole[turn_one.len()..].iter().collect();
+        let CoderEvent::CoderStarted(started) = &second[0].event else {
+            panic!("{:?}", second[0])
+        };
+        assert_eq!((started.turn, started.provider.as_str()), (2, "claude"));
+        assert!(
+            started
+                .reason
+                .starts_with("Codex reached its usage limit until ")
+                && started.reason.ends_with("; using Claude Code."),
+            "{}",
+            started.reason
+        );
+        let CoderEvent::Result(result) = &whole.last().unwrap().event else {
+            panic!("{:?}", whole.last())
+        };
+        assert_eq!(result.summary, "I added test_slugs.py.");
+        assert_eq!(result.files_changed.len(), 1);
+        assert_eq!(result.files_changed[0].path, "test_slugs.py");
+        assert_eq!((result.insertions, result.deletions), (2, 0));
+        // The change is in Coder's worktree, never the checkout.
+        assert!(Path::new(&result.worktree).join("test_slugs.py").exists());
+        assert!(!top.join("test_slugs.py").exists());
+
+        // `follow` of the finished task replays every event identically.
+        let (again, _) = drain(&local, &record.task);
+        assert_eq!(again, whole);
+    }
+
+    #[test]
+    fn every_other_ending_is_its_own_event() {
+        let root = tempfile::tempdir().unwrap();
+        let top = checkout(root.path());
+        let script = VecDeque::from([
+            (
+                vec![Ok(asking(
+                    "May I delete slugs.py?",
+                    crate::models::Ask::Approval,
+                ))],
+                vec![],
+            ),
+            (
+                vec![Err(Refusal::codex(429, LIMIT, during_limit()).unwrap())],
+                vec![Err(
+                    Refusal::claude(true, Some(429), None, during_limit()).unwrap()
+                )],
+            ),
+        ]);
+        let local = Local::new(root.path().join("tasks"))
+            .with_probe(signed_in)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(Scripted(Mutex::new(script))));
+        let approval = local.start(&top, "tidy", "tidy up", None).unwrap();
+        let (lines, state) = drain(&local, &approval.task);
+        assert_eq!(
+            (state, *names(&lines).last().unwrap()),
+            (State::Waiting, "approval")
+        );
+
+        let exhausted = local.start(&top, "tidy", "tidy up", None).unwrap();
+        let (lines, state) = drain(&local, &exhausted.task);
+        assert_eq!(state, State::Ended);
+        let CoderEvent::Failure(failure) = &lines.last().unwrap().event else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(
+            failure.ending.as_deref(),
+            Some(capacity::NO_CAPACITY_ENDING)
+        );
+
+        // A turn stopped before it started ends as stopped.
+        let idle = Local::new(root.path().join("tasks-idle"))
+            .with_probe(signed_in)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(Scripted(Mutex::new(VecDeque::new()))));
+        assert!(
+            idle.start(&top, "tidy", "tidy up", None).is_err(),
+            "no script, no start"
+        );
+        let task = std::fs::read_dir(root.path().join("tasks-idle/local"))
+            .unwrap()
+            .flatten()
+            .find_map(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .strip_suffix(".json")
+                    .map(str::to_owned)
+            })
+            .unwrap();
+        idle.stop(&task).unwrap();
+        let (lines, state) = drain(&idle, &task);
+        assert_eq!(
+            (state, *names(&lines).last().unwrap()),
+            (State::Ended, "stopped")
+        );
+    }
+}

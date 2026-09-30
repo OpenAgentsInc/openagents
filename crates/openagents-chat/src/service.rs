@@ -12,6 +12,18 @@ pub enum Command {
     RunCoder {
         chat: String,
     },
+    /// Record that `task` runs for this chat, started on `host` in
+    /// `project`: the binding a Coder run this chat asked for keeps, so
+    /// every surface can follow it. `host` is a host's key, or `local` for
+    /// a run this computer started for the person at it. It grants nothing
+    /// and runs nothing; the chat must exist and not be bound already to
+    /// another task.
+    BindCoder {
+        chat: String,
+        host: String,
+        task: String,
+        project: Option<String>,
+    },
     List {},
     ListMore {
         after: usize,
@@ -105,6 +117,36 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
     let (id, before) = match command {
         Command::RunCoder { .. } => {
             return Err("This chat service has no admitted Coder broker.".into());
+        }
+        Command::BindCoder {
+            chat,
+            host,
+            task,
+            project,
+        } => {
+            if !identity(&chat) || chats.get(&chat).is_none() {
+                return Err("Chat not found.".into());
+            }
+            let bounded = |text: &str, max: usize| {
+                !text.is_empty()
+                    && text.len() <= max
+                    && text
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"._-:".contains(&b))
+            };
+            if !bounded(&host, 128)
+                || !bounded(&task, 128)
+                || project.as_deref().is_some_and(|p| !bounded(p, 128))
+            {
+                return Err("Invalid Coder task.".into());
+            }
+            if let Some(bound) = chats.get(&chat).and_then(|summary| summary.coder.as_ref())
+                && (bound.task != task || bound.host != host)
+            {
+                return Err("This chat already runs another Coder task.".into());
+            }
+            chats.spawned_in(&chat, &host, &task, project.as_deref(), now);
+            (Some(chat), None)
         }
         Command::List {} => (None, None),
         Command::ListMore { after, version } => {
@@ -318,6 +360,37 @@ mod tests {
             self.calls.lock().unwrap().push((turns, reply));
             Box::pin(std::future::pending())
         }
+    }
+
+    #[test]
+    fn a_chat_binds_one_coder_task_and_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+        let mut chats =
+            BasicChats::new(None, None, Some(Cache::open(dir.path(), &secret).unwrap()));
+        let id = "e".repeat(32);
+        let bind = |task: &str| Command::BindCoder {
+            chat: id.clone(),
+            host: "local".into(),
+            task: task.into(),
+            project: Some("scratch".into()),
+        };
+        assert!(apply(&mut chats, bind("t1"), 5).is_err(), "no such chat");
+        apply(&mut chats, Command::Create { chat: id.clone() }, 1).unwrap();
+        let snapshot = apply(&mut chats, bind("t1"), 5).unwrap();
+        let coder = snapshot.coder.unwrap();
+        assert_eq!((coder.host.as_str(), coder.task.as_str()), ("local", "t1"));
+        assert_eq!(coder.project.as_deref(), Some("scratch"));
+        // Binding the same task again is a no-op; another task is refused.
+        assert!(apply(&mut chats, bind("t1"), 6).is_ok());
+        assert!(apply(&mut chats, bind("t2"), 7).is_err());
+        let odd = Command::BindCoder {
+            chat: id.clone(),
+            host: "local".into(),
+            task: "../x y".into(),
+            project: None,
+        };
+        assert!(apply(&mut chats, odd, 8).is_err());
     }
 
     #[test]

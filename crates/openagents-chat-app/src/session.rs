@@ -209,6 +209,7 @@ impl Session {
                     Command::List {} | Command::ListMore { .. } => None,
                     Command::UseSuggestion { chat, .. }
                     | Command::RunCoder { chat }
+                    | Command::BindCoder { chat, .. }
                     | Command::Create { chat }
                     | Command::Read { chat, .. }
                     | Command::Send { chat, .. }

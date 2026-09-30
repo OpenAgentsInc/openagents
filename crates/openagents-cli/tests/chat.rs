@@ -186,8 +186,11 @@ async fn openagents(home: &Path, relay: &str, worker: &str, args: &[&str]) -> Ru
     let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
     let (home, relay, worker) = (home.to_owned(), relay.to_owned(), worker.to_owned());
     tokio::task::spawn_blocking(move || {
+        // The command runs outside any Git checkout: a coding reply then
+        // never starts Coder in this repository.
         let output = Command::new(exe)
             .args(&args)
+            .current_dir(&home)
             .env("HOME", &home)
             .env("TMPDIR", home.join("tmp"))
             .env_remove("OPENAGENTS_CHAT_HOME")
@@ -330,15 +333,9 @@ async fn chat_streams_routes_continues_threads_and_exports_atif() {
     .unwrap();
     assert_eq!(read["turns"].as_array().unwrap().len(), 4);
 
-    // A Coder offer is shown; without a host it is not accepted, and the
-    // command says so.
-    let fix = run!(
-        "--json",
-        "chat",
-        "--local",
-        "--run-coder",
-        "fix the flaky test"
-    );
+    // A coding reply starts Coder at once, in the checkout the command
+    // runs in; outside one, the command says so plainly and exits 1.
+    let fix = run!("--json", "chat", "--local", "fix the flaky test");
     assert_eq!(fix.code, 1, "{}\n{}", fix.stdout, fix.stderr);
     assert!(fix.stdout.contains("\"event\":\"result\""));
     let offer = fix.event("offer");
@@ -355,7 +352,30 @@ async fn chat_streams_routes_continues_threads_and_exports_atif() {
         coder["message"]
             .as_str()
             .unwrap()
-            .contains("no Coder broker")
+            .contains("is not in a Git checkout"),
+        "{coder}"
+    );
+    // `--no-run` keeps only the offer.
+    let offered = run!(
+        "--json",
+        "chat",
+        "--local",
+        "--no-run",
+        "fix the flaky test"
+    );
+    assert_eq!(offered.code, 0, "{}\n{}", offered.stdout, offered.stderr);
+    assert_eq!(offered.event("offer")["offer"]["offer"], "run_coder");
+    assert!(!offered.stdout.contains("\"event\":\"coder\""));
+    // A thread that started no Coder task has nothing to follow or stop.
+    let fixed = fix.event("result")["thread"].as_str().unwrap().to_owned();
+    assert_eq!(
+        run!("chat", "follow", "--local", "--thread", &fixed).code,
+        1
+    );
+    assert_eq!(run!("chat", "stop", "--local", "--thread", &fixed).code, 1);
+    assert_eq!(
+        run!("chat", "answer", "--local", "--thread", &fixed).code,
+        64
     );
 
     // Text mode: the reply on stdout, the thread on stderr.
@@ -410,4 +430,78 @@ async fn live_chat_answers_from_product_knowledge() {
         text.contains("QR") && !text.contains("[openagents."),
         "{text}"
     );
+}
+
+/// A coding request runs Coder on this computer with no host: the owner's
+/// own Codex or Claude Code login, a scratch Python checkout, and the
+/// public chat worker. Needs `cargo build -p microcoder` (the engine beside
+/// the `openagents` binary) and a signed-in Codex or Claude Code.
+/// `cargo test -p openagents-cli --test chat -- --ignored live_chat_runs --nocapture`
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "live: runs Coder with this computer's own Codex or Claude Code login"]
+async fn live_chat_runs_coder_on_this_computer() {
+    let scratch = tempfile::tempdir().unwrap();
+    let top = scratch.path().join("slugs");
+    std::fs::create_dir_all(&top).unwrap();
+    std::fs::write(
+        top.join("slugs.py"),
+        "import re\n\n\ndef slugify(text):\n    return \"-\".join(re.findall(r\"[a-z0-9]+\", text.lower()))\n",
+    )
+    .unwrap();
+    for args in [
+        vec!["init", "-q"],
+        vec!["add", "slugs.py"],
+        vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "commit",
+            "-qm",
+            "one",
+        ],
+    ] {
+        assert!(
+            Command::new("git")
+                .args(args)
+                .current_dir(&top)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let exe = env!("CARGO_BIN_EXE_openagents");
+    let output = Command::new(exe)
+        .args(["--json", "chat", "--scratch", "add a unit test for slugify"])
+        .current_dir(&top)
+        .env_remove("OPENAGENTS_CHAT_RELAY")
+        .env_remove("OPENAGENTS_CHAT_WORKER")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    eprintln!("{stdout}{}", String::from_utf8_lossy(&output.stderr));
+    let events: Vec<Value> = stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .collect();
+    let named = |name: &str| {
+        events
+            .iter()
+            .find(|event| event["event"] == name && event.get("seq").is_some())
+    };
+    let started = named("coder_started").expect("coder_started");
+    assert!(["codex", "claude"].contains(&started["provider"].as_str().unwrap()));
+    assert!(named("step").is_some() && named("progress").is_some());
+    let result = named("result").expect("a result");
+    let worktree = std::path::PathBuf::from(result["worktree"].as_str().unwrap());
+    assert!(
+        !result["files_changed"].as_array().unwrap().is_empty(),
+        "{result}"
+    );
+    for file in result["files_changed"].as_array().unwrap() {
+        let path = file["path"].as_str().unwrap();
+        assert!(worktree.join(path).exists());
+        assert!(!top.join(path).exists(), "the checkout is never written");
+    }
+    assert!(output.status.success());
 }

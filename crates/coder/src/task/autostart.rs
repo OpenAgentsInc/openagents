@@ -327,6 +327,52 @@ impl Policy {
         self.enabled && self.workspaces.iter().any(|w| w == workspace)
     }
 
+    /// Start `task` at `revision` on `order[0]`, with the rest of `order`
+    /// as fallbacks: write the execution grant under `grants` and launch
+    /// the engine's detached owner over the task store `store`. The host's
+    /// auto-start and a person's local run (`super::local`) both start a
+    /// task only through here, so both run the same engine, failover, and
+    /// ATIF recording.
+    ///
+    /// # Errors
+    /// Why the grant could not be written or the owner could not start.
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch(
+        &self,
+        grants: &Path,
+        store: &Path,
+        order: &[Route],
+        task: &str,
+        intent_digest: &str,
+        revision: u64,
+        launcher: &dyn Launch,
+    ) -> std::result::Result<Launched, String> {
+        if order.is_empty() {
+            return Err("no route to start on".into());
+        }
+        let program = shell()?;
+        let grant = owner::Grant {
+            schema: owner::GRANT_SCHEMA.into(),
+            task_id: task.into(),
+            intent_digest: intent_digest.into(),
+            expected_revision: revision,
+            expected_source_snapshot: None,
+            program,
+            arguments: Vec::new(),
+            write_workspace: self.engine.write_workspace,
+            wall_seconds: self.engine.wall_seconds,
+            stream_bytes: 64 * 1024,
+            memory_bytes: self.engine.memory_bytes,
+            requirements: None,
+            adapter_configuration: Some(self.configuration(order)),
+        };
+        let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;
+        owner::Grant::parse(&bytes).map_err(|e| format!("the grant is invalid: {e}"))?;
+        let path = grants.join(format!("{task}-{revision}.grant.json"));
+        write_private(&path, &bytes)?;
+        launcher.launch(&self.engine, &path, store)
+    }
+
     /// The grant configuration that starts on `order[0]` and falls back to
     /// the rest. `order` must not be empty.
     fn configuration(&self, order: &[Route]) -> adapter::Configuration {
@@ -1056,30 +1102,15 @@ impl Autostart {
         intent_digest: &str,
         revision: u64,
     ) -> std::result::Result<Launched, String> {
-        let program = shell()?;
-        let grant = owner::Grant {
-            schema: owner::GRANT_SCHEMA.into(),
-            task_id: task.into(),
-            intent_digest: intent_digest.into(),
-            expected_revision: revision,
-            expected_source_snapshot: None,
-            program,
-            arguments: Vec::new(),
-            write_workspace: policy.engine.write_workspace,
-            wall_seconds: policy.engine.wall_seconds,
-            stream_bytes: 64 * 1024,
-            memory_bytes: policy.engine.memory_bytes,
-            requirements: None,
-            adapter_configuration: Some(policy.configuration(order)),
-        };
-        let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;
-        owner::Grant::parse(&bytes).map_err(|e| format!("the grant is invalid: {e}"))?;
-        let path = self
-            .root
-            .join("autostart")
-            .join(format!("{task}-{revision}.grant.json"));
-        write_private(&path, &bytes)?;
-        self.launcher.launch(&policy.engine, &path, &self.store)
+        policy.launch(
+            &self.root.join("autostart"),
+            &self.store,
+            order,
+            task,
+            intent_digest,
+            revision,
+            self.launcher.as_ref(),
+        )
     }
 }
 
@@ -1238,7 +1269,7 @@ fn shell() -> std::result::Result<PathBuf, String> {
         })
 }
 
-fn write_private(path: &Path, bytes: &[u8]) -> std::result::Result<(), String> {
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::result::Result<(), String> {
     let parent = path.parent().ok_or("no parent directory")?;
     crate::private::create_dir_all(parent)
         .map_err(|_| format!("cannot create {}", parent.display()))?;
@@ -1920,7 +1951,11 @@ const MICROCODER: &str = if cfg!(windows) {
     "microcoder"
 };
 
-fn default_controller() -> std::result::Result<PathBuf, String> {
+/// The engine beside the running program, else the installed one.
+///
+/// # Errors
+/// Names where it looked.
+pub fn default_controller() -> std::result::Result<PathBuf, String> {
     let beside = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.canonicalize().ok())

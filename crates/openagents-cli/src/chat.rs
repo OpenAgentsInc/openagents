@@ -34,12 +34,25 @@ use tokio::net::UnixStream;
 use crate::out::{Output, table};
 use crate::{Args, EXIT_FAILURE, runtime};
 
+#[path = "chat_coder.rs"]
+mod coder_run;
+
 pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
-  send MESSAGE [--thread ID] [--run-coder] [--timeout SECONDS]
+  send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]
         Send one message to OpenAgents and stream its reply. `openagents chat
         MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without
-        --thread a new thread starts. --run-coder accepts an offer to run
-        Coder for the thread, as `run-coder` does.
+        --thread a new thread starts. When OpenAgents judges that the
+        message is coding work, Coder runs on this computer at once, in its
+        own worktree of the Git checkout this command runs in, with Codex or
+        Claude Code, whichever is signed in here and has capacity, and its
+        events stream here. --no-run only shows the offer instead.
+  follow --thread ID
+        Replay the thread's Coder task from its first event and keep
+        streaming until it ends. Ctrl-C stops following, not the task.
+  stop --thread ID
+        Stop the thread's running Coder task.
+  answer --thread ID TEXT
+        Answer the question Coder asked, and follow the turn it starts.
   threads [--all] [--limit N]
         List threads, newest first; --all includes archived threads.
   read --thread ID
@@ -47,20 +60,23 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
   export --thread ID
         Print the thread as an ATIF-v1.8 trajectory whose session_id is ID.
   run-coder --thread ID
-        Accept OpenAgents' offer to run Coder on this computer for the
-        thread, through this computer's host.
+        Run Coder on this computer for the thread's last offer, as send does.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
 --socket names another control socket and --local skips the host. Without a
 host, threads live in ~/.openagents/chat/ under this command's own device
-key (OPENAGENTS_CHAT_HOME overrides the directory), and Coder offers are
-shown but cannot be accepted. --scratch uses a throwaway identity and store
-in the system temporary directory; continue that thread with --scratch
---thread ID. --timeout (default 120) and Ctrl-C stop receiving a reply; the
-hosted worker may still finish it. Every run prints the thread ID it used.
-Under --json, send prints NDJSON events: accepted, partial, route, offer,
-result, coder, and failure. No model key is needed, and nothing prints a key.";
+key (OPENAGENTS_CHAT_HOME overrides the directory). Coder tasks live in
+~/.openagents/tasks (OPENAGENTS_TASKS overrides it), the store this
+computer's host serves. --scratch uses a throwaway identity, thread store,
+and task store in the system temporary directory; continue that thread with
+--scratch --thread ID. --timeout (default 120) and Ctrl-C stop receiving a
+reply; the hosted worker may still finish it. Every run prints the thread ID
+it used. Under --json, send prints NDJSON events: accepted, partial, route,
+offer, result, coder, and failure, then the Coder task's events
+(coder_started, step, output, provider_switched, progress, question,
+approval, result, failure, stopped; docs/cli/chat.md). No model key is
+needed, and nothing prints a key.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -71,6 +87,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("read", Effect::ReadOnly),
     Declared::computer("export", Effect::ReadOnly),
     Declared::computer("run-coder", Effect::Publishes),
+    Declared::computer("follow", Effect::ReadOnly),
+    Declared::computer("stop", Effect::Publishes),
+    Declared::computer("answer", Effect::Publishes),
 ];
 
 /// How long a reply is waited for by default: the chat worker's own limit.
@@ -80,9 +99,16 @@ const POLL: Duration = Duration::from_millis(80);
 /// The message the apps show when a person stops a reply.
 const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
 const OPTIONS: &[&str] = &["thread", "timeout", "limit", "socket"];
-const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder"];
+const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder", "no-run"];
 
-enum Failure {
+/// What `send` does when OpenAgents judges the message is coding work.
+#[derive(Clone, Copy, Debug)]
+struct Run {
+    /// Only show the offer (`--no-run`).
+    no_run: bool,
+}
+
+pub(crate) enum Failure {
     Usage(String),
     Failed(String),
 }
@@ -100,7 +126,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{USAGE}");
             return 0;
         }
-        "send" | "threads" | "read" | "export" | "run-coder" => (first.as_str(), &words[1..]),
+        "send" | "threads" | "read" | "export" | "run-coder" | "follow" | "stop" | "answer" => {
+            (first.as_str(), &words[1..])
+        }
         // `openagents chat MESSAGE` is `openagents chat send MESSAGE`.
         _ => ("send", words),
     };
@@ -159,7 +187,9 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
                 &id,
                 new,
                 &message,
-                args.switch("run-coder"),
+                Run {
+                    no_run: args.switch("no-run") && !args.switch("run-coder"),
+                },
                 timeout,
             )
             .await
@@ -184,7 +214,9 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             if command == "read" {
                 read(output, &backend, &whole);
             } else {
-                let document = openagents_chat::thread::trajectory(&whole, &crate::version_line());
+                let tasks = task_trajectories(&backend, &id, &whole);
+                let document =
+                    openagents_chat::thread::trajectory_with(&whole, &crate::version_line(), tasks);
                 // Only a document `crates/atif` reads back leaves this command.
                 if let Some(problem) = atif::validate(&document).into_iter().next() {
                     return Err(failed(format!(
@@ -198,11 +230,25 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             }
             Ok(0)
         }
-        "run-coder" => {
+        "run-coder" | "follow" | "stop" => {
             no_positional(args)?;
             let id = needs_thread(&thread)?;
             let mut backend = Backend::open(args, Some(&id), false).await?;
-            let code = run_coder(output, &mut backend, &id).await;
+            let code = match command {
+                "run-coder" => run_coder(output, &mut backend, &id).await,
+                "follow" => coder_run::follow(output, &mut backend, &id).await,
+                _ => coder_run::stop(output, &mut backend, &id).await,
+            };
+            if !output.json() {
+                eprintln!("thread {id}");
+            }
+            Ok(code)
+        }
+        "answer" => {
+            let id = needs_thread(&thread)?;
+            let text = message(args.positional())?;
+            let mut backend = Backend::open(args, Some(&id), false).await?;
+            let code = coder_run::answer(output, &mut backend, &id, &text).await;
             if !output.json() {
                 eprintln!("thread {id}");
             }
@@ -264,7 +310,7 @@ fn now() -> u64 {
 }
 
 /// Where threads live for this run.
-enum Backend {
+pub(crate) enum Backend {
     /// This computer's host, over its control socket: the desktop app's
     /// threads.
     Host {
@@ -293,7 +339,8 @@ impl Backend {
                     home.display()
                 )));
             }
-            return Self::local(home, true);
+            let ready = !args.switch("no-run") && coder_run::ready(home.join("tasks"));
+            return Self::local(home, true, ready);
         }
         let named = args.option("socket").map(PathBuf::from);
         if !args.switch("local")
@@ -317,10 +364,13 @@ impl Backend {
                 Err(_) => {}
             }
         }
-        Self::local(home(), false)
+        let ready = !args.switch("no-run") && coder_run::ready(coder::task::local::default_store());
+        Self::local(home(), false, ready)
     }
 
-    fn local(home: PathBuf, scratch: bool) -> Result<Self, Failure> {
+    /// The service in this process. `ready` says whether Coder can run on
+    /// this computer for this thread now, which the router is told.
+    fn local(home: PathBuf, scratch: bool, ready: bool) -> Result<Self, Failure> {
         let secret = device_key(&home, true).map_err(failed)?;
         let store = Cache::open(&home.join("threads"), &secret)
             .map_err(|error| failed(format!("cannot open the chat store: {error}")))?;
@@ -334,11 +384,11 @@ impl Backend {
             Some(Arc::new(door)),
             Some(store),
         );
-        // Without a host there is no admitted Coder broker, so no computer
-        // is ready for this thread.
+        // Coder runs on this computer when it is in a checkout and a coding
+        // agent is signed in here with capacity.
         chats.set_context(Context {
             surface: Surface::Terminal,
-            computer_ready: false,
+            computer_ready: ready,
             ..Context::default()
         });
         Ok(Self::Local {
@@ -364,7 +414,7 @@ impl Backend {
         }
     }
 
-    async fn apply(&mut self, command: Command) -> Result<Snapshot, String> {
+    pub(crate) async fn apply(&mut self, command: Command) -> Result<Snapshot, String> {
         match self {
             Self::Host { stream, next, .. } => {
                 let id = *next;
@@ -381,7 +431,10 @@ impl Backend {
     }
 
     /// The whole thread, read page by page through the shared reader.
-    async fn collect(&mut self, id: &str) -> Result<openagents_chat::thread::Thread, Failure> {
+    pub(crate) async fn collect(
+        &mut self,
+        id: &str,
+    ) -> Result<openagents_chat::thread::Thread, Failure> {
         let handle = tokio::runtime::Handle::current();
         tokio::task::block_in_place(|| {
             openagents_chat::thread::collect(id, |command| handle.block_on(self.apply(command)))
@@ -401,7 +454,7 @@ pub fn home() -> PathBuf {
 }
 
 /// The throwaway home of one scratch thread.
-fn scratch_dir(id: &str) -> PathBuf {
+pub(crate) fn scratch_dir(id: &str) -> PathBuf {
     std::env::temp_dir()
         .join("openagents-chat-scratch")
         .join(id)
@@ -474,7 +527,7 @@ pub fn doctor() -> Value {
 }
 
 /// One `--json` event line, or nothing in text mode.
-fn event(output: &Output, value: Value) {
+pub(crate) fn event(output: &Output, value: Value) {
     if output.json() {
         println!("{value}");
         let _ = std::io::stdout().flush();
@@ -488,7 +541,7 @@ async fn send(
     id: &str,
     new: bool,
     text: &str,
-    run_coder_after: bool,
+    run: Run,
     timeout: Duration,
 ) -> Result<u8, Failure> {
     if new {
@@ -591,8 +644,12 @@ async fn send(
         .and_then(|at| snapshot.turns.get(at + 1))
         .filter(|turn| turn.role == Role::Assistant)
         .cloned();
+    let mut coding = false;
     let mut code = match reply {
         Some(reply) if !reply.stopped => {
+            // The router judged this is coding: Coder runs here at once,
+            // unless the person asked only for the offer.
+            coding = openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer);
             finish(
                 output,
                 id,
@@ -600,6 +657,7 @@ async fn send(
                 snapshot.computer,
                 &mut printed,
                 diverged,
+                coding && !run.no_run,
             );
             0
         }
@@ -635,8 +693,8 @@ async fn send(
             EXIT_FAILURE
         }
     };
-    // The reply arrived; `--run-coder` then succeeds only if Coder starts.
-    if code == 0 && run_coder_after {
+    // The reply arrived; a coding reply then succeeds only if Coder does.
+    if code == 0 && coding && !run.no_run {
         code = run_coder(output, backend, id).await;
     }
     if !output.json() {
@@ -653,6 +711,7 @@ fn finish(
     computer: bool,
     printed: &mut String,
     diverged: bool,
+    running: bool,
 ) {
     let meta = reply.meta.clone().unwrap_or_default();
     let judgment: Value = meta
@@ -703,7 +762,7 @@ fn finish(
     }
     println!();
     printed.clone_from(&reply.text);
-    notes(id, &meta, computer);
+    notes(id, &meta, computer && !running, running);
 }
 
 /// The command that accepts `offer`, when this command can.
@@ -716,14 +775,14 @@ fn accept(id: &str, offer: &Offer) -> Option<String> {
 }
 
 /// The router's observations, on stderr so stdout stays the reply.
-fn notes(id: &str, meta: &Meta, computer: bool) {
+fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
     if let Some(answer) = &meta.answer {
         eprintln!("answered from product knowledge: {answer}");
     }
     let mut coder = computer;
     for offer in &meta.offers {
         match offer {
-            Offer::RunCoder => coder = true,
+            Offer::RunCoder => coder = !running,
             Offer::OpenScreen { screen } => {
                 eprintln!("offer: open {screen:?} in the OpenAgents app");
             }
@@ -738,7 +797,7 @@ fn notes(id: &str, meta: &Meta, computer: bool) {
     }
     if coder {
         eprintln!(
-            "offer: run Coder on a computer for this thread: openagents chat run-coder --thread {id}"
+            "offer: run Coder on this computer for this thread: openagents chat run-coder --thread {id}"
         );
     }
     for followup in &meta.followups {
@@ -774,10 +833,13 @@ async fn run_coder(output: &Output, backend: &mut Backend, id: &str) -> u8 {
     if let Some(coder) = &snapshot.coder {
         report(
             true,
-            &format!("Coder already started task {} for this thread.", coder.task),
+            &format!(
+                "Coder already started task {} for this thread; following it.",
+                coder.task
+            ),
             serde_json::to_value(coder).ok(),
         );
-        return 0;
+        return coder_run::follow(output, backend, id).await;
     }
     let meta = snapshot
         .turns
@@ -793,15 +855,20 @@ async fn run_coder(output: &Output, backend: &mut Backend, id: &str) -> u8 {
         );
         return EXIT_FAILURE;
     }
+    // The project is the checkout this command runs in: Coder runs here,
+    // with or without a host.
+    let here = std::env::current_dir().ok();
+    let checkout = here
+        .as_deref()
+        .map(coder::task::local::checkout)
+        .unwrap_or_else(|| Err("This command has no working directory.".into()));
+    let why = match checkout {
+        Ok(_) => return coder_run::start(output, backend, id).await,
+        Err(why) => why,
+    };
+    // Outside a checkout, a host with a project of its own still can.
     if let Backend::Local { .. } = backend {
-        report(
-            false,
-            "OpenAgents offered to run Coder, but this thread lives in this command's own store, \
-             which has no Coder broker, so the offer was not accepted. Threads sent while this \
-             computer's host runs (the OpenAgents app, or `openagents host serve --control`) \
-             can run Coder.",
-            None,
-        );
+        report(false, &why, None);
         return EXIT_FAILURE;
     }
     match backend
@@ -829,6 +896,30 @@ async fn run_coder(output: &Output, backend: &mut Backend, id: &str) -> u8 {
             EXIT_FAILURE
         }
     }
+}
+
+/// The thread's Coder task, every turn's trajectory, when its task store
+/// on this computer holds it: carried inside the thread's export.
+fn task_trajectories(
+    backend: &Backend,
+    id: &str,
+    thread: &openagents_chat::thread::Thread,
+) -> Vec<Value> {
+    let Some(coder) = &thread.summary.coder else {
+        return Vec::new();
+    };
+    let store = coder_run::store(backend, id);
+    let Ok(task) = coder::task::Store::open(&store).and_then(|tasks| tasks.show(&coder.task))
+    else {
+        return Vec::new();
+    };
+    task.earlier
+        .iter()
+        .chain(task.run.iter())
+        .filter_map(|run| atif::log::read(&store.join(&run.admission.trace_file)).ok())
+        .map(|recording| recording.document())
+        .filter(|document| atif::validate(document).is_empty())
+        .collect()
 }
 
 async fn threads(
