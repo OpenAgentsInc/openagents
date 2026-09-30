@@ -286,6 +286,14 @@ fn host_refused(error: &Error) -> Reply {
 fn answer(shared: &Shared, op: Op) -> Reply {
     match op {
         Op::Chat { command } => chat(shared, command),
+        Op::ChatMigrate { home } => match migrate_chats(shared, std::path::Path::new(&home)) {
+            Ok(report) => Reply::ChatMigrated {
+                moved: u32::try_from(report.moved).unwrap_or(u32::MAX),
+                present: u32::try_from(report.present).unwrap_or(u32::MAX),
+            },
+            Err(ChatRefusal::Unavailable(message)) => refused("unavailable", message),
+            Err(ChatRefusal::Chat(message)) => refused("chat", message),
+        },
         Op::Task { .. } | Op::ImportTask { .. } => {
             refused("unavailable", "task broker requires its own lane")
         }
@@ -957,7 +965,6 @@ pub(crate) enum ChatRefusal {
     Chat(String),
 }
 
-/// Apply one chat service command to the host's threads: the store in
 /// Whether Coder can start on this computer for the person at it, without
 /// a registered project: set once by the program serving the host
 /// (`coder::task::local::ready_here`). Unset, only a registered project
@@ -977,22 +984,18 @@ fn computer_ready(shared: &Shared) -> bool {
         || LOCAL_CODER.get().is_some_and(|ready| ready())
 }
 
-/// `<host root>/basic-chats`, opened on first use. The local operator
-/// socket and a granted device's `thread.*` operations share it.
-pub(crate) fn apply_chat(
+/// The host's threads: the store in `<host root>/basic-chats`, opened on
+/// first use.
+fn open_chats(
     shared: &Shared,
-    command: openagents_chat::service::Command,
-) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
+    state: &mut Option<openagents_chat::basic_chats::BasicChats>,
+) -> std::result::Result<(), ChatRefusal> {
     use openagents_chat::{
         basic_chats::BasicChats,
         basic_coder::{RELAY, Relay, WORKER},
         cache::Cache,
     };
     let unavailable = |message: &str| ChatRefusal::Unavailable(message.into());
-    let mut state = shared
-        .chats
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner());
     if state.is_none() {
         let Some(control) = shared.config.control.as_ref() else {
             return Err(unavailable("This host has no local chat storage."));
@@ -1014,6 +1017,72 @@ pub(crate) fn apply_chat(
             Some(store),
         ));
     }
+    Ok(())
+}
+
+/// Move the threads `openagents chat` kept without a host, in the chat
+/// home `home`, into the host's store (`openagents_chat::migrate`): once,
+/// crash-safe, keeping every ID. A home another user owns, or a scratch
+/// store, is refused; a home with nothing to move is a no-op.
+pub(crate) fn migrate_chats(
+    shared: &Shared,
+    home: &Path,
+) -> std::result::Result<openagents_chat::migrate::Report, ChatRefusal> {
+    use openagents_chat::migrate;
+    let refuse = |message: String| ChatRefusal::Chat(message);
+    if !home.is_absolute() {
+        return Err(refuse("the chat home must be an absolute path".into()));
+    }
+    if migrate::scratch(home) {
+        return Err(refuse("a scratch store is never migrated".into()));
+    }
+    if !migrate::pending(home) {
+        return Ok(migrate::Report::default());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let own = own_uid();
+        for path in [home.join(migrate::STORE), home.join("device.key")] {
+            let meta = std::fs::symlink_metadata(&path)
+                .map_err(|_| refuse(format!("cannot read {}", path.display())))?;
+            if meta.uid() != own || meta.file_type().is_symlink() {
+                return Err(refuse(format!(
+                    "{} belongs to another user or is a link",
+                    path.display()
+                )));
+            }
+        }
+    }
+    let mut state = shared
+        .chats
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    open_chats(shared, &mut state)?;
+    let chats = state.as_mut().expect("initialized chat state");
+    migrate::migrate(
+        home,
+        chats,
+        &shared.host_key,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs()),
+    )
+    .map_err(refuse)
+}
+
+/// Apply one chat service command to the host's threads
+/// (`<host root>/basic-chats`). The local operator socket and a granted
+/// device's `thread.*` operations share them.
+pub(crate) fn apply_chat(
+    shared: &Shared,
+    command: openagents_chat::service::Command,
+) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
+    let mut state = shared
+        .chats
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    open_chats(shared, &mut state)?;
     let chats = state.as_mut().expect("initialized chat state");
     chats.set_context(openagents_chat::router::Context {
         surface: openagents_chat::router::Surface::Desktop,

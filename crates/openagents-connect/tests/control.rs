@@ -46,6 +46,9 @@ fn every_op() -> Vec<Op> {
             secret: "33".repeat(32),
         },
         Op::EngineStatus {},
+        Op::ChatMigrate {
+            home: "/Users/kai/.openagents/chat".into(),
+        },
     ]
 }
 
@@ -193,6 +196,10 @@ fn replies_round_trip() {
         },
         Reply::Owner {
             owner: "44".repeat(32),
+        },
+        Reply::ChatMigrated {
+            moved: 3,
+            present: 1,
         },
         Reply::Refused {
             code: "forbidden".into(),

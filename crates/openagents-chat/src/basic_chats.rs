@@ -59,13 +59,13 @@ pub struct Summary {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-struct Saved {
-    turns: Vec<Turn>,
+pub(crate) struct Saved {
+    pub(crate) turns: Vec<Turn>,
     /// The record and its list metadata commit together. Older records omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    summary: Option<Summary>,
+    pub(crate) summary: Option<Summary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    lane: Option<Lane>,
+    pub(crate) lane: Option<Lane>,
 }
 
 /// A reply streaming into a conversation.
@@ -936,6 +936,65 @@ impl BasicChats {
         self.storage_error = self.storage_errors.values().next().cloned();
     }
 
+    /// Take in a whole conversation kept elsewhere, as it is: its ID,
+    /// title, times, turns (with their router metadata and send IDs), lane,
+    /// and Coder link (`crate::migrate`). `Ok(false)` when this store
+    /// already holds it, in the list or as a record, which is left
+    /// untouched. On a failed write nothing is kept in memory, so a later
+    /// attempt writes it again.
+    pub(crate) fn adopt(
+        &mut self,
+        summary: Summary,
+        turns: Vec<Turn>,
+        lane: Option<Lane>,
+    ) -> Result<bool, String> {
+        let id = summary.id.clone();
+        let key = item(&id);
+        if self.corrupt_index {
+            return Err("This store's list can't be read.".into());
+        }
+        if self.get(&id).is_some() {
+            return Ok(false);
+        }
+        if let Some(store) = &self.store {
+            match store.read::<Saved>(&key) {
+                Ok(None) => {}
+                Ok(Some(_)) => return Ok(false),
+                Err(error) => return Err(error),
+            }
+        }
+        let at = self
+            .index
+            .iter()
+            .position(|row| row.updated <= summary.updated)
+            .unwrap_or(self.index.len());
+        self.index.insert(at, summary);
+        self.turns.insert(id.clone(), turns);
+        if let Some(lane) = lane {
+            self.lanes.insert(id.clone(), lane);
+        }
+        self.save(&id);
+        if let Some(error) = self.storage_errors.get(&key).cloned() {
+            self.index.retain(|row| row.id != id);
+            self.turns.remove(&id);
+            self.lanes.remove(&id);
+            self.dirty.remove(&id);
+            self.storage_errors.remove(&key);
+            self.storage_error = self.storage_errors.values().next().cloned();
+            return Err(error);
+        }
+        Ok(true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_turns_for_test(&mut self, id: &str, turns: Vec<Turn>, lane: Option<Lane>) {
+        self.turns.insert(id.to_owned(), turns);
+        if let Some(lane) = lane {
+            self.lanes.insert(id.to_owned(), lane);
+        }
+        self.save(id);
+    }
+
     /// Retry interrupted writes without appending or resending a message.
     pub fn flush_pending(&mut self) {
         if self.dirty_used {
@@ -967,7 +1026,7 @@ fn chat_turn(turn: &Turn) -> ChatTurn {
 }
 
 /// The store key of a conversation's turns.
-fn item(id: &str) -> String {
+pub(crate) fn item(id: &str) -> String {
     format!("basic-{id}")
 }
 

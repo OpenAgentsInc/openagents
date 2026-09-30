@@ -113,6 +113,116 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
     running.shutdown().await;
 }
 
+/// A thread as `openagents chat` keeps it without a host: a record in the
+/// chat home's own store, under the chat home's device key.
+#[cfg(unix)]
+fn keep_without_a_host(home: &std::path::Path, id: &str, title: &str, at: u64) {
+    use openagents_chat::basic_coder::Turn;
+    std::fs::create_dir_all(home).unwrap();
+    let key = home.join("device.key");
+    if !key.exists() {
+        std::fs::write(&key, "05".repeat(32)).unwrap();
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    let secret = secp256k1::SecretKey::from_byte_array([5; 32]).unwrap();
+    let cache = openagents_chat::cache::Cache::open(&home.join("threads"), &secret).unwrap();
+    let mut ask = Turn::user(format!("{title}?"));
+    ask.at = Some(at);
+    let mut answer = Turn::assistant(format!("An answer about {title}."), None);
+    answer.at = Some(at + 1);
+    cache
+        .write(
+            &format!("basic-{id}"),
+            &serde_json::json!({
+                "summary": {"id": id, "title": title, "started": at, "updated": at + 1},
+                "turns": [ask, answer],
+            }),
+        )
+        .unwrap();
+}
+
+#[cfg(unix)]
+async fn read_thread(socket: &std::path::Path, id: &str) -> openagents_chat::service::Snapshot {
+    let Reply::Chat { snapshot } = call(
+        socket,
+        Op::Chat {
+            command: openagents_chat::service::Command::Read {
+                chat: id.to_owned(),
+                before: None,
+            },
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("read {id}")
+    };
+    snapshot
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn threads_kept_without_a_host_join_it_at_start_and_when_the_command_asks() {
+    let seed = tempfile::tempdir().unwrap();
+    let home = seed.path().join("chat");
+    let first = "1a".repeat(16);
+    keep_without_a_host(&home, &first, "Rain", 100);
+    let host = host_with(Options {
+        chat_home: Some(home.clone()),
+        ..Options::default()
+    })
+    .await;
+    // At start: the first list already shows it, under the same ID.
+    let snapshot = read_thread(&host.socket, &first).await;
+    assert_eq!(snapshot.turns.len(), 2);
+    assert_eq!(snapshot.turns[1].text, "An answer about Rain.");
+    assert_eq!(snapshot.chats[0].id, first);
+    assert_eq!(snapshot.chats[0].title, "Rain");
+    assert_eq!(
+        (snapshot.chats[0].started, snapshot.chats[0].updated),
+        (100, 101)
+    );
+    assert!(!home.join("threads").exists());
+    assert!(home.join("threads-migrated.json").is_file());
+
+    // A later `openagents chat --local` thread joins when the command asks.
+    let second = "2b".repeat(16);
+    keep_without_a_host(&home, &second, "Snow", 200);
+    let ask = || Op::ChatMigrate {
+        home: home.display().to_string(),
+    };
+    assert_eq!(
+        call(&host.socket, ask()).await.unwrap(),
+        Reply::ChatMigrated {
+            moved: 1,
+            present: 0
+        }
+    );
+    // Asking again changes nothing.
+    assert_eq!(
+        call(&host.socket, ask()).await.unwrap(),
+        Reply::ChatMigrated {
+            moved: 0,
+            present: 0
+        }
+    );
+    let snapshot = read_thread(&host.socket, &second).await;
+    assert_eq!(snapshot.turns.len(), 2);
+    let ids: Vec<&str> = snapshot.chats.iter().map(|row| row.id.as_str()).collect();
+    assert_eq!(ids, [second.as_str(), first.as_str()]);
+
+    // A scratch store, or a relative path, is never moved.
+    let scratch = std::env::temp_dir()
+        .join("openagents-chat-scratch")
+        .join("3c".repeat(16));
+    for home in [scratch.display().to_string(), "chat".into()] {
+        assert!(matches!(
+            call(&host.socket, Op::ChatMigrate { home }).await.unwrap(),
+            Reply::Refused { .. }
+        ));
+    }
+    host.running.shutdown().await;
+}
+
 #[cfg(unix)]
 fn mode(path: &std::path::Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777

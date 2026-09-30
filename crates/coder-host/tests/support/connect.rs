@@ -66,6 +66,9 @@ pub struct Options {
     pub chat_door: Option<coder_host::config::ChatDoor>,
     /// The task owner. Unset, the host refuses task operations.
     pub tasks: Option<Arc<dyn coder_host::Tasks>>,
+    /// The chat home whose threads the host moves in at start; none by
+    /// default, so a test never reads the person's own.
+    pub chat_home: Option<PathBuf>,
 }
 
 impl Default for Options {
@@ -77,6 +80,7 @@ impl Default for Options {
             chats: false,
             chat_door: None,
             tasks: None,
+            chat_home: None,
         }
     }
 }
@@ -105,6 +109,7 @@ pub async fn host_with(options: Options) -> Host {
     });
     config.label = "Studio Mac".into();
     config.chat_door = options.chat_door;
+    config.chat_home = options.chat_home;
     config.recheck_every = Duration::from_secs(30);
     if options.workspace {
         let checkout = temp.path().join("checkout");

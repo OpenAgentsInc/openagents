@@ -68,7 +68,8 @@ computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
 --socket names another control socket and --local skips the host. Without a
 host, threads live in ~/.openagents/chat/ under this command's own device
-key (OPENAGENTS_CHAT_HOME overrides the directory). Coder tasks live in
+key (OPENAGENTS_CHAT_HOME overrides the directory); once a host runs here,
+they move into it, keeping their IDs (docs/cli/chat.md). Coder tasks live in
 ~/.openagents/tasks (OPENAGENTS_TASKS overrides it), the store this
 computer's host serves. --scratch uses a throwaway identity, thread store,
 and task store in the system temporary directory; continue that thread with
@@ -353,11 +354,13 @@ impl Backend {
         {
             match UnixStream::connect(&socket).await {
                 Ok(stream) => {
-                    return Ok(Self::Host {
+                    let host = Self::Host {
                         stream,
                         next: 1,
                         socket,
-                    });
+                    };
+                    host.migrate(&home()).await;
+                    return Ok(host);
                 }
                 Err(_) if named.is_some() => {
                     return Err(failed(format!(
@@ -371,6 +374,44 @@ impl Backend {
         }
         let ready = !args.switch("no-run") && coder_run::ready(coder::task::local::default_store());
         Self::local(home(), false, ready)
+    }
+
+    /// Ask the host to take in the threads this command kept without one
+    /// in `home` (`openagents_chat::migrate`), when there are any. The host
+    /// reads them with this command's device key and re-encrypts them in
+    /// its own store, keeping every ID; a second ask is a no-op. An older
+    /// host, or a refusal, leaves them where they are, still readable with
+    /// `--local`.
+    ///
+    /// It asks on a connection of its own: an older host ends a connection
+    /// that carried an operation it doesn't know.
+    async fn migrate(&self, home: &Path) {
+        let Self::Host { socket, .. } = self else {
+            return;
+        };
+        if !openagents_chat::migrate::pending(home) || openagents_chat::migrate::scratch(home) {
+            return;
+        }
+        let (Ok(home), Ok(mut stream)) = (home.canonicalize(), UnixStream::connect(socket).await)
+        else {
+            return;
+        };
+        let op = Op::ChatMigrate {
+            home: home.display().to_string(),
+        };
+        match control::call(&mut stream, &Request::new(1, op)).await {
+            Ok(Reply::ChatMigrated { moved, .. }) if moved > 0 => eprintln!(
+                "moved {moved} thread{} kept without a host into this computer's host",
+                if moved == 1 { "" } else { "s" }
+            ),
+            Ok(Reply::Refused { code, message }) if code != "malformed" => {
+                eprintln!(
+                    "threads in {} stay there for now: {message}",
+                    home.display()
+                );
+            }
+            _ => {}
+        }
     }
 
     /// The service in this process. `ready` says whether Coder can run on

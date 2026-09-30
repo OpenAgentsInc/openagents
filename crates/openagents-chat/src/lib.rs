@@ -6,6 +6,7 @@ pub mod basic_link;
 pub mod cache;
 pub mod coder_events;
 pub mod delegation;
+pub mod migrate;
 pub mod router;
 pub mod service;
 pub mod thread;

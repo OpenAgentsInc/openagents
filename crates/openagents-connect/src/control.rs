@@ -96,6 +96,11 @@ pub enum Op {
     Chat {
         command: openagents_chat::service::Command,
     },
+    /// Move the threads `openagents chat` kept without a host, in the chat
+    /// home `home` (`<home>/threads`), into the host's own store, once
+    /// (`openagents_chat::migrate`). The host reads that home's device key
+    /// itself, and refuses a scratch store or a home another user owns.
+    ChatMigrate { home: String },
     /// The host's identity, reachability, and counts.
     Status {},
     /// Create a host invitation and its `openagents-connect:` code. A QR
@@ -173,6 +178,12 @@ pub enum Reply {
     /// A bounded hosted chat page and current streaming state.
     Chat {
         snapshot: openagents_chat::service::Snapshot,
+    },
+    /// What `chat_migrate` did: threads written into the host's store
+    /// now, and threads it already held.
+    ChatMigrated {
+        moved: u32,
+        present: u32,
     },
     Status(Status),
     /// `code` is the `openagents-connect:` text. It carries a bearer

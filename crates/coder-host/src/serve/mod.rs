@@ -210,6 +210,11 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         None => None,
     };
     if let Some(bound) = control {
+        // Threads `openagents chat` kept without a host join this host's
+        // store before the socket answers, so the first list shows them.
+        if let Some(home) = shared.config.chat_home.clone() {
+            migrate_chat_home(&shared, &home);
+        }
         tasks.push(tokio::spawn(crate::control::serve(shared.clone(), bound)));
     }
     if let Some((listener, _)) = websocket {
@@ -886,5 +891,27 @@ mod hint_tests {
             meta: None,
         };
         set.validate().unwrap();
+    }
+}
+
+/// Move the threads kept in the chat home `home` without a host into this
+/// host's store, when there are any. A failure leaves them where they were
+/// (the next start, or `openagents chat`, tries again) and never stops the
+/// host.
+fn migrate_chat_home(shared: &Shared, home: &std::path::Path) {
+    if !openagents_chat::migrate::pending(home) {
+        return;
+    }
+    match crate::control::migrate_chats(shared, home) {
+        Ok(report) if report.moved > 0 => eprintln!(
+            "coder host: moved {} chat threads from {} into this host",
+            report.moved,
+            home.display()
+        ),
+        Ok(_) => {}
+        Err(error) => eprintln!(
+            "coder host: chat threads in {} stay there for now: {error:?}",
+            home.display()
+        ),
     }
 }

@@ -176,6 +176,11 @@ pub struct Config {
     /// worker's key. `None` is the public worker on the OpenAgents relay;
     /// tests name a local relay with a scripted worker.
     pub chat_door: Option<ChatDoor>,
+    /// The chat home `openagents chat` keeps its threads in without a host
+    /// (`~/.openagents/chat`, or `OPENAGENTS_CHAT_HOME`). At start, a host
+    /// with a control socket moves those threads into its own store
+    /// (`openagents_chat::migrate`). `None`, as in tests, looks nowhere.
+    pub chat_home: Option<PathBuf>,
 }
 
 /// A chat worker other than the public one, as `openagents chat` takes it
@@ -225,6 +230,7 @@ impl Config {
             chats: None,
             serve_chats: false,
             chat_door: None,
+            chat_home: None,
         }
     }
 

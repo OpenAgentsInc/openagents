@@ -298,6 +298,23 @@ fn check_workspaces(workspaces: &BTreeMap<String, PathBuf>, root: &Path) -> Vec<
     lines
 }
 
+/// The chat home a host with `root` moves threads from at start:
+/// `OPENAGENTS_CHAT_HOME` when set, else `~/.openagents/chat` when `root` is
+/// this user's host root (`~/.openagents/host`), else none.
+fn chat_home(root: &Path) -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("OPENAGENTS_CHAT_HOME").filter(|dir| !dir.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    let own = home(".openagents/host").ok()?;
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    same(root, &own)
+        .then(|| home(".openagents/chat").ok())
+        .flatten()
+}
+
 fn home(relative: &str) -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -662,6 +679,12 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     // The same override `openagents chat` honours, so a scratch host and the
     // command reach one worker.
     config.chat_door = crate::config::ChatDoor::from_env();
+    // The chat home `openagents chat` keeps threads in without a host; the
+    // host moves them into its own store at start. Only this user's own
+    // host does (the default root), or one the environment names a chat
+    // home for: a host under another root, as a test runs it, never moves
+    // the person's threads into a store it will throw away.
+    config.chat_home = chat_home(root);
     // A phone that pairs with a connect code reads this host's Coder chats
     // as a tailnet-admitted one does: the same observer and sources. When
     // tailnet admission serves the observer, this only issues invitations.

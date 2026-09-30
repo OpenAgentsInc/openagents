@@ -78,6 +78,33 @@ desktop use.
    or real history. Continue, read, or export that thread with `--scratch
    --thread ID`. It is for tests and smokes.
 
+### Threads kept without a host join the host
+
+When a host runs on this computer, threads kept in process join the host's
+store, so the desktop app (and a paired phone) shows them. It happens once,
+at two moments: when the host starts (only this user's own host, whose root
+is `~/.openagents/host`, or one started with `OPENAGENTS_CHAT_HOME` set),
+and when `openagents chat` finds a running host (control operation
+`chat_migrate`, on a connection of its own, so an older host that doesn't
+know it changes nothing). The host reads `~/.openagents/chat/threads` with
+the chat home's device key and re-encrypts each thread under its own key in
+`<host root>/basic-chats`. Every thread keeps its ID, title, times, turns
+with the router's metadata and send IDs, lane, archived and pinned state,
+and Coder link, so `openagents chat read` and `export` print the same thread
+and the same ATIF trajectory as before.
+
+The move is crash-safe: each thread is a durable record in the host's store
+before anything else changes, a thread the host already holds is left as it
+is, then the chat home gets a marker (`threads-migrated.json`: the host, the
+time, and every thread moved), and last the old store is renamed
+`threads-moved-<time>`, so it is never read again. Nothing is deleted: the
+renamed store keeps its encrypted files under the same device key. A move
+that stops halfway leaves `threads` where it was, and the next one skips
+the threads already moved. Moving twice is a no-op. After a move, `--local`
+starts an empty store; its new threads join the host the next time. A home
+another user owns is refused, and a scratch store (`--scratch`) is never
+moved.
+
 `openagents doctor` shows which one a run would use, the host socket, the
 chat home, and the command's public identity (never the key).
 
