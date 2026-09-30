@@ -1,6 +1,6 @@
 ---
 id: openagents.previous-chats
-version: 1
+version: 2
 kind: product
 title: "Finding earlier chats"
 summary: >-
@@ -26,6 +26,7 @@ provenance:
     - bins/openagents-ios/README.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-29: updated for QR pairing with OpenAgents for Mac, which replaced the Tailscale setup (#9978), and checked against the cited documents (#9995); the answer text awaits the owner's copy review."
 ---
 
 ## Answer
@@ -35,7 +36,7 @@ Earlier chats are behind the menu button at the top left of the Chat tab, newest
 ## Details
 
 - The list paints from what the phone kept while the computers are read again, so earlier chats open quickly.
-- Chat reads go directly over the tailnet, with the relay as a fallback.
+- Chat reads go directly over the computer's own link when it answers, with the relay as a fallback.
 
 ## Sources
 

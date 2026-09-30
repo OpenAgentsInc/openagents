@@ -1,43 +1,46 @@
 ---
 id: openagents.install-coder
-version: 1
+version: 2
 kind: product
-title: "Installing Coder on a computer"
+title: "Getting Coder on a computer"
 summary: >-
-  Coder installs from a checkout of the open-source repository with
-  scripts/install-coder.sh; the host then serves the phone.
-tags: [install, coder, computer, setup, cli]
+  Coder comes with OpenAgents for Mac; after pairing, pick a project and let
+  the phone start Coder there, with Codex or Claude Code signed in on the Mac.
+tags: [install, coder, computer, setup, mac]
 applies_when: >-
   The user asks how to install or set up Coder, the coder command, or the
-  Coder host on their computer.
+  Coder host on their computer. Not how to pair the phone
+  (openagents.connect-computer).
 answer: >-
-  Coder installs from a checkout of our open-source repository: run
-  `./scripts/install-coder.sh`, which builds Coder and puts `coder` on your
-  path; `--rollback` switches back to the build it replaced. Then run `coder
-  host serve --tailnet-admission standard` so your phone can reach the
-  computer over your tailnet.
+  Coder comes with OpenAgents for Mac, so there's nothing else to install.
+  Open the app, connect your phone by scanning its QR code, then pick a
+  project folder and turn on **Let my phone start Coder here**. Sign in to Codex
+  or Claude Code on the Mac, and Run Coder in a chat on your phone starts
+  Coder there.
 status: admitted
 author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - docs/coder/guides/install.md
-    - bins/openagents-ios/README.md
+    - crates/openagents-web/src/pages/install.rs
+    - crates/openagents-desktop/README.md
+    - docs/coder/guides/link-devices.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
 ---
 
 ## Answer
 
-Coder installs from a checkout of our open-source repository: run `./scripts/install-coder.sh`, which builds Coder and puts `coder` on your path; `--rollback` switches back to the build it replaced. Then run `coder host serve --tailnet-admission standard` so your phone can reach the computer over your tailnet.
+Coder comes with OpenAgents for Mac, so there's nothing else to install. Open the app, connect your phone by scanning its QR code, then pick a project folder and turn on **Let my phone start Coder here**. Sign in to Codex or Claude Code on the Mac, and Run Coder in a chat on your phone starts Coder there.
 
 ## Details
 
-- The script builds `crates/coder` in release mode with the pinned toolchain and links `~/.openagents/bin/coder` to the new build.
-- `coder --version` and `coder doctor` show which build runs.
-- It expects `~/.openagents/bin` on your `PATH`.
+- The desktop app bundles `coder` and `microcoder` and runs the Coder host as a login agent; it updates itself.
+- A computer without a screen gets the `openagents` binary and its host from `openagents connect --ssh HOST`, run from a computer that reaches it over SSH.
 
 ## Sources
 
-- `docs/coder/guides/install.md`
-- `bins/openagents-ios/README.md`
+- `crates/openagents-web/src/pages/install.rs`
+- `crates/openagents-desktop/README.md`
+- `docs/coder/guides/link-devices.md`

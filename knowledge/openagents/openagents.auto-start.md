@@ -1,45 +1,50 @@
 ---
 id: openagents.auto-start
-version: 1
+version: 2
 kind: product
 title: "When a task from the phone starts on a computer"
 summary: >-
-  A task from the phone runs at once only on a computer whose owner turned on
-  the host's auto-start policy; otherwise it is recorded without running.
-tags: [coder, auto-start, host, permissions, full-access]
+  A task from the phone runs at once only where the owner allowed it: in
+  OpenAgents for Mac, a picked project and **Let my phone start Coder here**;
+  otherwise it is recorded without running.
+tags: [coder, auto-start, host, permissions]
 applies_when: >-
-  The user asks why a task they sent didn't start, what full-access hosts are,
-  or how tasks from the phone get permission to run on a computer.
+  The user asks why a task they sent didn't start, how to let their phone
+  start Coder on their computer, or how tasks from the phone get permission to
+  run there.
 answer: >-
-  A task from your phone starts on a computer right away only when that
-  computer's owner has turned on the host's auto-start policy with a command
-  on the computer. Then Coder runs at once, with the access the owner granted,
-  in the workspaces the policy lists. Without the policy, the task is recorded
-  but doesn't run by itself. The phone sends only a workspace, a title, and a
-  prompt.
+  A task from your phone starts on your computer right away only when you've
+  allowed it there: in OpenAgents for Mac, pick a project folder and turn on
+  **Let my phone start Coder here**. Then Coder runs at once in that project.
+  Without it, the task is recorded but doesn't run by itself. Codex or Claude
+  Code must be signed in on the Mac. The phone sends only a project, a title,
+  and a prompt.
 status: admitted
 author: openagents
 provenance:
   written_from: [reference]
   cites:
+    - crates/openagents-desktop/README.md
+    - docs/coder/runtime/host-autostart.md
     - INVARIANTS.md
-    - docs/roadmap/2026-09-29-launch-roadmap.md
-    - bins/openagents-ios/docs/chat-later.md
+    - docs/coder/guides/link-devices.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
 ---
 
 ## Answer
 
-A task from your phone starts on a computer right away only when that computer's owner has turned on the host's auto-start policy with a command on the computer. Then Coder runs at once, with the access the owner granted, in the workspaces the policy lists. Without the policy, the task is recorded but doesn't run by itself. The phone sends only a workspace, a title, and a prompt.
+A task from your phone starts on your computer right away only when you've allowed it there: in OpenAgents for Mac, pick a project folder and turn on **Let my phone start Coder here**. Then Coder runs at once in that project. Without it, the task is recorded but doesn't run by itself. Codex or Claude Code must be signed in on the Mac. The phone sends only a project, a title, and a prompt.
 
 ## Details
 
-- Only the host's owner, with a command on the host, turns auto-start on or widens it.
+- Only the computer itself turns auto-start on or widens it: the desktop app, or on a computer without it, `coder host autostart on`. No phone or relay message can.
 - An auto-started task runs under a normal operator execution grant with every usual check.
 
 ## Sources
 
+- `crates/openagents-desktop/README.md`
+- `docs/coder/runtime/host-autostart.md`
 - `INVARIANTS.md`
-- `docs/roadmap/2026-09-29-launch-roadmap.md`
-- `bins/openagents-ios/docs/chat-later.md`
+- `docs/coder/guides/link-devices.md`

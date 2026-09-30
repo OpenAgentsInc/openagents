@@ -1,44 +1,53 @@
 ---
 id: openagents.tailnet
-version: 1
+version: 2
 kind: product
-title: "The Tailnet screen and Tailscale"
+title: "Tailscale and the Tailnet screen"
 summary: >-
-  The Tailnet screen signs the app in to Tailscale only to list the tailnet's
-  devices; access to a computer comes from the computer's own invitation.
+  Tailscale isn't needed: phones pair by scanning the desktop app's QR code.
+  Tailscale stays an optional route, and the Tailnet screen only lists a
+  tailnet's devices.
 tags: [tailnet, tailscale, network, security]
 applies_when: >-
-  The user asks what the Tailnet screen does, why Tailscale is needed, or
-  whether signing in to Tailscale gives the app access to their computers.
+  The user asks whether they need Tailscale, what the Tailnet screen does, or
+  whether signing in to Tailscale gives the app access to their computers. Not
+  the steps to connect a computer (openagents.connect-computer).
 answer: >-
-  Your phone reaches your computers over your Tailscale tailnet, so the phone
-  needs the Tailscale app and the computer must be on the same tailnet. The
-  Tailnet screen signs the app in to Tailscale only to list the tailnet's
-  devices and ask your computers for an invitation. A computer answers only a
-  device that Tailscale says belongs to its own user, and the sign-in itself
-  grants no access to any computer.
+  No, you don't need Tailscale. Your phone connects to your computer by
+  scanning the QR code in OpenAgents for Mac, directly when it can and through
+  our relay when it can't, on Wi-Fi or mobile data. Tailscale stays an
+  optional route if you already use it: the Tailnet screen in Account signs
+  the app in to Tailscale only to list your tailnet's devices, and that
+  sign-in grants no access to any computer.
 status: admitted
 author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/coder/guides/link-devices.md
+    - docs/coder/design/2026-09-29-auto-pairing.md
     - nips/openagents/NIP-HOST.md
+    - INVARIANTS.md
+    - bins/openagents-ios/README.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
 ---
 
 ## Answer
 
-Your phone reaches your computers over your Tailscale tailnet, so the phone needs the Tailscale app and the computer must be on the same tailnet. The Tailnet screen signs the app in to Tailscale only to list the tailnet's devices and ask your computers for an invitation. A computer answers only a device that Tailscale says belongs to its own user, and the sign-in itself grants no access to any computer.
+No, you don't need Tailscale. Your phone connects to your computer by scanning the QR code in OpenAgents for Mac, directly when it can and through our relay when it can't, on Wi-Fi or mobile data. Tailscale stays an optional route if you already use it: the Tailnet screen in Account signs the app in to Tailscale only to list your tailnet's devices, and that sign-in grants no access to any computer.
 
 ## Details
 
-- The app registers as its own tailnet node, `openagents-ios`, with Tailscale's Rust control client and reads one netmap; it never joins the data plane or carries traffic.
-- The node keys stay in the app's Application Support directory, so later launches skip the sign-in until the node key expires.
-- Computers never uses this sign-in.
+- A tailnet address only introduces a device; access comes only from a grant the computer signs.
+- A computer's owner can turn on tailnet admission when serving the host; it is off by default and optional.
+- The app registers as its own tailnet node, `openagents-ios`, and reads one netmap; it never carries traffic.
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/coder/guides/link-devices.md`
+- `docs/coder/design/2026-09-29-auto-pairing.md`
 - `nips/openagents/NIP-HOST.md`
+- `INVARIANTS.md`
+- `bins/openagents-ios/README.md`
