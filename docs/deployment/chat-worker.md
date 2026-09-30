@@ -646,3 +646,25 @@ answered "That needs a computer. …" with a **Connect a computer** chip; and
 after the app was quit and relaunched, all five chats were in Chats and
 opened with their messages. Build 34 was uploaded with `build.sh upload`
 at 2026-09-30T07:02:37-07:00 and is `VALID`, in Internal Testers (`IN_BETA_TESTING`).
+
+TestFlight build 35 (1.0.0, archived from `4e3140ed34`, 2026-09-30)
+changes no worker release. Since build 34 the phone lists a paired
+computer's own threads in Chats and continues them (`6a33d786d7`), stops a
+computer's reply over NIP-HOST `thread.stop` (`9920d77f52`, `c40a5d1e15`),
+keeps those threads across a relaunch and queues offline follow-ups until
+the computer is reachable (`f88d279d71`, `45cfb2b75f`), shows and stops
+Coder runs `openagents chat` started on the computer (`31545a96d9`,
+`7536ae0235`), and shows which agent a Run Coder offer will use
+(`2210173645`); NIP-DEC (`5710e1311c`) is also in. The mobile tests (147
+passed), `openagents-chat-app` (117), and `openagents-chat` (48) pass. On a
+fresh iPhone 17 Pro simulator (iOS 26.5, deleted afterwards) the build-34
+app (`270688fabe`) was installed first and asked "Who are you?" and "How
+do I connect a phone", both answered against the live chat worker; then
+build 35 was installed over it: it launched, "Who are you?" was no longer
+suggested, the build-34 chat was in Chats and opened with both replies,
+the changelog showed 1.0.0 (35), and "Who are you" in a new chat answered
+"We are OpenAgents. …". The host-thread, stop, offline, and Coder-run
+paths need a paired computer and were covered by the mobile tests, not on
+the simulator. Build 35 was uploaded with `build.sh upload` at
+2026-09-30T14:51:16-07:00 and is `VALID`, in Internal Testers
+(`IN_BETA_TESTING`).
