@@ -19,25 +19,149 @@ pub struct Span {
 /// Retains compiled queries on a worker instead of loading them per block.
 pub struct Highlighter {
     configs: std::collections::BTreeMap<&'static str, HighlightConfiguration>,
+    palette: Palette,
 }
-const NAMES: [&str; 9] = [
-    "comment", "string", "keyword", "function", "type", "number", "constant", "operator",
-    "property",
-];
-const COLORS: [[u8; 4]; 9] = [
-    [123, 137, 151, 255],
-    [163, 190, 140, 255],
-    [180, 142, 173, 255],
-    [143, 188, 187, 255],
-    [235, 203, 139, 255],
-    [208, 135, 112, 255],
-    [208, 135, 112, 255],
-    [129, 161, 193, 255],
-    [136, 192, 208, 255],
+/// Semantic syntax colors independent of an application's palette.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Kind {
+    Comment,
+    String,
+    StringSpecial,
+    Escape,
+    Keyword,
+    Function,
+    FunctionBuiltin,
+    Macro,
+    Type,
+    TypeBuiltin,
+    Constructor,
+    Number,
+    Boolean,
+    Constant,
+    Operator,
+    Property,
+    VariableSpecial,
+    Tag,
+    Attribute,
+    Label,
+    MarkupHeading,
+    MarkupRaw,
+    MarkupLink,
+    MarkupReference,
+    MarkupEmphasis,
+    MarkupStrong,
+    Invalid,
+}
+/// Foregrounds only. A palette changes neither input bytes nor text metrics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    colors: [[u8; 4]; 27],
+    text: [u8; 4],
+}
+impl Palette {
+    pub const fn plain(text: [u8; 4]) -> Self {
+        Self {
+            colors: [text; 27],
+            text,
+        }
+    }
+    #[must_use]
+    pub const fn with(mut self, kind: Kind, color: [u8; 4]) -> Self {
+        self.colors[kind as usize] = color;
+        self
+    }
+    pub const fn color(self, kind: Kind) -> [u8; 4] {
+        self.colors[kind as usize]
+    }
+}
+impl Default for Palette {
+    fn default() -> Self {
+        Self {
+            text: [230, 232, 235, 255],
+            colors: [
+                [123, 137, 151, 255],
+                [163, 190, 140, 255],
+                [163, 190, 140, 255],
+                [163, 190, 140, 255],
+                [180, 142, 173, 255],
+                [143, 188, 187, 255],
+                [143, 188, 187, 255],
+                [143, 188, 187, 255],
+                [235, 203, 139, 255],
+                [235, 203, 139, 255],
+                [230, 232, 235, 255],
+                [208, 135, 112, 255],
+                [230, 232, 235, 255],
+                [208, 135, 112, 255],
+                [129, 161, 193, 255],
+                [136, 192, 208, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+                [230, 232, 235, 255],
+            ],
+        }
+    }
+}
+const CAPTURES: [(&str, Kind); 30] = [
+    ("comment", Kind::Comment),
+    ("string", Kind::String),
+    ("string.special", Kind::StringSpecial),
+    ("escape", Kind::Escape),
+    ("keyword", Kind::Keyword),
+    ("function", Kind::Function),
+    ("function.builtin", Kind::FunctionBuiltin),
+    ("function.macro", Kind::Macro),
+    ("type", Kind::Type),
+    ("type.builtin", Kind::TypeBuiltin),
+    ("constructor", Kind::Constructor),
+    ("number", Kind::Number),
+    ("boolean", Kind::Boolean),
+    ("constant", Kind::Constant),
+    ("operator", Kind::Operator),
+    ("property", Kind::Property),
+    ("variable.special", Kind::VariableSpecial),
+    ("tag", Kind::Tag),
+    ("attribute", Kind::Attribute),
+    ("label", Kind::Label),
+    ("markup.heading", Kind::MarkupHeading),
+    ("markup.raw", Kind::MarkupRaw),
+    ("markup.link", Kind::MarkupLink),
+    ("markup.link.label", Kind::MarkupReference),
+    ("markup.italic", Kind::MarkupEmphasis),
+    ("markup.bold", Kind::MarkupStrong),
+    ("error", Kind::Invalid),
+    ("string.escape", Kind::Escape),
+    ("markup.emphasis", Kind::MarkupEmphasis),
+    ("markup.strong", Kind::MarkupStrong),
 ];
 impl Default for Highlighter {
     fn default() -> Self {
         let mut configs = std::collections::BTreeMap::new();
+        let names = CAPTURES.map(|(name, _)| name);
+        // The upstream Rust query groups literals with constants. Preserve
+        // their semantic roles so applications can color them independently.
+        let rust = tree_sitter_rust::HIGHLIGHTS_QUERY
+            .replace(
+                "(integer_literal) @constant.builtin",
+                "(integer_literal) @number",
+            )
+            .replace(
+                "(float_literal) @constant.builtin",
+                "(float_literal) @number",
+            )
+            .replace(
+                "(boolean_literal) @constant.builtin",
+                "(boolean_literal) @boolean",
+            );
         let cpp = format!(
             "{}\n{}",
             tree_sitter_c::HIGHLIGHT_QUERY,
@@ -49,11 +173,7 @@ impl Default for Highlighter {
             tree_sitter_typescript::HIGHLIGHTS_QUERY
         );
         for (name, language, query) in [
-            (
-                "rust",
-                tree_sitter_rust::LANGUAGE,
-                tree_sitter_rust::HIGHLIGHTS_QUERY,
-            ),
+            ("rust", tree_sitter_rust::LANGUAGE, rust.as_str()),
             (
                 "python",
                 tree_sitter_python::LANGUAGE,
@@ -100,15 +220,27 @@ impl Default for Highlighter {
             if let Ok(mut config) =
                 HighlightConfiguration::new(language.into(), name, query, "", "")
             {
-                config.configure(&NAMES);
+                config.configure(&names);
                 configs.insert(name, config);
             }
         }
-        Self { configs }
+        Self {
+            configs,
+            palette: Palette::default(),
+        }
     }
 }
 impl Highlighter {
+    pub fn with_palette(palette: Palette) -> Self {
+        Self {
+            palette,
+            ..Self::default()
+        }
+    }
     pub fn spans(&self, language: &str, text: &str) -> Vec<Span> {
+        self.spans_with_palette(language, text, self.palette)
+    }
+    pub fn spans_with_palette(&self, language: &str, text: &str, palette: Palette) -> Vec<Span> {
         if text.len() > MAX_BYTES || text.lines().any(|line| line.len() > 8192) {
             return vec![];
         }
@@ -140,9 +272,9 @@ impl Highlighter {
                 Ok(HighlightEvent::Source { start, end }) => {
                     let foreground = stack
                         .last()
-                        .and_then(|index| COLORS.get(*index))
-                        .copied()
-                        .unwrap_or([230, 232, 235, 255]);
+                        .and_then(|index| CAPTURES.get(*index))
+                        .map(|(_, kind)| palette.color(*kind))
+                        .unwrap_or(palette.text);
                     if let Some(last) = output.last_mut()
                         && last.end == start
                         && last.foreground == foreground
@@ -173,6 +305,7 @@ pub struct Cache {
     sender: std::sync::mpsc::Sender<ResultRow>,
     entries: std::collections::HashMap<(String, String), Option<std::sync::Arc<Vec<Span>>>>,
     bytes: usize,
+    palette: Palette,
 }
 type Wake = std::sync::Arc<dyn Fn() + Send + Sync>;
 type ResultRow = ((String, String), Vec<Span>);
@@ -180,6 +313,7 @@ struct Job {
     key: (String, String),
     results: std::sync::mpsc::Sender<ResultRow>,
     wake: Option<Wake>,
+    palette: Palette,
 }
 static WORKER: std::sync::LazyLock<std::sync::mpsc::SyncSender<Job>> =
     std::sync::LazyLock::new(|| {
@@ -189,7 +323,7 @@ static WORKER: std::sync::LazyLock<std::sync::mpsc::SyncSender<Job>> =
             .spawn(move || {
                 let highlighter = Highlighter::default();
                 while let Ok(job) = receiver.recv() {
-                    let spans = highlighter.spans(&job.key.0, &job.key.1);
+                    let spans = highlighter.spans_with_palette(&job.key.0, &job.key.1, job.palette);
                     if job.results.send((job.key, spans)).is_ok()
                         && let Some(wake) = job.wake
                     {
@@ -207,10 +341,24 @@ impl Default for Cache {
             sender,
             entries: Default::default(),
             bytes: 0,
+            palette: Palette::default(),
         }
     }
 }
 impl Cache {
+    /// Discards old results and pending deliveries when foreground colors change.
+    pub fn set_palette(&mut self, palette: Palette) -> bool {
+        if self.palette == palette {
+            return false;
+        }
+        let (sender, results) = std::sync::mpsc::channel();
+        self.sender = sender;
+        self.results = results;
+        self.entries.clear();
+        self.bytes = 0;
+        self.palette = palette;
+        true
+    }
     /// Drains completed work. A result for an evicted block is discarded.
     pub fn poll(&mut self) -> bool {
         let mut changed = false;
@@ -249,6 +397,7 @@ impl Cache {
             key: key.clone(),
             results: self.sender.clone(),
             wake,
+            palette: self.palette,
         };
         if WORKER.try_send(job).is_ok() {
             self.bytes += text.len();
@@ -268,6 +417,44 @@ impl Cache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn palette_changes_preserve_bytes_and_refuse_old_pending_colors() {
+        let palette = Palette::plain([220, 220, 220, 255])
+            .with(Kind::Keyword, [110, 120, 210, 255])
+            .with(Kind::String, [80, 190, 130, 255]);
+        let source = "let café = \"hello\";\n";
+        let spans = Highlighter::with_palette(palette).spans("rust", source);
+        assert_eq!(
+            spans
+                .iter()
+                .map(|s| &source[s.start..s.end])
+                .collect::<String>(),
+            source
+        );
+        assert!(
+            spans.iter().any(|s| &source[s.start..s.end] == "let"
+                && s.foreground == palette.color(Kind::Keyword))
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.foreground == palette.color(Kind::String))
+        );
+        let mut cache = Cache::default();
+        let key = ("rust".into(), source.into());
+        let old_delivery = cache.sender.clone();
+        cache.entries.insert(key.clone(), None);
+        old_delivery.send((key.clone(), vec![])).unwrap();
+        assert!(cache.set_palette(palette));
+        cache.entries.insert(key.clone(), None);
+        assert!(!cache.poll());
+        assert!(old_delivery.send((key.clone(), vec![])).is_err());
+        cache.sender.send((key, spans.clone())).unwrap();
+        assert!(cache.poll());
+        assert_eq!(cache.get("rust", source), Some(spans.as_slice()));
+        assert!(!cache.set_palette(palette));
+        assert_eq!(cache.get("rust", source), Some(spans.as_slice()));
+    }
     #[test]
     fn highlights_common_languages_without_changing_bytes() {
         let highlighter = Highlighter::default();

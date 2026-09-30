@@ -23,6 +23,56 @@ pub const COLORS: [(ColorRole, Color); 9] = [
     (ColorRole::Border, BORDER),
     (ColorRole::InlineCode, Color::rgb(26, 26, 26)),
 ];
+/// Zeron's dark syntax colors after its 72% HSL saturation treatment.
+pub const SYNTAX: rust_native::syntax::Palette =
+    rust_native::syntax::Palette::plain([229, 229, 229, 255])
+        .with(rust_native::syntax::Kind::Keyword, [143, 150, 237, 255])
+        .with(rust_native::syntax::Kind::Function, [143, 150, 237, 255])
+        .with(
+            rust_native::syntax::Kind::MarkupHeading,
+            [143, 150, 237, 255],
+        )
+        .with(
+            rust_native::syntax::Kind::MarkupStrong,
+            [143, 150, 237, 255],
+        )
+        .with(
+            rust_native::syntax::Kind::StringSpecial,
+            [230, 121, 180, 255],
+        )
+        .with(rust_native::syntax::Kind::Escape, [230, 121, 180, 255])
+        .with(
+            rust_native::syntax::Kind::FunctionBuiltin,
+            [230, 121, 180, 255],
+        )
+        .with(rust_native::syntax::Kind::Macro, [230, 121, 180, 255])
+        .with(
+            rust_native::syntax::Kind::VariableSpecial,
+            [230, 121, 180, 255],
+        )
+        .with(rust_native::syntax::Kind::Tag, [230, 121, 180, 255])
+        .with(rust_native::syntax::Kind::MarkupLink, [230, 121, 180, 255])
+        .with(
+            rust_native::syntax::Kind::MarkupEmphasis,
+            [230, 121, 180, 255],
+        )
+        .with(rust_native::syntax::Kind::String, [30, 183, 135, 255])
+        .with(rust_native::syntax::Kind::TypeBuiltin, [30, 183, 135, 255])
+        .with(rust_native::syntax::Kind::Constant, [30, 183, 135, 255])
+        .with(rust_native::syntax::Kind::MarkupRaw, [30, 183, 135, 255])
+        .with(rust_native::syntax::Kind::Number, [219, 169, 36, 255])
+        .with(rust_native::syntax::Kind::Boolean, [219, 169, 36, 255])
+        .with(rust_native::syntax::Kind::Type, [219, 169, 36, 255])
+        .with(rust_native::syntax::Kind::Constructor, [219, 169, 36, 255])
+        .with(rust_native::syntax::Kind::Property, [219, 169, 36, 255])
+        .with(rust_native::syntax::Kind::Attribute, [219, 169, 36, 255])
+        .with(rust_native::syntax::Kind::Label, [219, 169, 36, 255])
+        .with(
+            rust_native::syntax::Kind::MarkupReference,
+            [219, 169, 36, 255],
+        )
+        .with(rust_native::syntax::Kind::Invalid, [233, 121, 124, 255])
+        .with(rust_native::syntax::Kind::Comment, [128, 128, 128, 255]);
 pub const TRANSCRIPT: Metrics = Metrics {
     reading_width: 736,
     body_size: 14,
@@ -53,6 +103,34 @@ mod tests {
     };
     use rust_native::style::Style;
     use rust_native::{Element, MessageRole, Node};
+
+    #[test]
+    fn reference_syntax_colors_preserve_utf8_source_ranges() {
+        let source = "// café\nlet answer = 42;\nprintln!(\"hello\");\n";
+        let spans = rust_native::syntax::Highlighter::with_palette(SYNTAX).spans("rust", source);
+        for (token, color) in [
+            ("// café", [128, 128, 128, 255]),
+            ("let", [143, 150, 237, 255]),
+            ("42", [219, 169, 36, 255]),
+            ("println", [230, 121, 180, 255]),
+            ("hello", [30, 183, 135, 255]),
+        ] {
+            let start = source.find(token).unwrap();
+            assert!(
+                spans.iter().any(|span| {
+                    span.start <= start
+                        && span.end >= start + token.len()
+                        && span.foreground == color
+                }),
+                "missing reference color for {token}"
+            );
+        }
+        assert!(
+            spans
+                .iter()
+                .all(|span| source.get(span.start..span.end).is_some())
+        );
+    }
 
     #[test]
     fn reference_heading_and_code_metrics_preserve_copy_bytes() {

@@ -246,3 +246,19 @@ remains above 8.3 ms and is explicitly retained in `openings`. A previous
 acquisition waits of 10.682 ms while the scratch preview interferes with
 fullscreen presentation. Closing that empty scratch window and repeating
 without UI manipulation removes those waits. Both reports remain retained.
+
+## Syntax palette
+
+The transcript and changes pane now use Zeron's dark syntax palette after
+its 72% HSL saturation treatment. The semantic colors are reimplemented from
+the public MIT reference; compiled tree-sitter queries stay on the bounded
+highlighting worker. Rust numbers and booleans retain separate roles instead
+of sharing the upstream constant capture. Palette changes discard pending
+results from the previous palette without changing source bytes or text
+measurements.
+
+The product regression checks comment, keyword, number, macro, and string
+colors against UTF-8 source ranges. Both syntax core tests, the rich-text
+fixture, the shared visual geometry tests, scoped formatting, and strict
+all-target Clippy pass. The earlier full core run passes 88 tests with one
+ignored. Issue #10029 remains open for the remaining chat chrome and surfaces.

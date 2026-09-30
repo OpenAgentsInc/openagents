@@ -2952,7 +2952,9 @@ impl Panel {
             return;
         }
         if self.changes_highlighter.is_none() {
-            self.changes_highlighter = Some(rust_native::syntax::Highlighter::default());
+            self.changes_highlighter = Some(rust_native::syntax::Highlighter::with_palette(
+                openagents_chat_app::visual::SYNTAX,
+            ));
         }
         let highlighter = self.changes_highlighter.take().expect("highlighter");
         if let Some(doc) = self.changes.as_mut() {
@@ -3033,6 +3035,7 @@ fn chat_transcript() -> Transcript {
         .set_metrics(openagents_chat_app::visual::TRANSCRIPT)
         .expect("valid chat metrics");
     transcript.set_palette(&openagents_chat_app::visual::COLORS);
+    transcript.set_syntax_palette(openagents_chat_app::visual::SYNTAX);
     transcript
 }
 

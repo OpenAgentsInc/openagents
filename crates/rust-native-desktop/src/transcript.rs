@@ -92,6 +92,12 @@ impl Transcript {
         self.palette = colors.iter().copied().collect();
         self.version = self.version.wrapping_add(1);
     }
+    /// Updates foreground spans without invalidating transcript text measurements.
+    pub fn set_syntax_palette(&mut self, palette: rust_native::syntax::Palette) {
+        if self.highlights.set_palette(palette) {
+            self.version = self.version.wrapping_add(1);
+        }
+    }
     fn ink(&self, value: Ink) -> Color {
         if let Ink::Role(role) = value
             && let Some(color) = self.palette.get(&role)
