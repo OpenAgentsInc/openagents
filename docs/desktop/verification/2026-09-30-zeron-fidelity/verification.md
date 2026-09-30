@@ -230,3 +230,19 @@ with complete frames and bounds filtering damage below 70% of the minimum
 window at both scales. Adapter: 59 tests passed; five command fixtures and
 the broader shell retained-paint regression pass; scoped formatting and
 strict all-target Clippy pass. A native repeat follows the merged build.
+
+The optimized build of `4aa4d78772` passes. The [uncovered repeat](native-solar-damage.json)
+records scroll p50/p99 2.909/3.307 ms, streaming 3.869/4.395 ms, sidebar
+1.946/3.355 ms, composer 2.010/3.976 ms, palette filtering 3.433/3.873 ms,
+and chat-menu selection 2.099/2.223 ms. Each of the first five phases has
+115 samples; the chat menu has 25 changed frames. Palette damage falls
+from 4,032,000 to 775,760 pixels at the median. Idle CPU is 2.23% of one
+core; peak RSS is 199.0 MiB. Active p99 timings meet the 8.3 ms target.
+
+First submitted palette and chat-menu frames are 9.162 and 7.589 ms. The
+palette's first scrim still requires a full-window update; its cold frame
+remains above 8.3 ms and is explicitly retained in `openings`. A previous
+[blocked repeat](native-solar-damage-blocked.json) records median window
+acquisition waits of 10.682 ms while the scratch preview interferes with
+fullscreen presentation. Closing that empty scratch window and repeating
+without UI manipulation removes those waits. Both reports remain retained.
