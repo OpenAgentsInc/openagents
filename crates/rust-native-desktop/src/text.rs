@@ -70,6 +70,7 @@ pub struct Fonts {
     scale: ScaleContext,
     faces: [FontRef<'static>; 4],
     paragraphs: HashMap<(String, u64, u32), Rc<Paragraph>>,
+    paragraph_bytes: usize,
     advances: HashMap<(String, u64), f32>,
     advance_bytes: usize,
     glyphs: HashMap<GlyphKey, Option<Glyph>>,
@@ -107,6 +108,7 @@ impl Fonts {
             scale: ScaleContext::new(),
             faces: FACES.map(|data| FontRef::from_index(data, 0).expect("a bundled face")),
             paragraphs: HashMap::new(),
+            paragraph_bytes: 0,
             advances: HashMap::new(),
             advance_bytes: 0,
             glyphs: HashMap::new(),
@@ -124,9 +126,11 @@ impl Fonts {
         if let Some(paragraph) = self.paragraphs.get(&key) {
             return paragraph.clone();
         }
-        if self.paragraphs.len() > 4_096 {
+        if self.paragraphs.len() >= 4_096 || self.paragraph_bytes + text.len() > 512 * 1024 {
             self.paragraphs.clear();
+            self.paragraph_bytes = 0;
         }
+        self.paragraph_bytes += text.len();
         let paragraph = Rc::new(self.break_lines(text, font, width));
         self.paragraphs.insert(key, paragraph.clone());
         paragraph
@@ -173,10 +177,9 @@ impl Fonts {
         width
     }
 
-    /// Find the closest character boundary without shaping every prefix.
+    /// Find the closest grapheme boundary without shaping every prefix.
     pub fn caret_byte(&mut self, text: &str, font: Font, x: f32) -> usize {
-        let mut boundaries: Vec<usize> = text.char_indices().map(|(index, _)| index).collect();
-        boundaries.push(text.len());
+        let boundaries = rust_native::selection::grapheme_boundaries(text);
         let mut left = 0;
         let mut right = boundaries.len();
         while left < right {
@@ -317,6 +320,39 @@ impl Fonts {
         );
     }
 
+    /// Paint a positioned run using only foreground syntax spans.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_highlighted_run(
+        &mut self,
+        frame: &mut Frame,
+        text: &str,
+        font: Font,
+        x: f32,
+        baseline: f32,
+        scale: f32,
+        color: Color,
+        spans: &[rust_native::syntax::Span],
+        byte_offset: usize,
+    ) {
+        let paragraph = self.paragraph(text, font, None);
+        let spec = FontSpec::of(font);
+        let metrics = self.faces[spec.face].metrics(&[]).scale(spec.size * scale);
+        let offset = (paragraph.line_height() * scale - (metrics.ascent + metrics.descent)) / 2.0
+            + metrics.ascent;
+        self.draw_colored(
+            frame,
+            &paragraph,
+            x,
+            baseline - offset,
+            paragraph.width,
+            TextAlign::Start,
+            scale,
+            color,
+            spans,
+            byte_offset,
+        );
+    }
+
     /// Paints `paragraph` with its top-left corner at `x`, `y` pixels, lines
     /// aligned within `width` points, at `scale` pixels a point.
     #[allow(clippy::too_many_arguments)]
@@ -330,6 +366,24 @@ impl Fonts {
         align: TextAlign,
         scale: f32,
         color: Color,
+    ) {
+        self.draw_colored(frame, paragraph, x, y, width, align, scale, color, &[], 0);
+    }
+
+    /// Colors shaped clusters without splitting runs or changing their metrics.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_colored(
+        &mut self,
+        frame: &mut Frame,
+        paragraph: &Paragraph,
+        x: f32,
+        y: f32,
+        width: f32,
+        align: TextAlign,
+        scale: f32,
+        color: Color,
+        spans: &[rust_native::syntax::Span],
+        byte_offset: usize,
     ) {
         let spec = FontSpec::of(paragraph.font);
         let size = spec.size * scale;
@@ -373,12 +427,26 @@ impl Fonts {
             let mut placed = Vec::new();
             let mut pen = x + offset;
             shaper.shape_with(|cluster| {
+                let byte = byte_offset + line.start + cluster.source.start as usize;
+                let at = spans.partition_point(|span| span.end <= byte);
+                let color = spans
+                    .get(at)
+                    .filter(|span| span.start <= byte)
+                    .map_or(color, |span| {
+                        let [red, green, blue, alpha] = span.foreground;
+                        Color {
+                            red,
+                            green,
+                            blue,
+                            alpha,
+                        }
+                    });
                 for glyph in cluster.glyphs {
-                    placed.push((glyph.id, pen + glyph.x, glyph.y));
+                    placed.push((glyph.id, pen + glyph.x, glyph.y, color));
                     pen += glyph.advance;
                 }
             });
-            for (id, gx, gy) in placed {
+            for (id, gx, gy, color) in placed {
                 let whole = gx.floor();
                 let quarter = ((gx - whole) * 4.0).round() as u8 % 4;
                 let key = (

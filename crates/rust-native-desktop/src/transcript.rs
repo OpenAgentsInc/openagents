@@ -18,20 +18,19 @@ pub enum Action {
     Earlier,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Point {
-    row: usize,
-    text: usize,
-    byte: usize,
-}
+use rust_native::selection::{Position as Point, Selection};
 
 /// Exact row heights, reading position, selection, and horizontally scrolled blocks.
 pub struct Transcript {
     version: u64,
+    highlights: rust_native::syntax::Cache,
+    wake: Option<Arc<dyn Fn() + Send + Sync>>,
     expanded: BTreeSet<String>,
     pub relaid: usize,
     pub measured: u64,
     pressed_widget: Option<(String, usize)>,
+    pressed_link: Option<(String, usize)>,
+    hovered_link: Option<(String, usize)>,
     layout: TranscriptLayout,
     measurer: ShapingMeasurer,
     frame: Arc<rust_native::layout::Frame>,
@@ -40,7 +39,7 @@ pub struct Transcript {
     height: f32,
     offset: f32,
     follow: bool,
-    selection: Option<(Point, Point)>,
+    selection: Selection,
     dragging: bool,
     horizontal: HashMap<(String, usize), f32>,
 }
@@ -51,10 +50,14 @@ impl Default for Transcript {
         let frame = layout.frame();
         Self {
             version: 0,
+            highlights: Default::default(),
+            wake: None,
             expanded: BTreeSet::new(),
             relaid: 0,
             measured: 0,
             pressed_widget: None,
+            pressed_link: None,
+            hovered_link: None,
             layout,
             measurer: ShapingMeasurer::new(),
             frame,
@@ -63,7 +66,7 @@ impl Default for Transcript {
             height: 1.0,
             offset: 0.0,
             follow: true,
-            selection: None,
+            selection: Selection::default(),
             dragging: false,
             horizontal: HashMap::new(),
         }
@@ -71,6 +74,26 @@ impl Default for Transcript {
 }
 
 impl Transcript {
+    pub fn start(&mut self, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.wake = Some(wake);
+    }
+    /// Queue only visible code. Completion invalidates paint, never layout.
+    pub fn poll_highlights(&mut self) {
+        if self.highlights.poll() {
+            self.version = self.version.wrapping_add(1);
+        }
+        for index in self.frame.rows_in(self.offset, self.offset + self.height) {
+            let Some(row) = self.frame.display(index) else {
+                continue;
+            };
+            for code in &row.code_blocks {
+                if let Some(text) = row.texts.get(code.text as usize) {
+                    self.highlights
+                        .request(&code.language, text, self.wake.clone());
+                }
+            }
+        }
+    }
     pub fn rows(&self) -> usize {
         self.frame.len()
     }
@@ -114,6 +137,13 @@ impl Transcript {
         {
             self.pressed_widget = None;
         }
+        if self
+            .pressed_link
+            .as_ref()
+            .is_some_and(|(key, _)| changed.iter().any(|row| &row.key == key))
+        {
+            self.pressed_link = None;
+        }
         let drawing_changed = !changed.is_empty()
             || order != self.order
             || width != self.frame.width()
@@ -135,12 +165,14 @@ impl Transcript {
             self.version = self.version.wrapping_add(1);
         }
         if order != self.order {
-            self.selection = None;
             self.pressed_widget = None;
+            self.pressed_link = None;
+            self.hovered_link = None;
         }
         self.order = order;
         self.rows = rows.into_iter().map(|row| (row.key.clone(), row)).collect();
         self.frame = self.layout.frame();
+        self.selection.reconcile(&self.frame);
         self.height = height;
         if self.follow {
             self.offset = self.limit();
@@ -204,12 +236,19 @@ impl Transcript {
 
     fn point(&self, x: f32, y: f32, fonts: &mut Fonts) -> Option<Point> {
         let y = y + self.offset;
-        for index in self.frame.rows_in(y, y + 1.0) {
+        let mut nearest = None;
+        let mut distance = f32::INFINITY;
+        // While dragging, clamp to the nearest visible text, including blank
+        // margins and paragraph gaps. Scrolling can bring other rows into view.
+        for index in self.frame.rows_in(self.offset, self.offset + self.height) {
             let row = self.frame.display(index)?;
             let top = self.frame.placement(index)?.y;
             for (run_index, run) in row.runs.iter().enumerate() {
                 let style = row.styles.get(run.style as usize)?;
                 let mut rx = run.x;
+                let mut left = rx;
+                let mut right = rx + run.width;
+                let mut inside = true;
                 for (region, scroller) in row.scrollers.iter().enumerate() {
                     if (scroller.runs[0]..scroller.runs[1]).contains(&(run_index as u32)) {
                         rx -= self
@@ -217,22 +256,69 @@ impl Transcript {
                             .get(&(row.key.clone(), region))
                             .copied()
                             .unwrap_or_default();
+                        left = rx.max(scroller.x);
+                        right = (rx + run.width).min(scroller.x + scroller.w);
+                        inside = x >= scroller.x
+                            && x <= scroller.x + scroller.w
+                            && y >= top + scroller.y
+                            && y <= top + scroller.y + scroller.h;
                     }
                 }
-                if y >= top + run.baseline - style.font.size
-                    && y <= top + run.baseline + style.font.size * 0.3
-                    && x >= rx
-                    && x <= rx + run.width + 8.0
-                {
+                if right < left || (!self.dragging && !inside) {
+                    continue;
+                }
+                let lo = top + run.baseline - style.font.size;
+                let hi = top + run.baseline + style.font.size * 0.3;
+                let dy = (lo - y).max(0.0).max(y - hi);
+                let dx = (left - x).max(0.0).max(x - right);
+                if !self.dragging && (dy > 0.0 || dx > 8.0) {
+                    continue;
+                }
+                let score = dy * 1024.0 + dx;
+                if score < distance {
                     let text = &row.texts[run.text as usize];
                     let start = run.start8 as usize;
                     let end = start + run.len8 as usize;
-                    let nearest = start + fonts.caret_byte(&text[start..end], style.font, x - rx);
-                    return Some(Point {
+                    nearest = Some(Point {
                         row: index,
                         text: run.text as usize,
-                        byte: nearest,
+                        byte: start + fonts.caret_byte(&text[start..end], style.font, x - rx),
                     });
+                    distance = score;
+                }
+            }
+        }
+        nearest
+    }
+
+    fn link(&self, x: f32, y: f32) -> Option<(String, usize)> {
+        let y = y + self.offset;
+        for index in self.frame.rows_in(y, y + 1.0) {
+            let row = self.frame.display(index)?;
+            let top = self.frame.placement(index)?.y;
+            for (number, link) in row.links.iter().enumerate() {
+                let mut lx = link.x;
+                let mut clipped = false;
+                for (region, scroller) in row.scrollers.iter().enumerate() {
+                    if (scroller.links[0]..scroller.links[1]).contains(&(number as u32)) {
+                        lx -= self
+                            .horizontal
+                            .get(&(row.key.clone(), region))
+                            .copied()
+                            .unwrap_or_default();
+                        clipped = x < scroller.x
+                            || x > scroller.x + scroller.w
+                            || y < top + scroller.y
+                            || y > top + scroller.y + scroller.h;
+                    }
+                }
+                if !clipped
+                    && x >= lx
+                    && x <= lx + link.w
+                    && y >= top + link.y
+                    && y <= top + link.y + link.h
+                {
+                    return Some((row.key.clone(), number));
                 }
             }
         }
@@ -245,31 +331,36 @@ impl Transcript {
         fonts: &mut Fonts,
     ) -> Option<Action> {
         use crate::input::SurfaceInput;
-        let previous = self.selection;
+        let previous = self.selection.endpoints(&self.frame);
+        let hovered = self.hovered_link.clone();
         match event {
             SurfaceInput::Down { x, y, shift } => {
+                self.dragging = false;
+                self.pressed_link = self.link(x, y);
                 self.pressed_widget = self.widget(x, y);
                 if self.pressed_widget.is_some() {
                     self.dragging = false;
                     return None;
                 }
                 if let Some(point) = self.point(x, y, fonts) {
-                    let anchor = if shift {
-                        self.selection.map_or(point, |(anchor, _)| anchor)
-                    } else {
-                        point
-                    };
-                    self.selection = Some((anchor, point));
+                    self.selection.begin(&self.frame, point, shift);
                     self.dragging = true;
                 } else {
-                    self.selection = None;
+                    self.selection.clear();
                 }
             }
-            SurfaceInput::Move { x, y } if self.dragging => {
-                if let Some(point) = self.point(x, y, fonts)
-                    && let Some((anchor, _)) = self.selection
-                {
-                    self.selection = Some((anchor, point));
+            SurfaceInput::Move { x, y } => {
+                self.hovered_link = self.link(x, y);
+                if self.dragging {
+                    if y < 0.0 {
+                        self.scroll((-y).min(32.0));
+                    }
+                    if y > self.height {
+                        self.scroll(-(y - self.height).min(32.0));
+                    }
+                    if let Some(point) = self.point(x, y, fonts) {
+                        self.selection.extend(&self.frame, point);
+                    }
                 }
             }
             SurfaceInput::Up { x, y } => {
@@ -309,20 +400,14 @@ impl Transcript {
                     }
                     return None;
                 }
-                if self.selection.is_none_or(|(a, b)| a == b) {
-                    let ry = y + self.offset;
-                    for index in self.frame.rows_in(ry, ry + 1.0) {
-                        let row = self.frame.display(index)?;
-                        let top = self.frame.placement(index)?.y;
-                        for link in &row.links {
-                            if x >= link.x
-                                && x <= link.x + link.w
-                                && ry >= top + link.y
-                                && ry <= top + link.y + link.h
-                            {
-                                return Some(Action::OpenLink(link.destination.clone()));
-                            }
-                        }
+                if let Some(pressed) = self.pressed_link.take()
+                    && self.selection.collapsed(&self.frame)
+                    && self.link(x, y).as_ref() == Some(&pressed)
+                {
+                    let row = self.frame.display(self.frame.find(&pressed.0)?)?;
+                    let destination = &row.links.get(pressed.1)?.destination;
+                    if !destination.is_empty() {
+                        return Some(Action::OpenLink(destination.clone()));
                     }
                 }
             }
@@ -330,9 +415,8 @@ impl Transcript {
                 self.scroll(dy);
                 self.scroll_horizontal(x, y, dx);
             }
-            _ => {}
         }
-        if previous != self.selection {
+        if previous != self.selection.endpoints(&self.frame) || hovered != self.hovered_link {
             self.version = self.version.wrapping_add(1);
         }
         None
@@ -398,51 +482,16 @@ impl Transcript {
     }
 
     pub fn selected_text(&self) -> String {
-        let Some((mut a, mut b)) = self.selection else {
-            return String::new();
-        };
-        if (a.row, a.text, a.byte) > (b.row, b.text, b.byte) {
-            std::mem::swap(&mut a, &mut b);
-        }
-        let mut pieces = Vec::new();
-        for index in a.row..=b.row {
-            let Some(row) = self.frame.display(index) else {
-                continue;
-            };
-            for (text_index, text) in row.texts.iter().enumerate() {
-                if (index, text_index) < (a.row, a.text) || (index, text_index) > (b.row, b.text) {
-                    continue;
-                }
-                let start = if index == a.row && text_index == a.text {
-                    a.byte
-                } else {
-                    0
-                };
-                let end = if index == b.row && text_index == b.text {
-                    b.byte
-                } else {
-                    text.len()
-                };
-                if let Some(part) = text.get(start..end) {
-                    pieces.push(part.to_owned());
-                }
-            }
-        }
-        pieces.join("\n")
+        self.selection.copy(&self.frame)
     }
 
     /// Paint only rows in the viewport, with clipping for wide code and tables.
     pub fn paint(&self, frame: &mut Frame, rect: PxRect, scale: f32, fonts: &mut Fonts) {
         let previous = frame.clip_to(rect);
+        let selected = self.selection.ordered(&self.frame);
         for index in self.frame.rows_in(self.offset, self.offset + self.height) {
             let row = self.frame.display(index).unwrap();
             let y = rect.y + (self.frame.placement(index).unwrap().y - self.offset) * scale;
-            let selected = self.selection.map(|(mut a, mut b)| {
-                if (a.row, a.text, a.byte) > (b.row, b.text, b.byte) {
-                    std::mem::swap(&mut a, &mut b);
-                }
-                (a, b)
-            });
             for (i, shape) in row.rects.iter().enumerate() {
                 let mut dx = 0.0;
                 let mut clip = None;
@@ -477,6 +526,15 @@ impl Transcript {
                     frame.restore_clip(clip);
                 }
             }
+            let highlighted: Vec<_> = row
+                .code_blocks
+                .iter()
+                .filter_map(|code| {
+                    self.highlights
+                        .get(&code.language, &row.texts[code.text as usize])
+                        .map(|spans| (code.text, spans))
+                })
+                .collect();
             for (i, run) in row.runs.iter().enumerate() {
                 let style = &row.styles[run.style as usize];
                 let text = &row.texts[run.text as usize];
@@ -515,8 +573,8 @@ impl Transcript {
                             end
                         };
                         if lo < hi {
-                            let left = fonts.paragraph(&text[start..lo], style.font, None).width;
-                            let width = fonts.paragraph(&text[lo..hi], style.font, None).width;
+                            let left = fonts.advance(&text[start..lo], style.font);
+                            let width = fonts.advance(&text[start..hi], style.font) - left;
                             frame.fill(
                                 PxRect {
                                     x: x + left * scale,
@@ -530,12 +588,28 @@ impl Transcript {
                         }
                     }
                 }
-                let mut color = ink(style.ink);
+                let hovered = self.hovered_link.as_ref().is_some_and(|(key, number)| {
+                    key == &row.key
+                        && row.links.get(*number).is_some_and(|link| {
+                            link.x == run.x
+                                && (link.y + link.h >= run.baseline)
+                                && link.y <= run.baseline
+                        })
+                });
+                let mut color = if hovered {
+                    Color::rgb(210, 231, 252)
+                } else {
+                    ink(style.ink)
+                };
                 color.alpha = (f32::from(color.alpha) * style.opacity) as u8;
                 let truncated = run
                     .truncate
                     .map(|width| fonts.ellipsized(&text[start..end], style.font, width));
-                fonts.draw_run(
+                let highlights = highlighted
+                    .iter()
+                    .find(|(text, _)| *text == run.text)
+                    .map_or(&[][..], |(_, spans)| *spans);
+                fonts.draw_highlighted_run(
                     frame,
                     truncated.as_deref().unwrap_or(&text[start..end]),
                     style.font,
@@ -543,8 +617,10 @@ impl Transcript {
                     baseline,
                     scale,
                     color,
+                    highlights,
+                    start,
                 );
-                if style.underline {
+                if style.underline || hovered {
                     frame.line(
                         (x, baseline + 2.0 * scale),
                         (x + run.width * scale, baseline + 2.0 * scale),
@@ -705,6 +781,178 @@ mod tests {
         }
     }
     #[test]
+    fn selection_copies_offscreen_rows_and_survives_prepend_and_stream_append() {
+        let mut transcript = Transcript::default();
+        let mut rows: Vec<_> = (0..50)
+            .map(|i| Node {
+                key: format!("row-{i}"),
+                style: Style::default(),
+                element: Element::Text {
+                    value: format!("line{i} é 👩‍💻  "),
+                    role: rust_native::TextRole::Body,
+                },
+            })
+            .collect();
+        transcript.update(rows.clone(), 500.0, 130.0).unwrap();
+        assert!(transcript.visible_rows() < 10);
+        let end = transcript.frame.display(49).unwrap().texts[0].len();
+        transcript.selection.begin(
+            &transcript.frame,
+            Point {
+                row: 0,
+                text: 0,
+                byte: 0,
+            },
+            false,
+        );
+        transcript.selection.extend(
+            &transcript.frame,
+            Point {
+                row: 49,
+                text: 0,
+                byte: end,
+            },
+        );
+        let expected = (0..50)
+            .map(|i| format!("line{i} é 👩‍💻  "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(transcript.selected_text(), expected);
+        rows.insert(0, row("earlier", "Earlier text"));
+        rows.push(row("stream", "Partial"));
+        transcript.update(rows.clone(), 380.0, 130.0).unwrap();
+        assert_eq!(transcript.selected_text(), expected);
+        *rows.last_mut().unwrap() = row("stream", "Partial with more text");
+        transcript.update(rows, 380.0, 130.0).unwrap();
+        assert_eq!(transcript.selected_text(), expected);
+        let mut frame = Frame::transparent(380, 130);
+        transcript.paint(
+            &mut frame,
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 380.0,
+                h: 130.0,
+            },
+            1.0,
+            &mut Fonts::new(),
+        );
+        assert!(frame.pixels.iter().any(|byte| *byte != 0));
+    }
+    #[test]
+    fn pointer_drag_can_cross_blank_margins_and_virtualized_rows() {
+        let mut transcript = Transcript::default();
+        transcript
+            .update(
+                (0..50)
+                    .map(|i| row(&format!("row-{i}"), &format!("line{i}")))
+                    .collect(),
+                500.0,
+                140.0,
+            )
+            .unwrap();
+        transcript.scroll(100000.0);
+        let run = &transcript.frame.display(0).unwrap().runs[0];
+        let x = run.x;
+        let y = transcript.frame.placement(0).unwrap().y + run.baseline;
+        let mut fonts = Fonts::new();
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        transcript.scroll(-100000.0);
+        let row = transcript.frame.display(49).unwrap();
+        let y =
+            transcript.frame.placement(49).unwrap().y - transcript.offset + row.runs[0].baseline;
+        transcript.pointer(SurfaceInput::Move { x: 499.0, y }, &mut fonts);
+        transcript.pointer(SurfaceInput::Up { x: 499.0, y }, &mut fonts);
+        assert_eq!(
+            transcript.selected_text(),
+            (0..50)
+                .map(|i| format!("line{i}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+    #[test]
+    fn horizontally_scrolled_links_hover_and_open_only_on_matching_release() {
+        let mut transcript = Transcript::default();
+        transcript.update(vec![row("table","| Very wide heading in column one | Link |\n| --- | --- |\n| Wide content to force scrolling sideways | [Open](https://example.test/docs) |")],220.0,400.0).unwrap();
+        let row = transcript.frame.display(0).unwrap();
+        let link = &row.links[0];
+        let scroller = &row.scrollers[0];
+        let x = scroller.x + scroller.w / 2.0;
+        let y = transcript.frame.placement(0).unwrap().y + link.y + link.h / 2.0;
+        let dx = (link.x + link.w / 2.0 - x).min(scroller.content_w - scroller.w);
+        assert!(dx > 0.0);
+        transcript.scroll_horizontal(x, y, -dx);
+        let row = transcript.frame.display(0).unwrap();
+        let x = row.links[0].x + row.links[0].w / 2.0 - dx;
+        let mut fonts = Fonts::new();
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            None
+        );
+        let version = transcript.version();
+        transcript.pointer(SurfaceInput::Move { x, y }, &mut fonts);
+        assert_eq!(transcript.hovered_link, Some(("table".into(), 0)));
+        assert!(transcript.version() > version);
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            Some(Action::OpenLink("https://example.test/docs".into()))
+        );
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x: 0.0, y }, &mut fonts),
+            None
+        );
+        // Neither text selection nor link activation reaches clipped content.
+        assert!(transcript.link(219.0, y).is_none());
+    }
+    #[test]
+    fn rich_text_fixture_highlights_without_relayout_and_copies_exact_code() {
+        let value = "# Markdown\n\n**Bold**, *italic*, ~~strike~~, `inline`, and a [link](https://example.test).\n\n1. Ordered\n2. Another\n\n- [x] Checked\n- Plain\n\n> Quoted words\n\n```rust\n// Café\nfn main() { let answer = 42; println!(\"hello\"); }\n```\n\n| Name | Value |\n| --- | --- |\n| Wide data column with more text | 42 |";
+        let mut transcript = Transcript::default();
+        transcript
+            .update(vec![row("fixture", value)], 600.0, 1100.0)
+            .unwrap();
+        let height = transcript.height();
+        let frame = transcript.frame.clone();
+        transcript.poll_highlights();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            transcript.poll_highlights();
+            let row = transcript.frame.display(0).unwrap();
+            let code = &row.code_blocks[0];
+            if transcript
+                .highlights
+                .get(&code.language, &row.texts[code.text as usize])
+                .is_some()
+            {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(transcript.height(), height);
+        assert!(Arc::ptr_eq(&frame, &transcript.frame));
+        assert!(transcript.frame.display(0).unwrap().widgets.iter().any(|widget|
+            matches!(&widget.kind,WidgetKind::Copy {text} if text == "// Café\nfn main() { let answer = 42; println!(\"hello\"); }\n")));
+        let mut pixels = Frame::transparent(600, 1100);
+        transcript.paint(
+            &mut pixels,
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 600.0,
+                h: 1100.0,
+            },
+            1.0,
+            &mut Fonts::new(),
+        );
+        if let Ok(path) = std::env::var("OPENAGENTS_RICHTEXT_CAPTURE") {
+            std::fs::write(path, pixels.png().unwrap()).unwrap();
+        }
+    }
+    #[test]
     fn reading_anchor_survives_streaming_and_prepending_and_tail_can_resume() {
         let mut transcript = Transcript::default();
         let mut rows: Vec<_> = (0..40)
@@ -766,7 +1014,7 @@ mod tests {
         );
         assert_eq!(
             transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
-            Some(Action::Copy("let answer = 42;".into()))
+            Some(Action::Copy("let answer = 42;\n".into()))
         );
         transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
         assert_eq!(

@@ -11,8 +11,10 @@ pub mod edit;
 pub mod input;
 pub mod layout;
 pub mod markdown;
+pub mod selection;
 pub mod style;
 pub mod surface;
+pub mod syntax;
 pub mod view;
 
 pub use input::{InputError, InputRequest};

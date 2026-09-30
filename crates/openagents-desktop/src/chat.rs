@@ -20,6 +20,7 @@ use rust_native_desktop::{
     transcript::Transcript,
 };
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 pub const TRANSCRIPT: &str = "chat-transcript";
@@ -78,9 +79,12 @@ impl Panel {
         for field in self.fields.values_mut() {
             field.start(waker.clone());
         }
+        let wake = waker.clone();
+        self.transcript.start(Arc::new(move || wake.wake()));
         self.waker = Some(waker);
     }
     pub fn tick(&mut self, now: Instant) -> Option<Request> {
+        self.transcript.poll_highlights();
         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
         for field in self.fields.values_mut() {
             field.poll_clipboard(at_ms);
@@ -134,6 +138,10 @@ impl Panel {
             }
         }
         self.transcript = Transcript::default();
+        if let Some(waker) = &self.waker {
+            let wake = waker.clone();
+            self.transcript.start(Arc::new(move || wake.wake()));
+        }
         self.transcript_rows.clear();
         self.projection = Projection::default();
         self.transcript_size = (0.0, 0.0);
@@ -341,9 +349,8 @@ impl Panel {
     }
     pub fn surface(&mut self, resource: &str, event: SurfaceInput, now: Instant) -> bool {
         if resource == TRANSCRIPT {
-            if matches!(event, SurfaceInput::Move { .. }) && !self.transcript.dragging() {
-                return false;
-            }
+            let version = self.transcript.version();
+            let moved = matches!(event, SurfaceInput::Move { .. });
             let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
             if matches!(event, SurfaceInput::Down { .. }) {
                 self.press_revision = Some(self.session.revision);
@@ -395,7 +402,7 @@ impl Panel {
                     }
                 }
             }
-            return true;
+            return !moved || version != self.transcript.version();
         }
         if resource == COMPOSER {
             if matches!(event, SurfaceInput::Move { .. })

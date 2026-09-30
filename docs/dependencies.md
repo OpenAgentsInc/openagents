@@ -57,6 +57,22 @@ The editing design is reimplemented from Zeron's public `ComposerInput` at
 `ed3b1aae4a5189eef67143db7b8c5c3ee7a933c5`. No GPUI, Zeron source, assets, or
 new platform runtime are vendored by this foundation.
 
+## Transcript syntax dependencies
+
+Rust Native uses `tree-sitter-highlight` 0.27.0 and the official Tree-sitter
+Rust, Python, JSON, Bash, JavaScript, TypeScript, Go, C, C++, HTML, and CSS
+grammar crates. The root and phone lockfiles pin their resolved versions.
+These crates come from crates.io and declare MIT licenses; their registry
+packages retain their license texts and grammar attribution. Distribution
+builds must retain those notices. The implementation imports their published
+Rust APIs and queries; it vendors no grammar or Zeron source.
+
+Highlighting runs on a bounded worker and supplies foreground spans only.
+The application does not load grammars or execute code from a message. The
+September 30 dependency gate reports the same 29 existing failures as the
+parent commit, with no new failures from these dependencies. See the
+[rich text receipt](desktop/verification/2026-09-30-rich-text/verification.md).
+
 ## The paste exception
 
 [RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436) reports

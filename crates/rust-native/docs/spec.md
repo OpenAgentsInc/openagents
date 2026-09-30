@@ -55,6 +55,19 @@ button carries no executable command or application intent. Transcript stack
 spacing maps `none`, `xs`, `sm`, `md`, and `lg` to 0, 4, 8, 16, and 24 points.
 Explicit stack padding and background frame a card inside the reading band.
 
+Transcript display lists can identify code paragraph fields in `code_blocks`.
+The shared `syntax::Cache` returns bounded foreground spans asynchronously;
+adapters apply them to shaped clusters without changing fonts, wrapping, or
+row geometry. Unknown languages and oversized inputs remain plain. Native
+adapters opt in to the worker and provide their own wake callback.
+
+`selection::Selection` stores stable row keys and grapheme-safe byte positions
+in display paragraph fields. Prepending and appending rows preserve endpoints;
+changing an endpoint's prefix or removing its row cancels them. Copy preserves
+selected bytes and adds a newline between fields and rows, including offscreen
+rows. Platform hit-testing supplies positions; the shared core owns selection
+validation, ordering, and copying.
+
 ## Revision and lifetime
 
 The application allocates a fresh instance when it mounts a new surface

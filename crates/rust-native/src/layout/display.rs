@@ -231,6 +231,13 @@ pub struct Accessibility {
     pub button: bool,
 }
 
+/// A code paragraph eligible for paint-only highlighting.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CodeBlock {
+    pub text: u32,
+    pub language: String,
+}
+
 /// Everything needed to paint one row.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct RowDisplay {
@@ -244,6 +251,8 @@ pub struct RowDisplay {
     /// Paragraph texts that runs slice.
     pub texts: Vec<String>,
     pub runs: Vec<Run>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub code_blocks: Vec<CodeBlock>,
     pub rects: Vec<Rect>,
     pub links: Vec<Link>,
     pub widgets: Vec<Widget>,
@@ -269,6 +278,7 @@ impl RowDisplay {
     pub(crate) fn mark(&self) -> Mark {
         Mark {
             texts: self.texts.len(),
+            code_blocks: self.code_blocks.len(),
             styles: self.styles.len(),
             runs: self.runs.len(),
             rects: self.rects.len(),
@@ -329,6 +339,7 @@ impl RowDisplay {
     /// Drops everything added since `mark`.
     pub(crate) fn truncate_to(&mut self, mark: Mark) {
         self.texts.truncate(mark.texts);
+        self.code_blocks.truncate(mark.code_blocks);
         self.styles.truncate(mark.styles);
         self.runs.truncate(mark.runs);
         self.rects.truncate(mark.rects);
@@ -345,6 +356,7 @@ impl RowDisplay {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Mark {
     pub(crate) texts: usize,
+    pub(crate) code_blocks: usize,
     pub(crate) styles: usize,
     pub(crate) runs: usize,
     pub(crate) rects: usize,

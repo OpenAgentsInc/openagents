@@ -1,0 +1,6286 @@
+{
+  "schema": "openagents.desktop.performance.v1",
+  "platform": "macos",
+  "points": [
+    1200.0,
+    840.0
+  ],
+  "scale": 2.0,
+  "backdrop": true,
+  "rows": 3300,
+  "chats": 500,
+  "samples": [
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2298,
+        "paint_us": 1013,
+        "upload_us": 632,
+        "acquire_us": 29,
+        "present_us": 618,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 128,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2117,
+        "paint_us": 1006,
+        "upload_us": 524,
+        "acquire_us": 17,
+        "present_us": 565,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2274,
+        "paint_us": 960,
+        "upload_us": 712,
+        "acquire_us": 23,
+        "present_us": 574,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 141,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2288,
+        "paint_us": 948,
+        "upload_us": 678,
+        "acquire_us": 28,
+        "present_us": 629,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 123,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2062,
+        "paint_us": 908,
+        "upload_us": 599,
+        "acquire_us": 24,
+        "present_us": 525,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 123,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2294,
+        "paint_us": 1039,
+        "upload_us": 642,
+        "acquire_us": 32,
+        "present_us": 576,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 136,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2326,
+        "paint_us": 988,
+        "upload_us": 720,
+        "acquire_us": 27,
+        "present_us": 586,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 115,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2539,
+        "paint_us": 1133,
+        "upload_us": 787,
+        "acquire_us": 22,
+        "present_us": 592,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 126,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2282,
+        "paint_us": 1010,
+        "upload_us": 655,
+        "acquire_us": 25,
+        "present_us": 586,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 121,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1937,
+        "paint_us": 864,
+        "upload_us": 566,
+        "acquire_us": 21,
+        "present_us": 482,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 131,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2291,
+        "paint_us": 952,
+        "upload_us": 708,
+        "acquire_us": 28,
+        "present_us": 598,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 141,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2212,
+        "paint_us": 993,
+        "upload_us": 599,
+        "acquire_us": 26,
+        "present_us": 589,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 131,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2187,
+        "paint_us": 1016,
+        "upload_us": 545,
+        "acquire_us": 20,
+        "present_us": 601,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2083,
+        "paint_us": 894,
+        "upload_us": 559,
+        "acquire_us": 19,
+        "present_us": 607,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 135,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1921,
+        "paint_us": 834,
+        "upload_us": 539,
+        "acquire_us": 20,
+        "present_us": 523,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 125,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2155,
+        "paint_us": 977,
+        "upload_us": 583,
+        "acquire_us": 24,
+        "present_us": 567,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 134,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2065,
+        "paint_us": 900,
+        "upload_us": 578,
+        "acquire_us": 17,
+        "present_us": 565,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2131,
+        "paint_us": 915,
+        "upload_us": 676,
+        "acquire_us": 19,
+        "present_us": 515,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 132,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2199,
+        "paint_us": 923,
+        "upload_us": 682,
+        "acquire_us": 25,
+        "present_us": 563,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1833,
+        "paint_us": 813,
+        "upload_us": 522,
+        "acquire_us": 19,
+        "present_us": 474,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 125,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2070,
+        "paint_us": 830,
+        "upload_us": 727,
+        "acquire_us": 16,
+        "present_us": 490,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 126,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1847,
+        "paint_us": 798,
+        "upload_us": 512,
+        "acquire_us": 19,
+        "present_us": 512,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 123,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2313,
+        "paint_us": 1083,
+        "upload_us": 566,
+        "acquire_us": 26,
+        "present_us": 631,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 136,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2618,
+        "paint_us": 1066,
+        "upload_us": 889,
+        "acquire_us": 20,
+        "present_us": 638,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 149,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2109,
+        "paint_us": 1006,
+        "upload_us": 568,
+        "acquire_us": 20,
+        "present_us": 511,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 157,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2786,
+        "paint_us": 1017,
+        "upload_us": 911,
+        "acquire_us": 25,
+        "present_us": 827,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 138,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2502,
+        "paint_us": 883,
+        "upload_us": 955,
+        "acquire_us": 25,
+        "present_us": 632,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 140,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2802,
+        "paint_us": 1161,
+        "upload_us": 846,
+        "acquire_us": 44,
+        "present_us": 745,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 132,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2797,
+        "paint_us": 1242,
+        "upload_us": 823,
+        "acquire_us": 18,
+        "present_us": 709,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2337,
+        "paint_us": 899,
+        "upload_us": 768,
+        "acquire_us": 31,
+        "present_us": 634,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 139,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2026,
+        "paint_us": 955,
+        "upload_us": 535,
+        "acquire_us": 14,
+        "present_us": 517,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2320,
+        "paint_us": 966,
+        "upload_us": 750,
+        "acquire_us": 34,
+        "present_us": 566,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2637,
+        "paint_us": 1128,
+        "upload_us": 870,
+        "acquire_us": 25,
+        "present_us": 609,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 145,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2729,
+        "paint_us": 1073,
+        "upload_us": 897,
+        "acquire_us": 23,
+        "present_us": 731,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 146,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2394,
+        "paint_us": 1007,
+        "upload_us": 733,
+        "acquire_us": 29,
+        "present_us": 620,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2243,
+        "paint_us": 985,
+        "upload_us": 757,
+        "acquire_us": 28,
+        "present_us": 468,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 141,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2293,
+        "paint_us": 1088,
+        "upload_us": 676,
+        "acquire_us": 21,
+        "present_us": 503,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 134,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2574,
+        "paint_us": 1130,
+        "upload_us": 744,
+        "acquire_us": 18,
+        "present_us": 674,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 155,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2807,
+        "paint_us": 1230,
+        "upload_us": 828,
+        "acquire_us": 25,
+        "present_us": 716,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 243,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2260,
+        "paint_us": 950,
+        "upload_us": 683,
+        "acquire_us": 24,
+        "present_us": 598,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 4052,
+        "paint_us": 1945,
+        "upload_us": 1132,
+        "acquire_us": 45,
+        "present_us": 921,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 245,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2061,
+        "paint_us": 865,
+        "upload_us": 590,
+        "acquire_us": 19,
+        "present_us": 580,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 126,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 4024,
+        "paint_us": 2030,
+        "upload_us": 1136,
+        "acquire_us": 47,
+        "present_us": 804,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 239,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1993,
+        "paint_us": 856,
+        "upload_us": 615,
+        "acquire_us": 19,
+        "present_us": 499,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 226,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1971,
+        "paint_us": 811,
+        "upload_us": 619,
+        "acquire_us": 23,
+        "present_us": 512,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 3599,
+        "paint_us": 1915,
+        "upload_us": 1060,
+        "acquire_us": 24,
+        "present_us": 591,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 244,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 4223,
+        "paint_us": 2007,
+        "upload_us": 1083,
+        "acquire_us": 71,
+        "present_us": 1054,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 241,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2406,
+        "paint_us": 1093,
+        "upload_us": 682,
+        "acquire_us": 28,
+        "present_us": 594,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 4029,
+        "paint_us": 2020,
+        "upload_us": 1187,
+        "acquire_us": 47,
+        "present_us": 766,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 246,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2996,
+        "paint_us": 1267,
+        "upload_us": 919,
+        "acquire_us": 27,
+        "present_us": 776,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 144,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 3035,
+        "paint_us": 1912,
+        "upload_us": 540,
+        "acquire_us": 22,
+        "present_us": 543,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 270,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2390,
+        "paint_us": 1084,
+        "upload_us": 767,
+        "acquire_us": 20,
+        "present_us": 513,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 137,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1931,
+        "paint_us": 885,
+        "upload_us": 543,
+        "acquire_us": 18,
+        "present_us": 479,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2141,
+        "paint_us": 1048,
+        "upload_us": 585,
+        "acquire_us": 17,
+        "present_us": 486,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 3323,
+        "paint_us": 1864,
+        "upload_us": 790,
+        "acquire_us": 33,
+        "present_us": 628,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 242,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2312,
+        "paint_us": 1014,
+        "upload_us": 683,
+        "acquire_us": 29,
+        "present_us": 579,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 136,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2232,
+        "paint_us": 927,
+        "upload_us": 702,
+        "acquire_us": 27,
+        "present_us": 570,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 136,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2124,
+        "paint_us": 907,
+        "upload_us": 607,
+        "acquire_us": 24,
+        "present_us": 581,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 3080,
+        "paint_us": 1903,
+        "upload_us": 632,
+        "acquire_us": 22,
+        "present_us": 514,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 247,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2451,
+        "paint_us": 1160,
+        "upload_us": 719,
+        "acquire_us": 28,
+        "present_us": 538,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 119,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1979,
+        "paint_us": 906,
+        "upload_us": 524,
+        "acquire_us": 18,
+        "present_us": 526,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 145,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2405,
+        "paint_us": 1119,
+        "upload_us": 754,
+        "acquire_us": 20,
+        "present_us": 508,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 134,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2351,
+        "paint_us": 1025,
+        "upload_us": 686,
+        "acquire_us": 30,
+        "present_us": 604,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 135,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2694,
+        "paint_us": 1075,
+        "upload_us": 885,
+        "acquire_us": 22,
+        "present_us": 706,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 140,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2423,
+        "paint_us": 1099,
+        "upload_us": 765,
+        "acquire_us": 20,
+        "present_us": 535,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 128,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2503,
+        "paint_us": 1293,
+        "upload_us": 633,
+        "acquire_us": 31,
+        "present_us": 541,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 141,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2329,
+        "paint_us": 919,
+        "upload_us": 735,
+        "acquire_us": 33,
+        "present_us": 637,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2175,
+        "paint_us": 974,
+        "upload_us": 595,
+        "acquire_us": 27,
+        "present_us": 573,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 140,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2091,
+        "paint_us": 929,
+        "upload_us": 587,
+        "acquire_us": 25,
+        "present_us": 546,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 132,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1932,
+        "paint_us": 846,
+        "upload_us": 548,
+        "acquire_us": 20,
+        "present_us": 511,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2047,
+        "paint_us": 826,
+        "upload_us": 616,
+        "acquire_us": 27,
+        "present_us": 573,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2156,
+        "paint_us": 936,
+        "upload_us": 579,
+        "acquire_us": 26,
+        "present_us": 609,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2107,
+        "paint_us": 868,
+        "upload_us": 645,
+        "acquire_us": 23,
+        "present_us": 565,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 129,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2044,
+        "paint_us": 828,
+        "upload_us": 623,
+        "acquire_us": 20,
+        "present_us": 568,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 132,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2130,
+        "paint_us": 854,
+        "upload_us": 659,
+        "acquire_us": 25,
+        "present_us": 585,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 128,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1919,
+        "paint_us": 831,
+        "upload_us": 524,
+        "acquire_us": 17,
+        "present_us": 541,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2088,
+        "paint_us": 921,
+        "upload_us": 630,
+        "acquire_us": 27,
+        "present_us": 504,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 147,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2013,
+        "paint_us": 958,
+        "upload_us": 561,
+        "acquire_us": 16,
+        "present_us": 473,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 118,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2305,
+        "paint_us": 1003,
+        "upload_us": 664,
+        "acquire_us": 25,
+        "present_us": 608,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 136,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2156,
+        "paint_us": 897,
+        "upload_us": 596,
+        "acquire_us": 23,
+        "present_us": 634,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 136,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2211,
+        "paint_us": 812,
+        "upload_us": 762,
+        "acquire_us": 21,
+        "present_us": 611,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 122,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2182,
+        "paint_us": 955,
+        "upload_us": 641,
+        "acquire_us": 22,
+        "present_us": 559,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 128,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2116,
+        "paint_us": 933,
+        "upload_us": 616,
+        "acquire_us": 23,
+        "present_us": 539,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2245,
+        "paint_us": 1011,
+        "upload_us": 653,
+        "acquire_us": 28,
+        "present_us": 549,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 128,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2145,
+        "paint_us": 857,
+        "upload_us": 698,
+        "acquire_us": 25,
+        "present_us": 559,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 129,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1944,
+        "paint_us": 787,
+        "upload_us": 555,
+        "acquire_us": 16,
+        "present_us": 582,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 120,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2065,
+        "paint_us": 828,
+        "upload_us": 733,
+        "acquire_us": 19,
+        "present_us": 480,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 123,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2189,
+        "paint_us": 868,
+        "upload_us": 690,
+        "acquire_us": 24,
+        "present_us": 601,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 129,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2098,
+        "paint_us": 893,
+        "upload_us": 616,
+        "acquire_us": 24,
+        "present_us": 561,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 125,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1937,
+        "paint_us": 820,
+        "upload_us": 576,
+        "acquire_us": 22,
+        "present_us": 514,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 124,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2054,
+        "paint_us": 842,
+        "upload_us": 672,
+        "acquire_us": 22,
+        "present_us": 512,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 132,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1919,
+        "paint_us": 811,
+        "upload_us": 584,
+        "acquire_us": 20,
+        "present_us": 498,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2149,
+        "paint_us": 903,
+        "upload_us": 631,
+        "acquire_us": 23,
+        "present_us": 586,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 134,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1937,
+        "paint_us": 856,
+        "upload_us": 532,
+        "acquire_us": 21,
+        "present_us": 523,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 130,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1895,
+        "paint_us": 794,
+        "upload_us": 582,
+        "acquire_us": 19,
+        "present_us": 495,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 128,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 3048,
+        "paint_us": 1887,
+        "upload_us": 603,
+        "acquire_us": 18,
+        "present_us": 533,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 241,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1853,
+        "paint_us": 806,
+        "upload_us": 570,
+        "acquire_us": 16,
+        "present_us": 458,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 122,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1976,
+        "paint_us": 888,
+        "upload_us": 565,
+        "acquire_us": 20,
+        "present_us": 498,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1953,
+        "paint_us": 819,
+        "upload_us": 637,
+        "acquire_us": 18,
+        "present_us": 474,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 124,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1829,
+        "paint_us": 777,
+        "upload_us": 575,
+        "acquire_us": 16,
+        "present_us": 456,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 121,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2941,
+        "paint_us": 1855,
+        "upload_us": 582,
+        "acquire_us": 19,
+        "present_us": 476,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 245,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 4017,
+        "paint_us": 1893,
+        "upload_us": 1053,
+        "acquire_us": 39,
+        "present_us": 1024,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 252,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2613,
+        "paint_us": 1388,
+        "upload_us": 674,
+        "acquire_us": 20,
+        "present_us": 523,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 243,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2100,
+        "paint_us": 905,
+        "upload_us": 605,
+        "acquire_us": 24,
+        "present_us": 560,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2237,
+        "paint_us": 869,
+        "upload_us": 807,
+        "acquire_us": 23,
+        "present_us": 533,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 133,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1908,
+        "paint_us": 815,
+        "upload_us": 566,
+        "acquire_us": 19,
+        "present_us": 501,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 126,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2103,
+        "paint_us": 838,
+        "upload_us": 690,
+        "acquire_us": 24,
+        "present_us": 546,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 125,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1968,
+        "paint_us": 892,
+        "upload_us": 572,
+        "acquire_us": 18,
+        "present_us": 483,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 129,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 1974,
+        "paint_us": 831,
+        "upload_us": 621,
+        "acquire_us": 20,
+        "present_us": 497,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 125,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2084,
+        "paint_us": 848,
+        "upload_us": 701,
+        "acquire_us": 24,
+        "present_us": 506,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 132,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2318,
+        "paint_us": 1024,
+        "upload_us": 686,
+        "acquire_us": 25,
+        "present_us": 577,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 134,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2136,
+        "paint_us": 911,
+        "upload_us": 720,
+        "acquire_us": 20,
+        "present_us": 481,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 144,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2485,
+        "paint_us": 1093,
+        "upload_us": 776,
+        "acquire_us": 23,
+        "present_us": 587,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 127,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2209,
+        "paint_us": 901,
+        "upload_us": 686,
+        "acquire_us": 22,
+        "present_us": 594,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 135,
+      "rows": 3300,
+      "visible_rows": 6,
+      "relaid": 3300
+    },
+    {
+      "phase": "scroll",
+      "frame": {
+        "total_us": 2027,
+        "paint_us": 882,
+        "upload_us": 600,
+        "acquire_us": 20,
+        "present_us": 519,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 126,
+      "rows": 3300,
+      "visible_rows": 5,
+      "relaid": 3300
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1991,
+        "paint_us": 850,
+        "upload_us": 614,
+        "acquire_us": 22,
+        "present_us": 501,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3581,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2117,
+        "paint_us": 874,
+        "upload_us": 642,
+        "acquire_us": 20,
+        "present_us": 575,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3676,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2110,
+        "paint_us": 877,
+        "upload_us": 640,
+        "acquire_us": 27,
+        "present_us": 561,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3650,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2114,
+        "paint_us": 827,
+        "upload_us": 707,
+        "acquire_us": 22,
+        "present_us": 554,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3582,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1968,
+        "paint_us": 809,
+        "upload_us": 641,
+        "acquire_us": 22,
+        "present_us": 492,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3562,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1957,
+        "paint_us": 794,
+        "upload_us": 627,
+        "acquire_us": 21,
+        "present_us": 512,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3594,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1948,
+        "paint_us": 837,
+        "upload_us": 586,
+        "acquire_us": 19,
+        "present_us": 501,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3609,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2269,
+        "paint_us": 811,
+        "upload_us": 898,
+        "acquire_us": 20,
+        "present_us": 537,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3687,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2098,
+        "paint_us": 888,
+        "upload_us": 650,
+        "acquire_us": 26,
+        "present_us": 529,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3958,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2025,
+        "paint_us": 845,
+        "upload_us": 607,
+        "acquire_us": 21,
+        "present_us": 546,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3822,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1947,
+        "paint_us": 833,
+        "upload_us": 562,
+        "acquire_us": 20,
+        "present_us": 528,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3829,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2153,
+        "paint_us": 891,
+        "upload_us": 681,
+        "acquire_us": 24,
+        "present_us": 552,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3967,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2081,
+        "paint_us": 830,
+        "upload_us": 659,
+        "acquire_us": 24,
+        "present_us": 563,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3823,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2155,
+        "paint_us": 903,
+        "upload_us": 649,
+        "acquire_us": 24,
+        "present_us": 573,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4425,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2088,
+        "paint_us": 863,
+        "upload_us": 684,
+        "acquire_us": 26,
+        "present_us": 510,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3829,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2156,
+        "paint_us": 836,
+        "upload_us": 739,
+        "acquire_us": 23,
+        "present_us": 553,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4131,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2065,
+        "paint_us": 843,
+        "upload_us": 651,
+        "acquire_us": 21,
+        "present_us": 544,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 3993,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2081,
+        "paint_us": 854,
+        "upload_us": 705,
+        "acquire_us": 20,
+        "present_us": 497,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4271,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2032,
+        "paint_us": 818,
+        "upload_us": 650,
+        "acquire_us": 26,
+        "present_us": 535,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4001,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2118,
+        "paint_us": 851,
+        "upload_us": 703,
+        "acquire_us": 22,
+        "present_us": 535,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4206,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2085,
+        "paint_us": 869,
+        "upload_us": 642,
+        "acquire_us": 28,
+        "present_us": 541,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4157,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2227,
+        "paint_us": 822,
+        "upload_us": 807,
+        "acquire_us": 21,
+        "present_us": 573,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4010,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2029,
+        "paint_us": 882,
+        "upload_us": 626,
+        "acquire_us": 22,
+        "present_us": 489,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4287,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2238,
+        "paint_us": 915,
+        "upload_us": 746,
+        "acquire_us": 32,
+        "present_us": 540,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4026,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2455,
+        "paint_us": 856,
+        "upload_us": 937,
+        "acquire_us": 21,
+        "present_us": 638,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4158,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2297,
+        "paint_us": 955,
+        "upload_us": 738,
+        "acquire_us": 24,
+        "present_us": 576,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4149,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2242,
+        "paint_us": 895,
+        "upload_us": 770,
+        "acquire_us": 26,
+        "present_us": 545,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4672,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2353,
+        "paint_us": 917,
+        "upload_us": 839,
+        "acquire_us": 28,
+        "present_us": 564,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4202,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2045,
+        "paint_us": 845,
+        "upload_us": 674,
+        "acquire_us": 20,
+        "present_us": 501,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4725,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2278,
+        "paint_us": 929,
+        "upload_us": 761,
+        "acquire_us": 32,
+        "present_us": 550,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4254,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2108,
+        "paint_us": 855,
+        "upload_us": 641,
+        "acquire_us": 38,
+        "present_us": 570,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4211,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2191,
+        "paint_us": 910,
+        "upload_us": 710,
+        "acquire_us": 29,
+        "present_us": 536,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4329,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1957,
+        "paint_us": 865,
+        "upload_us": 602,
+        "acquire_us": 20,
+        "present_us": 465,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4515,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2108,
+        "paint_us": 846,
+        "upload_us": 722,
+        "acquire_us": 24,
+        "present_us": 511,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4367,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2280,
+        "paint_us": 913,
+        "upload_us": 790,
+        "acquire_us": 29,
+        "present_us": 543,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4343,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2212,
+        "paint_us": 906,
+        "upload_us": 738,
+        "acquire_us": 27,
+        "present_us": 536,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4212,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2153,
+        "paint_us": 890,
+        "upload_us": 701,
+        "acquire_us": 26,
+        "present_us": 530,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4317,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2291,
+        "paint_us": 882,
+        "upload_us": 769,
+        "acquire_us": 31,
+        "present_us": 604,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4207,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2277,
+        "paint_us": 834,
+        "upload_us": 824,
+        "acquire_us": 22,
+        "present_us": 591,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4179,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2176,
+        "paint_us": 840,
+        "upload_us": 776,
+        "acquire_us": 26,
+        "present_us": 530,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4146,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2060,
+        "paint_us": 864,
+        "upload_us": 645,
+        "acquire_us": 19,
+        "present_us": 524,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4377,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2285,
+        "paint_us": 869,
+        "upload_us": 788,
+        "acquire_us": 30,
+        "present_us": 593,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4090,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2291,
+        "paint_us": 953,
+        "upload_us": 712,
+        "acquire_us": 30,
+        "present_us": 590,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4527,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2373,
+        "paint_us": 849,
+        "upload_us": 905,
+        "acquire_us": 25,
+        "present_us": 589,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4207,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2000,
+        "paint_us": 821,
+        "upload_us": 607,
+        "acquire_us": 22,
+        "present_us": 546,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4150,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2080,
+        "paint_us": 854,
+        "upload_us": 597,
+        "acquire_us": 24,
+        "present_us": 599,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4286,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2116,
+        "paint_us": 849,
+        "upload_us": 701,
+        "acquire_us": 27,
+        "present_us": 534,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4208,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1967,
+        "paint_us": 814,
+        "upload_us": 645,
+        "acquire_us": 21,
+        "present_us": 482,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4391,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2162,
+        "paint_us": 836,
+        "upload_us": 740,
+        "acquire_us": 22,
+        "present_us": 560,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4189,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1895,
+        "paint_us": 804,
+        "upload_us": 561,
+        "acquire_us": 20,
+        "present_us": 506,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4225,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2050,
+        "paint_us": 808,
+        "upload_us": 668,
+        "acquire_us": 21,
+        "present_us": 549,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4315,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1875,
+        "paint_us": 805,
+        "upload_us": 537,
+        "acquire_us": 18,
+        "present_us": 510,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4235,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2001,
+        "paint_us": 796,
+        "upload_us": 631,
+        "acquire_us": 21,
+        "present_us": 549,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4355,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2199,
+        "paint_us": 877,
+        "upload_us": 686,
+        "acquire_us": 29,
+        "present_us": 603,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4571,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2081,
+        "paint_us": 869,
+        "upload_us": 663,
+        "acquire_us": 22,
+        "present_us": 523,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4398,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1992,
+        "paint_us": 842,
+        "upload_us": 611,
+        "acquire_us": 23,
+        "present_us": 512,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4501,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1973,
+        "paint_us": 838,
+        "upload_us": 599,
+        "acquire_us": 20,
+        "present_us": 512,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4617,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2132,
+        "paint_us": 880,
+        "upload_us": 650,
+        "acquire_us": 23,
+        "present_us": 573,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4463,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1992,
+        "paint_us": 849,
+        "upload_us": 610,
+        "acquire_us": 20,
+        "present_us": 508,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4565,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1948,
+        "paint_us": 801,
+        "upload_us": 602,
+        "acquire_us": 19,
+        "present_us": 524,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4565,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2179,
+        "paint_us": 867,
+        "upload_us": 700,
+        "acquire_us": 23,
+        "present_us": 584,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5069,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2141,
+        "paint_us": 885,
+        "upload_us": 666,
+        "acquire_us": 25,
+        "present_us": 559,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4905,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1993,
+        "paint_us": 824,
+        "upload_us": 624,
+        "acquire_us": 23,
+        "present_us": 517,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4813,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2017,
+        "paint_us": 873,
+        "upload_us": 576,
+        "acquire_us": 22,
+        "present_us": 542,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5324,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2064,
+        "paint_us": 878,
+        "upload_us": 619,
+        "acquire_us": 27,
+        "present_us": 535,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5340,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2040,
+        "paint_us": 876,
+        "upload_us": 611,
+        "acquire_us": 26,
+        "present_us": 521,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5433,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2159,
+        "paint_us": 872,
+        "upload_us": 718,
+        "acquire_us": 23,
+        "present_us": 540,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4736,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2005,
+        "paint_us": 872,
+        "upload_us": 586,
+        "acquire_us": 23,
+        "present_us": 518,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5293,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2217,
+        "paint_us": 911,
+        "upload_us": 675,
+        "acquire_us": 31,
+        "present_us": 594,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4680,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2080,
+        "paint_us": 905,
+        "upload_us": 634,
+        "acquire_us": 24,
+        "present_us": 511,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4950,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2206,
+        "paint_us": 922,
+        "upload_us": 730,
+        "acquire_us": 27,
+        "present_us": 523,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4575,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1953,
+        "paint_us": 819,
+        "upload_us": 594,
+        "acquire_us": 22,
+        "present_us": 514,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5342,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2039,
+        "paint_us": 806,
+        "upload_us": 668,
+        "acquire_us": 19,
+        "present_us": 541,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4590,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1960,
+        "paint_us": 810,
+        "upload_us": 641,
+        "acquire_us": 19,
+        "present_us": 485,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4796,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2042,
+        "paint_us": 856,
+        "upload_us": 626,
+        "acquire_us": 24,
+        "present_us": 532,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4549,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2038,
+        "paint_us": 862,
+        "upload_us": 634,
+        "acquire_us": 23,
+        "present_us": 515,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4568,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1902,
+        "paint_us": 831,
+        "upload_us": 539,
+        "acquire_us": 20,
+        "present_us": 508,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4516,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1964,
+        "paint_us": 842,
+        "upload_us": 609,
+        "acquire_us": 19,
+        "present_us": 490,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5068,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1859,
+        "paint_us": 789,
+        "upload_us": 583,
+        "acquire_us": 18,
+        "present_us": 466,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4432,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2173,
+        "paint_us": 886,
+        "upload_us": 679,
+        "acquire_us": 27,
+        "present_us": 576,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4651,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1956,
+        "paint_us": 854,
+        "upload_us": 569,
+        "acquire_us": 24,
+        "present_us": 504,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4726,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2093,
+        "paint_us": 861,
+        "upload_us": 649,
+        "acquire_us": 26,
+        "present_us": 553,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4693,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1976,
+        "paint_us": 836,
+        "upload_us": 589,
+        "acquire_us": 21,
+        "present_us": 525,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4419,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2108,
+        "paint_us": 870,
+        "upload_us": 678,
+        "acquire_us": 22,
+        "present_us": 532,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5022,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1952,
+        "paint_us": 885,
+        "upload_us": 532,
+        "acquire_us": 23,
+        "present_us": 506,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4450,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2072,
+        "paint_us": 858,
+        "upload_us": 652,
+        "acquire_us": 28,
+        "present_us": 529,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4600,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1917,
+        "paint_us": 853,
+        "upload_us": 540,
+        "acquire_us": 24,
+        "present_us": 494,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4723,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2023,
+        "paint_us": 814,
+        "upload_us": 690,
+        "acquire_us": 22,
+        "present_us": 492,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4662,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1916,
+        "paint_us": 810,
+        "upload_us": 562,
+        "acquire_us": 24,
+        "present_us": 515,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4864,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2156,
+        "paint_us": 883,
+        "upload_us": 693,
+        "acquire_us": 24,
+        "present_us": 551,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4948,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1984,
+        "paint_us": 825,
+        "upload_us": 608,
+        "acquire_us": 24,
+        "present_us": 522,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4488,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2054,
+        "paint_us": 851,
+        "upload_us": 657,
+        "acquire_us": 24,
+        "present_us": 518,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4595,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1979,
+        "paint_us": 827,
+        "upload_us": 603,
+        "acquire_us": 22,
+        "present_us": 521,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5176,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2329,
+        "paint_us": 951,
+        "upload_us": 729,
+        "acquire_us": 34,
+        "present_us": 610,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4783,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1921,
+        "paint_us": 858,
+        "upload_us": 562,
+        "acquire_us": 20,
+        "present_us": 476,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4977,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2305,
+        "paint_us": 964,
+        "upload_us": 764,
+        "acquire_us": 29,
+        "present_us": 543,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4830,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2242,
+        "paint_us": 961,
+        "upload_us": 718,
+        "acquire_us": 26,
+        "present_us": 532,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5357,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2064,
+        "paint_us": 871,
+        "upload_us": 617,
+        "acquire_us": 25,
+        "present_us": 545,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4655,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2041,
+        "paint_us": 825,
+        "upload_us": 630,
+        "acquire_us": 22,
+        "present_us": 559,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5084,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1932,
+        "paint_us": 810,
+        "upload_us": 553,
+        "acquire_us": 24,
+        "present_us": 539,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4650,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2274,
+        "paint_us": 891,
+        "upload_us": 802,
+        "acquire_us": 28,
+        "present_us": 547,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4940,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1930,
+        "paint_us": 799,
+        "upload_us": 544,
+        "acquire_us": 21,
+        "present_us": 562,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5067,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2311,
+        "paint_us": 912,
+        "upload_us": 813,
+        "acquire_us": 24,
+        "present_us": 557,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4954,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2061,
+        "paint_us": 883,
+        "upload_us": 606,
+        "acquire_us": 29,
+        "present_us": 537,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5201,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2088,
+        "paint_us": 865,
+        "upload_us": 592,
+        "acquire_us": 23,
+        "present_us": 603,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4921,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2057,
+        "paint_us": 860,
+        "upload_us": 581,
+        "acquire_us": 26,
+        "present_us": 585,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4567,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1897,
+        "paint_us": 806,
+        "upload_us": 552,
+        "acquire_us": 21,
+        "present_us": 514,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 4959,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2258,
+        "paint_us": 868,
+        "upload_us": 746,
+        "acquire_us": 28,
+        "present_us": 610,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5218,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2186,
+        "paint_us": 860,
+        "upload_us": 768,
+        "acquire_us": 29,
+        "present_us": 524,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5347,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 1974,
+        "paint_us": 829,
+        "upload_us": 605,
+        "acquire_us": 24,
+        "present_us": 511,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5354,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2141,
+        "paint_us": 871,
+        "upload_us": 665,
+        "acquire_us": 30,
+        "present_us": 569,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5328,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2039,
+        "paint_us": 819,
+        "upload_us": 660,
+        "acquire_us": 24,
+        "present_us": 531,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5496,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2222,
+        "paint_us": 933,
+        "upload_us": 682,
+        "acquire_us": 28,
+        "present_us": 573,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5284,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2113,
+        "paint_us": 862,
+        "upload_us": 709,
+        "acquire_us": 27,
+        "present_us": 509,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5552,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "streaming",
+      "frame": {
+        "total_us": 2080,
+        "paint_us": 841,
+        "upload_us": 678,
+        "acquire_us": 23,
+        "present_us": 532,
+        "damaged_pixels": 1367808,
+        "regions": 1
+      },
+      "step_us": 5438,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2167,
+        "paint_us": 852,
+        "upload_us": 551,
+        "acquire_us": 27,
+        "present_us": 544,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2138,
+        "paint_us": 843,
+        "upload_us": 495,
+        "acquire_us": 25,
+        "present_us": 577,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2029,
+        "paint_us": 824,
+        "upload_us": 431,
+        "acquire_us": 25,
+        "present_us": 556,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2047,
+        "paint_us": 835,
+        "upload_us": 454,
+        "acquire_us": 24,
+        "present_us": 546,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2007,
+        "paint_us": 800,
+        "upload_us": 480,
+        "acquire_us": 21,
+        "present_us": 514,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2134,
+        "paint_us": 823,
+        "upload_us": 562,
+        "acquire_us": 24,
+        "present_us": 523,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1914,
+        "paint_us": 803,
+        "upload_us": 428,
+        "acquire_us": 19,
+        "present_us": 476,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2058,
+        "paint_us": 832,
+        "upload_us": 444,
+        "acquire_us": 26,
+        "present_us": 562,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2032,
+        "paint_us": 836,
+        "upload_us": 447,
+        "acquire_us": 24,
+        "present_us": 531,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1933,
+        "paint_us": 794,
+        "upload_us": 431,
+        "acquire_us": 23,
+        "present_us": 492,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2017,
+        "paint_us": 794,
+        "upload_us": 534,
+        "acquire_us": 18,
+        "present_us": 484,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1954,
+        "paint_us": 802,
+        "upload_us": 431,
+        "acquire_us": 20,
+        "present_us": 514,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1917,
+        "paint_us": 772,
+        "upload_us": 422,
+        "acquire_us": 18,
+        "present_us": 525,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1975,
+        "paint_us": 816,
+        "upload_us": 434,
+        "acquire_us": 23,
+        "present_us": 512,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1944,
+        "paint_us": 798,
+        "upload_us": 419,
+        "acquire_us": 22,
+        "present_us": 519,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2291,
+        "paint_us": 886,
+        "upload_us": 687,
+        "acquire_us": 19,
+        "present_us": 512,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1973,
+        "paint_us": 792,
+        "upload_us": 416,
+        "acquire_us": 20,
+        "present_us": 561,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2404,
+        "paint_us": 831,
+        "upload_us": 678,
+        "acquire_us": 26,
+        "present_us": 681,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2021,
+        "paint_us": 819,
+        "upload_us": 424,
+        "acquire_us": 20,
+        "present_us": 571,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1919,
+        "paint_us": 783,
+        "upload_us": 426,
+        "acquire_us": 23,
+        "present_us": 503,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1938,
+        "paint_us": 795,
+        "upload_us": 451,
+        "acquire_us": 18,
+        "present_us": 486,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1937,
+        "paint_us": 796,
+        "upload_us": 442,
+        "acquire_us": 21,
+        "present_us": 488,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1942,
+        "paint_us": 808,
+        "upload_us": 410,
+        "acquire_us": 20,
+        "present_us": 516,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2015,
+        "paint_us": 782,
+        "upload_us": 468,
+        "acquire_us": 19,
+        "present_us": 550,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2040,
+        "paint_us": 843,
+        "upload_us": 423,
+        "acquire_us": 23,
+        "present_us": 557,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2017,
+        "paint_us": 842,
+        "upload_us": 444,
+        "acquire_us": 24,
+        "present_us": 520,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2012,
+        "paint_us": 823,
+        "upload_us": 432,
+        "acquire_us": 24,
+        "present_us": 542,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2085,
+        "paint_us": 812,
+        "upload_us": 528,
+        "acquire_us": 19,
+        "present_us": 538,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1921,
+        "paint_us": 805,
+        "upload_us": 409,
+        "acquire_us": 22,
+        "present_us": 494,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1955,
+        "paint_us": 795,
+        "upload_us": 446,
+        "acquire_us": 21,
+        "present_us": 506,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1989,
+        "paint_us": 815,
+        "upload_us": 470,
+        "acquire_us": 22,
+        "present_us": 498,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1984,
+        "paint_us": 793,
+        "upload_us": 452,
+        "acquire_us": 20,
+        "present_us": 532,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2041,
+        "paint_us": 827,
+        "upload_us": 441,
+        "acquire_us": 24,
+        "present_us": 562,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2010,
+        "paint_us": 844,
+        "upload_us": 460,
+        "acquire_us": 21,
+        "present_us": 497,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4259,
+        "paint_us": 1952,
+        "upload_us": 872,
+        "acquire_us": 34,
+        "present_us": 999,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3105,
+        "paint_us": 1494,
+        "upload_us": 569,
+        "acquire_us": 28,
+        "present_us": 621,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2410,
+        "paint_us": 1053,
+        "upload_us": 445,
+        "acquire_us": 30,
+        "present_us": 698,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2386,
+        "paint_us": 946,
+        "upload_us": 645,
+        "acquire_us": 24,
+        "present_us": 604,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1822,
+        "paint_us": 772,
+        "upload_us": 404,
+        "acquire_us": 13,
+        "present_us": 454,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2205,
+        "paint_us": 978,
+        "upload_us": 412,
+        "acquire_us": 20,
+        "present_us": 611,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2087,
+        "paint_us": 761,
+        "upload_us": 501,
+        "acquire_us": 21,
+        "present_us": 630,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2364,
+        "paint_us": 994,
+        "upload_us": 532,
+        "acquire_us": 28,
+        "present_us": 633,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2247,
+        "paint_us": 1063,
+        "upload_us": 450,
+        "acquire_us": 17,
+        "present_us": 528,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2294,
+        "paint_us": 821,
+        "upload_us": 580,
+        "acquire_us": 25,
+        "present_us": 682,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2071,
+        "paint_us": 928,
+        "upload_us": 407,
+        "acquire_us": 15,
+        "present_us": 545,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2252,
+        "paint_us": 1014,
+        "upload_us": 367,
+        "acquire_us": 16,
+        "present_us": 666,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1949,
+        "paint_us": 736,
+        "upload_us": 359,
+        "acquire_us": 13,
+        "present_us": 655,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2223,
+        "paint_us": 1028,
+        "upload_us": 456,
+        "acquire_us": 26,
+        "present_us": 526,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2325,
+        "paint_us": 1045,
+        "upload_us": 411,
+        "acquire_us": 17,
+        "present_us": 662,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1894,
+        "paint_us": 872,
+        "upload_us": 342,
+        "acquire_us": 13,
+        "present_us": 488,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2218,
+        "paint_us": 821,
+        "upload_us": 529,
+        "acquire_us": 25,
+        "present_us": 668,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3436,
+        "paint_us": 1667,
+        "upload_us": 793,
+        "acquire_us": 33,
+        "present_us": 531,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3169,
+        "paint_us": 1658,
+        "upload_us": 551,
+        "acquire_us": 23,
+        "present_us": 533,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3386,
+        "paint_us": 1677,
+        "upload_us": 820,
+        "acquire_us": 15,
+        "present_us": 456,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3278,
+        "paint_us": 1650,
+        "upload_us": 833,
+        "acquire_us": 10,
+        "present_us": 372,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3987,
+        "paint_us": 1659,
+        "upload_us": 865,
+        "acquire_us": 39,
+        "present_us": 1019,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3339,
+        "paint_us": 1724,
+        "upload_us": 591,
+        "acquire_us": 16,
+        "present_us": 573,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3242,
+        "paint_us": 1633,
+        "upload_us": 804,
+        "acquire_us": 10,
+        "present_us": 382,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2117,
+        "paint_us": 975,
+        "upload_us": 384,
+        "acquire_us": 15,
+        "present_us": 539,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2405,
+        "paint_us": 1061,
+        "upload_us": 467,
+        "acquire_us": 25,
+        "present_us": 667,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2212,
+        "paint_us": 992,
+        "upload_us": 358,
+        "acquire_us": 21,
+        "present_us": 668,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1911,
+        "paint_us": 827,
+        "upload_us": 410,
+        "acquire_us": 16,
+        "present_us": 479,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2171,
+        "paint_us": 886,
+        "upload_us": 504,
+        "acquire_us": 18,
+        "present_us": 591,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3866,
+        "paint_us": 1925,
+        "upload_us": 854,
+        "acquire_us": 18,
+        "present_us": 661,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3622,
+        "paint_us": 1775,
+        "upload_us": 842,
+        "acquire_us": 13,
+        "present_us": 583,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2468,
+        "paint_us": 1065,
+        "upload_us": 539,
+        "acquire_us": 42,
+        "present_us": 629,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2038,
+        "paint_us": 767,
+        "upload_us": 487,
+        "acquire_us": 18,
+        "present_us": 589,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2432,
+        "paint_us": 1081,
+        "upload_us": 417,
+        "acquire_us": 23,
+        "present_us": 734,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2268,
+        "paint_us": 995,
+        "upload_us": 494,
+        "acquire_us": 18,
+        "present_us": 587,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2217,
+        "paint_us": 1017,
+        "upload_us": 386,
+        "acquire_us": 18,
+        "present_us": 630,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2071,
+        "paint_us": 932,
+        "upload_us": 379,
+        "acquire_us": 9,
+        "present_us": 576,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2052,
+        "paint_us": 757,
+        "upload_us": 413,
+        "acquire_us": 18,
+        "present_us": 688,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2047,
+        "paint_us": 779,
+        "upload_us": 395,
+        "acquire_us": 14,
+        "present_us": 684,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3417,
+        "paint_us": 1621,
+        "upload_us": 874,
+        "acquire_us": 14,
+        "present_us": 520,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3873,
+        "paint_us": 1622,
+        "upload_us": 882,
+        "acquire_us": 37,
+        "present_us": 929,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2131,
+        "paint_us": 1016,
+        "upload_us": 362,
+        "acquire_us": 14,
+        "present_us": 555,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4007,
+        "paint_us": 1712,
+        "upload_us": 840,
+        "acquire_us": 36,
+        "present_us": 1003,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3563,
+        "paint_us": 1675,
+        "upload_us": 932,
+        "acquire_us": 29,
+        "present_us": 515,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 1964,
+        "paint_us": 829,
+        "upload_us": 361,
+        "acquire_us": 16,
+        "present_us": 579,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3894,
+        "paint_us": 1633,
+        "upload_us": 908,
+        "acquire_us": 49,
+        "present_us": 914,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3796,
+        "paint_us": 1691,
+        "upload_us": 989,
+        "acquire_us": 21,
+        "present_us": 689,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2596,
+        "paint_us": 1206,
+        "upload_us": 511,
+        "acquire_us": 20,
+        "present_us": 685,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4108,
+        "paint_us": 1708,
+        "upload_us": 1015,
+        "acquire_us": 38,
+        "present_us": 952,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3408,
+        "paint_us": 1626,
+        "upload_us": 751,
+        "acquire_us": 17,
+        "present_us": 573,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2501,
+        "paint_us": 1028,
+        "upload_us": 585,
+        "acquire_us": 32,
+        "present_us": 673,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2211,
+        "paint_us": 826,
+        "upload_us": 504,
+        "acquire_us": 22,
+        "present_us": 675,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3943,
+        "paint_us": 1716,
+        "upload_us": 873,
+        "acquire_us": 39,
+        "present_us": 913,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4111,
+        "paint_us": 1749,
+        "upload_us": 889,
+        "acquire_us": 40,
+        "present_us": 1004,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4070,
+        "paint_us": 1707,
+        "upload_us": 926,
+        "acquire_us": 39,
+        "present_us": 969,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3550,
+        "paint_us": 1719,
+        "upload_us": 769,
+        "acquire_us": 23,
+        "present_us": 641,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2335,
+        "paint_us": 1032,
+        "upload_us": 496,
+        "acquire_us": 24,
+        "present_us": 594,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2334,
+        "paint_us": 1031,
+        "upload_us": 423,
+        "acquire_us": 31,
+        "present_us": 653,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3961,
+        "paint_us": 1690,
+        "upload_us": 891,
+        "acquire_us": 40,
+        "present_us": 953,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2444,
+        "paint_us": 1088,
+        "upload_us": 435,
+        "acquire_us": 19,
+        "present_us": 506,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2310,
+        "paint_us": 1041,
+        "upload_us": 455,
+        "acquire_us": 25,
+        "present_us": 611,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3734,
+        "paint_us": 1765,
+        "upload_us": 903,
+        "acquire_us": 15,
+        "present_us": 649,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2529,
+        "paint_us": 1090,
+        "upload_us": 604,
+        "acquire_us": 28,
+        "present_us": 628,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2828,
+        "paint_us": 1092,
+        "upload_us": 738,
+        "acquire_us": 23,
+        "present_us": 784,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2227,
+        "paint_us": 905,
+        "upload_us": 500,
+        "acquire_us": 24,
+        "present_us": 600,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2102,
+        "paint_us": 908,
+        "upload_us": 459,
+        "acquire_us": 24,
+        "present_us": 517,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4050,
+        "paint_us": 1697,
+        "upload_us": 905,
+        "acquire_us": 40,
+        "present_us": 992,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2362,
+        "paint_us": 917,
+        "upload_us": 646,
+        "acquire_us": 31,
+        "present_us": 571,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2139,
+        "paint_us": 844,
+        "upload_us": 519,
+        "acquire_us": 57,
+        "present_us": 527,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3582,
+        "paint_us": 1653,
+        "upload_us": 886,
+        "acquire_us": 34,
+        "present_us": 618,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2103,
+        "paint_us": 872,
+        "upload_us": 470,
+        "acquire_us": 24,
+        "present_us": 544,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3874,
+        "paint_us": 1617,
+        "upload_us": 907,
+        "acquire_us": 35,
+        "present_us": 920,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2213,
+        "paint_us": 882,
+        "upload_us": 537,
+        "acquire_us": 25,
+        "present_us": 571,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2154,
+        "paint_us": 885,
+        "upload_us": 458,
+        "acquire_us": 29,
+        "present_us": 582,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 3664,
+        "paint_us": 1594,
+        "upload_us": 937,
+        "acquire_us": 35,
+        "present_us": 703,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2929,
+        "paint_us": 1488,
+        "upload_us": 507,
+        "acquire_us": 27,
+        "present_us": 510,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2135,
+        "paint_us": 862,
+        "upload_us": 477,
+        "acquire_us": 27,
+        "present_us": 571,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 4023,
+        "paint_us": 1724,
+        "upload_us": 825,
+        "acquire_us": 33,
+        "present_us": 1048,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2509,
+        "paint_us": 1082,
+        "upload_us": 659,
+        "acquire_us": 34,
+        "present_us": 548,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2181,
+        "paint_us": 899,
+        "upload_us": 503,
+        "acquire_us": 26,
+        "present_us": 551,
+        "damaged_pixels": 874426,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "sidebar",
+      "frame": {
+        "total_us": 2120,
+        "paint_us": 911,
+        "upload_us": 393,
+        "acquire_us": 16,
+        "present_us": 616,
+        "damaged_pixels": 874412,
+        "regions": 2
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 1
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1030,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 40,
+        "present_us": 989,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1091,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 49,
+        "present_us": 1041,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1104,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 49,
+        "present_us": 1053,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 650,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 36,
+        "present_us": 613,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1104,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1057,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 11033,
+        "paint_us": 1065,
+        "upload_us": 723,
+        "acquire_us": 31,
+        "present_us": 585,
+        "damaged_pixels": 1712768,
+        "regions": 2
+      },
+      "step_us": 271,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1086,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 48,
+        "present_us": 1036,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1063,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 47,
+        "present_us": 1014,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1148,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 40,
+        "present_us": 1106,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 630,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 28,
+        "present_us": 600,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1080,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1031,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1094,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 47,
+        "present_us": 1046,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1076,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 50,
+        "present_us": 1025,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1073,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1025,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1163,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 43,
+        "present_us": 1118,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1054,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 43,
+        "present_us": 1009,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 132,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1050,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1003,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1066,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1019,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1088,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 41,
+        "present_us": 1045,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1153,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 49,
+        "present_us": 1102,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1078,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1031,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1028,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 981,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1080,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 41,
+        "present_us": 1037,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1066,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1019,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1085,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 49,
+        "present_us": 1034,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1091,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1044,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 279,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1075,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1029,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1079,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 42,
+        "present_us": 1035,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1115,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 44,
+        "present_us": 1069,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1095,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 49,
+        "present_us": 1045,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1119,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1071,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1115,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1067,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1131,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1084,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1039,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 43,
+        "present_us": 994,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1040,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 993,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1058,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1012,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 252,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1121,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 53,
+        "present_us": 1067,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1061,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 45,
+        "present_us": 1014,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1088,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 49,
+        "present_us": 1037,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1086,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 44,
+        "present_us": 1040,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1110,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 1062,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 728,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 28,
+        "present_us": 699,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 882,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 25,
+        "present_us": 855,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 790,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 28,
+        "present_us": 761,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    },
+    {
+      "phase": "idle",
+      "frame": {
+        "total_us": 1009,
+        "paint_us": 0,
+        "upload_us": 0,
+        "acquire_us": 46,
+        "present_us": 962,
+        "damaged_pixels": 0,
+        "regions": 0
+      },
+      "step_us": 0,
+      "rows": 3302,
+      "visible_rows": 5,
+      "relaid": 0
+    }
+  ],
+  "phases": [
+    {
+      "phase": "warm",
+      "seconds": 1.006675333,
+      "cpu_percent": 26.67294918211729,
+      "peak_rss_bytes": 184303616
+    },
+    {
+      "phase": "scroll",
+      "seconds": 2.016098084,
+      "cpu_percent": 22.58198664108249,
+      "peak_rss_bytes": 185942016
+    },
+    {
+      "phase": "streaming",
+      "seconds": 2.020010333,
+      "cpu_percent": 49.06054111753892,
+      "peak_rss_bytes": 209223680
+    },
+    {
+      "phase": "sidebar",
+      "seconds": 2.013894042,
+      "cpu_percent": 22.836305704706984,
+      "peak_rss_bytes": 209223680
+    },
+    {
+      "phase": "idle",
+      "seconds": 5.00673325,
+      "cpu_percent": 3.309483284335154,
+      "peak_rss_bytes": 212615168
+    }
+  ]
+}

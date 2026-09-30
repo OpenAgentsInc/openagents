@@ -487,7 +487,7 @@ impl Ctx<'_> {
             copy_w,
             header,
             WidgetKind::Copy {
-                text: text.strip_suffix('\n').unwrap_or(text).to_owned(),
+                text: text.to_owned(),
             },
         );
         let mut rule = rect(x, y + header, w, 1.0, 0.0);
@@ -495,6 +495,12 @@ impl Ctx<'_> {
         self.out.rects.push(rule);
         let style = TextStyle::new(self.font(13.0, Weight::Regular, false, true), ink);
         let para = Para::plain(code, style);
+        if let Some(language) = language {
+            self.out.code_blocks.push(super::display::CodeBlock {
+                text: self.out.texts.len() as u32,
+                language: language.to_owned(),
+            });
+        }
         // Code keeps its lines; a block wider than the row scrolls sideways.
         let mark = self.out.mark();
         let (text_h, widest) = self.para(
