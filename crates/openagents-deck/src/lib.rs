@@ -15,8 +15,12 @@
 //!   lives, one file a deck.
 //! - [`compose`]: a slide as Rust Native nodes, and where each sits on the
 //!   canvas.
-//! - [`present`]: the presentation as a Rust Native app: the keys, the
-//!   overview, the notes, and the frame.
+//! - [`viewer`]: the presentation as a view another Rust Native app can
+//!   embed: the keys, the overview, the notes, the black screen, and the
+//!   painting, in whatever rectangle the host gives. [`decks`] lists the
+//!   decks a host can open.
+//! - [`present`]: the presentation as its own window, a thin
+//!   [`rust_native_desktop::App`] around a [`Viewer`].
 //! - [`snapshot`]: the golden outlines this crate's tests check.
 
 pub mod compose;
@@ -24,10 +28,12 @@ pub mod present;
 pub mod script;
 pub mod slide;
 pub mod snapshot;
+pub mod viewer;
 
 pub use compose::{Composed, compose};
 pub use present::Presenter;
 pub use slide::{Deck, Layout, Metric, Slide};
+pub use viewer::{DeckEntry, Outcome, UnknownDeck, Viewer, decks};
 
 #[cfg(test)]
 mod tests {
