@@ -117,12 +117,14 @@ pub fn route(route: RouteId) -> Value {
         ),
         RouteId::ProductKb => option(
             "How to do something in the OpenAgents app or with OpenAgents services, or what an \
-             OpenAgents feature is: connecting a computer, the Gym, the Grid, the Verse, XP, \
-             Pylon, relays, and protocols such as NIP-CJ or NIP-CAP",
+             OpenAgents feature is: connecting a phone or a computer and what connecting \
+             needs, such as whether Tailscale or another tool is required, the Gym, the Grid, \
+             the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP",
             Some(
                 "The wallet (wallet); account settings (account); questions about us as an \
                  assistant (meta); how the OpenAgents code implements something (codebase.kb); \
-                 a concept not specific to OpenAgents (general); what's new in the Gym \
+                 a concept not specific to OpenAgents, or what another company's product is or \
+                 costs (general); what's new in the Gym \
                  (gym.news); testing, making, or checking a tool, a result, or credit \
                  (eval.run, eval.author, eval.check, eval.result, eval.credit)",
             ),
