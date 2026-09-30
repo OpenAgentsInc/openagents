@@ -241,6 +241,36 @@ fn states() -> Vec<(&'static str, Model)> {
     unnamed.host = Some(state);
     states.push(("dsk-04-nearby-unnamed", unnamed));
 
+    // Home before Coder's first answer, and after it has not answered for
+    // a while: a plain line and Try again, never a wait with no end.
+    let (starting_home, _) = model(Screen::Home);
+    states.push(("dsk-03-starting", starting_home));
+    let (mut stalled_home, _) = model(Screen::Home);
+    stalled_home.stalled = true;
+    states.push(("dsk-03-not-answering", stalled_home));
+    let (mut stalled_code, _) = model(Screen::Connect);
+    stalled_code.stalled = true;
+    stalled_code.reached = true;
+    states.push(("dsk-01-not-answering", stalled_code));
+
+    // Five phones that paired by scanning: no names, and every one with
+    // the same full rights, so no row carries a rights note.
+    let (mut five, _) = model(Screen::Home);
+    five.host = Some(host(
+        ['d', 'e', 'f', '1', '2']
+            .into_iter()
+            .map(|id| phone(id, "", true, 120))
+            .collect(),
+        true,
+        true,
+    ));
+    five.tasks = vec![Task {
+        title: "Fix the login test".into(),
+        status: "running".into(),
+        reason: None,
+    }];
+    states.push(("dsk-03-home-five-phones", five));
+
     for (_, model) in &mut states {
         model.computer = "Mac";
     }
@@ -446,6 +476,51 @@ fn the_window_sources_never_reach_the_keychain() {
             assert!(!source.contains(needle), "{file} names {needle}");
         }
     }
+}
+
+/// Home always shows the way to a QR code near its top: **Connect another
+/// phone** is in the Phones header, whatever the phones or Coder's state.
+#[test]
+fn home_shows_connect_another_phone_in_the_phones_header() {
+    for (name, model) in states() {
+        if model.screen != Screen::Home || model.nearby().is_some() {
+            continue;
+        }
+        let shown = outline(&view_of(&model));
+        let header = shown
+            .lines()
+            .skip_while(|line| !line.trim_start().starts_with("horizontal stack"))
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            header.contains("bold \"Phones\"") || header.contains("\"Phones\" [bold]"),
+            "{name}:\n{shown}"
+        );
+        assert!(
+            header.contains("button \"Connect another phone\" -> connect_another"),
+            "{name}:\n{shown}"
+        );
+    }
+}
+
+/// A rights note that every row would share says nothing: with one set
+/// of rights on every phone, no row says "terminal".
+#[test]
+fn a_right_every_phone_shares_is_not_repeated_on_each_row() {
+    let (mut model, _) = model(Screen::Home);
+    model.host = Some(host(
+        vec![phone('d', "", true, 60), phone('e', "", true, 60)],
+        false,
+        false,
+    ));
+    assert!(!outline(&view_of(&model)).contains("terminal"));
+    model.host = Some(host(
+        vec![phone('d', "", true, 60), phone('e', "", false, 60)],
+        false,
+        false,
+    ));
+    assert_eq!(outline(&view_of(&model)).matches("· terminal").count(), 1);
 }
 
 /// Every screen lays out in the desktop adapter with nothing it can't draw.

@@ -38,6 +38,8 @@ Usage: openagents-desktop [options]
 
   --fake-host          show the screens against an in-process host
   --fake-scan SECONDS  with --fake-host, a phone scans the code after SECONDS
+  --fake-phones N      with --fake-host, N phones are already connected, and
+                       the window opens on Phones and computers
   --no-login-agent     don't register the login agent that runs Coder
   --verse-relay URL    watch the Grid behind the window on URL (default
                        $OPENAGENTS_VERSE_RELAY, else wss://relay.openagents.com)
@@ -50,6 +52,7 @@ Usage: openagents-desktop [options]
 struct Options {
     fake_host: bool,
     fake_scan: Option<Duration>,
+    fake_phones: usize,
     no_login_agent: bool,
     capture: Option<PathBuf>,
     verse_relay: Option<String>,
@@ -69,6 +72,13 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
                     .and_then(|value| value.parse().ok())
                     .ok_or("--fake-scan takes a number of seconds")?;
                 options.fake_scan = Some(Duration::from_secs(seconds));
+            }
+            "--fake-phones" => {
+                options.fake_phones = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .filter(|count| *count <= 32)
+                    .ok_or("--fake-phones takes a number of phones, at most 32")?;
             }
             "--no-login-agent" => options.no_login_agent = true,
             "--verse-relay" => {
@@ -131,6 +141,17 @@ fn main() -> ExitCode {
     let now = Instant::now();
     let (model, context) = if options.fake_host {
         let fake = FakeHost::new("Studio Mac", shell::unix_now());
+        // Phones that paired by scanning, so they have no names.
+        for _ in 0..options.fake_phones {
+            let paired = fake
+                .clone()
+                .invite()
+                .and_then(|invite| fake.redeem(&invite.invitation, ""));
+            if let Err(error) = paired {
+                eprintln!("{error}");
+                return ExitCode::FAILURE;
+            }
+        }
         let context = Context::new(
             Box::new(fake.clone()),
             Some(fake),
@@ -156,7 +177,15 @@ fn main() -> ExitCode {
             Context::new(control, None, None, coder, home()),
         )
     };
-    let app = DesktopApp::window(model, context);
+    let mut app = DesktopApp::window(model, context);
+    if options.fake_host && options.fake_phones > 0 {
+        app.activate(
+            Intent::Navigate {
+                action: openagents_desktop::chrome::Action::Computers,
+            },
+            now,
+        );
+    }
     // Nearly the whole display, centered; the views grow with it.
     let window = rust_native_desktop::window::Options {
         fill: Some(WINDOW_FILL),
@@ -351,6 +380,8 @@ mod tests {
                 "--fake-host",
                 "--fake-scan",
                 "5",
+                "--fake-phones",
+                "5",
                 "--no-login-agent",
                 "--verse-relay",
                 "ws://127.0.0.1:7447",
@@ -363,6 +394,8 @@ mod tests {
         assert!(options.fake_host && options.no_login_agent && options.no_backdrop);
         assert_eq!(options.verse_relay.as_deref(), Some("ws://127.0.0.1:7447"));
         assert_eq!(options.fake_scan, Some(Duration::from_secs(5)));
+        assert_eq!(options.fake_phones, 5);
+        assert!(parse(["--fake-phones".to_string(), "33".to_string()].into_iter()).is_err());
         assert!(parse(["--bogus".to_string()].into_iter()).is_err());
     }
 

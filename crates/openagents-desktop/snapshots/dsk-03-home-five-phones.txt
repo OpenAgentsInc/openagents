@@ -7,19 +7,33 @@ vertical stack
     list "Phones"
       horizontal stack
         vertical stack
-          body "Kai's iPhone"
-          status "seen 2 min ago · terminal"
+          body "Your phone"
+          status "seen 2 min ago"
         button "Remove" -> ask_remove
       horizontal stack
         vertical stack
-          body "Kai's iPad"
-          status "seen 2 hours ago"
+          body "Your phone"
+          status "seen 2 min ago"
+        button "Remove" -> ask_remove
+      horizontal stack
+        vertical stack
+          body "Your phone"
+          status "seen 2 min ago"
+        button "Remove" -> ask_remove
+      horizontal stack
+        vertical stack
+          body "Your phone"
+          status "seen 2 min ago"
+        button "Remove" -> ask_remove
+      horizontal stack
+        vertical stack
+          body "Your phone"
+          status "seen 2 min ago"
         button "Remove" -> ask_remove
   vertical stack [card]
     body "Coder" [bold]
     list "Coder's tasks"
       body "Fix the login test · Working"
-      body "Update the README · Done"
     horizontal stack
       body "/Users/kai/code/website"
       button "Choose another folder…" -> choose_folder

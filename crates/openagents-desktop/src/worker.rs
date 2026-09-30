@@ -4,12 +4,25 @@
 //! frame: each [`Request`] becomes at most one [`Outcome`], sent back with
 //! a wake of the event loop. `run` is the same handling, inline, for the
 //! capture mode and tests.
+//!
+//! Requests run on two lanes, each its own thread and each in order: the
+//! host lane asks the control socket (every call bounded by its timeout),
+//! and the local lane runs what can take as long as it likes: starting
+//! Coder (an upgrade of an earlier setup runs `coder host adopt`), `coder
+//! task list`, the folder chooser that waits for the person, and the
+//! clipboard. So a slow start or an open chooser never keeps the window
+//! from hearing the host.
+//!
+//! Against the in-process host (`--fake-host`) the local lane touches
+//! nothing on this computer that the real app manages: starting Coder
+//! answers at once without registering or upgrading anything, and the
+//! sign-in check does not ask the keychain.
 
 use crate::platform;
 use openagents_desktop::codes::Action;
 use openagents_desktop::control::{ControlError, HostControl};
 use openagents_desktop::fake::FakeHost;
-use openagents_desktop::model::{Outcome, Refreshed, Request, Started, Task};
+use openagents_desktop::model::{Agent, Agents, Outcome, Refreshed, Request, Started, Task};
 use rust_native_desktop::Waker;
 use std::path::PathBuf;
 use std::process::Command;
@@ -25,17 +38,41 @@ const RECENT_TASKS: usize = 5;
 /// The most bytes of `coder task list` output read.
 const TASK_LIST_MAX: usize = 16 * 1024 * 1024;
 
-/// What the worker needs besides the control client.
+/// What the worker needs: the host lane and the local lane.
 pub struct Context {
-    pub control: Box<dyn HostControl>,
-    /// The in-process host, in `--fake-host` mode.
-    pub fake: Option<FakeHost>,
+    host: HostLane,
+    local: LocalLane,
+}
+
+/// The control client, and the in-process host in `--fake-host` mode.
+struct HostLane {
+    control: Box<dyn HostControl>,
+    fake: Option<FakeHost>,
     /// In `--fake-host` mode, a phone scans the code this long after it
     /// first shows.
-    pub fake_scan: Option<Duration>,
-    pub coder: Option<PathBuf>,
-    pub home: PathBuf,
+    fake_scan: Option<Duration>,
     first_code: Option<Instant>,
+}
+
+/// What runs on this computer: Coder's binary, the home folder, and
+/// whether the host is the in-process one.
+struct LocalLane {
+    fake: bool,
+    coder: Option<PathBuf>,
+    home: PathBuf,
+}
+
+/// Whether `request` runs on the local lane.
+fn local(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::Start
+            | Request::Coder
+            | Request::ChooseFolder
+            | Request::Copy { .. }
+            | Request::ClearClipboard { .. }
+            | Request::OpenLoginItems
+    )
 }
 
 impl Context {
@@ -47,17 +84,78 @@ impl Context {
         home: PathBuf,
     ) -> Context {
         Context {
-            control,
-            fake,
-            fake_scan,
-            coder,
-            home,
-            first_code: None,
+            local: LocalLane {
+                fake: fake.is_some(),
+                coder,
+                home,
+            },
+            host: HostLane {
+                control,
+                fake,
+                fake_scan,
+                first_code: None,
+            },
         }
     }
 
     /// Runs one request.
     pub fn run(&mut self, request: Request) -> Option<Outcome> {
+        if local(&request) {
+            self.local.run(request)
+        } else {
+            self.host.run(request)
+        }
+    }
+}
+
+impl LocalLane {
+    fn run(&mut self, request: Request) -> Option<Outcome> {
+        match request {
+            Request::Copy { code } => platform::copy(&code).then_some(Outcome::Copied),
+            Request::ClearClipboard { code } => {
+                platform::clear_if(&code);
+                None
+            }
+            Request::ChooseFolder => Some(Outcome::Folder(platform::choose_folder())),
+            Request::Coder => Some(Outcome::Coder {
+                agents: if self.fake {
+                    Agents {
+                        codex: true,
+                        claude: false,
+                    }
+                } else {
+                    platform::signed_in(&self.home)
+                },
+                tasks: self.tasks(),
+            }),
+            Request::OpenLoginItems => {
+                platform::open_login_items();
+                None
+            }
+            Request::Start => Some(Outcome::Started(self.start())),
+            other => unreachable!("{other:?} runs on the host lane"),
+        }
+    }
+
+    /// Starts Coder under this app, upgrading an earlier setup silently
+    /// first ([`openagents_desktop::migrate::start`]). Against the
+    /// in-process host there is nothing to start: it answers at once and
+    /// registers, upgrades, and reads nothing.
+    fn start(&self) -> Started {
+        if self.fake {
+            return Started {
+                agent: Agent::Enabled,
+                note: None,
+            };
+        }
+        openagents_desktop::migrate::start(self.coder.as_deref(), &self.home, &mut |keys| {
+            platform::register_agent(keys)
+        })
+    }
+}
+
+impl HostLane {
+    fn run(&mut self, request: Request) -> Option<Outcome> {
         match request {
             Request::Refresh => {
                 self.fake_scan_if_due();
@@ -102,21 +200,6 @@ impl Context {
                         message: "Couldn't change that setting. Try again.".into(),
                     })
             }
-            Request::Copy { code } => platform::copy(&code).then_some(Outcome::Copied),
-            Request::ClearClipboard { code } => {
-                platform::clear_if(&code);
-                None
-            }
-            Request::ChooseFolder => Some(Outcome::Folder(platform::choose_folder())),
-            Request::Coder => Some(Outcome::Coder {
-                agents: platform::signed_in(&self.home),
-                tasks: self.tasks(),
-            }),
-            Request::OpenLoginItems => {
-                platform::open_login_items();
-                None
-            }
-            Request::Start => Some(Outcome::Started(self.start())),
             Request::NearbyDecide { id, connect } => self
                 .control
                 .nearby_decide(id, connect)
@@ -124,15 +207,8 @@ impl Context {
                 .map(|_| Outcome::Failed {
                     message: "That phone stopped asking. Ask again from the phone.".into(),
                 }),
+            other => unreachable!("{other:?} runs on the local lane"),
         }
-    }
-
-    /// Starts Coder under this app, upgrading an earlier setup silently
-    /// first ([`openagents_desktop::migrate::start`]).
-    fn start(&self) -> Started {
-        openagents_desktop::migrate::start(self.coder.as_deref(), &self.home, &mut |keys| {
-            platform::register_agent(keys)
-        })
     }
 
     fn refresh(&mut self) -> Option<Refreshed> {
@@ -171,10 +247,12 @@ impl Context {
             self.fake_scan = None;
         }
     }
+}
 
+impl LocalLane {
     /// Coder's recent tasks, from the task store through `coder task list`.
     fn tasks(&self) -> Vec<Task> {
-        if self.fake.is_some() {
+        if self.fake {
             return vec![
                 Task {
                     title: "Fix the login test".into(),
@@ -310,32 +388,55 @@ impl ScreenLock {
     }
 }
 
-/// A background worker.
+/// A background worker: one thread a lane.
 pub struct Worker {
-    requests: Sender<Request>,
+    host: Sender<Request>,
+    local: Sender<Request>,
     outcomes: Receiver<Outcome>,
 }
 
-impl Worker {
-    /// Starts the worker thread; each outcome wakes `waker`.
-    pub fn start(mut context: Context, waker: Waker) -> Worker {
-        let (requests, inbox) = channel::<Request>();
-        let (outbox, outcomes) = channel();
-        std::thread::spawn(move || {
-            while let Ok(request) = inbox.recv() {
-                if let Some(outcome) = context.run(request) {
-                    if outbox.send(outcome).is_err() {
-                        return;
-                    }
-                    waker.wake();
+/// Runs `lane` on its own thread until the window goes.
+fn spawn_lane(
+    mut run: impl FnMut(Request) -> Option<Outcome> + Send + 'static,
+    outbox: Sender<Outcome>,
+    waker: Waker,
+) -> Sender<Request> {
+    let (requests, inbox) = channel::<Request>();
+    std::thread::spawn(move || {
+        while let Ok(request) = inbox.recv() {
+            if let Some(outcome) = run(request) {
+                if outbox.send(outcome).is_err() {
+                    return;
                 }
+                waker.wake();
             }
-        });
-        Worker { requests, outcomes }
+        }
+    });
+    requests
+}
+
+impl Worker {
+    /// Starts the lanes; each outcome wakes `waker`.
+    pub fn start(context: Context, waker: Waker) -> Worker {
+        let (outbox, outcomes) = channel();
+        let Context {
+            mut host,
+            mut local,
+        } = context;
+        Worker {
+            host: spawn_lane(move |r| host.run(r), outbox.clone(), waker.clone()),
+            local: spawn_lane(move |r| local.run(r), outbox, waker),
+            outcomes,
+        }
     }
 
     pub fn send(&self, request: Request) {
-        let _ = self.requests.send(request);
+        let lane = if local(&request) {
+            &self.local
+        } else {
+            &self.host
+        };
+        let _ = lane.send(request);
     }
 
     /// Outcomes that arrived since the last call.
@@ -373,6 +474,72 @@ mod tests {
         assert!(!monitor.locked());
         drop(monitor);
         drop(states);
+    }
+
+    /// A slow start of Coder (an upgrade runs `coder host adopt`) runs on
+    /// the local lane, so the window still hears the host meanwhile.
+    #[cfg(unix)]
+    #[test]
+    fn a_slow_start_does_not_keep_the_window_from_the_host() {
+        use openagents_desktop::model::Request;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        // A `coder` that takes its time to answer `coder host help`.
+        let coder = dir.path().join("coder");
+        std::fs::write(&coder, "#!/bin/sh\nsleep 2\n").unwrap();
+        std::fs::set_permissions(&coder, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir(&home).unwrap();
+        let fake = FakeHost::new("Studio Mac", 1_790_000_000);
+        let context = Context::new(Box::new(fake), None, None, Some(coder), home);
+        let (wakes, woke) = channel();
+        let worker = Worker::start(
+            context,
+            Waker::new(move || {
+                let _ = wakes.send(());
+            }),
+        );
+        worker.send(Request::Start);
+        worker.send(Request::Refresh);
+        woke.recv_timeout(Duration::from_secs(1))
+            .expect("the host answers during the start");
+        let first = worker.outcomes();
+        assert!(
+            matches!(first.as_slice(), [Outcome::Refreshed(Some(_))]),
+            "{first:?}"
+        );
+        woke.recv_timeout(Duration::from_secs(10))
+            .expect("the start finishes");
+        assert!(matches!(
+            worker.outcomes().as_slice(),
+            [Outcome::Started(_)]
+        ));
+    }
+
+    /// Against the in-process host, starting Coder registers, upgrades, and
+    /// reads nothing: an earlier setup in the home folder stays as it was.
+    #[test]
+    fn the_fake_host_starts_nothing_on_this_computer() {
+        use openagents_desktop::model::Request;
+        let home = tempfile::tempdir().unwrap();
+        let access = home.path().join(".openagents/coder-access");
+        std::fs::create_dir_all(&access).unwrap();
+        std::fs::write(access.join("access.json"), "{}").unwrap();
+        let fake = FakeHost::new("Studio Mac", 1_790_000_000);
+        let mut context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            Some(PathBuf::from("/nonexistent/coder")),
+            home.path().to_path_buf(),
+        );
+        let Some(Outcome::Started(started)) = context.run(Request::Start) else {
+            panic!("no start");
+        };
+        assert_eq!(started.agent, Agent::Enabled);
+        assert_eq!(started.note, None);
+        assert_eq!(std::fs::read(access.join("access.json")).unwrap(), b"{}");
+        assert_eq!(std::fs::read_dir(&access).unwrap().count(), 1);
     }
 
     #[test]

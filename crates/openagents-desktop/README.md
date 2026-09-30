@@ -101,6 +101,9 @@ invented.
 # An in-process host; open Phones and computers, then Connect another phone.
 cargo run --release -p openagents-desktop -- --fake-host --fake-scan 8
 
+# Five phones already connected; the window opens on Phones and computers.
+cargo run --release -p openagents-desktop -- --fake-host --fake-phones 5
+
 # The window against this Mac's host (its control socket).
 cargo run --release -p openagents-desktop -- --no-login-agent
 

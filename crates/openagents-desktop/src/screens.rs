@@ -204,7 +204,6 @@ fn connect(model: &Model) -> Node<Intent> {
 /// What shows where the code goes when there is none.
 fn waiting(model: &Model) -> Vec<Node<Intent>> {
     let line = |value: String| centered(text("waiting", value, TextRole::Body));
-    let computer = model.computer;
     if model.codes.held() == Some(Held::Idle) {
         return vec![
             line("The code is hidden because nobody used this window for 10 minutes.".into()),
@@ -212,40 +211,72 @@ fn waiting(model: &Model) -> Vec<Node<Intent>> {
         ];
     }
     if model.host.is_none() {
-        return match &model.agent {
-            Agent::NeedsApproval => vec![
+        return unanswered(model)
+            .into_iter()
+            .map(|node| match node.element {
+                Element::Text { .. } => centered(node),
+                _ => node,
+            })
+            .collect();
+    }
+    vec![line("Making a code…".into())]
+}
+
+/// What shows while Coder does not answer, on the code screen and on
+/// home: what is happening, and after [`crate::model::STALL`] a plain
+/// line and **Try again**. It never waits without saying so.
+fn unanswered(model: &Model) -> Vec<Node<Intent>> {
+    let line = |value: String| text("waiting", value, TextRole::Body);
+    let computer = model.computer;
+    match &model.agent {
+        Agent::NeedsApproval => {
+            return vec![
                 line("OpenAgents needs your OK to run in the background.".into()),
-                centered(text(
+                text(
                     "approve",
                     "Turn on OpenAgents under Allow in the Background, then come back here.",
                     TextRole::Status,
-                )),
+                ),
                 button(
                     "login-items",
                     "Open Login Items",
                     Intent::OpenLoginItems,
                     true,
                 ),
-            ],
-            Agent::Failed(_) => vec![line(format!(
-                "Coder couldn't start on this {computer}. Quit OpenAgents and open it again."
-            ))],
-            Agent::NotRegistered => {
-                vec![line(model.note.clone().unwrap_or_else(|| {
-                    format!("Waiting for Coder on this {computer}…")
-                }))]
-            }
-            Agent::Enabled if model.reached => {
-                vec![line(format!(
-                    "Coder on this {computer} stopped answering. Trying again…"
-                ))]
-            }
-            Agent::Enabled | Agent::Starting => {
-                vec![line(format!("Starting Coder on this {computer}…"))]
-            }
-        };
+            ];
+        }
+        Agent::Failed(_) => {
+            return vec![
+                line(format!(
+                    "Coder couldn't start on this {computer}. Quit OpenAgents and open it again."
+                )),
+                button("retry", "Try again", Intent::Retry, true),
+            ];
+        }
+        _ => {}
     }
-    vec![line("Making a code…".into())]
+    if model.stalled {
+        return vec![
+            line(format!(
+                "Coder isn't answering on this {computer}. OpenAgents keeps trying."
+            )),
+            text(
+                "waiting-help",
+                "If this lasts, quit OpenAgents and open it again.",
+                TextRole::Status,
+            ),
+            button("retry", "Try again", Intent::Retry, true),
+        ];
+    }
+    if let (Agent::NotRegistered, Some(note)) = (&model.agent, &model.note) {
+        return vec![line(note.clone())];
+    }
+    if model.reached {
+        return vec![line(format!(
+            "Coder on this {computer} stopped answering. Trying again…"
+        ))];
+    }
+    vec![line(format!("Starting Coder on this {computer}…"))]
 }
 
 fn device_label<'a>(model: &'a Model, device: &str) -> &'a str {
@@ -355,8 +386,8 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
     )
 }
 
-/// `DSK-03`: status, phones with Remove, Coder's tasks, and Connect another
-/// phone.
+/// `DSK-03`: status, phones with Remove and Connect another phone, and
+/// Coder's tasks.
 fn home(model: &Model, now: u64) -> Node<Intent> {
     let online = model.host.as_ref().is_some_and(|host| host.status.online);
     let computer = model.computer;
@@ -367,14 +398,30 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
     } else {
         "Offline.".to_string()
     };
-    let mut phones = vec![bold("phones-title", "Phones")];
+    // The way to a QR code sits in the Phones header, near the top, so it
+    // shows without scrolling however many phones are listed.
+    let mut phones = vec![stack(
+        "phones-header",
+        Axis::Horizontal,
+        Space::Md,
+        vec![
+            bold("phones-title", "Phones"),
+            button(
+                "another",
+                "Connect another phone",
+                Intent::ConnectAnother,
+                true,
+            ),
+        ],
+    )];
     let list = model.phones();
+    // Every pairing grants the same rights, so a right every row shares
+    // says nothing; it shows only where phones differ.
+    let terminal_differs = list
+        .windows(2)
+        .any(|pair| crate::control::terminal(pair[0]) != crate::control::terminal(pair[1]));
     if model.host.is_none() {
-        let line = model
-            .note
-            .clone()
-            .unwrap_or_else(|| format!("Waiting for Coder on this {computer}…"));
-        phones.push(text("no-phones", line, TextRole::Status));
+        phones.extend(unanswered(model));
     } else if list.is_empty() {
         phones.push(text("no-phones", "No phones yet.", TextRole::Status));
     } else {
@@ -425,7 +472,7 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
                 Some(seen) => format!("seen {}", ago(seen, now)),
                 None => "not seen yet".to_string(),
             };
-            if crate::control::terminal(device) {
+            if terminal_differs && crate::control::terminal(device) {
                 detail.push_str(" · terminal");
             }
             rows.push(stack(
@@ -514,12 +561,6 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
             text("home-status", status, TextRole::Heading),
             card("phones-card", phones),
             card("coder-card", coder),
-            button(
-                "another",
-                "Connect another phone",
-                Intent::ConnectAnother,
-                true,
-            ),
         ],
     )
 }

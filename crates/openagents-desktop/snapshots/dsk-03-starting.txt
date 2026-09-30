@@ -4,11 +4,7 @@ vertical stack
     horizontal stack
       body "Phones" [bold]
       button "Connect another phone" -> connect_another
-    status "No phones yet."
+    body "Starting Coder on this Mac…"
   vertical stack [card]
     body "Coder" [bold]
     status "Nothing yet. On your phone, ask for work and tap Run Coder."
-    horizontal stack
-      status "No project yet."
-      button "Choose folder…" -> choose_folder
-    checkbox [ ] "Let my phone start Coder here" -> toggle_autostart (disabled)

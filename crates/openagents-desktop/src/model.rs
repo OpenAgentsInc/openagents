@@ -24,6 +24,13 @@ pub const SLOW_POLL: Duration = Duration::from_secs(5);
 pub const CODER_POLL: Duration = Duration::from_secs(15);
 /// How long a copied code stays on the clipboard.
 pub const CLIPBOARD_LIFE: Duration = Duration::from_secs(60);
+/// How long Coder may go without answering before the screens say so and
+/// offer **Try again**, instead of a line that waits forever.
+pub const STALL: Duration = Duration::from_secs(20);
+/// While Coder does not answer, how often the app starts it again on its
+/// own (the launch start: register the login agent, upgrading an earlier
+/// setup first). Polling for an answer goes on every [`SLOW_POLL`].
+pub const RESTART: Duration = Duration::from_secs(60);
 
 /// The screens: `DSK-01` to `DSK-03`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +76,8 @@ pub enum Intent {
     NearbyConnect { id: u64 },
     /// `DSK-04`: "Don't connect".
     NearbyDecline { id: u64 },
+    /// "Try again", once Coder has not answered for [`STALL`].
+    Retry,
 }
 
 /// A request for the shell to run.
@@ -264,6 +273,20 @@ pub struct Model {
     clear: Vec<(String, Instant)>,
     /// Whether [`Request::Start`] is still to be sent.
     start: bool,
+    /// Whether this app starts Coder (it launched with [`Agent::Starting`]),
+    /// so it may start it again when Coder stops answering. Not with
+    /// `--no-login-agent`, and not against the in-process host.
+    restartable: bool,
+    /// Whether a [`Request::Start`] is out and not yet answered.
+    starting: bool,
+    /// Since when the host has not answered: launch, or the first ask it
+    /// left unanswered after answering. `None` while it answers.
+    unanswered_since: Option<Instant>,
+    /// Coder has not answered for [`STALL`]: the screens say so plainly and
+    /// offer **Try again**.
+    pub stalled: bool,
+    /// When the app next starts Coder again on its own while it is stalled.
+    next_restart: Option<Instant>,
     /// What the screens call this computer: "Mac" on a Mac, "computer" on
     /// Linux and Windows ([`crate::words::COMPUTER`]).
     pub computer: &'static str,
@@ -293,6 +316,11 @@ impl Model {
             next_coder: now,
             clear: Vec::new(),
             start,
+            restartable: start,
+            starting: false,
+            unanswered_since: Some(now),
+            stalled: false,
+            next_restart: None,
             computer: crate::words::COMPUTER,
         }
     }
@@ -335,6 +363,24 @@ impl Model {
     pub fn tick(&mut self, now: Instant) -> Vec<Request> {
         let mut requests = Vec::new();
         if std::mem::take(&mut self.start) {
+            self.starting = true;
+            requests.push(Request::Start);
+        }
+        if let Some(since) = self.unanswered_since
+            && now.duration_since(since) >= STALL
+        {
+            self.stalled = true;
+        }
+        // Stalled: start Coder again now and then, never over a start
+        // still running, and never past a switch only the person can flip.
+        if self.stalled
+            && self.restartable
+            && !self.starting
+            && self.agent != Agent::NeedsApproval
+            && self.next_restart.is_none_or(|at| now >= at)
+        {
+            self.starting = true;
+            self.next_restart = Some(now + RESTART);
             requests.push(Request::Start);
         }
         if now >= self.next_poll {
@@ -369,6 +415,17 @@ impl Model {
     /// When the model next needs a tick.
     pub fn next_wake(&self) -> Instant {
         let mut wake = self.next_poll;
+        if let Some(since) = self.unanswered_since
+            && !self.stalled
+        {
+            wake = wake.min(since + STALL);
+        }
+        if let Some(at) = self
+            .next_restart
+            .filter(|_| self.stalled && self.restartable)
+        {
+            wake = wake.min(at);
+        }
         if let Some(at) = self.codes.next_wake() {
             wake = wake.min(at);
         }
@@ -468,6 +525,24 @@ impl Model {
                 vec![Request::Revoke { device }, Request::Refresh]
             }
             Intent::OpenLoginItems => vec![Request::OpenLoginItems],
+            Intent::Retry => {
+                if self.host.is_some() {
+                    return Vec::new();
+                }
+                // Back to "Starting…" for another [`STALL`]; ask now, and
+                // start Coder again unless a start is still running.
+                self.stalled = false;
+                self.unanswered_since = Some(now);
+                self.next_poll = now;
+                let mut requests = Vec::new();
+                if self.restartable && !self.starting {
+                    self.starting = true;
+                    self.next_restart = Some(now + RESTART);
+                    requests.push(Request::Start);
+                }
+                requests.extend(self.tick(now));
+                requests
+            }
             Intent::NearbyConnect { id } | Intent::NearbyDecline { id } => {
                 // Only the request on screen, and only once.
                 if self.nearby().map(|prompt| prompt.id) != Some(id) {
@@ -488,6 +563,9 @@ impl Model {
             Outcome::Refreshed(Some(state)) => {
                 let state = *state;
                 self.reached = true;
+                self.unanswered_since = None;
+                self.stalled = false;
+                self.next_restart = None;
                 let live: BTreeSet<String> = state
                     .devices
                     .iter()
@@ -527,6 +605,7 @@ impl Model {
             }
             Outcome::Refreshed(None) => {
                 self.host = None;
+                self.unanswered_since.get_or_insert(now);
                 self.tick(now)
             }
             Outcome::Created {
@@ -586,6 +665,7 @@ impl Model {
             }
             Outcome::Copied => Vec::new(),
             Outcome::Started(started) => {
+                self.starting = false;
                 self.agent = started.agent;
                 self.note = started.note;
                 self.next_poll = now;
@@ -610,6 +690,8 @@ mod tests {
         pub now: Instant,
         pub clipboard: Option<String>,
         pub folder: Option<PathBuf>,
+        /// How many times the model asked to start Coder.
+        pub starts: usize,
     }
 
     impl Rig {
@@ -622,6 +704,7 @@ mod tests {
                 now: start,
                 clipboard: None,
                 folder: None,
+                starts: 0,
             }
         }
 
@@ -698,10 +781,13 @@ mod tests {
                         }],
                     }),
                     Request::OpenLoginItems => None,
-                    Request::Start => Some(Outcome::Started(Started {
-                        agent: Agent::Enabled,
-                        note: None,
-                    })),
+                    Request::Start => {
+                        self.starts += 1;
+                        Some(Outcome::Started(Started {
+                            agent: Agent::Enabled,
+                            note: None,
+                        }))
+                    }
                     Request::NearbyDecide { id, connect } => {
                         let _ = self.host.nearby_decide(id, connect);
                         None
@@ -768,6 +854,129 @@ mod tests {
         rig.tick(0);
         assert_eq!(rig.model.agent, Agent::Enabled);
         assert!(rig.model.codes.shown().is_some());
+    }
+
+    /// A host that never answers: "Starting…" for [`STALL`], then a plain
+    /// line and **Try again**, and the app starts Coder again on its own
+    /// every [`RESTART`] while polling goes on. It never waits silently.
+    #[test]
+    fn a_host_that_never_answers_says_so_and_starts_coder_again() {
+        let mut rig = Rig::new();
+        rig.model = Model::new(rig.start, Screen::Home, Agent::Starting);
+        rig.host.set_down(true);
+        rig.tick(0);
+        assert_eq!(rig.starts, 1, "launch starts Coder once");
+        for second in (5..20).step_by(5) {
+            rig.tick(second);
+            assert!(!rig.model.stalled, "stalled at {second}s");
+        }
+        assert!(rig.model.next_wake() <= rig.start + STALL);
+        rig.tick(20);
+        assert!(rig.model.stalled);
+        assert_eq!(rig.starts, 2, "a stall starts Coder again");
+        rig.tick(40);
+        rig.tick(75);
+        assert_eq!(rig.starts, 2, "at most one start a minute");
+        rig.tick(80);
+        assert_eq!(rig.starts, 3);
+        // Coder answers: the stall is over and nothing starts again.
+        rig.host.set_down(false);
+        rig.tick(85);
+        assert!(!rig.model.stalled);
+        assert!(rig.model.host.is_some());
+        rig.tick(200);
+        assert_eq!(rig.starts, 3);
+        // It stops answering later: "stopped answering" first, then the
+        // stall again after another STALL.
+        rig.host.set_down(true);
+        rig.tick(205);
+        assert!(rig.model.host.is_none() && !rig.model.stalled);
+        rig.tick(225);
+        assert!(rig.model.stalled);
+        assert_eq!(rig.starts, 4);
+    }
+
+    #[test]
+    fn try_again_asks_now_and_starts_coder_again() {
+        let mut rig = Rig::new();
+        rig.model = Model::new(rig.start, Screen::Home, Agent::Starting);
+        rig.host.set_down(true);
+        for second in [0, 5, 10, 15, 20] {
+            rig.tick(second);
+        }
+        assert!(rig.model.stalled);
+        let starts = rig.starts;
+        rig.at(30);
+        rig.host.set_down(false);
+        rig.click(Intent::Retry);
+        assert_eq!(rig.starts, starts + 1);
+        assert!(!rig.model.stalled);
+        assert!(rig.model.host.is_some(), "Try again asks at once");
+        // With an answer, Try again does nothing.
+        rig.click(Intent::Retry);
+        assert_eq!(rig.starts, starts + 1);
+    }
+
+    /// Without the login agent (`--no-login-agent`, the in-process host) or
+    /// while the person must allow it, a stall says so but starts nothing.
+    #[test]
+    fn a_stall_starts_nothing_the_app_does_not_manage() {
+        for (agent, restart) in [
+            (Agent::Enabled, false),
+            (Agent::NotRegistered, false),
+            (Agent::Starting, true),
+        ] {
+            let mut rig = Rig::new();
+            rig.model = Model::new(rig.start, Screen::Home, agent.clone());
+            rig.host.set_down(true);
+            rig.tick(0);
+            if restart {
+                // The start reported that the person must allow it.
+                rig.model.agent = Agent::NeedsApproval;
+            }
+            let starts = rig.starts;
+            for second in (5..=120).step_by(5) {
+                rig.tick(second);
+            }
+            assert!(rig.model.stalled, "{agent:?}");
+            assert_eq!(rig.starts, starts, "{agent:?}");
+        }
+    }
+
+    /// The in-process host answers for as long as the window runs: two
+    /// hours of polls, code rotations, idle holds, a hidden window, and a
+    /// locked screen, and the window always has its answer and never says
+    /// Coder is starting or not answering.
+    #[test]
+    fn the_in_process_host_keeps_answering_for_hours() {
+        let mut rig = Rig::new();
+        rig.model = Model::new(rig.start, Screen::Home, Agent::Enabled);
+        rig.tick(0);
+        rig.click(Intent::ConnectAnother);
+        let mut second = 0;
+        while second < 2 * 60 * 60 {
+            second += 1;
+            match second % 1_800 {
+                600 => rig.model.shown(false, rig.now),
+                660 => rig.model.shown(true, rig.now),
+                900 => rig.model.set_locked(true),
+                960 => rig.model.set_locked(false),
+                1_200 => rig.click(Intent::Back),
+                1_210 => rig.click(Intent::ConnectAnother),
+                _ => {}
+            }
+            rig.tick(second);
+            assert!(rig.model.host.is_some(), "no answer at {second}s");
+            assert!(!rig.model.stalled, "stalled at {second}s");
+            let words = crate::screens::words(&crate::screens::root(&rig.model, 0));
+            for text in words {
+                assert!(
+                    !text.contains("answering") && !text.contains("Starting Coder"),
+                    "{text:?} at {second}s"
+                );
+            }
+        }
+        assert_eq!(rig.starts, 0, "nothing starts Coder against the fake");
     }
 
     #[test]

@@ -1,0 +1,6 @@
+vertical stack
+  vertical stack [align=center]
+    body "Coder isn't answering on this Mac. OpenAgents keeps trying." [align=center]
+    status "If this lasts, quit OpenAgents and open it again." [align=center]
+    button "Try again" -> retry
+    heading "Scan with the OpenAgents app on your phone." [align=center]

@@ -358,6 +358,76 @@ mod tests {
         (app, fake, now)
     }
 
+    /// The window as `--fake-host` runs it (worker threads, the shell,
+    /// the Phones page), on a simulated clock for two hours: once the
+    /// in-process host first answers, the window never loses it and never
+    /// says Coder is starting, waiting, or not answering, and a code shows
+    /// whenever the code screen is open.
+    #[test]
+    fn the_fake_host_window_never_waits_for_coder() {
+        let fake = FakeHost::new("Studio Mac", unix_now());
+        let home = tempfile::tempdir().expect("a home");
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake.clone()),
+            None,
+            None,
+            home.path().to_path_buf(),
+        );
+        let start = Instant::now();
+        let mut app =
+            DesktopApp::window(Model::new(start, Screen::Connect, Agent::Enabled), context);
+        app.start(rust_native_desktop::Waker::none());
+        // Lets the worker answer what the last tick sent.
+        let settle = |app: &mut DesktopApp, now: Instant| {
+            for _ in 0..3 {
+                std::thread::sleep(Duration::from_millis(2));
+                app.tick(now);
+            }
+        };
+        settle(&mut app, start);
+        for _ in 0..500 {
+            if app.model.host.is_some() {
+                break;
+            }
+            settle(&mut app, start);
+        }
+        assert!(app.model.host.is_some(), "the fake never answered");
+        app.activate(
+            Intent::Navigate {
+                action: Action::Computers,
+            },
+            start,
+        );
+        let mut seconds = 0;
+        while seconds < 2 * 60 * 60 {
+            seconds += 5;
+            let now = start + Duration::from_secs(seconds);
+            match seconds % 1_800 {
+                5 => app.click(Intent::ConnectAnother, now),
+                300 => app.click(Intent::Back, now),
+                // A phone the fake lets in, now and then.
+                600 => {
+                    use openagents_desktop::control::HostControl;
+                    let invite = fake.clone().invite().expect("an invite");
+                    fake.redeem(&invite.invitation, "").expect("a phone");
+                }
+                _ => {}
+            }
+            settle(&mut app, now);
+            assert!(app.model.host.is_some(), "no answer at {seconds}s");
+            for text in openagents_desktop::screens::words(&app.view().view().root) {
+                for said in ["Waiting for Coder", "Starting Coder", "answering"] {
+                    assert!(!text.contains(said), "{text:?} at {seconds}s");
+                }
+            }
+            if app.model.screen == Screen::Connect && app.model.codes.held().is_none() {
+                assert!(app.model.codes.shown().is_some() || app.model.codes.waiting());
+            }
+        }
+        assert!(app.model.phones().len() >= 4);
+    }
+
     #[test]
     fn leaving_pairing_for_a_chat_cancels_the_code() {
         let (mut app, fake, now) = preview();

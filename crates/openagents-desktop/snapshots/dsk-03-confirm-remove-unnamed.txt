@@ -1,7 +1,9 @@
 vertical stack
   heading "Online. Your phone can reach this Mac."
   vertical stack [card]
-    body "Phones" [bold]
+    horizontal stack
+      body "Phones" [bold]
+      button "Connect another phone" -> connect_another
     list "Phones"
       vertical stack
         body "Remove this phone? It can't reach this Mac until it connects again."
@@ -15,4 +17,3 @@ vertical stack
       body "/Users/kai/code/website"
       button "Choose another folder…" -> choose_folder
     checkbox [x] "Let my phone start Coder here" -> toggle_autostart
-  button "Connect another phone" -> connect_another
