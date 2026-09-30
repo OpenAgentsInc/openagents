@@ -47,7 +47,7 @@ Tailnet connections directly without relying on central relay servers (#429).
 
 ## QA evidence
 
-The [QA release ladder for the running service](https://openagents.com/qa/tree/current)
+The QA release ladder for the running service
 shows its source commit, qualifying receipts, and missing release evidence.
 The deploy log links the exact commit it rolled. A lower rung does not establish
 the evidence required by a higher rung.

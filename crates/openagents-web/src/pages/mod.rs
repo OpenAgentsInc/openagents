@@ -1,15 +1,11 @@
 //! The public pages, one module per section.
 
-mod boards;
 mod connect;
 mod content;
 mod desktop;
-mod forum;
-mod gym;
 mod home;
 mod profile;
 mod releases;
-mod traces;
 
 use axum::Router;
 
@@ -26,9 +22,5 @@ pub(crate) fn routes() -> Router<App> {
         .merge(desktop::routes())
         .merge(connect::routes())
         .merge(releases::routes())
-        .merge(gym::routes())
-        .merge(traces::routes())
-        .merge(forum::routes())
-        .merge(boards::routes())
         .merge(profile::routes())
 }

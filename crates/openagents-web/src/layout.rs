@@ -9,22 +9,14 @@ use axum::response::{Html, IntoResponse, Response};
 pub const COPYRIGHT: &str = "\u{a9} 2026 OpenAgents, Inc.";
 
 /// The sections the header links to, in order.
-pub const SECTIONS: [(&str, &str); 6] = [
+pub const SECTIONS: [(&str, &str); 3] = [
     ("Desktop", "/desktop"),
     ("Docs", "/docs"),
     ("Blog", "/blog"),
-    ("Forum", "/forum"),
-    ("Gym", "/gym"),
-    ("Traces", "/traces"),
 ];
 
 /// The footer's other links, after the two legal documents.
-const MORE: [(&str, &str); 4] = [
-    ("Install", "/docs/install"),
-    ("Earn", "/earn"),
-    ("Weights", "/weights"),
-    ("QA", "/qa"),
-];
+const MORE: [(&str, &str); 1] = [("Install", "/docs/install")];
 
 /// Escapes text for HTML content and attribute values.
 #[must_use]

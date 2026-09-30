@@ -11,9 +11,6 @@ axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }
 futures-util = "0.3"
-# The published Terminal-Bench results: the contract, digest checks, and the
-# view model the apps share. No generator, no network client.
-gym-leaderboard = { path = "../gym-leaderboard", default-features = false }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 # The release proxy streams public release objects; rustls, no cookies.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }

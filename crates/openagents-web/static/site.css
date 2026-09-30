@@ -76,14 +76,14 @@ button:hover,.button:hover{background:var(--tint)}
 
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 2ch}
 
-/* Lists of documents, posts, boards, topics, traces. */
+/* Lists of documents and posts. */
 .list{list-style:none;margin:0;padding:0}
 .list>li{border-top:1px solid var(--w25);padding:.75rem 0}
 .list>li:last-child{border-bottom:1px solid var(--w25)}
 .list .title{color:var(--w100);font-weight:700}
 .list p{margin:.25rem 0 0}
 
-/* Rendered Markdown: docs, blog, legal, forum posts. */
+/* Rendered Markdown: docs, blog, legal. */
 .md{overflow-wrap:anywhere}
 .md h1{font-size:1.4rem}
 .md li{margin:.2rem 0}

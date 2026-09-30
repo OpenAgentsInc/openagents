@@ -29,8 +29,6 @@ These pages need nothing more than this repository and the public buckets:
   app-association files, as the `coder` repository serves them.
 - `/releases/{name}`, `/install-terminal.sh`, and `/install-terminal.ps1`:
   the release proxy and its short forms.
-- `/gym` and `/gym/results/...`: the committed Terminal-Bench publication,
-  digest-checked, with boards, attempts, and traces.
 - `/app`: the local task browser, loopback only.
 
 ## Ported, waiting on a production backend
@@ -42,12 +40,17 @@ implementation yet:
 
 | Page | Backend method | Production source |
 | --- | --- | --- |
-| `/traces`, `/trace/{key}` | `traces`, `trace` | The trace intake's table. |
-| `/forum`, `/forum/f/{slug}`, `/forum/t/{id}` | `forum_boards`, `forum_board`, `forum_topic` | The forum's boards, topics, and posts. |
-| `/earn`, `/weights`, `/qa` | `dashboard` | The fleet coordinator's status, the service's receipts, and the QA claim registry. |
 | `/u/{login}` | `profile` | The account store. |
 | `/ask` questions | `answer` | Chat with OpenAgents. |
 | Homepage credit line | `new_account_credit_cents` | Service configuration. |
+
+## Removed
+
+The Forum (`/forum`), Gym (`/gym`, `/gym/results/...`), Traces (`/traces`,
+`/trace/{key}`), Earn (`/earn`), Weights (`/weights`), and QA (`/qa`)
+sections were ported and then removed on 2026-09-29 at the owner's
+direction: the site serves none of them and links none of them. The Coder
+docs no longer point readers at `/earn`, `/forum`, or `/qa`.
 
 ## Not ported
 
@@ -61,15 +64,13 @@ These need accounts, sessions, or payments, or are internal:
   and `/trajectories`.
 - APIs: `/v1/*`, `/api/*`, MCP, the decision door, token and grant minting,
   earn receipts, trace upload, and QA uploads.
-- Live streams: the WebSockets behind `/earn`, `/weights`, and `/qa`, and
-  their recorded replays.
 - Avatars (`/u/{login}/avatar`), calendar booking, `/map`, `/components`,
   `/showcase`, deployments, and page-view analytics.
 
 ## Before deploy
 
-1. Implement `Backend` against production data, or decide to launch
-   without the backend-waiting pages and drop their header and footer links.
+1. Implement `Backend` against production data (profiles, homepage
+   answers, and the credit line), or launch without them.
 2. Package and host the binary (for example on Cloud Run) with
    `--listen 0.0.0.0:PORT --public-host openagents.com`, behind TLS.
 3. Serve the association files at `openagents.com` with no redirect, and

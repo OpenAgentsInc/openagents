@@ -20,7 +20,7 @@ Every part of Coder uses the same OpenAgents account.
   spare capacity to the mesh, within the limits you set, and counts what the
   machine earns as credit on your Coder account. Run `coder earn on` to start
   it and `coder earn off` to stop it. Serving needs a local model engine on
-  the machine, such as Ollama. The public board at `/earn` shows the mesh.
+  the machine, such as Ollama.
 - **Coder Desktop** for macOS and **Coder Mobile** for iOS are distributed to
   testers. Neither has a public download on `openagents.com`.
 
@@ -87,5 +87,5 @@ products or to train models.
 
 **How do I get help?**
 Read the documentation at `/docs`. In Coder Terminal, `/help` lists the
-commands and keys, and `/feedback` opens the forum at `/forum`. The blog at
+commands and keys. The blog at
 `/blog` covers releases and changes.

@@ -2,12 +2,11 @@
 //!
 //! One axum router serves the public pages (the homepage, the terms and the
 //! privacy policy, the docs, the blog, the desktop download, the pairing
-//! link's landing page, the release proxy, the Gym's published results, and
-//! the read views of traces, the forum, the live boards, and profiles) and
-//! the local, read-only task browser at `/app`.
+//! link's landing page, the release proxy, and profiles) and the local,
+//! read-only task browser at `/app`.
 //!
-//! No page runs a script. Pages that need the production account store,
-//! forum, trace intake, or fleet read through [`backend::Backend`]; a
+//! No page runs a script. Pages that need the production account store
+//! read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
 //! without records or secrets. The design follows the private Coder
 //! service's site, reimplemented here.
@@ -19,7 +18,7 @@ mod pages;
 pub mod palette;
 mod tasks;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -52,34 +51,23 @@ pub struct Config {
     /// may reach the public pages (for example `openagents.com`). The task
     /// browser answers only the local hosts.
     pub public_hosts: Vec<String>,
-    /// The directory of the published Gym results (`index.json`,
-    /// `leaderboard.v1.json`, `traces/`).
-    pub published: PathBuf,
     /// The base URL `/releases/{name}` proxies.
     pub releases_url: String,
     pub backend: Arc<dyn Backend>,
 }
 
 impl Config {
-    /// A development server: loopback on 4300, the development backend,
-    /// and the results committed in this repository.
+    /// A development server: loopback on 4300 and the development backend.
     #[must_use]
     pub fn development(store: PathBuf) -> Self {
         Self {
             store,
             port: 4300,
             public_hosts: Vec::new(),
-            published: default_published(),
             releases_url: DEFAULT_RELEASES_URL.to_owned(),
             backend: Arc::new(Development),
         }
     }
-}
-
-/// `bench/terminal-bench/published` in this repository.
-#[must_use]
-pub fn default_published() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/published")
 }
 
 /// The router's shared state.

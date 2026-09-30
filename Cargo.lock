@@ -7078,7 +7078,6 @@ dependencies = [
  "base64 0.22.1",
  "coder",
  "futures-util",
- "gym-leaderboard",
  "pulldown-cmark",
  "reqwest 0.12.28",
  "serde",

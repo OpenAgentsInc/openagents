@@ -1,8 +1,8 @@
 //! Markdown to HTML for the pages that serve a document: the docs, the
-//! blog, the legal pages, and forum posts.
+//! blog, and the legal pages.
 //!
-//! Raw HTML in the source is shown as text, never as markup, so a forum
-//! post or any other document cannot write into the page. A link keeps its
+//! Raw HTML in the source is shown as text, never as markup, so a document
+//! cannot write into the page. A link keeps its
 //! target only when it is `http`, `https`, `mailto`, a site path, or an
 //! anchor. A link to a sibling Markdown document (`install.md`) points at
 //! that document's page under `link_base`. A relative link that leaves the

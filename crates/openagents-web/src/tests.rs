@@ -8,9 +8,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use super::*;
-use crate::backend::{
-    Board, Dashboard, ForumBoard, ForumPost, ForumTopic, Profile, Table, TraceListing, TraceRecord,
-};
+use crate::backend::Profile;
 
 const LOCAL: &str = "127.0.0.1:4300";
 
@@ -51,7 +49,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 31] = [
+const PAGES: [&str; 17] = [
     "/",
     "/ask?q=help",
     "/ask?q=download",
@@ -69,20 +67,6 @@ const PAGES: [&str; 31] = [
     "/blog/introducing-coder",
     "/desktop",
     "/connect",
-    "/gym",
-    "/gym/results",
-    "/gym/results/tb4-fable-delegate-repro-9776",
-    "/gym/results/tb4-fable-delegate-repro-9776?filter=beats&caveats=all",
-    "/gym/results/tb4-fable-delegate-repro-9776/batched-eval-parity.p1",
-    "/gym/results/tb4-fable-delegate-repro-9776/batched-eval-parity.p1/trace?tab=agent",
-    "/traces",
-    "/trace/sha256:abc",
-    "/forum",
-    "/forum/f/general",
-    "/forum/t/1",
-    "/earn",
-    "/weights",
-    "/qa",
 ];
 
 #[tokio::test]
@@ -246,12 +230,27 @@ async fn unknown_addresses_and_documents_answer_404_in_the_frame() {
         "/docs/../../etc/passwd",
         "/docs/missing",
         "/blog/missing",
-        "/gym/results/missing",
         "/u/-bad-",
     ] {
         let (status, body) = get(router(config(root.path().into())), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         assert!(body.contains("href=\"/terms\""), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn the_removed_sections_are_gone_and_never_linked() {
+    let root = tempfile::tempdir().unwrap();
+    let removed = [
+        "/forum", "/gym", "/traces", "/trace/x", "/earn", "/weights", "/qa",
+    ];
+    for uri in removed {
+        let (status, _) = get(router(config(root.path().into())), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+    let (_, home) = get(router(config(root.path().into())), "/").await;
+    for uri in removed {
+        assert!(!home.contains(&format!("href=\"{uri}")), "{uri} is linked");
     }
 }
 
@@ -356,63 +355,10 @@ async fn releases_stream_from_the_bucket_with_ranges_and_the_install_page_reads_
     assert_eq!(status, StatusCode::BAD_GATEWAY, "an unreachable bucket");
 }
 
-#[tokio::test]
-async fn a_publication_that_fails_its_digest_shows_no_numbers() {
-    let root = tempfile::tempdir().unwrap();
-    let published = root.path().join("published");
-    std::fs::create_dir_all(&published).unwrap();
-    std::fs::copy(
-        default_published().join("index.json"),
-        published.join("index.json"),
-    )
-    .unwrap();
-    let board = std::fs::read_to_string(default_published().join("leaderboard.v1.json"))
-        .unwrap()
-        .replacen("\"passed\"", "\"passed_\"", 1);
-    std::fs::write(published.join("leaderboard.v1.json"), board).unwrap();
-    let mut tampered = config(root.path().into());
-    tampered.published = published;
-    let (status, body) = get(router(tampered.clone()), "/gym/results").await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-    assert!(body.contains("Can&#39;t verify this publication"), "{body}");
-    let (status, body) = get(router(tampered), "/gym").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("role=\"alert\""), "{body}");
-}
-
-#[tokio::test]
-async fn the_gym_draws_the_committed_publication() {
-    let root = tempfile::tempdir().unwrap();
-    let (_, boards) = get(router(config(root.path().into())), "/gym/results").await;
-    assert!(
-        boards.contains("href=\"/gym/results/tb4-fable-delegate-repro-9776\""),
-        "{boards}"
-    );
-    assert!(boards.contains("Publication "), "{boards}");
-    let (_, attempt) = get(
-        router(config(root.path().into())),
-        "/gym/results/tb4-fable-delegate-repro-9776/batched-eval-parity.p1",
-    )
-    .await;
-    assert!(attempt.contains("/trace\">[ "), "{attempt}");
-}
-
 // ---------------------------------------------------------------------
 // A connected backend, for the pages' production shapes. Test-only rows.
 
 struct Connected;
-
-fn listing(visibility: &str) -> TraceListing {
-    TraceListing {
-        digest: format!("sha256:{visibility}"),
-        receipt: "receipt-test".to_owned(),
-        domain: "rust".to_owned(),
-        visibility: visibility.to_owned(),
-        received_at: "2026-09-29T00:00:00Z".to_owned(),
-        size_bytes: 42,
-        truncated: false,
-    }
-}
 
 impl backend::Backend for Connected {
     fn connected(&self) -> bool {
@@ -424,87 +370,6 @@ impl backend::Backend for Connected {
     fn answer<'a>(&'a self, question: &'a str) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move { Some(format!("You asked **{question}**.")) })
     }
-    fn traces(&self) -> BoxFuture<'_, Vec<TraceListing>> {
-        Box::pin(async { vec![listing("glass"), listing("ledger")] })
-    }
-    fn trace<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Option<TraceRecord>> {
-        Box::pin(async move {
-            let visibility = key.strip_prefix("sha256:")?;
-            Some(TraceRecord {
-                listing: listing(visibility),
-                document: Some(json!({
-                    "schema_version": "ATIF-v1.8",
-                    "agent": {"name": "test-agent", "version": "0.0.0"},
-                    "steps": [{"step_id": 1, "source": "user", "message": "<img src=x onerror=alert(1)>"}]
-                })),
-            })
-        })
-    }
-    fn forum_boards(&self) -> BoxFuture<'_, Vec<ForumBoard>> {
-        Box::pin(async {
-            vec![ForumBoard {
-                slug: "general".to_owned(),
-                title: "General".to_owned(),
-                description: "Test board".to_owned(),
-                topics: 1,
-                posts: 1,
-                locked: false,
-                last: None,
-            }]
-        })
-    }
-    fn forum_board<'a>(
-        &'a self,
-        slug: &'a str,
-    ) -> BoxFuture<'a, Option<(ForumBoard, Vec<ForumTopic>)>> {
-        Box::pin(async move {
-            (slug == "general").then(|| {
-                (
-                    ForumBoard {
-                        slug: "general".to_owned(),
-                        title: "General".to_owned(),
-                        description: "Test board".to_owned(),
-                        topics: 1,
-                        posts: 1,
-                        locked: false,
-                        last: None,
-                    },
-                    vec![topic()],
-                )
-            })
-        })
-    }
-    fn forum_topic<'a>(
-        &'a self,
-        id: &'a str,
-    ) -> BoxFuture<'a, Option<(ForumTopic, Vec<ForumPost>)>> {
-        Box::pin(async move {
-            (id == "t1").then(|| {
-                (
-                    topic(),
-                    vec![ForumPost {
-                        seq: 1,
-                        author: "tester".to_owned(),
-                        agent: true,
-                        body: "Hello <script>alert(1)</script> **world**".to_owned(),
-                        created_at: "2026-09-29".to_owned(),
-                    }],
-                )
-            })
-        })
-    }
-    fn dashboard(&self, board: Board) -> BoxFuture<'_, Option<Dashboard>> {
-        Box::pin(async move {
-            (board == Board::Earn).then(|| Dashboard {
-                summary: "Test snapshot".to_owned(),
-                tables: vec![Table {
-                    title: "Devices".to_owned(),
-                    columns: vec!["Device".to_owned()],
-                    rows: vec![vec!["<dev>".to_owned()]],
-                }],
-            })
-        })
-    }
     fn profile<'a>(&'a self, login: &'a str) -> BoxFuture<'a, Option<Profile>> {
         Box::pin(async move {
             (login == "tester").then(|| Profile {
@@ -513,20 +378,6 @@ impl backend::Backend for Connected {
                 joined: "September 2026".to_owned(),
             })
         })
-    }
-}
-
-fn topic() -> ForumTopic {
-    ForumTopic {
-        id: "t1".to_owned(),
-        title: "Hello".to_owned(),
-        author: "tester".to_owned(),
-        posts: 1,
-        pinned: false,
-        closed: false,
-        opened: "2026-09-29".to_owned(),
-        board_slug: "general".to_owned(),
-        board_title: "General".to_owned(),
     }
 }
 
@@ -544,30 +395,9 @@ async fn a_connected_backend_fills_the_pages_and_escapes_what_it_returns() {
     assert!(home.contains("Every new account starts with $25 of credit."));
     let (_, answer) = get(router(connected(dir)), "/ask?q=why").await;
     assert!(answer.contains("<strong>why</strong>"), "{answer}");
-    let (_, traces) = get(router(connected(dir)), "/traces").await;
-    assert!(traces.contains("sha256:glass") && traces.contains("sha256:ledger"));
-    let (_, glass) = get(router(connected(dir)), "/trace/sha256:glass").await;
-    assert!(
-        glass.contains("&lt;img src=x onerror=alert(1)&gt;"),
-        "{glass}"
-    );
-    let (_, ledger) = get(router(connected(dir)), "/trace/sha256:ledger").await;
-    assert!(
-        ledger.contains("not public") && !ledger.contains("onerror"),
-        "{ledger}"
-    );
-    let (_, board) = get(router(connected(dir)), "/forum/f/general").await;
-    assert!(board.contains("href=\"/forum/t/t1\""));
-    let (_, topic) = get(router(connected(dir)), "/forum/t/t1").await;
-    assert!(
-        topic.contains("&lt;script&gt;") && topic.contains("<strong>world</strong>"),
-        "{topic}"
-    );
-    let (_, earn) = get(router(connected(dir)), "/earn").await;
-    assert!(earn.contains("&lt;dev&gt;"));
     let (_, profile) = get(router(connected(dir)), "/u/tester").await;
     assert!(profile.contains("Test Person") && profile.contains("https://github.com/tester"));
-    for uri in ["/u/nobody", "/forum/t/none", "/forum/f/none", "/trace/none"] {
+    for uri in ["/u/nobody"] {
         let (status, _) = get(router(connected(dir)), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
     }
