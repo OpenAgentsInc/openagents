@@ -21,7 +21,7 @@ pattern and uses the public Nostr crate's strict JSON and digest primitives.
 The local exact-byte command format is distinct from NIP-SESS and NIP-CTRL.
 
 - [Task contract and store](../../../crates/coder/src/task.rs).
-- [CLI dispatch](../../../crates/coder/src/task_cli.rs).
+- [CLI dispatch](../../../crates/coder/src/task/cli.rs).
 - [Persistence and fault tests](../../../crates/coder/src/task/tests.rs).
 - [Independent-process CLI tests](../../../crates/coder/tests/task_inbox.rs).
 - [Usage and recovery guide](../guides/tasks.md).
