@@ -347,7 +347,7 @@ mod tests {
             host,
             store.to_path_buf(),
             stages,
-            Some(jev()),
+            Ok(jev()),
             "fixture-session",
         )
         .await

@@ -667,7 +667,7 @@ fn stages(
 pub async fn execute(
     directory: &Path,
     bytes: &[u8],
-    judge: Option<crate::models::JevJudge>,
+    judge: Result<crate::models::JevJudge, String>,
 ) -> Result<task::Task, Failure> {
     let unstarted = |cause: StartCause| move |message: String| Failure::unstarted(cause, message);
     let grant = task::owner::Grant::parse(bytes)
@@ -683,7 +683,7 @@ pub async fn execute(
         .validate()
         .map_err(|error| error.to_string())
         .map_err(unstarted(StartCause::Configuration))?;
-    if let Some(judge) = &judge
+    if let Ok(judge) = &judge
         && (judge.client.base_url() != config.decision_endpoint
             || judge.client.default_model() != config.decision_model)
     {
@@ -708,14 +708,38 @@ pub async fn execute(
             .noting("routes_unavailable", json!(unavailable)),
         );
     }
-    if judge.is_none() {
-        let _ = host.append(
-            &Step::said(
-                Source::System,
-                "This computer has no Jev key, so Coder runs without Jev's judgments.",
-            )
-            .noting("decision_unavailable", json!({"reason":"no_key"})),
-        );
+    match &judge {
+        Ok(judge) => {
+            // Which service answers this run's judgments: TypeSafe directly
+            // under this computer's key, or the hosted decision service.
+            let service = judge.client.service();
+            let _ = host.append(
+                &Step::said(
+                    Source::System,
+                    &match &service {
+                        Some(_) => "Jev answers through the OpenAgents hosted decision service."
+                            .to_string(),
+                        None => {
+                            "Jev answers directly under this computer's TypeSafe key.".to_string()
+                        }
+                    },
+                )
+                .noting(
+                    "decision_service",
+                    json!({"door":judge.client.base_url(),"model":judge.client.default_model(),
+                        "via":if service.is_some() {"hosted"} else {"direct"},"service":service}),
+                ),
+            );
+        }
+        Err(reason) => {
+            let _ = host.append(
+                &Step::said(
+                    Source::System,
+                    &format!("Coder runs without Jev's judgments: {reason}"),
+                )
+                .noting("decision_unavailable", json!({"reason":reason})),
+            );
+        }
     }
     let book = host.store().to_path_buf();
     run_stages(
@@ -777,7 +801,7 @@ async fn run_stages<T: codex_transport::Transport>(
     host: Host,
     book: PathBuf,
     stages: Vec<Stage<T>>,
-    client: Option<jev::Client>,
+    client: Result<jev::Client, String>,
     session: &str,
 ) -> Result<task::Task, task::Error> {
     let count = stages.len();

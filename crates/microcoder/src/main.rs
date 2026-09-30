@@ -846,19 +846,42 @@ async fn repository_cli(arguments: &[String]) -> u8 {
                 .map(|launched| serde_json::json!(launched))
                 .map_err(Failure::run);
         }
-        // A computer without a Jev key still runs a repository turn: the
-        // desktop app asks only that Codex or Claude Code is signed in, so
-        // the steps go without Jev's advisory judgments there, and the
-        // transcript says so. A key that is present is always used; one the
-        // client cannot use means the task never starts, and the cause
-        // tells the host that launched this owner why.
-        let judge = match jev_key() {
-            Some(_) => Some(JevJudge {
-                client: jev_client().map_err(|why| {
-                    Failure::unstarted(coder::task::autostart::StartCause::Configuration, why)
-                })?,
-            }),
-            None => None,
+        // Jev answers a repository turn's judgments through the one
+        // resolver every Jev caller shares (`jev_hosted::resolve`): this
+        // computer's TypeSafe key when it has one, else the OpenAgents
+        // hosted decision service, which needs no key here. The client is
+        // pinned to the grant's decision door and model. Only when neither
+        // is available does the turn run without judgments, and the
+        // transcript says why. A key that is present but cannot build a
+        // client means the task never starts, and the cause tells the host
+        // that launched this owner why.
+        let judge = match coder::task::owner::Grant::parse(&bytes)
+            .ok()
+            .and_then(|grant| grant.adapter_configuration)
+        {
+            Some(config) => {
+                let dir = jev_hosted::openagents_dir()
+                    .ok_or_else(|| Failure::run("no home directory".into()))?;
+                let env = |name: &str| std::env::var(name).ok();
+                let door = jev_hosted::Door {
+                    url: &config.decision_endpoint,
+                    model: &config.decision_model,
+                };
+                match jev_hosted::resolve(&env, &dir, &door, &|config| config) {
+                    Ok(resolved) => Ok(JevJudge {
+                        client: resolved.client,
+                    }),
+                    Err(why) if jev_hosted::local_key(&env, &dir).is_some() => {
+                        return Err(Failure::unstarted(
+                            coder::task::autostart::StartCause::Configuration,
+                            why,
+                        ));
+                    }
+                    Err(why) => Err(why),
+                }
+            }
+            // `execute` refuses the grant and says why.
+            None => Err("the grant names no decision door".to_string()),
         };
         microcoder::repository::execute(&store, &bytes, judge)
             .await

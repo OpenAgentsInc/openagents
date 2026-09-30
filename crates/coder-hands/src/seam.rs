@@ -168,34 +168,50 @@ impl Seam {
 /// this repository reads it.
 const SETTINGS: &str = ".openagents/jev.json";
 
-/// A seam over the Jev configuration this machine holds, and the model's
-/// name for the caller's log line.
+/// A seam over the Jev this machine can reach, and the model's name for
+/// the caller's log line.
 ///
 /// The key is `TYPESAFE_API_KEY` when it is set, and otherwise the
 /// `api_key` field of `~/.openagents/jev.json`. The model is
 /// `TYPESAFE_DEFAULT_MODEL`, then the file's `model` field, then the `jev`
-/// client's default. `TYPESAFE_BASE_URL` points the client at another API
-/// root, which the `jev` client reads itself.
+/// client's default. `TYPESAFE_BASE_URL` points a keyed client at another
+/// API root. With no key, the seam asks the OpenAgents hosted decision
+/// service (`jev_hosted::resolve`), which needs none here.
 ///
 /// # Errors
 ///
-/// Returns the sentence that says why there is no seam: no key, a client
-/// that did not build, or the thread's error. None of them carries a key.
+/// Returns the sentence that says why there is no seam: no Jev at all, a
+/// client that did not build, or the thread's error. None of them carries
+/// a key.
 pub fn configured() -> Result<(Seam, String), String> {
     let file = settings();
     let model = present(std::env::var(jev::env::DEFAULT_MODEL).ok())
         .or_else(|| file.as_ref().and_then(|file| present(file.model.clone())))
         .unwrap_or_else(|| jev::defaults::MODEL.to_string());
     let key = present(std::env::var(jev::env::API_KEY).ok())
-        .or_else(|| file.and_then(|file| present(file.api_key)))
-        .ok_or_else(|| {
-            format!(
-                "Jev has no key: set {} or put `api_key` in ~/{SETTINGS}.",
-                jev::env::API_KEY
+        .or_else(|| file.and_then(|file| present(file.api_key)));
+    let client = match key {
+        Some(key) => {
+            let config = jev::Config::new().api_key(key).default_model(model.clone());
+            jev::Client::new(config).map_err(|error| error.to_string())?
+        }
+        None => {
+            let dir = jev_hosted::openagents_dir()
+                .ok_or_else(|| "Jev has no key and no home directory.".to_string())?;
+            let env = |name: &str| std::env::var(name).ok();
+            jev_hosted::resolve(
+                &env,
+                &dir,
+                &jev_hosted::Door {
+                    url: jev_hosted::DOOR,
+                    model: &model,
+                },
+                &|config| config,
             )
-        })?;
-    let config = jev::Config::new().api_key(key).default_model(model.clone());
-    let client = jev::Client::new(config).map_err(|error| error.to_string())?;
+            .map_err(|why| format!("Jev is unavailable: {why}."))?
+            .client
+        }
+    };
     let seam = Seam::start(client, model.clone())
         .map_err(|error| format!("the seam's thread did not start: {error}."))?;
     Ok((seam, model))

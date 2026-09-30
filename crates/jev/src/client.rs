@@ -167,6 +167,7 @@ struct Inner {
     retry: RetryPolicy,
     default_headers: HeaderMap,
     http: reqwest::Client,
+    exchange: Option<Arc<dyn crate::exchange::Exchange>>,
     requests: AtomicU64,
 }
 
@@ -190,6 +191,7 @@ impl Client {
                 retry: resolved.retry,
                 default_headers: resolved.default_headers,
                 http: resolved.http,
+                exchange: resolved.exchange,
                 requests: AtomicU64::new(0),
             }),
         })
@@ -208,6 +210,17 @@ impl Client {
     #[must_use]
     pub fn base_url(&self) -> &str {
         &self.inner.base_url
+    }
+
+    /// What carries this client's calls when it is not HTTP straight to
+    /// [`Client::base_url`]: the exchange's own description, such as the
+    /// hosted decision service. `None` means direct HTTP.
+    #[must_use]
+    pub fn service(&self) -> Option<String> {
+        self.inner
+            .exchange
+            .as_ref()
+            .map(|exchange| exchange.service())
     }
 
     /// The model a request that names none asks.
@@ -551,6 +564,11 @@ impl Client {
             body = %prepared.body_text(),
             "sending an attempt"
         );
+        if let Some(exchange) = &self.inner.exchange {
+            return self
+                .exchanged(exchange.as_ref(), prepared, &headers, attempt, timeout)
+                .await;
+        }
         let mut builder = self
             .inner
             .http
@@ -595,6 +613,87 @@ impl Client {
             elapsed_ms = began.elapsed().as_millis(),
             request_id = request_id(response.headers()).unwrap_or("-"),
             "the API answered"
+        );
+        if status.is_success() {
+            return Ok(response);
+        }
+        Err(self.failure(prepared, status, response).await)
+    }
+
+    /// One attempt through the client's exchange, read back as the
+    /// response HTTP would have carried.
+    async fn exchanged(
+        &self,
+        exchange: &dyn crate::exchange::Exchange,
+        prepared: &Prepared,
+        headers: &HeaderMap,
+        attempt: u32,
+        timeout: Duration,
+    ) -> std::result::Result<reqwest::Response, Failed> {
+        let call = crate::exchange::Call {
+            method: prepared.method.to_string(),
+            path: prepared
+                .url
+                .strip_prefix(&self.inner.base_url)
+                .unwrap_or(&prepared.url)
+                .to_string(),
+            body: prepared.body.clone(),
+            idempotency_key: headers
+                .get("idempotency-key")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+            attempt: attempt + 1,
+            timeout,
+        };
+        let began = Instant::now();
+        let reply = match tokio::time::timeout(timeout, exchange.exchange(call)).await {
+            Err(_) | Ok(Err(crate::exchange::Failure::Timeout)) => {
+                return Err(Failed {
+                    error: Error::Timeout { timeout },
+                    headers: None,
+                });
+            }
+            Ok(Err(crate::exchange::Failure::Unreachable(message))) => {
+                tracing::info!(
+                    target: "jev",
+                    request = prepared.tag,
+                    service = %exchange.service(),
+                    elapsed_ms = began.elapsed().as_millis(),
+                    reason = %message,
+                    "the attempt did not reach the service"
+                );
+                return Err(Failed {
+                    error: Error::Connection {
+                        message,
+                        source: None,
+                    },
+                    headers: None,
+                });
+            }
+            Ok(Ok(reply)) => reply,
+        };
+        let mut builder = http::Response::builder().status(reply.status);
+        for (name, value) in &reply.headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        let response: reqwest::Response = builder
+            .body(reply.body)
+            .map_err(|error| Failed {
+                error: Error::Connection {
+                    message: format!("the service's reply does not read: {error}"),
+                    source: None,
+                },
+                headers: None,
+            })?
+            .into();
+        let status = response.status();
+        tracing::info!(
+            target: "jev",
+            request = prepared.tag,
+            service = %exchange.service(),
+            status = status.as_u16(),
+            elapsed_ms = began.elapsed().as_millis(),
+            "the service answered"
         );
         if status.is_success() {
             return Ok(response);

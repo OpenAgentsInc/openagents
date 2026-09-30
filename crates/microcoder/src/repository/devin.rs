@@ -691,7 +691,7 @@ mod tests {
             host,
             store.to_path_buf(),
             stages,
-            Some(jev()),
+            Ok(jev()),
             "fixture-session",
         )
         .await
@@ -894,7 +894,7 @@ mod tests {
         admitted.model = "claude-opus-5-5-medium".into();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
             vec![Stage::Agent(AgentEngine::Devin, admitted, agent)];
-        let task = run_stages(host, store.clone(), stages, Some(jev()), "fixture-session")
+        let task = run_stages(host, store.clone(), stages, Ok(jev()), "fixture-session")
             .await
             .unwrap();
         let result = task.run.as_ref().unwrap().result.as_ref().unwrap();

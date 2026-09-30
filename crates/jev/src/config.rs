@@ -6,11 +6,13 @@
 //! read the same.
 
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::HeaderMap;
 
 use crate::error::Error;
+use crate::exchange::Exchange;
 use crate::retry::RetryPolicy;
 use crate::{Result, defaults, env};
 
@@ -89,6 +91,7 @@ pub struct Config {
     retry: Option<RetryPolicy>,
     default_headers: HeaderMap,
     http_client: Option<reqwest::Client>,
+    exchange: Option<Arc<dyn Exchange>>,
 }
 
 impl Config {
@@ -169,9 +172,39 @@ impl Config {
         self
     }
 
+    /// Carry every attempt through `exchange` instead of HTTP: the hosted
+    /// decision service's relay, for one. Such a client sends no key — it
+    /// refuses to build with one, and never reads `TYPESAFE_API_KEY` — and
+    /// `base_url` names the door the exchange reaches, for evidence and for
+    /// a grant's endpoint check. See [`crate::exchange`].
+    #[must_use]
+    pub fn exchange(mut self, exchange: Arc<dyn Exchange>) -> Self {
+        self.exchange = Some(exchange);
+        self
+    }
+
     /// Resolve every setting and check it.
     pub(crate) fn resolve(self) -> Result<Resolved> {
-        let api_key = match (self.local_only, self.api_key) {
+        if self.exchange.is_some() {
+            if self.local_only {
+                return Err(Error::Config(
+                    "a local-only client can't use an exchange".into(),
+                ));
+            }
+            if self.api_key.is_some() {
+                return Err(Error::Config(
+                    "a client that uses an exchange sends no API key; remove `Config::api_key`"
+                        .into(),
+                ));
+            }
+            if self.base_url.is_none() {
+                return Err(Error::Config(
+                    "a client that uses an exchange names its door; set `Config::base_url`".into(),
+                ));
+            }
+            crate::transport::headers(&self.default_headers, &HeaderMap::new(), None, false)?;
+        }
+        let api_key = match (self.local_only || self.exchange.is_some(), self.api_key) {
             (true, Some(_)) => {
                 return Err(Error::Config(
                     "a local-only client can't use an API key; remove `Config::api_key`".into(),
@@ -264,6 +297,7 @@ impl Config {
             retry,
             default_headers: self.default_headers,
             http,
+            exchange: self.exchange,
         })
     }
 }
@@ -277,6 +311,7 @@ pub(crate) struct Resolved {
     pub(crate) retry: RetryPolicy,
     pub(crate) default_headers: HeaderMap,
     pub(crate) http: reqwest::Client,
+    pub(crate) exchange: Option<Arc<dyn Exchange>>,
 }
 
 /// One environment value, trimmed. An empty or whitespace-only value reads as

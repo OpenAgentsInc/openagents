@@ -57,25 +57,32 @@ impl<T: codex_transport::Transport> codex_transport::Transport for Transport<'_,
     }
 }
 
-/// What a step's judgment says on a computer with no Jev key.
-pub(super) const NO_JEV_KEY: &str = "no Jev key on this computer";
-
 struct NativeJudge<'a> {
     host: &'a Host,
-    /// `None` on a computer with no Jev key: every judgment answers nothing,
-    /// costs nothing, and names why, and no request is made.
-    client: Option<jev::Client>,
+    /// The client, or why this run has no Jev. Without one every judgment
+    /// answers nothing, costs nothing, and names why, and no request is
+    /// made.
+    client: Result<jev::Client, String>,
+    /// Set when the hosted decision service became unavailable mid-run —
+    /// unreachable, or refusing this computer's quota: the rest of the run
+    /// asks nothing and says why, instead of waiting on every step.
+    off: RefCell<Option<String>>,
 }
 impl Judge for NativeJudge<'_> {
     async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
-        let Some(client) = &self.client else {
-            return Judgment {
-                error: Some(NO_JEV_KEY.into()),
-                usd: Some(0.0),
-                usd_upper: Some(0.0),
-                ..Judgment::default()
-            };
+        let unavailable = |why: String| Judgment {
+            error: Some(why),
+            usd: Some(0.0),
+            usd_upper: Some(0.0),
+            ..Judgment::default()
         };
+        let client = match &self.client {
+            Ok(client) => client,
+            Err(why) => return unavailable(why.clone()),
+        };
+        if let Some(why) = self.off.borrow().clone() {
+            return unavailable(why);
+        }
         let started = std::time::Instant::now();
         let mut questions = jev::Questions::new();
         for question in &set.questions {
@@ -93,7 +100,9 @@ impl Judge for NativeJudge<'_> {
                 let retained=self.host.append(&Step::said(Source::System,"Native decision response retained.")
                     .noting("decision_response",json!({"model":response.model,"request_id":response.raw().request_id(),
                         "status":response.raw().status,"body_bytes":response.raw().bytes,
-                        "input_tokens":response.usage.input_tokens,"output_tokens":response.usage.output_tokens})));
+                        "input_tokens":response.usage.input_tokens,"output_tokens":response.usage.output_tokens,
+                        "door":client.base_url(),"via":if client.service().is_some() {"hosted"} else {"direct"},
+                        "service":response.service(),"milliseconds":milliseconds})));
                 if let Err(error) = retained {
                     return Judgment {
                         error: Some(error.to_string()),
@@ -141,9 +150,23 @@ impl Judge for NativeJudge<'_> {
                 let _ = self.host.append(
                     &Step::said(Source::System, "Decision response was unavailable.").noting(
                         "decision_response",
-                        json!({"error":error.to_string(),"body":"unavailable","billing":"unknown"}),
+                        json!({"error":error.to_string(),"body":"unavailable","billing":"unknown",
+                            "door":client.base_url(),"via":if client.service().is_some() {"hosted"} else {"direct"},
+                            "milliseconds":milliseconds}),
                     ),
                 );
+                if client.service().is_some()
+                    && let Some(why) = jev_hosted::unavailable(&error)
+                {
+                    let _ = self.host.append(
+                        &Step::said(
+                            Source::System,
+                            &format!("Coder runs without Jev's judgments for the rest of this task: {why}"),
+                        )
+                        .noting("decision_unavailable", json!({"reason":why})),
+                    );
+                    *self.off.borrow_mut() = Some(why);
+                }
                 Judgment {
                     error: Some(error.to_string()),
                     cost_unknown: Some("decision request failed; charge is unknown".into()),
@@ -234,7 +257,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     host: &Host,
     book: PathBuf,
     clients: Vec<(GrantRoute, Client<T>)>,
-    client: Option<jev::Client>,
+    client: Result<jev::Client, String>,
     session: &str,
 ) -> Result<(State, crate::run::Outcome), task::Error> {
     let replies = Replies::new(host);
@@ -268,7 +291,11 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     let journal = Transcript(host);
     let generator = failover(host, &journal, book, lanes, task::autostart::unix_now);
     generator.record_start();
-    let judge = NativeJudge { host, client };
+    let judge = NativeJudge {
+        host,
+        client,
+        off: RefCell::new(None),
+    };
     run_loop(host, &generator, &judge, replies).await
 }
 
@@ -278,21 +305,73 @@ mod tests {
     use codex_transport::Transport as _;
 
     #[tokio::test]
-    async fn without_a_jev_key_a_judgment_answers_nothing_costs_nothing_and_says_why() {
+    async fn without_jev_a_judgment_answers_nothing_costs_nothing_and_says_why() {
         let (_root, store, grant) = super::super::tests::fixture();
         let host = Host::admit(&store, &grant).await.unwrap();
+        let why = "OPENAGENTS_JEV_HOSTED=off turns the hosted decision service off";
         let judge = NativeJudge {
             host: &host,
-            client: None,
+            client: Err(why.to_string()),
+            off: RefCell::new(None),
         };
         let set = microcoder_loop::models::question_set();
         let judgment = judge.judge(&set, &json!({"task": "fixture"})).await;
         assert!(judgment.answers.is_empty());
-        assert_eq!(judgment.error.as_deref(), Some(NO_JEV_KEY));
+        assert_eq!(judgment.error.as_deref(), Some(why));
         assert_eq!(judgment.usd, Some(0.0));
         assert!(judgment.cost_unknown.is_none());
-        assert!(judgment.render(&set).contains(NO_JEV_KEY));
+        assert!(judgment.render(&set).contains(why));
         host.finish("fixture", false, json!({})).unwrap();
+    }
+
+    /// A hosted service that cannot be reached is asked once: the run then
+    /// says why it has no Jev and asks nothing more, rather than waiting
+    /// out every step.
+    #[tokio::test]
+    async fn an_unreachable_hosted_service_is_asked_once_and_the_run_says_why() {
+        let (_root, store, grant) = super::super::tests::fixture();
+        let host = Host::admit(&store, &grant).await.unwrap();
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let relay = format!("ws://{}", closed.local_addr().unwrap());
+        drop(closed);
+        let home = tempfile::tempdir().unwrap();
+        let env = |name: &str| (name == jev_hosted::RELAY_VAR).then(|| relay.clone());
+        let client = jev_hosted::resolve(
+            &env,
+            home.path(),
+            &jev_hosted::Door {
+                url: jev_hosted::DOOR,
+                model: "jev-1.13.0",
+            },
+            &|config| config,
+        )
+        .unwrap()
+        .client;
+        let judge = NativeJudge {
+            host: &host,
+            client: Ok(client),
+            off: RefCell::new(None),
+        };
+        let set = microcoder_loop::models::question_set();
+        let first = judge.judge(&set, &json!({"task": "fixture"})).await;
+        assert!(
+            first
+                .error
+                .as_deref()
+                .unwrap()
+                .starts_with("Jev is unreachable")
+        );
+        let started = std::time::Instant::now();
+        let second = judge.judge(&set, &json!({"task": "fixture"})).await;
+        assert_eq!(second.error, first.error);
+        assert_eq!(second.usd, Some(0.0));
+        assert!(started.elapsed() < std::time::Duration::from_millis(50));
+        host.finish("fixture", false, json!({})).unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert!(trace.contains(
+            "Coder runs without Jev's judgments for the rest of this task: Jev is unreachable"
+        ));
+        assert!(!trace.contains("no Jev key"));
     }
 
     #[tokio::test]

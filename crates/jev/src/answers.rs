@@ -227,6 +227,19 @@ impl SystemOneResponse {
         self.raw.request_id()
     }
 
+    /// The NIP-CJ `service` object (`{door, version}`) a hosted decision
+    /// service adds to the answers it relays: the door that answered and
+    /// the build that carried it. `None` for an answer straight from the
+    /// door.
+    #[must_use]
+    pub fn service(&self) -> Option<serde_json::Value> {
+        serde_json::from_slice::<serde_json::Value>(&self.raw.bytes)
+            .ok()?
+            .get("service")
+            .filter(|service| service.is_object())
+            .cloned()
+    }
+
     /// The Noul answer one question id holds.
     ///
     /// # Errors

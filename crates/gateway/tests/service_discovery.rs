@@ -177,6 +177,9 @@ async fn rig() -> Rig {
         upstream_timeout_secs: 30,
         jobs_dir: jobs_dir.path().to_path_buf(),
         request_window: None,
+        open: None,
+        service: None,
+        probe_secs: 0,
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();

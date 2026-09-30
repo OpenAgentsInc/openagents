@@ -13,6 +13,7 @@ blocking = ["tokio/rt"]
 live = []
 
 [dependencies]
+http = "1"
 httpdate = "1"
 indexmap = { version = "2", features = ["serde"] }
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "thread_rng"] }

@@ -1,0 +1,64 @@
+[Unit]
+Description=OpenAgents hosted decision service (Jev over NIP-CJ)
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/decision-worker.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/decision-worker/decision-worker.env
+ExecStartPre=/usr/bin/test -x /opt/decision-worker/current/decision-worker
+ExecStart=/opt/decision-worker/current/decision-worker /opt/decision-worker/current/decision-worker.json
+# The worker reconnects to the relay itself, and its liveness probe ends a
+# session the relay stopped answering; a crash restarts it here.
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+KillSignal=SIGTERM
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=decision-worker
+
+# The worker listens on nothing: one outbound connection to the relay and
+# one to the door.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+
+# The state directory holds jobs.jsonl (the NIP-CJ pair ledger) and
+# quota.json (the day's counts), so a restart keeps both.
+StateDirectory=decision-worker
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

@@ -131,6 +131,35 @@ pub fn jev_client(key: &Secret) -> Result<jev::Client, String> {
     .map_err(|error| format!("cannot build the Jev client: {error}"))
 }
 
+/// Jev for a turn, through the one resolver every Jev caller shares
+/// ([`jev_hosted::resolve`]): this computer's TypeSafe key when it has one
+/// (the client [`jev_client`] builds), else the OpenAgents hosted decision
+/// service, which needs no key on this computer. Either client is pinned
+/// to [`JEV_BASE_URL`] and [`JEV_MODEL`] and carries the same call budget.
+///
+/// # Errors
+///
+/// Why this computer has no Jev: the sentence to show, never a key.
+pub fn jev(
+    env: impl Fn(&str) -> Option<String>,
+    dir: &Path,
+) -> Result<jev_hosted::Resolved, String> {
+    jev_hosted::resolve(
+        &env,
+        dir,
+        &jev_hosted::Door {
+            url: JEV_BASE_URL,
+            model: JEV_MODEL,
+        },
+        &|config| {
+            config.retry(jev::RetryPolicy {
+                budget: Some(crate::component::jev::JEV_CALL_BUDGET),
+                ..jev::RetryPolicy::default()
+            })
+        },
+    )
+}
+
 /// `~/.openagents`, the directory both credential files live in.
 pub fn openagents_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents"))

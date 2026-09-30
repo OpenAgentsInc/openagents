@@ -651,24 +651,23 @@ fn explicit_door(env: &impl Fn(&str) -> Option<String>) -> Option<String> {
 /// The variables that name this host's own Open Responses door key.
 const OWN_DOOR_VARS: [&str; 2] = ["CODER_DOOR_KEY", "CODER_AI_GATEWAY_KEY"];
 
-/// The Jev client Coder One's judge asks through, and where its key came
-/// from. `None` when this machine has no TypeSafe key.
+/// The Jev client Coder One's judge asks through, and how it reaches Jev:
+/// this computer's TypeSafe key, or the OpenAgents hosted decision service
+/// when there is none (`coder_delegate::credentials::jev`). `None` only
+/// when neither is available, with the reason.
 pub fn jev_from(env: &impl Fn(&str) -> Option<String>) -> (Option<jev::Client>, String) {
     let Some(dir) = coder_delegate::credentials::openagents_dir() else {
         return (None, "no home directory to read jev.json from".to_string());
     };
-    match coder_delegate::credentials::jev_key(env, &dir) {
-        Ok(found) => match coder_delegate::credentials::jev_client(&found.secret) {
-            Ok(client) => (
-                Some(client),
-                format!(
-                    "{} from {}",
-                    coder_delegate::credentials::JEV_MODEL,
-                    found.source
-                ),
+    match coder_delegate::credentials::jev(env, &dir) {
+        Ok(resolved) => (
+            Some(resolved.client),
+            format!(
+                "{} through {}",
+                coder_delegate::credentials::JEV_MODEL,
+                resolved.via
             ),
-            Err(why) => (None, why),
-        },
+        ),
         Err(why) => (None, why),
     }
 }
@@ -1043,7 +1042,7 @@ impl DelegateDoor {
             read_only,
             workdir: self.workdir.clone(),
             jev: self.jev.clone(),
-            jev_missing: format!("no Jev key: {}", self.jev_source),
+            jev_missing: format!("no Jev: {}", self.jev_source),
             book: self.book.clone(),
             providers,
             script: self.script.clone(),

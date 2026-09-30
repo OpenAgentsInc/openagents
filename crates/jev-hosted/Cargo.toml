@@ -1,0 +1,26 @@
+[package]
+name = "jev-hosted"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "One way every Jev caller finds Jev: a local TypeSafe key, else OpenAgents' hosted decision service over NIP-CJ, else no Jev with the reason."
+publish.workspace = true
+
+[dependencies]
+jev = { path = "../jev" }
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+axum = "0.8"
+futures-util = "0.3"
+gateway = { path = "../gateway" }
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.30"
+
+[lints]
+workspace = true

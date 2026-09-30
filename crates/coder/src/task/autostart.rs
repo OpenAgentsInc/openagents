@@ -591,6 +591,22 @@ impl Launch for Process {
         if let Some(claude) = claude_binary() {
             command.env(microcoder_loop::claude::BIN_VAR, claude);
         }
+        // How the engine reaches Jev (`jev_hosted::resolve`): this
+        // computer's TypeSafe key when one is set here, as the detached
+        // owner forwards it (`microcoder::repository::launch`), else the
+        // hosted decision service, whose overrides pass through too. The
+        // engine's shell children clear their environment again.
+        for name in [
+            "TYPESAFE_API_KEY",
+            "TYPESAFE_BASE_URL",
+            "OPENAGENTS_JEV_RELAY",
+            "OPENAGENTS_JEV_WORKER",
+            "OPENAGENTS_JEV_HOSTED",
+        ] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
         // The judge's client must name the decision model the grant admits.
         if engine.decision_model != "jev-latest" {
             command.env("TYPESAFE_DEFAULT_MODEL", &engine.decision_model);

@@ -22,7 +22,7 @@ landmarker = ["dep:ort"]
 # does not build the client stack. `crates/coder-compositor` turns it on:
 # its hands module pushes each frame into the window and asks about a
 # window the rules cannot settle.
-judge = ["dep:jev", "dep:log", "dep:thiserror", "dep:tokio"]
+judge = ["dep:jev", "dep:jev-hosted", "dep:log", "dep:thiserror", "dep:tokio"]
 
 [dependencies]
 # The direction a swipe carries, which is the desk's own `Dir`, so a
@@ -39,6 +39,8 @@ toml = "0.9"
 # The judge feature's stack: this repository's Jev client and the log the
 # seam writes its records to.
 jev = { path = "../jev", optional = true }
+# A computer with no TypeSafe key asks the hosted decision service.
+jev-hosted = { path = "../jev-hosted", optional = true }
 log = { version = "0.4", optional = true }
 thiserror = { version = "2", optional = true }
 # The runtime one request runs on. The seam's worker thread owns a

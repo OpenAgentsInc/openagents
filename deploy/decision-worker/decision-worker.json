@@ -1,0 +1,24 @@
+{
+  "relay": "wss://relay.openagents.com",
+  "upstream": "https://api.typesafe.ai",
+  "anonymous": false,
+  "jobs": 8,
+  "upstream_timeout_secs": 30,
+  "jobs_dir": "/var/lib/decision-worker",
+  "probe_secs": 30,
+  "open": {
+    "key_env": "TYPESAFE_API_KEY",
+    "models": ["jev-1.13.0", "jev-latest"],
+    "quota": {
+      "per_key_minute": 60,
+      "per_key_day": 2000,
+      "total_day": 20000,
+      "max_request_bytes": 262144,
+      "file": "/var/lib/decision-worker/quota.json"
+    }
+  },
+  "service": {
+    "door": "https://api.typesafe.ai",
+    "version": "decision-worker@RELEASE"
+  }
+}

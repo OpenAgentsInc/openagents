@@ -240,12 +240,15 @@ async fn existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts() 
     assert!(Host::admit(&store, &grant).await.is_err());
 }
 
-/// What a step's judgment is on a computer with no Jev key.
+/// Why a run has no Jev, as a step's judgment says it.
+const NO_JEV: &str = "Jev is unreachable: the fixture has no service";
+
+/// What a step's judgment is on a run with no Jev.
 struct NoKeyJudge;
 impl Judge for NoKeyJudge {
     async fn judge(&self, _set: &QuestionSet, _state: &Value) -> Judgment {
         Judgment {
-            error: Some(super::native::NO_JEV_KEY.into()),
+            error: Some(NO_JEV.into()),
             usd: Some(0.0),
             usd_upper: Some(0.0),
             ..Judgment::default()
@@ -266,7 +269,7 @@ async fn a_run_without_a_jev_key_still_runs_its_commands_and_finishes() {
         b"output"
     );
     let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
-    assert!(trace.contains(super::native::NO_JEV_KEY));
+    assert!(trace.contains(NO_JEV));
 }
 
 #[tokio::test]
@@ -400,7 +403,7 @@ async fn claude_execution_refuses_another_endpoint_before_admission() {
     )
     .unwrap();
     let judge = crate::models::JevJudge { client };
-    let error = execute(&store, &serde_json::to_vec(&grant).unwrap(), Some(judge))
+    let error = execute(&store, &serde_json::to_vec(&grant).unwrap(), Ok(judge))
         .await
         .unwrap_err();
     assert!(error.message.contains(crate::claude::ENDPOINT), "{error}");

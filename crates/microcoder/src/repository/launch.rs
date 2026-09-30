@@ -119,6 +119,9 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
             "TYPESAFE_DEFAULT_MODEL",
+            jev_hosted::RELAY_VAR,
+            jev_hosted::WORKER_VAR,
+            jev_hosted::HOSTED_VAR,
         ] {
             if let Some(value) = std::env::var_os(key) {
                 process.env(key, value);
@@ -196,6 +199,9 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
             "TYPESAFE_DEFAULT_MODEL",
+            jev_hosted::RELAY_VAR,
+            jev_hosted::WORKER_VAR,
+            jev_hosted::HOSTED_VAR,
         ] {
             if let Some(value) = std::env::var_os(key) {
                 process.env(key, value);

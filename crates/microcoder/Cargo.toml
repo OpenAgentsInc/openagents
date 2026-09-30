@@ -19,6 +19,7 @@ coder = { path = "../coder" }
 coder-boundary = { path = "../coder-boundary" }
 futures-util = "0.3"
 jev = { path = "../jev" }
+jev-hosted = { path = "../jev-hosted" }
 libc = "0.2"
 knowledge = { path = "../knowledge" }
 microcoder-loop = { path = "../microcoder-loop" }

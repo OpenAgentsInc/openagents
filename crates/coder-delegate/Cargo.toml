@@ -15,6 +15,7 @@ coder-history = { path = "../coder-history", default-features = false }
 futures-util = "0.3"
 indexmap = "2"
 jev = { path = "../jev" }
+jev-hosted = { path = "../jev-hosted" }
 plugin = { path = "../plugin" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

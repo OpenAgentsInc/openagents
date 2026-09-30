@@ -503,6 +503,9 @@ async fn rig(
         upstream_timeout_secs: 30,
         jobs_dir: jobs_dir.path().to_path_buf(),
         request_window: None,
+        open: None,
+        service: None,
+        probe_secs: 0,
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();
@@ -1210,6 +1213,9 @@ async fn settled_record_survives_restart() {
         upstream_timeout_secs: 30,
         jobs_dir: rig.jobs_dir.path().to_path_buf(),
         request_window: None,
+        open: None,
+        service: None,
+        probe_secs: 0,
     })
     .unwrap();
     let serving = Arc::clone(&worker);
@@ -1234,4 +1240,172 @@ async fn settled_record_survives_restart() {
     assert_eq!(result.outcome, decision::Outcome::Answered);
     assert_eq!(receipt(&result).attempt_id, second.id);
     assert_eq!(rig.forwards.load(Ordering::SeqCst), 1);
+}
+
+// ---------- the open lane: a server-held door key, metered ----------
+
+/// A TypeSafe-shaped door that answers only the bearer it was given, and
+/// counts what it answered.
+async fn keyed_door(bearer: &'static str) -> (String, Arc<AtomicUsize>) {
+    let answered = Arc::new(AtomicUsize::new(0));
+    let counter = answered.clone();
+    let router = axum::Router::new().route(
+        "/v1/systemone",
+        post(move |headers: axum::http::HeaderMap, _body: Bytes| {
+            let counter = counter.clone();
+            async move {
+                let sent = headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
+                if sent != format!("Bearer {bearer}") {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": {"code": "unauthorized", "message": "no key"}})),
+                    )
+                        .into_response();
+                }
+                counter.fetch_add(1, Ordering::SeqCst);
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "model": "jev-1.13.0",
+                        "answers": {"q1": {"type": "noul", "noul": 0.8}},
+                        "usage": {"input_tokens": 12, "output_tokens": 1},
+                    })),
+                )
+                    .into_response()
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (format!("http://{address}"), answered)
+}
+
+/// A caller no operator provisioned reaches the door under the worker's
+/// own key, gets the `service` it was answered by, is held to the models
+/// the lane names, and is refused `quota_exhausted` once its day is used.
+#[tokio::test]
+async fn open_lane_answers_unprovisioned_keys_under_quota() {
+    const KEY_ENV: &str = "DECISION_WORKER_TEST_OPEN_LANE_KEY";
+    const DOOR_KEY: &str = "ts-test-door-key";
+    // SAFETY: this test binary reads this variable nowhere else, and no
+    // other test sets it.
+    unsafe { std::env::set_var(KEY_ENV, DOOR_KEY) };
+    let (relay_url, conns) = relay().await;
+    let (door, answered) = keyed_door(DOOR_KEY).await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let config: WorkerConfig = serde_json::from_value(json!({
+        "relay": relay_url,
+        "worker_secret": hex_secret(WORKER_BYTE),
+        "upstream": door,
+        "jobs_dir": jobs_dir.path(),
+        "probe_secs": 0,
+        "open": {
+            "key_env": KEY_ENV,
+            "models": ["jev-1.13.0"],
+            "quota": {"per_key_day": 2, "per_key_minute": 2, "total_day": 5},
+        },
+        "service": {"door": "https://api.typesafe.ai", "version": "decision-worker/test"},
+    }))
+    .unwrap();
+    let worker = Worker::open(config).unwrap();
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+
+    for request in ["open-1", "open-2"] {
+        let body = body(request, 1, "jev-1.13.0");
+        let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+        let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 10).await;
+        let result = result.expect("the open lane never answered");
+        assert_eq!(result.outcome, decision::Outcome::Answered);
+        let response = result.response.unwrap();
+        assert_eq!(response["model"], "jev-1.13.0");
+        assert_eq!(
+            response["service"],
+            json!({"door": "https://api.typesafe.ai", "version": "decision-worker/test"})
+        );
+    }
+
+    let other_model = body("open-model", 1, "jev-latest-expensive");
+    let event = request_event(CALLER_BYTE, &worker_pub, &other_model, unix_now());
+    let (statuses, result) = run_job(
+        &mut socket,
+        CALLER_BYTE,
+        &worker_pub,
+        &other_model,
+        &event,
+        10,
+    )
+    .await;
+    assert!(result.is_none());
+    let refusal = statuses.last().unwrap().refusal.clone().unwrap();
+    assert_eq!(refusal.code, "not_admitted");
+
+    let third = body("open-3", 1, "jev-1.13.0");
+    let event = request_event(CALLER_BYTE, &worker_pub, &third, unix_now());
+    let (statuses, result) =
+        run_job(&mut socket, CALLER_BYTE, &worker_pub, &third, &event, 10).await;
+    assert!(result.is_none());
+    let refusal = statuses.last().unwrap().refusal.clone().unwrap();
+    assert_eq!(refusal.code, "quota_exhausted");
+    assert!(refusal.retry_after_ms.is_some());
+    assert_eq!(answered.load(Ordering::SeqCst), 2);
+}
+
+/// A relay that authenticates the worker and then goes silent, as the
+/// relay's front end does when the instance behind it restarts, is noticed
+/// by the liveness probe and the session ends, so the worker reconnects.
+#[tokio::test]
+async fn a_silent_relay_is_noticed_by_the_probe() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = accept_async(stream).await.unwrap();
+        send_raw(&mut socket, json!(["AUTH", "silence"])).await;
+        let auth = loop {
+            if let Some(Ok(tungstenite::Message::Text(text))) = socket.next().await {
+                break serde_json::from_str::<Value>(&text).unwrap();
+            }
+        };
+        send_raw(&mut socket, json!(["OK", auth[1]["id"], true, ""])).await;
+        // Read everything, answer nothing.
+        while socket.next().await.is_some() {}
+    });
+    let jobs = tempfile::tempdir().unwrap();
+    let config: WorkerConfig = serde_json::from_value(json!({
+        "relay": url,
+        "worker_secret": hex_secret(WORKER_BYTE),
+        "upstream": "http://127.0.0.1:9",
+        "jobs_dir": jobs.path(),
+        "probe_secs": 1,
+    }))
+    .unwrap();
+    let worker = Worker::open(config).unwrap();
+    let (socket, _) = connect_async(&url).await.unwrap();
+    let ended = tokio::time::timeout(Duration::from_secs(5), worker.serve(socket))
+        .await
+        .expect("the probe never noticed the silence");
+    let error = ended
+        .expect_err("a silent relay ends the session")
+        .to_string();
+    assert!(error.contains("stopped answering"), "{error}");
+}
+
+async fn send_raw(socket: &mut WebSocketStream<TcpStream>, value: Value) {
+    socket
+        .send(tungstenite::Message::Text(value.to_string().into()))
+        .await
+        .unwrap();
 }

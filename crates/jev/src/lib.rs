@@ -269,6 +269,7 @@ mod client;
 mod config;
 pub mod decision;
 mod error;
+pub mod exchange;
 mod jobs;
 mod models;
 mod options;

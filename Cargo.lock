@@ -1542,6 +1542,7 @@ dependencies = [
  "futures-util",
  "indexmap",
  "jev",
+ "jev-hosted",
  "plugin",
  "regex",
  "reqwest 0.12.28",
@@ -1580,6 +1581,7 @@ dependencies = [
  "coder-hands",
  "coder-wm",
  "jev",
+ "jev-hosted",
  "log",
  "ort",
  "serde",
@@ -4881,6 +4883,7 @@ dependencies = [
 name = "jev"
 version = "0.1.0"
 dependencies = [
+ "http",
  "httpdate",
  "indexmap",
  "rand 0.9.5",
@@ -4892,6 +4895,23 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "jev-hosted"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "futures-util",
+ "gateway",
+ "jev",
+ "nostr",
+ "nostr-transport",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -5767,6 +5787,7 @@ dependencies = [
  "codex-transport",
  "futures-util",
  "jev",
+ "jev-hosted",
  "knowledge",
  "libc",
  "microcoder-loop",

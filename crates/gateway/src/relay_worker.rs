@@ -54,6 +54,18 @@ use tokio_tungstenite::tungstenite;
 
 use crate::serve::{now_utc, unix_now};
 
+/// The subscription id of the liveness probe.
+const PROBE: &str = "probe";
+
+/// Whether `message` is the relay's `EOSE` for the liveness probe.
+fn is_probe_answer(message: &tungstenite::Message) -> bool {
+    let tungstenite::Message::Text(text) = message else {
+        return false;
+    };
+    serde_json::from_str::<Value>(text)
+        .is_ok_and(|value| value[0].as_str() == Some("EOSE") && value[1].as_str() == Some(PROBE))
+}
+
 /// The schema tag the worker's durable job ledger writes.
 const JOBS_SCHEMA: &str = "openagents.decision-worker.jobs.v1";
 /// The ledger file under `jobs_dir`.
@@ -106,6 +118,48 @@ pub struct WorkerConfig {
     /// [`RequestWindow::DEFAULT`].
     #[serde(default)]
     pub request_window: Option<WindowConfig>,
+    /// The open lane: an unmapped signer's jobs forward under a
+    /// server-held door key, metered and limited to named models. Absent,
+    /// an unmapped signer forwards with no bearer (`anonymous`).
+    #[serde(default)]
+    pub open: Option<OpenLane>,
+    /// The `service` object (`{door, version}`) every answered response
+    /// carries, so a caller's evidence names what answered it.
+    #[serde(default)]
+    pub service: Option<ServiceConfig>,
+    /// Seconds between liveness probes of the relay subscription. A probe
+    /// still unanswered at the next one drops the connection, which then
+    /// reconnects: a quiet socket is never trusted. Zero turns it off.
+    #[serde(default = "default_probe_secs")]
+    pub probe_secs: u64,
+}
+
+fn default_probe_secs() -> u64 {
+    30
+}
+
+/// The open lane of a worker that answers keys no operator provisioned.
+#[derive(Debug, Deserialize)]
+pub struct OpenLane {
+    /// The environment variable holding the door key the lane forwards
+    /// under, such as `TYPESAFE_API_KEY`. The key is read once at start
+    /// and is never logged, written, or put in a payload.
+    pub key_env: String,
+    /// The models an open-lane job may name; any other is refused
+    /// `not_admitted` before anything is counted.
+    pub models: Vec<String>,
+    /// The per-key and daily limits.
+    pub quota: crate::open_quota::Policy,
+}
+
+/// What answered, as the NIP-CJ result's `response.service` names it.
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
+pub struct ServiceConfig {
+    /// The door that answered, such as `https://api.typesafe.ai`.
+    pub door: String,
+    /// The worker build that carried the call. Absent, the crate version.
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 fn default_anonymous() -> bool {
@@ -175,6 +229,8 @@ struct Binding {
     key: Option<String>,
     tenant: Option<String>,
     workspace: Option<String>,
+    /// The open lane: the server-held door key, metered.
+    open: bool,
 }
 
 /// One settled attempt's record — the pieces a republished result
@@ -476,6 +532,10 @@ pub struct Worker {
     inbox: tokio::sync::Mutex<mpsc::UnboundedReceiver<String>>,
     window: RequestWindow,
     published: AtomicU64,
+    /// The open lane's door key, when the lane is configured.
+    open_key: Option<String>,
+    /// The open lane's counts.
+    quota: Option<Mutex<crate::open_quota::Ledger>>,
 }
 
 impl Worker {
@@ -512,6 +572,29 @@ impl Worker {
                 .map_err(|_| Trouble::Config(format!("principal {key} is not a public key")))?;
         }
         let jobs = Jobs::open(&config.jobs_dir)?;
+        let (open_key, quota) = match &config.open {
+            Some(open) => {
+                let key = std::env::var(&open.key_env)
+                    .ok()
+                    .map(|key| key.trim().to_string())
+                    .filter(|key| !key.is_empty())
+                    .ok_or_else(|| {
+                        Trouble::Config(format!(
+                            "the open lane's door key is missing: set {}",
+                            open.key_env
+                        ))
+                    })?;
+                if open.models.is_empty() {
+                    return Err(Trouble::Config(
+                        "the open lane names no models it admits".into(),
+                    ));
+                }
+                let ledger = crate::open_quota::Ledger::open(open.quota.clone(), unix_now())
+                    .map_err(|error| Trouble::Config(format!("open lane quota: {error}")))?;
+                (Some(key), Some(Mutex::new(ledger)))
+            }
+            None => (None, None),
+        };
         let (outbox, inbox) = mpsc::unbounded_channel();
         let window = config
             .request_window
@@ -531,6 +614,8 @@ impl Worker {
             outbox,
             inbox: tokio::sync::Mutex::new(inbox),
             published: AtomicU64::new(0),
+            open_key,
+            quota,
         }))
     }
 
@@ -581,8 +666,25 @@ impl Worker {
         // published while disconnected wait in the channel for the
         // next session to drain.
         let mut inbox = self.inbox.lock().await;
+        let period = Duration::from_secs(self.config.probe_secs.max(1));
+        let mut probe = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+        let mut owed = false;
         loop {
             tokio::select! {
+                _ = probe.tick(), if self.config.probe_secs > 0 => {
+                    if owed {
+                        return Err(Trouble::Relay(format!(
+                            "the relay stopped answering: a probe went unanswered for {} s",
+                            period.as_secs()
+                        )));
+                    }
+                    owed = true;
+                    send_json(
+                        &mut socket,
+                        &json!(["REQ", PROBE, {"kinds": [decision::REQUEST_KIND], "#p": [self.pubkey], "limit": 0}]),
+                    )
+                    .await?;
+                }
                 outbound = inbox.recv() => {
                     match outbound {
                         Some(text) => send_text(&mut socket, &text).await?,
@@ -597,6 +699,11 @@ impl Worker {
                         }
                         None => return Err(Trouble::Relay("the socket closed".into())),
                     };
+                    if is_probe_answer(&message) {
+                        owed = false;
+                        send_json(&mut socket, &json!(["CLOSE", PROBE])).await?;
+                        continue;
+                    }
                     self.on_message(message)?;
                 }
             }
@@ -646,7 +753,7 @@ impl Worker {
             return;
         }
         match decision::admit(&event, &self.pubkey, &self.secret, unix_now(), self.window) {
-            Ok(Admitted::Call(call)) => self.on_call(*call),
+            Ok(Admitted::Call(call)) => self.on_call(*call, event.content.len()),
             Ok(Admitted::Cancel(cancel)) => self.on_cancel(cancel),
             Err(error) => {
                 let Some(refusal) = Refusal::from_error(&error) else {
@@ -677,7 +784,7 @@ impl Worker {
     /// One admitted decision call: resolve the principal, dedupe the
     /// pair against the ledger, then answer, join the in-flight run,
     /// or start one.
-    fn on_call(self: &Arc<Self>, call: AdmittedCall) {
+    fn on_call(self: &Arc<Self>, call: AdmittedCall, bytes: usize) {
         let delivery = Delivery {
             attempt_id: call.attempt_id.clone(),
             principal: call.principal.clone(),
@@ -743,7 +850,12 @@ impl Worker {
                 // identity — the upstream's settlement joins the
                 // existing reservation rather than spending twice.
             }
-            None => {}
+            None => {
+                if let Some(refusal) = self.meter(&call, &binding, bytes) {
+                    self.refuse(&delivery, &call.body.request, call.body.attempt, refusal);
+                    return;
+                }
+            }
         }
 
         let record = JobRecord {
@@ -984,9 +1096,47 @@ impl Worker {
         }
     }
 
+    /// The open lane's admission for a new pair: the model must be one
+    /// the lane names, and the signer's key must have quota left. A
+    /// provisioned principal is never metered here. `None` admits.
+    fn meter(&self, call: &AdmittedCall, binding: &Binding, bytes: usize) -> Option<Refusal> {
+        let (Some(open), Some(quota)) = (&self.config.open, &self.quota) else {
+            return None;
+        };
+        if self.config.principals.contains_key(&call.principal) || !binding.open {
+            return None;
+        }
+        if !open.models.iter().any(|model| model == &call.body.model) {
+            return Some(Refusal::new("not_admitted").message(format!(
+                "This worker answers {} only.",
+                open.models.join(", ")
+            )));
+        }
+        let admitted = quota
+            .lock()
+            .expect("quota")
+            .admit(&call.principal, bytes, unix_now());
+        match admitted {
+            Ok(()) => None,
+            Err(refusal) => {
+                eprintln!(
+                    "decision-worker: open lane refused {}… {}",
+                    call.principal.get(..8).unwrap_or(&call.principal),
+                    refusal.code()
+                );
+                let mut typed = Refusal::new(refusal.code()).message(refusal.message());
+                if let Some(ms) = refusal.retry_after_ms() {
+                    typed = typed.retry_after_ms(ms);
+                }
+                Some(typed)
+            }
+        }
+    }
+
     /// The signer-to-principal resolution: bound keys forward under
-    /// their credential, unbound signers forward anonymously when the
-    /// worker serves the shared lane.
+    /// their credential; unbound signers take the open lane when one is
+    /// configured, and otherwise forward anonymously when the worker
+    /// serves the shared lane.
     fn binding(&self, principal: &str) -> Option<Binding> {
         if let Some(principal) = self.config.principals.get(principal) {
             let tenant = principal.tenant.clone().or_else(|| {
@@ -1000,12 +1150,22 @@ impl Worker {
                 key: Some(principal.key.clone()),
                 tenant,
                 workspace: principal.workspace.clone(),
+                open: false,
+            });
+        }
+        if let Some(key) = &self.open_key {
+            return Some(Binding {
+                key: Some(key.clone()),
+                tenant: None,
+                workspace: None,
+                open: true,
             });
         }
         self.config.anonymous.then_some(Binding {
             key: None,
             tenant: None,
             workspace: None,
+            open: false,
         })
     }
 
@@ -1223,7 +1383,18 @@ impl Worker {
         let raw = response.bytes().await.unwrap_or_default();
         let parsed: Option<Value> = serde_json::from_slice(&raw).ok();
         if status.is_success() {
-            let response = parsed.unwrap_or(Value::Null);
+            let mut response = parsed.unwrap_or(Value::Null);
+            let mut raw = raw.to_vec();
+            if let (Some(service), Some(map)) = (&self.config.service, response.as_object_mut()) {
+                map.insert(
+                    "service".to_string(),
+                    json!({
+                        "door": service.door,
+                        "version": service.version.clone().unwrap_or_else(|| format!("decision-worker/{}", env!("CARGO_PKG_VERSION"))),
+                    }),
+                );
+                raw = serde_json::to_vec(&response).unwrap_or(raw);
+            }
             // The gateway's verified card header is the served identity;
             // the body's own `model` field is the fallback.
             let served_model = served_model_header.or_else(|| {
@@ -1355,6 +1526,17 @@ pub async fn run(config: WorkerConfig) -> Result<(), Trouble> {
     eprintln!("decision-worker: pubkey {}", worker.pubkey());
     eprintln!("decision-worker: upstream {}", worker.config.upstream);
     eprintln!("decision-worker: relay {}", worker.config.relay);
+    match &worker.config.open {
+        Some(open) => eprintln!(
+            "decision-worker: open lane under ${}, models {}, quota {}/key/day {}/key/min {}/day total",
+            open.key_env,
+            open.models.join(","),
+            open.quota.per_key_day,
+            open.quota.per_key_minute,
+            open.quota.total_day
+        ),
+        None => eprintln!("decision-worker: no open lane"),
+    }
     loop {
         match tokio_tungstenite::connect_async(&worker.config.relay).await {
             Ok((socket, _)) => {
