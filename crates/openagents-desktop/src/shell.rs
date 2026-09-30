@@ -65,6 +65,94 @@ impl DesktopApp {
         app
     }
 
+    /// Synthetic long content for repeatable measurements; no host or home access.
+    pub fn performance_fixture(
+        rows: usize,
+        chats: usize,
+        now: Instant,
+    ) -> (DesktopApp, openagents_chat::service::Snapshot) {
+        use openagents_chat::{
+            basic_chats::Summary,
+            basic_coder::Turn,
+            service::{Command, Snapshot},
+        };
+        let fake = openagents_desktop::fake::FakeHost::new("Fixture computer", unix_now());
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            std::env::temp_dir(),
+        );
+        let mut app = DesktopApp::new(
+            Model::new(
+                now,
+                openagents_desktop::model::Screen::Home,
+                openagents_desktop::model::Agent::Enabled,
+            ),
+            Runner::Inline(context),
+            false,
+            true,
+        );
+        app.navigation = Some(State::empty());
+        let mut panel = openagents_desktop::chat::Panel::new(now);
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat },
+        } = panel.new_chat()
+        else {
+            unreachable!()
+        };
+        let snapshot = Snapshot {
+            chat: Some(chat.clone()), total:rows,
+            chats:(0..chats).map(|index| Summary{id:if index==0 {chat.clone()} else {format!("{:032x}",index)},title:format!("Saved conversation {index}"),started:1,updated:1,coder:None,archived:false}).collect(),
+            turns:(0..rows).map(|index| if index%2==0 {Turn::user(format!("Question {index}: explain the next step."))} else {Turn::assistant(format!("Reply {index} with **bold**, *italic*, and `inline code`.\n\n- First item\n- Second item\n\n```rust\nlet answer = 42;\n```"),None)}).collect(),
+            ..Snapshot::default()
+        };
+        panel.outcome(ticket, Ok(snapshot.clone()));
+        app.chat = Some(panel);
+        app.present();
+        (app, snapshot)
+    }
+
+    /// Advance a synthetic stream using the shared snapshot contract.
+    pub fn performance_stream(
+        &mut self,
+        snapshot: openagents_chat::service::Snapshot,
+        now: Instant,
+    ) {
+        if let Some(panel) = &mut self.chat
+            && let Some(Request::Chat { ticket, .. }) = panel.tick(now)
+        {
+            panel.outcome(ticket, Ok(snapshot));
+            self.present();
+        }
+    }
+    pub fn performance_scroll(&mut self, lines: f32, now: Instant) {
+        self.surface_input(
+            openagents_desktop::chat::TRANSCRIPT,
+            rust_native_desktop::input::SurfaceInput::Wheel {
+                x: 100.0,
+                y: 100.0,
+                dx: 0.0,
+                dy: lines,
+            },
+            now,
+        );
+    }
+    pub fn performance_idle(&mut self) {
+        self.present();
+    }
+    pub fn performance_counts(&self) -> (usize, usize, usize) {
+        self.chat.as_ref().map_or((0, 0, 0), |panel| {
+            (
+                panel.transcript.rows(),
+                panel.transcript.visible_rows(),
+                panel.transcript.relaid,
+            )
+        })
+    }
+
     /// A capture of the desktop shell with sample chats and an inline host.
     pub fn inline_shell(model: Model, context: Context) -> DesktopApp {
         DesktopApp::new(model, Runner::Inline(context), false, true)
@@ -301,6 +389,13 @@ impl App for DesktopApp {
             return;
         }
         if let Intent::Navigate { action } = intent {
+            if matches!(
+                action,
+                chrome::Action::Grid | chrome::Action::Computers | chrome::Action::Settings
+            ) && let Some(chat) = &mut self.chat
+            {
+                chat.input(rust_native_desktop::input::TextInput::FocusLost, now);
+            }
             let mut chat_request = None;
             if let Some(chat) = &mut self.chat {
                 chat_request = match &action {
@@ -804,6 +899,32 @@ mod tests {
             average * 100.0
         );
         assert!(average < 0.01, "idle callback exceeds 1% of one CPU at 1Hz");
+    }
+
+    #[test]
+    fn transcript_click_cancels_marked_composer_text() {
+        use rust_native_desktop::input::{SurfaceInput, TextInput};
+        let (mut app, now) = chat_fixture(30);
+        assert!(app.text_input(TextInput::Commit("saved draft"), now));
+        assert!(app.text_input(
+            TextInput::Preedit {
+                text: "候補",
+                selection: Some((0, 6)),
+            },
+            now
+        ));
+        assert!(app.surface_input(
+            openagents_desktop::chat::TRANSCRIPT,
+            SurfaceInput::Down {
+                x: 20.0,
+                y: 30.0,
+                shift: false
+            },
+            now
+        ));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "saved draft");
+        assert!(!app.text_input(TextInput::Commit("late candidate"), now));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "saved draft");
     }
 
     #[test]

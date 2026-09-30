@@ -1,0 +1,506 @@
+[
+  {
+    "case": "default-1x-plain",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 1,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 1.593,
+        "p99_ms": 1.807,
+        "max_ms": 1.811
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 5.097,
+        "p99_ms": 6.055,
+        "max_ms": 6.129
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.661,
+        "p99_ms": 1.894,
+        "max_ms": 1.972
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.010880333,
+        "cpu_percent": 17.773320356010924,
+        "peak_rss_bytes": 139509760
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.008016834,
+        "cpu_percent": 12.566677516210504,
+        "peak_rss_bytes": 143900672
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.002487583,
+        "cpu_percent": 33.31945754192475,
+        "peak_rss_bytes": 150339584
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.009538625,
+        "cpu_percent": 11.215161390590342,
+        "peak_rss_bytes": 150339584
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.006932083,
+        "cpu_percent": 0.6112126046987152,
+        "peak_rss_bytes": 153665536
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "default-1x-verse",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 1,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.293,
+        "p99_ms": 2.542,
+        "max_ms": 2.547
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 5.668,
+        "p99_ms": 6.511,
+        "max_ms": 6.545
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.404,
+        "p99_ms": 2.806,
+        "max_ms": 2.852
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.001300167,
+        "cpu_percent": 25.92808915410877,
+        "peak_rss_bytes": 154599424
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.013008041,
+        "cpu_percent": 21.21382484830323,
+        "peak_rss_bytes": 157040640
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.015668292,
+        "cpu_percent": 40.93962301610686,
+        "peak_rss_bytes": 166903808
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.016456292,
+        "cpu_percent": 21.00352988955339,
+        "peak_rss_bytes": 166903808
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.004881958,
+        "cpu_percent": 2.8563910437785403,
+        "peak_rss_bytes": 167608320
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "default-2x-plain",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 2,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 3.283,
+        "p99_ms": 3.713,
+        "max_ms": 3.758
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 6.053,
+        "p99_ms": 7.054,
+        "max_ms": 7.175
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 3.089,
+        "p99_ms": 3.589,
+        "max_ms": 3.607
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.01292575,
+        "cpu_percent": 17.92095817487116,
+        "peak_rss_bytes": 167788544
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.016948583,
+        "cpu_percent": 21.01595467394223,
+        "peak_rss_bytes": 184238080
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.008875208,
+        "cpu_percent": 38.94895993957629,
+        "peak_rss_bytes": 184238080
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.009014042,
+        "cpu_percent": 19.50952018283604,
+        "peak_rss_bytes": 184238080
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.007151917,
+        "cpu_percent": 0.6989202760392262,
+        "peak_rss_bytes": 184238080
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "default-2x-verse",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 2,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.652,
+        "p99_ms": 4.384,
+        "max_ms": 4.395
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 6.515,
+        "p99_ms": 7.455,
+        "max_ms": 7.65
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.182,
+        "p99_ms": 4.136,
+        "max_ms": 4.272
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.012130667,
+        "cpu_percent": 26.428899817141886,
+        "peak_rss_bytes": 185073664
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.01094675,
+        "cpu_percent": 26.18821209462658,
+        "peak_rss_bytes": 186613760
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.034908416,
+        "cpu_percent": 45.77935757085197,
+        "peak_rss_bytes": 190398464
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.031994542,
+        "cpu_percent": 22.041840700967807,
+        "peak_rss_bytes": 190398464
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.006700042,
+        "cpu_percent": 3.189506035121082,
+        "peak_rss_bytes": 193921024
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-1x-plain",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 1,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 1.052,
+        "p99_ms": 1.179,
+        "max_ms": 1.194
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 5.102,
+        "p99_ms": 5.931,
+        "max_ms": 6.003
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.371,
+        "p99_ms": 1.467,
+        "max_ms": 1.491
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.014324167,
+        "cpu_percent": 17.06209963545116,
+        "peak_rss_bytes": 135512064
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.043826125,
+        "cpu_percent": 8.582334761965136,
+        "peak_rss_bytes": 137461760
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.059967916,
+        "cpu_percent": 32.041567000794,
+        "peak_rss_bytes": 142901248
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.057048125,
+        "cpu_percent": 10.417500562851444,
+        "peak_rss_bytes": 143998976
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.006991042,
+        "cpu_percent": 0.35140865746330263,
+        "peak_rss_bytes": 146227200
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-1x-verse",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 1,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 1.796,
+        "p99_ms": 2.034,
+        "max_ms": 2.047
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 5.561,
+        "p99_ms": 6.76,
+        "max_ms": 7.108
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.045,
+        "p99_ms": 2.506,
+        "max_ms": 2.525
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.010238333,
+        "cpu_percent": 25.193262984211074,
+        "peak_rss_bytes": 150831104
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.02309575,
+        "cpu_percent": 19.259246627353154,
+        "peak_rss_bytes": 152911872
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.031976792,
+        "cpu_percent": 40.26419018273905,
+        "peak_rss_bytes": 163233792
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.02600725,
+        "cpu_percent": 18.63325020184405,
+        "peak_rss_bytes": 163676160
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.007087417,
+        "cpu_percent": 2.7938397784917255,
+        "peak_rss_bytes": 164937728
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-2x-plain",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 2,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 1.577,
+        "p99_ms": 1.743,
+        "max_ms": 1.759
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 5.216,
+        "p99_ms": 5.812,
+        "max_ms": 5.847
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.118,
+        "p99_ms": 2.413,
+        "max_ms": 2.493
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.000020541,
+        "cpu_percent": 17.884432635869228,
+        "peak_rss_bytes": 146669568
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 1.9999782499999998,
+        "cpu_percent": 12.068781247996073,
+        "peak_rss_bytes": 153649152
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.008104875,
+        "cpu_percent": 33.72358727031127,
+        "peak_rss_bytes": 154189824
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.008888417,
+        "cpu_percent": 14.568703643433873,
+        "peak_rss_bytes": 155369472
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.007127792,
+        "cpu_percent": 0.29292242198079665,
+        "peak_rss_bytes": 159858688
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-2x-verse",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 2,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.357,
+        "p99_ms": 2.59,
+        "max_ms": 3.283
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 5.575,
+        "p99_ms": 6.38,
+        "max_ms": 6.458
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.802,
+        "p99_ms": 3.216,
+        "max_ms": 3.274
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "seconds": 1.004036625,
+        "cpu_percent": 26.00223871315451,
+        "peak_rss_bytes": 159989760
+      },
+      "scroll": {
+        "phase": "scroll",
+        "seconds": 2.015795333,
+        "cpu_percent": 22.29725372620456,
+        "peak_rss_bytes": 163659776
+      },
+      "streaming": {
+        "phase": "streaming",
+        "seconds": 2.013142,
+        "cpu_percent": 40.707312251197386,
+        "peak_rss_bytes": 170639360
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "seconds": 2.021080333,
+        "cpu_percent": 20.991397178669185,
+        "peak_rss_bytes": 172310528
+      },
+      "idle": {
+        "phase": "idle",
+        "seconds": 5.006882375,
+        "cpu_percent": 2.873105242461383,
+        "peak_rss_bytes": 174161920
+      }
+    },
+    "scroll_pass": true
+  }
+]

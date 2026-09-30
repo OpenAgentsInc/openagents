@@ -71,6 +71,7 @@ pub struct Fonts {
     faces: [FontRef<'static>; 4],
     paragraphs: HashMap<(String, u64, u32), Rc<Paragraph>>,
     advances: HashMap<(String, u64), f32>,
+    advance_bytes: usize,
     glyphs: HashMap<GlyphKey, Option<Glyph>>,
 }
 
@@ -107,6 +108,7 @@ impl Fonts {
             faces: FACES.map(|data| FontRef::from_index(data, 0).expect("a bundled face")),
             paragraphs: HashMap::new(),
             advances: HashMap::new(),
+            advance_bytes: 0,
             glyphs: HashMap::new(),
         }
     }
@@ -162,11 +164,53 @@ impl Fonts {
                     .sum::<f32>();
             });
         }
-        if self.advances.len() >= 4096 {
+        if self.advances.len() >= 4096 || self.advance_bytes + text.len() > 512 * 1024 {
             self.advances.clear();
+            self.advance_bytes = 0;
         }
+        self.advance_bytes += text.len();
         self.advances.insert(key, width);
         width
+    }
+
+    /// Find the closest character boundary without shaping every prefix.
+    pub fn caret_byte(&mut self, text: &str, font: Font, x: f32) -> usize {
+        let mut boundaries: Vec<usize> = text.char_indices().map(|(index, _)| index).collect();
+        boundaries.push(text.len());
+        let mut left = 0;
+        let mut right = boundaries.len();
+        while left < right {
+            let middle = left + (right - left) / 2;
+            if self.advance(&text[..boundaries[middle]], font) < x {
+                left = middle + 1;
+            } else {
+                right = middle;
+            }
+        }
+        let after = left.min(boundaries.len() - 1);
+        let before = after.saturating_sub(1);
+        let a = (self.advance(&text[..boundaries[before]], font) - x).abs();
+        let b = (self.advance(&text[..boundaries[after]], font) - x).abs();
+        boundaries[if a <= b { before } else { after }]
+    }
+
+    /// Fit one line within its display width, preserving character boundaries.
+    pub fn ellipsized(&mut self, text: &str, font: Font, width: f32) -> String {
+        if self.advance(text, font) <= width {
+            return text.into();
+        }
+        let room = width - self.advance("…", font);
+        if room < 0.0 {
+            return String::new();
+        }
+        let mut end = self.caret_byte(text, font, room);
+        while end > 0 && self.advance(&text[..end], font) > room {
+            end = text[..end]
+                .char_indices()
+                .next_back()
+                .map_or(0, |(byte, _)| byte);
+        }
+        format!("{}…", &text[..end])
     }
 
     /// Wrapped editable lines retain spaces and an empty final line after Enter.
@@ -400,6 +444,19 @@ impl Fonts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_detail_ellipsis_fits_without_splitting_unicode() {
+        let mut fonts = Fonts::new();
+        let body = font(15.0, Weight::Regular, false);
+        let text = "run a tool — 候補 path";
+        assert_eq!(fonts.ellipsized(text, body, 1000.0), text);
+        for width in [0.0, 20.0, 80.0, 120.0] {
+            let fitted = fonts.ellipsized(text, body, width);
+            assert!(fonts.advance(&fitted, body) <= width + 0.01);
+            assert!(fitted.is_empty() || fitted.ends_with('…'));
+        }
+    }
 
     #[test]
     fn a_long_paragraph_wraps_and_a_short_one_does_not() {

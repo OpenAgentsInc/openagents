@@ -14,6 +14,7 @@
 // A GUI program on Windows: no console window behind the app.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod benchmark;
 #[cfg(not(any(target_os = "linux", windows)))]
 mod mac;
 mod menubar;
@@ -44,6 +45,9 @@ Usage: openagents-desktop [options]
   --verse-relay URL    watch the Grid behind the window on URL (default
                        $OPENAGENTS_VERSE_RELAY, else wss://relay.openagents.com)
   --no-backdrop        a plain background, without the Grid
+  --chat-benchmark DIR  measure an offline 3,300-row / 500-chat native fixture
+  --benchmark-minimum   use the minimum window in the benchmark
+  --benchmark-scale N   render the benchmark at 1x or 2x
   --capture DIR        paint pairing and shell screens, against the in-process host, to
                        PNG files in DIR
   --help               this text";
@@ -58,6 +62,9 @@ struct Options {
     verse_relay: Option<String>,
     no_backdrop: bool,
     help: bool,
+    chat_benchmark: Option<PathBuf>,
+    benchmark_minimum: bool,
+    benchmark_scale: Option<f32>,
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -65,6 +72,21 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--chat-benchmark" => {
+                options.chat_benchmark = Some(PathBuf::from(
+                    args.next()
+                        .ok_or("--chat-benchmark takes an output directory")?,
+                ))
+            }
+            "--benchmark-minimum" => options.benchmark_minimum = true,
+            "--benchmark-scale" => {
+                options.benchmark_scale = Some(
+                    args.next()
+                        .and_then(|value| value.parse::<f32>().ok())
+                        .filter(|value| *value == 1.0 || *value == 2.0)
+                        .ok_or("--benchmark-scale takes 1 or 2")?,
+                )
+            }
             "--fake-host" => options.fake_host = true,
             "--fake-scan" => {
                 let seconds: u64 = args
@@ -125,6 +147,20 @@ fn main() -> ExitCode {
     if options.help {
         println!("{USAGE}");
         return ExitCode::SUCCESS;
+    }
+    if let Some(directory) = &options.chat_benchmark {
+        return match benchmark::run(
+            directory,
+            options.benchmark_minimum,
+            options.benchmark_scale.unwrap_or(2.0),
+            !options.no_backdrop,
+        ) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
     }
     if let Some(directory) = &options.capture {
         return match capture(directory) {

@@ -25,6 +25,18 @@ pub struct Sample {
     pub regions: usize,
 }
 
+/// One submitted native frame. Durations exclude GPU completion and scanout.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct FrameTiming {
+    pub total_us: u64,
+    pub paint_us: u64,
+    pub upload_us: u64,
+    pub acquire_us: u64,
+    pub present_us: u64,
+    pub damaged_pixels: u64,
+    pub regions: usize,
+}
+
 /// Keeps the last 512 samples. An optional bounded writer never blocks rendering.
 pub struct Timings {
     samples: VecDeque<Sample>,

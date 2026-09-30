@@ -43,5 +43,5 @@ On pinned Rust 1.97.1:
 
 The macOS system Japanese IME check is recorded in the workspace
 `NEEDS_OWNER.md`. Scripted Japanese callbacks pass; changing the owner's active
-input-source configuration is left to the owner. A process-wide idle CPU check
-with the long draft remains in the broader #10005 platform measurement matrix.
+input-source configuration is left to the owner. Process-wide idle CPU with the long draft is recorded in
+[the native transcript matrix](../2026-09-30-transcript/verification.md).

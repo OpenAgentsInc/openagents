@@ -113,6 +113,11 @@ pub trait App {
         WindowLayout::Column
     }
 
+    /// Optional application-controlled leading scroll offset, in points.
+    fn leading_scroll(&self) -> Option<f32> {
+        None
+    }
+
     /// The leading pane was resized by dragging its divider, in points.
     fn resize_leading_pane(&mut self, width: f32, now: Instant) {
         let _ = (width, now);
@@ -190,6 +195,11 @@ pub trait App {
     /// Paints the surface `resource` into `rect` of `frame`, in pixels.
     fn paint_surface(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) {
         let _ = (resource, frame, rect);
+    }
+
+    /// Local diagnostics after a frame was submitted to the native surface.
+    fn frame_presented(&mut self, timing: timing::FrameTiming) {
+        let _ = timing;
     }
 
     /// Whether the application asked to close its window.

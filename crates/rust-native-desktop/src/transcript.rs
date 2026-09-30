@@ -3,11 +3,19 @@
 use crate::text::Fonts;
 use crate::{Frame, PxRect};
 use rust_native::Node;
-use rust_native::layout::display::{ColorRole, Ink};
+use rust_native::layout::display::{ColorRole, Ink, Weight, WidgetKind};
 use rust_native::layout::{TranscriptLayout, Update, shape::ShapingMeasurer};
 use rust_native::style::Color;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
+
+/// An explicit interaction with transcript content, admitted by the application.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Action {
+    OpenLink(String),
+    Copy(String),
+    Earlier,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Point {
@@ -19,6 +27,10 @@ struct Point {
 /// Exact row heights, reading position, selection, and horizontally scrolled blocks.
 pub struct Transcript {
     version: u64,
+    expanded: BTreeSet<String>,
+    pub relaid: usize,
+    pub measured: u64,
+    pressed_widget: Option<(String, usize)>,
     layout: TranscriptLayout,
     measurer: ShapingMeasurer,
     frame: Arc<rust_native::layout::Frame>,
@@ -38,6 +50,10 @@ impl Default for Transcript {
         let frame = layout.frame();
         Self {
             version: 0,
+            expanded: BTreeSet::new(),
+            relaid: 0,
+            measured: 0,
+            pressed_widget: None,
             layout,
             measurer: ShapingMeasurer::new(),
             frame,
@@ -74,7 +90,6 @@ impl Transcript {
         width: f32,
         height: f32,
     ) -> Result<(), rust_native::layout::LayoutError> {
-        self.version = self.version.wrapping_add(1);
         let anchor = self
             .frame
             .rows_in(self.offset, self.offset + 1.0)
@@ -86,23 +101,34 @@ impl Transcript {
                 ))
             });
         let order: Vec<String> = rows.iter().map(|row| row.key.clone()).collect();
-        let changed = rows
+        let changed: Vec<Node<()>> = rows
             .iter()
             .filter(|row| self.rows.get(&row.key) != Some(*row))
             .cloned()
             .collect();
-        self.layout.update(
+        let drawing_changed = !changed.is_empty()
+            || order != self.order
+            || width != self.frame.width()
+            || height != self.height;
+        let summary = self.layout.update(
             Update {
                 width: width.clamp(1.0, 16384.0),
                 scale: 1.0,
                 order: (order != self.order).then_some(order.clone()),
                 rows: changed,
+                expanded: self.expanded.iter().cloned().collect(),
                 ..Update::default()
             },
             &mut self.measurer,
         )?;
+        self.relaid = summary.relaid;
+        self.measured = summary.measured;
+        if drawing_changed || summary.relaid > 0 {
+            self.version = self.version.wrapping_add(1);
+        }
         if order != self.order {
             self.selection = None;
+            self.pressed_widget = None;
         }
         self.order = order;
         self.rows = rows.into_iter().map(|row| (row.key.clone(), row)).collect();
@@ -193,15 +219,7 @@ impl Transcript {
                     let text = &row.texts[run.text as usize];
                     let start = run.start8 as usize;
                     let end = start + run.len8 as usize;
-                    let mut nearest = start;
-                    let mut distance = f32::MAX;
-                    for byte in (start..=end).filter(|byte| text.is_char_boundary(*byte)) {
-                        let width = fonts.paragraph(&text[start..byte], style.font, None).width;
-                        if (rx + width - x).abs() < distance {
-                            distance = (rx + width - x).abs();
-                            nearest = byte;
-                        }
-                    }
+                    let nearest = start + fonts.caret_byte(&text[start..end], style.font, x - rx);
                     return Some(Point {
                         row: index,
                         text: run.text as usize,
@@ -217,11 +235,16 @@ impl Transcript {
         &mut self,
         event: crate::input::SurfaceInput,
         fonts: &mut Fonts,
-    ) -> Option<String> {
+    ) -> Option<Action> {
         use crate::input::SurfaceInput;
         let previous = self.selection;
         match event {
             SurfaceInput::Down { x, y, shift } => {
+                self.pressed_widget = self.widget(x, y);
+                if self.pressed_widget.is_some() {
+                    self.dragging = false;
+                    return None;
+                }
                 if let Some(point) = self.point(x, y, fonts) {
                     let anchor = if shift {
                         self.selection.map_or(point, |(anchor, _)| anchor)
@@ -243,6 +266,38 @@ impl Transcript {
             }
             SurfaceInput::Up { x, y } => {
                 self.dragging = false;
+                if let Some(pressed) = self.pressed_widget.take() {
+                    if self.widget(x, y).as_ref() == Some(&pressed) {
+                        let index = self.frame.find(&pressed.0)?;
+                        let widget = self
+                            .frame
+                            .display(index)?
+                            .widgets
+                            .get(pressed.1)?
+                            .kind
+                            .clone();
+                        return match widget {
+                            WidgetKind::Copy { text } => Some(Action::Copy(text)),
+                            WidgetKind::Earlier { loading: false } => Some(Action::Earlier),
+                            WidgetKind::Toggle { key, expanded } => {
+                                if expanded {
+                                    self.expanded.remove(&key);
+                                } else {
+                                    self.expanded.insert(key);
+                                }
+                                let rows = self
+                                    .order
+                                    .iter()
+                                    .filter_map(|key| self.rows.get(key).cloned())
+                                    .collect();
+                                let _ = self.update(rows, self.frame.width(), self.height);
+                                None
+                            }
+                            _ => None,
+                        };
+                    }
+                    return None;
+                }
                 if self.selection.is_none_or(|(a, b)| a == b) {
                     let ry = y + self.offset;
                     for index in self.frame.rows_in(ry, ry + 1.0) {
@@ -254,7 +309,7 @@ impl Transcript {
                                 && ry >= top + link.y
                                 && ry <= top + link.y + link.h
                             {
-                                return Some(link.destination.clone());
+                                return Some(Action::OpenLink(link.destination.clone()));
                             }
                         }
                     }
@@ -270,6 +325,41 @@ impl Transcript {
             self.version = self.version.wrapping_add(1);
         }
         None
+    }
+
+    fn widget(&self, x: f32, y: f32) -> Option<(String, usize)> {
+        let y = y + self.offset;
+        for index in self.frame.rows_in(y, y + 1.0) {
+            let row = self.frame.display(index)?;
+            let top = self.frame.placement(index)?.y;
+            for (index, widget) in row.widgets.iter().enumerate().rev() {
+                if matches!(
+                    widget.kind,
+                    WidgetKind::Copy { .. }
+                        | WidgetKind::Toggle { .. }
+                        | WidgetKind::Earlier { loading: false }
+                ) && x >= widget.x
+                    && x < widget.x + widget.w
+                    && y >= top + widget.y
+                    && y < top + widget.y + widget.h
+                {
+                    return Some((row.key.clone(), index));
+                }
+            }
+        }
+        None
+    }
+    pub fn visible_rows(&self) -> usize {
+        self.frame
+            .rows_in(self.offset, self.offset + self.height)
+            .len()
+    }
+    pub fn reading_anchor(&self) -> Option<(String, f32)> {
+        let index = self.frame.rows_in(self.offset, self.offset + 1.0).next()?;
+        Some((
+            self.frame.key(index)?.to_owned(),
+            self.offset - self.frame.placement(index)?.y,
+        ))
     }
 
     pub fn selected_text(&self) -> String {
@@ -407,9 +497,12 @@ impl Transcript {
                 }
                 let mut color = ink(style.ink);
                 color.alpha = (f32::from(color.alpha) * style.opacity) as u8;
+                let truncated = run
+                    .truncate
+                    .map(|width| fonts.ellipsized(&text[start..end], style.font, width));
                 fonts.draw_run(
                     frame,
-                    &text[start..end],
+                    truncated.as_deref().unwrap_or(&text[start..end]),
                     style.font,
                     x,
                     baseline,
@@ -439,6 +532,92 @@ impl Transcript {
                     frame.restore_clip(clip);
                 }
             }
+            for widget in &row.widgets {
+                let bounds = PxRect {
+                    x: rect.x + widget.x * scale,
+                    y: y + widget.y * scale,
+                    w: widget.w * scale,
+                    h: widget.h * scale,
+                };
+                if !frame.visible(bounds) {
+                    continue;
+                }
+                let color = ink(Ink::Role(ColorRole::Secondary));
+                match &widget.kind {
+                    WidgetKind::Copy { .. } => {
+                        let paragraph = fonts.paragraph(
+                            "Copy",
+                            crate::text::font(12.0, Weight::Medium, false),
+                            None,
+                        );
+                        fonts.draw(
+                            frame,
+                            &paragraph,
+                            bounds.x,
+                            bounds.y + (bounds.h - paragraph.height * scale) / 2.0,
+                            widget.w,
+                            rust_native::style::TextAlign::Center,
+                            scale,
+                            color,
+                        );
+                    }
+                    WidgetKind::Chevron { expanded } => {
+                        let point =
+                            |x: f32, y: f32| (bounds.x + x * bounds.w, bounds.y + y * bounds.h);
+                        let (a, b, c) = if *expanded {
+                            (point(0.2, 0.3), point(0.5, 0.7), point(0.8, 0.3))
+                        } else {
+                            (point(0.3, 0.2), point(0.7, 0.5), point(0.3, 0.8))
+                        };
+                        frame.line(a, b, scale, color);
+                        frame.line(b, c, scale, color);
+                    }
+                    WidgetKind::Checkbox { checked } => {
+                        frame.stroke(bounds, 2.0 * scale, scale, color);
+                        if *checked {
+                            crate::icons::draw(frame, bounds, rust_native::Glyph::Check, color);
+                        }
+                    }
+                    WidgetKind::Status {
+                        state: rust_native::ToolState::Done,
+                    } => crate::icons::draw(frame, bounds, rust_native::Glyph::Check, color),
+                    WidgetKind::Status {
+                        state: rust_native::ToolState::Failed,
+                    } => {
+                        frame.line(
+                            (bounds.x, bounds.y),
+                            (bounds.x + bounds.w, bounds.y + bounds.h),
+                            scale,
+                            color,
+                        );
+                        frame.line(
+                            (bounds.x + bounds.w, bounds.y),
+                            (bounds.x, bounds.y + bounds.h),
+                            scale,
+                            color,
+                        );
+                    }
+                    WidgetKind::Spinner
+                    | WidgetKind::Working
+                    | WidgetKind::Status {
+                        state: rust_native::ToolState::Running,
+                    } => {
+                        for i in 0..3 {
+                            frame.fill(
+                                PxRect {
+                                    x: bounds.x + i as f32 * bounds.w / 3.0,
+                                    y: bounds.y + bounds.h * 0.4,
+                                    w: bounds.w / 6.0,
+                                    h: bounds.w / 6.0,
+                                },
+                                bounds.w / 12.0,
+                                color,
+                            );
+                        }
+                    }
+                    WidgetKind::Toggle { .. } | WidgetKind::Earlier { .. } => {}
+                }
+            }
         }
         frame.restore_clip(previous);
     }
@@ -463,5 +642,146 @@ fn ink(ink: Ink) -> Color {
             ColorRole::Border => Color::rgb(61, 68, 78),
             ColorRole::InlineCode => Color::rgb(41, 46, 55),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::SurfaceInput;
+    use rust_native::{Element, MessageRole, ToolState, style::Style};
+    fn row(key: &str, value: &str) -> Node<()> {
+        Node {
+            key: key.into(),
+            style: Style::default(),
+            element: Element::Message {
+                role: MessageRole::Assistant,
+                note: None,
+                children: vec![Node {
+                    key: format!("{key}-body"),
+                    style: Style::default(),
+                    element: Element::Markdown {
+                        blocks: rust_native::markdown::parse(value),
+                    },
+                }],
+            },
+        }
+    }
+    #[test]
+    fn reading_anchor_survives_streaming_and_prepending_and_tail_can_resume() {
+        let mut transcript = Transcript::default();
+        let mut rows: Vec<_> = (0..40)
+            .map(|i| {
+                row(
+                    &format!("row-{i}"),
+                    "A paragraph with some text.\n\nAnother paragraph.",
+                )
+            })
+            .collect();
+        transcript.update(rows.clone(), 500.0, 180.0).unwrap();
+        assert!(transcript.at_tail());
+        assert!(transcript.visible_rows() < 10);
+        transcript.scroll(300.0);
+        assert!(!transcript.at_tail());
+        let anchor = transcript.reading_anchor().unwrap();
+        rows[39] = row(
+            "row-39",
+            "A much longer streaming response.\n\nAdditional paragraphs.\n\nMore words.",
+        );
+        transcript.update(rows.clone(), 500.0, 180.0).unwrap();
+        assert_eq!(transcript.relaid, 1);
+        assert_eq!(transcript.reading_anchor().unwrap(), anchor);
+        rows.insert(0, row("earlier", "An earlier page."));
+        transcript.update(rows.clone(), 500.0, 180.0).unwrap();
+        assert_eq!(transcript.reading_anchor().unwrap(), anchor);
+        let version = transcript.version();
+        transcript.update(rows, 500.0, 180.0).unwrap();
+        assert_eq!(transcript.relaid, 0);
+        assert_eq!(transcript.measured, 0);
+        assert_eq!(transcript.version(), version);
+        transcript.jump_to_tail();
+        assert!(transcript.at_tail());
+    }
+    #[test]
+    fn code_copy_and_tool_toggle_require_matching_pointer_release() {
+        let mut transcript = Transcript::default();
+        transcript
+            .update(
+                vec![row("code", "```rust\nlet answer = 42;\n```")],
+                500.0,
+                500.0,
+            )
+            .unwrap();
+        let copy = transcript
+            .frame
+            .display(0)
+            .unwrap()
+            .widgets
+            .iter()
+            .find(|w| matches!(w.kind, WidgetKind::Copy { .. }))
+            .unwrap();
+        let x = copy.x + copy.w / 2.0;
+        let y = transcript.frame.placement(0).unwrap().y + copy.y + copy.h / 2.0;
+        let mut fonts = Fonts::new();
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts),
+            None
+        );
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            Some(Action::Copy("let answer = 42;".into()))
+        );
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x: 0.0, y: 0.0 }, &mut fonts),
+            None
+        );
+        let tool = Node {
+            key: "tool".into(),
+            style: Style::default(),
+            element: Element::Tool {
+                name: "Read file".into(),
+                detail: "src/main.rs".into(),
+                state: ToolState::Done,
+                children: vec![row("result", "The file contents.")],
+            },
+        };
+        transcript.update(vec![tool], 500.0, 500.0).unwrap();
+        let initial = transcript.height();
+        let toggle = transcript
+            .frame
+            .display(0)
+            .unwrap()
+            .widgets
+            .iter()
+            .find(|w| matches!(w.kind, WidgetKind::Toggle { .. }))
+            .unwrap();
+        let x = toggle.x + toggle.w / 2.0;
+        let y = transcript.frame.placement(0).unwrap().y + toggle.y + toggle.h / 2.0;
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts);
+        assert!(transcript.height() > initial);
+        assert!(
+            transcript
+                .frame
+                .display(0)
+                .unwrap()
+                .widgets
+                .iter()
+                .any(|w| matches!(w.kind, WidgetKind::Chevron { expanded: true }))
+        );
+        let mut frame = Frame::transparent(500, 500);
+        transcript.paint(
+            &mut frame,
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 500.0,
+                h: 500.0,
+            },
+            1.0,
+            &mut fonts,
+        );
+        assert!(frame.pixels.iter().any(|value| *value > 0));
     }
 }

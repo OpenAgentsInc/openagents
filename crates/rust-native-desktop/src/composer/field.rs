@@ -153,7 +153,7 @@ impl Field {
     }
     /// Translate native input. Marked text never submits on Enter.
     pub fn input(&mut self, event: TextInput<'_>, at_ms: u64) -> Action {
-        if !self.focused {
+        if !self.focused && !matches!(event, TextInput::FocusLost | TextInput::CancelComposition) {
             return Action::Unhandled;
         }
         match event {
@@ -311,17 +311,12 @@ impl Field {
         let Some(line) = paragraph.lines.get(index) else {
             return self.text().len();
         };
-        let mut result = line.start;
-        let mut best = f32::MAX;
-        for byte in (line.start..=line.end).filter(|byte| paragraph.text.is_char_boundary(*byte)) {
-            let width = fonts.advance(&paragraph.text[line.start..byte], paragraph.font);
-            let distance = (14.0 + width - x).abs();
-            if distance < best {
-                best = distance;
-                result = byte;
-            }
-        }
-        result
+        line.start
+            + fonts.caret_byte(
+                &paragraph.text[line.start..line.end],
+                paragraph.font,
+                x - 14.0,
+            )
     }
 
     pub fn pointer(&mut self, event: SurfaceInput, fonts: &mut Fonts, at_ms: u64) {
@@ -523,6 +518,7 @@ mod tests {
         field.input(TextInput::Commit("hello"), 0);
         field.paint(&mut frame, rect, 1.0, &mut fonts);
         let initial = field.caret.0;
+        let mut previous = initial;
         for index in 1..=3 {
             field.input(
                 TextInput::Key {
@@ -535,7 +531,8 @@ mod tests {
                 index,
             );
             field.paint(&mut frame, rect, 1.0, &mut fonts);
-            assert!(field.caret.0 > initial);
+            assert!(field.caret.0 > previous);
+            previous = field.caret.0;
             let text = field.text();
             assert_eq!(text, format!("hello{}", " ".repeat(index as usize)));
             assert_eq!(

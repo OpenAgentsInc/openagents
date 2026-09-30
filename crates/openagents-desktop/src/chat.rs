@@ -402,12 +402,26 @@ impl Panel {
             if matches!(event, SurfaceInput::Move { .. }) && !self.transcript.dragging() {
                 return false;
             }
+            let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
             if matches!(event, SurfaceInput::Down { .. })
                 && let Some(field) = self.field()
             {
-                field.focused = false;
+                field.input(TextInput::FocusLost, at_ms);
             }
-            if let Some(destination) = self.transcript.pointer(event, &mut self.fonts) {
+            if let Some(action) = self.transcript.pointer(event, &mut self.fonts) {
+                let destination = match action {
+                    rust_native_desktop::transcript::Action::Copy(text) => {
+                        let _ =
+                            std::thread::Builder::new()
+                                .name("code-copy".into())
+                                .spawn(move || {
+                                    rust_native_desktop::input::copy(&text);
+                                });
+                        return true;
+                    }
+                    rust_native_desktop::transcript::Action::OpenLink(destination) => destination,
+                    rust_native_desktop::transcript::Action::Earlier => return true,
+                };
                 // Only an explicit pointer release opens an HTTP(S) destination.
                 if destination.starts_with("https://") || destination.starts_with("http://") {
                     #[cfg(target_os = "macos")]

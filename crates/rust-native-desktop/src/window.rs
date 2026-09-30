@@ -23,7 +23,7 @@ use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
 use crate::input::{SurfaceInput, TextInput};
 use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_layout};
 use crate::text::Fonts;
-use crate::timing::{Phase, Timings};
+use crate::timing::{FrameTiming, Phase, Timings};
 use crate::{App, Waker, paint};
 use rust_native::Activation;
 use std::sync::Arc;
@@ -56,6 +56,10 @@ pub struct Options {
     pub zoom: Option<Zoom>,
     /// How a backdrop sits under the views, when there is one.
     pub look: Look,
+    /// Exact physical dimensions for repeatable rendering fixtures.
+    pub pixel_size: Option<(u32, u32)>,
+    /// Override pixels per view point for rendering fixtures.
+    pub render_scale: Option<f32>,
 }
 
 impl Default for Options {
@@ -66,6 +70,8 @@ impl Default for Options {
             fill: None,
             zoom: None,
             look: Look::default(),
+            pixel_size: None,
+            render_scale: None,
         }
     }
 }
@@ -290,6 +296,13 @@ struct Shell<A: App> {
 impl<A: App> Shell<A> {
     /// Pixels a point: the display's, times the zoom for the window's size.
     fn scale(&self) -> f32 {
+        if let Some(scale) = self
+            .options
+            .render_scale
+            .filter(|scale| scale.is_finite() && (0.5..=4.0).contains(scale))
+        {
+            return scale;
+        }
         let Some(window) = self.window.as_ref() else {
             return 1.0;
         };
@@ -334,6 +347,14 @@ impl<A: App> Shell<A> {
         let (width, height) = self.logical_size();
         self.app.viewport(width, height, self.scale());
         self.wake = self.app.tick(Instant::now());
+        let previous_scroll = self.interaction.leading_scroll;
+        if let Some(offset) = self
+            .app
+            .leading_scroll()
+            .filter(|offset| offset.is_finite())
+        {
+            self.interaction.leading_scroll = offset.max(0.0);
+        }
         if let Some(window) = &self.window {
             let cursor = self.app.ime_cursor();
             window.set_ime_allowed(cursor.is_some());
@@ -359,7 +380,10 @@ impl<A: App> Shell<A> {
                 }
             })
         });
-        if self.revision() != before || surface_changed {
+        if self.revision() != before
+            || surface_changed
+            || previous_scroll != self.interaction.leading_scroll
+        {
             self.redraw();
         }
         self.timings.record(Phase::Tick, started.elapsed(), 0, 0);
@@ -636,6 +660,7 @@ impl<A: App> Shell<A> {
     /// Draws the backdrop and lays the views over it.
     fn render_layers(&mut self) -> Result<(), String> {
         let started = Instant::now();
+        let mut timing = FrameTiming::default();
         let Some((width, height)) = self
             .gpu
             .as_ref()
@@ -685,6 +710,9 @@ impl<A: App> Shell<A> {
                 &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
             );
             let pixels = regions.iter().map(|rect| (rect.w * rect.h) as u64).sum();
+            timing.paint_us = painting.elapsed().as_micros() as u64;
+            timing.damaged_pixels = pixels;
+            timing.regions = regions.len();
             self.timings
                 .record(Phase::Paint, painting.elapsed(), pixels, regions.len());
             self.scene = Some(scene);
@@ -698,6 +726,7 @@ impl<A: App> Shell<A> {
                     self.foreground.frame().expect("a foreground"),
                     &regions,
                 );
+            timing.upload_us = uploading.elapsed().as_micros() as u64;
             self.timings
                 .record(Phase::Upload, uploading.elapsed(), pixels, regions.len());
             self.painted = true;
@@ -721,6 +750,7 @@ impl<A: App> Shell<A> {
                 return Err("the surface failed validation".to_string());
             }
         };
+        timing.acquire_us = acquiring.elapsed().as_micros() as u64;
         self.timings
             .record(Phase::Acquire, acquiring.elapsed(), 0, 0);
         let presenting = Instant::now();
@@ -749,6 +779,7 @@ impl<A: App> Shell<A> {
         compositor.encode(&gpu.queue, &mut encoder, &output, theme.background, look);
         gpu.queue.submit([encoder.finish()]);
         texture.present();
+        timing.present_us = presenting.elapsed().as_micros() as u64;
         self.timings
             .record(Phase::Present, presenting.elapsed(), 0, 0);
         self.timings.record(
@@ -758,6 +789,8 @@ impl<A: App> Shell<A> {
             0,
         );
         self.timings.presented();
+        timing.total_us = started.elapsed().as_micros() as u64;
+        self.app.frame_presented(timing);
         self.hold = None;
         if let Some(error) = failed {
             self.drop_backdrop(&error);
@@ -863,6 +896,9 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.options.min_size.0,
                 self.options.min_size.1,
             ));
+        if let Some((width, height)) = self.options.pixel_size {
+            attributes = attributes.with_inner_size(winit::dpi::PhysicalSize::new(width, height));
+        }
         let area = self.options.fill.and_then(|_| usable_area(event_loop));
         if let (Some(fill), Some(area)) = (self.options.fill, area) {
             let ((x, y), (width, height)) = placement(area, fill, TITLE_BAR, self.options.min_size);
@@ -922,6 +958,10 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
         let now = Instant::now();
         if self.wake.is_some_and(|wake| wake <= now) {
             self.tick();
+        }
+        if self.app.exit_requested() {
+            event_loop.exit();
+            return;
         }
         let frame = self.backdrop_due(now);
         if frame.is_some_and(|frame| frame <= now) {
