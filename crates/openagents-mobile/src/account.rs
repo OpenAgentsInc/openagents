@@ -36,6 +36,34 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "35",
+        title: "Your computer's threads on your phone",
+        what_to_test: "With the phone paired to a computer running OpenAgents, open Chats: the computer's threads should be listed, open with their messages, and take a follow-up. While the computer answers, tap stop and the reply should stop. Turn on Airplane Mode: the threads should still open, and a follow-up should say it waits for the computer, then send once when you are back online. Start a Coder run with openagents chat on the computer: it should show in its thread and Stop Coder should stop it. Ask for something that needs a computer: the offer should say which agent will run. In a new chat, \"Who are you\" should still get an answer, and your earlier chats should still be there.",
+        items: &[
+            Item {
+                title: "Your computer's threads are in Chats",
+                detail: "Threads from OpenAgents on your paired computer show in Chats. Open one to read it and continue it from the phone.",
+            },
+            Item {
+                title: "Stop a computer's reply",
+                detail: "While your computer answers in a thread, tap stop to end the reply. If a Coder run is still going after that, Stop Coder too stops it.",
+            },
+            Item {
+                title: "Threads work offline",
+                detail: "Your computer's threads stay on the phone after a relaunch and open without a connection. A follow-up sent offline waits for the computer and sends once when it can.",
+            },
+            Item {
+                title: "Coder runs started on your computer",
+                detail: "A Coder run started with openagents chat on your computer shows in its thread on the phone, and you can stop it from there.",
+            },
+            Item {
+                title: "Offers say which agent will run",
+                detail: "When a request needs a computer, the offer says which agent and model will run it, or that none is signed in or has room.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "34",
         title: "More chat code shared with desktop",
         what_to_test: "Nothing should look different. Your earlier chats should still be in your chat history and open with their messages. In a new chat, ask \"Who are you\" and a longer question: the replies should stream in, and the suggested questions above the field should not repeat once used. Ask for something that needs a computer: it should offer Connect a computer or Run Coder, not an error.",
