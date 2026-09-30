@@ -1,0 +1,20 @@
+kicker at 40,100 720x17
+  PART II · OUR IMPLEMENTATION
+title at 40,123 720x34 ×1.5
+  A judgment costs a fraction of the answer it can skip
+metric at 40,180 224x58 ×2.5
+  170
+label at 40,243 224x21
+  ms: Jev judgment, median
+metric at 288,180 224x58 ×2.5
+  700
+label at 288,243 224x45
+  ms: prepared answer on screen, at most
+metric at 536,180 224x58 ×2.5
+  5200
+label at 536,243 224x21
+  ms: full model answer, at most
+note at 40,306 720x37
+  Measured from Send on the phone. Judgment p95 235 ms; about 0.3 s of each phone time is relay setup. Prepared answers: 36 of 36 correct (100 % precision) on 138 held-out messages.
+foot at 640,424 120x17
+  15 / 22

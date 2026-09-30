@@ -1,0 +1,30 @@
+kicker at 40,127 720x17
+  PART II · OUR IMPLEMENTATION
+title at 40,150 720x34 ×1.5
+  From a chat to every Coder
+step at 54,206 76x53
+  make
+step at 167,206 98x53
+  run both
+step at 294,206 89x53
+  publish
+step at 421,206 81x53
+  check
+step at 538,206 93x53
+  validate
+step at 668,206 78x53
+  adopt
+arrow at 140,222 18x21
+  →
+arrow at 270,222 18x21
+  →
+arrow at 393,222 18x21
+  →
+arrow at 511,222 18x21
+  →
+arrow at 641,222 18x21
+  →
+note at 40,278 720x37
+  The hosted runner runs on coderos-4080 with a per-trainer daily quota. Suites are NIP-EXT releases; results, checks, and validations NIP-EVAL 3189 events; credit NIP-XP awards; adoption a coder-defaults release.
+foot at 640,424 120x17
+  19 / 22

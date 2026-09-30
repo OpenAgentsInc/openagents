@@ -1,0 +1,11 @@
+kicker at 40,107 720x17
+  PART II · OUR IMPLEMENTATION
+title at 40,130 720x34 ×1.5
+  What the first runs taught us
+body at 40,186 720x149
+  - Restraint held. Tests that should not use the tool passed as often with it, with one exception.
+  - Reach did not. Four tests failed in both arms: Jev did not pick the tool for that wording.
+  - The first gate was wrong. Under v1, faster but no more correct read Better. v2 replaced the rule the same day; the old result keeps its old digest.
+  - Graders are software. One looked for "not found" and missed another phrasing; we released a new test set version.
+foot at 640,424 120x17
+  18 / 22

@@ -1,16 +1,15 @@
 //! `openagents-deck`: the OpenAgents deck in a native window, as text, or
 //! as PNG files.
 //!
-//! With no option it opens the default deck in a window. `--text` prints
-//! every slide's grid, `--check` lists the slides still waiting on facts,
-//! and `--capture DIR` paints every slide to a PNG with the window's own
-//! painter, so a screenshot in the repository is the frame the window
-//! shows.
+//! With no option it opens the default deck in a window, the Rust Native
+//! desktop window the OpenAgents desktop app uses. `--text` prints every
+//! slide's outline, `--check` lists the slides still waiting on facts, and
+//! `--capture DIR` paints every slide to a PNG through the window
+//! adapter's own layout and painter, so a screenshot in the repository is
+//! the frame the window shows.
 
-mod window;
-
-use openagents_deck::paint::{FIELD, Frame, Painter, fitting_size};
-use openagents_deck::{Canvas, Deck, overview, slide_grid};
+use openagents_deck::present::{self, Presenter};
+use openagents_deck::{Deck, compose};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -39,7 +38,7 @@ Usage: openagents-deck [options]
   --slide N         open on slide N (from 1)
   --notes           open with the presenter's notes showing
   --fullscreen      open fullscreen
-  --text            print every slide as the text of its grid
+  --text            print every slide's outline: its parts, where they sit, and their text
   --check           list the slides still waiting on facts; exits 1 while any do
   --capture DIR     paint every slide, and the overview, to PNG files in DIR
   --size WxH        the capture size in pixels (default 1920x1080)
@@ -126,7 +125,7 @@ fn main() -> ExitCode {
         for index in 0..deck.len() {
             let slide = deck.slide(index).expect("the slide");
             println!("── {} / {} · {} ──", index + 1, deck.len(), slide.id);
-            print!("{}", slide_grid(&deck, index, Canvas::DEFAULT).to_text());
+            print!("{}", compose(&deck, index).outline());
         }
         return ExitCode::SUCCESS;
     }
@@ -153,7 +152,17 @@ fn main() -> ExitCode {
             }
         };
     }
-    match window::run(deck, &options) {
+    let mut presenter = Presenter::new(deck, options.slide);
+    presenter.show_notes(options.notes);
+    if options.fullscreen {
+        presenter.start_fullscreen();
+    }
+    let window = rust_native_desktop::window::Options {
+        size: (1280.0, 720.0),
+        min_size: (480.0, 270.0),
+        ..rust_native_desktop::window::Options::default()
+    };
+    match rust_native_desktop::window::run(presenter, window) {
         Ok(()) => ExitCode::SUCCESS,
         Err(complaint) => {
             eprintln!("{complaint}");
@@ -171,38 +180,21 @@ fn capture(
 ) -> Result<usize, String> {
     std::fs::create_dir_all(directory)
         .map_err(|error| format!("cannot create {}: {error}", directory.display()))?;
-    let canvas = Canvas::DEFAULT;
-    let mut painter = Painter::new(fitting_size(
-        width as f32,
-        height as f32,
-        canvas.cells,
-        canvas.rows,
-    ));
-    let (w, h) = painter.extent(canvas.cells, canvas.rows);
-    let (x, y) = ((width as f32 - w) / 2.0, (height as f32 - h) / 2.0);
-    let mut write = |name: String,
-                     grid: &openagents_deck::Grid,
-                     slide: Option<&openagents_deck::slide::Slide>|
-     -> Result<(), String> {
-        let mut frame = Frame::new(width, height, FIELD);
-        painter.paint(&mut frame, grid, x, y);
-        if let Some(slide) = slide {
-            openagents_deck::title::paint(&mut frame, &painter, slide, grid, x, y);
-        }
+    let mut presenter = Presenter::new(deck.clone(), 0);
+    let write = |name: String, presenter: &mut Presenter| -> Result<(), String> {
+        let frame = present::capture(presenter, width, height);
         let path = directory.join(name);
         std::fs::write(&path, frame.png()?)
             .map_err(|error| format!("cannot write {}: {error}", path.display()))
     };
     for index in 0..deck.len() {
         let slide = deck.slide(index).expect("the slide");
-        let grid = slide_grid(deck, index, canvas);
-        write(
-            format!("{:02}-{}.png", index + 1, slide.id),
-            &grid,
-            Some(slide),
-        )?;
+        write(format!("{:02}-{}.png", index + 1, slide.id), &mut presenter)?;
+        presenter.key("ArrowRight", false);
     }
-    write("overview.png".to_string(), &overview(deck, 0, canvas), None)?;
+    presenter.key("Home", false);
+    presenter.show_overview(true);
+    write("overview.png".to_string(), &mut presenter)?;
     Ok(deck.len() + 1)
 }
 

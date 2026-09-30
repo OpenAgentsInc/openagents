@@ -1,0 +1,10 @@
+kicker at 40,63 720x17
+  PART I · THE IDEA
+quote at 98,102 605x188
+  An ability an agent gains, or loses, at inference time, without a weight update, because something was admitted into the run. A component is a candidate; evidence makes a capability claim: a key (subject, baseline agent, tasks, environment, grant, measurement), the records on it, and a written policy that reads them. Reports are evidence; claims summarize; adoption is policy.
+lead at 40,304 720x21
+  Test-time capability, and the capability claim that states it
+note at 40,343 720x37
+  Key K = (A, B, D, S, E, G, M): subject, baseline agent, distribution, sampled suite, environment, grant, measurement. Records on K estimate Δ ± CI; a policy P reads them.
+foot at 640,424 120x17
+  9 / 22

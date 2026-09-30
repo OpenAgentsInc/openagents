@@ -1,0 +1,5 @@
+body at 40,173 720x96
+  - Test-time compute: spending more computation when a model answers, not when it is trained.
+  - Test-time capabilities: an agent gaining, or losing, an ability while it runs, because something was admitted to the run, with no change to its weights.
+foot at 640,424 120x17
+  2 / 22

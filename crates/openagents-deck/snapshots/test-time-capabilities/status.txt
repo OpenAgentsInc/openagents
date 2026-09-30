@@ -1,0 +1,24 @@
+kicker at 40,88 720x17
+  PART II · OUR IMPLEMENTATION
+title at 40,111 720x34 ×1.5
+  Where it stands today
+metric at 40,168 162x58 ×2.5
+  3/3
+label at 40,231 162x69
+  hosted results a second trainer confirmed
+metric at 226,168 162x58 ×2.5
+  9
+label at 226,231 162x45
+  XP awards signed from those checks
+metric at 412,168 162x58 ×2.5
+  0
+label at 412,231 162x45
+  results validated on a second test set
+metric at 598,168 162x58 ×2.5
+  0
+label at 598,231 162x45
+  tools adopted into the defaults
+note at 40,318 720x37
+  Every part of the loop is built and the first runs, checks, and awards are live. The policy now requires a validation before any adoption, and none exists: the tests have to come from someone else. The flywheel has not been shown turning.
+foot at 640,424 120x17
+  20 / 22

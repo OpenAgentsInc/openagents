@@ -1,0 +1,16 @@
+kicker at 40,26 720x17
+  PART I · THE IDEA
+title at 40,49 720x34 ×1.5
+  Words for the parts of a capability's life
+table at 40,106 720x310
+   | Term | What it names
+  Admit | Admission | A locked component let into one run
+  Measure | Delta | With minus without, same tests, repeated
+  Use | Reach, restraint | Used where it helps, withheld where not
+  Allocate | Judgment budget | Deciding costs far less than answering
+  Reproduce | Reproduced | Someone else reran it: compatible result
+  Validate | Validated | Helps on tests its author didn't write
+  Adopt | Adoption | Joins the defaults, measured against them
+  Credit | Credit | For reruns either way, and for adoption
+foot at 640,424 120x17
+  11 / 22

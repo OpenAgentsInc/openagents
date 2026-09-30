@@ -1,26 +1,21 @@
-# The OpenAgents deck: slides written as Markdown under `decks/`, laid out
-# on a fixed cell canvas, checked as golden text snapshots, painted in
-# software with the bundled JetBrains Mono, and shown in a native window.
-# Ported from the Coder repository's `coder-deck`; see the README.
+# The OpenAgents deck: slides written as Markdown under `decks/`, built from
+# the desktop app's Rust Native pieces (the row layout, the transcript
+# painter, the fonts, the theme, and the window), so improving one improves
+# both. See the README.
 [package]
 name = "openagents-deck"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "The OpenAgents presentation deck: cell-grid slides, text snapshots, and a native window."
+description = "The OpenAgents presentation deck: Rust Native slides in the desktop app's window."
 
 [dependencies]
-# The intensity ladder the layouts are written against (painted white by
-# the deck's own palette).
-coder-ui = { path = "../coder-ui" }
-# Glyph rasterization from the font `rust-native` bundles.
-swash = "0.2.10"
-# The window: a software-painted frame copied into a wgpu surface.
-pollster = "0.4"
-png = "0.18.1"
-wgpu = "29.0.4"
-winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
+# Slides are Rust Native nodes, laid out by its row layout.
+rust-native = { path = "../rust-native" }
+# The desktop adapter: the transcript painter, the fonts, the theme, and
+# the window.
+rust-native-desktop = { path = "../rust-native-desktop" }
 
 [lints]
 workspace = true

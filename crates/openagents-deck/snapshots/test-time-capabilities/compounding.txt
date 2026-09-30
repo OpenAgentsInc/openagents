@@ -1,0 +1,11 @@
+title at 40,103 720x34 ×1.5
+  Capabilities can compound across a network
+body at 40,160 720x125
+  - More sources. People bring the task families, libraries, and environments they know.
+  - More verification. Independent reruns, including disputes, are the verifier extra effort depends on.
+  - Inheritance. One validated result becomes a default for every agent, with no training run.
+  - Credit that tracks use. Recognition for verification work and adoptions, not for agreement.
+note at 40,302 720x37
+  A hypothesis. Whether more participants make an agent measurably better has to be shown, measured the way the lexicon says.
+foot at 640,424 120x17
+  4 / 22

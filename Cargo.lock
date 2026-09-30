@@ -7192,12 +7192,8 @@ dependencies = [
 name = "openagents-deck"
 version = "0.1.0"
 dependencies = [
- "coder-ui",
- "png",
- "pollster",
- "swash",
- "wgpu",
- "winit",
+ "rust-native",
+ "rust-native-desktop",
 ]
 
 [[package]]

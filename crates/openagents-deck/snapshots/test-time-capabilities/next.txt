@@ -1,0 +1,14 @@
+kicker at 40,66 720x17
+  PART III · WHAT WE'LL MEASURE NEXT
+title at 40,89 720x34 ×1.5
+  What we have not shown yet
+body at 40,146 720x230
+  - The first validation, then the first adoption, and whether it keeps its delta once it is a default.
+  - Reach. Describe tools so the router picks them: likely the cheapest gain available.
+  - Deltas under a full grant. The same tools against a Coder with a shell: a new claim, not a correction.
+  - Cost and uncertainty. Unpriced lanes stay blank; six tests show large changes only.
+  - Marginal adoption. Once the defaults hold anything, measure against them, not against nothing.
+  - Revalidation. Nothing reopens a claim yet when its baseline, grant, or model changes.
+  - Network evidence: marginal validated utility per adopted contribution, reported when zero.
+foot at 640,424 120x17
+  21 / 22

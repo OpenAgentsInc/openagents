@@ -1,0 +1,12 @@
+kicker at 40,117 720x17
+  PART I · THE IDEA
+title at 40,140 720x34 ×1.5
+  Five places a capability can come from
+body at 40,196 720x128
+  - Tools and plugins. Code with typed operations and bounded access to the host.
+  - Skills. A written guide the agent reads before a task.
+  - Knowledge. Cited entries, such as methods and known mistakes, retrieved for the task.
+  - Delegation. Another agent, briefed with selected evidence.
+  - Typed judgment. A fast, cheap decision that picks which of the others to use, and when.
+foot at 640,424 120x17
+  10 / 22

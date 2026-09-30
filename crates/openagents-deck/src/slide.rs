@@ -8,7 +8,7 @@
 
 use crate::script;
 
-/// The eight shapes a slide draws in. The Coder deck's ninth, `live`,
+/// The nine shapes a slide draws in. The Coder deck's ninth, `live`,
 /// draws Coder's own product screens and is not carried over.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Layout {
@@ -32,6 +32,9 @@ pub enum Layout {
     Quote,
     /// Labeled facts on the left and prose on the right.
     Ask,
+    /// One image, centered and as large as fits without losing sharpness,
+    /// under the kicker and title when the slide has them.
+    Image,
 }
 
 impl Layout {
@@ -47,6 +50,7 @@ impl Layout {
             "flow" => Some(Layout::Flow),
             "quote" => Some(Layout::Quote),
             "ask" => Some(Layout::Ask),
+            "image" => Some(Layout::Image),
             _ => None,
         }
     }
@@ -63,6 +67,7 @@ impl Layout {
             Layout::Flow => "flow",
             Layout::Quote => "quote",
             Layout::Ask => "ask",
+            Layout::Image => "image",
         }
     }
 }
@@ -123,6 +128,38 @@ pub struct Slide {
     pub rows: Vec<Row>,
     pub steps: Vec<String>,
     pub notes: Vec<String>,
+    /// The image an image slide shows.
+    pub image: Option<SlideImage>,
+}
+
+/// An image a slide shows: `![alt](path)` in the script, on a line by
+/// itself. The path names a file under `decks/`, compiled in through
+/// [`ASSETS`]; the alternative text is what the slide says to a reader
+/// who can't see it.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct SlideImage {
+    pub alt: String,
+    pub path: String,
+}
+
+/// The files the scripts may show, by their path under `decks/`.
+pub const ASSETS: &[(&str, &[u8])] = &[
+    (
+        "assets/revenuesharing.png",
+        include_bytes!("../decks/assets/revenuesharing.png"),
+    ),
+    (
+        "assets/ethan1.png",
+        include_bytes!("../decks/assets/ethan1.png"),
+    ),
+];
+
+/// The bytes of the asset at `path` under `decks/`, when it is compiled in.
+pub fn asset(path: &str) -> Option<&'static [u8]> {
+    ASSETS
+        .iter()
+        .find(|(known, _)| *known == path)
+        .map(|(_, bytes)| *bytes)
 }
 
 impl Slide {
@@ -161,10 +198,16 @@ pub struct Deck {
 
 /// The scripts the repository ships, by name. The first is the one the
 /// window opens without `--deck`.
-pub const SCRIPTS: &[(&str, &str)] = &[(
-    "test-time-capabilities",
-    include_str!("../decks/test-time-capabilities.md"),
-)];
+pub const SCRIPTS: &[(&str, &str)] = &[
+    (
+        "test-time-capabilities",
+        include_str!("../decks/test-time-capabilities.md"),
+    ),
+    (
+        "three-devdays-later",
+        include_str!("../decks/three-devdays-later.md"),
+    ),
+];
 
 /// The deck the window opens when none is named.
 pub const DEFAULT: &str = SCRIPTS[0].0;
@@ -266,6 +309,7 @@ mod tests {
             Layout::Flow,
             Layout::Quote,
             Layout::Ask,
+            Layout::Image,
         ] {
             assert_eq!(Layout::named(layout.name()), Some(layout));
         }

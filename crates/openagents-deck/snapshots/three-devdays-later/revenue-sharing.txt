@@ -1,0 +1,5 @@
+image at 40,26 720x390
+  image 2214 x 1236 pixels
+  OpenAI DevDay stage slide reading Revenue sharing
+foot at 640,424 120x17
+  2 / 3

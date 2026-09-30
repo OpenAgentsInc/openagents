@@ -17,7 +17,7 @@
 //! notes: Name the runs that failed the gate this month.
 //! ```
 
-use crate::slide::{Deck, Layout, Metric, Row, Slide};
+use crate::slide::{Deck, Layout, Metric, Row, Slide, SlideImage};
 
 /// The line that separates two slides.
 const BREAK: &str = "---";
@@ -73,6 +73,15 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
     if slide.id.is_empty() {
         return Err(format!("slide {number} carries no id"));
     }
+    slide.image = image(body.trim());
+    if slide.layout.is_none() && slide.image.is_some() {
+        slide.layout = Some(Layout::Image);
+    }
+    if slide.layout == Some(Layout::Image) && slide.image.is_none() {
+        return Err(format!(
+            "slide {number} is an image slide with no ![alt](path) line"
+        ));
+    }
     if slide.layout.is_none() {
         return Err(format!("slide {number} names no layout"));
     }
@@ -94,6 +103,21 @@ fn directive(line: &str) -> Option<(&str, &str)> {
         return None;
     }
     KEYS.contains(&key).then(|| (key, value.trim()))
+}
+
+/// The image a body shows, when the body is one `![alt](path)` line and
+/// nothing else.
+fn image(body: &str) -> Option<SlideImage> {
+    if body.lines().count() != 1 {
+        return None;
+    }
+    let rest = body.strip_prefix("![")?;
+    let (alt, rest) = rest.split_once("](")?;
+    let path = rest.strip_suffix(')')?;
+    (!path.is_empty() && !path.contains(char::is_whitespace)).then(|| SlideImage {
+        alt: alt.trim().to_string(),
+        path: path.to_string(),
+    })
 }
 
 /// A metric line: the value, a vertical bar, and the label.
@@ -165,6 +189,22 @@ mod tests {
         assert!(parse("layout: banner\n").is_err());
         assert!(parse("id: title\n").is_err());
         assert!(parse("layout: nothing\nid: title\n").is_err());
+    }
+
+    /// A lone image line makes an image slide, with or without `layout:`;
+    /// an image slide without one is refused.
+    #[test]
+    fn a_lone_image_makes_an_image_slide() {
+        let deck = parse("id: a\n\n![A post](assets/a.png)\n").expect("the script parses");
+        assert_eq!(deck.slides[0].layout(), Layout::Image);
+        let image = deck.slides[0].image.clone().expect("the image");
+        assert_eq!(
+            (image.alt.as_str(), image.path.as_str()),
+            ("A post", "assets/a.png")
+        );
+        assert!(parse("layout: image\nid: a\n\nNo image.\n").is_err());
+        let prose = parse("layout: points\nid: a\n\n![a](b.png) and words\n").unwrap();
+        assert!(prose.slides[0].image.is_none());
     }
 
     /// A line that only holds a colon, such as prose or a Markdown link,

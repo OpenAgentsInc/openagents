@@ -1,0 +1,22 @@
+kicker at 40,127 720x17
+  PART II · OUR IMPLEMENTATION
+title at 40,150 720x34 ×1.5
+  The chat router asks Jev before it asks a model
+step at 59,206 128x53
+  phone: Send
+step at 250,206 115x53
+  Jev judges
+step at 424,206 136x53
+  policy in code
+step at 614,206 125x53
+  tier T0 to T4
+arrow at 210,222 18x21
+  →
+arrow at 386,222 18x21
+  →
+arrow at 578,222 18x21
+  →
+note at 40,278 720x37
+  T0 a prepared answer · T1 a stem a cheap model finishes · T2 grounded in a knowledge base · T3 the full model · T4 an offer to run Coder. A slow or failed judge falls back to the model.
+foot at 640,424 120x17
+  14 / 22

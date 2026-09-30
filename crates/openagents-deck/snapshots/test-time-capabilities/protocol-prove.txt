@@ -1,0 +1,13 @@
+title at 40,55 720x34 ×1.5
+  The NIPs: from the run to the shared result
+table at 40,112 720x275
+   | Carries | Why it matters | Status
+  RUN | run journal | lock, grant, baseline agent | Partial
+  ATIF | trajectories | each arm, step by step | Designed
+  EVAL | claims, checks | signed claims, whole scope | Partial
+  XP | credit | paid to confirm or dispute | Implemented
+  POL | cost, adoption | operator adopts; runs keep lock | Designed
+  OPT | optimization | faces the same test | Designed
+  MV | Verse | Gym notes cite the result | Partial
+foot at 640,424 120x17
+  7 / 22

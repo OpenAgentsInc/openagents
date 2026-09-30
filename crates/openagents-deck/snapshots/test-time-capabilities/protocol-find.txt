@@ -1,0 +1,14 @@
+title at 40,38 720x34 ×1.5
+  The NIPs: from finding a capability to delegating
+table at 40,94 720x310
+   | Carries | Why it matters | Status
+  EXT | releases | the exact version tested | Partial
+  CAP | grants | describing never grants use | Partial
+  KB | knowledge | tested with and without | Implemented
+  CJ | judgment, jobs | judgment and eval jobs on wire | Partial
+  PRG | decide, delegate | pinned, bounded steps | Partial
+  CTX | briefings | what a delegate was shown | Designed
+  SESS | delegate engines | how each engine is steered | Designed
+  WORK | tracked delegation | who answers for the work | Designed
+foot at 640,424 120x17
+  6 / 22
