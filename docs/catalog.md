@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md), [
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 508 documents plus itself as of September 29, 2026.
+This catalog lists 509 documents plus itself as of September 29, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -529,6 +529,7 @@ files are included below.
 | [protocol/official-nip-ledger.md](protocol/official-nip-ledger.md) | Protocol support / assessment | Official NIP ledger |
 | [protocol/openagents-retention.md](protocol/openagents-retention.md) | Protocol support / assessment | OpenAgents relay retention |
 | [protocol/verification/2026-09-26-nips/README.md](protocol/verification/2026-09-26-nips/README.md) | Evidence index | NIP implementation verification, September 26, 2026 |
+| [research/2026-09-29-comet-desktop-ui-port-audit.md](research/2026-09-29-comet-desktop-ui-port-audit.md) | Audit / roadmap | Porting the Comet (Zeron) desktop UI to Rust Native: audit |
 | [research/unreal/2026-09-27-chaos-physics-candidates.md](research/unreal/2026-09-27-chaos-physics-candidates.md) | Research / assessment | Chaos physics: candidates for `crates/physics` |
 | [research/unreal/2026-09-27-lagrange-realism-audit.md](research/unreal/2026-09-27-lagrange-realism-audit.md) | Audit / roadmap | Lagrange 1 realism audit and roadmap |
 | [research/unreal/AGENTS.md](research/unreal/AGENTS.md) | Runbook / policy | Studying Unreal Engine source |

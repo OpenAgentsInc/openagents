@@ -23,6 +23,7 @@ current API and delivered subset.
 | [Adoption map](adoption.md) | Which public files and existing clients should change, and which behavior must remain? |
 | [Styling](styling-design.md) | How should a Rust stylesheet work, and which StyleX ideas apply? |
 | [Source review](references.md) | What do Effect Native and React Native actually implement, and what should Rust Native borrow? |
+| [Comet desktop UI port audit](../../research/2026-09-29-comet-desktop-ui-port-audit.md) | What would porting Zeron's GPUI desktop UI to Rust Native take, and in what order? |
 
 This plan extends the [Coder suite migration](../migration-status.md).
 It does not restart stopped benchmark or platform acceptance runs, replace the
