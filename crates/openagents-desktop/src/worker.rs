@@ -1189,7 +1189,10 @@ mod tests {
         }) else {
             panic!("a checkout outside the project folders asks for one")
         };
-        assert!(why.contains("is not in one of your project folders"), "{why}");
+        assert!(
+            why.contains("is not in one of your project folders"),
+            "{why}"
+        );
         // A checkout inside them runs, on Claude Code first, as the
         // settings order it.
         let Ok(Answer::Started { task, project, .. }) = ask(Run::Start {
