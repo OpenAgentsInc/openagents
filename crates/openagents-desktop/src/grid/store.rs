@@ -10,6 +10,7 @@ static IDENTITY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 pub struct Launch {
     pub presence: Option<BarePresence>,
     pub gym: BareGym,
+    pub publication: Option<super::fixture::Publication>,
 }
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -21,6 +22,7 @@ struct Preferences {
 pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String> {
     let directory = root.join(".openagents/desktop/grid");
     if fixture {
+        let publication = super::fixture::Publication::new()?;
         return Ok(Launch {
             presence: None,
             gym: BareGym {
@@ -29,13 +31,11 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
                 evals_panel: true,
                 preview: true,
                 xp_preview: true,
-                results_base: Some(
-                    root.join("bench/terminal-bench/published")
-                        .to_string_lossy()
-                        .into_owned(),
-                ),
+                results_base: Some(publication.base.clone()),
+                results_cache_directory: Some(publication.cache.to_string_lossy().into_owned()),
                 ..BareGym::default()
             },
+            publication: Some(publication),
         });
     }
     let preferences = match std::fs::read(directory.join("preferences.json")) {
@@ -58,6 +58,7 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
         None
     };
     Ok(Launch {
+        publication: None,
         presence: Some(BarePresence {
             secret_hex: secret,
             relay: Some(relay.into()),

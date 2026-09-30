@@ -1,6 +1,7 @@
 //! Play and Watch share one window. Only an explicit Play session holds a
 //! world identity; the spectator remains an independent read-only reader.
 mod controls;
+mod fixture;
 mod panels;
 mod store;
 
@@ -32,6 +33,7 @@ pub struct Grid {
     relay: String,
     root: PathBuf,
     fixture: bool,
+    publication: Option<fixture::Publication>,
     visible: bool,
     focused: bool,
     suspended: bool,
@@ -57,6 +59,7 @@ impl Grid {
             relay,
             root,
             fixture,
+            publication: None,
             visible: true,
             focused: true,
             suspended: false,
@@ -100,6 +103,7 @@ impl Grid {
     fn offline(&mut self, reason: String) {
         self.notice = Some(reason);
         self.mount(store::Launch {
+            publication: None,
             presence: None,
             gym: coder_mobile::BareGym {
                 panel: true,
@@ -111,6 +115,7 @@ impl Grid {
     }
 
     fn mount(&mut self, launch: store::Launch) {
+        self.publication = launch.publication;
         let viewport = Viewport::new(800, 500, self.viewport.2).expect("bounded initial viewport");
         match GridSurface::new(viewport, launch.presence, launch.gym).and_then(|mut surface| {
             surface.active(self.visible && self.focused && !self.suspended)?;
@@ -223,6 +228,7 @@ impl Grid {
             let _ = surface.active(false);
         }
         self.surface = None;
+        self.publication = None;
         self.playing = false;
         self.loading = None;
         self.connection = None;

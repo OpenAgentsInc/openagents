@@ -145,6 +145,15 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                 app.tick(Instant::now());
                 std::thread::sleep(Duration::from_millis(16));
             }
+            if mode == "results" {
+                let state = grid.borrow();
+                let view = state.surface.as_ref().unwrap().results().unwrap();
+                assert!(view.error.is_none(), "{:?}", view.error);
+                assert!(matches!(
+                    view.page,
+                    Some(gym_leaderboard::view::Page::Boards(_))
+                ));
+            }
         }
         for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
             for scale in [1.0, 2.0] {
