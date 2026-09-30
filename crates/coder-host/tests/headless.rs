@@ -80,11 +80,13 @@ impl Fixture {
         let running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
 
         // The administrator holds every right, so its approvals are bounded
-        // only by the request.
+        // only by the request. Its grant outlives the hour each approval
+        // asks for from a later clock reading; a delegated grant cannot
+        // outlive its issuer's.
         let issued = {
             let now = now();
             Host::new(&access_dir, POLICY)
-                .invite(&relay, Rights::all(), now, now + 3600)
+                .invite(&relay, Rights::all(), now, now + 2 * 3600)
                 .unwrap()
         };
         let admin_key = key();

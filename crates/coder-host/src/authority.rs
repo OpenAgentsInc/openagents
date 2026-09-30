@@ -11,7 +11,8 @@
 
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::thread::ThreadId;
 use std::time::{Duration, Instant, SystemTime};
 
 use coder_access::host::{Dispatch, Host};
@@ -55,6 +56,10 @@ pub struct Authority {
     host: Host,
     state: PathBuf,
     serial: Mutex<()>,
+    /// The thread holding `serial`, so a dispatch that asks for rights
+    /// while its own operation holds the store is told apart from another
+    /// thread's operation, which a reload waits for.
+    holder: Mutex<Option<ThreadId>>,
     snapshot: Mutex<Snapshot>,
 }
 
@@ -68,6 +73,7 @@ impl Authority {
             state: host.state_path(),
             host,
             serial: Mutex::new(()),
+            holder: Mutex::new(None),
             snapshot: Mutex::new(Snapshot::default()),
         };
         authority.host.owner()?;
@@ -99,7 +105,7 @@ impl Authority {
         // A dispatch asks for rights while this operation holds the store,
         // and then reads the snapshot as it stands. Bring it up to date first.
         let _ = self.devices();
-        let _serial = lock(&self.serial);
+        let _serial = self.serialize();
         busy_retry(|| self.host.handle_current(event, relay, dispatch))
     }
 
@@ -108,7 +114,7 @@ impl Authority {
     /// # Errors
     /// Refuses a device without a retained grant.
     pub fn revoke(&self, device: &str) -> coder_access::Result<(u64, Vec<String>)> {
-        let _serial = lock(&self.serial);
+        let _serial = self.serialize();
         let now = coder_access::unix_time()?;
         busy_retry(|| self.host.revoke(device, now))
     }
@@ -117,7 +123,7 @@ impl Authority {
     /// `coder_access::host::Host::renew`). Best effort: a busy or
     /// unreadable store renews nothing.
     pub fn renew(&self, device: &str, grant: &str, epoch: u64) -> Option<Event> {
-        let _serial = lock(&self.serial);
+        let _serial = self.serialize();
         coder_access::unix_time()
             .and_then(|now| busy_retry(|| self.host.renew(device, grant, epoch, now)))
             .ok()
@@ -130,7 +136,7 @@ impl Authority {
     /// # Errors
     /// An error means no signed reply exists.
     pub fn redeem(&self, event: &Event) -> coder_access::Result<Event> {
-        let _serial = lock(&self.serial);
+        let _serial = self.serialize();
         busy_retry(|| self.host.handle_redemption(event, coder_access::unix_time))
     }
 
@@ -143,7 +149,7 @@ impl Authority {
         &self,
         mut action: impl FnMut(&Host, u64) -> coder_access::Result<T>,
     ) -> coder_access::Result<T> {
-        let _serial = lock(&self.serial);
+        let _serial = self.serialize();
         busy_retry(|| action(&self.host, coder_access::unix_time()?))
     }
 
@@ -151,7 +157,7 @@ impl Authority {
     /// `device.list` reports when the host last saw it. Best effort: a busy
     /// or unreadable store records nothing and admits nothing.
     pub fn touch(&self, device: &str, grant: &str) {
-        let _serial = lock(&self.serial);
+        let _serial = self.serialize();
         let _ = coder_access::unix_time()
             .and_then(|now| busy_retry(|| self.host.touch(device, grant, now)));
     }
@@ -159,19 +165,29 @@ impl Authority {
     /// The current device list, reloaded when the store changed. `None`
     /// means the snapshot is unusable and every check fails closed.
     pub fn devices(&self) -> Option<Vec<DeviceEntry>> {
-        let stamp = self.stamp();
-        {
-            let snapshot = lock(&self.snapshot);
-            if stamp.is_some() && snapshot.stamp == stamp && snapshot.devices.is_some() {
-                return snapshot.devices.clone();
-            }
+        if let Some(devices) = self.cached() {
+            return Some(devices);
         }
-        // This process may hold the store while an operation dispatches, and
-        // the dispatch may ask for rights. Keep the last snapshot until the
-        // operation finishes rather than wait on ourselves.
-        let Ok(_serial) = self.serial.try_lock() else {
-            return lock(&self.snapshot).devices.clone();
+        // An operation on this thread may hold the store while it
+        // dispatches, and the dispatch may ask for rights. Keep the last
+        // snapshot until that operation finishes rather than wait on
+        // ourselves. Another thread's operation is waited for like any
+        // other: its snapshot would miss a grant it just wrote.
+        let _serial = match self.serial.try_lock() {
+            Ok(guard) => self.hold(guard),
+            Err(TryLockError::Poisoned(poisoned)) => self.hold(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => {
+                if *lock(&self.holder) == Some(std::thread::current().id()) {
+                    return lock(&self.snapshot).devices.clone();
+                }
+                self.serialize()
+            }
         };
+        // Whoever held the store before may have reloaded already.
+        if let Some(devices) = self.cached() {
+            return Some(devices);
+        }
+        let stamp = self.stamp();
         let loaded = coder_access::unix_time()
             .and_then(|now| busy_retry(|| self.host.devices(now)))
             .ok();
@@ -179,6 +195,17 @@ impl Authority {
         snapshot.stamp = stamp;
         snapshot.devices.clone_from(&loaded);
         loaded
+    }
+
+    /// The snapshot's device list while the store file is unchanged.
+    fn cached(&self) -> Option<Vec<DeviceEntry>> {
+        let stamp = self.stamp()?;
+        let snapshot = lock(&self.snapshot);
+        if snapshot.stamp == Some(stamp) {
+            snapshot.devices.clone()
+        } else {
+            None
+        }
     }
 
     /// Check one grant at one epoch, the question a direct channel asks.
@@ -250,6 +277,19 @@ impl Authority {
         devices
     }
 
+    /// Serialize this process's store operations, recording the holder.
+    fn serialize(&self) -> Serial<'_> {
+        self.hold(lock(&self.serial))
+    }
+
+    fn hold<'a>(&'a self, guard: MutexGuard<'a, ()>) -> Serial<'a> {
+        *lock(&self.holder) = Some(std::thread::current().id());
+        Serial {
+            holder: &self.holder,
+            _guard: guard,
+        }
+    }
+
     fn stamp(&self) -> Option<Stamp> {
         let metadata = std::fs::metadata(&self.state).ok()?;
         Some(Stamp {
@@ -257,6 +297,19 @@ impl Authority {
             len: metadata.len(),
             modified: metadata.modified().ok(),
         })
+    }
+}
+
+/// This process's hold on the access store; releasing it clears the holder
+/// before the lock.
+struct Serial<'a> {
+    holder: &'a Mutex<Option<ThreadId>>,
+    _guard: MutexGuard<'a, ()>,
+}
+
+impl Drop for Serial<'_> {
+    fn drop(&mut self) {
+        *lock(self.holder) = None;
     }
 }
 
@@ -300,5 +353,72 @@ fn busy_retry<T>(
             }
             other => return other,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use coder_access::RelayPolicy;
+    use coder_access::client::prepare_redeem;
+    use coder_access::host::Unconnected;
+    use coder_access::protocol::HostInvitation;
+    use coder_reach::pubkey;
+    use secp256k1::SecretKey;
+
+    use super::*;
+
+    const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
+    const RELAY: &str = "ws://127.0.0.1:7777";
+
+    fn key() -> SecretKey {
+        SecretKey::new(&mut secp256k1::rand::rng())
+    }
+
+    /// Pair `device` on the store `host` names, as a redemption does.
+    fn pair(host: &Host, device: &SecretKey, now: u64) {
+        let rights = Rights::parse_list("observe").unwrap();
+        let code = host.invite(RELAY, rights, now, now + 3600).unwrap().code;
+        let invitation = HostInvitation::parse(&code, now, POLICY).unwrap();
+        let pending = prepare_redeem(&invitation, device, now, POLICY).unwrap();
+        host.handle(&pending.event, RELAY, now, &mut Unconnected)
+            .unwrap();
+    }
+
+    /// A check on one thread while another thread's operation holds the
+    /// store sees what that operation wrote, not the snapshot from before
+    /// it (#9981: a phone that had just paired was refused its channel).
+    #[test]
+    fn a_check_waits_for_another_threads_operation_and_sees_its_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let access = temp.path().join("access");
+        Host::new(&access, POLICY).init(&pubkey(&key())).unwrap();
+        let authority = Arc::new(Authority::open(Host::new(&access, POLICY)).unwrap());
+        assert_eq!(authority.devices().unwrap().len(), 0);
+
+        let device = key();
+        let (holding, held) = mpsc::channel();
+        let (checked, check) = mpsc::channel();
+        let writer = {
+            let authority = authority.clone();
+            std::thread::spawn(move || {
+                authority
+                    .local(|host, now| {
+                        pair(host, &device, now);
+                        holding.send(()).unwrap();
+                        // Hold the store until the check answers, or long
+                        // enough that a check which waits has waited.
+                        let _ = check.recv_timeout(Duration::from_secs(1));
+                        Ok(())
+                    })
+                    .unwrap();
+            })
+        };
+        held.recv().unwrap();
+        let seen = authority.standing(&pubkey(&device), coder_access::unix_time().unwrap());
+        let _ = checked.send(());
+        writer.join().unwrap();
+        assert!(matches!(seen, Standing::Active(_)), "{seen:?}");
     }
 }

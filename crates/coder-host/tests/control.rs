@@ -274,7 +274,9 @@ async fn an_owner_key_is_imported_only_once_no_phone_holds_a_grant() {
         panic!("owner")
     };
     assert_eq!(owner, pubkey(&imported));
-    assert_eq!(host.store.owner().unwrap(), owner);
+    // Read through the host's store, which waits for the host's own reads.
+    let stored = host.running.authority().local(|store, _| store.owner());
+    assert_eq!(stored.unwrap(), owner);
     tokio::time::timeout(Duration::from_secs(2), host.running.restart_requested())
         .await
         .expect("the host starts again under its new owner");
