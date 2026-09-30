@@ -2,7 +2,7 @@
 
 Coder can hand a task's turn to the local Devin CLI, as it hands turns to
 Claude Code and Codex. The supported coding agents for delegation are Claude
-Code, Codex, Devin, and OpenCode. Devin runs on the host as `devin acp`, the
+Code, Codex, Devin, OpenCode, and Grok Build. Devin runs on the host as `devin acp`, the
 CLI's Agent Client Protocol (ACP) server, with the CLI's own login. Coder does
 not use Devin's cloud API, and it needs no Devin API key.
 [Issue #9916](https://github.com/OpenAgentsInc/openagents/issues/9916)

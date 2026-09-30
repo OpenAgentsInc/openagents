@@ -486,8 +486,10 @@ uses, and marks which are implemented and which are only specified.
   payloads, one client with a silence limit and `session/cancel`, the
   agent as a process group of its own with an explicit environment, and
   a replaying stand-in for recorded fixtures. `acp_client::devin` holds
-  the Devin CLI's specifics (`devin acp`); another ACP agent adds its own
-  module beside it. Read `docs/coder/runtime/devin.md` before changing it.
+  the Devin CLI's specifics (`devin acp`), `acp_client::opencode` holds
+  OpenCode's (`opencode acp`), and `acp_client::grok` holds Grok Build's
+  (`grok agent stdio`). Read `docs/coder/runtime/devin.md` and
+  `docs/coder/runtime/grok.md` before changing it.
 - `crates/microluna` — deprecated on 2026-09-28; Microcoder replaced it.
   Microluna ran short GPT-6 Luna sessions with five native function tools
   (run a command, read a file region, apply a patch, write a file, and

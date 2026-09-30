@@ -19,6 +19,7 @@
 //!   and stop.
 //! - [`devin`]: the Devin CLI's specifics (`devin acp`).
 //! - [`opencode`]: OpenCode's specifics (`opencode acp`).
+//! - [`grok`]: Grok Build's specifics (`grok agent stdio`).
 //! - [`replay`]: a stand-in agent that replays a recorded conversation, for
 //!   tests.
 //!
@@ -27,6 +28,7 @@
 
 pub mod client;
 pub mod devin;
+pub mod grok;
 pub mod opencode;
 pub mod process;
 pub mod replay;

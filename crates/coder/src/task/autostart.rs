@@ -380,11 +380,14 @@ impl Policy {
         let route = |route: &Route| adapter::Route {
             provider: route.provider.as_str().into(),
             model: route.model.clone(),
-            // Devin and OpenCode take no effort: their model names carry
-            // their own.
-            effort: (!matches!(route.provider, Provider::Devin | Provider::OpenCode))
-                .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
-                .flatten(),
+            // Devin, OpenCode, and Grok Build take no effort: their model
+            // names carry their own.
+            effort: (!matches!(
+                route.provider,
+                Provider::Devin | Provider::OpenCode | Provider::Grok
+            ))
+            .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
+            .flatten(),
             generation_endpoint: route.provider.endpoint().into(),
         };
         let primary = route(&order[0]);
@@ -1452,6 +1455,7 @@ fn provider_name(provider: Provider) -> &'static str {
         Provider::Claude => "Claude Code",
         Provider::Devin => "Devin",
         Provider::OpenCode => "OpenCode",
+        Provider::Grok => "Grok Build",
         Provider::Vertex => "Vertex",
     }
 }
@@ -1541,12 +1545,14 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
                        Each --route admits a provider (codex, claude,
-                       devin, or opencode) and model, in preference order; a
-                       task starts on the first one that is connected and
-                       has capacity. A devin route (devin:default, or
-                       devin:MODEL) hands the whole turn to the local Devin
-                       CLI over ACP; an opencode route
-                       (opencode:PROVIDER/MODEL) hands it to OpenCode.
+                       devin, opencode, or grok) and model, in preference
+                       order; a task starts on the first one that is
+                       connected and has capacity. A devin route
+                       (devin:default, or devin:MODEL) hands the whole turn
+                       to the local Devin CLI over ACP; an opencode route
+                       (opencode:PROVIDER/MODEL) hands it to OpenCode; a
+                       grok route (grok:default, or grok:MODEL) hands it to
+                       Grok Build.
                        --probe-usage reads each provider's usage windows
                        with its local login and prefers a route below
                        PERCENT (default 90) used.
@@ -1874,16 +1880,20 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
         .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;
     let provider = match Provider::from_config(provider) {
         Some(
-            provider @ (Provider::Codex | Provider::Claude | Provider::Devin | Provider::OpenCode),
+            provider @ (Provider::Codex
+            | Provider::Claude
+            | Provider::Devin
+            | Provider::OpenCode
+            | Provider::Grok),
         ) => provider,
         Some(Provider::Vertex) => {
             return Err(format!(
-                "usage: `{text}`: repository runs don't generate through vertex; use codex, claude, devin, or opencode"
+                "usage: `{text}`: repository runs don't generate through vertex; use codex, claude, devin, opencode, or grok"
             ));
         }
         None => {
             return Err(format!(
-                "usage: the provider in `{text}` is not codex, claude, devin, or opencode"
+                "usage: the provider in `{text}` is not codex, claude, devin, opencode, or grok"
             ));
         }
     };
@@ -1896,6 +1906,11 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
         return Err(format!(
             "usage: `{text}`: an opencode route names OpenCode's PROVIDER/MODEL: {why}"
         ));
+    }
+    if provider == Provider::Grok
+        && let Err(why) = acp_client::grok::parse_model(model)
+    {
+        return Err(format!("usage: `{text}`: {why}"));
     }
     Ok(Route {
         provider,
@@ -2833,9 +2848,11 @@ mod tests {
         let book = capacity::Book::default();
         let only_codex = |provider: Provider| match provider {
             Provider::Codex => Connection::Connected,
-            Provider::Claude | Provider::Vertex | Provider::Devin | Provider::OpenCode => {
-                Connection::Missing("not signed in".into())
-            }
+            Provider::Claude
+            | Provider::Vertex
+            | Provider::Devin
+            | Provider::OpenCode
+            | Provider::Grok => Connection::Missing("not signed in".into()),
         };
         let usage = usage::Book::default();
         match policy.choose(&book, &usage, &only_codex, 1) {
@@ -3201,7 +3218,7 @@ mod tests {
             Provider::Claude => {
                 include_str!("../../../microcoder-loop/fixtures/usage/claude-oauth-usage.json")
             }
-            Provider::Vertex | Provider::Devin | Provider::OpenCode => {
+            Provider::Vertex | Provider::Devin | Provider::OpenCode | Provider::Grok => {
                 return Err(usage::Failure::Unsupported);
             }
         };

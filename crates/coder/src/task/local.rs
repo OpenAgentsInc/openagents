@@ -822,6 +822,7 @@ fn unconnected(providers: &[Provider]) -> String {
         Provider::Claude => "run `claude` and log in",
         Provider::Devin => "`devin auth login`",
         Provider::OpenCode => "install `opencode` and run `opencode auth login`",
+        Provider::Grok => "run `grok` and log in, or set XAI_API_KEY",
         Provider::Vertex => "turn on the OpenAgents cloud",
     };
     match providers {

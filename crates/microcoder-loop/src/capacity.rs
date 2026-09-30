@@ -72,6 +72,11 @@ pub const DEVIN_ENDPOINT: &str = "local:devin-acp";
 /// login. It is not a URL, and no request goes to it from Microcoder.
 pub const OPENCODE_ENDPOINT: &str = "local:opencode-acp";
 
+/// The endpoint a grant names for a Grok Build route: the local
+/// `grok agent stdio` process, which uses Grok Build's own login. It is
+/// not a URL, and no request goes to it from Microcoder.
+pub const GROK_ENDPOINT: &str = "local:grok-acp";
+
 /// A model provider a repository run can generate through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -96,16 +101,21 @@ pub enum Provider {
     /// `provider/model`, and one refusal holds every OpenCode route.
     #[serde(rename = "opencode")]
     OpenCode,
+    /// Grok Build over ACP (`grok agent stdio`), with its own login. Like
+    /// Devin it is a whole coding agent: a repository run on a Grok Build
+    /// route hands Grok Build the turn.
+    Grok,
 }
 
 impl Provider {
     /// Every provider, in a fixed order.
-    pub const ALL: [Provider; 5] = [
+    pub const ALL: [Provider; 6] = [
         Provider::Codex,
         Provider::Claude,
         Provider::Vertex,
         Provider::Devin,
         Provider::OpenCode,
+        Provider::Grok,
     ];
 
     /// The providers with a usage endpoint a probe can ask.
@@ -122,6 +132,7 @@ impl Provider {
             "vertex" => Some(Provider::Vertex),
             "devin" => Some(Provider::Devin),
             "opencode" => Some(Provider::OpenCode),
+            "grok" => Some(Provider::Grok),
             _ => None,
         }
     }
@@ -135,6 +146,7 @@ impl Provider {
             Provider::Vertex => "vertex",
             Provider::Devin => "devin",
             Provider::OpenCode => "opencode",
+            Provider::Grok => "grok",
         }
     }
 
@@ -147,6 +159,7 @@ impl Provider {
             Provider::Vertex => CLOUD_ENDPOINT,
             Provider::Devin => DEVIN_ENDPOINT,
             Provider::OpenCode => OPENCODE_ENDPOINT,
+            Provider::Grok => GROK_ENDPOINT,
         }
     }
 
@@ -154,9 +167,11 @@ impl Provider {
     #[must_use]
     pub const fn unknown_hold(self) -> u64 {
         match self {
-            Provider::Codex | Provider::Claude | Provider::Devin | Provider::OpenCode => {
-                UNKNOWN_RESET_HOLD
-            }
+            Provider::Codex
+            | Provider::Claude
+            | Provider::Devin
+            | Provider::OpenCode
+            | Provider::Grok => UNKNOWN_RESET_HOLD,
             Provider::Vertex => VERTEX_UNKNOWN_RESET_HOLD,
         }
     }
@@ -671,6 +686,11 @@ impl Connection {
 ///   is OpenCode's to find; `acp_client::opencode::login` names a stored or
 ///   configured one by name without reading it.
 ///
+/// - **Grok Build**: a `grok` binary (`GROK_BIN`, `PATH`, `~/.local/bin`, or
+///   `~/.grok/bin`) and a login: `$GROK_HOME/auth.json` or
+///   `~/.grok/auth.json` (presence and size only, never read), or a
+///   non-empty `XAI_API_KEY` (presence only, never logged).
+///
 /// - **Vertex** (through the OpenAgents cloud): always connected, since it
 ///   needs nothing on this host but the host's own Nostr key, unless
 ///   `CODER_CLOUD=off` turns it off. No token file or Google credential is
@@ -714,6 +734,21 @@ pub fn probe(provider: Provider) -> Connection {
                 Connection::Connected
             } else {
                 Connection::Missing("the Devin CLI is not signed in; run `devin auth login`".into())
+            }
+        }
+        Provider::Grok => {
+            let variable = |name: &str| std::env::var_os(name);
+            if acp_client::grok::binary(&variable).is_none() {
+                return Connection::Missing(
+                    "no grok binary in GROK_BIN, PATH, ~/.local/bin, or ~/.grok/bin".into(),
+                );
+            }
+            if acp_client::grok::signed_in(&variable) {
+                Connection::Connected
+            } else {
+                Connection::Missing(
+                    "Grok Build is not signed in; run `grok` and log in, or set XAI_API_KEY".into(),
+                )
             }
         }
         Provider::Claude => {

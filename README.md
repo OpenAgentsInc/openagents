@@ -141,7 +141,7 @@ resident host on your computers, and as the cloud chat worker.
 | Microcoder | [`crates/microcoder`](crates/microcoder/), [`crates/microcoder-loop`](crates/microcoder-loop/) | The coding loop: Jev judges the state, one model call returns the next commands, the host runs them. Fails over between providers with capacity. It replaced Microluna. |
 | Coder host | [`crates/coder-host`](crates/coder-host/README.md) | The resident host: enrollment, reach, terminals, and tasks behind one process. The OpenAgents desktop app or `openagents connect` sets it up. |
 | Coder Connect and history | [`crates/coder-connect`](crates/coder-connect/README.md), [`crates/coder-history`](crates/coder-history/README.md) | Paired, encrypted, read-only access to Coder chats. The host serves only Coder task chats, and streams replies as they're written. |
-| Delegation | [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Hands a turn to Claude Code, Codex, [OpenCode](docs/coder/runtime/opencode.md), or [Devin](docs/coder/runtime/devin.md). With none available, a [cloud fallback](docs/coder/runtime/cloud-fallback.md) answers. |
+| Delegation | [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Hands a turn to Claude Code, Codex, [OpenCode](docs/coder/runtime/opencode.md), [Devin](docs/coder/runtime/devin.md), or [Grok Build](docs/coder/runtime/grok.md). With none available, a [cloud fallback](docs/coder/runtime/cloud-fallback.md) answers. |
 | Coder One | [`crates/coder-one`](crates/coder-one/) | Configurable agent components used in Terminal-Bench experiments. |
 | `openagents` CLI | [`crates/openagents-cli`](crates/openagents-cli/) | One command for every OpenAgents surface over Nostr: hosts, pairing, tasks, computers, Verse, knowledge, and playtest triage. See [the `openagents` command](docs/cli/README.md). |
 
@@ -324,7 +324,7 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`crates/microcoder`](crates/microcoder/), [`crates/microcoder-loop`](crates/microcoder-loop/) | The Microcoder coding loop. |
 | [`crates/microluna`](crates/microluna/README.md) | Deprecated. Replaced by Microcoder. |
 | [`crates/coder-one`](crates/coder-one/) | Issue-to-PR agent and reusable Terminal-Bench components. |
-| [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Delegation to Claude Code, Codex, OpenCode, and Devin. |
+| [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Delegation to Claude Code, Codex, OpenCode, Devin, and Grok Build. |
 | [`crates/codex-transport`](crates/codex-transport/) | The Codex login and Responses transport. |
 | [`crates/coder-host`](crates/coder-host/README.md), [`crates/coder-service`](crates/coder-service/) | The resident host and its background service. |
 | [`crates/coder-access`](crates/coder-access/README.md), [`crates/coder-reach`](crates/coder-reach/README.md), [`crates/coder-link`](crates/coder-link/README.md), [`crates/coder-control`](crates/coder-control/) | Device enrollment, host reachability, connection supervision, and task control. |

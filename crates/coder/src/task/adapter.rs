@@ -175,7 +175,7 @@ impl Configuration {
         if self.schema != CONFIG_SCHEMA
             || !matches!(
                 self.provider.as_str(),
-                "codex" | "claude" | "devin" | "opencode" | "synthetic"
+                "codex" | "claude" | "devin" | "opencode" | "grok" | "synthetic"
             )
             || !identifier(&self.model, true)
             || !identifier(&self.decision_model, true)
@@ -237,6 +237,12 @@ impl Configuration {
                     && route.generation_endpoint == super::capacity::OPENCODE_ENDPOINT
                     && self.container.is_none()
                     && acp_client::opencode::Model::parse(&route.model).is_ok()
+            } else if route.provider == "grok" {
+                // Grok Build is a whole agent behind `grok agent stdio`.
+                route.effort.is_none()
+                    && route.generation_endpoint == super::capacity::GROK_ENDPOINT
+                    && self.container.is_none()
+                    && acp_client::grok::parse_model(&route.model).is_ok()
             } else {
                 matches!(route.provider.as_str(), "codex" | "claude")
             };
@@ -259,7 +265,9 @@ impl Configuration {
             .chain(
                 routes
                     .iter()
-                    .filter(|route| !matches!(route.provider.as_str(), "devin" | "opencode"))
+                    .filter(|route| {
+                        !matches!(route.provider.as_str(), "devin" | "opencode" | "grok")
+                    })
                     .map(|route| &route.generation_endpoint),
             )
             .collect::<Vec<_>>();
@@ -302,6 +310,7 @@ impl Configuration {
                 "claude" => "provider-reported-list-price",
                 "devin" => "provider-reported-tokens",
                 "opencode" => "provider-reported-list-price",
+                "grok" => "provider-reported-tokens",
                 _ => "token-list-price",
             },
             "provider_artifact_attestation":"unsupported",
@@ -312,6 +321,7 @@ impl Configuration {
             "steering": match self.provider.as_str() {
                 "devin" => coder_delegate::steering::DEVIN_ACP,
                 "opencode" => coder_delegate::steering::OPENCODE_ACP,
+                "grok" => coder_delegate::steering::GROK_ACP,
                 _ => STEERING,
             }
         })

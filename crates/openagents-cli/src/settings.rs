@@ -16,7 +16,7 @@ pub(crate) const USAGE: &str = "usage: openagents settings COMMAND [OPTIONS]
   unset KEY               Return one setting to its default.
 Keys:
   coder.providers                 Coding agents Coder may use, first preferred:
-                                  codex, claude, opencode:PROVIDER/MODEL, devin,
+                                  codex, claude, grok, opencode:PROVIDER/MODEL, devin,
                                   comma-separated, each optionally NAME:MODEL
                                   (default codex,claude).
   coder.start                     at_once or ask_first (default at_once).
@@ -41,7 +41,10 @@ fn render(value: &Value) -> String {
     match value {
         Value::Array(items) => items
             .iter()
-            .map(|item| item.as_str().map_or_else(|| item.to_string(), str::to_owned))
+            .map(|item| {
+                item.as_str()
+                    .map_or_else(|| item.to_string(), str::to_owned)
+            })
             .collect::<Vec<_>>()
             .join(","),
         Value::String(text) => text.clone(),
@@ -64,7 +67,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         if words.len() == count {
             Ok(())
         } else {
-            Err(output.usage("settings", &format!("`{command}` takes {count} word(s)"), USAGE))
+            Err(output.usage(
+                "settings",
+                &format!("`{command}` takes {count} word(s)"),
+                USAGE,
+            ))
         }
     };
     if matches!(command.as_str(), "--help" | "-h" | "help") {

@@ -88,6 +88,8 @@ pub enum StartCause {
     Devin,
     /// The task's first route needs OpenCode, which is not set up here.
     OpenCode,
+    /// The task's first route needs Grok Build, which is not set up here.
+    Grok,
     /// The execution grant does not fit this computer's settings.
     Configuration,
     /// The task owner refused the task, such as when another owner held it.
@@ -109,6 +111,7 @@ impl StartCause {
             StartCause::Claude => "Couldn't start: Claude Code isn't set up on this computer",
             StartCause::Devin => "Couldn't start: Devin isn't set up on this computer",
             StartCause::OpenCode => "Couldn't start: OpenCode isn't set up on this computer",
+            StartCause::Grok => "Couldn't start: Grok Build isn't set up on this computer",
             StartCause::Configuration => {
                 "Couldn't start: the task's settings don't fit this computer"
             }
@@ -334,6 +337,7 @@ mod tests {
             StartCause::Claude,
             StartCause::Devin,
             StartCause::OpenCode,
+            StartCause::Grok,
             StartCause::Configuration,
             StartCause::Admission,
             StartCause::Stopped,

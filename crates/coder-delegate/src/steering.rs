@@ -210,6 +210,22 @@ pub const OPENCODE_RUN: Steering = Steering {
     ],
 };
 
+/// Grok Build driven over ACP (`grok agent stdio`), as a repository run's
+/// engine. As with Devin, a running turn takes no message: `session/cancel`
+/// ends it, and the next turn reattaches the same Grok Build session with
+/// `session/load` and prompts it with the message.
+pub const GROK_ACP: Steering = Steering {
+    adapter: "grok-acp",
+    native: Native::TurnBoundary,
+    emulation: Some(Emulation::CancelAndContinue),
+    acknowledgment: Acknowledgment::NextTurnStart,
+    limitations: &[
+        "ACP v1 takes one session/prompt at a time; a running turn takes no message.",
+        "A new turn reattaches the same Grok Build session with session/load and prompts it.",
+        "Emulation sends session/cancel, stops the process group, and continues in the next turn.",
+    ],
+};
+
 /// OpenCode driven over ACP (`opencode acp`), as a repository run's
 /// engine. As with Devin, a running turn takes no message: `session/cancel`
 /// ends it, and the next turn reattaches the same OpenCode session with
@@ -286,6 +302,7 @@ mod tests {
             CLAUDE_CODE,
             CODEX_EXEC,
             DEVIN_ACP,
+            GROK_ACP,
             OPENCODE_ACP,
             OPENCODE_RUN,
         ] {

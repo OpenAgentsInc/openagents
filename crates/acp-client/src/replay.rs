@@ -114,3 +114,8 @@ pub const OPENCODE_TURN: &str = include_str!("../fixtures/opencode-1.18.26-turn.
 
 /// The same, on a model the provider refused with HTTP 403.
 pub const OPENCODE_REFUSED: &str = include_str!("../fixtures/opencode-1.18.26-refused.jsonl");
+
+/// A synthetic Grok Build turn shaped like `grok agent stdio`: initialize,
+/// a new session reporting `grok-4.6`, one completed read, and `done`.
+/// This is a stand-in for tests, not a captured live session.
+pub const GROK_TURN: &str = include_str!("../fixtures/grok-agent-stdio-turn.jsonl");

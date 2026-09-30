@@ -97,7 +97,7 @@ async fn fetch_async(provider: Provider) -> Result<Response, Failure> {
                 .bearer_auth(&token.0)
                 .header("anthropic-beta", CLAUDE_OAUTH_BETA)
         }
-        Provider::Vertex | Provider::Devin | Provider::OpenCode => {
+        Provider::Vertex | Provider::Devin | Provider::OpenCode | Provider::Grok => {
             return Err(Failure::Unsupported);
         }
     };

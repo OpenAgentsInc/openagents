@@ -108,13 +108,15 @@ Known engine behavior, as adapter capability rows:
 | Microcoder (`microcoder-repository`) | `turn_boundary` | `next_turn_start` | A run reads its instructions once, at admission. |
 | Devin CLI, `devin acp` (a repository run on a `devin` route) | `turn_boundary` | `next_turn_start` | ACP v1 takes one `session/prompt` at a time and Devin 3000.11.3 advertises no steering extension. Emulation is `session/cancel`, then the next turn reattaches the same session with `session/load` and prompts it with the message. |
 | OpenCode, `opencode acp` (a repository run on an `opencode` route) | `turn_boundary` | `next_turn_start` | As for Devin: one `session/prompt` at a time, emulation is `session/cancel`, and the next turn reattaches the session with `session/load`. |
+| Grok Build, `grok agent stdio` (a repository run on a `grok` route) | `turn_boundary` | `next_turn_start` | As for Devin: one `session/prompt` at a time, emulation is `session/cancel`, and the next turn reattaches the session with `session/load`. |
 | OpenCode, `opencode run` (Coder One's delegate executor) | `turn_boundary` | `next_turn_start` | Reads its whole message before the turn; a new turn is `opencode run --session`. |
 
 The adapters in this repository state their rows in code: `coder_one::steering`
 for the Claude Code, Codex, and Microluna session adapters,
 `coder::task::adapter::STEERING` for Microcoder,
-`coder_delegate::steering::DEVIN_ACP` for a Devin route, and
-`coder_delegate::steering::OPENCODE_ACP` for an OpenCode route, which each
+`coder_delegate::steering::DEVIN_ACP` for a Devin route,
+`coder_delegate::steering::OPENCODE_ACP` for an OpenCode route, and
+`coder_delegate::steering::GROK_ACP` for a Grok Build route, which each
 repository admission records among its capabilities.
 
 A configuration artifact is `openagents.session-configuration.v1` with

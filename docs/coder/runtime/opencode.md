@@ -2,7 +2,7 @@
 
 Coder can hand a task's turn to [OpenCode](https://opencode.ai), as it hands
 turns to Claude Code, Codex, and Devin. The supported coding agents for
-delegation are Claude Code, Codex, Devin, and OpenCode. OpenCode runs on the
+delegation are Claude Code, Codex, Devin, OpenCode, and Grok Build. OpenCode runs on the
 host with its own logins, in two ways:
 
 - **A repository turn on an `opencode` route**: `opencode acp`, OpenCode's

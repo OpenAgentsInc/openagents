@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true},"agentInfo":{"name":"grok","version":"synthetic"}}}
+{"jsonrpc":"2.0","id":2,"result":{"sessionId":"grok-session-1","configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"grok-4.6","options":[{"value":"grok-4.6","name":"grok-4.6"}]}]}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"grok-session-1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-1","title":"read note.txt","kind":"read","status":"pending","rawInput":{"path":"note.txt"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"grok-session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"tool-1","status":"completed","title":"read note.txt","kind":"read","content":[{"type":"content","content":{"type":"text","text":"hello\n"}}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"grok-session-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"done"}}}}
+{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn","usage":{"inputTokens":120,"outputTokens":8,"totalTokens":128}}}

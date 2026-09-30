@@ -281,7 +281,7 @@ the envelope has `turn` (from 1; an answer starts the next turn).
 | Event | Fields |
 | --- | --- |
 | `coder_started` | `project`, `checkout`, `worktree`, `base` (the commit the worktree started from), `provider` (`codex`, `claude`), `model`, `reason` (why this provider, a sentence), `fallbacks` (`provider:model`, in order), `via` (`local`) |
-| `step` | `step_id` (the ATIF step in the turn's trajectory), `kind`, `source` (`user`, `agent`, `system`), `text` (at most 2 KiB). `kind` is `message` (the person's request), `thinking`, `command`, `tool_call` (an agent's tool, for Devin and OpenCode routes), `observation` (a command's exit and time), `reply` (Coder's reply as it is written, in pieces), or `note` (such as running without Jev) |
+| `step` | `step_id` (the ATIF step in the turn's trajectory), `kind`, `source` (`user`, `agent`, `system`), `text` (at most 2 KiB). `kind` is `message` (the person's request), `thinking`, `command`, `tool_call` (an agent's tool, for Devin, OpenCode, and Grok Build routes), `observation` (a command's exit and time), `reply` (Coder's reply as it is written, in pieces), or `note` (such as running without Jev) |
 | `output` | `step_id`, `command`, `exit` (null when a signal or the deadline ended it), `timed_out`, `seconds`, `text` (at most 4 KiB), `truncated` |
 | `provider_switched` | `step_id`, `from`, `to` (null when no admitted route had capacity), `reason`, `resets_at` (Unix seconds) |
 | `progress` | `step`, `max_steps`, `seconds`, `done` (Jev's probability that the task is done, or null) |

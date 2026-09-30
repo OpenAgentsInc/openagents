@@ -118,6 +118,7 @@ impl ProviderState {
             Provider::Vertex => "the OpenAgents cloud",
             Provider::Devin => "the Devin CLI login",
             Provider::OpenCode => "OpenCode",
+            Provider::Grok => "the Grok Build login",
         }
     }
 
@@ -351,6 +352,7 @@ fn provided(
         // through it, and the lineup never names it.
         Provider::Devin => Err("the loop does not generate through Devin".into()),
         Provider::OpenCode => Err("the loop does not generate through OpenCode".into()),
+        Provider::Grok => Err("the loop does not generate through Grok Build".into()),
     }
 }
 

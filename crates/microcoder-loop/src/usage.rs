@@ -365,7 +365,7 @@ pub fn outcome(provider: Provider, fetched: Result<Response, Failure>, now: u64)
                 let result = match provider {
                     Provider::Claude => parse_claude(&response.body, now),
                     Provider::Codex => parse_codex(&response.body, now),
-                    Provider::Vertex | Provider::Devin | Provider::OpenCode => {
+                    Provider::Vertex | Provider::Devin | Provider::OpenCode | Provider::Grok => {
                         Err(Failure::Unsupported)
                     }
                 };
@@ -824,7 +824,7 @@ mod tests {
             match provider {
                 Provider::Claude => ok(CLAUDE),
                 Provider::Codex => Err(Failure::NoCredential),
-                Provider::Vertex | Provider::Devin | Provider::OpenCode => {
+                Provider::Vertex | Provider::Devin | Provider::OpenCode | Provider::Grok => {
                     Err(Failure::Unsupported)
                 }
             }

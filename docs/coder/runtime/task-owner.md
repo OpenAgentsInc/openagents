@@ -236,7 +236,9 @@ grant whose route is the Devin CLI lists `coder_delegate::steering::DEVIN_ACP`
 instead: also `turn_boundary` with `next_turn_start`, with cancel and continue
 as its emulation (see [the Devin route](devin.md#steering)). An OpenCode
 route's grant lists `coder_delegate::steering::OPENCODE_ACP`, the same row
-(see [the OpenCode route](opencode.md#steering)).
+(see [the OpenCode route](opencode.md#steering)). A Grok Build route's grant
+lists `coder_delegate::steering::GROK_ACP`, the same row (see [the Grok Build
+route](grok.md#steering)).
 
 Accepting a correction is not consuming it. `Task::unconsumed_steers` is the
 ledger of routed corrections that no admitted run has read yet: those newer

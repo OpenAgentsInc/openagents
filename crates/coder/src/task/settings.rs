@@ -50,9 +50,10 @@ pub const PATH_VAR: &str = "OPENAGENTS_SETTINGS";
 /// The most routes a local run admits: a first route and its fallbacks.
 pub const MAX_PROVIDERS: usize = 1 + super::adapter::MAX_FALLBACKS;
 /// The providers a local run can use, in their default order.
-pub const PROVIDERS: [Provider; 4] = [
+pub const PROVIDERS: [Provider; 5] = [
     Provider::Codex,
     Provider::Claude,
+    Provider::Grok,
     Provider::OpenCode,
     Provider::Devin,
 ];
@@ -78,14 +79,16 @@ pub fn load() -> Result<Settings, String> {
 }
 
 /// The model a provider named alone runs: the models the desktop's
-/// auto-start admits for Codex and Claude Code, and Devin's own default.
-/// OpenCode has none; it names its own `provider/model`.
+/// auto-start admits for Codex and Claude Code, and Devin's and Grok
+/// Build's own defaults. OpenCode has none; it names its own
+/// `provider/model`.
 #[must_use]
 pub fn default_model(provider: Provider) -> Option<&'static str> {
     match provider {
         Provider::Codex => Some("gpt-6-luna"),
         Provider::Claude => Some("claude-opus-5-5"),
         Provider::Devin => Some(acp_client::devin::DEFAULT_MODEL),
+        Provider::Grok => Some(acp_client::grok::DEFAULT_MODEL),
         Provider::OpenCode | Provider::Vertex => None,
     }
 }
@@ -98,6 +101,7 @@ pub fn provider_name(provider: Provider) -> &'static str {
         Provider::Claude => "Claude Code",
         Provider::OpenCode => "OpenCode",
         Provider::Devin => "Devin",
+        Provider::Grok => "Grok Build",
         Provider::Vertex => "the OpenAgents cloud",
     }
 }
@@ -165,7 +169,7 @@ impl std::str::FromStr for Choice {
         let provider = Provider::from_config(name.trim())
             .filter(|provider| PROVIDERS.contains(provider))
             .ok_or_else(|| {
-                format!("`{name}` is not a provider here: codex, claude, opencode, or devin")
+                format!("`{name}` is not a provider here: codex, claude, grok, opencode, or devin")
             })?;
         let model = match model {
             None => None,
@@ -180,6 +184,10 @@ impl std::str::FromStr for Choice {
                 }
                 if provider == Provider::OpenCode {
                     acp_client::opencode::Model::parse(model)
+                        .map_err(|why| format!("`{model}`: {why}"))?;
+                }
+                if provider == Provider::Grok {
+                    acp_client::grok::parse_model(model)
                         .map_err(|why| format!("`{model}`: {why}"))?;
                 }
                 Some(model.to_owned())
@@ -386,7 +394,10 @@ pub const fn keys() -> [&'static str; 5] {
 }
 
 fn unknown(key: &str) -> String {
-    format!("`{key}` is not a setting; the settings are {}", keys().join(", "))
+    format!(
+        "`{key}` is not a setting; the settings are {}",
+        keys().join(", ")
+    )
 }
 
 impl Settings {
@@ -565,8 +576,10 @@ impl Settings {
 
 fn expand_home(text: &str) -> PathBuf {
     match text.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME")
-            .map_or_else(|| PathBuf::from(text), |home| PathBuf::from(home).join(rest)),
+        Some(rest) => std::env::var_os("HOME").map_or_else(
+            || PathBuf::from(text),
+            |home| PathBuf::from(home).join(rest),
+        ),
         None => PathBuf::from(text),
     }
 }
@@ -629,7 +642,10 @@ mod tests {
         ] {
             std::fs::write(&file, &text).unwrap();
             let error = Settings::load(&file).unwrap_err();
-            assert!(error.contains(&file.display().to_string()), "{text}: {error}");
+            assert!(
+                error.contains(&file.display().to_string()),
+                "{text}: {error}"
+            );
         }
     }
 
@@ -638,7 +654,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("nested/settings.json");
         let mut settings = Settings::default();
-        settings.other.insert("appearance".into(), json!({"theme": "dark"}));
+        settings
+            .other
+            .insert("appearance".into(), json!({"theme": "dark"}));
         settings
             .set(
                 "coder.providers",
@@ -646,7 +664,9 @@ mod tests {
                 dir.path(),
             )
             .unwrap();
-        settings.set("coder.start", "ask_first", dir.path()).unwrap();
+        settings
+            .set("coder.start", "ask_first", dir.path())
+            .unwrap();
         settings
             .set("coder.usage_threshold_percent", "75", dir.path())
             .unwrap();
@@ -691,7 +711,10 @@ mod tests {
         edited
             .set("coder.usage_threshold_percent", "off", dir.path())
             .unwrap();
-        assert_eq!(edited.get("coder.usage_threshold_percent").unwrap(), Value::Null);
+        assert_eq!(
+            edited.get("coder.usage_threshold_percent").unwrap(),
+            Value::Null
+        );
         for key in keys() {
             edited.unset(key).unwrap();
         }

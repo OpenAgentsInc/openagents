@@ -208,6 +208,10 @@ An `opencode` route (`"generation_endpoint": "local:opencode-acp"`, no
 the same way: `opencode acp` takes the whole turn. Read [the OpenCode
 route](opencode.md).
 
+A `grok` route (`"generation_endpoint": "local:grok-acp"`, no `effort`, model
+`default` or a Grok Build model id) is a stage of its own in the same way:
+`grok agent stdio` takes the whole turn. Read [the Grok Build route](grok.md).
+
 ## Isolated container commands
 
 An optional closed `container` field in `adapter_configuration` selects a local

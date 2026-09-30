@@ -571,8 +571,8 @@ fn client(
 }
 
 /// One stage of a run: consecutive admitted model routes the loop fails
-/// over among, or one route to a whole coding agent (Devin or OpenCode)
-/// that takes the whole turn.
+/// over among, or one route to a whole coding agent (Devin, OpenCode, or
+/// Grok Build) that takes the whole turn.
 enum Stage<T> {
     Loop(Vec<(GrantRoute, Client<T>)>),
     Agent(AgentEngine, GrantRoute, PathBuf),
@@ -585,6 +585,8 @@ enum AgentEngine {
     Devin,
     /// OpenCode, `opencode acp` ([`opencode`]).
     OpenCode,
+    /// Grok Build, `grok agent stdio` ([`grok`]).
+    Grok,
 }
 
 impl AgentEngine {
@@ -592,6 +594,7 @@ impl AgentEngine {
         match provider? {
             Provider::Devin => Some(AgentEngine::Devin),
             Provider::OpenCode => Some(AgentEngine::OpenCode),
+            Provider::Grok => Some(AgentEngine::Grok),
             Provider::Codex | Provider::Claude | Provider::Vertex => None,
         }
     }
@@ -600,6 +603,7 @@ impl AgentEngine {
         match self {
             AgentEngine::Devin => Provider::Devin,
             AgentEngine::OpenCode => Provider::OpenCode,
+            AgentEngine::Grok => Provider::Grok,
         }
     }
 
@@ -608,6 +612,7 @@ impl AgentEngine {
         match self {
             AgentEngine::Devin => "Devin",
             AgentEngine::OpenCode => "OpenCode",
+            AgentEngine::Grok => "Grok Build",
         }
     }
 
@@ -616,6 +621,7 @@ impl AgentEngine {
         match self {
             AgentEngine::Devin => "devin",
             AgentEngine::OpenCode => "opencode",
+            AgentEngine::Grok => "grok",
         }
     }
 
@@ -623,6 +629,7 @@ impl AgentEngine {
         match self {
             AgentEngine::Devin => devin::binary().map_err(|why| (StartCause::Devin, why)),
             AgentEngine::OpenCode => opencode::binary().map_err(|why| (StartCause::OpenCode, why)),
+            AgentEngine::Grok => grok::binary().map_err(|why| (StartCause::Grok, why)),
         }
     }
 
@@ -630,6 +637,7 @@ impl AgentEngine {
         match self {
             AgentEngine::Devin => devin::turn(host, route, program).await,
             AgentEngine::OpenCode => opencode::turn(host, route, program).await,
+            AgentEngine::Grok => grok::turn(host, route, program).await,
         }
     }
 }
@@ -680,8 +688,9 @@ fn stages(
 /// The primary route's client must build; a fallback that cannot (no login or
 /// no binary here) is left out, and the transcript says why.
 ///
-/// A Devin or OpenCode route is its own stage: the agent takes the whole
-/// turn ([`devin`], [`opencode`]). When a stage runs out of capacity (the
+/// A Devin, OpenCode, or Grok Build route is its own stage: the agent takes
+/// the whole turn ([`devin`], [`opencode`], [`grok`]). When a stage runs out
+/// of capacity (the
 /// agent refuses before it works, or every route of a loop stage refuses),
 /// the run moves to the next stage; the last stage's result is the task's.
 pub async fn execute(
@@ -917,6 +926,7 @@ fn no_capacity(host: Host, book: &Path, refusals: &[Refusal]) -> Result<task::Ta
 }
 
 mod devin;
+mod grok;
 pub mod launch;
 mod native;
 mod opencode;

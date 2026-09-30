@@ -7,7 +7,9 @@
 //! admission, for the environment an interactive terminal would have, and
 //! gives every command that environment. Credential variables are left
 //! out, and a shell that cannot answer leaves a fixed fallback `PATH` of
-//! the usual tool directories.
+//! the usual tool directories. `XAI_API_KEY`, when the shell set it, is
+//! kept aside for a Grok Build process and is not part of the command
+//! environment or the admission record.
 
 use std::ffi::OsString;
 #[cfg(unix)]
@@ -54,9 +56,19 @@ pub struct Environment {
     /// `login_shell` when the owner's shell answered, else `fallback`.
     pub source: &'static str,
     pub shell: PathBuf,
+    /// Grok Build's `XAI_API_KEY`, when the login shell set a non-empty
+    /// value. Command environments omit it. The admission record omits it.
+    grok_key: Option<OsString>,
 }
 
 impl Environment {
+    /// Grok Build's `XAI_API_KEY`, when the login shell set a non-empty
+    /// value. The value is not part of [`Self::variables`].
+    #[must_use]
+    pub fn grok_key(&self) -> Option<&OsString> {
+        self.grok_key.as_ref()
+    }
+
     /// The value of `name`, when set.
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&OsString> {
@@ -228,6 +240,10 @@ fn finish(
     source: &'static str,
     account: &Account,
 ) -> Environment {
+    let grok_key = captured
+        .iter()
+        .find(|(name, value)| name == "XAI_API_KEY" && !value.is_empty())
+        .map(|(_, value)| value.clone());
     let mut variables: Vec<(OsString, OsString)> = captured
         .into_iter()
         .filter(|(name, _)| {
@@ -262,6 +278,7 @@ fn finish(
         variables,
         source,
         shell: account.shell.clone(),
+        grok_key,
     }
 }
 
@@ -281,7 +298,7 @@ mod tests {
     fn a_login_listing_keeps_the_path_and_leaves_out_credentials() {
         let stdout = format!(
             "profile noise\n{MARKER}PATH=/opt/homebrew/bin:/usr/bin\0OPENAI_API_KEY=sk-x\0\
-             GH_TOKEN=t\0APP_SECRET=s\0SHLVL=2\0HOME=/elsewhere\0NVM_DIR=/n\0\
+             XAI_API_KEY=present\0GH_TOKEN=t\0APP_SECRET=s\0SHLVL=2\0HOME=/elsewhere\0NVM_DIR=/n\0\
              BASH_FUNC_x%%=() {{ :; }}\0"
         );
         let environment = finish(parse(&stdout).unwrap(), "login_shell", &account());
@@ -301,12 +318,26 @@ mod tests {
             environment.get("HOME").unwrap(),
             std::env::temp_dir().as_os_str()
         );
-        for gone in ["OPENAI_API_KEY", "GH_TOKEN", "APP_SECRET", "SHLVL"] {
+        for gone in [
+            "OPENAI_API_KEY",
+            "XAI_API_KEY",
+            "GH_TOKEN",
+            "APP_SECRET",
+            "SHLVL",
+        ] {
             assert!(!names.iter().any(|name| name == gone), "{gone}");
         }
+        assert_eq!(
+            environment
+                .grok_key()
+                .map(|value| value.to_string_lossy().into_owned()),
+            Some("present".to_owned())
+        );
         assert!(!names.iter().any(|name| name.starts_with("BASH_FUNC_")));
         let record = environment.record().to_string();
-        assert!(!record.contains("sk-x") && !record.contains("/n\""));
+        assert!(
+            !record.contains("sk-x") && !record.contains("present") && !record.contains("/n\"")
+        );
     }
 
     #[test]

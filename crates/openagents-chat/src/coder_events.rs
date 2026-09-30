@@ -908,6 +908,7 @@ pub fn provider_name(provider: &Value) -> String {
         Some("claude") => "Claude Code".into(),
         Some("devin") => "Devin".into(),
         Some("opencode") => "OpenCode".into(),
+        Some("grok") => "Grok Build".into(),
         Some(other) => other.into(),
         None => "The provider".into(),
     }
