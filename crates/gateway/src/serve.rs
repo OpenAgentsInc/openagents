@@ -1105,6 +1105,15 @@ async fn owned_request(
         {
             *cause = Some("caller_disconnected".into());
         }
+        // The Decisions API answers its own refusals with NIP-DEC's status
+        // table (the statuses OpenRouter's Decisions API uses); a code only
+        // this gateway defines keeps its own status.
+        if !classification
+            && let Verdict::Refused { status, code, .. } = &mut verdict
+            && let Some(named) = nostr::decision::named_http_status(code)
+        {
+            *status = StatusCode::from_u16(named).unwrap_or(*status);
+        }
         conclude(&state, &naming, started, verdict).await
     })
     .await
@@ -1683,29 +1692,58 @@ async fn admitted(
         Ok(parts) => parts,
         Err(verdict) => return verdict,
     };
-    let door = envelope
+    let named = envelope
         .get("model")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if door.is_empty() {
+    if named.is_empty() {
         return Verdict::Refused {
-            status: StatusCode::UNPROCESSABLE_ENTITY,
+            status: StatusCode::BAD_REQUEST,
             code: "invalid_request",
             message: "The request doesn't name a model. Set the `model` field.".to_string(),
             outcome: Outcome::Refused,
             ctx,
         };
     }
-    // Shape bounds, before a door is consulted: the question count and
-    // the option total a `choice`/`score` request would pay to read out.
+    // A model alias (NIP-DEC, "Models": `typesafe/jev-1.13`) names the
+    // door its canonical name binds, and the door is asked by that name.
+    let door = nostr::decision::canonical_model(named);
+    let aliased: Option<Bytes> = (door != named).then(|| {
+        let mut canonical = envelope.clone();
+        canonical["model"] = Value::String(door.to_string());
+        Bytes::from(serde_json::to_vec(&canonical).unwrap_or_default())
+    });
+    let body = aliased.as_ref().unwrap_or(body);
+    // NIP-DEC's bounds, before a door is consulted: `state` a string or an
+    // object, each question typed with EntryType fields, and every size
+    // and depth bound. A refusal names the first bound the body breaks.
+    if let Err(error) = nostr::decision::check_body(
+        door,
+        envelope.get("state").unwrap_or(&Value::Null),
+        envelope.get("questions").unwrap_or(&Value::Null),
+    ) {
+        return Verdict::Refused {
+            status: StatusCode::BAD_REQUEST,
+            code: error.code().unwrap_or("invalid_request"),
+            message: format!("The request doesn't fit NIP-DEC: {error}."),
+            outcome: Outcome::Refused,
+            ctx,
+        };
+    }
+    // This service's own shape bounds: the question count and the option
+    // total a `choice`/`score` request would pay to read out.
     if let Some(questions) = envelope.get("questions").and_then(Value::as_object) {
         let options: u64 = questions
             .values()
-            .map(|question| {
-                question
+            .map(|question| match question.get("criteria") {
+                Some(Value::Array(levels)) => levels.len() as u64,
+                Some(Value::Object(options)) if question["type"] == "choice" => {
+                    options.len() as u64
+                }
+                _ => question
                     .get("options")
                     .and_then(Value::as_array)
-                    .map_or(0, |options| options.len() as u64)
+                    .map_or(0, |options| options.len() as u64),
             })
             .sum();
         if questions.len() as u64 > state.config.max_questions {

@@ -1,0 +1,17 @@
+{
+  "state": "Fixed the null check in the payment handler. Also refactored the retry loop while I was in there, and bumped the SDK version since the old one had that timeout bug.",
+  "questions": {
+    "pr_scope": {
+      "type": "score",
+      "instructions": {
+        "question": "How focused is this pull request description on a single change?",
+        "note": "Judge the number of independent changes, not the size of any one change."
+      },
+      "criteria": [
+        {"summary": "One change, clearly stated", "signals": ["A single fix or feature", "Nothing described as \"also\" or \"while I was in there\""]},
+        {"summary": "One main change plus a small related tweak", "signals": ["A primary change and one minor adjacent edit", "The tweak supports the main change"]},
+        {"summary": "Several independent changes bundled together", "signals": ["Two or more unrelated fixes or features", "Changes that could each be their own PR"]}
+      ]
+    }
+  }
+}

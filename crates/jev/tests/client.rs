@@ -1598,8 +1598,10 @@ async fn an_aborted_call_sends_no_retry() -> Outcome {
     Ok(())
 }
 
-/// Array and null entries reach the wire in state and in instructions, the
-/// way the official SDKs send them.
+/// Array and null entries reach the wire in instructions, the way the
+/// official SDKs send them. State is text or an object (NIP-DEC): an array
+/// state goes as its JSON text and a null one as empty text, which every
+/// NIP-DEC host admits.
 #[tokio::test]
 async fn array_and_null_entries_reach_the_wire() -> Outcome {
     let (base, seen) = serve(vec![
@@ -1626,13 +1628,13 @@ async fn array_and_null_entries_reach_the_wire() -> Outcome {
 
     let seen = seen.lock().await;
     let first = seen[0].json()?;
-    assert_eq!(first["state"], json!(["part one", "part two"]));
+    assert_eq!(first["state"], json!(r#"["part one","part two"]"#));
     assert_eq!(
         first["questions"]["requestsRefund"]["instructions"],
         json!(["Is this two parts?", {"note": "yes it is"}])
     );
     let second = seen[1].json()?;
-    assert_eq!(second["state"], serde_json::Value::Null);
+    assert_eq!(second["state"], json!(""));
     Ok(())
 }
 

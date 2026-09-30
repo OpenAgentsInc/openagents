@@ -1274,7 +1274,15 @@ pub fn canonical_model(model: &str) -> &str {
 /// the gateway cannot classify.
 #[must_use]
 pub fn http_status(code: &str) -> u16 {
-    match code {
+    named_http_status(code).unwrap_or(502)
+}
+
+/// The status NIP-DEC's table names for `code`, or `None` for a code the
+/// table does not list: a gateway keeps its own status for a refusal only it
+/// defines, and reads any other through the table.
+#[must_use]
+pub fn named_http_status(code: &str) -> Option<u16> {
+    Some(match code {
         "malformed"
         | "invalid_request"
         | "too_many_questions"
@@ -1298,8 +1306,8 @@ pub fn http_status(code: &str) -> u16 {
         | "ledger_unavailable" => 503,
         "timeout" => 524,
         "overloaded" => 529,
-        _ => 502,
-    }
+        _ => return None,
+    })
 }
 
 /// The refusal code an HTTP status stands for when a door answers with a
@@ -1321,6 +1329,34 @@ pub fn code_for_http_status(status: u16) -> &'static str {
         529 => "overloaded",
         _ => "unavailable",
     }
+}
+
+/// Check a NIP-DEC request body's `model`, `state`, and `questions` against
+/// every bound this NIP names (NIP-DEC, "Bounds"), the same checks
+/// [`RequestBody::validate`] runs on a decision job without the job's
+/// `request` and `attempt`. An HTTP gateway runs it on `POST /v1/systemone`
+/// before a door is consulted; a refusal's [`DecisionError::code`] with
+/// [`http_status`] is its answer.
+///
+/// # Errors
+///
+/// The first bound the body breaks.
+pub fn check_body(model: &str, state: &Value, questions: &Value) -> Result<(), DecisionError> {
+    if model.is_empty() {
+        return Err(invalid_request("the request names no model"));
+    }
+    bounded_str(model, MAX_MODEL_BYTES, "model").map_err(|reason| invalid_request(&reason))?;
+    let state_bytes = serialized_len(state);
+    if state_bytes > MAX_STATE_BYTES {
+        return Err(invalid_request(&format!(
+            "state is {state_bytes} bytes, more than {MAX_STATE_BYTES}"
+        )));
+    }
+    check_state(state)?;
+    let questions = questions
+        .as_object()
+        .ok_or_else(|| invalid_request("questions is an object of question id to question"))?;
+    check_questions(questions)
 }
 
 /// Check one EntryType value: a string, an object, an array, or null, nested

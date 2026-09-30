@@ -335,11 +335,11 @@ impl RelayExchange {
             .as_deref()
             .and_then(|body| serde_json::from_slice(body).ok())
             .ok_or_else(|| Failure::Unreachable(format!("{UNREACHABLE}: the call has no body")))?;
-        let model = envelope["model"].as_str().unwrap_or_default().to_string();
-        let questions = envelope["questions"]
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let decision = jev::DecisionRequest::from_value(envelope).map_err(|error| {
+            Failure::Unreachable(format!(
+                "{UNREACHABLE}: the call is not a NIP-DEC request: {error}"
+            ))
+        })?;
         let (request, attempt) = match &call.idempotency_key {
             Some(key) => (key.clone(), call.attempt.max(1)),
             None => (random_id(), 1),
@@ -351,14 +351,7 @@ impl RelayExchange {
             .saturating_sub(Duration::from_millis(250))
             .max(Duration::from_secs(1));
         let deadline = unix_now() + budget.as_secs().max(1) + 1;
-        let body = RequestBody::new(
-            request,
-            attempt,
-            model,
-            envelope["state"].clone(),
-            questions,
-        )
-        .deadline(deadline);
+        let body = wire_body(&decision, request, attempt).deadline(deadline);
         let event = decision::request_event(self.seal(), &body, &self.worker).map_err(|error| {
             Failure::Unreachable(format!(
                 "{UNREACHABLE}: the request cannot be sealed: {error}"
@@ -499,6 +492,31 @@ impl Exchange for RelayExchange {
     }
 }
 
+/// The NIP-DEC decision job a request becomes (`crates/nostr`,
+/// `decision::RequestBody`): the same `model`, `state`, and `questions`,
+/// under the caller's logical `request` id and one-based `attempt`. The
+/// HTTP doors take [`jev::DecisionRequest::to_value`] (TypeSafe, a
+/// gateway) and [`jev::DecisionRequest::openrouter_body`] (OpenRouter);
+/// all three ask the same thing.
+#[must_use]
+pub fn wire_body(
+    decision: &jev::DecisionRequest,
+    request: impl Into<String>,
+    attempt: u32,
+) -> RequestBody {
+    let questions = match decision.questions.to_value() {
+        Value::Object(questions) => questions,
+        _ => serde_json::Map::new(),
+    };
+    RequestBody::new(
+        request,
+        attempt,
+        decision.model.clone(),
+        decision.state.to_value(),
+        questions,
+    )
+}
+
 /// The HTTP-shaped reply a worker refusal becomes: the status NIP-DEC maps
 /// the refusal code to (`nostr::decision::http_status`, the statuses
 /// OpenRouter's Decisions API uses), and a message that starts with
@@ -629,6 +647,83 @@ mod tests {
         };
         let error = resolve(&no_env, dir.path(), &other, &|config| config).unwrap_err();
         assert!(error.contains("decision.example"), "{error}");
+    }
+
+    /// The SDK's copies of NIP-DEC's tables are the wire's.
+    #[test]
+    fn the_sdk_and_the_wire_share_one_alias_and_status_table() {
+        assert_eq!(jev::nip_dec::MODEL_ALIASES, decision::MODEL_ALIASES);
+        for code in [
+            "malformed",
+            "invalid_request",
+            "too_many_questions",
+            "too_many_options",
+            "unsupported_version",
+            "stale",
+            "idempotency_conflict",
+            "uncalibrated",
+            "unauthenticated",
+            "payment_required",
+            "not_admitted",
+            "door_not_bound",
+            "not_found",
+            "limit_exceeded",
+            "rate_limited",
+            "quota_exhausted",
+            "internal",
+            "door_unavailable",
+            "identity_mismatch",
+            "busy",
+            "unavailable",
+            "registry_unavailable",
+            "membership_unavailable",
+            "ledger_unavailable",
+            "timeout",
+            "overloaded",
+            "something_else",
+        ] {
+            assert_eq!(
+                jev::nip_dec::http_status(code),
+                decision::http_status(code),
+                "{code}"
+            );
+        }
+        for status in 100..=599 {
+            assert_eq!(
+                jev::nip_dec::code_for_http_status(status),
+                decision::code_for_http_status(status),
+                "{status}"
+            );
+        }
+    }
+
+    /// Every documented NIP-DEC example read into the shared model becomes
+    /// a decision job carrying exactly the same state and questions, and
+    /// the job validates.
+    #[test]
+    fn every_nip_dec_example_becomes_the_same_job() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../nostr/fixtures/decisions/valid");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let example: Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let mut body = example.clone();
+            body["model"] = json!("typesafe/jev-1.13");
+            let decision = jev::DecisionRequest::from_value(body.clone())
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            assert_eq!(decision.to_value(), body, "{}", path.display());
+            let job = wire_body(&decision, "r-1", 1);
+            job.validate()
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            assert_eq!(job.state, example["state"]);
+            assert_eq!(Value::Object(job.questions.clone()), example["questions"]);
+            assert_eq!(decision.openrouter_body()["model"], "typesafe/jev-1.13");
+            assert_eq!(decision.clone().canonical().model, "jev-1.13.0");
+            seen += 1;
+        }
+        assert!(seen >= 6, "only {seen} examples");
     }
 
     #[test]

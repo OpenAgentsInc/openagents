@@ -647,6 +647,9 @@ fn a_turn_with_a_target_is_delegated_and_streams_its_progress() {
     let output = command
         .current_dir(&work)
         .env("HOME", &home)
+        // No key in this HOME: without this the delegate door's Jev would
+        // resolve to the live hosted decision service and spend on it.
+        .env("OPENAGENTS_JEV_HOSTED", "off")
         .env("CODER_DELEGATE", "always")
         .env("CODER_DELEGATE_AGENT", "claude-code")
         .env_remove("CODER_DELEGATE_MODEL")

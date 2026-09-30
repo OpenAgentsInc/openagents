@@ -1,0 +1,37 @@
+{
+  "state": {"source_text": "Invoice #4471 issued March 3, 2026 to Beaver Dam Logistics for $12,840.00, net 30."},
+  "questions": {
+    "invoice_number_is_correct": {
+      "type": "noul",
+      "instructions": {
+        "field": {"name": "invoice_number", "type": "string", "description": "The identifier printed on the invoice."},
+        "extracted_value": "4471",
+        "question": "Does `extracted_value` match the `field` as it appears in `source_text`?"
+      }
+    },
+    "customer_name": {
+      "type": "choice",
+      "instructions": {
+        "field": {"name": "customer_name", "type": "string", "description": "The organization the invoice was issued to."},
+        "question": "Which option is the value of `field` in `source_text`?"
+      },
+      "criteria": {"Beaver Logistics": null, "Dam Logistics": null, "Beaver Dam Logistics": null, "Beaver": null, "Dam": null}
+    },
+    "amount_due": {
+      "type": "score",
+      "instructions": {
+        "field": {"name": "amount_due", "type": "number", "unit": "USD", "description": "The total the invoice asks to be paid."},
+        "question": "How large is the `field` value in `source_text`?"
+      },
+      "criteria": ["Under $1,000", "$1,000 to $10,000", "$10,000 to $100,000", "$100,000 to $1,000,000", "Over $1,000,000"]
+    },
+    "payment_terms": {
+      "type": "score",
+      "instructions": {
+        "field": {"name": "payment_terms", "type": "integer", "unit": "days", "description": "Days allowed for payment, from terms such as \"net 30\"."},
+        "question": "How many days does the `field` in `source_text` allow for payment?"
+      },
+      "criteria": ["Due on receipt", "Net 10", "Net 30", "Net 60", "Net 90"]
+    }
+  }
+}

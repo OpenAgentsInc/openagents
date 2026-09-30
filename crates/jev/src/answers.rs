@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 
 use indexmap::IndexMap;
 use reqwest::header::HeaderMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::value::RawValue;
 
@@ -37,7 +37,7 @@ use crate::questions::{Entry, Question, Questions};
 pub const MASS_TOLERANCE: f64 = 0.005;
 
 /// The probability that the answer to a Noul question is yes.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct NoulAnswer {
     /// The probability of yes, from 0 to 1.
     pub noul: f64,
@@ -51,12 +51,12 @@ pub struct NoulAnswer {
     /// number. When absent, a categorical reader falls back to yes at or
     /// above one half and no below. Absence does not prove that the door is
     /// uncalibrated; legacy responses carry no selected-answer provenance.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<String>,
 }
 
 /// The option a Choice question picked, with a probability for each option.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChoiceAnswer {
     /// The option the model picked.
     pub choice: String,
@@ -67,7 +67,7 @@ pub struct ChoiceAnswer {
 }
 
 /// Where a Score question placed the state, with the rubric it read.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ScoreAnswer {
     /// The probability-weighted mean level, which falls between levels.
     /// A caller that needs a categorical level reads `selected`, or falls
@@ -86,7 +86,7 @@ pub struct ScoreAnswer {
     /// falls back to the argmax of `probabilities`, with a tied maximum
     /// resolving to the highest level. Absence is not evidence that no
     /// calibration map was served.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<String>,
     /// The rubric, keyed by level.
     pub legend: BTreeMap<u32, Entry>,
@@ -107,7 +107,33 @@ pub enum Answer {
     Score(ScoreAnswer),
 }
 
+impl Serialize for Answer {
+    /// The answer as NIP-DEC writes it: `type` beside the answer's own
+    /// fields.
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let mut value = match self {
+            Self::Noul(answer) => serde_json::to_value(answer),
+            Self::Choice(answer) => serde_json::to_value(answer),
+            Self::Score(answer) => serde_json::to_value(answer),
+        }
+        .map_err(serde::ser::Error::custom)?;
+        if let Value::Object(map) = &mut value {
+            map.insert("type".to_string(), Value::String(self.kind().to_string()));
+        }
+        value.serialize(serializer)
+    }
+}
+
 impl Answer {
+    /// The answer as a JSON value, in NIP-DEC's shape.
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+
     /// The wire name of the answer's type.
     #[must_use]
     pub fn kind(&self) -> &'static str {
@@ -121,7 +147,7 @@ impl Answer {
 
 /// What one request cost, as far as the API reports it. The API leaves a count
 /// out on some responses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize, Serialize)]
 pub struct Usage {
     /// Tokens the state and the questions took.
     #[serde(default)]
@@ -129,6 +155,23 @@ pub struct Usage {
     /// Tokens the answers took.
     #[serde(default)]
     pub output_tokens: Option<u64>,
+    /// What the call cost in US dollars, when the door reports it
+    /// (OpenRouter's Decisions API does; TypeSafe reports tokens only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+}
+
+impl Usage {
+    /// What the call cost in US dollars: the door's own figure when it
+    /// reported one, else the input tokens at Jev's list price
+    /// ([`crate::nip_dec::USD_PER_MILLION_INPUT`]), else unknown.
+    #[must_use]
+    pub fn cost_usd(&self) -> Option<f64> {
+        self.cost.or_else(|| {
+            self.input_tokens
+                .map(|tokens| tokens as f64 * crate::nip_dec::USD_PER_MILLION_INPUT / 1e6)
+        })
+    }
 }
 
 /// One response as it arrived: its status, its headers, and its bytes.
@@ -212,6 +255,17 @@ impl SystemOneResponse {
             usage: wire.usage.unwrap_or_default(),
             raw,
         })
+    }
+
+    /// The answers as NIP-DEC writes them, keyed by question id.
+    #[must_use]
+    pub fn answers_value(&self) -> Value {
+        Value::Object(
+            self.answers
+                .iter()
+                .map(|(id, answer)| (id.clone(), answer.to_value()))
+                .collect(),
+        )
     }
 
     /// The response as it arrived.

@@ -21,7 +21,8 @@ use crate::config::{ApiKey, Config};
 use crate::error::{ApiError, Error, REQUEST_ID_HEADER};
 use crate::jobs::Jobs;
 use crate::models::{ListOptions, Models};
-use crate::questions::{Entry, Questions};
+use crate::nip_dec::{DecisionRequest, State};
+use crate::questions::Questions;
 use crate::retry::{RETRY_COUNT_HEADER, RetryPolicy};
 use crate::transport;
 
@@ -44,8 +45,9 @@ const MODELS_PATH: &str = "/v1/models";
 /// ```
 #[derive(Debug, Clone)]
 pub struct SystemOneRequest {
-    /// The state every question reads. One state, not a batch.
-    pub state: Entry,
+    /// The state every question reads: text or a JSON object. One state,
+    /// not a batch.
+    pub state: State,
     /// The questions to ask.
     pub questions: Questions,
     /// The model to ask, or the client's default.
@@ -64,7 +66,7 @@ pub struct SystemOneRequest {
 impl SystemOneRequest {
     /// Ask questions about one state.
     #[must_use]
-    pub fn new<E: Into<Entry>>(state: E, questions: Questions) -> Self {
+    pub fn new<S: Into<State>>(state: S, questions: Questions) -> Self {
         Self {
             state: state.into(),
             questions,
@@ -125,26 +127,36 @@ impl SystemOneRequest {
     /// [`Error::Config`] when the questions do not serialize.
     pub fn body(&self, default_model: &str) -> Result<Map<String, Value>> {
         self.questions.validate()?;
-        let mut body = Map::new();
-        body.insert("state".to_string(), self.state.to_value());
-        body.insert(
-            "model".to_string(),
-            Value::String(
-                self.model
-                    .clone()
-                    .unwrap_or_else(|| default_model.to_string()),
-            ),
-        );
-        body.insert(
-            "questions".to_string(),
-            serde_json::to_value(&self.questions).map_err(|error| {
-                Error::Config(format!("the questions can't be encoded as JSON: {error}"))
-            })?,
-        );
+        let Value::Object(mut body) = self.decision(default_model).to_value() else {
+            return Err(Error::Config("the request can't be encoded as JSON".into()));
+        };
         for (name, value) in &self.extra_body {
             body.insert(name.clone(), value.clone());
         }
         Ok(body)
+    }
+}
+
+impl SystemOneRequest {
+    /// Ask a NIP-DEC request as it stands, its model included.
+    #[must_use]
+    pub fn from_decision(request: DecisionRequest) -> Self {
+        let model = request.model.clone();
+        Self::new(request.state, request.questions).model(model)
+    }
+
+    /// The NIP-DEC request this call asks: its model, or `default_model`
+    /// when it names none, with the state and questions.
+    #[must_use]
+    pub fn decision(&self, default_model: &str) -> DecisionRequest {
+        DecisionRequest {
+            model: self
+                .model
+                .clone()
+                .unwrap_or_else(|| default_model.to_string()),
+            state: self.state.clone(),
+            questions: self.questions.clone(),
+        }
     }
 }
 

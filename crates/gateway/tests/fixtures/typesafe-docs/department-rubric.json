@@ -1,0 +1,17 @@
+{
+  "state": "I ordered the standing desk two weeks ago and tracking still says label created. Was I even charged?",
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": {
+        "question": "Which team should handle this message?",
+        "focus": "Classify the customer's primary request, not every topic mentioned."
+      },
+      "criteria": {
+        "billing": {"what": "Charges, invoices, refunds, or subscriptions", "not_for": "Order tracking or account access", "examples": ["I was charged twice", "Where is my refund?"]},
+        "orders": {"what": "Order status, delivery, cancellation, or returns", "not_for": "Charges or account access", "examples": ["Where is my package?", "Cancel my order"]},
+        "account": {"what": "Login, password, profile, or security", "not_for": "Charges or delivery", "examples": ["I can't log in", "Change my email"]}
+      }
+    }
+  }
+}

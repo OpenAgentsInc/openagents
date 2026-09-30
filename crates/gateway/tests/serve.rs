@@ -507,7 +507,7 @@ async fn an_unbound_door_and_an_unknown_key_are_refused() {
         Some(&deployment.tokens["globex"]),
     )
     .await;
-    assert_eq!(response.status(), 403);
+    assert_eq!(response.status(), 404);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["error"]["code"], "door_not_bound");
 
@@ -540,7 +540,7 @@ async fn an_anonymous_call_reaches_only_the_shared_lane() {
     assert_eq!(response.status(), 200);
 
     let response = send_call(&deployment, &call("acme-kev"), None).await;
-    assert_eq!(response.status(), 403);
+    assert_eq!(response.status(), 404);
     assert_eq!(forwards.load(Ordering::SeqCst), 1);
 
     // The anonymous call's receipt carries no tenant.
@@ -614,11 +614,11 @@ async fn retries_share_the_reservation_and_resolved_or_changed_pairs_refuse() {
     // Settled now: the same pair cannot be taken again, and a changed
     // body under it is refused rather than merged.
     let third = send(call("shared-kev")).send().await.unwrap();
-    assert_eq!(third.status(), 409);
+    assert_eq!(third.status(), 400);
     let mut changed = call("shared-kev");
     changed["state"] = json!("Different text entirely.");
     let fourth = send(changed).send().await.unwrap();
-    assert_eq!(fourth.status(), 409);
+    assert_eq!(fourth.status(), 400);
     assert_eq!(forwards.load(Ordering::SeqCst), 2);
 
     // A second gateway cannot open the same directory — the ledger
@@ -645,7 +645,7 @@ async fn a_mismatched_backend_is_refused_before_dispatch() {
         Some(&deployment.tokens["acme"]),
     )
     .await;
-    assert_eq!(response.status(), 503);
+    assert_eq!(response.status(), 502);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["error"]["code"], "identity_mismatch");
     assert_eq!(forwards.load(Ordering::SeqCst), 0);
@@ -673,7 +673,7 @@ async fn a_dead_backend_is_unattempted_and_a_failed_forward_is_unavailable() {
         Some(&deployment.tokens["acme"]),
     )
     .await;
-    assert_eq!(response.status(), 503);
+    assert_eq!(response.status(), 502);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["error"]["code"], "door_unavailable");
     let [receipt] = receipt_log(&deployment.dir).try_into().unwrap();
@@ -772,7 +772,7 @@ async fn a_registry_update_names_its_revision_and_rebinds_the_next_call() {
         Some(&deployment.tokens["acme"]),
     )
     .await;
-    assert_eq!(response.status(), 503);
+    assert_eq!(response.status(), 502);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["error"]["code"], "identity_mismatch");
 
@@ -809,7 +809,7 @@ async fn an_oversized_envelope_is_refused_before_a_door_is_consulted() {
         Some(&deployment.tokens["acme"]),
     )
     .await;
-    assert_eq!(response.status(), 422);
+    assert_eq!(response.status(), 400);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["error"]["code"], "too_many_questions");
     assert_eq!(forwards.load(Ordering::SeqCst), 0);
@@ -2975,7 +2975,7 @@ async fn money_a_retried_attempt_is_charged_once() {
     assert_eq!(
         responses
             .iter()
-            .filter(|(status, _)| *status == StatusCode::CONFLICT)
+            .filter(|(status, _)| *status == StatusCode::BAD_REQUEST)
             .count(),
         1
     );
@@ -3005,7 +3005,7 @@ async fn money_a_retried_attempt_is_charged_once() {
         Some(("req-dup", 1)),
     )
     .await;
-    assert_eq!(replay.status(), StatusCode::CONFLICT);
+    assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
     let replay = send_money_call(
         &deployment,
         &call("acme-kev"),
@@ -3014,7 +3014,7 @@ async fn money_a_retried_attempt_is_charged_once() {
         Some(("req-dup", 1)),
     )
     .await;
-    assert_eq!(replay.status(), StatusCode::CONFLICT);
+    assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
     assert_eq!(forwards.load(Ordering::SeqCst), 1);
     let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
     assert_eq!(balance["balance"]["settled"], CHARGE);
@@ -3447,7 +3447,7 @@ async fn money_a_failed_identity_check_releases_the_hold() {
         None,
     )
     .await;
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     assert_eq!(response.headers()["x-settlement"], "released");
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["error"]["code"], "identity_mismatch");
@@ -4432,7 +4432,14 @@ async fn backend_redirects_never_change_the_authorized_destination() {
                 .await
                 .status()
             };
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(
+                status,
+                if classification || !redirect_identity {
+                    StatusCode::SERVICE_UNAVAILABLE
+                } else {
+                    StatusCode::BAD_GATEWAY
+                }
+            );
             assert_eq!(reached.load(Ordering::SeqCst), 0);
             let receipts = receipt_log(&deployment.dir);
             assert_eq!(receipts.len(), 1);
@@ -6098,4 +6105,210 @@ async fn updates_subscriptions_are_verified_opt_in_and_durable() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+/// A well-formed answer to every question a forwarded body asks, the way
+/// a System One door writes it: the first option or level with all the
+/// mass, and each score level's description in its legend.
+fn answers_for(body: &Value) -> Value {
+    let mut answers = serde_json::Map::new();
+    for (id, question) in body["questions"].as_object().unwrap() {
+        let answer = match question["type"].as_str().unwrap() {
+            "noul" => json!({"type": "noul", "noul": 0.8}),
+            "choice" => {
+                let options = question["criteria"].as_object().unwrap();
+                let first = options.keys().next().unwrap().clone();
+                let probabilities: serde_json::Map<String, Value> = options
+                    .keys()
+                    .map(|option| {
+                        (
+                            option.clone(),
+                            json!(if *option == first { 1.0 } else { 0.0 }),
+                        )
+                    })
+                    .collect();
+                json!({"type": "choice", "choice": first, "confidence": 1.0, "probabilities": probabilities})
+            }
+            "score" => {
+                let levels = question["criteria"].as_array().unwrap();
+                let legend: serde_json::Map<String, Value> = levels
+                    .iter()
+                    .enumerate()
+                    .map(|(at, level)| (at.to_string(), level.clone()))
+                    .collect();
+                let probabilities: serde_json::Map<String, Value> = (0..levels.len())
+                    .map(|at| (at.to_string(), json!(if at == 0 { 1.0 } else { 0.0 })))
+                    .collect();
+                json!({"type": "score", "score": 0.0, "confidence": 1.0,
+                       "legend": legend, "probabilities": probabilities})
+            }
+            other => panic!("unexpected question type {other}"),
+        };
+        answers.insert(id.clone(), answer);
+    }
+    json!({"model": body["model"], "answers": answers,
+           "usage": {"input_tokens": 120, "output_tokens": 9}})
+}
+
+/// The Decisions API conformance test (NIP-DEC, "HTTP-gateway
+/// equivalence"): the gateway's `POST /v1/systemone` takes the request
+/// shape TypeSafe's and OpenRouter's Decisions APIs take (`model`,
+/// `questions`, `state`), with every example from TypeSafe's docs — the
+/// invoice `field`, the `billing`/`orders`/`account` rubric, the taxonomy
+/// walk, the PR-scope score levels, and the credentials noul — sent under
+/// OpenRouter's model name. Each reaches the door byte-for-byte with the
+/// canonical model, the answer comes back in the same response shape
+/// (read here by the shared typed model), and every refusal carries
+/// NIP-DEC's HTTP status.
+#[tokio::test]
+async fn the_decisions_api_answers_the_typesafe_docs_examples() {
+    let mut door = honest(artifact('a'), Value::Null);
+    door.respond = Some(Arc::new(|body: &Value| (StatusCode::OK, answers_for(body))));
+    let bodies = door.bodies.clone();
+    let (endpoint, forwards) = backend(door).await;
+    let mut manifest = manifest(None);
+    let shared = manifest.shared["shared-kev"].clone();
+    manifest.shared.insert("jev-1.13.0".to_string(), shared);
+    let deployment = deploy(
+        manifest,
+        [("jev-1.13.0".to_string(), endpoint)].into_iter().collect(),
+    )
+    .await;
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typesafe-docs");
+    let mut names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 5, "{names:?}");
+    let client = jev::Client::new(jev::Config::local(
+        deployment.address.clone(),
+        "typesafe/jev-1.13",
+    ))
+    .unwrap();
+    for (at, path) in names.iter().enumerate() {
+        let example: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut request = example.clone();
+        request["model"] = json!("typesafe/jev-1.13");
+        // The shared typed model reads the example and sends it through the
+        // SDK, which reads the answer back typed.
+        let decision = jev::DecisionRequest::from_value(request.clone()).unwrap();
+        assert_eq!(decision.to_value(), request, "{}", path.display());
+        let typed = client
+            .system_one(jev::SystemOneRequest::from_decision(decision.clone()))
+            .await
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+
+        // The door was asked exactly what the caller sent, under the
+        // canonical model name.
+        let forwarded = bodies.lock().unwrap()[at].clone();
+        assert_eq!(forwarded["model"], "jev-1.13.0", "{}", path.display());
+        assert_eq!(forwarded["state"], example["state"], "{}", path.display());
+        assert_eq!(
+            forwarded["questions"],
+            example["questions"],
+            "{}",
+            path.display()
+        );
+
+        // The same response shape: every question answered in its own
+        // type, consistent with the questions asked.
+        assert_eq!(typed.usage.input_tokens, Some(120));
+        typed.check_against(&decision.questions).unwrap();
+        assert_eq!(
+            typed.answers.len(),
+            decision.questions.len(),
+            "{}",
+            path.display()
+        );
+    }
+    assert_eq!(forwards.load(Ordering::SeqCst), 5);
+
+    // The refusals, each with NIP-DEC's status and none reaching the door.
+    let example: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("credentials-noul.json")).unwrap())
+            .unwrap();
+    let with = |edit: &dyn Fn(&mut Value)| {
+        let mut body = example.clone();
+        body["model"] = json!("typesafe/jev-1.13");
+        edit(&mut body);
+        body
+    };
+    let mut deep = json!("leaf");
+    for _ in 0..9 {
+        deep = json!([deep]);
+    }
+    let many: serde_json::Map<String, Value> = (0..65)
+        .map(|at| {
+            (
+                format!("q{at}"),
+                json!({"type": "noul", "instructions": "Is it?"}),
+            )
+        })
+        .collect();
+    let options: serde_json::Map<String, Value> =
+        (0..256).map(|at| (format!("o{at}"), Value::Null)).collect();
+    let cases: Vec<(&str, Value, u16, &str)> = vec![
+        (
+            "no model",
+            with(&|b| b["model"] = json!("")),
+            400,
+            "invalid_request",
+        ),
+        (
+            "array state",
+            with(&|b| b["state"] = json!(["a"])),
+            400,
+            "invalid_request",
+        ),
+        (
+            "a bare number as instructions",
+            with(&|b| b["questions"]["requests_credentials"]["instructions"] = json!(7)),
+            400,
+            "invalid_request",
+        ),
+        (
+            "an entry nested past eight levels",
+            with(&|b| b["questions"]["requests_credentials"]["criteria"]["true"] = deep.clone()),
+            400,
+            "invalid_request",
+        ),
+        (
+            "an unknown question type",
+            with(&|b| b["questions"]["requests_credentials"]["type"] = json!("rank")),
+            400,
+            "invalid_request",
+        ),
+        (
+            "65 questions",
+            with(&|b| b["questions"] = Value::Object(many.clone())),
+            400,
+            "too_many_questions",
+        ),
+        (
+            "256 options",
+            with(&|b| {
+                b["questions"] = json!({"pick": {"type": "choice", "instructions": "Which?",
+                                                  "criteria": Value::Object(options.clone())}})
+            }),
+            400,
+            "too_many_options",
+        ),
+        (
+            "a model no door binds",
+            with(&|b| b["model"] = json!("jev-0.1")),
+            404,
+            "door_not_bound",
+        ),
+    ];
+    for (what, body, status, code) in cases {
+        let response = send_call(&deployment, &body, None).await;
+        assert_eq!(response.status().as_u16(), status, "{what}");
+        let refusal: Value = response.json().await.unwrap();
+        assert_eq!(refusal["error"]["code"], code, "{what}");
+        assert_eq!(jev::nip_dec::http_status(code), status, "{what}");
+    }
+    assert_eq!(forwards.load(Ordering::SeqCst), 5);
 }

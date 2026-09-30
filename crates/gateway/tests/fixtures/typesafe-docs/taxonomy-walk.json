@@ -1,0 +1,21 @@
+{
+  "state": "32oz plastic bottle with a flip straw lid. Fits most bike cages.",
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": "Which top-level department does this product belong to?",
+      "criteria": {
+        "Sporting Goods": {
+          "Cycling": ["Bike Bottles & Cages", "Bike Lights", "Helmets"],
+          "Fitness": ["Yoga Mats", "Resistance Bands"],
+          "Outdoor": ["Tents", "Sleeping Bags", "Hydration Packs"]
+        },
+        "Home & Kitchen": {
+          "Drinkware": ["Water Bottles", "Travel Mugs", "Tumblers"],
+          "Cookware": ["Pots & Pans", "Bakeware"]
+        },
+        "Baby & Toddler": ["Sippy Cups", "Bottle Warmers", "Bibs"]
+      }
+    }
+  }
+}

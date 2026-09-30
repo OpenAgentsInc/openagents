@@ -558,26 +558,15 @@ impl Drop for Recorder {
 /// part a threshold is tuned on.
 #[must_use]
 pub fn answers_value(answers: &IndexMap<String, Answer>) -> Value {
-    let mut out = Map::new();
-    for (id, answer) in answers {
-        let value = match answer {
-            Answer::Noul(noul) => json!({ "type": "noul", "noul": noul.noul }),
-            Answer::Choice(choice) => json!({
-                "type": "choice",
-                "choice": choice.choice,
-                "confidence": choice.confidence,
-                "probabilities": choice.probabilities,
-            }),
-            Answer::Score(score) => json!({
-                "type": "score",
-                "score": score.score,
-                "confidence": score.confidence,
-                "probabilities": score.probabilities,
-            }),
-        };
-        out.insert(id.clone(), value);
-    }
-    Value::Object(out)
+    // The shared model's serialization (NIP-DEC, "Answers"): every field
+    // the door answered with, the score's legend and a door's `selected`
+    // included.
+    Value::Object(
+        answers
+            .iter()
+            .map(|(id, answer)| (id.clone(), answer.to_value()))
+            .collect(),
+    )
 }
 
 #[cfg(test)]

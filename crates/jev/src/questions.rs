@@ -165,6 +165,32 @@ impl Serialize for NoulCriteria {
     }
 }
 
+impl NoulCriteria {
+    /// Read `{"true": …, "false": …}`, either key optional. Anything else —
+    /// another key, or a value that is not an object — is `None`: the
+    /// caller keeps the question as [`Question::Raw`] so it goes out
+    /// unchanged.
+    fn from_object(value: &Value) -> Option<Self> {
+        let map = value.as_object()?;
+        if map.keys().any(|key| key != "true" && key != "false") {
+            return None;
+        }
+        Some(Self {
+            r#true: map.get("true").cloned().map(Entry::from),
+            r#false: map.get("false").cloned().map(Entry::from),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for NoulCriteria {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
+        Self::from_object(&value).ok_or_else(|| {
+            serde::de::Error::custom("noul criteria are {\"true\": …, \"false\": …}")
+        })
+    }
+}
+
 /// A question that asks whether something is true. The answer is one
 /// probability of yes.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -354,6 +380,102 @@ impl From<Value> for Question {
     }
 }
 
+impl Question {
+    /// Read a question from its JSON form (NIP-DEC, "Request").
+    ///
+    /// A body this crate models exactly becomes a typed [`Noul`],
+    /// [`Choice`], or [`Score`]; anything else — an unknown `type`, a field
+    /// beyond `type`, `instructions`, and `criteria`, a bare scalar where an
+    /// entry belongs, or the legacy string noul criteria — stays
+    /// [`Question::Raw`], so it serializes back byte-for-byte after JCS.
+    /// Every typed reading serializes back to the value it was read from.
+    #[must_use]
+    pub fn from_value(value: Value) -> Self {
+        Self::typed(&value).unwrap_or(Self::Raw(value))
+    }
+
+    fn typed(value: &Value) -> Option<Self> {
+        let map = value.as_object()?;
+        if map
+            .keys()
+            .any(|key| !matches!(key.as_str(), "type" | "instructions" | "criteria"))
+        {
+            return None;
+        }
+        let instructions = match map.get("instructions") {
+            None => None,
+            Some(entry) => Some(entry_exact(entry)?),
+        };
+        match map.get("type")?.as_str()? {
+            "noul" => {
+                let criteria = match map.get("criteria") {
+                    None => None,
+                    Some(value) => {
+                        if value
+                            .as_object()?
+                            .values()
+                            .any(|entry| entry_exact(entry).is_none())
+                        {
+                            return None;
+                        }
+                        Some(NoulCriteria::from_object(value)?)
+                    }
+                };
+                Some(Self::Noul(Noul {
+                    instructions,
+                    criteria,
+                }))
+            }
+            "choice" => {
+                let mut options = IndexMap::new();
+                for (option, entry) in map.get("criteria")?.as_object()? {
+                    let entry = if entry.is_null() {
+                        None
+                    } else {
+                        Some(entry_exact(entry)?)
+                    };
+                    options.insert(option.clone(), entry);
+                }
+                Some(Self::Choice(Choice {
+                    instructions,
+                    criteria: options,
+                }))
+            }
+            "score" => {
+                let mut levels = Vec::new();
+                for entry in map.get("criteria")?.as_array()? {
+                    levels.push(if entry.is_null() {
+                        None
+                    } else {
+                        Some(entry_exact(entry)?)
+                    });
+                }
+                Some(Self::Score(Score {
+                    instructions,
+                    criteria: levels,
+                }))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// An entry read without coercion: a bare number or boolean is not an entry
+/// (NIP-DEC, "EntryType"), so a question carrying one stays raw.
+fn entry_exact(value: &Value) -> Option<Entry> {
+    matches!(
+        value,
+        Value::String(_) | Value::Object(_) | Value::Array(_) | Value::Null
+    )
+    .then(|| Entry::from(value.clone()))
+}
+
+impl<'de> Deserialize<'de> for Question {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        Value::deserialize(deserializer).map(Self::from_value)
+    }
+}
+
 impl Serialize for Question {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         match self {
@@ -477,6 +599,30 @@ impl<K: Into<String>, Q: Into<Question>> FromIterator<(K, Q)> for Questions {
 impl Serialize for Questions {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Questions {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        IndexMap::<String, Question>::deserialize(deserializer).map(Self)
+    }
+}
+
+impl Questions {
+    /// The set as the JSON object a request body carries.
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+
+    /// Read a question set from a request body's `questions` object.
+    #[must_use]
+    pub fn from_map(map: Map<String, Value>) -> Self {
+        Self(
+            map.into_iter()
+                .map(|(id, question)| (id, Question::from_value(question)))
+                .collect(),
+        )
     }
 }
 
