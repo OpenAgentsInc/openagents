@@ -1,7 +1,7 @@
 # OpenAgents video archive: index, history, and themes
 
 This guide covers the committed transcript archive as of 2026-09-26:
-**287 numbered episode files covering every number from 001 through 287**, plus the unreleased [288 preparation session](288-prep.md) and the [288 draft script](288-draft.md).
+**287 numbered episode files covering every number from 001 through 287**, plus the unreleased [288 preparation session](288-prep.md), the [288 draft script](288-draft.md), and the supplemental [288.d recording transcript](288.d.md).
 The archive follows OpenAgents from document chat and its first coding agent
 to agent markets, operator workrooms, the Coder product suite, and measured
 System One coding-agent experiments.
@@ -27,7 +27,8 @@ The episode titles and video links for 001–287 follow the owner’s definitive
 catalog supplied on 2026-09-26. The session recorded as 288 was not released
 under that number: it is retained as [288-prep](288-prep.md), and 288 is now
 the **Test-Time Capabilities** episode, whose [draft script](288-draft.md) is
-unrecorded. The local files include transcripts, prepared remarks,
+unrecorded. The separate [288.d](288.d.md) is a short launch-preview recording;
+it does not replace either 288 record. The local files include transcripts, prepared remarks,
 and scripts, even when the catalog provides a published-video link. Most files
 identify a source URL or local media filename; some specify edits, offsets,
 transcription models, and coverage. A local `.mp4` name is provenance, not a
@@ -49,6 +50,7 @@ the recording or publication date.
 | [287](287.md) | A 02:35:36.90 build-and-measurement session. Results discussed during iteration must retain their configuration, task set, and measurement limits. |
 | [288-prep](288-prep.md) | The unreleased session first recorded as 288: explicitly incomplete, 02:08:28.40 across clips a–f, g2, h, i, and j. Its header lists coverage gaps and concatenation offsets. Retained as preparatory material. |
 | [288-draft](288-draft.md) | Draft script for **Test-Time Capabilities**, the episode that now carries number 288: a walk through the deck, the protocol, and the app rollout. A draft script is not a recording, and its numbers cite their records. |
+| [288.d](288.d.md) | Supplemental 02:58.57 launch-preview recording, cut from 03:22 of `recording-20260930-132914.mp4`; discusses OpenAI's developer marketplace, permissionless protocols, and the OpenAgents 1.0.0 announcement. It does not change the official 288 assignment. |
 
 The summaries use *plans*, *proposes*, *announces*, *demonstrates*, and
 *reports* deliberately. An announcement can establish historical intent;
