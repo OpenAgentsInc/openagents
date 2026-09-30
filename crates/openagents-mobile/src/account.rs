@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "34",
+        title: "More chat code shared with desktop",
+        what_to_test: "Nothing should look different. Your earlier chats should still be in your chat history and open with their messages. In a new chat, ask \"Who are you\" and a longer question: the replies should stream in, and the suggested questions above the field should not repeat once used. Ask for something that needs a computer: it should offer Connect a computer or Run Coder, not an error.",
+        items: &[Item {
+            title: "Chat shares more code with the desktop app",
+            detail: "The chat screen, your chat history, and the offers under replies now run on the same code as the OpenAgents desktop app. Nothing you see should change, and your earlier chats stay.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "33",
         title: "Shared chat code",
         what_to_test: "Nothing should look different. In a new chat, ask \"Who are you\" and \"How do I connect a phone\": both replies should stream in, and the second should describe scanning the QR code in OpenAgents for Mac. Then close the app fully and open it again: the chat should still be in your chat history.",
