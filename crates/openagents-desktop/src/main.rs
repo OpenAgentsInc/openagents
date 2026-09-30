@@ -39,6 +39,9 @@ Usage: openagents-desktop [options]
   --fake-host          show the screens against an in-process host
   --fake-scan SECONDS  with --fake-host, a phone scans the code after SECONDS
   --no-login-agent     don't register the login agent that runs Coder
+  --verse-relay URL    watch the Grid behind the window on URL (default
+                       $OPENAGENTS_VERSE_RELAY, else wss://relay.openagents.com)
+  --no-backdrop        a plain background, without the Grid
   --capture DIR        paint each screen, against the in-process host, to
                        PNG files in DIR
   --help               this text";
@@ -49,6 +52,8 @@ struct Options {
     fake_scan: Option<Duration>,
     no_login_agent: bool,
     capture: Option<PathBuf>,
+    verse_relay: Option<String>,
+    no_backdrop: bool,
     help: bool,
 }
 
@@ -66,6 +71,10 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
                 options.fake_scan = Some(Duration::from_secs(seconds));
             }
             "--no-login-agent" => options.no_login_agent = true,
+            "--verse-relay" => {
+                options.verse_relay = Some(args.next().ok_or("--verse-relay takes a URL")?)
+            }
+            "--no-backdrop" => options.no_backdrop = true,
             "--capture" => {
                 options.capture = Some(PathBuf::from(
                     args.next().ok_or("--capture takes a directory")?,
@@ -159,16 +168,43 @@ fn main() -> ExitCode {
             Context::new(control, None, None, coder, home()),
         )
     };
-    match rust_native_desktop::window::run(
-        DesktopApp::window(model, context),
-        rust_native_desktop::window::Options::default(),
-    ) {
+    let app = DesktopApp::window(model, context);
+    let window = rust_native_desktop::window::Options::default();
+    let result = match backdrop(&options) {
+        Some(backdrop) => rust_native_desktop::window::run_with_backdrop(app, window, backdrop),
+        None => rust_native_desktop::window::run(app, window),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(complaint) => {
             eprintln!("{complaint}");
             ExitCode::FAILURE
         }
     }
+}
+
+/// The Grid behind the window, watched on the chosen relay, unless the
+/// person asked for a plain background. Windows has none.
+#[cfg(not(windows))]
+fn backdrop(options: &Options) -> Option<Box<dyn rust_native_desktop::backdrop::Backdrop>> {
+    if options.no_backdrop {
+        return None;
+    }
+    let relay = options
+        .verse_relay
+        .clone()
+        .or_else(|| std::env::var("OPENAGENTS_VERSE_RELAY").ok())
+        .filter(|relay| !relay.is_empty())
+        .unwrap_or_else(|| verse::session::PUBLIC_RELAY.to_owned());
+    Some(Box::new(openagents_desktop::backdrop::GridBackdrop::new(
+        &relay,
+        Box::new(platform::reduce_motion),
+    )))
+}
+
+#[cfg(windows)]
+fn backdrop(_: &Options) -> Option<Box<dyn rust_native_desktop::backdrop::Backdrop>> {
+    None
 }
 
 /// Walks the screens against the in-process host and paints each to a PNG
@@ -246,14 +282,103 @@ mod tests {
     #[test]
     fn the_options_parse() {
         let options = parse(
-            ["--fake-host", "--fake-scan", "5", "--no-login-agent"]
-                .into_iter()
-                .map(String::from),
+            [
+                "--fake-host",
+                "--fake-scan",
+                "5",
+                "--no-login-agent",
+                "--verse-relay",
+                "ws://127.0.0.1:7447",
+                "--no-backdrop",
+            ]
+            .into_iter()
+            .map(String::from),
         )
         .expect("parses");
-        assert!(options.fake_host && options.no_login_agent);
+        assert!(options.fake_host && options.no_login_agent && options.no_backdrop);
+        assert_eq!(options.verse_relay.as_deref(), Some("ws://127.0.0.1:7447"));
         assert_eq!(options.fake_scan, Some(Duration::from_secs(5)));
         assert!(parse(["--bogus".to_string()].into_iter()).is_err());
+    }
+
+    /// Every QR code in an RGBA or RGB image, as a phone's scanner reads it.
+    fn scan(width: usize, height: usize, channels: usize, pixels: &[u8]) -> Vec<String> {
+        let mut image = rqrr::PreparedImage::prepare_from_greyscale(width, height, |x, y| {
+            let at = (y * width + x) * channels;
+            let [r, g, b] = [pixels[at], pixels[at + 1], pixels[at + 2]].map(u32::from);
+            ((r * 299 + g * 587 + b * 114) / 1000) as u8
+        });
+        image
+            .detect_grids()
+            .into_iter()
+            .filter_map(|grid| grid.decode().ok().map(|(_, text)| text))
+            .collect()
+    }
+
+    #[test]
+    fn the_code_scans_over_the_brightest_backdrop() {
+        use rust_native_desktop::backdrop::{Look, composite};
+        use rust_native_desktop::{Frame, Theme};
+        let fake = FakeHost::new("Studio Mac", shell::unix_now());
+        let context = Context::new(Box::new(fake.clone()), Some(fake), None, None, home());
+        let start = Instant::now();
+        let mut app = DesktopApp::inline(
+            Model::new(start, Screen::Connect, Agent::Enabled, None),
+            context,
+        );
+        app.tick(start);
+        let text = app.model().codes.shown().expect("a code").text.clone();
+        let (views, _) = rust_native_desktop::capture_views(&mut app, 560.0, 720.0, 2.0);
+        // Backdrops brighter and busier than the Grid ever is: all white,
+        // white grid lines on black at the code's own module pitch, and
+        // noise.
+        let (w, h) = (560, 720);
+        let white = Frame::new(w, h, rust_native::style::Color::rgb(255, 255, 255));
+        let mut lines = Frame::new(w, h, rust_native::style::Color::rgb(0, 0, 0));
+        let mut noise = Frame::new(w, h, rust_native::style::Color::rgb(0, 0, 0));
+        let mut seed = 0x9e37_79b9_u32;
+        for y in 0..h {
+            for x in 0..w {
+                let at = (y * w + x) * 4;
+                if x % 5 == 0 || y % 5 == 0 {
+                    lines.pixels[at..at + 3].copy_from_slice(&[255, 255, 255]);
+                }
+                seed ^= seed << 13;
+                seed ^= seed >> 17;
+                seed ^= seed << 5;
+                let value = (seed >> 24) as u8;
+                noise.pixels[at..at + 3].copy_from_slice(&[value, value, value]);
+            }
+        }
+        for backdrop in [&white, &lines, &noise] {
+            let frame = composite(
+                &views,
+                backdrop,
+                Theme::default().background,
+                Look::default().dim,
+            );
+            let found = scan(frame.width, frame.height, 4, &frame.pixels);
+            assert_eq!(found, std::slice::from_ref(&text));
+        }
+    }
+
+    #[test]
+    fn the_window_screenshot_with_the_grid_behind_it_scans() {
+        // The committed capture of the real window over the live Grid.
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/screenshots/dsk-01-connect.png"
+        );
+        let bytes = std::fs::read(path).expect("the screenshot");
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let mut reader = decoder.read_info().expect("a PNG");
+        let mut pixels = vec![0; reader.output_buffer_size().expect("a size")];
+        let info = reader.next_frame(&mut pixels).expect("a frame");
+        assert_eq!(info.bit_depth, png::BitDepth::Eight);
+        let channels = info.color_type.samples();
+        let found = scan(info.width as usize, info.height as usize, channels, &pixels);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].starts_with("openagents-connect:"), "{found:?}");
     }
 
     #[test]

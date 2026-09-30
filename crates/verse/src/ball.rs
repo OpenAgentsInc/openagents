@@ -67,6 +67,10 @@ pub const START: DVec3 = DVec3::new(
     crate::world::SPAWN.z as f64 + AHEAD,
 );
 
+/// Where the capsule waits when nobody plays here
+/// ([`Ball::advance_unoccupied`]): far below the ground box, clear of every
+/// body.
+const UNOCCUPIED: DVec3 = DVec3::new(0.0, -500.0, 0.0);
 /// The player's capsule: the controller's radius, 1.8 m tall.
 const PLAYER_HEIGHT: f64 = 1.8;
 /// The fastest the player body is carried, m/s; a larger step is a teleport.
@@ -303,6 +307,13 @@ impl Ball {
         self.shared.receive_snapshot(&mut self.world, from, state);
     }
 
+    /// Whether the ball and every block are asleep: nothing moves until
+    /// someone pushes one.
+    #[must_use]
+    pub fn at_rest(&self) -> bool {
+        !self.world.bodies().iter().any(Body::responds)
+    }
+
     /// Whether this client has body reports to send.
     #[must_use]
     pub fn has_outgoing(&self) -> bool {
@@ -376,6 +387,31 @@ impl Ball {
             body.prev_pos = end;
             body.vel = DVec3::ZERO;
         }
+        self.step(dt);
+        self.keep_out(player);
+        if self.pillar.touch(player, dt) {
+            self.press_reset();
+        }
+        self.step_time = started.elapsed();
+    }
+
+    /// Advances the ball and the blocks by `dt` seconds of frame time with
+    /// nobody in the world here: a spectator watching others play. The
+    /// player's capsule waits far under the ground, so it strikes nothing,
+    /// claims nothing, and never presses the reset.
+    pub fn advance_unoccupied(&mut self, dt: f32) {
+        let started = std::time::Instant::now();
+        let body = &mut self.world[self.player];
+        body.pos = UNOCCUPIED;
+        body.prev_pos = UNOCCUPIED;
+        body.vel = DVec3::ZERO;
+        self.step(f64::from(dt));
+        self.step_time = started.elapsed();
+    }
+
+    /// Runs the fixed steps `dt` seconds of frame time owe, and returns a
+    /// lost ball or block home.
+    fn step(&mut self, dt: f64) {
         self.steps = self.clock.advance(dt);
         self.shared.advance(dt);
         let gravity = Uniform(DVec3::new(0.0, -G, 0.0));
@@ -390,11 +426,6 @@ impl Ball {
             self.reset();
         }
         self.blocks.recover(&mut self.world);
-        self.keep_out(player);
-        if self.pillar.touch(player, dt) {
-            self.press_reset();
-        }
-        self.step_time = started.elapsed();
     }
 
     /// Puts the ball back at rest where it started.

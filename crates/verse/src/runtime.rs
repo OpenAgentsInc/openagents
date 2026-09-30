@@ -109,6 +109,10 @@ pub struct WorldRuntime {
     /// The bare world: the plaza grid alone, with no objects, companion,
     /// portals, or interactions, drawn in the neutral palette.
     bare: bool,
+    /// The bare world watched from above with nobody playing here
+    /// ([`Self::unoccupied`]): no local avatar is drawn and the player never
+    /// moves or touches a body.
+    unoccupied: bool,
     /// The bare world's ball, which the player pushes.
     pub(crate) ball: Option<Box<crate::ball::Ball>>,
     /// Other players' avatars where they are drawn, feet positions. The
@@ -143,6 +147,7 @@ impl WorldRuntime {
             zone_state: crate::zones::State::default(),
             navigation: Navigation::default(),
             bare: false,
+            unoccupied: false,
             ball: None,
             avatars: Vec::new(),
             trace_ghost: None,
@@ -163,9 +168,44 @@ impl WorldRuntime {
         }
     }
 
+    /// The bare world with nobody playing in it here: a spectator's view of
+    /// the Grid. Other players, the ball, the blocks, and the Gym are drawn,
+    /// but no local avatar; advance it with [`Self::tick_unoccupied`], never
+    /// with player input.
+    #[must_use]
+    pub fn unoccupied() -> Self {
+        Self {
+            unoccupied: true,
+            ..Self::bare()
+        }
+    }
+
     #[must_use]
     pub fn is_bare(&self) -> bool {
         self.bare
+    }
+
+    /// Whether nobody plays in this world here ([`Self::unoccupied`]).
+    #[must_use]
+    pub fn is_unoccupied(&self) -> bool {
+        self.unoccupied
+    }
+
+    /// Advances the shared ball and blocks by `dt` seconds with nobody
+    /// playing here: no player moves, walks through a portal, or touches a
+    /// body. Returns the applied dt.
+    pub fn tick_unoccupied(&mut self, dt: f32) -> f32 {
+        let dt = if dt.is_finite() {
+            dt.clamp(0.0, MAX_FRAME_SECONDS)
+        } else {
+            0.0
+        };
+        if dt > 0.0
+            && let Some(ball) = &mut self.ball
+        {
+            ball.advance_unoccupied(dt);
+        }
+        dt
     }
 
     /// The bare world's ball; other worlds have none.
@@ -954,8 +994,8 @@ impl WorldRuntime {
             // The player, the ball and blocks, and the portal to Lagrange 1
             // (hidden for now; see `zones::gate::GRID_PORTAL_OPEN`), on the
             // neutral stage; in first person the camera is inside the
-            // avatar, which is hidden.
-            let mut player = if self.first_person() {
+            // avatar, which is hidden, and an unoccupied world has none.
+            let mut player = if self.first_person() || self.unoccupied {
                 Mesh::default()
             } else {
                 avatar::mesh(&self.player, &self.gait)

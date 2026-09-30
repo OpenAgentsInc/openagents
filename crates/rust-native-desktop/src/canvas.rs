@@ -14,7 +14,10 @@ pub struct PxRect {
     pub h: f32,
 }
 
-/// An RGBA frame, eight bits a channel, rows top to bottom, opaque.
+/// An RGBA frame, eight bits a channel, rows top to bottom. A frame made
+/// with [`Frame::new`] is opaque; one made with [`Frame::transparent`]
+/// starts clear, and its channels are premultiplied by alpha, so a window
+/// can lay it over a backdrop.
 #[derive(Clone, Debug)]
 pub struct Frame {
     pub width: usize,
@@ -36,6 +39,15 @@ impl Frame {
         }
     }
 
+    /// A clear frame: every pixel transparent black.
+    pub fn transparent(width: usize, height: usize) -> Frame {
+        Frame {
+            width,
+            height,
+            pixels: vec![0; width * height * 4],
+        }
+    }
+
     /// The color at `x`, `y`.
     pub fn pixel(&self, x: usize, y: usize) -> [u8; 3] {
         let at = (y * self.width + x) * 4;
@@ -43,7 +55,9 @@ impl Frame {
     }
 
     /// Blends `color` over the pixel at `x`, `y` with `coverage` from 0 to 1,
-    /// times the color's own alpha.
+    /// times the color's own alpha. The alpha channel composes the same way,
+    /// so an opaque frame stays opaque and a clear one gathers premultiplied
+    /// color.
     pub fn blend(&mut self, x: i64, y: i64, color: Color, coverage: f32) {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return;
@@ -57,6 +71,8 @@ impl Frame {
             let under = u32::from(self.pixels[at + channel]);
             self.pixels[at + channel] = ((u32::from(value) * a + under * (256 - a)) >> 8) as u8;
         }
+        let under = u32::from(self.pixels[at + 3]);
+        self.pixels[at + 3] = ((255 * a + under * (256 - a)) >> 8) as u8;
     }
 
     /// Fills a rectangle with corners of `radius` pixels.
@@ -165,6 +181,40 @@ mod tests {
         assert_eq!(frame.pixel(0, 0), [0, 0, 0]);
         // The corner pixel is outside the rounded corner.
         assert_eq!(frame.pixel(2, 2), [0, 0, 0]);
+    }
+
+    #[test]
+    fn an_opaque_frame_stays_opaque_and_a_clear_one_gathers_alpha() {
+        let rect = PxRect {
+            x: 0.0,
+            y: 0.0,
+            w: 4.0,
+            h: 4.0,
+        };
+        let mut opaque = Frame::new(4, 4, Color::rgb(0, 0, 0));
+        opaque.fill(
+            rect,
+            0.0,
+            Color {
+                alpha: 128,
+                ..Color::rgb(255, 255, 255)
+            },
+        );
+        assert!(opaque.pixels.chunks(4).all(|p| p[3] == 255));
+        let mut clear = Frame::transparent(4, 4);
+        clear.fill(rect, 0.0, Color::rgb(255, 255, 255));
+        assert!(clear.pixels.chunks(4).all(|p| p == [255, 255, 255, 255]));
+        let mut half = Frame::transparent(4, 4);
+        half.fill(
+            rect,
+            0.0,
+            Color {
+                alpha: 128,
+                ..Color::rgb(200, 100, 0)
+            },
+        );
+        // Premultiplied: color and alpha both halved.
+        assert_eq!(&half.pixels[..4], &[100, 50, 0, 127]);
     }
 
     #[test]

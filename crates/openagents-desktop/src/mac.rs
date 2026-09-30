@@ -151,6 +151,18 @@ pub fn screen_locked() -> bool {
     false
 }
 
+/// Whether "Reduce motion" is on (Accessibility, Display): the backdrop
+/// then shows a still frame.
+#[cfg(target_os = "macos")]
+pub fn reduce_motion() -> bool {
+    objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn reduce_motion() -> bool {
+    false
+}
+
 /// Puts `text` on the clipboard.
 pub fn copy(text: &str) -> bool {
     let Ok(mut child) = Command::new("pbcopy").stdin(Stdio::piped()).spawn() else {

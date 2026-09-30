@@ -157,7 +157,7 @@ impl Budget {
 
 /// A shared-body report waiting for the world.
 #[derive(Clone, Debug)]
-enum BodyIn {
+pub(crate) enum BodyIn {
     Entry {
         from: String,
         pose: EntityPose,
@@ -180,6 +180,52 @@ struct Scan {
     started: Instant,
     from: Vec3,
     done: bool,
+}
+
+/// Moves shared-body reports out of `received` into `inbox`, at most
+/// [`MAX_BODY_INBOX`] held, and returns what remains for the crowd: body
+/// reports never reach the crowd of drawn players.
+pub(crate) fn split_bodies(received: Received, inbox: &mut Vec<BodyIn>) -> Option<Received> {
+    let room = |inbox: &Vec<BodyIn>| inbox.len() < MAX_BODY_INBOX;
+    match received {
+        Received::Frame { pubkey, mut frame } => {
+            let (bodies, rest): (Vec<EntityPose>, Vec<EntityPose>) = frame
+                .e
+                .into_iter()
+                .partition(|pose| pose.role == mv::BODY_ROLE);
+            for pose in bodies {
+                if room(inbox) {
+                    inbox.push(BodyIn::Entry {
+                        from: pubkey.clone(),
+                        pose,
+                        t: frame.t,
+                    });
+                }
+            }
+            frame.e = rest;
+            (!frame.e.is_empty()).then_some(Received::Frame { pubkey, frame })
+        }
+        Received::State { pubkey, state } if state.role == mv::BODIES_ROLE => {
+            if room(inbox) {
+                inbox.push(BodyIn::Snapshot {
+                    from: pubkey,
+                    state,
+                });
+            }
+            None
+        }
+        other => Some(other),
+    }
+}
+
+/// Applies the reports that arrived to the shared `bodies`, oldest first.
+pub(crate) fn apply_bodies(arrived: Vec<BodyIn>, bodies: &mut crate::ball::Ball) {
+    for report in arrived {
+        match report {
+            BodyIn::Entry { from, pose, t } => bodies.receive(&from, &pose, t),
+            BodyIn::Snapshot { from, state } => bodies.receive_snapshot(&from, &state),
+        }
+    }
 }
 
 /// A running session.
@@ -591,12 +637,7 @@ impl Session {
         let arrived = std::mem::take(&mut self.bodies_in);
         if let Some(bodies) = bodies.as_deref_mut() {
             bodies.join(self.id.signer.pubkey());
-            for report in arrived {
-                match report {
-                    BodyIn::Entry { from, pose, t } => bodies.receive(&from, &pose, t),
-                    BodyIn::Snapshot { from, state } => bodies.receive_snapshot(&from, &state),
-                }
-            }
+            apply_bodies(arrived, bodies);
         }
         self.crowd.prune(now);
         self.my_pos = player.pos;
@@ -1073,36 +1114,7 @@ impl Session {
     /// Moves shared-body reports out of `received` into the body inbox, and
     /// returns what remains for the crowd.
     fn take_bodies(&mut self, received: Received) -> Option<Received> {
-        let room = |inbox: &Vec<BodyIn>| inbox.len() < MAX_BODY_INBOX;
-        match received {
-            Received::Frame { pubkey, mut frame } => {
-                let (bodies, rest): (Vec<EntityPose>, Vec<EntityPose>) = frame
-                    .e
-                    .into_iter()
-                    .partition(|pose| pose.role == mv::BODY_ROLE);
-                for pose in bodies {
-                    if room(&self.bodies_in) {
-                        self.bodies_in.push(BodyIn::Entry {
-                            from: pubkey.clone(),
-                            pose,
-                            t: frame.t,
-                        });
-                    }
-                }
-                frame.e = rest;
-                (!frame.e.is_empty()).then_some(Received::Frame { pubkey, frame })
-            }
-            Received::State { pubkey, state } if state.role == mv::BODIES_ROLE => {
-                if room(&self.bodies_in) {
-                    self.bodies_in.push(BodyIn::Snapshot {
-                        from: pubkey,
-                        state,
-                    });
-                }
-                None
-            }
-            other => Some(other),
-        }
+        split_bodies(received, &mut self.bodies_in)
     }
 
     fn update_world_status(&mut self) {

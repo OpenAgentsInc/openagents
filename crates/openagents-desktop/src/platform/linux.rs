@@ -326,6 +326,18 @@ pub fn screen_locked() -> bool {
         .is_ok_and(|output| output.status.success() && output.stdout.trim_ascii() == b"yes")
 }
 
+/// Whether the desktop asks for less motion: GNOME's animations turned off
+/// (`org.gnome.desktop.interface enable-animations`). The backdrop then
+/// shows a still frame. `false` when there is no setting to ask.
+pub fn reduce_motion() -> bool {
+    Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "enable-animations"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .is_ok_and(|output| output.status.success() && output.stdout.trim_ascii() == b"false")
+}
+
 /// Which clipboard tool this session uses: `wl-copy` on Wayland, `xclip`
 /// on X11.
 fn clipboard(wayland: bool, copy: bool) -> (&'static str, &'static [&'static str]) {

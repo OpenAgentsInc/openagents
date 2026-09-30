@@ -11,6 +11,8 @@
 //!   painted.
 //! - [`paint`] draws the laid-out scene into an RGBA [`Frame`] in software:
 //!   antialiased rounded rectangles and glyphs rasterized with `swash`.
+//! - [`backdrop`] (with `window`) draws an application's live picture with
+//!   the window's own device behind the views, which keep full contrast.
 //! - [`window`] (the default `window` feature) shows those frames in a
 //!   `winit` window over a `wgpu` surface, turns pointer and keyboard input
 //!   into revision-bound [`rust_native::Activation`]s, and resolves each one
@@ -24,6 +26,8 @@
 //! source beyond the frame timing a window needs. The application decides
 //! what an intent means and checks its own authority first.
 
+#[cfg(feature = "window")]
+pub mod backdrop;
 pub mod canvas;
 pub mod layout;
 pub mod paint;
@@ -35,6 +39,9 @@ pub mod window;
 pub use canvas::{Frame, PxRect};
 pub use layout::{Rect, Scene};
 pub use theme::Theme;
+/// The `wgpu` the window and a [`backdrop::Backdrop`] draw with.
+#[cfg(feature = "window")]
+pub use wgpu;
 
 use rust_native::ValidatedView;
 use serde::Serialize;
@@ -137,6 +144,25 @@ pub trait App {
 /// `height` points at `scale` pixels a point, as the window would show it
 /// with nothing hovered or focused. Tests and `--capture` use it.
 pub fn capture<A: App>(app: &mut A, width: f32, height: f32, scale: f32) -> (Frame, Scene) {
+    let background = app.theme().background;
+    capture_into(app, width, height, scale, |w, h| {
+        Frame::new(w, h, background)
+    })
+}
+
+/// As [`capture`], into a clear, premultiplied frame: the views alone, as a
+/// window with a backdrop lays them over it.
+pub fn capture_views<A: App>(app: &mut A, width: f32, height: f32, scale: f32) -> (Frame, Scene) {
+    capture_into(app, width, height, scale, Frame::transparent)
+}
+
+fn capture_into<A: App>(
+    app: &mut A,
+    width: f32,
+    height: f32,
+    scale: f32,
+    frame: impl FnOnce(usize, usize) -> Frame,
+) -> (Frame, Scene) {
     let theme = app.theme();
     let mut fonts = text::Fonts::new();
     let scene = layout::lay_out_window(
@@ -148,10 +174,9 @@ pub fn capture<A: App>(app: &mut A, width: f32, height: f32, scale: f32) -> (Fra
         width,
         height,
     );
-    let mut frame = Frame::new(
+    let mut frame = frame(
         (width * scale).round() as usize,
         (height * scale).round() as usize,
-        theme.background,
     );
     paint::paint(
         &scene,

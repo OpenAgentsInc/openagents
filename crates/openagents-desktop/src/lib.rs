@@ -22,6 +22,8 @@
 //!
 //! The modules, in the order a reader meets them:
 //!
+//! - `backdrop`: the Grid, watched live behind the window (the `app`
+//!   feature; not on Windows).
 //! - [`control`]: the control protocol client and the [`control::HostControl`] seam.
 //! - [`codes`]: when a code shows, rotates, and is cancelled.
 //! - [`model`]: the window's state, clicks, and requests.
@@ -32,6 +34,8 @@
 //! - [`migrate`]: adopting an old-style setup through `coder host adopt`.
 //! - `update`: the signed-manifest updater (the `app` feature).
 
+#[cfg(all(feature = "app", not(windows)))]
+pub mod backdrop;
 pub mod codes;
 pub mod control;
 pub mod fake;

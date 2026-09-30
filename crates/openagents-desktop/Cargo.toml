@@ -23,6 +23,7 @@ app = [
     "dep:reqwest",
     "dep:ring",
     "dep:semver",
+    "dep:verse",
 ]
 
 [dependencies]
@@ -44,16 +45,24 @@ semver = { version = "1", optional = true }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Registry", "Win32_System_StationsAndDesktops", "Win32_System_Threading"] }
 
+# The backdrop: the Grid, watched live (`src/backdrop.rs`). Verse does not
+# build for Windows, where the window keeps its plain background.
+[target.'cfg(not(windows))'.dependencies]
+verse = { path = "../verse", default-features = false, optional = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "0.9.4", optional = true }
 objc2 = { version = "0.6.4", optional = true }
 objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSString", "NSError"] }
 # The menu-bar item (`menubar`).
-objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2-core-foundation", "NSApplication", "NSButton", "NSCell", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2-core-foundation", "NSApplication", "NSButton", "NSCell", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "NSWorkspace", "NSAccessibility"] }
 objc2-service-management = { version = "0.3.2", optional = true, default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 
 [dev-dependencies]
 tempfile = "3"
+# Reading the QR code back from painted frames and window captures.
+png = "0.18.1"
+rqrr = { version = "0.11", default-features = false }
 
 [lints]
 workspace = true

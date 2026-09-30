@@ -704,6 +704,108 @@ impl Renderer {
     }
 }
 
+/// The same scene drawn into a texture a host owns, on the host's own
+/// device: a window that composites the world under its own interface (the
+/// desktop app's backdrop) keeps one device and one surface. The host
+/// submits the encoder and presents.
+pub struct Layer {
+    scene: Scene,
+    targets: Targets,
+    format: wgpu::TextureFormat,
+    size: (u32, u32),
+}
+
+impl Layer {
+    /// A layer drawing `world` into `format` textures `width` by `height`
+    /// pixels, with `samples` (1 or 4) where the format supports them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the extent is out of bounds or the device's
+    /// limits cannot run the scene.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        adapter: &wgpu::Adapter,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        (width, height): (u32, u32),
+        world: &Mesh,
+        atlas: &Atlas,
+        atmosphere: crate::zones::Atmosphere,
+        samples: u32,
+    ) -> Result<Self, String> {
+        let limit = device.limits().max_texture_dimension_2d.min(8192);
+        validate_extent(width, height, limit)?;
+        scene_limits(device.limits())?;
+        let mut scene = Scene::new(device, queue, adapter, format, world, atlas, samples);
+        scene.atmosphere = atmosphere.validate()?;
+        let targets = Targets::new(device, format, width, height, scene.samples);
+        Ok(Self {
+            scene,
+            targets,
+            format,
+            size: (width, height),
+        })
+    }
+
+    /// The size the layer draws at, in pixels.
+    #[must_use]
+    pub fn size(&self) -> (u32, u32) {
+        self.size
+    }
+
+    /// Draws at a new size from the next frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the extent is out of bounds.
+    pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) -> Result<(), String> {
+        if (width, height) == self.size {
+            return Ok(());
+        }
+        validate_extent(
+            width,
+            height,
+            device.limits().max_texture_dimension_2d.min(8192),
+        )?;
+        self.targets = Targets::new(device, self.format, width, height, self.scene.samples);
+        self.size = (width, height);
+        Ok(())
+    }
+
+    /// Records one frame into `output`, a view of a texture in the layer's
+    /// format and size.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the frame exceeds the renderer's bounds.
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::TextureView,
+        view: View,
+        dynamic: &Mesh,
+        ui: &UiBatch,
+    ) -> Result<(), String> {
+        validate_frame(view, dynamic, ui)?;
+        self.scene.encode(
+            device,
+            queue,
+            encoder,
+            output,
+            &mut self.targets,
+            view,
+            dynamic,
+            ui,
+        );
+        Ok(())
+    }
+}
+
 /// Which graphics APIs an Android surface tries, in order.
 #[cfg(target_os = "android")]
 mod android {

@@ -88,6 +88,15 @@ desktop retains keys 1, 2, and 3. See [zone loading and architecture](zones.md),
 [future creator rules](zone-rules.md), and
 [mobile controls](mobile.md#enter-a-zone).
 
+## Watching from the desktop app
+
+The OpenAgents desktop app shows the Grid live behind its windows: a
+bird's-eye view of the OpenAgents app's world with its players walking.
+It is a spectator (`verse::spectator`): it subscribes to `verse-bare`
+presence and publishes nothing, so it has no avatar and is never shown or
+counted as a player. See the
+[desktop app](../../crates/openagents-desktop/README.md#the-backdrop).
+
 ## Multiplayer
 
 Verse speaks [NIP-MV](../../nips/openagents/NIP-MV.md), a standalone NIP

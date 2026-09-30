@@ -7,11 +7,18 @@
 //! time the application's [`App::tick`] asked for, or until a [`Waker`]
 //! wakes it.
 //!
+//! With a [`Backdrop`] ([`run_with_backdrop`]), the views are painted into a
+//! clear frame only when they change, and each frame the window draws the
+//! backdrop with the same device and lays the views over it in one pass
+//! (`backdrop.rs`). Frames come as the backdrop asks for them, never while
+//! the window is hidden.
+//!
 //! Input becomes a revision-bound [`Activation`] naming the view's instance,
 //! revision, and the button's key; the adapter resolves it against the
 //! current view with [`rust_native::ValidatedView::activate`] and hands the
 //! application only the intent that view carried.
 
+use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
 use crate::canvas::Frame;
 use crate::layout::{Interaction, Scene, lay_out_window};
 use crate::text::Fonts;
@@ -26,6 +33,9 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, Window, WindowId};
 
+/// How long a backdrop waits after the surface skipped a frame.
+const SKIPPED_FRAME_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+
 /// How the window opens.
 #[derive(Clone, Debug)]
 pub struct Options {
@@ -33,6 +43,8 @@ pub struct Options {
     pub size: (f64, f64),
     /// The smallest the window may be, in points.
     pub min_size: (f64, f64),
+    /// How a backdrop sits under the views, when there is one.
+    pub look: Look,
 }
 
 impl Default for Options {
@@ -40,6 +52,7 @@ impl Default for Options {
         Options {
             size: (560.0, 720.0),
             min_size: (420.0, 520.0),
+            look: Look::default(),
         }
     }
 }
@@ -47,6 +60,23 @@ impl Default for Options {
 /// Opens a window on `app` and runs until it closes or the application asks
 /// to exit.
 pub fn run<A: App>(app: A, options: Options) -> Result<(), String> {
+    run_shell(app, options, None)
+}
+
+/// As [`run`], with `backdrop` drawn behind the views.
+pub fn run_with_backdrop<A: App>(
+    app: A,
+    options: Options,
+    backdrop: Box<dyn Backdrop>,
+) -> Result<(), String> {
+    run_shell(app, options, Some(backdrop))
+}
+
+fn run_shell<A: App>(
+    app: A,
+    options: Options,
+    backdrop: Option<Box<dyn Backdrop>>,
+) -> Result<(), String> {
     let event_loop = EventLoop::<()>::with_user_event()
         .build()
         .map_err(|error| format!("no event loop: {error}"))?;
@@ -68,6 +98,10 @@ pub fn run<A: App>(app: A, options: Options) -> Result<(), String> {
         visible: true,
         wake: None,
         error: None,
+        backdrop,
+        compositor: None,
+        painted: false,
+        hold: None,
     };
     event_loop
         .run_app(&mut shell)
@@ -81,10 +115,14 @@ pub fn run<A: App>(app: A, options: Options) -> Result<(), String> {
 /// The surface and the device that copies frames into it.
 struct Gpu {
     surface: wgpu::Surface<'static>,
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     bgra: bool,
+    /// The format a render pass writes: the surface's, without sRGB
+    /// encoding, since frames are already encoded.
+    encoded: wgpu::TextureFormat,
 }
 
 /// What a scene was laid out for.
@@ -113,6 +151,13 @@ struct Shell<A: App> {
     visible: bool,
     wake: Option<Instant>,
     error: Option<String>,
+    /// The picture behind the views, if any.
+    backdrop: Option<Box<dyn Backdrop>>,
+    compositor: Option<Compositor>,
+    /// Whether the views' texture holds the current views.
+    painted: bool,
+    /// No backdrop frame before this: the surface skipped the last one.
+    hold: Option<Instant>,
 }
 
 impl<A: App> Shell<A> {
@@ -132,7 +177,14 @@ impl<A: App> Shell<A> {
         })
     }
 
-    fn redraw(&self) {
+    /// Paints the views again on the next frame.
+    fn redraw(&mut self) {
+        self.painted = false;
+        self.request_frame();
+    }
+
+    /// Asks for a frame, with the views as they are.
+    fn request_frame(&self) {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
@@ -275,12 +327,129 @@ impl<A: App> Shell<A> {
     fn set_visible(&mut self, visible: bool) {
         if visible != self.visible {
             self.visible = visible;
-            self.app.shown(visible, Instant::now());
+            let now = Instant::now();
+            self.app.shown(visible, now);
+            if let Some(backdrop) = &mut self.backdrop {
+                backdrop.shown(visible, now);
+            }
             self.tick();
         }
     }
 
+    /// When the backdrop next wants a frame, while the window shows.
+    fn backdrop_due(&mut self, now: Instant) -> Option<Instant> {
+        // Asked even while hidden, so the backdrop can keep its own
+        // housekeeping; a hidden window draws nothing.
+        let due = self.backdrop.as_mut()?.next_frame(now)?;
+        if !self.visible {
+            return None;
+        }
+        Some(self.hold.map_or(due, |hold| hold.max(due)))
+    }
+
+    /// Drops a backdrop that failed, leaving the plain window.
+    fn drop_backdrop(&mut self, error: &str) {
+        eprintln!("the backdrop stopped: {error}");
+        self.backdrop = None;
+        self.compositor = None;
+        self.redraw();
+    }
+
+    /// Draws the backdrop and lays the views over it.
+    fn render_layers(&mut self) -> Result<(), String> {
+        let Some((width, height)) = self
+            .gpu
+            .as_ref()
+            .map(|gpu| (gpu.config.width, gpu.config.height))
+        else {
+            return Ok(());
+        };
+        let look = self.options.look;
+        let theme = self.app.theme();
+        {
+            let gpu = self.gpu.as_ref().expect("the gpu");
+            let compositor = self.compositor.as_mut().expect("a compositor");
+            if compositor.fit(&gpu.device, width, height, look) {
+                self.painted = false;
+            }
+        }
+        if !self.painted {
+            let scale = self.scale();
+            let scroll = self.scroll;
+            self.scene();
+            let scene = self.scene.take().expect("a scene");
+            let mut frame = Frame::transparent(width as usize, height as usize);
+            let app = &mut self.app;
+            paint::paint(
+                &scene,
+                &mut frame,
+                scale,
+                scroll,
+                &mut self.fonts,
+                &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
+            );
+            self.scene = Some(scene);
+            let gpu = self.gpu.as_ref().expect("the gpu");
+            self.compositor
+                .as_ref()
+                .expect("a compositor")
+                .upload(&gpu.queue, &frame);
+            self.painted = true;
+        }
+        let gpu = self.gpu.as_ref().expect("the gpu");
+        let texture = match gpu.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                gpu.surface.configure(&gpu.device, &gpu.config);
+                self.request_frame();
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => {
+                // Try again a little later, not in a loop.
+                self.hold = Some(Instant::now() + SKIPPED_FRAME_WAIT);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err("the surface failed validation".to_string());
+            }
+        };
+        let output = texture.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(gpu.encoded),
+            ..Default::default()
+        });
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("rust-native-desktop frame"),
+            });
+        let compositor = self.compositor.as_ref().expect("a compositor");
+        let mut failed = None;
+        if let (Some(backdrop), Some((target, size))) = (&mut self.backdrop, compositor.target()) {
+            let context = BackdropGpu {
+                adapter: &gpu.adapter,
+                device: &gpu.device,
+                queue: &gpu.queue,
+            };
+            if let Err(error) = backdrop.draw(&context, &mut encoder, target, size, Instant::now())
+            {
+                failed = Some(error);
+            }
+        }
+        compositor.encode(&gpu.queue, &mut encoder, &output, theme.background, look);
+        gpu.queue.submit([encoder.finish()]);
+        texture.present();
+        self.hold = None;
+        if let Some(error) = failed {
+            self.drop_backdrop(&error);
+        }
+        Ok(())
+    }
+
     fn render(&mut self) -> Result<(), String> {
+        if self.compositor.is_some() {
+            return self.render_layers();
+        }
         let Some((width, height)) = self
             .gpu
             .as_ref()
@@ -403,15 +572,21 @@ fn gpu(window: Arc<Window>) -> Result<Gpu, String> {
         } else {
             wgpu::CompositeAlphaMode::Auto
         },
-        view_formats: vec![],
+        view_formats: if format.is_srgb() {
+            vec![format.remove_srgb_suffix()]
+        } else {
+            vec![]
+        },
     };
     surface.configure(&device, &config);
     Ok(Gpu {
         surface,
+        adapter,
         device,
         queue,
         config,
         bgra: matches!(format, F::Bgra8Unorm | F::Bgra8UnormSrgb),
+        encoded: format.remove_srgb_suffix(),
     })
 }
 
@@ -421,9 +596,13 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             return;
         }
         if let Some(proxy) = self.proxy.take() {
-            self.app.start(Waker::new(move || {
+            let waker = Waker::new(move || {
                 let _ = proxy.send_event(());
-            }));
+            });
+            self.app.start(waker.clone());
+            if let Some(backdrop) = &mut self.backdrop {
+                backdrop.start(waker);
+            }
         }
         let attributes = Window::default_attributes()
             .with_title(self.app.title())
@@ -441,7 +620,12 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             }
         };
         match gpu(window.clone()) {
-            Ok(gpu) => self.gpu = Some(gpu),
+            Ok(gpu) => {
+                if self.backdrop.is_some() {
+                    self.compositor = Some(Compositor::new(&gpu.device, gpu.encoded));
+                }
+                self.gpu = Some(gpu);
+            }
             Err(error) => {
                 self.error = Some(error);
                 event_loop.exit();
@@ -450,6 +634,9 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
         }
         self.window = Some(window.clone());
         self.app.shown(true, Instant::now());
+        if let Some(backdrop) = &mut self.backdrop {
+            backdrop.shown(true, Instant::now());
+        }
         self.tick();
         window.focus_window();
         window.request_redraw();
@@ -457,6 +644,9 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
 
     fn user_event(&mut self, _: &ActiveEventLoop, (): ()) {
         self.tick();
+        if self.backdrop_due(Instant::now()).is_some() {
+            self.request_frame();
+        }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
@@ -464,10 +654,19 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             event_loop.exit();
             return;
         }
-        if self.wake.is_some_and(|wake| wake <= Instant::now()) {
+        let now = Instant::now();
+        if self.wake.is_some_and(|wake| wake <= now) {
             self.tick();
         }
-        event_loop.set_control_flow(match self.wake {
+        let frame = self.backdrop_due(now);
+        if frame.is_some_and(|frame| frame <= now) {
+            self.request_frame();
+        }
+        let wake = match (self.wake, frame.filter(|frame| *frame > now)) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        event_loop.set_control_flow(match wake {
             Some(wake) => ControlFlow::WaitUntil(wake),
             None => ControlFlow::Wait,
         });

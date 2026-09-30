@@ -637,6 +637,13 @@ Typical filters:
 
 A client SHOULD resubscribe with new `#c` values as it crosses cells.
 
+A spectator watches a world without joining it: it holds the first two
+filters above and publishes nothing, no frame, state, gesture, or profile,
+so no participant sees or counts it. If the relay asks for NIP-42
+authentication, a spectator SHOULD answer with a fresh key it keeps for that
+connection only, so its reads link to no participant. The OpenAgents desktop
+app's backdrop is such a spectator of `verse-bare`.
+
 ## Relay behavior
 
 - Relays forward `23300` and `23301` and do not store them, per NIP-01.

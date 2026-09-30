@@ -25,5 +25,9 @@ pollster = { version = "0.4", optional = true }
 wgpu = { version = "29.0.4", optional = true }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 
+[dev-dependencies]
+# Parses and validates the backdrop's shader with the naga release wgpu uses.
+naga = { version = "29.0.4", features = ["wgsl-in"] }
+
 [lints]
 workspace = true

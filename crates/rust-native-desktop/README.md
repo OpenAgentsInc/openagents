@@ -23,6 +23,15 @@ dependency the workspace did not already have.
   Tab/Enter/Space into a revision-bound `Activation` it resolves against
   the current view before the application sees an intent.
 
+- **Backdrop** ([`src/backdrop.rs`](src/backdrop.rs), with `window`) is
+  an optional live picture an application draws with the window's own
+  `wgpu` device (`window::run_with_backdrop`). The views are then painted
+  into a clear frame only when they change; each frame the backdrop is
+  drawn at half size, blurred, dimmed under the window's background
+  (`Look`), and the views are laid over it in one pass, so every view
+  keeps its full contrast. The backdrop sets its own frame rate and gets
+  no frames while the window is hidden.
+
 ## What it draws
 
 | Element or property | Desktop |

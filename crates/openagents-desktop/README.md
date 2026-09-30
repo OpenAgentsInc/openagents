@@ -27,6 +27,41 @@ the same program that reads them and macOS never asks to allow it.
 When a code shows, rotates, and is cancelled is [`src/codes.rs`](src/codes.rs);
 `INVARIANTS.md` (Linking devices) states the rules.
 
+## The backdrop
+
+Behind every screen is the Grid, the OpenAgents app's Verse world, seen live
+from above ([#9982](https://github.com/OpenAgentsInc/openagents/issues/9982),
+[`src/backdrop.rs`](src/backdrop.rs)). Other players walk around the plaza,
+the ball, the blocks, and the Gym as the phones draw them, and the camera
+sways slowly over it. With nobody there the Grid is empty; nothing is
+invented.
+
+- **A spectator, never a player.** `verse::spectator` subscribes to the
+  Grid's pose frames and entity states (`verse-bare` on
+  `wss://relay.openagents.com`) and has no way to publish: no avatar, no
+  presence, no input to the world, no chat, no name. If the relay asks for
+  authentication it answers with a fresh key kept in memory for that one
+  connection. Nobody sees the desktop or counts it.
+- **Behind the views.** The world is drawn by the Verse renderer on the
+  window's own `wgpu` device, at half the window's pixels, then blurred a
+  little and covered by the window's black at 55 percent
+  (`rust_native_desktop::backdrop`). The views are painted over it
+  unchanged, so the QR code's white square and every word keep full
+  contrast. Tests read the code back from a frame over an all-white,
+  a finely lined, and a noisy backdrop, and from the committed window
+  capture.
+- **Cost.** 30 frames a second while someone is in the Grid or the ball or
+  a block moves, 10 while it is empty and settled, none while the window is
+  hidden or minimized; after 20 seconds hidden the relay connection closes.
+  With **Reduce motion** on, the camera stops and one still frame is drawn
+  each time the window shows. Measured on an Apple M5 Max, release
+  build, window at its default size, CPU of one core over 30 seconds: 7.2%
+  with three players walking, 3.0% with the Grid empty, 0.03% minimized,
+  and 0.03% for the window without a backdrop.
+- **Choosing.** `--verse-relay URL` (or `OPENAGENTS_VERSE_RELAY`) watches
+  another relay; `--no-backdrop` shows the plain black window. Windows has
+  no backdrop yet: Verse does not build there.
+
 ## Run it
 
 ```sh
@@ -36,8 +71,17 @@ cargo run -p openagents-desktop -- --fake-host --fake-scan 8
 # The window against this Mac's host (its control socket).
 cargo run -p openagents-desktop -- --no-login-agent
 
-# Every screen as PNG files.
+# Every screen as PNG files (without the backdrop).
 cargo run -p openagents-desktop -- --capture /tmp/openagents-desktop
+
+# The backdrop with simulated players: an in-process relay and three
+# walkers, then the window watching that relay.
+cargo run -p verse --no-default-features --example grid_walkers -- 3
+cargo run -p openagents-desktop -- --fake-host --verse-relay ws://127.0.0.1:PORT
+
+# The backdrop alone, as a PNG, watching a relay for ten seconds.
+cargo run -p verse --no-default-features --features capture \
+  --example overlook_capture -- /tmp/grid.png 0 wss://relay.openagents.com 10
 ```
 
 ### The macOS app
@@ -69,11 +113,14 @@ git diff crates/openagents-desktop/snapshots
 
 ## Screenshots
 
-The bundled app's window, captured with `screencapture -l`: against the
-in-process host ([connect](screenshots/dsk-01-connect.png),
+The app's window, captured with `screencapture -l`, against the in-process
+host with the Grid behind it, three simulated players walking there
+(`grid_walkers`): [connect](screenshots/dsk-01-connect.png),
 [terminal allowed and code copied](screenshots/dsk-01-terminal-copied.png),
 [connected](screenshots/dsk-02-connected.png),
 [home](screenshots/dsk-03-home.png),
-[remove](screenshots/dsk-03-remove.png)), and on a Mac set up the old way
-([the question](screenshots/earlier-setup.png),
-[home with Coder's real tasks](screenshots/dsk-03-earlier-setup.png)).
+[remove](screenshots/dsk-03-remove.png), and
+[connect with the Grid empty](screenshots/dsk-01-empty-grid.png). On a Mac
+set up the old way, from before the backdrop:
+[the question](screenshots/earlier-setup.png),
+[home with Coder's real tasks](screenshots/dsk-03-earlier-setup.png).

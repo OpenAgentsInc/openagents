@@ -3,7 +3,7 @@
 //! persistence. It verifies signatures, forwards ephemeral events, keeps the
 //! latest addressable event per address, answers `REQ` with stored matches and
 //! `EOSE`, and records every accepted event so a test can inspect exactly what
-//! each client published.
+//! each client published, and every message each connection sent, in order.
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
@@ -18,12 +18,16 @@ use tokio::sync::{broadcast, oneshot};
 use tokio_tungstenite::tungstenite::Message;
 
 type Stored = Arc<Mutex<BTreeMap<(String, u16, String), Event>>>;
+/// Every client message by connection (numbered from 0 in accept order):
+/// its NIP-01 verb, `REQ`, `EVENT`, `AUTH`, `CLOSE`, or anything else sent.
+type Sent = Arc<Mutex<Vec<(usize, String)>>>;
 
 /// A running loopback relay. Dropping it stops the relay.
 pub struct LoopbackRelay {
     /// The `ws://127.0.0.1:<port>` address.
     pub url: String,
     published: Arc<Mutex<Vec<Event>>>,
+    sent: Sent,
     stop: Option<oneshot::Sender<()>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -36,6 +40,8 @@ impl LoopbackRelay {
         let (stop, stop_rx) = oneshot::channel::<()>();
         let published = Arc::new(Mutex::new(Vec::new()));
         let log = published.clone();
+        let sent: Sent = Arc::default();
+        let verbs = sent.clone();
         let thread = std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -49,13 +55,16 @@ impl LoopbackRelay {
                 let stored: Stored = Arc::default();
                 let (sender, _) = broadcast::channel::<Event>(1024);
                 let accept = async {
+                    let mut connection = 0;
                     while let Ok((stream, _)) = listener.accept().await {
                         let stored = stored.clone();
                         let sender = sender.clone();
                         let log = log.clone();
+                        let verbs = verbs.clone();
                         tokio::spawn(async move {
-                            let _ = serve(stream, stored, sender, log).await;
+                            let _ = serve(stream, stored, sender, log, (connection, verbs)).await;
                         });
+                        connection += 1;
                     }
                 };
                 tokio::select! {
@@ -67,6 +76,7 @@ impl LoopbackRelay {
         Self {
             url: address_rx.recv().unwrap(),
             published,
+            sent,
             stop: Some(stop),
             thread: Some(thread),
         }
@@ -76,6 +86,18 @@ impl LoopbackRelay {
     #[must_use]
     pub fn published(&self) -> Vec<Event> {
         self.published.lock().unwrap().clone()
+    }
+
+    /// The verb of every message connection `connection` sent, in order.
+    #[must_use]
+    pub fn sent_by(&self, connection: usize) -> Vec<String> {
+        self.sent
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(from, _)| *from == connection)
+            .map(|(_, verb)| verb.clone())
+            .collect()
     }
 
     /// Accepted events of `kind` signed by `pubkey`.
@@ -122,6 +144,7 @@ async fn serve(
     stored: Stored,
     sender: broadcast::Sender<Event>,
     log: Arc<Mutex<Vec<Event>>>,
+    (connection, sent): (usize, Sent),
 ) -> Result<(), String> {
     let mut socket = tokio_tungstenite::accept_async(stream)
         .await
@@ -143,6 +166,8 @@ async fn serve(
                 let Some(Ok(message)) = message else { return Ok(()) };
                 let Ok(text) = message.to_text() else { continue };
                 let Ok(Value::Array(parts)) = serde_json::from_str::<Value>(text) else { continue };
+                let verb = parts.first().and_then(Value::as_str).unwrap_or("?").to_owned();
+                sent.lock().unwrap().push((connection, verb));
                 match parts.first().and_then(Value::as_str) {
                     Some("REQ") => {
                         let Some(id) = parts.get(1).and_then(Value::as_str) else { continue };

@@ -102,3 +102,7 @@ required-features = ["capture"]
 [[example]]
 name = "bare_capture"
 required-features = ["capture"]
+
+[[example]]
+name = "overlook_capture"
+required-features = ["capture"]
