@@ -43,8 +43,6 @@ pub enum Screen {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
-    /// Flip "Let this phone open a terminal on this Mac".
-    ToggleTerminal,
     /// "Can't scan? Copy a code instead".
     CopyCode,
     /// Bring the code back after it was hidden.
@@ -71,8 +69,6 @@ pub enum Intent {
     NotNow,
     /// "Open Login Items".
     OpenLoginItems,
-    /// `DSK-04`: flip "Let this phone open a terminal on this Mac".
-    NearbyTerminal,
     /// `DSK-04`: "Connect", for the request the prompt showed.
     NearbyConnect { id: u64 },
     /// `DSK-04`: "Don't connect".
@@ -110,7 +106,6 @@ pub enum Request {
     NearbyDecide {
         id: u64,
         connect: bool,
-        terminal: bool,
     },
 }
 
@@ -121,12 +116,7 @@ impl std::fmt::Debug for Request {
             Request::ClearClipboard { .. } => f.write_str("ClearClipboard { .. }"),
             Request::Refresh => f.write_str("Refresh"),
             Request::Code(action) => match action {
-                Action::Create { ticket, terminal } => {
-                    write!(
-                        f,
-                        "Code(Create {{ ticket: {ticket}, terminal: {terminal} }})"
-                    )
-                }
+                Action::Create { ticket } => write!(f, "Code(Create {{ ticket: {ticket} }})"),
                 other => write!(f, "Code({other:?})"),
             },
             Request::Revoke { device } => write!(f, "Revoke {{ {device} }}"),
@@ -136,14 +126,9 @@ impl std::fmt::Debug for Request {
             Request::Coder => f.write_str("Coder"),
             Request::OpenLoginItems => f.write_str("OpenLoginItems"),
             Request::Adopt => f.write_str("Adopt"),
-            Request::NearbyDecide {
-                id,
-                connect,
-                terminal,
-            } => write!(
-                f,
-                "NearbyDecide {{ id: {id}, connect: {connect}, terminal: {terminal} }}"
-            ),
+            Request::NearbyDecide { id, connect } => {
+                write!(f, "NearbyDecide {{ id: {id}, connect: {connect} }}")
+            }
         }
     }
 }
@@ -199,7 +184,6 @@ pub enum Outcome {
         ticket: u64,
         invitation: String,
         code: String,
-        terminal: bool,
     },
     CreateFailed {
         ticket: u64,
@@ -220,12 +204,7 @@ pub enum Outcome {
 impl std::fmt::Debug for Outcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Outcome::Created {
-                ticket, terminal, ..
-            } => write!(
-                f,
-                "Created {{ ticket: {ticket}, terminal: {terminal}, .. }}"
-            ),
+            Outcome::Created { ticket, .. } => write!(f, "Created {{ ticket: {ticket}, .. }}"),
             Outcome::Refreshed(state) => write!(f, "Refreshed({})", state.is_some()),
             other => write!(f, "{}", outcome_name(other)),
         }
@@ -286,8 +265,6 @@ pub struct Model {
     /// Clipboard entries to clear, and when.
     clear: Vec<(String, Instant)>,
     adopting: bool,
-    /// `DSK-04`'s terminal checkbox, and the request it was set for.
-    nearby_terminal: (u64, bool),
     /// What the screens call this computer: "Mac" on a Mac, "computer" on
     /// Linux and Windows ([`crate::words::COMPUTER`]).
     pub computer: &'static str,
@@ -315,7 +292,6 @@ impl Model {
             next_coder: now,
             clear: Vec::new(),
             adopting: false,
-            nearby_terminal: (0, false),
             computer: crate::words::COMPUTER,
         }
     }
@@ -324,12 +300,6 @@ impl Model {
     /// screen until it is answered, withdrawn, or expires.
     pub fn nearby(&self) -> Option<&NearbyPrompt> {
         self.host.as_ref().and_then(|host| host.nearby.as_ref())
-    }
-
-    /// `DSK-04`'s terminal checkbox for the shown request; off for a new one.
-    pub fn nearby_terminal(&self) -> bool {
-        self.nearby()
-            .is_some_and(|prompt| self.nearby_terminal == (prompt.id, true))
     }
 
     /// The screen a first launch opens on: the adoption question when an
@@ -448,15 +418,6 @@ impl Model {
     pub fn activate(&mut self, intent: Intent, now: Instant) -> Vec<Request> {
         self.codes.input(now);
         match intent {
-            Intent::ToggleTerminal => {
-                let on = !self.codes.terminal();
-                self.codes
-                    .set_terminal(on)
-                    .into_iter()
-                    .map(Request::Code)
-                    .chain(self.tick(now))
-                    .collect()
-            }
             Intent::CopyCode => match self.codes.shown() {
                 Some(shown) => {
                     let code = shown.text.clone();
@@ -521,30 +482,16 @@ impl Model {
                 }
             }
             Intent::OpenLoginItems => vec![Request::OpenLoginItems],
-            Intent::NearbyTerminal => {
-                if let Some(id) = self.nearby().map(|prompt| prompt.id) {
-                    self.nearby_terminal = (id, !self.nearby_terminal());
-                }
-                Vec::new()
-            }
             Intent::NearbyConnect { id } | Intent::NearbyDecline { id } => {
                 // Only the request on screen, and only once.
                 if self.nearby().map(|prompt| prompt.id) != Some(id) {
                     return Vec::new();
                 }
                 let connect = matches!(intent, Intent::NearbyConnect { .. });
-                let terminal = connect && self.nearby_terminal();
                 if let Some(host) = &mut self.host {
                     host.nearby = None;
                 }
-                vec![
-                    Request::NearbyDecide {
-                        id,
-                        connect,
-                        terminal,
-                    },
-                    Request::Refresh,
-                ]
+                vec![Request::NearbyDecide { id, connect }, Request::Refresh]
             }
         }
     }
@@ -605,10 +552,9 @@ impl Model {
                 ticket,
                 invitation,
                 code,
-                terminal,
             } => self
                 .codes
-                .created(ticket, invitation, code, terminal, now)
+                .created(ticket, invitation, code, now)
                 .into_iter()
                 .map(Request::Code)
                 .collect(),
@@ -729,17 +675,14 @@ mod tests {
                         });
                         Some(Outcome::Refreshed(state))
                     }
-                    Request::Code(Action::Create { ticket, terminal }) => {
-                        Some(match self.host.invite(terminal) {
-                            Ok(invite) => Outcome::Created {
-                                ticket,
-                                invitation: invite.invitation,
-                                code: invite.code,
-                                terminal,
-                            },
-                            Err(_) => Outcome::CreateFailed { ticket },
-                        })
-                    }
+                    Request::Code(Action::Create { ticket }) => Some(match self.host.invite() {
+                        Ok(invite) => Outcome::Created {
+                            ticket,
+                            invitation: invite.invitation,
+                            code: invite.code,
+                        },
+                        Err(_) => Outcome::CreateFailed { ticket },
+                    }),
                     Request::Code(Action::Cancel { invitation }) => {
                         let _ = self.host.cancel(&invitation);
                         None
@@ -783,12 +726,8 @@ mod tests {
                         }],
                     }),
                     Request::OpenLoginItems | Request::Adopt => None,
-                    Request::NearbyDecide {
-                        id,
-                        connect,
-                        terminal,
-                    } => {
-                        let _ = self.host.nearby_decide(id, connect, terminal);
+                    Request::NearbyDecide { id, connect } => {
+                        let _ = self.host.nearby_decide(id, connect);
                         None
                     }
                 };
@@ -832,7 +771,7 @@ mod tests {
     #[test]
     fn a_mac_with_a_phone_opens_on_home() {
         let mut rig = Rig::new();
-        let invite = rig.host.clone().invite(false).expect("an invite");
+        let invite = rig.host.clone().invite().expect("an invite");
         rig.host
             .redeem(&invite.invitation, "Kai's iPhone")
             .expect("a scan");
@@ -872,7 +811,7 @@ mod tests {
     #[test]
     fn remove_asks_first_then_revokes() {
         let mut rig = Rig::new();
-        let invite = rig.host.clone().invite(true).expect("an invite");
+        let invite = rig.host.clone().invite().expect("an invite");
         let phone = rig
             .host
             .redeem(&invite.invitation, "Kai's iPhone")
@@ -927,14 +866,11 @@ mod tests {
         let id = rig.host.ask_nearby("Kai's iPhone", "482913");
         rig.tick(5);
         assert_eq!(rig.model.nearby().map(|p| p.code.as_str()), Some("482913"));
-        assert!(!rig.model.nearby_terminal(), "the checkbox starts off");
         // A click for another request does nothing.
         rig.click(Intent::NearbyConnect { id: id + 1 });
         assert!(rig.host.nearby_answers().is_empty());
-        rig.click(Intent::NearbyTerminal);
-        assert!(rig.model.nearby_terminal());
         rig.click(Intent::NearbyConnect { id });
-        assert_eq!(rig.host.nearby_answers(), vec![(id, true, true)]);
+        assert_eq!(rig.host.nearby_answers(), vec![(id, true)]);
         assert!(rig.model.nearby().is_none());
         // A second click on the same prompt sends nothing more.
         rig.click(Intent::NearbyConnect { id });
@@ -942,17 +878,15 @@ mod tests {
     }
 
     #[test]
-    fn dont_connect_answers_no_and_a_new_request_starts_without_a_terminal() {
+    fn dont_connect_answers_no_and_a_new_request_takes_its_place() {
         let mut rig = Rig::new();
         rig.tick(0);
         let first = rig.host.ask_nearby("Kai's iPhone", "111111");
         rig.tick(5);
-        rig.click(Intent::NearbyTerminal);
         rig.click(Intent::NearbyDecline { id: first });
-        assert_eq!(rig.host.nearby_answers(), vec![(first, false, false)]);
+        assert_eq!(rig.host.nearby_answers(), vec![(first, false)]);
         let second = rig.host.ask_nearby("Kai's iPad", "222222");
         rig.tick(10);
         assert_eq!(rig.model.nearby().map(|p| p.id), Some(second));
-        assert!(!rig.model.nearby_terminal());
     }
 }

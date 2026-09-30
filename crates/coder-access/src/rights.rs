@@ -88,6 +88,15 @@ impl Rights {
     pub fn all() -> Self {
         Self(Right::ALL.to_vec())
     }
+    /// What every pairing grants the owner's phone: a connect code (QR or
+    /// copied), a nearby approval, and `openagents connect invite`. It is
+    /// every right, because the phone is the owner's and does everything
+    /// the owner does on the computer: watch, run, open terminals, review,
+    /// and see and manage who has access. Nothing on either screen narrows
+    /// it; the owner narrows a phone by revoking it.
+    pub fn pairing() -> Self {
+        Self::all()
+    }
     /// Parse `standard`, `admin`, `all`, or a comma-separated list of rights.
     pub fn parse_list(text: &str) -> Result<Self> {
         match text {

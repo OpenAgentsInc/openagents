@@ -12,7 +12,7 @@ use rust_native_desktop::{App, Frame, PxRect, Waker};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The largest the code draws, in points.
-pub const CODE_SIDE: f32 = 280.0;
+pub const CODE_SIDE: f32 = 360.0;
 /// How often the screen lock is checked while a code may show.
 const LOCK_POLL: Duration = Duration::from_secs(1);
 

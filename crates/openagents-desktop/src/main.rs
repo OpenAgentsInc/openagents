@@ -169,7 +169,15 @@ fn main() -> ExitCode {
         )
     };
     let app = DesktopApp::window(model, context);
-    let window = rust_native_desktop::window::Options::default();
+    // Nearly the whole display, centered; the views grow with it.
+    let window = rust_native_desktop::window::Options {
+        fill: Some(WINDOW_FILL),
+        zoom: Some(rust_native_desktop::window::Zoom {
+            design: (560.0, 720.0),
+            max: 1.6,
+        }),
+        ..rust_native_desktop::window::Options::default()
+    };
     let result = match backdrop(&options) {
         Some(backdrop) => rust_native_desktop::window::run_with_backdrop(app, window, backdrop),
         None => rust_native_desktop::window::run(app, window),
@@ -182,6 +190,9 @@ fn main() -> ExitCode {
         }
     }
 }
+
+/// The share of the display's usable area the window opens at.
+const WINDOW_FILL: f64 = 0.9;
 
 /// The Grid behind the window, watched on the chosen relay, unless the
 /// person asked for a plain background. Windows has none.
@@ -237,9 +248,8 @@ fn capture(directory: &PathBuf) -> Result<usize, String> {
     };
     app.tick(start);
     write(&mut app, "dsk-01-connect")?;
-    app.click(Intent::ToggleTerminal, start);
     app.click(Intent::CopyCode, start);
-    write(&mut app, "dsk-01-terminal-copied")?;
+    write(&mut app, "dsk-01-copied")?;
     let code = app
         .model()
         .codes

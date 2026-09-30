@@ -91,8 +91,8 @@ mod tests {
     #[test]
     fn banned_words_are_found_whole_and_plural() {
         assert_eq!(banned_in("Copy the host keys"), vec!["host", "keys"]);
-        assert!(banned_in("Let this phone open a terminal on this Mac").is_empty());
-        assert!(banned_in("Let this phone open a terminal on this computer").is_empty());
+        assert!(banned_in("Starting Coder on this Mac…").is_empty());
+        assert!(banned_in("Starting Coder on this computer…").is_empty());
         // Whole words only: "monkey" is not "key".
         assert!(banned_in("A monkey hosted nothing").is_empty());
     }

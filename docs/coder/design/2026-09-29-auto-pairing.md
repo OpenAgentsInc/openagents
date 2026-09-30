@@ -196,6 +196,14 @@ name for one step.
   painted in software and copied into a `winit` 0.30 window's `wgpu` 29
   surface, with glyphs from `rust-native`'s bundled font. It adds no window
   dependency the workspace does not already have.
+- The window opens nearly full screen: 90% of the current display's usable
+  area, centered (on the Mac `NSScreen.visibleFrame`, without the menu bar
+  and the Dock; on Linux and Windows the primary monitor, whose 5% margins
+  leave room for a panel or taskbar). The app keeps no window position, so
+  every launch opens that way. The views scale with the window, up to 1.6
+  times the size they were drawn for at 560 by 720 points, so the QR code
+  and the words grow rather than sitting in a small column; the Grid
+  backdrop fills the whole window.
 - The QR code is drawn with `qrcodegen` 1.8, already in the workspace lock.
 - The menu-bar icon uses `objc2-app-kit`'s `NSStatusItem` (0.2.2 is already
   in the lock through `winit`). `tray-icon` 0.25.1 was checked and fails
@@ -237,10 +245,10 @@ redo: remove the computer on the phone and scan again.
 
 | ID | Screen | What it shows |
 | --- | --- | --- |
-| `DSK-01` | Connect a phone (first run, and from **Connect another phone**) | The QR code, large and centered, and under it **Scan with the OpenAgents app on your phone.** A checkbox **Let this phone open a terminal on this Mac** (off). A small **Can't scan? Copy a code instead**, which copies the same text once. The code changes quietly every minute. |
+| `DSK-01` | Connect a phone (first run, and from **Connect another phone**) | The QR code, large and centered, and under it **Scan with the OpenAgents app on your phone.** No checkbox: the phone gets full permission. A small **Can't scan? Copy a code instead**, which copies the same text once. The code changes quietly every minute. |
 | `DSK-02` | Connected | **Kai's iPhone is connected.** Then one setup row: **Pick a project for Coder** with **Choose folder…** (a Git checkout), and whether Coder can run here: **Coder uses Codex or Claude Code on this Mac** with a check for each that is signed in. A switch **Let my phone start Coder here** (on once a project is picked). |
 | `DSK-03` | Home | Status (**Online. Your phone can reach this Mac.** or **Offline.**), **Phones** (name, last seen, terminal allowed, **Remove**), **Coder** (running and recent tasks with their titles), **Connect another phone**. |
-| `DSK-04` | A phone nearby wants to connect (after the milestone) | **Kai's iPhone wants to connect. Check that your phone shows 482 913.** **Connect** / **Don't connect**, and the terminal checkbox. |
+| `DSK-04` | A phone nearby wants to connect (after the milestone) | **Kai's iPhone wants to connect. Check that your phone shows 482 913.** **Connect** / **Don't connect**. No checkbox: **Connect** grants full permission, as a scan does. |
 | `DSK-05` | Menu bar | The status line, **Open OpenAgents**, **Connect a phone…**, **Pause Coder** (no new tasks start), and **Quit OpenAgents** (closes the window; Coder keeps running) beside **Stop Coder on this Mac** (unregisters the agent). |
 
 Words follow the wireframe's [Words on screen](../../product/2026-09-28-app-wireframe.md#words-on-screen):
@@ -301,17 +309,25 @@ secret, and the capability. A person photographing the screen gets at most
 one redemption race inside two minutes, and the real phone then sees
 `forbidden` and says so.
 
-**Rights.** A QR pairing grants `observe` and `operate`. The checkbox on
-`DSK-01` adds `terminal`, and it is part of the invitation the code carries,
-so the choice is made on the computer before the scan. `review`,
-`access_read`, and `access_admin` never come from the desktop QR. Reasons:
-T3 grants `terminal:operate` by default, but a terminal on a phone is full
-shell access to the Mac, and a person pairing to "send work to Coder" does
-not expect that. The read-only command cards in chat run through
-`terminal.open` (`crates/openagents-mobile/src/cli_run.rs`), so they appear
-only for a phone that was allowed a terminal; the phone says why otherwise,
-as it does today. Changing rights later means **Remove** and scan again with
-the checkbox set; an in-place rights change is an [open question](#open-questions).
+**Rights.** Every pairing grants full permission, the NIP-HOST pairing
+grant: `observe`, `operate`, `terminal`, `review`, `access_read`, and
+`access_admin` (`Rights::pairing` in `crates/coder-access`). That holds for
+a QR code redeemed over iroh or on the relay, a copied code, a nearby
+approval, `openagents connect invite`, and `openagents connect --ssh`.
+Nothing on either screen changes it. The owner decided this on 2026-09-29
+([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)): "remove
+that checkbox 'Let this phone open a terminal on this Mac'. Must be default
+full permission." The first plan granted `observe,operate` and added
+`terminal` only when a checkbox on `DSK-01` was set before the scan, since a
+terminal on a phone is full shell access to the Mac. Full permission here
+means every right the owner's phone uses: terminals and the read-only
+command cards in chat (`terminal.open`, `crates/openagents-mobile/src/cli_run.rs`),
+reviews, and the phone's own device list, invitations, and **Remove**
+(`access_read`, `access_admin`). The code is shown only on the owner's
+unlocked screen, so the phone that scans it is the owner's. A phone keeps a
+grant only with exactly those rights, or with the rights earlier codes
+carried (`observe,operate`, with or without `terminal`) from a computer not
+yet updated. To narrow a phone, the owner removes it.
 
 **No typed short code.** The first draft let a person type the first eight
 characters of the `EndpointId`. That is not an iroh feature (lookup is by the
@@ -336,8 +352,8 @@ its 40-bit, five-attempt code stays for headless hosts reached over SSH.
    choosing its nonce after seeing the other's, so a device in the middle,
    which holds its own keys on each side, gets one one-in-a-million guess per
    attempt.
-4. `DSK-04` shows the phone's label, the code, and the terminal checkbox;
-   the phone shows the same code. The person compares and clicks
+4. `DSK-04` shows the phone's label and the code; the phone shows the same
+   code. The person compares and clicks
    **Connect**. Nothing is approved without that click. The host keeps one
    nearby request pending at a time and at most five per ten minutes.
 5. The host signs an ordinary grant with origin `approval`, as in NIP-HOST's
@@ -517,7 +533,7 @@ Each lands in `INVARIANTS.md` in the same PR as the code it describes.
 | --- | --- | --- |
 | Linking devices: "Tailscale, SSH, and a relay only introduce devices" | Add an iroh connection, a QR scan, and nearby discovery to the list of things that only introduce. Also: an `EndpointId` never admits; the NIP-REACH handshake and the grant do. | 4 |
 | New, Linking devices | The desktop app shows a code only in its visible window on an unlocked screen, replaces it every 60 s, cancels a replaced code 60 s later and all codes when hidden, locked, idle ten minutes, or after a pairing; one redemption per code. | 5 |
-| New, Linking devices | A QR pairing grants `observe,operate`, plus `terminal` only when the checkbox was set before the code was shown; never `review` or an access right. | 5 |
+| New, Linking devices | Every pairing grants full permission (every right); no screen asks, and no checkbox narrows it. (First planned as `observe,operate` plus a terminal checkbox; changed by the owner on 2026-09-29, [#9965](https://github.com/OpenAgentsInc/openagents/issues/9965).) | 5 |
 | New, Linking devices | The local control socket is `0600` in a `0700` directory, and the host serves a peer only when its user ID equals the host's. It is the only local path that changes access or auto-start once the desktop app manages the host. | 4 |
 | Linking devices: "The owner secret key stays in one private file" | Under the desktop app, the owner, host, and iroh secret keys live in the OS keychain, read only by the host process, never in a file, argument, or log line; CLI-only installs keep the file. | 4, 5 |
 | "Only the host's owner, with a command on the host, turns auto-start on or widens it" | Reinterpreted: a request over the local control socket (the desktop app's switch or `openagents connect`) is a command on the host; a device still cannot. | 4 |
@@ -568,7 +584,7 @@ steps own disjoint files; the shared `Cargo.toml` members list and
    opens a terminal; a peer with another user ID is refused; revocation
    closes an iroh channel.
 5. **Desktop app shell.** ([#9970](https://github.com/OpenAgentsInc/openagents/issues/9970)) `crates/openagents-desktop`: `DSK-01` to `DSK-03`,
-   the rotating code, the terminal checkbox, keychain key source, agent
+   the rotating code, keychain key source, agent
    registration with `SMAppService`, project picker and auto-start switch
    over the control socket, a bundle layout script. Tests: the code screen's
    rotation and cancellation against a fake socket; snapshot tests of each
@@ -622,9 +638,8 @@ installed and an iPhone on the TestFlight build:
   the phone on mobile data.
 - From a chat, **Run Coder** sends a task that runs on that Mac and streams
   its reply into the chat.
-- With **Let this phone open a terminal** set, the phone opens a terminal on
-  the Mac and runs a read-only command card; without it, the phone says the
-  computer has not allowed a terminal and the host refuses the request.
+- The phone opens a terminal on the Mac and runs a read-only command card
+  with no further step: every pairing grants a terminal.
 - **Remove** on the Mac cuts the phone off: its next request is refused and
   an open terminal closes.
 - Start to first task in under two minutes, with no terminal on the Mac.
@@ -647,9 +662,9 @@ Each has the default this plan assumes.
   (`docs/coder/runtime/host-autostart.md`). Pairing itself (install, QR,
   scan, connected, **Run Coder**) needs no terminal step. `DSK-02` shows
   which agents are signed in, and says in one line when neither is.
-- **Rights change without re-pairing.** Default: **Remove** and scan again.
-  A local "allow terminal" that issues a replacement grant needs a NIP-HOST
-  origin for it; decide after the milestone.
+- **Rights change without re-pairing.** Resolved by the owner on
+  2026-09-29: every pairing is full permission, so there is nothing to
+  widen; to narrow a phone, **Remove** it.
 - **A web page for a QR scanned by the camera app.** Default: the in-app
   scanner only. A later `https://openagents.com/connect#…` form with the
   payload in the fragment would open the app from the system camera.

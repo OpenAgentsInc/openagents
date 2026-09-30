@@ -4,8 +4,8 @@
 //!
 //! It keeps NIP-HOST's rules that the window relies on: a code redeems
 //! once, a cancelled or expired code redeems never, and a redemption adds a
-//! device with `observe` and `operate`, plus `terminal` only when the code
-//! was made with it. Its codes follow the `openagents-connect:` layout with
+//! device with every right an owner's phone uses ([`PAIRING_RIGHTS`]). Its
+//! codes follow the `openagents-connect:` layout with
 //! random keys, so a QR drawn from one has the real size.
 
 use crate::control::{
@@ -20,11 +20,27 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// How long a host invitation lives, in seconds (NIP-HOST).
 pub const LIFETIME: u64 = 300;
 
+/// The rights every pairing grants (NIP-HOST, QR pairing).
+pub const PAIRING_RIGHTS: [&str; 6] = [
+    "observe",
+    "operate",
+    "terminal",
+    "review",
+    "access_read",
+    "access_admin",
+];
+
+fn pairing_rights() -> Vec<String> {
+    PAIRING_RIGHTS
+        .iter()
+        .map(|right| (*right).to_owned())
+        .collect()
+}
+
 /// One invitation the fake host issued.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Issued {
     pub invitation: String,
-    pub terminal: bool,
     pub issued_at: u64,
     pub cancelled_at: Option<u64>,
     pub redeemed_by: Option<String>,
@@ -50,7 +66,7 @@ struct State {
     counter: u64,
     /// The nearby request waiting for a click, and the answers given.
     nearby: Option<NearbyPrompt>,
-    answers: Vec<(u64, bool, bool)>,
+    answers: Vec<(u64, bool)>,
 }
 
 /// The fake host. Clones share one state, so a test can hold one and give
@@ -115,8 +131,8 @@ impl FakeHost {
         id
     }
 
-    /// The nearby answers given: (id, connect, terminal).
-    pub fn nearby_answers(&self) -> Vec<(u64, bool, bool)> {
+    /// The nearby answers given: (id, connect).
+    pub fn nearby_answers(&self) -> Vec<(u64, bool)> {
         self.state().answers.clone()
     }
 
@@ -167,14 +183,10 @@ impl FakeHost {
         }
         let device = hex(&random32(counter));
         issued.redeemed_by = Some(device.clone());
-        let mut rights = vec!["observe".to_string(), "operate".to_string()];
-        if issued.terminal {
-            rights.push("terminal".into());
-        }
         let record = Device {
             device: device.clone(),
             label: label.into(),
-            rights,
+            rights: pairing_rights(),
             grant: hex(&random32(counter + 1)),
             epoch: 0,
             enrolled_at: now,
@@ -228,7 +240,7 @@ impl HostControl for FakeHost {
         })
     }
 
-    fn invite(&mut self, terminal: bool) -> ControlResult<Invite> {
+    fn invite(&mut self) -> ControlResult<Invite> {
         let mut state = self.state();
         if state.down {
             return Err(ControlError::Unreachable);
@@ -241,20 +253,15 @@ impl HostControl for FakeHost {
         let invitation = hex(&invitation);
         state.issued.push(Issued {
             invitation: invitation.clone(),
-            terminal,
             issued_at: now,
             cancelled_at: None,
             redeemed_by: None,
         });
-        let mut rights = vec!["observe".to_string(), "operate".to_string()];
-        if terminal {
-            rights.push("terminal".into());
-        }
         Ok(Invite {
             invitation,
             code,
             expires_at: now + LIFETIME,
-            rights,
+            rights: pairing_rights(),
         })
     }
 
@@ -360,7 +367,7 @@ impl HostControl for FakeHost {
         Ok(state.nearby.clone())
     }
 
-    fn nearby_decide(&mut self, id: u64, connect: bool, terminal: bool) -> ControlResult<()> {
+    fn nearby_decide(&mut self, id: u64, connect: bool) -> ControlResult<()> {
         let mut state = self.state();
         if state.nearby.as_ref().map(|p| p.id) != Some(id) {
             return Err(ControlError::Refused {
@@ -369,7 +376,7 @@ impl HostControl for FakeHost {
             });
         }
         state.nearby = None;
-        state.answers.push((id, connect, terminal));
+        state.answers.push((id, connect));
         Ok(())
     }
 }

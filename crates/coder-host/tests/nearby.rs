@@ -73,7 +73,6 @@ async fn the_click_on_the_computer_grants_the_nearby_phone() {
             Op::NearbyDecide {
                 id: prompt.id + 1,
                 connect: true,
-                terminal: true,
             },
         )
         .await
@@ -85,7 +84,6 @@ async fn the_click_on_the_computer_grants_the_nearby_phone() {
             Op::NearbyDecide {
                 id: prompt.id,
                 connect: true,
-                terminal: false,
             },
         )
         .await
@@ -116,7 +114,10 @@ async fn the_click_on_the_computer_grants_the_nearby_phone() {
     )
     .unwrap();
     assert_eq!(access.grant.origin.kind, OriginKind::Approval);
-    assert_eq!(access.grant.rights.to_list(), "observe,operate");
+    assert_eq!(
+        access.grant.rights.to_list(),
+        "observe,operate,terminal,review,access_read,access_admin"
+    );
     assert_eq!(access.grant.relay, host.relay);
     // The grant opens a direct channel over iroh like a scanned code's.
     let device = phone.device(access);
@@ -140,7 +141,6 @@ async fn a_nearby_phone_reads_its_chats_with_an_invitation_from_chats_invite() {
             Op::NearbyDecide {
                 id: prompt.id,
                 connect: true,
-                terminal: false,
             },
         )
         .await
@@ -183,7 +183,6 @@ async fn dont_connect_grants_nothing() {
             Op::NearbyDecide {
                 id: prompt.id,
                 connect: false,
-                terminal: true,
             },
         )
         .await
@@ -215,7 +214,6 @@ async fn the_phone_keeps_only_the_nearby_computers_approval() {
             Op::NearbyDecide {
                 id: prompt.id,
                 connect: true,
-                terminal: true,
             },
         )
         .await
@@ -236,7 +234,7 @@ async fn the_phone_keeps_only_the_nearby_computers_approval() {
     assert_eq!(enrolled.access.grant.host, host.running.host_key());
     assert_eq!(
         enrolled.access.grant.rights.to_list(),
-        "observe,operate,terminal"
+        "observe,operate,terminal,review,access_read,access_admin"
     );
     assert_eq!(enrolled.label, "Studio Mac");
     assert_eq!(

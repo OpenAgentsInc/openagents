@@ -3,4 +3,3 @@ vertical stack
     body "The code is hidden because nobody used this window for 10 minutes." [align=center]
     button "Show the code" -> show_code
     heading "Scan with the OpenAgents app on your phone." [align=center]
-    checkbox [ ] "Let this phone open a terminal on this Mac" -> toggle_terminal

@@ -82,7 +82,7 @@ pub type ControlResult<T> = Result<T, ControlError>;
 /// The operations the window uses, over any transport.
 pub trait HostControl: Send {
     fn status(&mut self) -> ControlResult<Status>;
-    fn invite(&mut self, terminal: bool) -> ControlResult<Invite>;
+    fn invite(&mut self) -> ControlResult<Invite>;
     fn cancel(&mut self, invitation: &str) -> ControlResult<u32>;
     fn cancel_all(&mut self) -> ControlResult<u32>;
     fn devices(&mut self) -> ControlResult<Vec<Device>>;
@@ -94,7 +94,7 @@ pub trait HostControl: Send {
     /// The phone nearby waiting for a click (`DSK-04`), if any.
     fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>>;
     /// **Connect** or **Don't connect** for the nearby request `id`.
-    fn nearby_decide(&mut self, id: u64, connect: bool, terminal: bool) -> ControlResult<()>;
+    fn nearby_decide(&mut self, id: u64, connect: bool) -> ControlResult<()>;
 }
 
 /// The blocking client for the host's socket. One connection a request.
@@ -195,8 +195,8 @@ impl HostControl for SocketControl {
         }
     }
 
-    fn invite(&mut self, terminal: bool) -> ControlResult<Invite> {
-        match self.call(Op::InviteCreate { terminal })? {
+    fn invite(&mut self) -> ControlResult<Invite> {
+        match self.call(Op::InviteCreate {})? {
             Reply::Invite {
                 invitation,
                 code,
@@ -279,12 +279,8 @@ impl HostControl for SocketControl {
         }
     }
 
-    fn nearby_decide(&mut self, id: u64, connect: bool, terminal: bool) -> ControlResult<()> {
-        match self.call(Op::NearbyDecide {
-            id,
-            connect,
-            terminal,
-        })? {
+    fn nearby_decide(&mut self, id: u64, connect: bool) -> ControlResult<()> {
+        match self.call(Op::NearbyDecide { id, connect })? {
             Reply::Nearby { .. } => Ok(()),
             _ => unexpected(),
         }
@@ -315,7 +311,7 @@ mod tests {
     /// `kind` in snake case, framed by a big-endian length.
     #[test]
     fn requests_encode_as_the_control_protocol() {
-        let request = Request::new(7, Op::InviteCreate { terminal: true });
+        let request = Request::new(7, Op::InviteCreate {});
         let mut bytes = Vec::new();
         write_message(&mut bytes, &request).expect("encodes");
         let body = &bytes[4..];
@@ -325,7 +321,7 @@ mod tests {
         );
         assert_eq!(
             std::str::from_utf8(body).unwrap(),
-            r#"{"v":"openagents.control.v1","id":7,"op":{"kind":"invite_create","terminal":true}}"#
+            r#"{"v":"openagents.control.v1","id":7,"op":{"kind":"invite_create"}}"#
         );
         let back: Request = read_message(&mut &bytes[..]).expect("decodes");
         assert_eq!(back, request);
@@ -367,7 +363,7 @@ mod tests {
         });
         let mut control = SocketControl::new(path);
         assert!(matches!(
-            control.invite(false),
+            control.invite(),
             Err(ControlError::Refused { code, .. }) if code == "forbidden"
         ));
         assert_eq!(control.devices(), Err(ControlError::Malformed));

@@ -312,13 +312,12 @@ fn the_control_socket_carries_the_prompt_and_the_click() {
         Op::NearbyDecide {
             id: 7,
             connect: true,
-            terminal: false,
         },
     ))
     .unwrap();
     assert_eq!(
         decide["op"],
-        serde_json::json!({"kind": "nearby_decide", "id": 7, "connect": true, "terminal": false})
+        serde_json::json!({"kind": "nearby_decide", "id": 7, "connect": true})
     );
     let reply = Reply::Nearby {
         pending: Some(NearbyPrompt {

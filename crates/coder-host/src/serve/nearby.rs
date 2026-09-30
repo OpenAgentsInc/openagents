@@ -6,8 +6,8 @@
 //! The exchange itself is `openagents_connect::nearby`; this module is its
 //! [`Admission`]. Only a click reaches [`Mint`], which signs the NIP-HOST
 //! nearby-approval grant (`coder_access::host::Host::approve_nearby`) for
-//! the device key the exchange named, with the connect-code rights
-//! (`observe,operate`, plus `terminal` when the checkbox was set).
+//! the device key the exchange named, with the pairing rights
+//! ([`coder_access::Rights::pairing`], every right an owner's phone uses).
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -31,18 +31,11 @@ pub const WINDOW: Duration = Duration::from_secs(10 * 60);
 /// after a click on **Connect**.
 pub type Mint = Arc<dyn Fn(&str, Rights) -> Result<serde_json::Value, String> + Send + Sync>;
 
-/// The rights a nearby pairing carries: those of a desktop QR code.
-///
-/// # Panics
-/// Never: the lists are constant.
+/// The rights a nearby pairing carries: those of a desktop QR code,
+/// [`Rights::pairing`].
 #[must_use]
-pub fn nearby_rights(terminal: bool) -> Rights {
-    let list = if terminal {
-        "observe,operate,terminal"
-    } else {
-        "observe,operate"
-    };
-    Rights::parse_list(list).expect("constant rights parse")
+pub fn nearby_rights() -> Rights {
+    Rights::pairing()
 }
 
 /// What the computer shows while a nearby request waits for a click.
@@ -60,8 +53,8 @@ pub struct Pending {
 /// The person's answer on `DSK-04`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Choice {
-    /// **Connect**, with the terminal checkbox's state.
-    Connect { terminal: bool },
+    /// **Connect**.
+    Connect,
     /// **Don't connect**.
     Decline,
 }
@@ -237,12 +230,10 @@ impl Ticket for GateTicket {
         };
         self.gate.inner.shown.send_replace(Some(shown));
         match choice.await {
-            Ok(Choice::Connect { terminal }) => {
-                match (self.gate.inner.mint)(&device, nearby_rights(terminal)) {
-                    Ok(event) => Verdict::Connect { event },
-                    Err(_) => Verdict::Decline,
-                }
-            }
+            Ok(Choice::Connect) => match (self.gate.inner.mint)(&device, nearby_rights()) {
+                Ok(event) => Verdict::Connect { event },
+                Err(_) => Verdict::Decline,
+            },
             Ok(Choice::Decline) => Verdict::Decline,
             Err(_) => Verdict::Expired,
         }

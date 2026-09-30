@@ -4,10 +4,10 @@
 //! screens show the same six-digit code; the person checks that they match
 //! and clicks **Connect**. Nothing is connected without that click. The
 //! prompt shows over every other screen until it is answered, the phone
-//! gives up, or two minutes pass, and the terminal checkbox starts off for
-//! every request.
+//! gives up, or two minutes pass. **Connect** grants the same rights as a
+//! QR pairing: everything an owner's phone uses.
 
-use super::{bold, button, centered, checkbox, quiet, stack, text};
+use super::{bold, button, centered, quiet, stack, text};
 use crate::control::NearbyPrompt;
 use crate::model::Intent;
 use rust_native::style::{Space, TextAlign};
@@ -32,8 +32,7 @@ fn name(prompt: &NearbyPrompt) -> &str {
 }
 
 /// The prompt.
-/// `computer` is what the screens call this computer ([`crate::words::COMPUTER`]).
-pub fn prompt(prompt: &NearbyPrompt, terminal: bool, computer: &str) -> Node<Intent> {
+pub fn prompt(prompt: &NearbyPrompt) -> Node<Intent> {
     let id = prompt.id;
     let mut code = centered(bold("code", grouped(&prompt.code)));
     code.element = rust_native::Element::Text {
@@ -57,13 +56,6 @@ pub fn prompt(prompt: &NearbyPrompt, terminal: bool, computer: &str) -> Node<Int
             "Connect only if the codes match.",
             TextRole::Status,
         )),
-        checkbox(
-            "terminal",
-            &format!("Let this phone open a terminal on this {computer}"),
-            terminal,
-            Intent::NearbyTerminal,
-            true,
-        ),
         stack(
             "answers",
             Axis::Horizontal,

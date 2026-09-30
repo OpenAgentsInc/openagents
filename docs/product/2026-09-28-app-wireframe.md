@@ -417,7 +417,6 @@ docs, and the Advanced section of Profile.
 | **Copy a code**, **Paste a code** | The connect code's text form, a bearer secret for up to two minutes | A code is something you copy; nothing more is said. |
 | **Phone**, **Kai's iPhone** | A device key holding a host grant, with its label | Says what it is. |
 | **Project** | A workspace label on a computer | "Workspace" is jargon on the desktop app. |
-| **Let this phone open a terminal on this Mac** | The `terminal` right in the invitation | Says exactly what it allows. |
 | **Remove** | `device.revoke` | Says what happens to the phone's access. |
 | **OpenAgents** (the Mac app) | The companion desktop app, which runs the resident host | The same name as the phone app, so "the OpenAgents app" names one thing on each device. |
 | **Cloud** | No computer: the chat worker and the hosted runner | The one place a message goes with no setup. |
@@ -1777,8 +1776,8 @@ Claude Code signed in on the Mac; the milestone assumes the person already
 did that, and pairing never asks them to.
 
 The screens below show a Mac. On Linux and Windows every "this Mac" on them
-reads "this computer" (for example **Let this phone open a terminal on this
-computer**), and "This Mac" reads "This computer".
+reads "this computer" (for example **Starting Coder on this computer…**),
+and "This Mac" reads "This computer".
 
 ### DSK-01 Connect a phone
 
@@ -1797,9 +1796,6 @@ The first-run window, and the window **Connect another phone** opens.
 |   Scan with the OpenAgents app on your       |  E02
 |   phone.                                     |
 |                                              |
-|   [ ] Let this phone open a terminal on      |  E03
-|       this Mac                               |
-|                                              |
 |   Can't scan? Copy a code instead            |  E04
 +----------------------------------------------+
 ```
@@ -1808,14 +1804,17 @@ The first-run window, and the window **Connect another phone** opens.
 | --- | --- | --- | --- |
 | `DSK-01.E01` | The QR code | A connect code for one phone, drawn locally. It changes quietly every minute; a replaced code stops working a minute later, and every code stops when the window hides, the screen locks, after ten idle minutes, or once a phone connects. | NEW |
 | `DSK-01.E02` | **Scan with the OpenAgents app on your phone.** | The one instruction. | NEW |
-| `DSK-01.E03` | **Let this phone open a terminal on this Mac** | Off by default. Changing it shows a new code at once, and the old one stops working. The phone gets the terminal only if this was set before it scanned. | NEW |
+| `DSK-01.E03` | (Removed.) There is no rights checkbox. Every phone that scans gets full permission, a terminal included; to narrow a phone, **Remove** it. Owner-directed on 2026-09-29 ([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)). | REMOVED |
 | `DSK-01.E04` | **Can't scan? Copy a code instead** | Copies the same code's text once, for **Paste a code** (`SCR-22.E05`); says "Copied. It works for two minutes." | NEW |
 
 States: while the phone connects, the code gives way to "Connecting to
 Kai's iPhone…". If the computer can't reach our connection service, one line
 reads "Phones on this Wi-Fi can still connect." and the code stays.
 
-IDIOT PROOF check: **pass.** One code, one sentence, one optional choice.
+The window opens nearly full screen (90% of the display, centered) and the
+code and words scale up with it.
+
+IDIOT PROOF check: **pass.** One code, one sentence, no choice to make.
 
 ### DSK-02 Connected
 
@@ -1893,8 +1892,6 @@ After the milestone
 +----------------------------------------------+
 |  Kai's iPhone wants to connect.              |  E01
 |  Check that your phone shows 482 913.        |  E02
-|  [ ] Let this phone open a terminal on       |  E03
-|      this Mac                                |
 |##############################################|
 |#                 CONNECT                    #|  E04 (primary)
 |##############################################|
@@ -1906,7 +1903,7 @@ After the milestone
 | --- | --- | --- | --- |
 | `DSK-04.E01` | **Kai's iPhone wants to connect.** | The phone's label; display only. | NEW (later) |
 | `DSK-04.E02` | The six-digit code | The same code the phone shows; the person compares them. | NEW (later) |
-| `DSK-04.E03` | Terminal checkbox | As `DSK-01.E03`. | NEW (later) |
+| `DSK-04.E03` | (Removed.) No rights checkbox: **Connect** grants full permission, as a scan does. | REMOVED |
 | `DSK-04.E04` | **Connect** | The only way a nearby phone is admitted. | NEW (later) |
 | `DSK-04.E05` | **Don't connect** | Closes; nothing is granted. The request also ends by itself after two minutes. | NEW (later) |
 
@@ -2416,12 +2413,12 @@ Results for every screen and card. "n/a" means the check doesn't apply.
 | `SCR-19` Coder on a computer | ✓ (the composer) | ~ (queue, long press) | ✓ (phase line) | ✓ | n/a (only after connecting) | n/a | n/a | ✓ | ✓ (Approve, Deny) | n/a | ✓ | n/a | n/a | Pass with note |
 | `SCR-20` Add to the Gym | ✓ | ✓ | ✓ | ✓ (Not now) | ✓ | n/a | n/a | ✓ | ✓ (says what becomes public) | n/a | ✓ | ✓ | ✓ | Pass |
 | `SCR-21` Test set | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | n/a | ✓ | n/a | n/a | n/a | ✓ | ✓ | Pass |
-| `SCR-22` Connect a computer | ✓ (the camera) | ✓ | ✓ (`E04`) | ✓ (each failure names its step; `E06` with no computer) | ✓ (only when a job needs a computer) | n/a | ✓ (terminal off unless the Mac allowed it) | n/a | n/a | n/a | ✓ | n/a | n/a | Pass |
+| `SCR-22` Connect a computer | ✓ (the camera) | ✓ | ✓ (`E04`) | ✓ (each failure names its step; `E06` with no computer) | ✓ (only when a job needs a computer) | n/a | ✓ (full permission, only from the owner's unlocked screen) | n/a | n/a | n/a | ✓ | n/a | n/a | Pass |
 | `SCR-23` Connected | ✓ | ✓ | ✓ | ✓ | n/a | n/a | n/a | ✓ | n/a | n/a | ✓ (Run Coder in the chat) | n/a | n/a | Pass |
-| `DSK-01` Connect a phone | ✓ (scan) | ✓ | ✓ | ✓ | ✓ (no terminal step) | n/a | ✓ (terminal off) | n/a | n/a | ✓ | n/a | n/a | n/a | Pass |
+| `DSK-01` Connect a phone | ✓ (scan) | ✓ | ✓ | ✓ | ✓ (no terminal step) | n/a | ✓ (full permission; Remove narrows) | n/a | n/a | ✓ | n/a | n/a | n/a | Pass |
 | `DSK-02` Connected | ✓ | ✓ | ✓ | ✓ (says what is missing) | ~ (an agent sign-in, assumed done) | n/a | ✓ | ✓ | n/a | n/a | n/a | n/a | n/a | Pass with note |
 | `DSK-03` Home | ~ (status page) | ✓ | ✓ | ✓ | n/a | n/a | n/a | ✓ | ✓ (Remove confirms) | n/a | n/a | n/a | n/a | Pass |
-| `DSK-04` Nearby | ✓ | ✓ | ✓ | ✓ (Don't connect) | ✓ | n/a | ✓ (terminal off) | n/a | ✓ (compare the code) | n/a | n/a | n/a | n/a | Pass |
+| `DSK-04` Nearby | ✓ | ✓ | ✓ | ✓ (Don't connect) | ✓ | n/a | ✓ (full permission; Remove narrows) | n/a | ✓ (compare the code) | n/a | n/a | n/a | n/a | Pass |
 | `DSK-05` Menu bar | ~ (a menu) | ✓ | ✓ | ✓ | n/a | n/a | n/a | ✓ (status line) | ✓ (Stop confirms) | n/a | n/a | n/a | n/a | Pass with note |
 | `CARD-01` Tool | ✓ | ✓ | ✓ (time, cost, runs left) | ✓ (no runs left: tomorrow, or a check) | ✓ | ✓ | ✓ (preselected) | ✓ | n/a | n/a | ✓ | n/a | ✓ (latest result sourced) | Pass |
 | `CARD-02` Draft | ✓ | ✓ | ✓ | ✓ (Change it) | ✓ | n/a | ✓ (drafted for you) | ✓ | n/a | n/a | ✓ | ✓ | n/a | Pass |

@@ -27,7 +27,7 @@ use rust_native::Activation;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
@@ -39,10 +39,19 @@ const SKIPPED_FRAME_WAIT: std::time::Duration = std::time::Duration::from_millis
 /// How the window opens.
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// The window's size, in points.
+    /// The window's size, in points, when [`Options::fill`] is unset or the
+    /// display cannot be read.
     pub size: (f64, f64),
     /// The smallest the window may be, in points.
     pub min_size: (f64, f64),
+    /// Open at this share (0 to 1) of the current display's usable area
+    /// (on the Mac its visible frame, without the menu bar and the Dock),
+    /// centered on it, instead of at [`Options::size`].
+    pub fill: Option<f64>,
+    /// Scale the views up when the window is larger than they were drawn
+    /// for, so a large window shows larger type and controls rather than a
+    /// small column in a large field.
+    pub zoom: Option<Zoom>,
     /// How a backdrop sits under the views, when there is one.
     pub look: Look,
 }
@@ -52,9 +61,69 @@ impl Default for Options {
         Options {
             size: (560.0, 720.0),
             min_size: (420.0, 520.0),
+            fill: None,
+            zoom: None,
             look: Look::default(),
         }
     }
+}
+
+/// How the views grow with the window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Zoom {
+    /// The window size, in points, the views were drawn for. At or below it
+    /// they draw at their own size.
+    pub design: (f32, f32),
+    /// The most the views grow.
+    pub max: f32,
+}
+
+impl Zoom {
+    /// The factor for a window `width` by `height` points: the smaller of
+    /// the two growths, between 1 and [`Zoom::max`].
+    #[must_use]
+    pub fn factor(self, width: f32, height: f32) -> f32 {
+        let grow = (width / self.design.0.max(1.0)).min(height / self.design.1.max(1.0));
+        if grow.is_finite() {
+            grow.clamp(1.0, self.max.max(1.0))
+        } else {
+            1.0
+        }
+    }
+}
+
+/// A rectangle on the desktop, in points, with the origin at the top left
+/// of the primary display.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Area {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Where a window filling `fill` of `area` goes: its outer top-left corner
+/// and its inner size, centered on `area`. `title` is the height of the
+/// title bar above the inner size. The size never falls below `min`.
+#[must_use]
+pub fn placement(area: Area, fill: f64, title: f64, min: (f64, f64)) -> ((f64, f64), (f64, f64)) {
+    let fill = fill.clamp(0.1, 1.0);
+    let outer_width = (area.width * fill).round().max(min.0);
+    let outer_height = (area.height * fill).round().max(min.1 + title);
+    (
+        centered(area, (outer_width, outer_height)),
+        (outer_width, outer_height - title),
+    )
+}
+
+/// The outer top-left corner that centers a window of `outer` size on
+/// `area`.
+#[must_use]
+pub fn centered(area: Area, outer: (f64, f64)) -> (f64, f64) {
+    (
+        (area.x + (area.width - outer.0) / 2.0).round(),
+        (area.y + (area.height - outer.1) / 2.0).round(),
+    )
 }
 
 /// Opens a window on `app` and runs until it closes or the application asks
@@ -112,6 +181,54 @@ fn run_shell<A: App>(
     }
 }
 
+/// The height of a title bar, in points, above a window's inner size.
+const TITLE_BAR: f64 = if cfg!(target_os = "macos") {
+    28.0
+} else {
+    32.0
+};
+
+/// The current display's usable area: on the Mac the visible frame of the
+/// screen with the key window (the menu bar's, at launch), without the menu
+/// bar and the Dock.
+#[cfg(target_os = "macos")]
+fn usable_area(_: &ActiveEventLoop) -> Option<Area> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSScreen;
+    let marker = MainThreadMarker::new()?;
+    let screen = NSScreen::mainScreen(marker)?;
+    // AppKit puts the origin at the bottom left of the first screen; winit
+    // puts it at the top left.
+    let primary = NSScreen::screens(marker).firstObject()?.frame();
+    let visible = screen.visibleFrame();
+    let top = primary.size.height - (visible.origin.y + visible.size.height);
+    Some(Area {
+        x: visible.origin.x,
+        y: top,
+        width: visible.size.width,
+        height: visible.size.height,
+    })
+}
+
+/// The current display's usable area: elsewhere the primary monitor
+/// (else the first), whole. A 90% fill centered on it leaves room for a
+/// taskbar or a panel.
+#[cfg(not(target_os = "macos"))]
+fn usable_area(event_loop: &ActiveEventLoop) -> Option<Area> {
+    let monitor = event_loop
+        .primary_monitor()
+        .or_else(|| event_loop.available_monitors().next())?;
+    let scale = monitor.scale_factor();
+    let size = monitor.size().to_logical::<f64>(scale);
+    let position = monitor.position().to_logical::<f64>(scale);
+    Some(Area {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
 /// The surface and the device that copies frames into it.
 struct Gpu {
     surface: wgpu::Surface<'static>,
@@ -161,10 +278,20 @@ struct Shell<A: App> {
 }
 
 impl<A: App> Shell<A> {
+    /// Pixels a point: the display's, times the zoom for the window's size.
     fn scale(&self) -> f32 {
-        self.window
-            .as_ref()
-            .map_or(1.0, |window| window.scale_factor() as f32)
+        let Some(window) = self.window.as_ref() else {
+            return 1.0;
+        };
+        let display = window.scale_factor() as f32;
+        let zoom = match (self.options.zoom, &self.gpu) {
+            (Some(zoom), Some(gpu)) => zoom.factor(
+                gpu.config.width as f32 / display,
+                gpu.config.height as f32 / display,
+            ),
+            _ => 1.0,
+        };
+        display * zoom
     }
 
     fn logical_size(&self) -> (f32, f32) {
@@ -604,13 +731,20 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 backdrop.start(waker);
             }
         }
-        let attributes = Window::default_attributes()
+        let mut attributes = Window::default_attributes()
             .with_title(self.app.title())
             .with_inner_size(LogicalSize::new(self.options.size.0, self.options.size.1))
             .with_min_inner_size(LogicalSize::new(
                 self.options.min_size.0,
                 self.options.min_size.1,
             ));
+        let area = self.options.fill.and_then(|_| usable_area(event_loop));
+        if let (Some(fill), Some(area)) = (self.options.fill, area) {
+            let ((x, y), (width, height)) = placement(area, fill, TITLE_BAR, self.options.min_size);
+            attributes = attributes
+                .with_inner_size(LogicalSize::new(width, height))
+                .with_position(LogicalPosition::new(x, y));
+        }
         let window = match event_loop.create_window(attributes) {
             Ok(window) => Arc::new(window),
             Err(error) => {
@@ -619,6 +753,14 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 return;
             }
         };
+        // The title bar's real height is known only now, and a position
+        // given at creation places the inner area on some systems, so the
+        // window is centered again by its outer size.
+        if let Some(area) = area {
+            let outer = window.outer_size().to_logical::<f64>(window.scale_factor());
+            let (x, y) = centered(area, (outer.width, outer.height));
+            window.set_outer_position(LogicalPosition::new(x, y));
+        }
         match gpu(window.clone()) {
             Ok(gpu) => {
                 if self.backdrop.is_some() {
@@ -748,5 +890,60 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Area, Zoom, placement};
+
+    #[test]
+    fn a_filling_window_is_centered_on_the_usable_area() {
+        // A 14-inch MacBook Pro's visible frame: below the menu bar, above
+        // a Dock at the bottom.
+        let area = Area {
+            x: 0.0,
+            y: 38.0,
+            width: 1512.0,
+            height: 900.0,
+        };
+        let ((x, y), (width, height)) = placement(area, 0.9, 28.0, (420.0, 520.0));
+        assert_eq!((width, height + 28.0), (1361.0, 810.0));
+        assert_eq!((x, y), (76.0, 83.0));
+        // A second display to the left keeps its own origin.
+        let left = Area {
+            x: -1920.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let ((x, _), (width, _)) = placement(left, 0.9, 32.0, (420.0, 520.0));
+        assert_eq!(x, -1920.0 + 96.0);
+        assert_eq!(width, 1728.0);
+    }
+
+    #[test]
+    fn a_small_display_still_gets_the_minimum_size() {
+        let area = Area {
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 500.0,
+        };
+        let (_, size) = placement(area, 0.9, 28.0, (420.0, 520.0));
+        assert_eq!(size, (420.0, 520.0));
+    }
+
+    #[test]
+    fn the_views_grow_with_the_window_up_to_the_limit() {
+        let zoom = Zoom {
+            design: (560.0, 720.0),
+            max: 1.6,
+        };
+        assert_eq!(zoom.factor(560.0, 720.0), 1.0);
+        assert_eq!(zoom.factor(420.0, 520.0), 1.0);
+        // The shorter side decides.
+        assert!((zoom.factor(1361.0, 782.0) - 782.0 / 720.0).abs() < 1e-4);
+        assert_eq!(zoom.factor(3000.0, 2000.0), 1.6);
     }
 }

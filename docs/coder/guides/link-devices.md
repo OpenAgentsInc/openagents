@@ -1,7 +1,7 @@
 # Link your devices
 
-Connect a computer once, and your phone can send it Coder work from a chat and,
-if you allow it, open a terminal on it.
+Connect a computer once, and your phone can send it Coder work from a chat and
+open a terminal on it.
 
 ## Connect a computer with the desktop app
 
@@ -13,9 +13,9 @@ if you allow it, open a terminal on it.
 4. Both screens say the computer is connected. **Run Coder** in a chat now
    sends work to that Mac.
 
-Check **Let this phone open a terminal** before the code shows if you want
-the phone to open terminals there. To take a phone's access away, click
-**Remove** next to it in the desktop app.
+The phone gets full permission, terminals included; there is nothing to
+check first. To take a phone's access away, click **Remove** next to it in
+the desktop app.
 
 No Tailscale, no terminal, and no key to copy. The phone connects directly
 when it can and through the OpenAgents relay when it cannot, so it works on
@@ -30,8 +30,8 @@ manage it.
 - Each computer's **host** has its own key and is the only thing that grants
   rights. A scanned code, a network, or a route grants nothing by itself.
 - A code is good for one phone, once, and only for a short time. A phone
-  that scans it gets `observe` and `operate`, plus `terminal` only if you
-  checked the box first.
+  that scans it gets full permission: every right, a terminal included.
+  To take a phone's access away, **Remove** it.
 - The host rechecks a phone's grant on every message, and **Remove** closes
   its channels at once.
 

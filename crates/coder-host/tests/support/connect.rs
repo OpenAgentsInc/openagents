@@ -184,12 +184,10 @@ pub async fn call(pipe: &std::path::Path, op: Op) -> openagents_connect::Result<
 
 impl Host {
     /// Mint a connect code over the control socket.
-    pub async fn code(&self, terminal: bool) -> (String, ConnectCode) {
+    pub async fn code(&self) -> (String, ConnectCode) {
         let Reply::Invite {
             invitation, code, ..
-        } = call(&self.socket, Op::InviteCreate { terminal })
-            .await
-            .unwrap()
+        } = call(&self.socket, Op::InviteCreate {}).await.unwrap()
         else {
             panic!("an invitation")
         };

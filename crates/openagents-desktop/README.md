@@ -8,7 +8,7 @@ the screens are `DSK-01` to `DSK-03` in the
 
 | Screen | What it shows |
 | --- | --- |
-| `DSK-01` Connect a phone | The QR code, **Scan with the OpenAgents app on your phone.**, **Let this phone open a terminal on this Mac** (off), and **Can't scan? Copy a code instead**. |
+| `DSK-01` Connect a phone | The QR code, **Scan with the OpenAgents app on your phone.**, and **Can't scan? Copy a code instead**. No checkbox: every phone that pairs gets full permission (every NIP-HOST right, a terminal included). |
 | `DSK-02` Connected | **Kai's iPhone is connected.**, **Pick a project for Coder** with **Choose folder…**, whether Codex and Claude Code are signed in, and **Let my phone start Coder here**. |
 | `DSK-03` Home | **Online. Your phone can reach this Mac.** or **Offline.**, the phones with **Remove**, Coder's recent tasks, and **Connect another phone**. |
 | Adoption | **Use this Mac's existing Coder setup?** on a Mac set up the old way. |
@@ -26,6 +26,12 @@ the same program that reads them and macOS never asks to allow it.
 
 When a code shows, rotates, and is cancelled is [`src/codes.rs`](src/codes.rs);
 `INVARIANTS.md` (Linking devices) states the rules.
+
+The window opens nearly full screen: 90% of the display's usable area (on a
+Mac its visible frame, without the menu bar and the Dock), centered. The app
+keeps no window position, so each launch opens that way. The views scale with
+the window, up to 1.6 times their size at 560 by 720 points, so the code and
+the words grow with it, and the Grid fills the whole window.
 
 ## The backdrop
 
@@ -116,7 +122,6 @@ git diff crates/openagents-desktop/snapshots
 The app's window, captured with `screencapture -l`, against the in-process
 host with the Grid behind it, three simulated players walking there
 (`grid_walkers`): [connect](screenshots/dsk-01-connect.png),
-[terminal allowed and code copied](screenshots/dsk-01-terminal-copied.png),
 [connected](screenshots/dsk-02-connected.png),
 [home](screenshots/dsk-03-home.png),
 [remove](screenshots/dsk-03-remove.png), and

@@ -76,7 +76,6 @@ SSH channel. DESTINATION is anything ssh accepts (user@box, a Host alias).
                        or $OPENAGENTS_OWNER_KEY_FILE) the new host's owner;
                        only the public key is sent
   --owner PUBKEY       the same with a public key (hex or npub)
-  --terminal           also grant a terminal (default observe,operate)
   --label NAME         the computer's name (default its host name)
   --relay URL          the Nostr relay the host serves (default
                        wss://relay.openagents.com/)
@@ -86,7 +85,8 @@ SSH channel. DESTINATION is anything ssh accepts (user@box, a Host alias).
   --timeout SECONDS    bound the whole command (default 300)
 ssh runs in batch mode, so set up key login first.";
 
-/// The `--ssh` options that take no value.
+/// The `--ssh` options that take no value. `--terminal` is accepted and
+/// ignored: every pairing now grants the full rights, a terminal included.
 const SWITCHES: &[&str] = &[
     "import-owner",
     "terminal",
@@ -173,7 +173,6 @@ struct Plan {
     remote_root: String,
     socket: Option<String>,
     owner: Option<String>,
-    terminal: bool,
     label: Option<String>,
     relay: String,
     iroh_relay: IrohRelay,
@@ -281,7 +280,6 @@ impl Plan {
                 .to_owned(),
             socket: args.option("remote-socket").map(str::to_owned),
             owner,
-            terminal: args.switch("terminal"),
             label,
             relay,
             iroh_relay,
@@ -313,9 +311,6 @@ impl Plan {
             IrohRelay::Default => {}
             IrohRelay::Url(url) => args.extend(["--iroh-relay".to_owned(), url.clone()]),
             IrohRelay::Off => args.push("--no-iroh-relay".to_owned()),
-        }
-        if self.terminal {
-            args.push("--terminal".to_owned());
         }
         if restart {
             args.push("--restart".to_owned());
@@ -1162,13 +1157,13 @@ struct Remote {
     owner: Option<String>,
     label: Option<String>,
     iroh_relay: IrohRelay,
-    terminal: bool,
     restart: bool,
     loopback_test: bool,
 }
 
 impl Remote {
     fn from_args(words: &[String]) -> Result<Self, String> {
+        // `--terminal` from an earlier `openagents` is accepted and ignored.
         let args = Args::parse(
             words,
             &["terminal", "restart", "loopback-test", "no-iroh-relay"],
@@ -1199,7 +1194,6 @@ impl Remote {
                 (false, Some(url)) => IrohRelay::Url(url.to_owned()),
                 (false, None) => IrohRelay::Default,
             },
-            terminal: args.switch("terminal"),
             restart: args.switch("restart"),
             loopback_test: args.switch("loopback-test"),
         })
@@ -1373,12 +1367,7 @@ fn serve_stdio<R: Read, W: Write>(
     let (start, pid) = ensure_host(&runtime, remote, launch)?;
     let Reply::Invite {
         invitation, code, ..
-    } = runtime.block_on(call(
-        &remote.socket,
-        Op::InviteCreate {
-            terminal: remote.terminal,
-        },
-    ))?
+    } = runtime.block_on(call(&remote.socket, Op::InviteCreate {}))?
     else {
         return Err("the host answered an invitation with something else".into());
     };
@@ -1747,13 +1736,15 @@ mod tests {
         let ok = plan(&["a@b", "--owner", &owner, "--terminal"]).unwrap();
         assert_eq!(ok.owner.as_deref(), Some(owner.as_str()));
         let helper = ok.helper_args(true);
-        assert!(helper.contains(&"--terminal".to_owned()));
+        // `--terminal` is accepted and changes nothing: every pairing grants
+        // the full rights.
+        assert!(!helper.contains(&"--terminal".to_owned()));
         assert!(helper.contains(&"--restart".to_owned()));
         assert!(helper.contains(&owner));
         // The helper reads back exactly what the plan sends.
         let remote = Remote::from_args(&helper).unwrap();
         assert_eq!(remote.owner.as_deref(), Some(owner.as_str()));
-        assert!(remote.terminal && remote.restart);
+        assert!(remote.restart);
     }
 
     #[test]
@@ -1920,7 +1911,17 @@ mod tests {
         assert_eq!(value["host"]["label"], "Headless Box");
         assert_eq!(value["grant"]["owner"], fixture.owner);
         assert_eq!(value["grant"]["relay"], fixture.relay);
-        assert_eq!(value["grant"]["rights"], json!(["observe", "operate"]));
+        assert_eq!(
+            value["grant"]["rights"],
+            json!([
+                "observe",
+                "operate",
+                "terminal",
+                "review",
+                "access_read",
+                "access_admin"
+            ])
+        );
         let endpoint = fixture.running.as_ref().unwrap().iroh_addr().unwrap().id;
         assert_eq!(value["iroh"]["endpoint"], endpoint.to_string());
         assert!(!value["iroh"]["addrs"].as_array().unwrap().is_empty());
@@ -1958,13 +1959,11 @@ mod tests {
             endpoint.to_string()
         );
 
-        // Again: the binary is current and a terminal is asked for.
+        // Again: the binary is current, and an earlier `--terminal` is
+        // accepted and changes nothing.
         let again = connect(&plan(&fixture, &binary, &["--terminal"]), &shell).unwrap();
         assert_eq!(again["binary"]["install"], "current");
-        assert_eq!(
-            again["grant"]["rights"],
-            json!(["observe", "operate", "terminal"])
-        );
+        assert_eq!(again["grant"]["rights"], value["grant"]["rights"]);
         // Every invitation was spent or cancelled.
         let Reply::Status(status) = fixture
             .runtime

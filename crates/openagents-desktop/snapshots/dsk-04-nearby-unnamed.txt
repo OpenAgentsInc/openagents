@@ -3,7 +3,6 @@ vertical stack [align=center]
   body "Check that your phone shows this code:" [align=center]
   heading "482 913" [align=center bold]
   status "Connect only if the codes match." [align=center]
-  checkbox [x] "Let this phone open a terminal on this Mac" -> nearby_terminal
   horizontal stack
     button "Don't connect" -> nearby_decline
     button "Connect" -> nearby_connect

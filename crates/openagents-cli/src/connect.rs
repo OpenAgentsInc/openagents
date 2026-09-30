@@ -22,9 +22,10 @@ mod ssh;
 
 pub const USAGE: &str = "usage: openagents connect COMMAND [--socket PATH]
        openagents connect --ssh DESTINATION [OPTIONS]
-  invite [--terminal] [--text]   show a QR code for the OpenAgents app on a
+  invite [--text]                show a QR code for the OpenAgents app on a
                                  phone; waits until a phone connects or the
-                                 code expires, then cancels it
+                                 code expires, then cancels it. The phone
+                                 gets full access, a terminal included
   devices                        the phones that can reach this computer
   remove DEVICE                  cut a phone off now (hex key or npub)
   status                         this computer's host at a glance
@@ -162,7 +163,9 @@ impl Host {
 
 async fn invite(output: &Output, socket: &Path, args: &[String]) -> Result<(), Failure> {
     let mut args = args.to_vec();
-    let terminal = take_flag(&mut args, "--terminal");
+    // Every code grants the full rights; an earlier `--terminal` is
+    // accepted and changes nothing.
+    let _ = take_flag(&mut args, "--terminal");
     let text = take_flag(&mut args, "--text");
     no_more(&args)?;
     let mut host = Host::open(socket).await?;
@@ -174,7 +177,7 @@ async fn invite(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
         code,
         expires_at,
         rights,
-    } = host.call(Op::InviteCreate { terminal }).await?
+    } = host.call(Op::InviteCreate {}).await?
     else {
         return Err(failed("the host answered another question"));
     };
@@ -196,9 +199,6 @@ async fn invite(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
             .ok_or_else(|| failed("the code cannot be drawn"))?;
         println!("{qr}");
         println!("Scan with the OpenAgents app on your phone: Connect a computer.");
-        if terminal {
-            println!("That phone will be allowed to open a terminal on this computer.");
-        }
         if text {
             println!("\nOr paste this code in the app. Anyone with it can connect once:\n{code}");
         }

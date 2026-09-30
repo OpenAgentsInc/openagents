@@ -19,7 +19,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use coder_access::{Right, Rights};
+use coder_access::Rights;
 use openagents_connect::control::{
     self, Autostart, Device, Op, Project, Reply, Request, Response, Status,
 };
@@ -265,7 +265,7 @@ fn host_refused(error: &Error) -> Reply {
 fn answer(shared: &Shared, op: Op) -> Reply {
     match op {
         Op::Status {} => status(shared),
-        Op::InviteCreate { terminal } => invite(shared, terminal),
+        Op::InviteCreate {} => invite(shared),
         Op::InviteCancel { invitation } => {
             match shared
                 .authority
@@ -323,16 +323,12 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             },
             None => refused("unavailable", "this host does not serve nearby pairing"),
         },
-        Op::NearbyDecide {
-            id,
-            connect,
-            terminal,
-        } => {
+        Op::NearbyDecide { id, connect } => {
             let Some(iroh) = shared.iroh.get() else {
                 return refused("unavailable", "this host does not serve nearby pairing");
             };
             let choice = if connect {
-                crate::serve::nearby::Choice::Connect { terminal }
+                crate::serve::nearby::Choice::Connect
             } else {
                 crate::serve::nearby::Choice::Decline
             };
@@ -414,22 +410,17 @@ fn status(shared: &Shared) -> Reply {
     })
 }
 
-/// The rights a connect code carries: `observe` and `operate`, plus
-/// `terminal` only when the person asked for it before the code was shown.
-/// Never `review` or an access right.
+/// The rights a connect code carries: [`Rights::pairing`], every right an
+/// owner's phone uses. Nothing the person sets on screen changes them.
 #[must_use]
-pub fn connect_rights(terminal: bool) -> Rights {
-    let mut rights = vec![Right::Observe, Right::Operate];
-    if terminal {
-        rights.push(Right::Terminal);
-    }
-    Rights::new(rights).expect("a fixed, valid rights list")
+pub fn connect_rights() -> Rights {
+    Rights::pairing()
 }
 
 /// Create an invitation and its `openagents-connect:` code. The
 /// invitation is stored before the code is returned, so the code the
 /// window shows is always one the host will honor.
-fn invite(shared: &Shared, terminal: bool) -> Reply {
+fn invite(shared: &Shared) -> Reply {
     let Some(iroh) = shared.iroh.get() else {
         return refused(
             "unavailable",
@@ -439,7 +430,7 @@ fn invite(shared: &Shared, terminal: bool) -> Reply {
     let Ok(relay) = shared.config.primary().map(str::to_owned) else {
         return refused("unavailable", "the host serves no relay");
     };
-    let rights = connect_rights(terminal);
+    let rights = connect_rights();
     let issued = match shared.authority.local(|host, now| {
         host.invite(
             &relay,

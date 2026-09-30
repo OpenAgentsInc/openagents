@@ -59,20 +59,17 @@ impl Context {
                 self.fake_scan_if_due();
                 Some(Outcome::Refreshed(self.refresh().map(Box::new)))
             }
-            Request::Code(Action::Create { ticket, terminal }) => {
-                Some(match self.control.invite(terminal) {
-                    Ok(invite) => {
-                        self.first_code.get_or_insert_with(Instant::now);
-                        Outcome::Created {
-                            ticket,
-                            invitation: invite.invitation,
-                            code: invite.code,
-                            terminal,
-                        }
+            Request::Code(Action::Create { ticket }) => Some(match self.control.invite() {
+                Ok(invite) => {
+                    self.first_code.get_or_insert_with(Instant::now);
+                    Outcome::Created {
+                        ticket,
+                        invitation: invite.invitation,
+                        code: invite.code,
                     }
-                    Err(_) => Outcome::CreateFailed { ticket },
-                })
-            }
+                }
+                Err(_) => Outcome::CreateFailed { ticket },
+            }),
             Request::Code(Action::Cancel { invitation }) => {
                 let _ = self.control.cancel(&invitation);
                 None
@@ -116,13 +113,9 @@ impl Context {
                 None
             }
             Request::Adopt => Some(Outcome::Adopted(self.adopt())),
-            Request::NearbyDecide {
-                id,
-                connect,
-                terminal,
-            } => self
+            Request::NearbyDecide { id, connect } => self
                 .control
-                .nearby_decide(id, connect, terminal)
+                .nearby_decide(id, connect)
                 .err()
                 .map(|_| Outcome::Failed {
                     message: "That phone stopped asking. Ask again from the phone.".into(),

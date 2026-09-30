@@ -13,10 +13,9 @@
 //!   [`IDLE`] without input, or a pairing cancels every outstanding code.
 //!   After an idle cancel the code stays hidden until the person asks for
 //!   it again.
-//! - The terminal checkbox is part of the invitation: changing it cancels
-//!   every outstanding code at once, and the next code carries the new
-//!   choice. A code that comes back for an older choice, or after a cancel,
-//!   is cancelled instead of shown.
+//! - Every code carries the same rights, the full set an owner's phone
+//!   uses; nothing on screen changes them. A code that comes back after a
+//!   cancel is cancelled instead of shown.
 //! - Each redemption is single-use; the host enforces that.
 //!
 //! [`Codes`] is a pure state machine over an injected clock. It returns
@@ -39,7 +38,7 @@ pub const RETRY: Duration = Duration::from_secs(3);
 pub enum Action {
     /// Ask for a new code; report the result with [`Codes::created`] or
     /// [`Codes::failed`] under the same ticket.
-    Create { ticket: u64, terminal: bool },
+    Create { ticket: u64 },
     /// Cancel one invitation.
     Cancel { invitation: String },
     /// Cancel every outstanding invitation.
@@ -64,7 +63,6 @@ pub struct Shown {
     pub invitation: String,
     /// The `openagents-connect:` text: a bearer secret until redeemed.
     pub text: String,
-    pub terminal: bool,
     pub since: Instant,
 }
 
@@ -72,7 +70,6 @@ impl std::fmt::Debug for Shown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Shown")
             .field("invitation", &self.invitation)
-            .field("terminal", &self.terminal)
             .finish_non_exhaustive()
     }
 }
@@ -95,7 +92,6 @@ impl Conditions {
 /// The code lifecycle.
 #[derive(Debug)]
 pub struct Codes {
-    terminal: bool,
     shown: Option<Shown>,
     /// Replaced codes and when to cancel each.
     retiring: Vec<(String, Instant)>,
@@ -111,10 +107,9 @@ pub struct Codes {
 }
 
 impl Codes {
-    /// No code yet; the terminal checkbox is off.
+    /// No code yet.
     pub fn new(now: Instant) -> Codes {
         Codes {
-            terminal: false,
             shown: None,
             retiring: Vec::new(),
             pending: None,
@@ -134,11 +129,6 @@ impl Codes {
     /// Why no code is showing, when that is a state the screen explains.
     pub fn held(&self) -> Option<Held> {
         self.held
-    }
-
-    /// Whether the next code lets the phone open a terminal.
-    pub fn terminal(&self) -> bool {
-        self.terminal
     }
 
     /// Whether a create is in flight.
@@ -216,10 +206,7 @@ impl Codes {
             self.pending = Some(ticket);
             self.retry_at = None;
             self.dirty = true;
-            actions.push(Action::Create {
-                ticket,
-                terminal: self.terminal,
-            });
+            actions.push(Action::Create { ticket });
         }
         actions
     }
@@ -231,17 +218,15 @@ impl Codes {
         ticket: u64,
         invitation: String,
         text: String,
-        terminal: bool,
         now: Instant,
     ) -> Vec<Action> {
-        if self.pending != Some(ticket) || terminal != self.terminal || self.held.is_some() {
+        if self.pending != Some(ticket) || self.held.is_some() {
             return vec![Action::Cancel { invitation }];
         }
         self.pending = None;
         self.shown = Some(Shown {
             invitation,
             text,
-            terminal,
             since: now,
         });
         Vec::new()
@@ -253,21 +238,6 @@ impl Codes {
             self.pending = None;
             self.retry_at = Some(now + RETRY);
         }
-    }
-
-    /// The terminal checkbox changed. Every outstanding code carries the
-    /// old choice, so all of them are cancelled now.
-    pub fn set_terminal(&mut self, terminal: bool) -> Vec<Action> {
-        if terminal == self.terminal {
-            return Vec::new();
-        }
-        self.terminal = terminal;
-        let mut actions = Vec::new();
-        let held = self.held;
-        self.hold(Held::Away, &mut actions);
-        self.held = held;
-        self.retry_at = None;
-        actions
     }
 
     /// A phone paired: cancel every other code.
@@ -343,13 +313,12 @@ mod tests {
             let mut queue = actions;
             while let Some(action) = queue.pop() {
                 match action {
-                    Action::Create { ticket, terminal } => {
-                        let invite = self.host.invite(terminal).expect("an invite");
+                    Action::Create { ticket } => {
+                        let invite = self.host.invite().expect("an invite");
                         queue.extend(self.codes.created(
                             ticket,
                             invite.invitation,
                             invite.code,
-                            terminal,
                             self.now,
                         ));
                     }
@@ -481,35 +450,33 @@ mod tests {
     }
 
     #[test]
-    fn the_terminal_checkbox_changes_the_rights_the_code_carries() {
+    fn every_code_carries_the_full_rights_an_owner_phone_uses() {
         let mut rig = Rig::new();
         rig.tick(0, ON);
-        let without = rig.shown();
-        let actions = rig.codes.set_terminal(true);
-        rig.run(actions);
-        // The code made without a terminal is gone at once.
-        assert!(rig.open().is_empty());
-        rig.tick(1, ON);
-        let with = rig.shown();
-        assert!(rig.codes.shown().expect("a code").terminal);
-        let phone = rig.host.redeem(&with, "Kai's iPhone").expect("the scan");
+        let phone = rig
+            .host
+            .redeem(&rig.shown(), "Kai's iPhone")
+            .expect("the scan");
         assert!(crate::control::terminal(&phone));
-        assert!(rig.host.redeem(&without, "Old").is_err());
-        // Off again: the next phone gets no terminal.
-        let actions = rig.codes.set_terminal(false);
-        rig.run(actions);
-        rig.tick(2, ON);
-        let plain = rig.host.redeem(&rig.shown(), "Pixel").expect("the scan");
-        assert!(!crate::control::terminal(&plain));
-        assert_eq!(plain.rights, vec!["observe", "operate"]);
+        assert_eq!(
+            phone.rights,
+            vec![
+                "observe",
+                "operate",
+                "terminal",
+                "review",
+                "access_read",
+                "access_admin"
+            ]
+        );
     }
 
     #[test]
-    fn a_code_that_arrives_late_or_for_the_old_choice_is_cancelled() {
+    fn a_code_that_arrives_late_is_cancelled() {
         let mut rig = Rig::new();
         rig.at(0);
         let actions = rig.codes.tick(rig.now, ON);
-        let Some(Action::Create { ticket, terminal }) = actions.first().cloned() else {
+        let Some(Action::Create { ticket }) = actions.first().cloned() else {
             panic!("no create: {actions:?}");
         };
         // The window hides before the host answers.
@@ -520,14 +487,10 @@ mod tests {
                 ..ON
             },
         );
-        let invite = rig.host.invite(terminal).expect("an invite");
-        let back = rig.codes.created(
-            ticket,
-            invite.invitation.clone(),
-            invite.code,
-            terminal,
-            rig.now,
-        );
+        let invite = rig.host.invite().expect("an invite");
+        let back = rig
+            .codes
+            .created(ticket, invite.invitation.clone(), invite.code, rig.now);
         assert_eq!(
             back,
             vec![Action::Cancel {

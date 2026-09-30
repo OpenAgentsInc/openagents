@@ -88,16 +88,25 @@ async fn a_widened_directory_is_made_private_and_a_stale_socket_is_replaced() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn codes_are_minted_rotated_and_cancelled_over_the_socket() {
     let host = host().await;
-    let (first_id, first) = host.code(false).await;
-    let Reply::Invite { rights, .. } = call(&host.socket, Op::InviteCreate { terminal: true })
-        .await
-        .unwrap()
+    let (first_id, first) = host.code().await;
+    let Reply::Invite { rights, .. } = call(&host.socket, Op::InviteCreate {}).await.unwrap()
     else {
         panic!("invite")
     };
-    assert_eq!(rights, ["observe", "operate", "terminal"]);
+    // Every code carries the full pairing rights; nothing narrows them.
+    assert_eq!(
+        rights,
+        [
+            "observe",
+            "operate",
+            "terminal",
+            "review",
+            "access_read",
+            "access_admin"
+        ]
+    );
     // Rotation: a new code, then the one it replaced is cancelled.
-    let (_, second) = host.code(false).await;
+    let (_, second) = host.code().await;
     let Reply::Cancelled { count } = call(
         &host.socket,
         Op::InviteCancel {
@@ -130,7 +139,7 @@ async fn codes_are_minted_rotated_and_cancelled_over_the_socket() {
     assert_eq!(refused.unwrap_err().code, Code::Revoked);
 
     // A fresh code pairs, and the phone is listed, then removed.
-    let (_, third) = host.code(false).await;
+    let (_, third) = host.code().await;
     let (_, access, _) = phone.redeem(&third, &host.relay, now()).await;
     access.unwrap();
     let Reply::Devices { devices } = call(&host.socket, Op::DeviceList {}).await.unwrap() else {
@@ -138,7 +147,8 @@ async fn codes_are_minted_rotated_and_cancelled_over_the_socket() {
     };
     assert_eq!(devices.len(), 1);
     assert_eq!(devices[0].device, pubkey(&phone.secret));
-    assert_eq!(devices[0].rights, ["observe", "operate"]);
+    assert_eq!(devices[0].rights.len(), 6);
+    assert!(devices[0].rights.iter().any(|right| right == "terminal"));
     assert!(!devices[0].revoked);
     let Reply::Revoked { epoch, .. } = call(
         &host.socket,
@@ -298,7 +308,7 @@ async fn a_project_change_is_recorded_and_asks_the_host_to_start_again() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_owner_key_is_imported_only_once_no_phone_holds_a_grant() {
     let host = host().await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     let phone = Phone::new().await;
     let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
     access.unwrap();

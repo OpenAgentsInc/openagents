@@ -148,7 +148,7 @@ fn task_status(status: &str) -> &'static str {
 /// The root of the current screen. `now` is Unix seconds, for "last seen".
 pub fn root(model: &Model, now: u64) -> Node<Intent> {
     if let Some(prompt) = model.nearby() {
-        return nearby::prompt(prompt, model.nearby_terminal(), model.computer);
+        return nearby::prompt(prompt);
     }
     match &model.screen {
         Screen::Connect => connect(model),
@@ -158,7 +158,7 @@ pub fn root(model: &Model, now: u64) -> Node<Intent> {
     }
 }
 
-/// `DSK-01`: the code, the sentence, the terminal checkbox, and the copy.
+/// `DSK-01`: the code, the sentence, and the copy.
 fn connect(model: &Model) -> Node<Intent> {
     let mut middle = Vec::new();
     let shown = model.codes.shown();
@@ -179,13 +179,6 @@ fn connect(model: &Model) -> Node<Intent> {
         "Scan with the OpenAgents app on your phone.",
         TextRole::Heading,
     )));
-    middle.push(checkbox(
-        "terminal",
-        &format!("Let this phone open a terminal on this {}", model.computer),
-        model.codes.terminal(),
-        Intent::ToggleTerminal,
-        true,
-    ));
     if shown.is_some() {
         middle.push(link(
             "copy",

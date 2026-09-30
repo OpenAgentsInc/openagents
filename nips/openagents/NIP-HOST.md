@@ -76,7 +76,11 @@ A grant carries a nonempty, duplicate-free list in the order shown above.
 Any other order is malformed. No right implies another: `access_admin` does
 not include `access_read`, and `operate` does not include `observe`. A
 **standard device grant** is `observe`, `operate`, `terminal`, and `review`;
-it excludes both access rights.
+it excludes both access rights. The **pairing grant** is every right:
+`observe`, `operate`, `terminal`, `review`, `access_read`, and
+`access_admin`. It is what a connect code and a nearby approval carry,
+because the device paired that way is the owner's own phone and does what
+the owner does at the computer.
 
 A right is necessary, never sufficient. The profile that defines an effect
 still applies its own checks. For example, a terminal stream needs a
@@ -207,18 +211,20 @@ one follows these rules, in addition to those for the capability above:
 
 Rights for a connect code are fixed:
 
-- The invitation's rights are `observe` and `operate`, plus `terminal` only
-  when the person set **Let this phone open a terminal on this Mac** before
-  the code was shown. Changing the checkbox cancels the shown code and shows
-  a new one. A connect code never carries `review`, `access_read`, or
-  `access_admin`.
+- The invitation's rights are the pairing grant: `observe`, `operate`,
+  `terminal`, `review`, `access_read`, and `access_admin`. Nothing on the
+  host's screen or in the local control request narrows or widens them;
+  there is no terminal checkbox. The same holds for a code the command line
+  shows (`openagents connect invite`) and for one set up over SSH.
 - The grant expiry is 30 days after issue, the most a grant allows.
 - The issuer is the host itself, as a local operator action.
 
 A host refuses to show a connect code for any other rights list. A device
 that receives a grant whose rights differ from these refuses it and keeps no
-access record. To change rights, the person removes the device and pairs
-again; a rights change in place is not defined.
+access record, with one allowance while computers update: a device also
+keeps the rights earlier connect codes carried, `observe` and `operate`
+with or without `terminal`. To narrow a phone, the person removes it; a
+rights change in place is not defined.
 
 The capability is a temporary bearer secret until redemption. Show it only
 to the enrolling device. It must not appear in a public event, URL, log,
@@ -426,7 +432,7 @@ message framing as [enrollment over iroh](#enrollment-over-iroh):
    `nonce_h`, and `nonce_d` (keys and nonces as raw bytes), modulo 1,000,000,
    shown as six digits in two groups of three.
 5. The host shows the device's label and the code with **Connect** and
-   **Don't connect**, and the connect-code terminal checkbox. It admits the
+   **Don't connect**, and nothing else: no rights choice. It admits the
    device only after the person clicks **Connect**.
 6. On **Connect**, the host signs a grant with origin `approval`, a random
    enrollment ID, the host as issuer, and the

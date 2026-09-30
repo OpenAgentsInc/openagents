@@ -4,19 +4,18 @@
 //!
 //! The exchange, its code, and the click live in the host's serving code;
 //! this is only the grant. Its origin is `approval` with a fresh enrollment
-//! ID and the host as issuer, its rights are the connect-code rights, and
-//! it lasts the 30 days a connect-code grant lasts.
+//! ID and the host as issuer, its rights are the pairing rights
+//! ([`Rights::pairing`]), and it lasts the 30 days a connect-code grant lasts.
 use super::*;
 
 impl Host {
     /// Issues and stores a nearby-approval grant for `device` on `relay`
-    /// with the connect-code `rights`, and returns the grant envelope,
-    /// encrypted to `device`. Call it only after the person's click.
+    /// with the pairing `rights`, and returns the grant envelope, encrypted
+    /// to `device`. Call it only after the person's click.
     ///
     /// # Errors
-    /// Refuses rights other than `observe,operate` or
-    /// `observe,operate,terminal`, a relay the policy forbids, a malformed
-    /// device key, and the owner's or host's own key.
+    /// Refuses rights other than [`Rights::pairing`], a relay the policy
+    /// forbids, a malformed device key, and the owner's or host's own key.
     pub fn approve_nearby(
         &self,
         device: &str,
@@ -27,7 +26,7 @@ impl Host {
         if !is_connect_code_rights(&rights) {
             return fail(
                 Code::Forbidden,
-                "nearby approval grants only the connect-code rights",
+                "nearby approval grants only the pairing rights",
             );
         }
         public(device)?;
@@ -56,12 +55,10 @@ impl Host {
     }
 }
 
-/// `observe,operate`, optionally with `terminal`: what a connect code or a
-/// nearby approval may grant.
+/// [`Rights::pairing`]: what a connect code or a nearby approval grants.
 #[must_use]
 pub fn is_connect_code_rights(rights: &Rights) -> bool {
-    let list = rights.to_list();
-    list == "observe,operate" || list == "observe,operate,terminal"
+    *rights == Rights::pairing()
 }
 
 #[cfg(test)]
@@ -88,7 +85,7 @@ mod tests {
         let (_dir, host, owner, host_key) = host();
         let device = key();
         let now = crate::unix_time().unwrap();
-        let rights = Rights::parse_list("observe,operate,terminal").unwrap();
+        let rights = Rights::pairing();
         let envelope = host
             .approve_nearby(&pubkey(&device), RELAY, rights.clone(), now)
             .unwrap();
@@ -110,13 +107,8 @@ mod tests {
         assert_eq!(host.devices(now).unwrap().len(), 1);
         // Another device key cannot open it.
         let other = Access::from_authorization(
-            host.approve_nearby(
-                &pubkey(&device),
-                RELAY,
-                Rights::parse_list("observe,operate").unwrap(),
-                now,
-            )
-            .unwrap(),
+            host.approve_nearby(&pubkey(&device), RELAY, Rights::pairing(), now)
+                .unwrap(),
             &key(),
             &host_key,
             now,
@@ -126,17 +118,23 @@ mod tests {
     }
 
     #[test]
-    fn only_connect_code_rights_and_only_a_device_key() {
+    fn only_the_pairing_rights_and_only_a_device_key() {
         let (_dir, host, owner, host_key) = host();
         let now = crate::unix_time().unwrap();
         let device = pubkey(&key());
-        for wide in ["standard", "admin", "observe", "observe,operate,review"] {
+        for other in [
+            "standard",
+            "admin",
+            "observe",
+            "observe,operate",
+            "observe,operate,terminal",
+        ] {
             let error = host
-                .approve_nearby(&device, RELAY, Rights::parse_list(wide).unwrap(), now)
+                .approve_nearby(&device, RELAY, Rights::parse_list(other).unwrap(), now)
                 .unwrap_err();
-            assert_eq!(error.code, Code::Forbidden, "{wide}");
+            assert_eq!(error.code, Code::Forbidden, "{other}");
         }
-        let rights = Rights::parse_list("observe,operate").unwrap();
+        let rights = Rights::pairing();
         for principal in [&owner, &host_key] {
             let error = host
                 .approve_nearby(principal, RELAY, rights.clone(), now)

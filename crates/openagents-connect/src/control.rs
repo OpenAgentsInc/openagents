@@ -76,8 +76,9 @@ pub enum Op {
     /// The host's identity, reachability, and counts.
     Status {},
     /// Create a host invitation and its `openagents-connect:` code. A QR
-    /// pairing grants `observe` and `operate`, plus `terminal` when asked.
-    InviteCreate { terminal: bool },
+    /// pairing grants every right an owner's phone uses: `observe`,
+    /// `operate`, `terminal`, `review`, `access_read`, and `access_admin`.
+    InviteCreate {},
     /// Cancel one unredeemed invitation.
     InviteCancel { invitation: String },
     /// Cancel every unredeemed invitation.
@@ -98,13 +99,9 @@ pub enum Op {
     ProjectRemove { label: String },
     /// The nearby request waiting for a click (`DSK-04`), if any.
     NearbyPending {},
-    /// Answer the nearby request `id`: **Connect** (with the terminal
-    /// checkbox) or **Don't connect**.
-    NearbyDecide {
-        id: u64,
-        connect: bool,
-        terminal: bool,
-    },
+    /// Answer the nearby request `id`: **Connect** (with the same rights
+    /// as a QR pairing) or **Don't connect**.
+    NearbyDecide { id: u64, connect: bool },
     /// Make this computer use the owner key the person uses on their other
     /// computers (`openagents connect owner import`), so one owner
     /// directory lists them all. `secret` is the owner's Nostr secret key,

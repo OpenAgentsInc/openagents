@@ -24,7 +24,7 @@ use support::{Phone, call, host, key, now};
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_phone_redeems_a_connect_code_over_iroh_and_a_second_phone_is_forbidden() {
     let host = host().await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     // The code names the host's own keys and its computer name.
     assert_eq!(code.host(), host.running.host_key());
     assert_eq!(code.endpoint(), host.addr().id);
@@ -38,7 +38,10 @@ async fn a_phone_redeems_a_connect_code_over_iroh_and_a_second_phone_is_forbidde
     assert_eq!(reply.unwrap().pubkey, code.host());
     assert_eq!(access.grant.host, code.host());
     assert_eq!(access.grant.device, pubkey(&phone.secret));
-    assert_eq!(access.grant.rights.to_list(), "observe,operate");
+    assert_eq!(
+        access.grant.rights.to_list(),
+        "observe,operate,terminal,review,access_read,access_admin"
+    );
     assert_eq!(access.grant.relay, host.relay);
     assert!(host_now.abs_diff(now()) <= 2);
     assert!(openagents_connect::clock_warning(host_now, now()).is_none());
@@ -92,7 +95,7 @@ async fn a_phone_that_pairs_over_iroh_gets_a_chat_invitation_and_a_refused_one_d
         ..support::Options::default()
     })
     .await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     // The grant comes with a single-use invitation to the host's Coder
     // chats, so the phone can read the tasks it starts there.
     let phone = Phone::new().await;
@@ -109,7 +112,7 @@ async fn a_phone_that_pairs_over_iroh_gets_a_chat_invitation_and_a_refused_one_d
 
     // A host that serves no chats sends none.
     let plain = support::host().await;
-    let (_, code) = plain.code(false).await;
+    let (_, code) = plain.code().await;
     let (_, _, answer) = Phone::new().await.answer(&code, &plain.relay, now()).await;
     assert!(answer.reply.is_some());
     assert!(answer.chats.is_none());
@@ -126,7 +129,7 @@ async fn a_phone_paired_over_iroh_reads_its_chats_and_renews_them_on_its_link() 
         ..support::Options::default()
     })
     .await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     let phone = Phone::new().await;
     let (invitation, pending, answer) = phone.answer(&code, &host.relay, now()).await;
     let reply: nostr::domain::Event =
@@ -161,7 +164,7 @@ async fn a_phone_that_redeems_a_code_on_the_relay_gets_its_chats_from_chats_invi
         ..support::Options::default()
     })
     .await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     // iroh cannot connect, so the phone redeems the same code on the relay,
     // whose answer carries no chat invitation.
     let phone = Phone::new().await;
@@ -186,7 +189,7 @@ async fn a_phone_that_redeems_a_code_on_the_relay_gets_its_chats_from_chats_invi
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_host_that_serves_no_chats_refuses_chats_invite_as_unavailable() {
     let host = host().await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     let phone = Phone::new().await;
     let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
     let device = phone.device(access.unwrap());
@@ -203,7 +206,7 @@ async fn a_host_that_serves_no_chats_refuses_chats_invite_as_unavailable() {
 async fn a_phone_whose_clock_is_off_by_thirty_seconds_still_pairs_and_works() {
     let host = host().await;
     for offset in [-30_i64, 30] {
-        let (_, code) = host.code(false).await;
+        let (_, code) = host.code().await;
         let phone = Phone::new().await;
         let at = now().checked_add_signed(offset).unwrap();
         let (_, access, host_now) = phone.redeem(&code, &host.relay, at).await;
@@ -224,11 +227,12 @@ async fn a_phone_whose_clock_is_off_by_thirty_seconds_still_pairs_and_works() {
             &host.relay,
             &mut coder_host::access::host::Unconnected,
         );
-        let error = client
+        let outcome = client
             .verify_reply(&pending, &reply.unwrap(), at)
-            .unwrap_err();
-        // Admitted as this device: refused only for the right it lacks.
-        assert_eq!(error.code, Code::MissingRight, "{offset}");
+            .unwrap_or_else(|e| panic!("{offset}: {e}"));
+        // Admitted as this device, which holds `access_read` like every
+        // paired phone: it reads the device list.
+        assert!(matches!(outcome, Outcome::Devices { .. }), "{offset}");
     }
     // A clock more than a minute off names itself.
     assert_eq!(
@@ -241,12 +245,12 @@ async fn a_phone_whose_clock_is_off_by_thirty_seconds_still_pairs_and_works() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_terminal_opens_over_iroh_only_with_the_terminal_right() {
     let host = host().await;
-    let (_, with) = host.code(true).await;
-    let (_, without) = host.code(false).await;
+    // Every connect code carries the terminal right.
+    let (_, with) = host.code().await;
     let allowed = Phone::new().await;
     let (_, access, _) = allowed.redeem(&with, &host.relay, now()).await;
     let access = access.unwrap();
-    assert_eq!(access.grant.rights.to_list(), "observe,operate,terminal");
+    assert!(access.grant.rights.contains(Right::Terminal));
     let operator = allowed.device(access);
     let link = allowed.link(&host, &operator).await.unwrap();
     let Outcome::Dispatched { receipt } = link
@@ -272,9 +276,43 @@ async fn a_terminal_opens_over_iroh_only_with_the_terminal_right() {
         .unwrap();
     assert_eq!(attached.status, Status::Accepted, "{attached:?}");
 
+    // A grant without it (one an earlier code made) is refused a terminal.
     let refused = Phone::new().await;
-    let (_, access, _) = refused.redeem(&without, &host.relay, now()).await;
-    let observer = refused.device(access.unwrap());
+    let at = now();
+    let invitation = host
+        .store
+        .invite(
+            &host.relay,
+            coder_host::access::Rights::parse_list("observe,operate").unwrap(),
+            at,
+            at + 86_400,
+        )
+        .unwrap();
+    let parsed =
+        coder_host::access::protocol::HostInvitation::parse(&invitation.code, at, support::POLICY)
+            .unwrap();
+    let pending =
+        coder_host::access::client::prepare_redeem(&parsed, &refused.secret, at, support::POLICY)
+            .unwrap();
+    let reply = host
+        .store
+        .handle(
+            &pending.event,
+            &host.relay,
+            at,
+            &mut coder_host::access::host::Unconnected,
+        )
+        .unwrap();
+    let access = coder_host::access::client::finish_redeem(
+        &parsed,
+        &pending,
+        &reply,
+        &refused.secret,
+        at,
+        support::POLICY,
+    )
+    .unwrap();
+    let observer = refused.device(access);
     let link = refused.link(&host, &observer).await.unwrap();
     let error = link
         .call(Operation::OpenTerminal { cols: 80, rows: 24 })
@@ -302,7 +340,7 @@ async fn a_terminal_opens_over_iroh_only_with_the_terminal_right() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn revocation_closes_an_open_iroh_channel_before_its_next_message() {
     let host = host().await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     let phone = Phone::new().await;
     let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
     let device = phone.device(access.unwrap());
@@ -340,7 +378,7 @@ async fn revocation_closes_an_open_iroh_channel_before_its_next_message() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_unknown_key_reaches_only_enrollment_and_a_grant_admits_only_its_device() {
     let host = host().await;
-    let (_, code) = host.code(false).await;
+    let (_, code) = host.code().await;
     let phone = Phone::new().await;
     let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
     let access = access.unwrap();

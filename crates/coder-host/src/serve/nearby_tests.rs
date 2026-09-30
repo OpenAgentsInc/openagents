@@ -120,8 +120,7 @@ async fn no_grant_without_the_click() {
 #[tokio::test(start_paused = true)]
 async fn the_click_signs_one_grant_with_the_connect_code_rights() {
     let minted = gate();
-    let (host, device, code) =
-        exchange(&minted.gate, Some(Choice::Connect { terminal: false })).await;
+    let (host, device, code) = exchange(&minted.gate, Some(Choice::Connect)).await;
     assert!(matches!(host, HostOutcome::Approved { .. }));
     assert_eq!(
         device,
@@ -132,18 +131,20 @@ async fn the_click_signs_one_grant_with_the_connect_code_rights() {
             event: serde_json::json!({"sealed": "grant"}),
         }
     );
-    let (_, _, _) = exchange(&minted.gate, Some(Choice::Connect { terminal: true })).await;
+    let (_, _, _) = exchange(&minted.gate, Some(Choice::Connect)).await;
     assert_eq!(minted.calls.load(Ordering::SeqCst), 2);
     assert_eq!(
         *minted.rights.lock().unwrap(),
         vec![
-            (nearby::hex(&DEVICE.nostr), nearby_rights(false)),
-            (nearby::hex(&DEVICE.nostr), nearby_rights(true))
+            (nearby::hex(&DEVICE.nostr), nearby_rights()),
+            (nearby::hex(&DEVICE.nostr), nearby_rights())
         ],
         "the grant is for the device key the exchange named"
     );
-    assert_eq!(nearby_rights(false).to_list(), "observe,operate");
-    assert_eq!(nearby_rights(true).to_list(), "observe,operate,terminal");
+    assert_eq!(
+        nearby_rights().to_list(),
+        "observe,operate,terminal,review,access_read,access_admin"
+    );
     assert_eq!(minted.gate.pending(), None);
 }
 
@@ -154,7 +155,7 @@ async fn a_click_needs_the_shown_request() {
     // Admitted but its code is not on screen yet: nothing to click.
     assert_eq!(minted.gate.pending(), None);
     assert_eq!(
-        minted.gate.decide(1, Choice::Connect { terminal: false }),
+        minted.gate.decide(1, Choice::Connect),
         Err(DecideError::NotPending)
     );
     let decided = tokio::spawn(ticket.decide(Code::new(123_456).unwrap()));
@@ -168,17 +169,13 @@ async fn a_click_needs_the_shown_request() {
         .unwrap();
     assert_eq!(pending.code.digits(), "123456");
     assert_eq!(
-        minted
-            .gate
-            .decide(pending.id + 1, Choice::Connect { terminal: false }),
+        minted.gate.decide(pending.id + 1, Choice::Connect),
         Err(DecideError::NotPending),
         "another request's ID does not approve this one"
     );
     minted.gate.decide(pending.id, Choice::Decline).unwrap();
     assert_eq!(
-        minted
-            .gate
-            .decide(pending.id, Choice::Connect { terminal: false }),
+        minted.gate.decide(pending.id, Choice::Connect),
         Err(DecideError::NotPending),
         "one answer per request"
     );

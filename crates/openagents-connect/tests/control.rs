@@ -15,7 +15,7 @@ use tokio::io::AsyncWriteExt;
 fn every_op() -> Vec<Op> {
     vec![
         Op::Status {},
-        Op::InviteCreate { terminal: true },
+        Op::InviteCreate {},
         Op::InviteCancel {
             invitation: "11".repeat(32),
         },
@@ -47,10 +47,10 @@ fn every_op() -> Vec<Op> {
 
 #[test]
 fn requests_have_a_stable_wire_shape() {
-    let request = Request::new(3, Op::InviteCreate { terminal: false });
+    let request = Request::new(3, Op::InviteCreate {});
     assert_eq!(
         serde_json::to_value(&request).unwrap(),
-        json!({"v": VERSION, "id": 3, "op": {"kind": "invite_create", "terminal": false}})
+        json!({"v": VERSION, "id": 3, "op": {"kind": "invite_create"}})
     );
     let request = Request::new(4, Op::Status {});
     assert_eq!(
@@ -69,8 +69,10 @@ fn unknown_operations_and_fields_do_not_parse() {
     for text in [
         json!({"v": VERSION, "id": 1, "op": {"kind": "shell"}}),
         json!({"v": VERSION, "id": 1, "op": {"kind": "status", "extra": 1}}),
-        json!({"v": VERSION, "id": 1, "op": {"kind": "invite_create"}}),
-        json!({"v": VERSION, "id": 1, "op": {"kind": "invite_create", "terminal": true, "rights": ["access_admin"]}}),
+        // Nothing on the wire narrows or widens a code's rights.
+        json!({"v": VERSION, "id": 1, "op": {"kind": "invite_create", "terminal": false}}),
+        json!({"v": VERSION, "id": 1, "op": {"kind": "invite_create", "rights": ["observe"]}}),
+        json!({"v": VERSION, "id": 1, "op": {"kind": "nearby_decide", "id": 7, "connect": true, "terminal": false}}),
         json!({"v": VERSION, "id": 1, "op": {"kind": "status"}, "grant": "x"}),
     ] {
         assert!(

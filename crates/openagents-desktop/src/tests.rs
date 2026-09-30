@@ -85,11 +85,8 @@ fn model(screen: Screen) -> (Model, Instant) {
 }
 
 /// A model on the code screen with a code showing.
-fn with_code(terminal: bool) -> Model {
+fn with_code() -> Model {
     let (mut model, now) = model(Screen::Connect);
-    if terminal {
-        let _ = model.activate(Intent::ToggleTerminal, now);
-    }
     model.host = Some(host(vec![], false, false));
     model.reached = true;
     let conditions = Conditions {
@@ -101,13 +98,9 @@ fn with_code(terminal: bool) -> Model {
     let Some(Action::Create { ticket, .. }) = actions.first().cloned() else {
         panic!("no create: {actions:?}");
     };
-    let _ = model.codes.created(
-        ticket,
-        "c".repeat(64),
-        "openagents-connect:AQ".into(),
-        terminal,
-        now,
-    );
+    let _ = model
+        .codes
+        .created(ticket, "c".repeat(64), "openagents-connect:AQ".into(), now);
     model
 }
 
@@ -115,11 +108,11 @@ fn with_code(terminal: bool) -> Model {
 fn states() -> Vec<(&'static str, Model)> {
     let mut states = Vec::new();
 
-    states.push(("dsk-01-code", with_code(false)));
+    states.push(("dsk-01-code", with_code()));
 
-    let mut copied = with_code(true);
+    let mut copied = with_code();
     let _ = copied.activate(Intent::CopyCode, Instant::now());
-    states.push(("dsk-01-terminal-copied", copied));
+    states.push(("dsk-01-copied", copied));
 
     let (starting, _) = model(Screen::Connect);
     states.push(("dsk-01-starting", starting));
@@ -128,7 +121,7 @@ fn states() -> Vec<(&'static str, Model)> {
     approval.agent = Agent::NeedsApproval;
     states.push(("dsk-01-needs-approval", approval));
 
-    let mut idle = with_code(false);
+    let mut idle = with_code();
     let later = Instant::now() + Duration::from_secs(601);
     let _ = idle.codes.tick(
         later,
@@ -140,7 +133,7 @@ fn states() -> Vec<(&'static str, Model)> {
     );
     states.push(("dsk-01-idle", idle));
 
-    let mut another = with_code(false);
+    let mut another = with_code();
     another.host = Some(host(
         vec![phone('d', "Kai's iPhone", false, 30)],
         true,
@@ -237,18 +230,17 @@ fn states() -> Vec<(&'static str, Model)> {
         label: label.into(),
         code: "482913".into(),
     };
-    let mut nearby = with_code(false);
+    let mut nearby = with_code();
     if let Some(host) = &mut nearby.host {
         host.nearby = Some(prompt("Kai's iPhone"));
     }
     states.push(("dsk-04-nearby", nearby));
 
-    let (mut unnamed, now) = model(Screen::Home);
+    let (mut unnamed, _) = model(Screen::Home);
     let mut state = host(vec![phone('d', "Kai's iPhone", true, 120)], true, true);
     state.nearby = Some(prompt(""));
     unnamed.host = Some(state);
-    let _ = unnamed.activate(Intent::NearbyTerminal, now);
-    states.push(("dsk-04-nearby-terminal-unnamed", unnamed));
+    states.push(("dsk-04-nearby-unnamed", unnamed));
 
     let old = |ready| OldSetup {
         phones: Some(6),
@@ -382,12 +374,20 @@ fn the_picked_folder_shows_not_the_hosts_worktree() {
     }
 }
 
-/// The terminal checkbox starts off.
+/// No screen asks which rights a phone gets: there is no checkbox on the
+/// code screen or on the nearby prompt, and no terminal question anywhere.
 #[test]
-fn the_terminal_checkbox_is_off_by_default() {
-    let model = with_code(false);
-    let outline = outline(&view_of(&model));
-    assert!(outline.contains("checkbox [ ] \"Let this phone open a terminal on this Mac\""));
+fn no_screen_asks_about_a_terminal() {
+    for (name, model) in states() {
+        let outline = outline(&view_of(&model));
+        assert!(
+            !outline.contains("open a terminal"),
+            "{name} asks about a terminal:\n{outline}"
+        );
+        if name.starts_with("dsk-01") || name.starts_with("dsk-04") {
+            assert!(!outline.contains("checkbox"), "{name}:\n{outline}");
+        }
+    }
 }
 
 /// On Linux and Windows no screen says "Mac": each says "this computer"
@@ -407,10 +407,6 @@ fn off_a_mac_no_screen_says_mac() {
             assert!(banned_in(text).is_empty(), "{name} shows {text:?}");
         }
     }
-    let mut model = with_code(false);
-    model.computer = "computer";
-    let outline = outline(&view_of(&model));
-    assert!(outline.contains("checkbox [ ] \"Let this phone open a terminal on this computer\""));
     assert_eq!(
         crate::words::COMPUTER,
         if cfg!(target_os = "macos") {

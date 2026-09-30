@@ -395,13 +395,15 @@ pub async fn open_link(
     Link::direct(device, stream, route.address(), generation, timeout).await
 }
 
-/// The connect-code rights: `observe` and `operate`, and `terminal` when
-/// the computer allowed it before showing the code; never `review` or an
-/// access right.
+/// The connect-code rights: [`Rights::pairing`], every right. A computer
+/// not yet updated grants what codes carried before, `observe,operate`
+/// with or without `terminal`, and those are kept too. Any other set is
+/// not a pairing's.
 pub(crate) fn connect_rights(rights: &Rights) -> bool {
-    let plain = Rights::new([Right::Observe, Right::Operate]).ok();
-    let terminal = Rights::new([Right::Observe, Right::Operate, Right::Terminal]).ok();
-    Some(rights) == plain.as_ref() || Some(rights) == terminal.as_ref()
+    let earlier = |list: &[Right]| Rights::new(list.iter().copied()).ok();
+    *rights == Rights::pairing()
+        || Some(rights) == earlier(&[Right::Observe, Right::Operate]).as_ref()
+        || Some(rights) == earlier(&[Right::Observe, Right::Operate, Right::Terminal]).as_ref()
 }
 
 /// Keep a grant only when it names the code's host key and carries the
@@ -531,6 +533,8 @@ mod tests {
     #[test]
     fn only_the_connect_code_rights_are_kept() {
         let rights = |list: &[Right]| Rights::new(list.iter().copied()).unwrap();
+        assert!(connect_rights(&Rights::pairing()));
+        assert!(!connect_rights(&Rights::standard()));
         assert!(connect_rights(&rights(&[Right::Observe, Right::Operate])));
         assert!(connect_rights(&rights(&[
             Right::Observe,
