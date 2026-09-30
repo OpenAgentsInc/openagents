@@ -1,4 +1,6 @@
 //! Desktop chat presentation and local drafts over host-owned conversation state.
+mod access;
+
 use crate::chat_action::Action;
 use crate::chrome::{Chat, Section, State};
 use crate::control::ControlResult;

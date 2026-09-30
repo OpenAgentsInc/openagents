@@ -13,11 +13,16 @@ description = "A desktop adapter for Rust Native views: layout, software paintin
 default = ["window"]
 # The native window. Without it the crate still lays out and paints views
 # into frames, which is what tests and captures use.
-window = ["dep:winit", "dep:wgpu", "dep:pollster", "dep:rfd", "dep:arboard", "dep:objc2", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:wayland-client", "dep:wayland-backend"]
+window = ["dep:winit", "dep:wgpu", "dep:pollster", "dep:rfd", "dep:arboard", "dep:objc2", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:wayland-client", "dep:wayland-backend", "dep:accesskit_winit"]
 
 [dependencies]
 # The semantic views, and the bundled faces and line breaking it shapes with.
 rust-native = { path = "../rust-native", features = ["shaping"] }
+# The accessibility tree (`access`): plain data, built and tested without
+# a window. `accesskit_winit` hands it to VoiceOver, Orca (AT-SPI), and
+# UI Automation from the window.
+accesskit = "0.25.1"
+accesskit_winit = { version = "0.34.1", default-features = false, features = ["rwh_06", "accesskit_unix", "async-io"], optional = true }
 serde = { version = "1", features = ["derive"] }
 swash = "0.2.10"
 png = "0.18.1"
@@ -43,8 +48,16 @@ objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, 
 objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSArray", "NSGeometry"] }
 
 [dev-dependencies]
+# Reads the accessibility tree as the platform adapters do, in tests.
+accesskit_consumer = "0.39.1"
 # Parses and validates the backdrop's shader with the naga release wgpu uses.
 naga = { version = "29.0.4", features = ["wgsl-in"] }
 
 [lints]
 workspace = true
+
+# A chat-shaped window for checking the accessibility tree with the
+# platform's own accessibility API.
+[[example]]
+name = "access_probe"
+required-features = ["window"]

@@ -5,7 +5,8 @@ describes each screen as a validated `View` with its own typed intents; this
 crate lays the view out in Rust, paints it in software, and shows it in a
 `winit` window over a `wgpu` surface, the window pattern
 [`openagents-deck`](../openagents-deck/) uses. It adds no window or GPU
-dependency the workspace did not already have.
+dependency the workspace did not already have; the accessibility adapter
+(AccessKit) is its own.
 
 - **Layout** ([`src/layout.rs`](src/layout.rs)) places nodes in points and
   records every button's rectangle, in view order, which is also the focus
@@ -33,6 +34,23 @@ dependency the workspace did not already have.
   `wl-copy`/`wl-paste` or `xclip`, then `arboard`, are the fallbacks. A
   drop hands the application file paths, as winit's `DroppedFile` does
   elsewhere.
+
+- **Accessibility** ([`src/access.rs`](src/access.rs),
+  [`src/window/access.rs`](src/window/access.rs)) describes the laid-out
+  view to screen readers as an [AccessKit](https://accesskit.dev) tree:
+  buttons, checkboxes, lists, headings, text, composers (with the typed
+  text as their value), transcripts as logs of messages, and cards, each
+  with its name, bounds, and actions. An application describes what it
+  paints in a surface with `App::access_content` (the desktop transcript
+  gives its rows with `Transcript::access`), the text in its fields with
+  `access_value`, and its text cursor with `access_focus`. The window
+  attaches `accesskit_winit` (NSAccessibility, AT-SPI, UI Automation)
+  before it is first shown, builds nothing until a screen reader asks,
+  and answers each request with the input the window already handles
+  (`access::answer`): an activation resolved against the current view, a
+  Tab focus move, a click at a control's bounds in a surface, or
+  select-all and typing in a composer. AccessKit is the one dependency
+  this adds.
 
 - **Backdrop** ([`src/backdrop.rs`](src/backdrop.rs), with `window`) is
   an optional live picture an application draws with the window's own

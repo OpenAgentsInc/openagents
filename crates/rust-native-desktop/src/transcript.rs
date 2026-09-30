@@ -558,6 +558,58 @@ impl Transcript {
         }
         None
     }
+    /// The rows, in order, for screen readers, with the viewport bounds of
+    /// the rows and enabled buttons now on screen ([`crate::access`]).
+    pub fn access(&self) -> crate::access::Content {
+        let mut bounds = HashMap::new();
+        for index in self.frame.rows_in(self.offset, self.offset + self.height) {
+            let (Some(row), Some(place)) = (self.frame.display(index), self.frame.placement(index))
+            else {
+                continue;
+            };
+            let top = place.y - self.offset;
+            let clamp = |y: f32, h: f32| {
+                let y0 = y.max(0.0);
+                let y1 = (y + h).min(self.height);
+                (y1 > y0).then_some((y0, y1 - y0))
+            };
+            if let Some((y, h)) = clamp(top, place.height) {
+                bounds.insert(
+                    row.key.clone(),
+                    crate::layout::Rect {
+                        x: 0.0,
+                        y,
+                        w: self.frame.width(),
+                        h,
+                    },
+                );
+            }
+            for widget in &row.widgets {
+                if let WidgetKind::Button { key, enabled: true } = &widget.kind
+                    && let Some((y, h)) = clamp(top + widget.y, widget.h)
+                {
+                    bounds.insert(
+                        key.clone(),
+                        crate::layout::Rect {
+                            x: widget.x,
+                            y,
+                            w: widget.w,
+                            h,
+                        },
+                    );
+                }
+            }
+        }
+        crate::access::Content {
+            rows: self
+                .order
+                .iter()
+                .filter_map(|key| self.rows.get(key).cloned())
+                .collect(),
+            bounds,
+            conversation: true,
+        }
+    }
     pub fn visible_rows(&self) -> usize {
         self.frame
             .rows_in(self.offset, self.offset + self.height)

@@ -18,6 +18,10 @@
 //!   into revision-bound [`rust_native::Activation`]s, and resolves each one
 //!   against the current view before the application sees its intent.
 //!
+//! - [`access`] describes the laid-out view to screen readers as an
+//!   AccessKit tree, and the window answers their requests as the clicks,
+//!   focus moves, and typing it already handles.
+//!
 //! What the adapter supports and refuses is listed in the crate README. An
 //! element it can't draw is recorded in [`layout::Scene::unsupported`] and
 //! falls back to its label, never to nothing.
@@ -26,6 +30,7 @@
 //! source beyond the frame timing a window needs. The application decides
 //! what an intent means and checks its own authority first.
 
+pub mod access;
 #[cfg(feature = "window")]
 pub mod backdrop;
 pub mod canvas;
@@ -286,6 +291,28 @@ pub trait App {
     /// Local diagnostics after a frame was submitted to the native surface.
     fn frame_presented(&mut self, timing: timing::FrameTiming) {
         let _ = timing;
+    }
+
+    /// The text a person has typed in the composer node `key`, for screen
+    /// readers. `None` reads the composer's `draft`.
+    fn access_value(&self, key: &str) -> Option<String> {
+        let _ = key;
+        None
+    }
+
+    /// The view node holding the application's own keyboard focus, such as
+    /// a composer with the text cursor, for screen readers. `None` leaves
+    /// the window's focus (Tab) as the focus.
+    fn access_focus(&self) -> Option<String> {
+        None
+    }
+
+    /// What the application paints in the surface `resource`, as semantic
+    /// rows, for screen readers ([`access::Content`]). `None` leaves the
+    /// surface an image named by its label.
+    fn access_content(&self, resource: &str) -> Option<access::Content> {
+        let _ = resource;
+        None
     }
 
     /// Whether the application asked to close its window.

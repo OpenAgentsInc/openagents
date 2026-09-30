@@ -112,6 +112,9 @@ tempfile = "3"
 # Reading the QR code back from painted frames and window captures.
 png = "0.18.1"
 rqrr = { version = "0.11", default-features = false }
+# Reading the accessibility tree as VoiceOver's, AT-SPI's, and UI
+# Automation's adapters read it.
+accesskit_consumer = "0.39.1"
 
 [lints]
 workspace = true

@@ -37,6 +37,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorGrabMode, CursorIcon, Fullscreen, Window, WindowId};
 
+mod access;
+
 #[cfg(target_os = "macos")]
 fn position_header_controls(window: &Window, height: f32) {
     use objc2_app_kit::{NSView, NSWindowButton};
@@ -235,6 +237,7 @@ fn run_shell<A: App>(
         timings: Timings::from_env(),
         captured_surface: None,
         captured_cursor: false,
+        access: None,
         #[cfg(target_os = "linux")]
         drops: None,
         #[cfg(target_os = "linux")]
@@ -464,6 +467,8 @@ struct Shell<A: App> {
     timings: Timings,
     captured_surface: Option<(String, crate::layout::Rect)>,
     captured_cursor: bool,
+    /// The screen readers' view of the window ([`crate::access`]).
+    access: Option<access::Access>,
     /// Files dropped on the window through the Wayland seat
     /// ([`crate::wayland`]); winit has no drag and drop there.
     #[cfg(target_os = "linux")]
@@ -1226,6 +1231,11 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
         if self.window.is_some() {
             return;
         }
+        let access_waker = self.proxy.clone().map(|proxy| {
+            Waker::new(move || {
+                let _ = proxy.send_event(());
+            })
+        });
         if let Some(proxy) = self.proxy.take() {
             #[cfg(target_os = "linux")]
             {
@@ -1244,6 +1254,8 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             // Dark only, whatever the system's appearance (`theme::APPEARANCE`).
             .with_theme(Some(winit::window::Theme::Dark))
             .with_inner_size(LogicalSize::new(self.options.size.0, self.options.size.1))
+            // Shown once the accessibility adapter is attached.
+            .with_visible(false)
             .with_min_inner_size(LogicalSize::new(
                 self.options.min_size.0,
                 self.options.min_size.1,
@@ -1277,6 +1289,12 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 return;
             }
         };
+        self.access = Some(access::Access::new(
+            event_loop,
+            &window,
+            access_waker.unwrap_or_else(Waker::none),
+        ));
+        window.set_visible(true);
         #[cfg(target_os = "macos")]
         if let Some(height) = self.app.window_layout().header_height() {
             position_header_controls(&window, height);
@@ -1351,6 +1369,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             event_loop.exit();
             return;
         }
+        self.sync_access();
         let frame = self.backdrop_due(now);
         if frame.is_some_and(|frame| frame <= now) {
             self.request_frame();
@@ -1366,6 +1385,9 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        if let (Some(access), Some(window)) = (&mut self.access, &self.window) {
+            access.process_event(window, &event);
+        }
         let scale = self.scale();
         let x = self.cursor.x as f32 / scale;
         let y = self.cursor.y as f32 / scale;

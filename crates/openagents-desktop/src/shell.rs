@@ -1067,6 +1067,15 @@ impl App for DesktopApp {
     fn tooltip(&self, key: &str) -> Option<String> {
         self.chat.as_ref().and_then(|chat| chat.tooltip(key))
     }
+    fn access_value(&self, key: &str) -> Option<String> {
+        self.chat.as_ref()?.access_value(key)
+    }
+    fn access_focus(&self) -> Option<String> {
+        self.chat.as_ref()?.access_focus()
+    }
+    fn access_content(&self, resource: &str) -> Option<rust_native_desktop::access::Content> {
+        self.chat.as_ref()?.access_content(resource)
+    }
 
     fn dropped_file(&mut self, path: std::path::PathBuf, _now: Instant) -> bool {
         if !self
@@ -4040,6 +4049,11 @@ mod late_click_tests;
 #[cfg(test)]
 #[path = "slides_shell_tests.rs"]
 mod slides_shell_tests;
+
+/// Screen readers' view of the chat window (#10024).
+#[cfg(test)]
+#[path = "access_tests.rs"]
+mod access_tests;
 
 #[cfg(test)]
 mod coder_events {

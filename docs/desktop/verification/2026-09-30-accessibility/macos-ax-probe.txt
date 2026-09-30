@@ -1,0 +1,83 @@
+## 1. dump at launch
+AXWindow title="Access probe"
+  AXGroup
+    AXList title="Chats"
+      AXButton title="Fix the login bug" [disabled]
+      AXButton title="Plan the launch"
+    Heading title="Fix the login bug"
+    AXGroup title="Conversation"
+      AXGroup title="You"
+        AXStaticText value="Why can\'t I log in?"
+      AXGroup title="Reply"
+        AXStaticText value="The session cookie expired. Sign in again."
+    AXTextArea title="Message OpenAgents" placeholder="Message OpenAgents" value=""
+    AXButton title="Send" [disabled]
+  AXButton
+  AXButton
+    AXGroup
+  AXButton
+  AXStaticText value="Access probe"
+## 2. focus composer, set its value
+focus Message OpenAgents: 0
+set Message OpenAgents: 0
+AXWindow title="Access probe"
+  AXGroup
+    AXList title="Chats"
+      AXButton title="Fix the login bug" [disabled]
+      AXButton title="Plan the launch"
+    Heading title="Fix the login bug"
+    AXGroup title="Conversation"
+      AXGroup title="You"
+        AXStaticText value="Why can\'t I log in?"
+      AXGroup title="Reply"
+        AXStaticText value="The session cookie expired. Sign in again."
+    AXTextArea title="Message OpenAgents" placeholder="Message OpenAgents" value="Is the build green?" *focused*
+    AXButton title="Send"
+  AXButton
+  AXButton
+    AXGroup
+      AXGroup
+  AXButton
+  AXStaticText value="Access probe"
+## 3. press Send
+press Send: 0
+AXWindow title="Access probe"
+  AXGroup
+    AXList title="Chats"
+      AXButton title="Fix the login bug" [disabled]
+      AXButton title="Plan the launch"
+    Heading title="Fix the login bug"
+    AXGroup title="Conversation"
+      AXGroup title="You"
+        AXStaticText value="Why can\'t I log in?"
+      AXGroup title="Reply"
+        AXStaticText value="The session cookie expired. Sign in again."
+      AXGroup title="You"
+        AXStaticText value="Is the build green?"
+      AXGroup title="Reply"
+        AXStaticText value="You said: Is the build green?"
+    AXTextArea title="Message OpenAgents" placeholder="Message OpenAgents" value="" *focused*
+    AXButton title="Send" [disabled]
+  AXButton
+  AXButton
+    AXGroup
+      AXGroup
+  AXButton
+  AXStaticText value="Access probe"
+## 4. press Plan the launch in the sidebar
+press Plan the launch: 0
+AXWindow title="Access probe"
+  AXGroup
+    AXList title="Chats"
+      AXButton title="Fix the login bug"
+      AXButton title="Plan the launch" [disabled]
+    Heading title="Plan the launch"
+    AXGroup title="Conversation"
+    AXTextArea title="Message OpenAgents" placeholder="Message OpenAgents" value="" *focused*
+    AXButton title="Send" [disabled]
+  AXButton
+  AXButton
+    AXGroup
+      AXGroup
+  AXButton
+  AXStaticText value="Access probe"
