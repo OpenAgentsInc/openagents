@@ -25,7 +25,7 @@ pub const CODER_POLL: Duration = Duration::from_secs(15);
 /// How long a copied code stays on the clipboard.
 pub const CLIPBOARD_LIFE: Duration = Duration::from_secs(60);
 
-/// The screens: `DSK-01` to `DSK-03`, and the adoption question.
+/// The screens: `DSK-01` to `DSK-03`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Screen {
     /// `DSK-01`: the code.
@@ -34,8 +34,6 @@ pub enum Screen {
     Connected { device: String },
     /// `DSK-03`: status, phones, and Coder.
     Home,
-    /// A Mac set up the old way: use that setup?
-    Adopt,
 }
 
 /// What a click asks for. Every one is resolved against the view that
@@ -63,10 +61,6 @@ pub enum Intent {
     Remove { device: String },
     /// "Keep" in the confirmation.
     Keep,
-    /// "Use it" on the adoption question.
-    Adopt,
-    /// "Not now" on the adoption question.
-    NotNow,
     /// "Open Login Items".
     OpenLoginItems,
     /// `DSK-04`: "Connect", for the request the prompt showed.
@@ -100,8 +94,9 @@ pub enum Request {
     /// Whether Codex and Claude Code are signed in, and the recent tasks.
     Coder,
     OpenLoginItems,
-    /// Run `coder host adopt`.
-    Adopt,
+    /// Start Coder under this app, upgrading an earlier setup silently
+    /// first ([`crate::migrate::start`]). Sent once, on launch.
+    Start,
     /// Answer the nearby request `id` (`DSK-04`).
     NearbyDecide {
         id: u64,
@@ -125,7 +120,7 @@ impl std::fmt::Debug for Request {
             Request::ChooseFolder => f.write_str("ChooseFolder"),
             Request::Coder => f.write_str("Coder"),
             Request::OpenLoginItems => f.write_str("OpenLoginItems"),
-            Request::Adopt => f.write_str("Adopt"),
+            Request::Start => f.write_str("Start"),
             Request::NearbyDecide { id, connect } => {
                 write!(f, "NearbyDecide {{ id: {id}, connect: {connect} }}")
             }
@@ -158,6 +153,8 @@ pub enum Agent {
     Enabled,
     /// Registered, but the person must allow it in System Settings.
     NeedsApproval,
+    /// Being started on launch, after upgrading an earlier setup.
+    Starting,
     /// Not registered: an earlier setup still runs Coder, or this is not an
     /// app bundle.
     NotRegistered,
@@ -165,14 +162,12 @@ pub enum Agent {
     Failed(String),
 }
 
-/// What an old-style setup keeps, as the adoption question says it.
+/// How starting Coder on launch went.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OldSetup {
-    /// Phones that can reach this Mac now; `None` when this app's Coder
-    /// can't count them (it doesn't read the keychain, or gave no answer).
-    pub phones: Option<usize>,
-    /// Whether this app's Coder can take it over yet.
-    pub ready: bool,
+pub struct Started {
+    pub agent: Agent,
+    /// One quiet line when an earlier setup had to keep running.
+    pub note: Option<String>,
 }
 
 /// A finished request.
@@ -198,7 +193,7 @@ pub enum Outcome {
         tasks: Vec<Task>,
     },
     Copied,
-    Adopted(Result<(), String>),
+    Started(Started),
 }
 
 impl std::fmt::Debug for Outcome {
@@ -220,7 +215,7 @@ fn outcome_name(outcome: &Outcome) -> &'static str {
         Outcome::Folder(_) => "Folder",
         Outcome::Coder { .. } => "Coder",
         Outcome::Copied => "Copied",
-        Outcome::Adopted(_) => "Adopted",
+        Outcome::Started(_) => "Started",
     }
 }
 
@@ -248,7 +243,8 @@ pub struct Model {
     pub agents: Agents,
     pub tasks: Vec<Task>,
     pub agent: Agent,
-    pub old: Option<OldSetup>,
+    /// One quiet line about how Coder started, when it matters.
+    pub note: Option<String>,
     /// The device a Remove confirmation is showing for.
     pub confirming: Option<String>,
     /// The last copy, for its line under the link.
@@ -264,15 +260,18 @@ pub struct Model {
     next_coder: Instant,
     /// Clipboard entries to clear, and when.
     clear: Vec<(String, Instant)>,
-    adopting: bool,
+    /// Whether [`Request::Start`] is still to be sent.
+    start: bool,
     /// What the screens call this computer: "Mac" on a Mac, "computer" on
     /// Linux and Windows ([`crate::words::COMPUTER`]).
     pub computer: &'static str,
 }
 
 impl Model {
-    /// A model that opens on `screen`.
-    pub fn new(now: Instant, screen: Screen, agent: Agent, old: Option<OldSetup>) -> Model {
+    /// A model that opens on `screen`. With [`Agent::Starting`] its first
+    /// tick asks to start Coder.
+    pub fn new(now: Instant, screen: Screen, agent: Agent) -> Model {
+        let start = agent == Agent::Starting;
         Model {
             screen,
             codes: Codes::new(now),
@@ -281,7 +280,7 @@ impl Model {
             agents: Agents::default(),
             tasks: Vec::new(),
             agent,
-            old,
+            note: None,
             confirming: None,
             copied_at: None,
             problem: None,
@@ -291,7 +290,7 @@ impl Model {
             next_poll: now,
             next_coder: now,
             clear: Vec::new(),
-            adopting: false,
+            start,
             computer: crate::words::COMPUTER,
         }
     }
@@ -300,17 +299,6 @@ impl Model {
     /// screen until it is answered, withdrawn, or expires.
     pub fn nearby(&self) -> Option<&NearbyPrompt> {
         self.host.as_ref().and_then(|host| host.nearby.as_ref())
-    }
-
-    /// The screen a first launch opens on: the adoption question when an
-    /// old-style setup is here, the code when no phone is connected yet,
-    /// and home otherwise (decided once the host answers).
-    pub fn first_screen(old: &Option<OldSetup>) -> Screen {
-        if old.is_some() {
-            Screen::Adopt
-        } else {
-            Screen::Connect
-        }
     }
 
     fn conditions(&self) -> Conditions {
@@ -344,6 +332,9 @@ impl Model {
     /// Brings the model up to `now`.
     pub fn tick(&mut self, now: Instant) -> Vec<Request> {
         let mut requests = Vec::new();
+        if std::mem::take(&mut self.start) {
+            requests.push(Request::Start);
+        }
         if now >= self.next_poll {
             requests.push(Request::Refresh);
             if self.screen != Screen::Connect && now >= self.next_coder {
@@ -450,7 +441,7 @@ impl Model {
                     max_running: host.autostart.max_running.max(1),
                 })]
             }
-            Intent::Done | Intent::Back | Intent::Keep | Intent::NotNow => {
+            Intent::Done | Intent::Back | Intent::Keep => {
                 if intent == Intent::Keep {
                     self.confirming = None;
                 } else {
@@ -473,14 +464,6 @@ impl Model {
                 self.confirming = None;
                 vec![Request::Revoke { device }, Request::Refresh]
             }
-            Intent::Adopt => {
-                if self.old.as_ref().is_some_and(|old| old.ready) && !self.adopting {
-                    self.adopting = true;
-                    vec![Request::Adopt]
-                } else {
-                    Vec::new()
-                }
-            }
             Intent::OpenLoginItems => vec![Request::OpenLoginItems],
             Intent::NearbyConnect { id } | Intent::NearbyDecline { id } => {
                 // Only the request on screen, and only once.
@@ -494,11 +477,6 @@ impl Model {
                 vec![Request::NearbyDecide { id, connect }, Request::Refresh]
             }
         }
-    }
-
-    /// Whether the adoption helper is running.
-    pub fn adopting(&self) -> bool {
-        self.adopting
     }
 
     /// Applies a finished request.
@@ -604,20 +582,11 @@ impl Model {
                 Vec::new()
             }
             Outcome::Copied => Vec::new(),
-            Outcome::Adopted(result) => {
-                self.adopting = false;
-                match result {
-                    Ok(()) => {
-                        self.old = None;
-                        self.agent = Agent::Enabled;
-                        self.go(Screen::Home, now);
-                        vec![Request::Refresh, Request::Coder]
-                    }
-                    Err(message) => {
-                        self.problem = Some(message);
-                        Vec::new()
-                    }
-                }
+            Outcome::Started(started) => {
+                self.agent = started.agent;
+                self.note = started.note;
+                self.next_poll = now;
+                vec![Request::Refresh]
             }
         }
     }
@@ -644,7 +613,7 @@ mod tests {
         pub fn new() -> Rig {
             let start = Instant::now();
             Rig {
-                model: Model::new(start, Screen::Connect, Agent::Enabled, None),
+                model: Model::new(start, Screen::Connect, Agent::Enabled),
                 host: FakeHost::new("Studio Mac", 1_790_000_000),
                 start,
                 now: start,
@@ -725,7 +694,11 @@ mod tests {
                             reason: None,
                         }],
                     }),
-                    Request::OpenLoginItems | Request::Adopt => None,
+                    Request::OpenLoginItems => None,
+                    Request::Start => Some(Outcome::Started(Started {
+                        agent: Agent::Enabled,
+                        note: None,
+                    })),
                     Request::NearbyDecide { id, connect } => {
                         let _ = self.host.nearby_decide(id, connect);
                         None
@@ -766,6 +739,32 @@ mod tests {
         );
         assert!(rig.host.open().is_empty());
         assert!(rig.model.codes.shown().is_none());
+    }
+
+    /// Launch starts Coder once, with no question, and goes on to the
+    /// normal screens.
+    #[test]
+    fn launch_starts_coder_once_and_asks_nothing() {
+        let start = Instant::now();
+        let mut model = Model::new(start, Screen::Connect, Agent::Starting);
+        let first = model.tick(start);
+        assert_eq!(first.first(), Some(&Request::Start));
+        assert!(!model.tick(start).contains(&Request::Start));
+        let requests = model.outcome(
+            Outcome::Started(Started {
+                agent: Agent::NotRegistered,
+                note: Some(crate::migrate::KEPT_RUNNING.into()),
+            }),
+            start,
+        );
+        assert_eq!(requests, [Request::Refresh]);
+        assert_eq!(model.screen, Screen::Connect);
+        assert_eq!(model.note.as_deref(), Some(crate::migrate::KEPT_RUNNING));
+        let mut rig = Rig::new();
+        rig.model = Model::new(rig.start, Screen::Connect, Agent::Starting);
+        rig.tick(0);
+        assert_eq!(rig.model.agent, Agent::Enabled);
+        assert!(rig.model.codes.shown().is_some());
     }
 
     #[test]

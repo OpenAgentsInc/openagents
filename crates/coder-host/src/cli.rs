@@ -34,8 +34,8 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   list [--json]
   revoke --device KEY
   spend request|list|show ...   ask the owner's phone to pay (`coder host spend help`)
-  adopt             move a host set up the old way to the keychain, for the desktop app
-  adopt detect      report whether there is such a host to move, changing nothing
+  adopt [--keys DIR]  move a host set up the old way under the desktop app
+  adopt detect        report whether there is such a host to move, changing nothing
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]
         [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
@@ -299,9 +299,18 @@ fn check_workspaces(workspaces: &BTreeMap<String, PathBuf>, root: &Path) -> Vec<
 }
 
 fn home(relative: &str) -> Result<PathBuf> {
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(relative))
-        .ok_or_else(|| Error::Config("HOME is not set; pass the directory explicitly".into()))
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| Error::Config("HOME is not set; pass the directory explicitly".into()))?;
+    // A unit test that reached the real home would write into the person's
+    // host state; tests pass `--state`, `--root`, and `--tasks`, or set a
+    // temporary HOME.
+    #[cfg(all(test, unix))]
+    assert!(
+        home.canonicalize().ok() != coder_service::adopt::test_home::real_home(),
+        "a test reached the real home; give it a temporary one"
+    );
+    Ok(home.join(relative))
 }
 
 /// Establish the owner locally and record the relays, workspaces, and
@@ -747,22 +756,27 @@ fn reexec() -> Error {
     }
 }
 
-/// `coder host adopt [detect]`: move a host set up the old way under the
-/// desktop app, keeping its host key, owner, grants, and settings, so every
-/// phone paired before keeps working. `detect` changes nothing. Adopting
-/// from this program, the one that later reads the keys, keeps the keychain
-/// from asking for them. Prints one line of JSON with no secret:
-/// `{"kind": "none" | "found" | "adopted" | "failed", ...}`.
+/// `coder host adopt [detect] [--keys DIR]`: move a host set up the old
+/// way under the desktop app, keeping its host key, owner, grants, and
+/// settings, so every phone paired before keeps working. The keys go into
+/// the keychain, or into `DIR` with `--keys` (a Linux desktop with no
+/// Secret Service). `detect` changes nothing. Adopting from this program,
+/// the one that later reads the keys, keeps the keychain from asking for
+/// them. Prints one line of JSON with no secret:
+/// `{"kind": "none" | "found" | "adopted" | "failed", ...}`; `none` and
+/// `found` also say where the desktop app's host keeps its keys here,
+/// `"keys": "keychain" | "files"`.
 fn adopt(args: &[String]) -> u8 {
-    let detect_only = match args {
-        [] => false,
-        [only] if only == "detect" => true,
+    let (detect_only, keys_dir) = match args {
+        [] => (false, None),
+        [only] if only == "detect" => (true, None),
+        [flag, dir] if flag == "--keys" => (false, Some(PathBuf::from(dir))),
         _ => {
-            eprintln!("coder host: adopt takes nothing or `detect`\n\n{USAGE}");
+            eprintln!("coder host: adopt takes nothing, `detect`, or `--keys DIR`\n\n{USAGE}");
             return EXIT_USAGE;
         }
     };
-    let (report, code) = match adopt_report(detect_only) {
+    let (report, code) = match adopt_report(detect_only, keys_dir) {
         Ok(report) => (report, 0),
         Err(message) => (
             serde_json::json!({"kind": "failed", "message": message}),
@@ -773,39 +787,67 @@ fn adopt(args: &[String]) -> u8 {
     code
 }
 
-/// Windows never had the old way (key files under a launchd or systemd
-/// agent), so there is nothing to adopt.
-#[cfg(windows)]
-#[allow(clippy::unnecessary_wraps)]
-fn adopt_report(_detect_only: bool) -> std::result::Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"kind": "none"}))
+/// Where the desktop app's host keeps its keys on this computer: the
+/// keychain, except on a Linux desktop where no Secret Service answers,
+/// where they are private files as a command-line install keeps them.
+fn keys_here() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        use crate::serve::keys::{KeyName, KeySource as _, SecretService};
+        if SecretService.load(KeyName::HostIroh).is_err() {
+            return "files";
+        }
+    }
+    "keychain"
 }
 
-#[cfg(unix)]
-fn adopt_report(detect_only: bool) -> std::result::Result<serde_json::Value, String> {
+fn adopt_report(
+    detect_only: bool,
+    keys_dir: Option<PathBuf>,
+) -> std::result::Result<serde_json::Value, String> {
     use coder_service::adopt::{self, Paths};
     let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .ok_or_else(|| "HOME is not set".to_owned())?;
-    let paths = Paths::under(&home);
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut paths = Paths::under(&home);
+    #[cfg(unix)]
+    {
+        paths.registrations = coder_service::service::Platform::current()
+            .map(|platform| platform.default_registration_dir(&home));
+    }
     let now = coder_access::unix_time().map_err(|error| error.to_string())?;
     let found = adopt::detect(&paths, now).map_err(|error| error.to_string())?;
-    let Some(found) = found else {
-        return Ok(serde_json::json!({"kind": "none"}));
+    let keys = keys_here();
+    let found = match found {
+        Some(found) if !found.problems.is_empty() || found.pending() => found,
+        // Nothing here, or a setup already adopted.
+        _ => return Ok(serde_json::json!({"kind": "none", "keys": keys})),
     };
     if detect_only {
         return Ok(serde_json::json!({
             "kind": "found",
             "phones": found.kept.active_grants,
             "problems": found.problems,
+            "keys": keys,
         }));
     }
-    let keys = keychain_keys().map_err(|error| error.to_string())?;
+    let source = match keys_dir {
+        Some(dir) => {
+            crate::serve::keys::Keys(Arc::new(crate::serve::keys::FileKeySource::new(dir)))
+        }
+        None => keychain_keys().map_err(|error| error.to_string())?,
+    };
+    #[cfg(unix)]
+    let mut runner = coder_service::service::SystemRunner;
+    #[cfg(not(unix))]
+    let mut runner = ();
     let adopted = adopt::adopt(
         &paths,
         now,
-        &mut crate::serve::keys::AdoptInto(keys.0.as_ref()),
-        &mut coder_service::service::SystemRunner,
+        &mut crate::serve::keys::AdoptInto(source.0.as_ref()),
+        &mut runner,
         // The desktop app registers its own agent once this returns.
         &mut |_| Ok(()),
     )

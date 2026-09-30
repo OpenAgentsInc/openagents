@@ -67,6 +67,12 @@ ends (`coder task archive TASK_ID --reason ...` on the host, or NIP-HOST
 `task.archive`), as the `archiving` helper in
 `crates/openagents-mobile/src/tests.rs` does, and pass
 `--no-session-persistence` to a `claude -p` probe so it saves no Claude chat.
+Better still, don't use the owner's host at all: run a scratch host with
+`--state`, `--root`, and `--tasks` under a temporary directory and a
+temporary `HOME`, and never install units or agents, write keychain items,
+or pair test devices on the owner's computers. Cargo tests must never reach
+the real home; `coder_service::adopt::Paths::under`, `coder host`'s home,
+and the desktop's `migrate::start` panic under `cfg(test)` when they do.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.

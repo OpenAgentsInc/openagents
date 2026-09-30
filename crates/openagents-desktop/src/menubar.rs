@@ -182,8 +182,9 @@ pub fn entries(state: &MenuState) -> Vec<Entry> {
 /// model checks it again, so a stale menu cannot do more than a click.
 pub fn intent_for(command: MenuCommand, model: &Model) -> Option<Intent> {
     match command {
-        MenuCommand::ConnectPhone => (!matches!(model.screen, Screen::Connect | Screen::Adopt))
-            .then_some(Intent::ConnectAnother),
+        MenuCommand::ConnectPhone => {
+            (model.screen != Screen::Connect).then_some(Intent::ConnectAnother)
+        }
         MenuCommand::PauseCoder => model.autostart().then_some(Intent::ToggleAutostart),
         MenuCommand::ResumeCoder => {
             (model.project().is_some() && !model.autostart()).then_some(Intent::ToggleAutostart)
@@ -602,7 +603,7 @@ mod tests {
     #[test]
     fn commands_become_the_window_s_intents() {
         let now = Instant::now();
-        let mut model = Model::new(now, Screen::Home, Agent::Enabled, None);
+        let mut model = Model::new(now, Screen::Home, Agent::Enabled);
         assert_eq!(
             intent_for(MenuCommand::ConnectPhone, &model),
             Some(Intent::ConnectAnother)

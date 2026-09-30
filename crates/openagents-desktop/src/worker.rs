@@ -9,7 +9,7 @@ use crate::platform;
 use openagents_desktop::codes::Action;
 use openagents_desktop::control::{ControlError, HostControl};
 use openagents_desktop::fake::FakeHost;
-use openagents_desktop::model::{Agent, Outcome, Refreshed, Request, Task};
+use openagents_desktop::model::{Outcome, Refreshed, Request, Started, Task};
 use rust_native_desktop::Waker;
 use std::path::PathBuf;
 use std::process::Command;
@@ -112,7 +112,7 @@ impl Context {
                 platform::open_login_items();
                 None
             }
-            Request::Adopt => Some(Outcome::Adopted(self.adopt())),
+            Request::Start => Some(Outcome::Started(self.start())),
             Request::NearbyDecide { id, connect } => self
                 .control
                 .nearby_decide(id, connect)
@@ -123,23 +123,12 @@ impl Context {
         }
     }
 
-    /// Adopts the old-style setup with `coder host adopt`, run as a child,
-    /// then registers this app's login agent.
-    fn adopt(&self) -> Result<(), String> {
-        let Some(coder) = &self.coder else {
-            return Err(
-                "Couldn't move your setup. Coder keeps running as it was. Try again later.".into(),
-            );
-        };
-        openagents_desktop::migrate::adopt(
-            coder,
-            &self.home,
-            &mut || match platform::register_agent() {
-                Agent::Enabled | Agent::NeedsApproval => Ok(()),
-                Agent::NotRegistered => Err("this is not the OpenAgents app bundle".into()),
-                Agent::Failed(message) => Err(message),
-            },
-        )
+    /// Starts Coder under this app, upgrading an earlier setup silently
+    /// first ([`openagents_desktop::migrate::start`]).
+    fn start(&self) -> Started {
+        openagents_desktop::migrate::start(self.coder.as_deref(), &self.home, &mut |keys| {
+            platform::register_agent(keys)
+        })
     }
 
     fn refresh(&mut self) -> Option<Refreshed> {
@@ -204,18 +193,51 @@ impl Context {
         if !output.status.success() || output.stdout.len() > TASK_LIST_MAX {
             return Vec::new();
         }
-        parse_tasks(&output.stdout)
+        let archived = archived(&self.home.join(".openagents/tasks/archive.json"));
+        parse_tasks(&output.stdout, &archived)
     }
 }
 
-/// The recent tasks in `coder task list` output: running ones first, then
-/// the newest, at most [`RECENT_TASKS`].
-pub fn parse_tasks(json: &[u8]) -> Vec<Task> {
+/// The most bytes of the task store's archive record read.
+const ARCHIVE_MAX: u64 = 1024 * 1024;
+
+/// The tasks the owner archived (`coder task archive`, or a phone's
+/// Archive): taken off every device's list, and off this one. The record
+/// holds task IDs and reasons, nothing secret; an unreadable one hides
+/// nothing.
+pub fn archived(path: &std::path::Path) -> std::collections::BTreeSet<String> {
+    use std::io::Read as _;
+    let mut bytes = Vec::new();
+    let read =
+        std::fs::File::open(path).and_then(|file| file.take(ARCHIVE_MAX).read_to_end(&mut bytes));
+    if read.is_err() {
+        return Default::default();
+    }
+    serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|record| {
+            record
+                .get("tasks")
+                .and_then(serde_json::Value::as_object)
+                .map(|tasks| tasks.keys().cloned().collect())
+        })
+        .unwrap_or_default()
+}
+
+/// The recent tasks in `coder task list` output, leaving out `archived`
+/// ones: running ones first, then the newest, at most [`RECENT_TASKS`].
+pub fn parse_tasks(json: &[u8], archived: &std::collections::BTreeSet<String>) -> Vec<Task> {
     let Ok(serde_json::Value::Array(entries)) = serde_json::from_slice(json) else {
         return Vec::new();
     };
     let mut tasks: Vec<Task> = entries
         .iter()
+        .filter(|entry| {
+            entry
+                .get("task_id")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|id| !archived.contains(id))
+        })
         .filter_map(|entry| {
             let title = entry.pointer("/intent/title")?.as_str()?;
             let status = entry.get("status")?.as_str()?;
@@ -284,9 +306,34 @@ mod tests {
             {"task_id":"c","intent":{"title":"Newest"},"status":"finished"},
             {"task_id":"d","status":"finished"}
         ]"#;
-        let titles: Vec<String> = parse_tasks(json).into_iter().map(|t| t.title).collect();
+        let titles: Vec<String> = parse_tasks(json, &Default::default())
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
         assert_eq!(titles, vec!["Working one", "Newest", "Oldest"]);
-        assert!(parse_tasks(b"not json").is_empty());
+        assert!(parse_tasks(b"not json", &Default::default()).is_empty());
+    }
+
+    /// Tasks the owner archived stay off the list, as they do on phones.
+    #[test]
+    fn archived_tasks_are_not_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = dir.path().join("archive.json");
+        std::fs::write(
+            &record,
+            br#"{"schema":"openagents.coder.task-archive.v1","tasks":{"b":{"at":1,"reason":"Agent smoke","by":{"kind":"owner"}}}}"#,
+        )
+        .unwrap();
+        let json = br#"[
+            {"task_id":"a","intent":{"title":"Fix the login test"},"status":"finished"},
+            {"task_id":"b","intent":{"title":"Run the command `sleep 45`"},"status":"finished"}
+        ]"#;
+        let titles: Vec<String> = parse_tasks(json, &archived(&record))
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(titles, ["Fix the login test"]);
+        assert!(archived(&dir.path().join("missing.json")).is_empty());
     }
 
     #[test]
@@ -297,7 +344,7 @@ mod tests {
             {"task_id":"b","intent":{"title":"Waiting"},"status":"queued",
              "cancellation_reason":null}
         ]"#;
-        let tasks = parse_tasks(json);
+        let tasks = parse_tasks(json, &Default::default());
         assert_eq!(tasks[1].title, "Fix it");
         assert_eq!(
             tasks[1].reason.as_deref(),

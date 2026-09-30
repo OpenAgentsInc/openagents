@@ -12,7 +12,7 @@
 
 use crate::codes::{Action, Conditions};
 use crate::control::{Autostart, Device, Project, Status};
-use crate::model::{Agent, Agents, Intent, Model, OldSetup, Refreshed, Screen, Task};
+use crate::model::{Agent, Agents, Intent, Model, Refreshed, Screen, Task};
 use crate::screens::{Presenter, outline, root, words};
 use crate::words::banned_in;
 use rust_native::Node;
@@ -79,7 +79,7 @@ fn host(devices: Vec<Device>, project: bool, autostart: bool) -> Refreshed {
 /// snapshots are the same wherever the tests run.
 fn model(screen: Screen) -> (Model, Instant) {
     let now = Instant::now();
-    let mut model = Model::new(now, screen, Agent::Enabled, None);
+    let mut model = Model::new(now, screen, Agent::Enabled);
     model.computer = "Mac";
     (model, now)
 }
@@ -217,13 +217,12 @@ fn states() -> Vec<(&'static str, Model)> {
     offline.host = Some(state);
     states.push(("dsk-03-offline-empty", offline));
 
-    let (mut earlier, _) = model(Screen::Home);
-    earlier.agent = Agent::NotRegistered;
-    earlier.old = Some(OldSetup {
-        phones: Some(6),
-        ready: false,
-    });
-    states.push(("dsk-03-earlier-setup", earlier));
+    // An earlier setup that a safety check kept running: the normal code
+    // screen, with one quiet line where the code goes.
+    let (mut kept, _) = model(Screen::Connect);
+    kept.agent = Agent::NotRegistered;
+    kept.note = Some(crate::migrate::KEPT_RUNNING.into());
+    states.push(("dsk-01-earlier-setup-kept", kept));
 
     let prompt = |label: &str| crate::control::NearbyPrompt {
         id: 7,
@@ -242,27 +241,6 @@ fn states() -> Vec<(&'static str, Model)> {
     unnamed.host = Some(state);
     states.push(("dsk-04-nearby-unnamed", unnamed));
 
-    let old = |ready| OldSetup {
-        phones: Some(6),
-        ready,
-    };
-    let now = Instant::now();
-    states.push((
-        "adopt-ready",
-        Model::new(now, Screen::Adopt, Agent::NotRegistered, Some(old(true))),
-    ));
-    states.push((
-        "adopt-not-yet",
-        Model::new(now, Screen::Adopt, Agent::NotRegistered, Some(old(false))),
-    ));
-    let uncounted = OldSetup {
-        phones: None,
-        ready: false,
-    };
-    states.push((
-        "adopt-uncounted",
-        Model::new(now, Screen::Adopt, Agent::NotRegistered, Some(uncounted)),
-    ));
     for (_, model) in &mut states {
         model.computer = "Mac";
     }
@@ -311,6 +289,32 @@ fn no_screen_shows_a_banned_word() {
         for text in words(&view_of(&model)) {
             let banned = banned_in(&text);
             assert!(banned.is_empty(), "{name} shows {banned:?} in {text:?}");
+        }
+    }
+}
+
+/// One flow (#9965): no screen asks about, or apologizes for, an earlier
+/// setup. The upgrade is silent; at most one quiet line says it had to
+/// wait.
+#[test]
+fn no_screen_asks_about_an_earlier_setup() {
+    let sources = [include_str!("screens.rs"), include_str!("model.rs")];
+    for phrase in [
+        "already runs Coder",
+        "take it over",
+        "existing Coder setup",
+        "Use it",
+        "Not now",
+        "Moving your setup",
+        "from an earlier setup",
+    ] {
+        for source in sources {
+            assert!(!source.contains(phrase), "a screen still says {phrase:?}");
+        }
+        for (name, model) in states() {
+            for text in words(&view_of(&model)) {
+                assert!(!text.contains(phrase), "{name} says {text:?}");
+            }
         }
     }
 }

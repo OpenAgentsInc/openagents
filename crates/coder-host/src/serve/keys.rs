@@ -434,10 +434,8 @@ impl KeySource for CredentialManager {
 /// A key source seen as the keychain that adopting an older host writes
 /// (`coder_service::adopt`): items by account name, values 64 lowercase
 /// hex characters.
-#[cfg(unix)]
 pub struct AdoptInto<'a>(pub &'a dyn KeySource);
 
-#[cfg(unix)]
 impl coder_service::adopt::Keychain for AdoptInto<'_> {
     fn read(&mut self, account: &str) -> coder_service::Result<Option<String>> {
         let name = named(account)?;
@@ -460,7 +458,6 @@ impl coder_service::adopt::Keychain for AdoptInto<'_> {
 }
 
 /// The key an account names.
-#[cfg(unix)]
 fn named(account: &str) -> coder_service::Result<KeyName> {
     [KeyName::Owner, KeyName::Host, KeyName::HostIroh]
         .into_iter()

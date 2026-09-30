@@ -1,6 +1,5 @@
 //! The screens as Rust Native views: `DSK-01` Connect a phone, `DSK-02`
-//! Connected, `DSK-03` Home, `DSK-04` a phone nearby ([`nearby`]), and the
-//! adoption question.
+//! Connected, `DSK-03` Home, and `DSK-04` a phone nearby ([`nearby`]).
 //!
 //! Words follow the wireframe's "Words on screen": plain words, and none of
 //! the banned ones ([`crate::words`] checks every screen). "Project" names
@@ -154,7 +153,6 @@ pub fn root(model: &Model, now: u64) -> Node<Intent> {
         Screen::Connect => connect(model),
         Screen::Connected { device } => connected(model, device),
         Screen::Home => home(model, now),
-        Screen::Adopt => adopt(model),
     }
 }
 
@@ -232,13 +230,19 @@ fn waiting(model: &Model) -> Vec<Node<Intent>> {
             Agent::Failed(_) => vec![line(format!(
                 "Coder couldn't start on this {computer}. Quit OpenAgents and open it again."
             ))],
-            Agent::NotRegistered => vec![line(format!("Waiting for Coder on this {computer}…"))],
+            Agent::NotRegistered => {
+                vec![line(model.note.clone().unwrap_or_else(|| {
+                    format!("Waiting for Coder on this {computer}…")
+                }))]
+            }
             Agent::Enabled if model.reached => {
                 vec![line(format!(
                     "Coder on this {computer} stopped answering. Trying again…"
                 ))]
             }
-            Agent::Enabled => vec![line(format!("Starting Coder on this {computer}…"))],
+            Agent::Enabled | Agent::Starting => {
+                vec![line(format!("Starting Coder on this {computer}…"))]
+            }
         };
     }
     vec![line("Making a code…".into())]
@@ -360,20 +364,16 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
         "Online.".to_string()
     } else if online {
         format!("Online. Your phone can reach this {computer}.")
-    } else if model.host.is_none() && model.old.is_some() {
-        "Coder runs here from an earlier setup.".to_string()
     } else {
         "Offline.".to_string()
     };
     let mut phones = vec![bold("phones-title", "Phones")];
     let list = model.phones();
     if model.host.is_none() {
-        let line = match model.old.as_ref().map(|old| old.phones) {
-            Some(Some(1)) => format!("1 phone can reach this {computer}."),
-            Some(Some(n)) => format!("{n} phones can reach this {computer}."),
-            Some(None) => "Coder runs here from an earlier setup.".to_string(),
-            None => format!("Waiting for Coder on this {computer}…"),
-        };
+        let line = model
+            .note
+            .clone()
+            .unwrap_or_else(|| format!("Waiting for Coder on this {computer}…"));
         phones.push(text("no-phones", line, TextRole::Status));
     } else if list.is_empty() {
         phones.push(text("no-phones", "No phones yet.", TextRole::Status));
@@ -522,73 +522,6 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
             ),
         ],
     )
-}
-
-/// A computer set up the old way: use that setup?
-fn adopt(model: &Model) -> Node<Intent> {
-    let Some(old) = &model.old else {
-        return home(model, 0);
-    };
-    let phones = match old.phones {
-        None => "Phones connected to it keep working.".to_string(),
-        Some(0) => "No phones are connected to it yet.".to_string(),
-        Some(1) => "1 phone can reach it now, and it keeps working.".to_string(),
-        Some(n) => format!("{n} phones can reach it now, and they keep working."),
-    };
-    let mut children = if old.ready {
-        vec![
-            text(
-                "adopt-title",
-                format!("Use this {}'s existing Coder setup?", model.computer),
-                TextRole::Heading,
-            ),
-            text(
-                "adopt-line",
-                format!(
-                    "This {} already runs Coder. {phones} Your projects stay as they are.",
-                    model.computer
-                ),
-                TextRole::Body,
-            ),
-        ]
-    } else {
-        vec![
-            text(
-                "adopt-title",
-                format!("This {} already runs Coder.", model.computer),
-                TextRole::Heading,
-            ),
-            text(
-                "adopt-line",
-                format!("{phones} Your projects stay as they are."),
-                TextRole::Body,
-            ),
-        ]
-    };
-    if !old.ready {
-        children.push(text(
-            "adopt-later",
-            "This version of OpenAgents can't take it over yet, so Coder keeps running as it is.",
-            TextRole::Status,
-        ));
-        children.push(button("ok", "OK", Intent::NotNow, true));
-    } else if model.adopting() {
-        children.push(text("adopting", "Moving your setup…", TextRole::Status));
-    } else {
-        children.push(stack(
-            "choice",
-            Axis::Horizontal,
-            Space::Sm,
-            vec![
-                button("use", "Use it", Intent::Adopt, true),
-                quiet("not-now", "Not now", Intent::NotNow),
-            ],
-        ));
-    }
-    if let Some(problem) = &model.problem {
-        children.push(text("problem", problem, TextRole::Status));
-    }
-    stack("adopt", Axis::Vertical, Space::Md, children)
 }
 
 /// Keeps one view lifetime: a new revision only when the tree changed.

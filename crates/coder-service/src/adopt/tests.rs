@@ -284,7 +284,9 @@ fn adoption_keeps_the_host_key_grants_policy_and_tasks_and_a_paired_phone_still_
         )
         .is_err()
     );
-    assert!(old.paths.host_root.join("service.json").exists());
+    // Its record is retired, so no installer brings it back.
+    assert!(!old.paths.host_root.join("service.json").exists());
+    assert!(old.paths.host_root.join(RETIRED_RECORD).exists());
 
     // Grants, epochs, settings, auto-start policy, and tasks, byte for byte.
     assert_eq!(old.kept_bytes(), before);
@@ -327,6 +329,11 @@ fn adoption_keeps_the_host_key_grants_policy_and_tasks_and_a_paired_phone_still_
     let detection = detect(&old.paths, now()).unwrap().unwrap();
     assert_eq!(detection.host_key, HostKey::Moved);
     assert_eq!(detection.owner_key, OwnerKey::Absent);
+    assert!(detection.agent.is_none());
+    assert!(
+        !detection.pending(),
+        "an adopted setup has nothing left to move"
+    );
     let again = adopt(&old.paths, now(), &mut keychain, &mut launchd, &mut |_| {
         Ok(())
     })
@@ -465,4 +472,112 @@ fn a_host_key_that_is_not_the_stores_host_is_refused() {
         .is_err()
     );
     assert!(keychain.items.is_empty());
+}
+
+/// Writes an agent definition in the user's agent directory that runs
+/// `words`, as this platform's service manager reads it.
+fn write_agent(paths: &Paths, name: &str, words: &[&str]) -> PathBuf {
+    let dir = paths.registrations.clone().unwrap();
+    fs::create_dir_all(&dir).unwrap();
+    let (path, text) = if cfg!(target_os = "macos") {
+        let strings: String = words
+            .iter()
+            .map(|word| format!("<string>{word}</string>"))
+            .collect();
+        (
+            dir.join(format!("{name}.plist")),
+            format!(
+                "<plist><dict><key>ProgramArguments</key><array>{strings}</array></dict></plist>"
+            ),
+        )
+    } else {
+        let quoted: Vec<String> = words.iter().map(|word| format!("\"{word}\"")).collect();
+        (
+            dir.join(format!("{name}.service")),
+            format!("[Service]\nExecStart={}\n", quoted.join(" ")),
+        )
+    };
+    fs::write(&path, text).unwrap();
+    path
+}
+
+#[test]
+fn any_other_agent_serving_a_host_is_stopped_and_removed_and_others_stay() {
+    let old = old_home();
+    let stray = write_agent(
+        &old.paths,
+        "coder-host",
+        &["/home/me/.local/bin/coder", "host", "serve"],
+    );
+    let launcher = write_agent(
+        &old.paths,
+        "openagents-host",
+        &[
+            "/home/me/.openagents/host/bin/x/coder-service",
+            "--root",
+            "/home/me/.openagents/host",
+            "run",
+        ],
+    );
+    let earn = write_agent(
+        &old.paths,
+        "coder-earn",
+        &["/home/me/.local/bin/coder", "earn", "serve"],
+    );
+    let own = write_agent(
+        &old.paths,
+        APP_AGENT,
+        &["/opt/OpenAgents/coder", "host", "serve", "--keychain"],
+    );
+    let detection = detect(&old.paths, now()).unwrap().unwrap();
+    let names: Vec<&str> = detection
+        .strays
+        .iter()
+        .map(|stray| stray.name.as_str())
+        .collect();
+    assert_eq!(names, ["coder-host", "openagents-host"]);
+    assert!(detection.pending());
+
+    let adopted = adopt(
+        &old.paths,
+        now(),
+        &mut Memory::default(),
+        &mut Launchd::default(),
+        &mut |_| Ok(()),
+    )
+    .unwrap();
+    assert_eq!(adopted.strays_removed, ["coder-host", "openagents-host"]);
+    assert!(!stray.exists() && !launcher.exists());
+    assert!(earn.exists(), "coder earn is not a host");
+    assert!(own.exists(), "the desktop app's own agent stays");
+    assert!(!detect(&old.paths, now()).unwrap().unwrap().pending());
+}
+
+#[test]
+fn a_host_command_is_read_from_a_unit_or_a_property_list() {
+    let words = |text: &str| unit_words(text);
+    assert!(runs_a_host(&words(
+        "[Service]\nExecStart=\"/home/me/.openagents/host/bin/4f/coder-service\" \"--root\" \"/home/me/.openagents/host\" \"run\"\n"
+    )));
+    assert!(runs_a_host(&words(
+        "ExecStart=/usr/bin/coder host serve --iroh\n"
+    )));
+    assert!(!runs_a_host(&words(
+        "ExecStart=/home/me/.local/bin/coder earn serve\n"
+    )));
+    assert!(!runs_a_host(&words("ExecStart=/usr/bin/sleep infinity\n")));
+    assert!(!runs_a_host(&words("Description=coder host serve\n")));
+    assert!(runs_a_host(&plist_words(
+        "<array><string>/Applications/X/coder</string><string>host</string><string>serve</string></array>"
+    )));
+    assert!(!runs_a_host(&plist_words(
+        "<string>coder</string><string>host</string><string>list</string>"
+    )));
+}
+
+#[test]
+#[should_panic(expected = "a test reached the real home")]
+fn a_test_that_reaches_the_real_home_fails() {
+    let real = test_home::real_home().expect("a home");
+    let _ = Paths::under(&real);
 }

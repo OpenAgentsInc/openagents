@@ -456,16 +456,22 @@ instead of reading as "expired".
 
 ### Upgrading a computer set up the old way
 
-On first launch, the app looks for an existing Coder host
-(`~/.openagents/coder-access/` and the launchd agent that
-`coder-service service install` wrote). If it finds one, it asks **Use this
-Mac's existing Coder setup?** and on yes: moves the host key (and the owner
-key, when `~/.openagents/coder-owner/owner.key` belongs to this host's owner)
-into the keychain, verifies them by reading back, deletes the files,
-uninstalls the old agent, and registers its own agent on the same
-`~/.openagents` state. Grants, projects, the auto-start policy, and tasks
-stay, and phones already paired keep working because the host key is the
-same.
+One flow, and nothing to answer. On every launch the app looks for an
+existing Coder host (`~/.openagents/coder-access/`, the launchd agent or
+systemd unit that `coder-service service install` wrote, and any other user
+agent or unit that runs `coder host serve`) and upgrades it silently: it
+moves the host key (and the owner key, when
+`~/.openagents/coder-owner/owner.key` belongs to this host's owner) into the
+keychain, verifies each by reading it back, stops and removes the old agent
+and every stray, renames `service.json` to `service.adopted.json`, deletes
+the key files under the access store's lock, and registers its own agent on
+the same `~/.openagents` state. Grants, projects, the auto-start policy, and
+tasks stay, and phones already paired keep working because the host key is
+the same. On a Linux desktop with no Secret Service the keys go to
+`~/.openagents/host-keys` (`0600` files) instead. If any check refuses, the
+old setup keeps running as it was, the reason goes to the log, and the app
+shows its normal screens with one quiet line; there is no question screen
+(#9965).
 
 ### Names: one surface
 

@@ -18,6 +18,15 @@ config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 
 registration=$config_home/systemd/user/$label.service
 
+# The OpenAgents desktop app runs the host here: it upgraded the old
+# service (renaming service.json to service.adopted.json) or registered its
+# own unit. Installing the old service again would start a second host on
+# the same state.
+if [ -f "$host_root/service.adopted.json" ] || [ -f "$config_home/systemd/user/com.openagents.desktop.host.service" ]; then
+  echo "The OpenAgents app runs the Coder host here; nothing to install."
+  exit 0
+fi
+
 # Installed already. The service manager starts the host from the unit
 # `coder-service` registered, so there is nothing to do.
 if [ -f "$host_root/service.json" ] && [ -f "$host_root/launcher.json" ] && [ -L "$registration" ]; then

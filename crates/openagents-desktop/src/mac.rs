@@ -6,6 +6,7 @@
 //! credential exists (a file's presence, or a keychain item's attributes
 //! without its data), never its contents.
 
+use openagents_desktop::migrate::Keys;
 use openagents_desktop::model::{Agent, Agents};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -45,9 +46,10 @@ pub fn coder_path() -> Option<PathBuf> {
 }
 
 /// Registers the login agent that runs `coder host serve`, and reports
-/// whether it may run. Only an app bundle carries the agent's plist.
+/// whether it may run. Only an app bundle carries the agent's plist, which
+/// always serves from the keychain: a Mac always has one.
 #[cfg(target_os = "macos")]
-pub fn register_agent() -> Agent {
+pub fn register_agent(_keys: &Keys) -> Agent {
     use objc2_foundation::NSString;
     use objc2_service_management::{SMAppService, SMAppServiceStatus};
     let Some(contents) = bundle_contents() else {
@@ -81,29 +83,8 @@ pub fn register_agent() -> Agent {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn register_agent() -> Agent {
+pub fn register_agent(_keys: &Keys) -> Agent {
     Agent::NotRegistered
-}
-
-/// Whether this app's login agent is already registered and enabled,
-/// without registering it.
-#[cfg(target_os = "macos")]
-pub fn agent_enabled() -> bool {
-    use objc2_foundation::NSString;
-    use objc2_service_management::{SMAppService, SMAppServiceStatus};
-    if bundle_contents().is_none() {
-        return false;
-    }
-    // SAFETY: a plain ServiceManagement status query on a name we own.
-    unsafe {
-        SMAppService::agentServiceWithPlistName(&NSString::from_str(AGENT_PLIST)).status()
-            == SMAppServiceStatus::Enabled
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn agent_enabled() -> bool {
-    false
 }
 
 /// Opens System Settings at Login Items, where the person allows the agent.

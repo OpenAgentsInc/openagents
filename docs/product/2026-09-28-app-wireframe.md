@@ -1779,6 +1779,14 @@ The screens below show a Mac. On Linux and Windows every "this Mac" on them
 reads "this computer" (for example **Starting Coder on this computer…**),
 and "This Mac" reads "This computer".
 
+There is no screen for a computer that already ran Coder the old way. The
+app upgrades that setup silently on first launch and opens on `DSK-01` or
+`DSK-03` as usual; phones paired before stay paired
+([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)). If the
+upgrade has to wait, Coder keeps running as it was and `DSK-01` shows one
+quiet line where the code goes: "Coder keeps running here as it did before
+this app."
+
 ### DSK-01 Connect a phone
 
 The first-run window, and the window **Connect another phone** opens.

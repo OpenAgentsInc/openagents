@@ -1,9 +1,10 @@
 //! `openagents-desktop`: OpenAgents for Mac.
 //!
-//! With no option it opens the window. On first launch it registers the
-//! login agent that runs `coder host serve`, unless this Mac already runs
-//! Coder from an earlier setup, in which case it asks whether to use that
-//! setup. The window talks to the host only over the local control socket.
+//! With no option it opens the window and, off the UI thread, starts Coder:
+//! it registers the login agent that runs `coder host serve`, upgrading an
+//! earlier setup silently first when this computer has one
+//! ([`openagents_desktop::migrate`]). The window talks to the host only
+//! over the local control socket.
 //!
 //! On Linux and Windows the same window runs; [`platform`] holds what
 //! differs (the systemd user unit or the `Run` entry, the lock check, the
@@ -22,7 +23,6 @@ mod worker;
 
 use openagents_desktop::control::{HostControl, SocketControl};
 use openagents_desktop::fake::FakeHost;
-use openagents_desktop::migrate;
 use openagents_desktop::model::{Agent, Intent, Model, Screen};
 use rust_native_desktop::App;
 use shell::DesktopApp;
@@ -138,33 +138,21 @@ fn main() -> ExitCode {
             None,
             home(),
         );
-        (
-            Model::new(now, Screen::Connect, Agent::Enabled, None),
-            context,
-        )
+        (Model::new(now, Screen::Connect, Agent::Enabled), context)
     } else {
         let coder = platform::coder_path();
-        // Once this app's own agent is on, the setup is already this app's
-        // (adopted, or made by it), so there is nothing to ask about.
-        let old = if platform::agent_enabled() {
-            None
-        } else {
-            migrate::old_setup(coder.as_deref(), &home())
-        };
-        // An earlier setup still runs its own Coder; registering ours
-        // beside it would start a second one on the same state.
-        let agent = if old.is_some() || options.no_login_agent {
+        // The worker starts Coder, upgrading an earlier setup first.
+        let agent = if options.no_login_agent {
             Agent::NotRegistered
         } else {
-            platform::register_agent()
+            Agent::Starting
         };
         let control: Box<dyn HostControl> = match platform::control_path() {
             Some(path) => Box::new(SocketControl::new(path)),
             None => Box::new(SocketControl::new(PathBuf::from("/nonexistent"))),
         };
-        let screen = Model::first_screen(&old);
         (
-            Model::new(now, screen, agent, old),
+            Model::new(now, Screen::Connect, agent),
             Context::new(control, None, None, coder, home()),
         )
     };
@@ -233,10 +221,7 @@ fn capture(directory: &PathBuf) -> Result<usize, String> {
         home(),
     );
     let start = Instant::now();
-    let mut app = DesktopApp::inline(
-        Model::new(start, Screen::Connect, Agent::Enabled, None),
-        context,
-    );
+    let mut app = DesktopApp::inline(Model::new(start, Screen::Connect, Agent::Enabled), context);
     let mut count = 0;
     let mut write = |app: &mut DesktopApp, name: &str| -> Result<(), String> {
         let (frame, _) = rust_native_desktop::capture(app, 560.0, 720.0, 2.0);
@@ -332,10 +317,8 @@ mod tests {
         let fake = FakeHost::new("Studio Mac", shell::unix_now());
         let context = Context::new(Box::new(fake.clone()), Some(fake), None, None, home());
         let start = Instant::now();
-        let mut app = DesktopApp::inline(
-            Model::new(start, Screen::Connect, Agent::Enabled, None),
-            context,
-        );
+        let mut app =
+            DesktopApp::inline(Model::new(start, Screen::Connect, Agent::Enabled), context);
         app.tick(start);
         let text = app.model().codes.shown().expect("a code").text.clone();
         // The QR code carries the link, so the phone's own camera opens the

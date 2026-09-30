@@ -4,7 +4,11 @@
 //! - **Keys.** The host (`coder host serve --keychain`) keeps its keys in
 //!   the Secret Service (GNOME Keyring, KWallet, KeePassXC), under the
 //!   service `com.openagents.desktop` and the same accounts as on a Mac
-//!   (`coder_host::serve::keys::SecretService`). The window reads none.
+//!   (`coder_host::serve::keys::SecretService`). On a desktop where no
+//!   Secret Service answers, it serves with `--keys ~/.openagents/host-keys`
+//!   instead: `0600` files in a `0700` directory, as a command-line install
+//!   keeps them ([`openagents_desktop::migrate::Keys`]). The window reads
+//!   none.
 //! - **Login agent.** `coder host serve` runs as the systemd user unit
 //!   [`UNIT`], enabled for `default.target`, so it starts at login and
 //!   keeps running when the window closes. Registering writes the unit,
@@ -18,6 +22,7 @@
 //! None of this reads a secret. The sign-in check looks only at whether a
 //! credential file exists, never its contents.
 
+use openagents_desktop::migrate::Keys;
 use openagents_desktop::model::{Agent, Agents};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -30,9 +35,16 @@ pub const UNIT: &str = "com.openagents.desktop.host.service";
 /// The host binary's name, beside the window's binary when installed.
 const CODER: &str = "coder";
 
-/// What the unit runs `coder` with: the same as the Mac's login agent
-/// (`com.openagents.desktop.host.plist`).
-pub const HOST_ARGS: [&str; 5] = ["host", "serve", "--keychain", "--iroh", "--control"];
+/// What the unit runs `coder` with, around the key source: the same as the
+/// Mac's login agent (`com.openagents.desktop.host.plist`).
+fn host_args(keys: &Keys) -> Vec<String> {
+    ["host", "serve"]
+        .into_iter()
+        .map(String::from)
+        .chain(keys.serve_args())
+        .chain(["--iroh".into(), "--control".into()])
+        .collect()
+}
 
 /// The directory this executable runs from.
 fn exe_dir() -> Option<PathBuf> {
@@ -80,11 +92,11 @@ pub struct HostCommand {
 }
 
 impl HostCommand {
-    /// `coder host serve ...` ([`HOST_ARGS`]) from an installation:
-    /// through the AppImage file when there is one, else the `coder` beside
-    /// the window's binary.
-    pub fn for_install(appimage: Option<&Path>, exe_dir: &Path) -> HostCommand {
-        let args = HOST_ARGS.iter().map(|arg| arg.to_string());
+    /// `coder host serve ...` with `keys` from an installation: through
+    /// the AppImage file when there is one, else the `coder` beside the
+    /// window's binary.
+    pub fn for_install(appimage: Option<&Path>, exe_dir: &Path, keys: &Keys) -> HostCommand {
+        let args = host_args(keys).into_iter();
         match appimage.filter(|path| path.is_absolute()) {
             Some(appimage) => HostCommand {
                 program: appimage.to_path_buf(),
@@ -264,6 +276,8 @@ impl LoginAgent {
     }
 
     /// Whether the unit is enabled, and whether it runs now.
+    // For a Linux tray item's status; tested now.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn status(&self, systemctl: &mut dyn Systemctl) -> (bool, bool) {
         if !self.unit_path().exists() {
             return (false, false);
@@ -285,7 +299,7 @@ impl LoginAgent {
 /// reports whether it may run. Only an installed app (an AppImage, or the
 /// .deb's directory with `coder` beside the window) registers one; a
 /// development build reports `NotRegistered`, as on a Mac outside a bundle.
-pub fn register_agent() -> Agent {
+pub fn register_agent(keys: &Keys) -> Agent {
     let Some(dir) = exe_dir() else {
         return Agent::NotRegistered;
     };
@@ -296,17 +310,12 @@ pub fn register_agent() -> Agent {
     let Some(agent) = LoginAgent::current() else {
         return Agent::Failed("HOME is not set".into());
     };
-    let command = HostCommand::for_install(appimage.as_deref(), &dir);
+    let command = HostCommand::for_install(appimage.as_deref(), &dir, keys);
     let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
     match agent.register(&command, &path, &mut UserSystemctl) {
         Ok(()) => Agent::Enabled,
         Err(message) => Agent::Failed(message),
     }
-}
-
-/// Whether this app's unit is already enabled, without registering it.
-pub fn agent_enabled() -> bool {
-    LoginAgent::current().is_some_and(|agent| agent.status(&mut UserSystemctl).0)
 }
 
 /// Linux asks no one to allow a user unit; nothing to open.
@@ -458,7 +467,7 @@ mod tests {
 
     #[test]
     fn linux_host_command_runs_coder_from_the_install() {
-        let deb = HostCommand::for_install(None, Path::new("/usr/lib/openagents"));
+        let deb = HostCommand::for_install(None, Path::new("/usr/lib/openagents"), &Keys::Keychain);
         assert_eq!(deb.program, PathBuf::from("/usr/lib/openagents/coder"));
         assert_eq!(
             deb.args,
@@ -467,6 +476,7 @@ mod tests {
         let appimage = HostCommand::for_install(
             Some(Path::new("/home/kai/Apps/OpenAgents-x86_64.AppImage")),
             Path::new("/tmp/.mount_OpenAgXYZ/usr/lib/openagents"),
+            &Keys::Keychain,
         );
         assert_eq!(
             appimage.program,
@@ -484,9 +494,29 @@ mod tests {
             ]
         );
         // A relative $APPIMAGE is ignored rather than trusted.
-        let relative =
-            HostCommand::for_install(Some(Path::new("x.AppImage")), Path::new("/opt/openagents"));
+        let relative = HostCommand::for_install(
+            Some(Path::new("x.AppImage")),
+            Path::new("/opt/openagents"),
+            &Keys::Keychain,
+        );
         assert_eq!(relative.program, PathBuf::from("/opt/openagents/coder"));
+        // No Secret Service: the keys are private files.
+        let files = HostCommand::for_install(
+            None,
+            Path::new("/usr/lib/openagents"),
+            &Keys::Files(PathBuf::from("/home/kai/.openagents/host-keys")),
+        );
+        assert_eq!(
+            files.args,
+            [
+                "host",
+                "serve",
+                "--keys",
+                "/home/kai/.openagents/host-keys",
+                "--iroh",
+                "--control"
+            ]
+        );
     }
 
     #[test]
@@ -526,7 +556,8 @@ mod tests {
         let agent = LoginAgent::new(unit_dir(None, dir.path()));
         let mut systemctl = Recorder::default();
         assert_eq!(agent.status(&mut systemctl), (false, false));
-        let command = HostCommand::for_install(None, Path::new("/usr/lib/openagents"));
+        let command =
+            HostCommand::for_install(None, Path::new("/usr/lib/openagents"), &Keys::Keychain);
         agent
             .register(&command, "/usr/bin", &mut systemctl)
             .unwrap();
@@ -548,7 +579,7 @@ mod tests {
 
         // A moved install rewrites the unit and restarts the host onto it.
         systemctl.calls.clear();
-        let moved = HostCommand::for_install(None, Path::new("/opt/openagents"));
+        let moved = HostCommand::for_install(None, Path::new("/opt/openagents"), &Keys::Keychain);
         agent.register(&moved, "/usr/bin", &mut systemctl).unwrap();
         assert!(
             std::fs::read_to_string(&path)

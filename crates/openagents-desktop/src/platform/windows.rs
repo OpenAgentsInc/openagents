@@ -120,7 +120,9 @@ pub fn start_host() -> io::Result<()> {
 /// Writes the sign-in entry and starts the host now. Only an installed app
 /// (with `coder.exe` beside it) registers; a development build reports
 /// `NotRegistered`, as on a Mac outside a bundle.
-pub fn register_agent() -> Agent {
+/// Windows always has Credential Manager, so `_keys` is always the
+/// keychain.
+pub fn register_agent(_keys: &openagents_desktop::migrate::Keys) -> Agent {
     let Ok(exe) = std::env::current_exe() else {
         return Agent::NotRegistered;
     };
@@ -151,13 +153,9 @@ pub fn unregister_agent() -> Result<(), String> {
 }
 
 /// The sign-in entry's command line, if there is one.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn registered_agent() -> Result<Option<String>, String> {
     sys::run_value()
-}
-
-/// Whether this app's sign-in entry is already there, without writing it.
-pub fn agent_enabled() -> bool {
-    registered_agent().is_ok_and(|entry| entry.is_some())
 }
 
 /// Windows asks no one to allow a `Run` entry; nothing to open.

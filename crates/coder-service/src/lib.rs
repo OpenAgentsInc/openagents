@@ -36,7 +36,6 @@
 //! `docs/coder/runtime/host-service.md` before you change a state
 //! transition, a rendered unit, or the descriptor.
 
-#[cfg(unix)]
 pub mod adopt;
 pub mod bundle;
 pub mod descriptor;

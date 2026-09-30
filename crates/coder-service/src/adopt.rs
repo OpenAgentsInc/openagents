@@ -14,10 +14,22 @@
 //!    into the keychain, then read each back. A read-back that differs
 //!    stops here with every file in place.
 //! 2. Uninstall the old agent through [`crate::service::uninstall`], and
-//!    stop unless the service manager reports it stopped.
+//!    stop unless the service manager reports it stopped; then stop and
+//!    remove every other user agent or unit that runs `coder host serve`
+//!    ([`Stray`]), and retire the old agent's record (`service.json`
+//!    becomes `service.adopted.json`) so no installer or updater brings the
+//!    old agent back.
 //! 3. Under the access store's lock, so no host still serves from it,
 //!    check each file against the keychain once more and delete it.
 //! 4. Hand over to the caller to register its own agent on the same state.
+//!
+//! The desktop app runs this silently on launch (#9965): there is no
+//! question to answer. Any check that fails leaves the old setup running
+//! exactly as it was.
+//!
+//! On Windows there was never a launchd agent or systemd unit, only key
+//! files a `coder host init` wrote, so adoption there moves the keys and
+//! has no agent to stop.
 //!
 //! The access store's grants, epochs, invitations, and replies, the host
 //! root's settings and auto-start policy, and the tasks are never opened
@@ -28,15 +40,34 @@
 //! keychain and continues. Nothing here prints, logs, or returns a secret.
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
 
 use secp256k1::{Keypair, Secp256k1, SecretKey};
 use serde::Serialize;
 
+#[cfg(unix)]
 use crate::launcher::{Config, Layout};
+#[cfg(unix)]
 use crate::service::{self, Runner, UninstallReport};
 use crate::{Error, Result, fsx};
+
+/// Runs service manager commands. Windows has none to run.
+#[cfg(not(unix))]
+pub trait Runner {}
+#[cfg(not(unix))]
+impl<T> Runner for T {}
+/// What an uninstall did. Windows never uninstalls anything here.
+#[cfg(not(unix))]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UninstallReport {}
+
+/// The desktop app's own login agent label; never a stray.
+pub const APP_AGENT: &str = "com.openagents.desktop.host";
+/// Where a retired agent's record goes, beside the host root's
+/// `service.json`.
+pub const RETIRED_RECORD: &str = "service.adopted.json";
 
 /// The keychain service the desktop app keeps its secrets under.
 pub const KEYCHAIN_SERVICE: &str = "com.openagents.desktop";
@@ -73,18 +104,31 @@ pub struct Paths {
     pub host_root: PathBuf,
     /// The task store.
     pub tasks: PathBuf,
+    /// The user's agent or unit directory (`~/Library/LaunchAgents` or
+    /// `~/.config/systemd/user`), searched for [`Stray`] agents. `None`
+    /// where there is none (Windows).
+    pub registrations: Option<PathBuf>,
 }
 
 impl Paths {
     /// The default locations under `home`.
     #[must_use]
     pub fn under(home: &Path) -> Self {
+        test_home::refuse_real_home(home);
         let base = home.join(".openagents");
+        let registrations = if cfg!(target_os = "macos") {
+            Some(home.join("Library/LaunchAgents"))
+        } else if cfg!(target_os = "linux") {
+            Some(home.join(".config/systemd/user"))
+        } else {
+            None
+        };
         Self {
             access: base.join("coder-access"),
             owner_key: base.join("coder-owner/owner.key"),
             host_root: base.join("host"),
             tasks: base.join("tasks"),
+            registrations,
         }
     }
 
@@ -144,6 +188,19 @@ pub struct OldAgent {
     pub same_host: bool,
 }
 
+/// Another user agent or unit that runs `coder host serve` (or the old
+/// `coder-service ... run` launcher) on this account: a hand-written unit, a
+/// second label, anything but the desktop app's own agent and the agent
+/// `service.json` names. Adoption stops and removes it, because two hosts
+/// on one access store never both serve.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Stray {
+    /// The unit name or launchd label (the file name without extension).
+    pub name: String,
+    /// The definition or registration link.
+    pub path: PathBuf,
+}
+
 /// What stays where it is. Adoption never writes any of it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Kept {
@@ -178,10 +235,28 @@ pub struct Detection {
     pub owner_key: OwnerKey,
     /// The old agent, when `service.json` exists.
     pub agent: Option<OldAgent>,
+    /// Other agents that run a Coder host on this account.
+    pub strays: Vec<Stray>,
     /// What adoption keeps in place.
     pub kept: Kept,
     /// Why [`adopt`] would refuse. Empty when it can proceed.
     pub problems: Vec<String>,
+}
+
+impl Detection {
+    /// Whether anything is left to move: a key file, an old agent, or a
+    /// stray. A setup already adopted (its keys moved, its agent gone) has
+    /// nothing, and the caller only registers its own agent.
+    #[must_use]
+    pub fn pending(&self) -> bool {
+        self.host_key == HostKey::File
+            || self.owner_key == OwnerKey::ThisHost
+            || self
+                .agent
+                .as_ref()
+                .is_some_and(|agent| agent.registered || agent.definition)
+            || !self.strays.is_empty()
+    }
 }
 
 /// What [`adopt`] did. It holds no secret.
@@ -193,6 +268,8 @@ pub struct Adopted {
     pub owner_moved: bool,
     /// The old agent's uninstall, when there was one to remove.
     pub uninstalled: Option<UninstallReport>,
+    /// The stray agents stopped and removed.
+    pub strays_removed: Vec<String>,
     /// The key files deleted.
     pub removed: Vec<PathBuf>,
     /// What stayed in place.
@@ -239,35 +316,8 @@ pub fn detect(paths: &Paths, now: u64) -> Result<Option<Detection>> {
         Err(_) => OwnerKey::Unrecognized,
     };
 
-    let layout = Layout::new(&paths.host_root);
-    let agent = match fsx::read_optional(&layout.config())? {
-        None => None,
-        Some(_) => match Config::load(&layout) {
-            Ok(config) => {
-                let canonical = service::canonical_path(&layout, &config);
-                let registration = service::registration_path(&config);
-                let registered =
-                    fs::read_link(&registration).ok().as_deref() == Some(canonical.as_path());
-                if config.host_key != host {
-                    problems.push(format!(
-                        "the service {} serves host {}, not this access store's host {host}",
-                        config.label, config.host_key
-                    ));
-                }
-                Some(OldAgent {
-                    label: config.label.clone(),
-                    registration,
-                    registered,
-                    definition: fs::symlink_metadata(&canonical).is_ok(),
-                    same_host: config.host_key == host,
-                })
-            }
-            Err(error) => {
-                problems.push(format!("the service configuration cannot be read: {error}"));
-                None
-            }
-        },
-    };
+    let agent = old_agent(paths, &host, &mut problems)?;
+    let strays = strays(paths, agent.as_ref());
 
     let grants = book.get("grants").and_then(serde_json::Value::as_object);
     let active_grants = grants.map_or(0, |grants| {
@@ -307,9 +357,51 @@ pub fn detect(paths: &Paths, now: u64) -> Result<Option<Detection>> {
         host_key,
         owner_key,
         agent,
+        strays,
         kept,
         problems,
     }))
+}
+
+/// The old agent `service.json` describes, adding what is wrong with it
+/// to `problems`.
+#[cfg(unix)]
+fn old_agent(paths: &Paths, host: &str, problems: &mut Vec<String>) -> Result<Option<OldAgent>> {
+    let layout = Layout::new(&paths.host_root);
+    Ok(match fsx::read_optional(&layout.config())? {
+        None => None,
+        Some(_) => match Config::load(&layout) {
+            Ok(config) => {
+                let canonical = service::canonical_path(&layout, &config);
+                let registration = service::registration_path(&config);
+                let registered =
+                    fs::read_link(&registration).ok().as_deref() == Some(canonical.as_path());
+                if config.host_key != host {
+                    problems.push(format!(
+                        "the service {} serves host {}, not this access store's host {host}",
+                        config.label, config.host_key
+                    ));
+                }
+                Some(OldAgent {
+                    label: config.label.clone(),
+                    registration,
+                    registered,
+                    definition: fs::symlink_metadata(&canonical).is_ok(),
+                    same_host: config.host_key == host,
+                })
+            }
+            Err(error) => {
+                problems.push(format!("the service configuration cannot be read: {error}"));
+                None
+            }
+        },
+    })
+}
+
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
+fn old_agent(_: &Paths, _: &str, _: &mut Vec<String>) -> Result<Option<OldAgent>> {
+    Ok(None)
 }
 
 /// Adopts the old-style setup under `paths`: see the module documentation.
@@ -373,23 +465,9 @@ pub fn adopt(
         None
     };
 
-    // 2. The old agent goes, and must be seen to stop.
-    let uninstalled = match &detection.agent {
-        Some(agent) if agent.registered || agent.definition => {
-            let layout = Layout::new(&paths.host_root);
-            let config = Config::load(&layout)?;
-            let report = service::uninstall(&layout, &config, runner)?;
-            if !report.stopped {
-                return Err(Error::refused(format!(
-                    "the old agent {} did not stop; the keys are in the keychain and \
-                     the files are kept, so try again",
-                    agent.label
-                )));
-            }
-            Some(report)
-        }
-        _ => None,
-    };
+    // 2. The old agent goes, and must be seen to stop; so does every stray,
+    // and the old agent's record is retired.
+    let (uninstalled, strays_removed) = stop_agents(paths, &detection, runner)?;
 
     // 3. The files go, under the store's lock, each checked once more.
     let mut removed = Vec::new();
@@ -423,9 +501,207 @@ pub fn adopt(
         host: detection.host.clone(),
         owner_moved: owner_value.is_some(),
         uninstalled,
+        strays_removed,
         removed,
         kept: detection.kept,
     })
+}
+
+/// Stops the old agent and every stray, and retires the old agent's
+/// record. Refuses, leaving the rest in place, when one does not stop.
+#[cfg(unix)]
+fn stop_agents(
+    paths: &Paths,
+    detection: &Detection,
+    runner: &mut dyn Runner,
+) -> Result<(Option<UninstallReport>, Vec<String>)> {
+    let layout = Layout::new(&paths.host_root);
+    let uninstalled = match &detection.agent {
+        Some(agent) if agent.registered || agent.definition => {
+            let config = Config::load(&layout)?;
+            let report = service::uninstall(&layout, &config, runner)?;
+            if !report.stopped {
+                return Err(Error::refused(format!(
+                    "the old agent {} did not stop; the keys are in the keychain and \
+                     the files are kept, so try again",
+                    agent.label
+                )));
+            }
+            Some(report)
+        }
+        _ => None,
+    };
+    let mut removed = Vec::new();
+    for stray in &detection.strays {
+        remove_stray(stray, runner)?;
+        removed.push(stray.name.clone());
+    }
+    // The record stays, renamed: an installer or updater that finds
+    // `service.json` would bring the old agent back.
+    if detection.agent.is_some() {
+        let record = layout.config();
+        let retired = paths.host_root.join(RETIRED_RECORD);
+        if fs::symlink_metadata(&record).is_ok() {
+            fs::rename(&record, &retired)?;
+            fsx::sync_dir(&paths.host_root)?;
+        }
+    }
+    Ok((uninstalled, removed))
+}
+
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
+fn stop_agents(
+    _: &Paths,
+    _: &Detection,
+    _: &mut dyn Runner,
+) -> Result<(Option<UninstallReport>, Vec<String>)> {
+    Ok((None, Vec::new()))
+}
+
+#[cfg(unix)]
+/// The most bytes of a unit or property list read when looking for strays.
+const DEFINITION_MAX: u64 = 256 * 1024;
+
+/// Every other agent in [`Paths::registrations`] that runs a Coder host.
+#[cfg(unix)]
+fn strays(paths: &Paths, agent: Option<&OldAgent>) -> Vec<Stray> {
+    use std::io::Read as _;
+    let Some(dir) = &paths.registrations else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let (suffix, words): (&str, fn(&str) -> Vec<String>) = if cfg!(target_os = "macos") {
+        (".plist", plist_words)
+    } else {
+        (".service", unit_words)
+    };
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(suffix))
+        else {
+            continue;
+        };
+        if name.starts_with('.')
+            || name == APP_AGENT
+            || agent.is_some_and(|agent| agent.label == name)
+        {
+            continue;
+        }
+        // A unit is often a link to its definition; follow it to read.
+        let mut text = String::new();
+        let read = fs::File::open(&path)
+            .and_then(|file| file.take(DEFINITION_MAX).read_to_string(&mut text));
+        if read.is_ok() && runs_a_host(&words(&text)) {
+            found.push(Stray {
+                name: name.to_owned(),
+                path,
+            });
+        }
+    }
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    found
+}
+
+#[cfg(not(unix))]
+fn strays(_: &Paths, _: Option<&OldAgent>) -> Vec<Stray> {
+    Vec::new()
+}
+
+#[cfg(unix)]
+/// Whether a command line runs a Coder host: `coder host serve ...`, or the
+/// old launcher `coder-service ... run`. `coder earn serve` and every other
+/// program are not a host.
+fn runs_a_host(words: &[String]) -> bool {
+    words.iter().enumerate().any(|(index, word)| {
+        let rest = &words[index + 1..];
+        match Path::new(word).file_name().and_then(|name| name.to_str()) {
+            Some("coder") => rest.len() >= 2 && rest[0] == "host" && rest[1] == "serve",
+            Some("coder-service") => rest.iter().any(|word| word == "run"),
+            _ => false,
+        }
+    })
+}
+
+#[cfg(unix)]
+/// The words of a systemd unit's `ExecStart=` lines, unquoted.
+fn unit_words(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| line.trim().strip_prefix("ExecStart="))
+        .flat_map(|command| {
+            command
+                .trim_start_matches(['@', '-', ':', '+', '!'])
+                .split_whitespace()
+                .map(|word| word.trim_matches(['"', '\'']).to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+/// The `<string>` values of a launchd property list, in order.
+fn plist_words(text: &str) -> Vec<String> {
+    text.split("<string>")
+        .skip(1)
+        .filter_map(|part| {
+            part.split_once("</string>")
+                .map(|(value, _)| value.trim().to_owned())
+        })
+        .collect()
+}
+
+/// Stops a stray agent, confirms it stopped, and removes its definition.
+#[cfg(unix)]
+fn remove_stray(stray: &Stray, runner: &mut dyn Runner) -> Result<()> {
+    let strings = |values: &[&str]| values.iter().map(|v| (*v).to_owned()).collect::<Vec<_>>();
+    let stopped = if cfg!(target_os = "macos") {
+        // SAFETY: `getuid` takes no arguments and cannot fail.
+        let target = format!("gui/{}/{}", unsafe { libc::getuid() }, stray.name);
+        let print = strings(&["print", &target]);
+        if runner.run("launchctl", &print)?.success() {
+            let _ = runner.run("launchctl", &strings(&["bootout", &target]))?;
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            if !runner.run("launchctl", &print)?.success() {
+                break true;
+            }
+            if std::time::Instant::now() >= deadline {
+                break false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    } else {
+        let unit = format!("{}.service", stray.name);
+        let _ = runner.run(
+            "systemctl",
+            &strings(&["--user", "disable", "--now", &unit]),
+        )?;
+        let show = runner.run(
+            "systemctl",
+            &strings(&["--user", "show", &unit, "--property=ActiveState"]),
+        )?;
+        service::parse_properties(&show.stdout)
+            .get("ActiveState")
+            .is_none_or(|state| state == "inactive" || state == "failed")
+    };
+    if !stopped {
+        return Err(Error::refused(format!(
+            "the agent {} did not stop; it is left in place",
+            stray.name
+        )));
+    }
+    fsx::remove_file_if_present(&stray.path)?;
+    if !cfg!(target_os = "macos") {
+        let _ = runner.run("systemctl", &strings(&["--user", "daemon-reload"]))?;
+    }
+    Ok(())
 }
 
 /// Stores `value` unless the item already holds it, then reads it back.
@@ -476,14 +752,11 @@ fn remove_verified(
 
 /// Takes the access store's exclusive lock, which a serving host holds.
 fn lock(path: &Path) -> Result<fs::File> {
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)?;
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    let file = options.open(path)?;
     file.try_lock().map_err(|_| {
         Error::refused("a Coder host still holds the access store; stop it and try again")
     })?;
@@ -507,9 +780,7 @@ fn read_secret_file(path: &Path, format: Format) -> Result<Option<SecretKey>> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
-    // SAFETY: `getuid` takes no arguments and cannot fail.
-    let uid = unsafe { libc::getuid() };
-    if !meta.file_type().is_file() || meta.uid() != uid || meta.mode() & 0o077 != 0 {
+    if !meta.file_type().is_file() || !private_to_this_user(&meta) {
         return Err(Error::refused(format!(
             "{} is not a private key file of this user's",
             path.display()
@@ -527,6 +798,20 @@ fn read_secret_file(path: &Path, format: Format) -> Result<Option<SecretKey>> {
     secret
         .map(Some)
         .ok_or_else(|| Error::refused(format!("{} is not a key", path.display())))
+}
+
+/// Whether a file is this user's and nobody else's: owner and mode on
+/// Unix. On Windows the per-user profile already admits only the user.
+#[cfg(unix)]
+fn private_to_this_user(meta: &fs::Metadata) -> bool {
+    // SAFETY: `getuid` takes no arguments and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    meta.uid() == uid && meta.mode() & 0o077 == 0
+}
+
+#[cfg(not(unix))]
+fn private_to_this_user(_: &fs::Metadata) -> bool {
+    true
 }
 
 fn parse_hex(text: &str) -> Option<SecretKey> {
@@ -570,5 +855,86 @@ fn read_json(path: &Path) -> Result<Option<serde_json::Value>> {
         .transpose()
 }
 
-#[cfg(test)]
+/// A guard for tests: a test that reaches the real home's state, instead of
+/// a temporary one, fails at once rather than writing into it. The real
+/// home is the password database's, so a test that set `HOME` to a
+/// temporary directory passes.
+pub mod test_home {
+    use std::path::Path;
+
+    /// Panics, in this crate's tests, when `home` is the real user's home.
+    /// Does nothing outside tests.
+    pub fn refuse_real_home(home: &Path) {
+        let _ = home;
+        #[cfg(all(test, unix))]
+        if let Some(real) = real_home() {
+            assert!(
+                home.canonicalize().ok().as_deref() != Some(real.as_path()),
+                "a test reached the real home {}; give it a temporary one",
+                real.display()
+            );
+        }
+    }
+
+    /// The home directory the password database names for this user.
+    #[cfg(unix)]
+    #[must_use]
+    pub fn real_home() -> Option<std::path::PathBuf> {
+        // SAFETY: `getpwuid` returns a pointer into static storage or null;
+        // the directory is copied out before any other call.
+        unsafe {
+            let entry = libc::getpwuid(libc::getuid());
+            if entry.is_null() || (*entry).pw_dir.is_null() {
+                return None;
+            }
+            let dir = std::ffi::CStr::from_ptr((*entry).pw_dir);
+            let path = std::path::PathBuf::from(
+                <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(dir.to_bytes()),
+            );
+            path.canonicalize().ok()
+        }
+    }
+}
+
+#[cfg(all(test, unix))]
 mod tests;
+
+/// Windows had no launchd agent or systemd unit, only the key files a
+/// `coder host init` wrote: adoption moves them and keeps the store.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct Memory(std::collections::BTreeMap<String, String>);
+
+    impl Keychain for Memory {
+        fn read(&mut self, account: &str) -> Result<Option<String>> {
+            Ok(self.0.get(account).cloned())
+        }
+        fn write(&mut self, account: &str, value: &str) -> Result<()> {
+            self.0.insert(account.into(), value.into());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_windows_setup_moves_its_host_key_and_keeps_the_store() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = Paths::under(home.path());
+        let owner = SecretKey::new(&mut secp256k1::rand::rng());
+        let store =
+            coder_access::host::Host::new(&paths.access, coder_access::RelayPolicy::LoopbackTest);
+        let host = store.init(&coder_access::protocol::pubkey(&owner)).unwrap();
+        let before = fs::read(paths.access.join("access.json")).unwrap();
+        let detection = detect(&paths, 0).unwrap().unwrap();
+        assert!(detection.pending() && detection.agent.is_none());
+        let mut keychain = Memory::default();
+        let adopted = adopt(&paths, 0, &mut keychain, &mut (), &mut |_| Ok(())).unwrap();
+        assert_eq!(adopted.host, host);
+        assert!(!paths.access.join("host.key").exists());
+        assert!(keychain.0.contains_key(HOST_KEY_ACCOUNT));
+        assert_eq!(fs::read(paths.access.join("access.json")).unwrap(), before);
+        assert!(!detect(&paths, 0).unwrap().unwrap().pending());
+    }
+}

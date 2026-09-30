@@ -1,6 +1,0 @@
-vertical stack
-  heading "Use this Mac's existing Coder setup?"
-  body "This Mac already runs Coder. 6 phones can reach it now, and they keep working. Your projects stay as they are."
-  horizontal stack
-    button "Use it" -> adopt
-    button "Not now" -> not_now

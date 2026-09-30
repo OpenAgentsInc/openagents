@@ -1,0 +1,4 @@
+vertical stack
+  vertical stack [align=center]
+    body "Coder keeps running here as it did before this app." [align=center]
+    heading "Scan with the OpenAgents app on your phone." [align=center]

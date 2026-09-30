@@ -189,6 +189,11 @@ if [ ! -f "$host_root/launcher.json" ] || [ ! -f "$host_root/service.json" ]; th
   install_command
   prune_bundles
   echo "coder is now $short. No host service is installed, so nothing else changed."
+  if [ -f "$host_root/service.adopted.json" ]; then
+    # The OpenAgents desktop app runs the host now; it has no old service
+    # to install or update.
+    exit 0
+  fi
   if [ -n "$install_unit" ]; then
     # The Coder host module installs the service from a user unit, which
     # runs inside the account's own service manager. Linger keeps that

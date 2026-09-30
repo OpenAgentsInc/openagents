@@ -196,9 +196,13 @@ The same app builds for Linux and Windows
   `--appimage-runtime FILE` with an AppImage type-2 runtime. On first launch
   the app writes the systemd user unit `com.openagents.desktop.host.service`
   (`coder host serve --keychain --iroh --control`), and the host keeps its
-  keys in the Secret Service. A computer with no Secret Service running (no
-  GNOME Keyring, KWallet, or KeePassXC) cannot use `--keychain`; the host says
-  so and stores nothing in a file.
+  keys in the Secret Service. On a computer with no Secret Service running
+  (no GNOME Keyring, KWallet, or KeePassXC), `coder host adopt detect`
+  reports `"keys": "files"` and the unit runs
+  `coder host serve --keys ~/.openagents/host-keys --iroh --control`
+  instead: `0600` files in a `0700` directory, as a command-line install
+  keeps them. A computer set up the old way is upgraded silently on first
+  launch (`crates/openagents-desktop/src/migrate.rs`).
 - **Windows.** `scripts/desktop/package-windows.ps1` (on Windows) writes a
   per-user MSI (WiX v4 or later) and a `.zip`, signed with
   `-CertificateThumbprint` through `signtool`; `-RequireSigning` for a
