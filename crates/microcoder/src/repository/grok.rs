@@ -463,6 +463,29 @@ mod tests {
         assert!(trace.contains("refusing the turn"));
     }
 
+    /// The live smoke: the installed Grok Build CLI, with the owner's login,
+    /// runs the fixture's turn under full access. The task store is temporary.
+    /// Run with `cargo test -p microcoder --lib live_grok -- --ignored`.
+    #[tokio::test]
+    #[ignore = "runs the installed Grok Build CLI with the owner's login and spends a model request"]
+    async fn live_grok_cli_runs_a_repository_turn() {
+        let agent = binary().expect("grok binary");
+        let (root, store, grant) = fixture_with(acp_client::grok::DEFAULT_MODEL, |c| {
+            grok_route(c, Access::Full, acp_client::grok::DEFAULT_MODEL)
+        });
+        // A real turn takes longer than the fixture's eight seconds.
+        let mut grant: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+        grant.wall_seconds = 300;
+        let grant = serde_json::to_vec(&grant).unwrap();
+        let task = run_turn(&store, &grant, acp_client::grok::DEFAULT_MODEL, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert_eq!(result.ending, "model_finished", "{result:?}\n{trace}");
+        let written = std::fs::read_to_string(root.path().join("checkout/result.txt")).unwrap();
+        assert!(written.contains("output"), "{written}");
+        assert!(trace.contains("\"kind\":\"grok_prompt\""));
+    }
+
     #[test]
     fn a_grok_route_is_closed() {
         let (_root, _store, grant) = fixture_with(acp_client::grok::DEFAULT_MODEL, |c| {

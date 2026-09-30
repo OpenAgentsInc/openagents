@@ -118,3 +118,18 @@ not delivered into it. `coder_delegate::steering::GROK_ACP` says so:
 `session/cancel` ends the turn, and the next turn reattaches the same
 session with `session/load`. The grant records that row under
 `capabilities.steering`.
+
+## Live smoke
+
+`repository::grok` tests replay a synthetic ACP turn. The ignored test
+`live_grok_cli_runs_a_repository_turn` runs that same turn through the
+installed `grok`, with the owner's login, under full access, in a scratch
+repository and task store that the test removes. It spends a model request:
+
+```sh
+cargo test -p microcoder --lib live_grok -- --ignored
+```
+
+On 2026-09-30, on the owner's Mac with Grok Build 1.0.44, `grok:default`
+reported `grok-4.7`, ended `model_finished` in about 30 seconds, and wrote
+`result.txt`.
