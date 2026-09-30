@@ -552,6 +552,17 @@ pub enum Operation {
         request: String,
         text: String,
     },
+    /// Stop receiving the reply streaming into a thread, in answer to the
+    /// message whose send ID is `request` (null for a message sent without
+    /// one). What streamed is kept as a stopped reply; the hosted worker may
+    /// still finish. A stop naming a message the thread is not answering
+    /// changes nothing, so a repeated stop, or one after the reply ended,
+    /// is harmless.
+    #[serde(rename = "thread.stop")]
+    StopThread {
+        thread: String,
+        request: Option<String>,
+    },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -583,6 +594,7 @@ impl Operation {
             Self::ListThreads {} => "thread.list",
             Self::ReadThread { .. } => "thread.read",
             Self::SendThread { .. } => "thread.send",
+            Self::StopThread { .. } => "thread.stop",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -608,7 +620,8 @@ impl Operation {
             | Self::QueueTask { .. }
             | Self::ListSpends { .. }
             | Self::SettleSpend { .. }
-            | Self::SendThread { .. } => Some(Right::Operate),
+            | Self::SendThread { .. }
+            | Self::StopThread { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -666,6 +679,12 @@ impl Operation {
                 crate::thread::id(thread)?;
                 crate::thread::id(request)?;
                 crate::thread::message(text)?;
+            }
+            Self::StopThread { thread, request } => {
+                crate::thread::id(thread)?;
+                if let Some(request) = request {
+                    crate::thread::id(request)?;
+                }
             }
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
@@ -959,7 +978,8 @@ impl Outcome {
                 | Operation::CancelTask { .. }
                 | Operation::ArchiveTask { .. }
                 | Operation::CommandTask { .. }
-                | Operation::SendThread { .. },
+                | Operation::SendThread { .. }
+                | Operation::StopThread { .. },
                 Self::Dispatched { receipt },
             ) => receipt.operation == op.name(),
             _ => false,

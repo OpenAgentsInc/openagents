@@ -389,6 +389,22 @@
         "text": "And in the snow?"
       }
     },
+    "request_thread_stop": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "dcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdc",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "thread.stop",
+        "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "request": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e"
+      }
+    },
     "request_spend_list": {
       "v": "openagents.host-request.v1",
       "requires": [],
@@ -1481,6 +1497,27 @@
           "kind": "thread.send",
           "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
           "text": "Hello"
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "thread stop with a send ID that is not 32 lowercase hex",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "ecececececececececececececececececececececececececececececececec",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "thread.stop",
+          "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "request": "reply"
         }
       },
       "code": "malformed"

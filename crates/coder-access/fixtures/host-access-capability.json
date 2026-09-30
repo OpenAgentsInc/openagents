@@ -23,7 +23,8 @@
         "chats.invite",
         "thread.list",
         "thread.read",
-        "thread.send"
+        "thread.send",
+        "thread.stop"
       ],
       "remote": {
         "relays": [

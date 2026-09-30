@@ -1,11 +1,11 @@
 //! The host's chat threads for granted devices: NIP-HOST `thread.list`,
-//! `thread.read`, and `thread.send`.
+//! `thread.read`, `thread.send`, and `thread.stop`.
 //!
 //! These run the same chat service commands the local operator socket runs
 //! for the desktop app and `openagents chat` ([`crate::control::apply_chat`]),
 //! on the same store, so a thread started in any of them is one thread. The
 //! access layer has already checked the device's grant and the right each
-//! operation needs (`observe` to read, `operate` to send). What leaves the
+//! operation needs (`observe` to read, `operate` to send or stop). What leaves the
 //! host is the wire form in `coder_access::thread`: titles, turns, the reply
 //! streaming, and a link to Coder work, and never the router's judgments.
 
@@ -121,6 +121,39 @@ pub(crate) fn send(shared: &Shared, id: &str, request: &str, text: &str) -> Resu
         },
     )
     .map(|_| ())
+}
+
+/// `thread.stop`: stop receiving the reply streaming into `id` in answer
+/// to the message whose send ID is `request` (`None` for a message sent
+/// without one), through the chat service's own stop, as the desktop's
+/// stop does: what streamed is kept as a stopped reply, and the hosted
+/// worker may still finish. When the thread is not answering that message
+/// (the reply ended, it was stopped already, or a newer message is being
+/// answered) nothing changes, so the stop is idempotent per thread and
+/// send ID. An unknown thread is `unavailable`.
+pub(crate) fn stop(shared: &Shared, id: &str, request: Option<&str>) -> Result<(), Code> {
+    let snapshot = run(
+        shared,
+        Command::Read {
+            chat: id.to_owned(),
+            before: None,
+        },
+    )?;
+    find(shared, id, &snapshot)?;
+    let answering = snapshot.busy
+        && snapshot
+            .turns
+            .last()
+            .is_some_and(|turn| turn.role == Role::User && turn.request.as_deref() == request);
+    if answering {
+        run(
+            shared,
+            Command::Stop {
+                chat: id.to_owned(),
+            },
+        )?;
+    }
+    Ok(())
 }
 
 /// The thread's row: in the snapshot's first list page, or a later one.

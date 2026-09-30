@@ -1,5 +1,6 @@
-//! A paired phone reads the host's chat threads and continues one
-//! (NIP-HOST `thread.list`, `thread.read`, `thread.send`).
+//! A paired phone reads the host's chat threads, continues one, and stops
+//! a reply (NIP-HOST `thread.list`, `thread.read`, `thread.send`,
+//! `thread.stop`).
 //!
 //! The host runs with a control socket, the one the desktop app and
 //! `openagents chat` use, and its threads ask a scripted chat worker on a
@@ -53,6 +54,48 @@ fn refusal(error: &Error) -> Option<(Code, Option<Right>)> {
         Error::Access(error) => Some((error.code, error.missing)),
         _ => None,
     }
+}
+
+/// A second phone paired with only `observe`, and its link.
+async fn observer(host: &support::Host) -> (Phone, Link) {
+    let watcher = Phone::new().await;
+    let at = now();
+    let invitation = host
+        .store
+        .invite(
+            &host.relay,
+            coder_host::access::Rights::parse_list("observe").unwrap(),
+            at,
+            at + 86_400,
+        )
+        .unwrap();
+    let parsed =
+        coder_host::access::protocol::HostInvitation::parse(&invitation.code, at, support::POLICY)
+            .unwrap();
+    let pending =
+        coder_host::access::client::prepare_redeem(&parsed, &watcher.secret, at, support::POLICY)
+            .unwrap();
+    let reply = host
+        .store
+        .handle(
+            &pending.event,
+            &host.relay,
+            at,
+            &mut coder_host::access::host::Unconnected,
+        )
+        .unwrap();
+    let access = coder_host::access::client::finish_redeem(
+        &parsed,
+        &pending,
+        &reply,
+        &watcher.secret,
+        at,
+        support::POLICY,
+    )
+    .unwrap();
+    let observer = watcher.device(access);
+    let link = watcher.link(host, &observer).await.unwrap();
+    (watcher, link)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -204,43 +247,7 @@ async fn a_paired_phone_reads_a_host_thread_and_continues_it() {
     assert_eq!(payloads.lock().unwrap().len(), 2);
 
     // A device that may only observe reads threads but cannot continue one.
-    let watcher = Phone::new().await;
-    let at = now();
-    let invitation = host
-        .store
-        .invite(
-            &host.relay,
-            coder_host::access::Rights::parse_list("observe").unwrap(),
-            at,
-            at + 86_400,
-        )
-        .unwrap();
-    let parsed =
-        coder_host::access::protocol::HostInvitation::parse(&invitation.code, at, support::POLICY)
-            .unwrap();
-    let pending =
-        coder_host::access::client::prepare_redeem(&parsed, &watcher.secret, at, support::POLICY)
-            .unwrap();
-    let reply = host
-        .store
-        .handle(
-            &pending.event,
-            &host.relay,
-            at,
-            &mut coder_host::access::host::Unconnected,
-        )
-        .unwrap();
-    let access = coder_host::access::client::finish_redeem(
-        &parsed,
-        &pending,
-        &reply,
-        &watcher.secret,
-        at,
-        support::POLICY,
-    )
-    .unwrap();
-    let observer = watcher.device(access);
-    let link = watcher.link(&host, &observer).await.unwrap();
+    let (_watcher, link) = observer(&host).await;
     assert_eq!(read(&link, &thread).await.unwrap().total, 4);
     let refused = link
         .call(Operation::SendThread {
@@ -293,5 +300,149 @@ async fn thread_reads_are_not_retained_so_polling_never_fills_the_store() {
         "reads grew the access store from {before} to {} bytes",
         size()
     );
+    host.running.shutdown().await;
+}
+
+async fn stop(link: &Link, thread: &str, request: Option<String>) -> Result<Outcome> {
+    link.call(Operation::StopThread {
+        thread: thread.to_owned(),
+        request,
+    })
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_phone_stops_a_host_threads_streaming_reply_and_the_owner_reads_it_stopped() {
+    let worker = support::key();
+    let (door, payloads) = chat_worker::start(worker).await;
+    let host = host_with(Options {
+        chat_door: Some(ChatDoor {
+            relay: door,
+            worker: chat_worker::worker_key(&worker),
+        }),
+        ..Options::default()
+    })
+    .await;
+    let thread = "7d".repeat(16);
+    chat(
+        &host,
+        Command::Create {
+            chat: thread.clone(),
+        },
+    )
+    .await;
+    let phone = Phone::new().await;
+    let (_, code) = host.code().await;
+    let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
+    let device = phone.device(access.unwrap());
+    let link = phone.link(&host, &device).await.unwrap();
+
+    // A stop naming a message the thread is not answering changes nothing:
+    // this is how a phone learns the host can stop, before it shows the
+    // stop control.
+    let probe = stop(&link, &thread, Some("99".repeat(16))).await.unwrap();
+    assert!(matches!(probe, Outcome::Dispatched { .. }));
+    assert_eq!(read(&link, &thread).await.unwrap().total, 0);
+
+    // The phone asks for a long reply and stops it while it streams.
+    let send = "3e".repeat(16);
+    link.call(Operation::SendThread {
+        thread: thread.clone(),
+        request: send.clone(),
+        text: "Tell me slowly about rain".into(),
+    })
+    .await
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let page = read(&link, &thread).await.unwrap();
+        if page.busy && page.partial.starts_with("Rain on the roof") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the reply never streamed");
+        tokio::time::sleep(Duration::from_millis(40)).await;
+    }
+    // A stop for another message, as from a phone that read the thread
+    // before this message, leaves the reply streaming.
+    stop(&link, &thread, Some("99".repeat(16))).await.unwrap();
+    assert!(read(&link, &thread).await.unwrap().busy);
+    let Outcome::Dispatched { receipt } = stop(&link, &thread, Some(send.clone())).await.unwrap()
+    else {
+        panic!("a receipt")
+    };
+    assert_eq!(
+        (receipt.operation.as_str(), receipt.reference.as_str()),
+        ("thread.stop", thread.as_str())
+    );
+
+    // The partial is kept as a stopped reply, and the worker's later
+    // partials do not reach it.
+    let page = read(&link, &thread).await.unwrap();
+    assert!(!page.busy);
+    assert_eq!(page.total, 2);
+    let reply = page.turns.last().unwrap();
+    assert_eq!(reply.role, ThreadRole::Assistant);
+    assert!(reply.stopped, "the reply carries its stopped marker");
+    assert!(reply.text.starts_with("Rain on the roof"), "{}", reply.text);
+    assert!(!reply.text.contains("(turns:"), "the result never arrived");
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let later = read(&link, &thread).await.unwrap();
+    assert_eq!(later.turns, page.turns);
+    assert!(!later.busy);
+
+    // Stopping again, under a new request or as an exact retry, changes
+    // nothing.
+    stop(&link, &thread, Some(send.clone())).await.unwrap();
+    assert_eq!(read(&link, &thread).await.unwrap().turns, page.turns);
+
+    // The owner reads it stopped, as the desktop and `openagents chat
+    // read` do over the socket.
+    let snapshot = chat(
+        &host,
+        Command::Read {
+            chat: thread.clone(),
+            before: None,
+        },
+    )
+    .await;
+    assert!(!snapshot.busy);
+    let last = snapshot.turns.last().unwrap();
+    assert!(last.stopped);
+    assert_eq!(last.text, reply.text);
+
+    // The thread is not stuck: a new message is answered in full.
+    link.call(Operation::SendThread {
+        thread: thread.clone(),
+        request: "4e".repeat(16),
+        text: "And in the snow?".into(),
+    })
+    .await
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let page = read(&link, &thread).await.unwrap();
+        if !page.busy && page.total == 4 {
+            assert!(!page.turns[3].stopped);
+            assert_eq!(page.turns[3].text, "Rain on the roof. (turns: 3)");
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the next message was never answered"
+        );
+        tokio::time::sleep(Duration::from_millis(40)).await;
+    }
+    assert_eq!(payloads.lock().unwrap().len(), 2);
+
+    // A device that may only observe is refused the stop, and an unknown
+    // thread is unavailable.
+    let (_watcher, watching) = observer(&host).await;
+    let refused = stop(&watching, &thread, None).await.unwrap_err();
+    assert_eq!(
+        refusal(&refused),
+        Some((Code::MissingRight, Some(Right::Operate)))
+    );
+    let unknown = stop(&link, &"5b".repeat(16), None).await.unwrap_err();
+    assert_eq!(refusal(&unknown), Some((Code::Unavailable, None)));
     host.running.shutdown().await;
 }

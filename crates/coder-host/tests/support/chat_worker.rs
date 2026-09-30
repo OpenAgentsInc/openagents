@@ -16,15 +16,27 @@ use secp256k1::SecretKey;
 use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::Message;
 
-/// The worker's feedback payloads and its result for one request.
+/// The worker's feedback payloads and its result for one request. A last
+/// message that asks for its answer "slowly" streams for about ten seconds,
+/// long enough to stop it.
 fn script(payload: &Value) -> (Vec<Value>, Value) {
-    let turns = payload["transcript"].as_array().map_or(0, Vec::len);
+    let transcript = payload["transcript"].as_array();
+    let turns = transcript.map_or(0, Vec::len);
+    let slowly = transcript
+        .and_then(|turns| turns.last())
+        .is_some_and(|last| last.to_string().contains("slowly"));
+    let mut feedback = vec![
+        json!({"v": 2, "type": "judgment", "lane": "chat", "route": "general", "tier": "model", "model": "jev-fixture"}),
+        json!({"v": 2, "type": "partial", "seq": 0, "delta": "Rain on "}),
+        json!({"v": 2, "type": "partial", "seq": 1, "delta": "the roof"}),
+    ];
+    if slowly {
+        feedback.extend(
+            (2..42).map(|seq| json!({"v": 2, "type": "partial", "seq": seq, "delta": "."})),
+        );
+    }
     (
-        vec![
-            json!({"v": 2, "type": "judgment", "lane": "chat", "route": "general", "tier": "model", "model": "jev-fixture"}),
-            json!({"v": 2, "type": "partial", "seq": 0, "delta": "Rain on "}),
-            json!({"v": 2, "type": "partial", "seq": 1, "delta": "the roof"}),
-        ],
+        feedback,
         json!({"v": 2, "type": "result", "model": "fixture-model", "tier": "model",
             "text": format!("Rain on the roof. (turns: {turns})")}),
     )

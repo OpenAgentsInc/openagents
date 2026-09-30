@@ -6,7 +6,8 @@ the [local operator socket](#local-operator-socket), and
 [nearby approval](#nearby-approval-planned) for the
 [QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md), and
 2026-09-30 with the [thread operations](#operations) (`thread.list`,
-`thread.read`, `thread.send`) that carry the host's chat threads to a phone. The
+`thread.read`, `thread.send`, `thread.stop`) that carry the host's chat
+threads to a phone. The
 [shared contracts](contracts.md)
 are normative. This profile lets one host admit a device with host-wide,
 scoped rights. It defines enrollment by host invitation, reverse enrollment
@@ -672,6 +673,7 @@ A request is `openagents.host-request.v1`:
 | `thread.list` | `observe` | `threads` |
 | `thread.read` | `observe` | `thread` |
 | `thread.send` | `operate` | `dispatched` |
+| `thread.stop` | `operate` | `dispatched` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -729,7 +731,30 @@ dispatched again with no second message, and different text under a send
 ID the thread holds refuses as `conflict`, as does a send while the thread
 is answering or to an archived thread. An unknown thread, or a host that
 keeps no chat store, refuses as `unavailable`, and an older host refuses all
-three as `malformed` or `unsupported`. No thread operation grants execution
+three as `malformed` or `unsupported`.
+`thread.stop` carries `{thread, request}`: the send ID of the message whose
+reply the device stops, or null for a message sent without one. While the
+thread is answering that message, the host stops receiving the reply
+through its chat service's own stop, as a stop in its own window does:
+what streamed is kept as the reply, marked `stopped`, and a reply with
+nothing streamed yet leaves the message marked `stopped` with the failure
+"Stopped receiving this reply. The hosted worker may still finish." That
+wording is exact: the host stops listening, and the hosted worker may
+still finish, but nothing it sends later reaches the thread. When the
+thread is not answering that message (the reply ended, it was stopped
+already, or a newer message is being answered) nothing changes. Either way
+the host answers `dispatched` with the thread ID as its reference, so a
+stop is idempotent per thread and send ID, and a stale one never stops a
+later reply. An unknown thread refuses as `unavailable`, and an older host
+refuses `thread.stop` as `malformed` or `unsupported`. A device shows a
+stop control for a host's thread only once it knows the host can stop:
+it sends `thread.stop` with a freshly minted send ID, which no message
+holds and so changes nothing, and a `dispatched` answer means the host
+stops; a refusal, from an older host or without `operate`, means no stop
+control, never one that does nothing. Stopping a thread's reply does not
+stop Coder work the thread started; a device offers that separately,
+through the task's own stop.
+No thread operation grants execution
 authority: running Coder for a thread is the owner's choice on the host.
 Unlike every other operation, the host does not retain a `thread.list` or
 `thread.read` reply (see [Admission order and retention](#admission-order-and-retention)).
@@ -1167,7 +1192,12 @@ follow-up whose reply it reads as it streams, replays the send without a
 second message, is refused `conflict` for other text under its send ID, and
 the owner reads the follow-up back; an `observe`-only device reads but is
 refused the send as `missing_right`; and polling reads leaves the access
-store's size unchanged. The OpenAgents phone lists each paired computer's
+store's size unchanged. In the same file a phone stops a reply while it
+streams: a stop for another send ID leaves it streaming, the stop for its
+own keeps the partial as a stopped reply that later partials never reach,
+a repeated stop changes nothing, the owner reads the stopped reply over
+the socket as the desktop and `openagents chat read` do, the next message
+is answered in full, and an `observe`-only device is refused the stop. The OpenAgents phone lists each paired computer's
 threads beside its own, labelled with the computer, opens one to read its
 turns as the reply streams, and sends a follow-up through the computer
 ([`crates/openagents-chat-app/src/host_threads.rs`](../../crates/openagents-chat-app/src/host_threads.rs)).

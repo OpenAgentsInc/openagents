@@ -820,7 +820,8 @@ impl Host {
             | Operation::CancelTask { .. }
             | Operation::ArchiveTask { .. }
             | Operation::CommandTask { .. }
-            | Operation::SendThread { .. } => {
+            | Operation::SendThread { .. }
+            | Operation::StopThread { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {

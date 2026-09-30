@@ -146,6 +146,7 @@ fn every_operation_has_a_fixture() {
         "thread.list",
         "thread.read",
         "thread.send",
+        "thread.stop",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }
@@ -274,4 +275,37 @@ fn thread_reads_need_observe_sends_need_operate_and_reads_are_not_retained() {
         },
     };
     assert!(receipt.answers(&send));
+}
+
+#[test]
+fn thread_stop_needs_operate_names_a_send_id_and_is_retained() {
+    use coder_access::protocol::{Operation, Outcome, Receipt};
+    let thread = "0f".repeat(16);
+    let stop = Operation::StopThread {
+        thread: thread.clone(),
+        request: Some("1e".repeat(16)),
+    };
+    assert_eq!(stop.name(), "thread.stop");
+    assert_eq!(stop.required(), Some(coder_access::Right::Operate));
+    // A stop has an effect, so its reply is retained: an exact retry
+    // answers the same receipt and never stops a later reply.
+    assert!(!stop.reads_only());
+    let unnamed = Operation::StopThread {
+        thread: thread.clone(),
+        request: None,
+    };
+    let receipt = |operation: &str| Outcome::Dispatched {
+        receipt: Receipt {
+            operation: operation.into(),
+            reference: thread.clone(),
+        },
+    };
+    assert!(receipt("thread.stop").answers(&stop) && receipt("thread.stop").answers(&unnamed));
+    assert!(!receipt("thread.send").answers(&stop));
+    // A missing send ID is null, as an older device's message had none.
+    let parsed: Operation = serde_json::from_value(serde_json::json!({
+        "kind": "thread.stop", "thread": thread, "request": null
+    }))
+    .unwrap();
+    assert_eq!(parsed, unnamed);
 }

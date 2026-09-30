@@ -185,6 +185,18 @@ impl Dispatch for Dispatcher {
                     reference: thread.clone(),
                 })
             }
+            // A stop of the reply to one message: repeated, or after the
+            // reply ended, it changes nothing.
+            Operation::StopThread {
+                thread,
+                request: send,
+            } => {
+                super::threads::stop(&self.shared, thread, send.as_deref())?;
+                Ok(Receipt {
+                    operation: op.name().into(),
+                    reference: thread.clone(),
+                })
+            }
             // An archived task leaves the lists, so it publishes no summary.
             Operation::ArchiveTask { task } => {
                 tasks.archive(request, device, task)?;
