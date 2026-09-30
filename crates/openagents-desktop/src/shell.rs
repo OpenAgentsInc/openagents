@@ -1154,13 +1154,21 @@ mod tests {
                         panic!("second chat")
                     };
                     let other = service::apply(&mut chats, command, unix_now()).unwrap();
+                    let other_id = other.chat.clone().unwrap();
                     app.chat.as_mut().unwrap().outcome(ticket, Ok(other));
                     app.present();
                     rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
-                    assert_eq!(
-                        app.chat.as_ref().unwrap().transcript.rows(),
-                        1,
-                        "new chat contains only its welcome"
+                    // The new chat holds no turns, and none of the streaming
+                    // chat's words reach its screen (its welcome and starter
+                    // questions are its only rows).
+                    assert!(chats.turns(&other_id).is_empty(), "new chat has no turns");
+                    // The sidebar rightly lists the first chat's title, so
+                    // check for the streamed reply's own words.
+                    let shown = format!("{:?}", app.presenter.view());
+                    let reply: String = previous.chars().take(40).collect();
+                    assert!(
+                        !shown.contains(&reply),
+                        "the other chat's reply reached the new chat"
                     );
                     let number = app
                         .navigation
