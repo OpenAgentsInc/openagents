@@ -203,3 +203,13 @@ This slice does not complete #10029. After integration with `2129cbc83a`, the sh
 the desktop passes 92 library tests, 53 application tests (five opt-in checks
 ignored), and three version checks. Native performance verification follows
 the optimized build rebased on current main.
+
+## First menu frames
+
+The native report now retains a bounded `openings` array: the first submitted
+frame after opening the palette and the chat menu. Keep these separate from
+the steady-state samples, which omit the first five frames in each phase.
+This includes SVG mask preparation and full damage when a menu first appears.
+It uses the same CPU work and submission measure; it does not measure GPU
+completion or scanout. The local timings writer remains opt-in, bounded, and
+content-free.

@@ -64,7 +64,7 @@ fn resources() -> Resources {
     }
     Resources::default()
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Sample {
     phase: Phase,
     frame: FrameTiming,
@@ -90,6 +90,8 @@ struct Report {
     rows: usize,
     chats: usize,
     samples: Vec<Sample>,
+    /// First submitted frames after opening the command palette and chat menu.
+    openings: Vec<Sample>,
     phases: Vec<PhaseResult>,
 }
 
@@ -105,6 +107,7 @@ struct Fixture {
     frames: usize,
     last_step_us: u64,
     samples: Vec<Sample>,
+    openings: Vec<Sample>,
     results: Vec<PhaseResult>,
     done: bool,
     sidebar: f32,
@@ -125,6 +128,7 @@ impl Fixture {
             frames: 0,
             last_step_us: 0,
             samples: Vec::with_capacity(500),
+            openings: Vec::with_capacity(2),
             results: vec![],
             done: false,
             sidebar: 0.0,
@@ -299,15 +303,22 @@ impl App for Fixture {
     }
     fn frame_presented(&mut self, frame: FrameTiming) {
         let (rows, visible_rows, relaid) = self.app.performance_counts();
+        let sample = Sample {
+            phase: self.phase,
+            frame,
+            step_us: self.last_step_us,
+            rows,
+            visible_rows,
+            relaid,
+        };
+        if self.frames == 0
+            && matches!(self.phase, Phase::Commands | Phase::ChatMenu)
+            && self.openings.len() < 2
+        {
+            self.openings.push(sample.clone());
+        }
         if self.frames >= 5 && !matches!(self.phase, Phase::Warm) && self.samples.len() < 600 {
-            self.samples.push(Sample {
-                phase: self.phase,
-                frame,
-                step_us: self.last_step_us,
-                rows,
-                visible_rows,
-                relaid,
-            });
+            self.samples.push(sample);
         }
         self.frames += 1;
         self.last_step_us = 0;
@@ -389,6 +400,7 @@ impl Drop for Reporting {
             rows: 3300,
             chats: 500,
             samples: std::mem::take(&mut self.fixture.samples),
+            openings: std::mem::take(&mut self.fixture.openings),
             phases: std::mem::take(&mut self.fixture.results),
         });
     }
