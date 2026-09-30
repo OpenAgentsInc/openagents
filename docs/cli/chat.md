@@ -98,6 +98,12 @@ separate accept step. `--no-run` keeps the old behavior: the offer is
 printed, with `openagents chat run-coder --thread ID` to accept it later.
 Nothing matches keywords; only the router's judgment decides.
 
+Everything below is the default. The local capability settings
+([settings.md](settings.md), `openagents settings`) choose the providers and
+their order, whether a coding reply runs at once or only offers
+(`coder.start: ask_first`), the usage threshold, which folders count as
+projects, and what the run's commands may reach.
+
 - **Project.** The Git checkout the command runs in. Coder works in its own
   detached worktree of the checkout's `HEAD`, never in the checkout, so the
   result is in the worktree the `result` event names. Uncommitted changes
@@ -285,7 +291,11 @@ form.
   every event type, the reason in `coder_started`, the worktree, and an
   identical replay. `crates/openagents-chat/src/coder_events.rs` tests the
   step mapping; `crates/coder/src/task/local.rs` tests checkout detection,
-  provider choice with its reason, and the files-changed diff.
+  provider choice with its reason, each local capability setting's
+  effect, and that the defaults change nothing.
+- `settings_change_the_local_run_and_the_defaults_change_nothing` in
+  `crates/openagents-cli/tests/chat.rs` runs `openagents settings` and the
+  local run each setting changes that a terminal can observe.
 - `crates/openagents-chat/src/thread.rs` tests the ATIF mapping and the
   paged reader.
 
@@ -300,8 +310,6 @@ form.
   (the Xcode shim) fails inside it; Coder finds another interpreter, such as
   `/Library/Developer/CommandLineTools/usr/bin/python3`, or says it could
   not run the tests.
-- Opting providers in or out, and full access for local runs, come with the
-  settings file ([#10036](https://github.com/OpenAgentsInc/openagents/issues/10036)).
 - Eval offers (`start_eval`, `publish_eval`) and screen offers are printed;
   accepting them needs the app.
 - Suggestion ranking for a new chat (a rank job) is a phone feature and is

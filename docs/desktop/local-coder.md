@@ -78,6 +78,13 @@ capacity; Coder's own worktree of the project's `HEAD`; the same engine,
 failover, and ATIF recording as a host's auto-start. Reopening a chat never
 starts a run.
 
+The local capability settings ([`openagents settings`](../cli/settings.md),
+`coder::task::settings`) apply here as in the terminal: the providers and
+their order, the usage threshold, the project folders (tried after the ones
+below when a chat names none, and a checkout outside them is not a project),
+and what commands may reach. With `coder.start: ask_first` a coding reply
+only offers **Run Coder**. The Settings page (#10021) edits the same file.
+
 Its commands can use what is installed on this computer
 ([#10045](https://github.com/OpenAgentsInc/openagents/issues/10045)): Xcode's
 `python3` and `git`, Homebrew's `rg`, rustup's `cargo`, nvm's `node`, and the

@@ -48,6 +48,14 @@ app's; otherwise the command keeps its own under `~/.openagents/chat/`, and
 the router's typed metadata, and `--run-coder` accepts a Coder offer through
 the host. The full guide is [chat.md](chat.md).
 
+## Local capability settings (`openagents settings`)
+
+`openagents settings show|get|set|unset` edits `~/.openagents/settings.json`,
+which `openagents chat`, the desktop, and a host on this computer read: the
+coding agents Coder may use and their order, whether a coding reply runs at
+once or asks first, the usage threshold, the project folders, and what a
+local run's commands may reach. See [settings.md](settings.md).
+
 ## Knowledge entries (NIP-KB)
 
 Use `openagents kb` to work with local knowledge entries and NIP-KB relay
