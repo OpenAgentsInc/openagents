@@ -36,9 +36,25 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "32",
+        title: "Right answers about connecting",
+        what_to_test: "In a new chat, ask \"How do I connect a phone\" and \"Do I need Tailscale?\": the replies should describe scanning the QR code in OpenAgents for Mac (from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg), with no Tailscale steps, no commands to run, and no [openagents.…] tags anywhere in the reply. Then connect your Mac: open OpenAgents for Mac, and on the phone tap Account, Computers, Connect a computer and scan the code, or scan it with the iPhone Camera. Both screens should say the computer is connected.",
+        items: &[
+            Item {
+                title: "Answers about connecting a computer",
+                detail: "Asking how to connect a phone or a computer now describes the QR code in OpenAgents for Mac, nearby pairing, and copying a code, not the old Tailscale setup.",
+            },
+            Item {
+                title: "No stray tags in replies",
+                detail: "Replies drawn from our product notes no longer show ids like [openagents.connect-computer@1].",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "31",
         title: "Connect your Mac",
-        what_to_test: "On a Mac, download OpenAgents for Mac from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/0.1.0/OpenAgents-0.1.0.dmg, open it, drag OpenAgents to Applications, and open it: it shows a QR code. Tick Let this phone open a terminal on this Mac first if you want command cards. On the phone, tap Account, Computers, Connect a computer, and scan the code: both screens should say the computer is connected. On the Mac, choose a project folder and tick Let my phone start Coder here. In a new chat, ask for a change in your project on your Mac and tap Run Coder on your Mac: Coder's steps and reply should show in the chat. Ask who is in the Verse and tap Run on the command card. Then click Remove on the Mac: the phone should show the computer as Revoked. Codex or Claude Code must be signed in on the Mac.",
+        what_to_test: "On a Mac, download OpenAgents for Mac from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg, open it, drag OpenAgents to Applications, and open it: it shows a QR code. Tick Let this phone open a terminal on this Mac first if you want command cards. On the phone, tap Account, Computers, Connect a computer, and scan the code: both screens should say the computer is connected. On the Mac, choose a project folder and tick Let my phone start Coder here. In a new chat, ask for a change in your project on your Mac and tap Run Coder on your Mac: Coder's steps and reply should show in the chat. Ask who is in the Verse and tap Run on the command card. Then click Remove on the Mac: the phone should show the computer as Revoked. Codex or Claude Code must be signed in on the Mac.",
         items: &[
             Item {
                 title: "Connect your Mac",
