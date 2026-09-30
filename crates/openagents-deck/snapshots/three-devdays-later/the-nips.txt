@@ -1,10 +1,10 @@
 table at 133,26 720x390 ×1.2580645
   NIP | Title | NIP | Title
-  ATIF | Agent Trajectories | OPT | Model Optimization
-  CAP | Capabilities | POL | Policy
-  CJ | Agent Jobs | PRG | Programs
-  CTX | Task Context | RUN | Durable Runs
+  ATIF | Agent Trajectories | MV | Metaverse
+  CAP | Capabilities | OPT | Model Optimization
+  CJ | Agent Jobs | POL | Policy
+  CTX | Task Context | PRG | Programs
+  DEC | Decisions | RUN | Durable Runs
   EVAL | Evaluations | SESS | Engine Sessions
   EXT | Extensions | WORK | Work Tracking
   KB | Knowledge Base | XP | Experience Points
-  MV | Metaverse |  | 
