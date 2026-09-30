@@ -1211,7 +1211,7 @@ impl Panel {
                     .as_ref()
                     .is_some_and(|(_, field)| field.text().trim() == title.trim())
             {
-                self.rename = None;
+                self.close_overlay();
             }
         }
         let previous = self.session.selected.clone();
@@ -1600,6 +1600,16 @@ impl Panel {
                 }
                 self.search.focused = false;
                 let mut field = chat_field("Chat title");
+                field.set_unframed(true);
+                field
+                    .set_metrics(rust_native_desktop::composer::field::Metrics {
+                        font_size: 14.0,
+                        line_height: 22.75,
+                        padding: [0.0; 4],
+                        min_height: 22.75,
+                        max_height: 136.5,
+                    })
+                    .expect("valid rename field metrics");
                 if let Some(wake) = self.waker.clone() {
                     field.start(wake);
                 }
@@ -1610,7 +1620,7 @@ impl Panel {
                 None
             }
             Action::CancelRename => {
-                self.rename = None;
+                self.close_overlay();
                 None
             }
             Action::SaveName => {
@@ -1796,6 +1806,11 @@ impl Panel {
             });
         if inside_field {
             return false;
+        }
+        if self.rename.is_some() {
+            // Zeron's dialog scrim consumes outside presses. Only Cancel,
+            // Escape, or a successful rename dismisses this dialog.
+            return true;
         }
         self.close_overlay();
         true
@@ -2092,14 +2107,14 @@ impl Panel {
                 return FieldAction::Edited;
             }
             if let TextInput::Key { key: "Enter", .. } = &event
-                && self.rename_focus == 2
+                && self.rename_focus == 1
             {
                 self.close_overlay();
                 return FieldAction::Edited;
             }
         }
         if let Some((_, field)) = &mut self.rename {
-            let result = if self.rename_focus == 1
+            let result = if self.rename_focus == 2
                 && matches!(&event, TextInput::Key { key: "Enter", .. })
             {
                 FieldAction::Send
@@ -2400,7 +2415,10 @@ impl Panel {
                 16.0,
             )),
             "glyph:command-rule" => Some((available, 1.0)),
-            RENAME => Some((available, 56.0)),
+            RENAME => self
+                .rename
+                .as_ref()
+                .map(|(_, field)| (available, field.height(available))),
             TRANSCRIPT => Some((
                 available,
                 (self.viewport.1
@@ -2634,6 +2652,15 @@ impl Panel {
                     ..Color::rgb(0, 0, 0)
                 }),
             })
+        } else if self.rename.is_some() {
+            Some(OverlayLayout {
+                width: 360,
+                placement: OverlayPlacement::Center,
+                scrim: Some(Color {
+                    alpha: 89,
+                    ..Color::rgb(0, 0, 0)
+                }),
+            })
         } else if !self.saved_visible && !self.modal() && !self.transcript.at_tail() {
             Some(OverlayLayout {
                 width: 0,
@@ -2650,6 +2677,9 @@ impl Panel {
     pub fn floating(&mut self) -> Option<Node<Intent>> {
         if self.commands.kind.is_some() {
             return Some(self.command_panel());
+        }
+        if self.rename.is_some() {
+            return Some(self.rename_panel());
         }
         self.overlay_layout()?;
         let mut button = button("chat-latest", "Scroll to bottom", Action::Latest, true);
@@ -2677,6 +2707,102 @@ impl Panel {
         pill.style.padding_points = Some([0, 2, 0, 0]);
         pill.style.background = Some(Color::rgb(32, 32, 32));
         Some(pill)
+    }
+    fn rename_panel(&self) -> Node<Intent> {
+        use openagents_chat_app::visual::{MUTED, TEXT};
+        let (title, field) = self.rename.as_ref().expect("an open rename dialog");
+        let input = Node {
+            key: "chat-rename".into(),
+            style: Style::default(),
+            element: Element::Composer {
+                token: format!("rename-{}", self.session.selected.as_deref().unwrap_or("")),
+                placeholder: "Chat title".into(),
+                max_bytes: 160,
+                enabled: true,
+                busy: false,
+                stop: None,
+                choices: vec![],
+                draft: Some(if field.draft.editor().is_some() {
+                    field.text().into()
+                } else {
+                    title.clone()
+                }),
+                focus: field.focused,
+            },
+        };
+        let mut title = text("chat-rename-title", "Rename chat", TextRole::Body);
+        title.style.text_size = Some(15);
+        title.style.line_height = Some(24);
+        title.style.weight = Some(TextWeight::Semibold);
+        let mut field_frame = stack("chat-rename-field", Axis::Vertical, vec![input]);
+        field_frame.style.padding_points = Some([8, 12, 8, 12]);
+        field_frame.style.radius = Some(8);
+        field_frame.style.background = Some(Color {
+            alpha: 10,
+            ..Color::rgb(255, 255, 255)
+        });
+        field_frame.style.border = Some(Color {
+            alpha: 20,
+            ..Color::rgb(255, 255, 255)
+        });
+        let mut field_margin = stack(
+            "chat-rename-field-margin",
+            Axis::Vertical,
+            vec![field_frame],
+        );
+        field_margin.style.padding_points = Some([12, 0, 0, 0]);
+        let mut cancel = button("chat-cancel-name", "Cancel", Action::CancelRename, true);
+        let mut save = button(
+            "chat-save-name",
+            "Rename",
+            Action::SaveName,
+            self.rename_pending.is_none(),
+        );
+        for button in [&mut cancel, &mut save] {
+            button.style.text_size = Some(13);
+            button.style.line_height = Some(21);
+            button.style.button_padding = Some([12, 6]);
+            button.style.radius = Some(8);
+            button.style.intrinsic_width = Some(true);
+        }
+        cancel.style.background = Some(Color { alpha: 0, ..TEXT });
+        cancel.style.foreground = Some(MUTED);
+        cancel.style.hover_background = Some(Color {
+            alpha: 15,
+            ..Color::rgb(255, 255, 255)
+        });
+        cancel.style.hover_foreground = Some(TEXT);
+        save.style.background = Some(TEXT);
+        save.style.foreground = Some(Color::rgb(14, 14, 14));
+        save.style.weight = Some(TextWeight::Medium);
+        save.style.hover_background = Some(Color::rgb(206, 206, 206));
+        let mut buttons = stack(
+            "chat-rename-buttons",
+            Axis::Horizontal,
+            vec![
+                text("chat-rename-space", "", TextRole::Status),
+                cancel,
+                save,
+            ],
+        );
+        buttons.style.gap_points = Some(8);
+        buttons.style.padding_points = Some([16, 0, 0, 0]);
+        // Reimplemented from Zeron's public dialog primitives. The original
+        // conversation stays mounted beneath the centered card.
+        let mut panel = stack(
+            "chat-rename-controls",
+            Axis::Vertical,
+            vec![title, field_margin, buttons],
+        );
+        panel.style.background = Some(Color::rgb(16, 16, 16));
+        panel.style.border = Some(Color {
+            alpha: 26,
+            ..Color::rgb(255, 255, 255)
+        });
+        panel.style.radius = Some(16);
+        panel.style.padding_points = Some([20; 4]);
+        panel.style.gap = Some(Space::None);
+        panel
     }
     fn command_panel(&mut self) -> Node<Intent> {
         self.command_rows.clear();
@@ -3106,7 +3232,6 @@ impl Panel {
     /// Empty conversations keep the composer in the reading pane's center.
     pub fn composer_centered(&self) -> bool {
         !self.saved_visible
-            && self.rename.is_none()
             && self.transcript_rows.is_empty()
             && !self.busy()
             && self.task().is_none()
@@ -3122,44 +3247,6 @@ impl Panel {
     pub fn footer(&mut self) -> Node<Intent> {
         if self.saved_visible {
             return self.saved_footer();
-        }
-        if let Some((title, field)) = &self.rename {
-            return stack(
-                "chat-rename-controls",
-                Axis::Vertical,
-                vec![
-                    Node {
-                        key: "chat-rename".into(),
-                        style: Style::default(),
-                        element: Element::Composer {
-                            token: format!(
-                                "rename-{}",
-                                self.session.selected.as_deref().unwrap_or("")
-                            ),
-                            placeholder: "Chat title".into(),
-                            max_bytes: 160,
-                            enabled: true,
-                            busy: false,
-                            stop: None,
-                            choices: vec![],
-                            draft: Some(if field.draft.editor().is_some() {
-                                field.text().into()
-                            } else {
-                                title.clone()
-                            }),
-                            focus: true,
-                        },
-                    },
-                    stack(
-                        "chat-rename-buttons",
-                        Axis::Horizontal,
-                        vec![
-                            button("chat-save-name", "Save title", Action::SaveName, true),
-                            button("chat-cancel-name", "Cancel", Action::CancelRename, true),
-                        ],
-                    ),
-                ],
-            );
         }
         let Some(id) = self.session.selected.clone() else {
             return text(
