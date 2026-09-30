@@ -59,6 +59,70 @@ const LOCK_WAIT: Duration = Duration::from_secs(5);
 /// a store save's disk sync on a nearly full volume can take longer than
 /// [`Store::open`]'s five seconds.
 pub const OWNER_LOCK_WAIT: Duration = Duration::from_secs(120);
+/// How long a reader following a task (`openagents chat follow`, an issue
+/// flow waiting for its turn) waits out another process holding the store
+/// before it says it cannot read the task: as long as the task's own owner
+/// waits, so a slow disk sync that the owner survives never ends the reader.
+pub const READER_BUSY_WAIT: Duration = OWNER_LOCK_WAIT;
+
+/// A follower's reads of one task, which wait out a busy store.
+///
+/// Each read opens the store as [`Store::open`] does. A store another
+/// process holds past that open's wait is not a failure while it has been
+/// busy for less than [`READER_BUSY_WAIT`] in a row: the read returns
+/// `None`, and the follower polls again. Reading never changes the task.
+#[derive(Debug)]
+pub struct Reading {
+    open: Duration,
+    limit: Duration,
+    since: Option<Instant>,
+}
+
+impl Default for Reading {
+    fn default() -> Self {
+        Self::within(LOCK_WAIT, READER_BUSY_WAIT)
+    }
+}
+
+impl Reading {
+    /// Reads that wait `open` for each open and `limit` in a row for a
+    /// busy store.
+    #[must_use]
+    pub fn within(open: Duration, limit: Duration) -> Self {
+        Self {
+            open,
+            limit,
+            since: None,
+        }
+    }
+
+    /// `task` in the store at `dir`, or `None` while another process has
+    /// held the store for less than the limit.
+    ///
+    /// # Errors
+    /// The store cannot be read, holds no such task, or stayed busy past
+    /// the limit.
+    pub fn show(&mut self, dir: &Path, task: &str) -> Result<Option<Task>, Error> {
+        match Store::open_waiting(dir, self.open).and_then(|store| store.show(task)) {
+            Ok(task) => {
+                self.since = None;
+                Ok(Some(task))
+            }
+            Err(Error::Busy) => {
+                let since = *self.since.get_or_insert_with(Instant::now);
+                if since.elapsed() < self.limit {
+                    Ok(None)
+                } else {
+                    Err(Error::Busy)
+                }
+            }
+            Err(error) => {
+                self.since = None;
+                Err(error)
+            }
+        }
+    }
+}
 
 /// A requested adapter and model, not an admitted execution configuration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

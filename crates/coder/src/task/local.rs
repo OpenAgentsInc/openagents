@@ -801,6 +801,7 @@ impl Local {
                 .map(settings::Coder::provider_list)
                 .unwrap_or_else(|_| ROUTES.iter().map(|(p, _)| *p).collect()),
             noted: 0,
+            reading: super::Reading::default(),
         }
     }
 }
@@ -1146,6 +1147,8 @@ pub struct Follow {
     providers: Vec<Provider>,
     /// The issue flow's notes already emitted.
     noted: usize,
+    /// Reads of the task, which wait out a store another process holds.
+    reading: super::Reading,
 }
 
 impl Follow {
@@ -1200,9 +1203,17 @@ impl Follow {
         loop {
             // The task first: a turn whose result is recorded has its whole
             // trajectory written before it.
-            let task = Store::open(&self.store)
-                .and_then(|store| store.show(&self.task))
-                .map_err(|e| e.to_string())?;
+            // A store another process holds (a slow disk sync, the task's
+            // owner recording a step) is not the task ending: nothing new
+            // yet, and the next poll reads again, until it has stayed busy
+            // for `READER_BUSY_WAIT`.
+            let Some(task) = self
+                .reading
+                .show(&self.store, &self.task)
+                .map_err(|e| e.to_string())?
+            else {
+                return Ok((out, State::Running));
+            };
             let mut record = record(&self.store, &self.task);
             let flow = super::issue_run::load(&self.store, &self.task);
             if let Some(state) = self.ended {
@@ -1497,6 +1508,88 @@ mod tests {
                 grant_digest: "sha256:held".into(),
             })
         }
+    }
+
+    /// A follower whose store another process holds past the open's wait
+    /// waits it out and then continues, instead of ending with "another
+    /// process holds the task store lock" (#10049's chat issue flow, which
+    /// released its claim on a transient busy store). Only a store busy
+    /// past the reader's limit is a read failure, and it never touches the
+    /// task.
+    #[test]
+    fn a_follower_waits_out_a_store_another_process_holds_then_continues() {
+        use std::time::{Duration, Instant};
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let run = local(dir.path(), both).with_launcher(Box::new(Held));
+        let record = run
+            .start(
+                &top,
+                "Fix the parser",
+                "Fix the parser.",
+                Some(&"4c".repeat(16)),
+            )
+            .unwrap();
+        let mut follow = run.follow(&record.task, None, None);
+        follow.reading =
+            super::super::Reading::within(Duration::from_millis(50), Duration::from_secs(30));
+        let (lines, state) = follow.poll().unwrap();
+        assert_eq!(state, State::Running);
+        assert!(!lines.is_empty(), "the turn's start is followed");
+        let before = Store::open(run.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+
+        // Another holder keeps the store well past the open's wait.
+        let store = run.store().to_path_buf();
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let held = Store::open(&store).unwrap();
+            held_tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(600));
+            drop(held);
+        });
+        held_rx.recv().unwrap();
+        let started = Instant::now();
+        let mut waited = 0;
+        while started.elapsed() < Duration::from_millis(400) {
+            let (lines, state) = follow.poll().expect("a busy store is waited out");
+            assert_eq!(state, State::Running);
+            assert!(lines.is_empty());
+            waited += 1;
+        }
+        assert!(waited > 0);
+        holder.join().unwrap();
+
+        // Released: the follower reads again, and the task is untouched.
+        let (_, state) = follow.poll().expect("the follower continues");
+        assert_eq!(state, State::Running);
+        let after = Store::open(run.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+        assert_eq!(after.revision, before.revision);
+        assert_eq!(after.status, before.status);
+
+        // A store busy past the reader's limit is a read failure, and says so.
+        let mut impatient = run.follow(&record.task, None, None);
+        impatient.reading =
+            super::super::Reading::within(Duration::from_millis(20), Duration::from_millis(150));
+        let held = Store::open(run.store()).unwrap();
+        let started = Instant::now();
+        let why = loop {
+            match impatient.poll() {
+                Ok((_, State::Running)) => std::thread::sleep(Duration::from_millis(20)),
+                Ok(other) => panic!("a held store ended the follow as {other:?}"),
+                Err(why) => break why,
+            }
+        };
+        assert!(started.elapsed() >= Duration::from_millis(150));
+        assert!(why.contains("holds the task store lock"), "{why}");
+        drop(held);
+        let (_, state) = impatient.poll().unwrap();
+        assert_eq!(state, State::Running);
     }
 
     /// A host serving this store names a chat's local run as its own task

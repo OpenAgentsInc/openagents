@@ -51,8 +51,8 @@ use serde_json::Value;
 
 pub use coder_delegate::issue::Reference;
 
+use super::Status;
 use super::local::{self, Local, Record};
-use super::{Status, Store};
 
 /// The version of the flow file a follower reads.
 pub const FLOW_SCHEMA: &str = "openagents.coder.issue-run.v1";
@@ -1250,9 +1250,16 @@ impl Run<'_> {
         let since = local::record(store, task)
             .and_then(|r| r.turns.iter().find(|t| t.turn == self.turn).map(|t| t.at))
             .unwrap_or_else(|| (self.work.now)());
+        // A store another process holds is waited out, not the turn's end:
+        // the flow fails only once it stays busy past `READER_BUSY_WAIT`.
+        let mut reading = super::Reading::default();
         loop {
-            let current = match Store::open(store).and_then(|tasks| tasks.show(task)) {
-                Ok(current) => current,
+            let current = match reading.show(store, task) {
+                Ok(Some(current)) => current,
+                Ok(None) => {
+                    std::thread::sleep(POLL);
+                    continue;
+                }
                 Err(error) => {
                     return Turn::Failed(format!("Coder's task could not be read: {error}"));
                 }
