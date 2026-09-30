@@ -70,6 +70,28 @@ and [after](native-shared-rows.json).
 
 ## Remaining fidelity work
 
+The owner's follow-up on the jump control and menus is implemented in
+`c74faf63d7`. The **Scroll to bottom** control is a 30-point dark pill floating
+six points above the composer. The keyboard notice below the composer is
+removed. Commands now float in a centered 560-point card with a 44-point search
+header and a quiet scrim; chat actions use a 216-point floating card. Context
+menus anchor at the pointer and clamp to eight points from the window edges.
+Rows use 13-point type and seven-point menu corners. The conversation and
+composer stay mounted, and opening either overlay preserves their bounds.
+Escape, outside clicks, keyboard selection, IME admission, and unsent drafts
+pass the interaction checks at default and minimum sizes.
+
+Captures: [jump pill](floating-latest-760.png),
+[commands](floating-palette-minimum.png), and [chat actions](floating-header-menu-minimum.png).
+Desktop library: 83 passed; binary: 38 passed and four ignored; version checks:
+three passed; adapter: 54 passed. Strict Clippy, formatting, and the optimized
+build passed. The rebased native adapter also compiles with main's new input
+boundary. [Native report](native-floating.json), 115 samples per active phase:
+scroll p50/p99 3.662/3.981 ms, streaming 3.798/4.470 ms, sidebar
+1.834/4.947 ms; idle CPU 2.22% of one core, peak RSS 209.7 MiB.
+Menu icons, shortcut badges, shadow, and blur still need the final reference
+comparison; this slice does not close #10029.
+
 The native header now uses 38 points, with controls centered at 21 points,
 88-point window-control clearance on macOS, and 12 points in fullscreen.
 The native window preserves fixed logical component sizes on larger displays.
