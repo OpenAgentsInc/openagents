@@ -36,6 +36,38 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "36",
+        title: "Photos, chat menus, and a better message box",
+        what_to_test: "In the message box, type an emoji and an accented letter such as é, then tap delete: each should go in one tap. Double-tap the text and choose Undo, then Redo. Tap the paperclip and pick a photo: it should show above the message box, and tapping Send should say chat takes text only while your text and photo stay in the box; remove the photo and the message should send. Touch and hold a saved chat in Chats: a menu should offer Pin and Archive, and the chat should move when you pick one; hold it again to unpin it. Ask for a short code sample: the code should be colored. Send a few messages at a normal pace: none should say you're sending too quickly.",
+        items: &[
+            Item {
+                title: "The message box edits like the desktop app",
+                detail: "Delete removes a whole emoji or accented letter at once, and Undo and Redo are in the message box's edit menu.",
+            },
+            Item {
+                title: "Menus on saved chats",
+                detail: "Touch and hold a chat in Chats to pin or unpin it, or archive or restore it.",
+            },
+            Item {
+                title: "Attach photos",
+                detail: "Tap the paperclip to add a photo from your library to your draft. It shows above the message box, and you can remove it before sending.",
+            },
+            Item {
+                title: "Colored code",
+                detail: "Code blocks in replies are highlighted so they are easier to read.",
+            },
+            Item {
+                title: "Your draft stays when a message can't send",
+                detail: "If a message can't be sent, such as one with a photo while chat takes text only, your text and photo stay in the message box.",
+            },
+            Item {
+                title: "No more \"sending quickly\" warnings",
+                detail: "Chat no longer says you're sending messages quickly when you send at a normal pace.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "35",
         title: "Your computer's threads on your phone",
         what_to_test: "With the phone paired to a computer running OpenAgents, open Chats: the computer's threads should be listed, open with their messages, and take a follow-up. While the computer answers, tap stop and the reply should stop. Turn on Airplane Mode: the threads should still open, and a follow-up should say it waits for the computer, then send once when you are back online. Start a Coder run with openagents chat on the computer: it should show in its thread and Stop Coder should stop it. Ask for something that needs a computer: the offer should say which agent will run. In a new chat, \"Who are you\" should still get an answer, and your earlier chats should still be there.",
