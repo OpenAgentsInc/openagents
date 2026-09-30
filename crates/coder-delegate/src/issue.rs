@@ -1156,11 +1156,14 @@ pub async fn unclear_text(
     // Copy the change kept from before, such as a title it shortened, is
     // not the change's to answer for: the check once flagged a view's
     // original "Coder One mini-task runs · {} runs" and spent a fix round.
+    // A line whose only change is a link target or a code span keeps its
+    // prose, so the removed lines are compared as prose too: #10053's
+    // link-only fix was flagged for the line's original wording.
     let removed: Vec<String> = diff
         .lines()
         .filter_map(|line| line.strip_prefix('-'))
         .filter(|line| !line.starts_with("--"))
-        .map(str::to_string)
+        .flat_map(|line| [line.to_string(), prose(line)])
         .collect();
     for line in diff.lines() {
         if let Some(path) = line.strip_prefix("+++ b/") {
@@ -1176,7 +1179,7 @@ pub async fn unclear_text(
             continue;
         }
         let candidates = if file.ends_with(".md") && !fenced {
-            vec![strip_code(added)]
+            vec![prose(added)]
         } else if file.ends_with(".rs") && !added.trim_start().starts_with("assert") {
             string_literals(added)
         } else {
@@ -1571,6 +1574,43 @@ fn strip_code(line: &str) -> String {
         .join(" ")
 }
 
+/// A Markdown line as a reader reads it, for the plain-language check: a
+/// link is its label, a code span is the word "(code)", and a list marker
+/// and bare URLs are dropped. Deleting code spans outright left phrases
+/// such as "is an in-memory" that read as shorthand when the source was
+/// plain.
+fn prose(line: &str) -> String {
+    // Links first: `[label](target)` reads as its label.
+    let mut text = String::new();
+    let mut rest = line;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find("](") else {
+            break;
+        };
+        let Some(end) = after[close + 2..].find(')') else {
+            break;
+        };
+        text.push_str(&rest[..open]);
+        text.push_str(&after[..close]);
+        rest = &after[close + 2 + end + 1..];
+    }
+    text.push_str(rest);
+    let mut out = String::new();
+    for (i, part) in text.split('`').enumerate() {
+        out.push_str(if i % 2 == 0 { part } else { "(code)" });
+    }
+    let words: Vec<&str> = out
+        .split_whitespace()
+        .filter(|word| !word.contains("://"))
+        .collect();
+    let words = match words.first() {
+        Some(&("-" | "*" | "+")) => &words[1..],
+        _ => &words[..],
+    };
+    words.join(" ")
+}
+
 /// The contents of the double-quoted string literals on one Rust line.
 fn string_literals(line: &str) -> Vec<String> {
     let mut found = Vec::new();
@@ -1871,6 +1911,18 @@ mod tests {
         assert!(text.contains("# Review the change for issue #7"), "{text}");
         assert!(text.contains("src/app.rs:5 uses `lines`"), "{text}");
         assert!(text.contains("1 + cursor"), "{text}");
+    }
+
+    #[test]
+    fn prose_reads_links_as_labels_and_code_as_a_word() {
+        assert_eq!(
+            prose("- [`Recorder`](../../crates/x/src/record.rs) is an in-memory"),
+            "(code) is an in-memory"
+        );
+        assert_eq!(
+            prose("It keeps `Rc<RefCell<Vec<Step>>>`. See https://x.io/a or [the docs](a.md#b)."),
+            "It keeps (code). See or the docs."
+        );
     }
 
     #[test]
