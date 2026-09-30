@@ -477,6 +477,9 @@ impl Model {
                     return Vec::new();
                 }
                 let enabled = !self.autostart();
+                // A new try replaces the last refusal; a refusal of this
+                // one shows again.
+                self.problem = None;
                 vec![Request::SetAutostart(Autostart {
                     enabled,
                     projects,

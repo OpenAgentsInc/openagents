@@ -57,6 +57,8 @@ pub struct Options {
     pub workspace: bool,
     /// The program that changes the auto-start policy.
     pub autostart: Option<PathBuf>,
+    /// Issue chat invitations beside grants redeemed over iroh.
+    pub chats: bool,
 }
 
 impl Default for Options {
@@ -65,6 +67,7 @@ impl Default for Options {
             uid: coder_host::control::own_uid(),
             workspace: true,
             autostart: None,
+            chats: false,
         }
     }
 }
@@ -100,6 +103,17 @@ pub async fn host_with(options: Options) -> Host {
             "checkout".to_owned(),
             std::fs::canonicalize(&checkout).unwrap(),
         )]);
+    }
+    if options.chats {
+        let tasks = temp.path().join("tasks");
+        std::fs::create_dir_all(&tasks).unwrap();
+        config.chats = Some(coder_host::tailnet::Chats {
+            observer: temp.path().join("observer"),
+            sources: coder_history::Config {
+                coder: Some(tasks),
+                ..coder_history::Config::default()
+            },
+        });
     }
     let running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
     Host {
@@ -173,6 +187,30 @@ impl Phone {
         relay: &str,
         at: u64,
     ) -> (Option<Event>, coder_host::access::Result<Access>, u64) {
+        let (invitation, pending, answer) = self.answer(code, relay, at).await;
+        let reply: Option<Event> = answer
+            .reply
+            .as_deref()
+            .map(|text| serde_json::from_str(text).unwrap());
+        let access = match &reply {
+            Some(reply) => finish_redeem(&invitation, &pending, reply, &self.secret, at, POLICY),
+            None => Err(coder_host::access::Error::new(Code::Transport, "no reply")),
+        };
+        (reply, access, answer.now)
+    }
+
+    /// Send a redemption of `code` over iroh and return the host's whole
+    /// answer, beside what finishing it needs.
+    pub async fn answer(
+        &self,
+        code: &ConnectCode,
+        relay: &str,
+        at: u64,
+    ) -> (
+        HostInvitation,
+        coder_host::access::client::Pending,
+        openagents_connect::enroll::EnrollReply,
+    ) {
         let invitation = HostInvitation::from_parts(
             &code.host(),
             &code.invitation(),
@@ -189,15 +227,7 @@ impl Phone {
         let answer = enroll::redeem(&self.endpoint, code.endpoint_addr(), &request)
             .await
             .unwrap();
-        let reply: Option<Event> = answer
-            .reply
-            .as_deref()
-            .map(|text| serde_json::from_str(text).unwrap());
-        let access = match &reply {
-            Some(reply) => finish_redeem(&invitation, &pending, reply, &self.secret, at, POLICY),
-            None => Err(coder_host::access::Error::new(Code::Transport, "no reply")),
-        };
-        (reply, access, answer.now)
+        (invitation, pending, answer)
     }
 
     /// Open a direct channel over iroh as `device`.

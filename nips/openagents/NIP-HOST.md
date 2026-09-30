@@ -1043,7 +1043,12 @@ peer user check; `openagents connect` is its command-line client. The
 reference enroll exchange is one message each way: the device sends
 `openagents.connect-enroll-request.v1` with the signed `enroll.redeem`, and
 the host answers `openagents.connect-enroll-reply.v1` with its time and the
-signed reply, or no reply. The info step above is not yet served, so the
+signed reply, or no reply. Beside a grant, and only when the redeeming
+device now holds a current grant with `observe`, the reply may also carry
+`chats`: a single-use `coder-pair:` invitation to the host's read-only Coder
+chats, the same one [tailnet admission](#tailnet-admission) hands over, so a
+phone reads the tasks it starts there. A refused device gets none, and a
+redemption on the relay carries none. The info step above is not yet served, so the
 device signs the relay it uses by default, which a desktop host serves.
 `crates/coder-host/tests/iroh.rs` and `tests/control.rs` cover a
 redemption over iroh, a second device refused `forbidden`, a terminal only

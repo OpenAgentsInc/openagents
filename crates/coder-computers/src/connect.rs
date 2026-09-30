@@ -103,6 +103,10 @@ pub struct Paired {
     /// How far this phone's clock is from the computer's, in seconds, when
     /// that is more than the 60 seconds the protocol allows.
     pub clock_off: Option<u64>,
+    /// A `coder-pair:` invitation to the computer's Coder chats, when its
+    /// answer carried one: the app pairs it so the chats the phone starts
+    /// there can be read.
+    pub chats: Option<String>,
 }
 
 /// Why pairing did not add the computer, in words for the screen.

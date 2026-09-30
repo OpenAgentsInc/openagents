@@ -45,9 +45,10 @@ one to five minutes each).
 What it does, in order:
 
 1. **Build.** `cargo build --release --locked` of `openagents-desktop`,
-   `coder`, and `microcoder` for `aarch64-apple-darwin` and
-   `x86_64-apple-darwin`, with `MACOSX_DEPLOYMENT_TARGET=13.0` (the floor for
-   `SMAppService`), joined into universal binaries with `lipo`.
+   `coder`, `microcoder`, and `openagents` (the `openagents-cli` package) for
+   `aarch64-apple-darwin` and `x86_64-apple-darwin`, with
+   `MACOSX_DEPLOYMENT_TARGET=13.0` (the floor for `SMAppService`), joined
+   into universal binaries with `lipo`.
 2. **Assemble** `OpenAgents.app`:
 
    ```text
@@ -56,6 +57,9 @@ What it does, in order:
      MacOS/OpenAgents                the window and menu bar
      MacOS/coder                     runs `coder host serve` as a launchd agent
      MacOS/microcoder
+     MacOS/openagents                the command a phone's command card runs;
+                                     the host puts MacOS/ first on its
+                                     terminals' PATH
      Library/LaunchAgents/com.openagents.desktop.host.plist
      Resources/AppIcon.icns
    ```
@@ -120,7 +124,7 @@ the helpers in `Contents/MacOS`.
 | `--no-notarize` | Developer ID signature, no Apple round trip. |
 | `--native` | Build only this Mac's architecture; the `.dmg` name gets the architecture. Not for release. |
 | `--app PATH` | Sign, notarize, and package an existing `.app` instead of building one. |
-| `--bin-dir DIR` | Assemble the bundle from prebuilt `openagents-desktop`, `coder`, and `microcoder` in `DIR` instead of running Cargo. |
+| `--bin-dir DIR` | Assemble the bundle from prebuilt `openagents-desktop`, `coder`, `microcoder`, and `openagents` in `DIR` instead of running Cargo. |
 | `--identity ID` | Another signing identity (name or SHA-1). |
 | `--out DIR`, `--volname NAME` | Output folder and the `.dmg` volume name. |
 

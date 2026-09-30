@@ -5,9 +5,9 @@
 #
 # Steps (docs/desktop/release.md has the full runbook):
 #   1. Build universal (arm64 + x86_64) release binaries of the app
-#      (`openagents-desktop`), `coder`, and `microcoder`, and glue each pair
+#      (`openagents-desktop`), `coder`, `microcoder`, and `openagents`, and glue each pair
 #      with `lipo`.
-#   2. Assemble OpenAgents.app: Contents/MacOS/{OpenAgents,coder,microcoder},
+#   2. Assemble OpenAgents.app: Contents/MacOS/{OpenAgents,coder,microcoder,openagents},
 #      Info.plist, icon, and the host's launchd plist in
 #      Contents/Library/LaunchAgents/.
 #   3. Sign every executable, inner ones first, with the Developer ID
@@ -34,9 +34,9 @@
 #                       else ad hoc.
 #   --adhoc             Same as --identity -.
 #   --no-notarize       Sign and build the .dmg, but do not notarize or staple.
-#   --bin-dir DIR       Take the three binaries from DIR (named like their
+#   --bin-dir DIR       Take the four binaries from DIR (named like their
 #                       Cargo binaries: openagents-desktop, coder,
-#                       microcoder) instead of building them; each may be
+#                       microcoder, openagents) instead of building them; each may be
 #                       universal or single-architecture.
 #   --native            Build only for this Mac's architecture (faster; not
 #                       for release).
@@ -201,19 +201,22 @@ build_universal() { # $1 package, $2 bin
 assemble_app() {
   local package="${DESKTOP_PACKAGE:-openagents-desktop}"
   local bin="${DESKTOP_BIN:-$package}"
-  local version exe app_bin coder_bin micro_bin
+  local version exe app_bin coder_bin micro_bin cli_bin
   version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml" |
     sed -n "s/.*\"name\":\"$package\",\"version\":\"\([^\"]*\)\".*/\1/p")"
   version="${version:-0.1.0}"
 
   if [[ -n "$bin_dir" ]]; then
-    step "taking $bin, coder, microcoder from $bin_dir"
+    step "taking $bin, coder, microcoder, openagents from $bin_dir"
   else
-    step "building $package, coder, microcoder ($([[ $native -eq 1 ]] && echo native || echo universal))"
+    step "building $package, coder, microcoder, openagents ($([[ $native -eq 1 ]] && echo native || echo universal))"
   fi
   build_universal "$package" "$bin"; app_bin="$built"
   build_universal coder coder; coder_bin="$built"
   build_universal microcoder microcoder; micro_bin="$built"
+  # The command a phone's read-only command card runs on this Mac; the
+  # host puts Contents/MacOS first on its terminals' PATH.
+  build_universal openagents-cli openagents; cli_bin="$built"
 
   app="$out/OpenAgents.app"
   step "assembling $app"
@@ -256,6 +259,7 @@ PLIST
   cp "$app_bin" "$app/Contents/MacOS/$exe"
   cp "$coder_bin" "$app/Contents/MacOS/coder"
   cp "$micro_bin" "$app/Contents/MacOS/microcoder"
+  cp "$cli_bin" "$app/Contents/MacOS/openagents"
 
   if [[ -f "$macos_dir/com.openagents.desktop.host.plist" ]]; then
     cp "$macos_dir/com.openagents.desktop.host.plist" "$app/Contents/Library/LaunchAgents/"

@@ -1759,6 +1759,11 @@ impl App {
             if let Some(computers) = self.computers.as_mut() {
                 let _ = computers.refresh();
             }
+            // Its Coder chats, so a task started there reads back here.
+            if let Some(chats) = paired.chats.clone() {
+                self.chats
+                    .pair(chats, paired.label.clone(), paired.host.clone(), None);
+            }
             self.coder.prefer(paired.host);
         }
         self.poll_spends();

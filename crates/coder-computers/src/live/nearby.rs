@@ -64,6 +64,7 @@ impl Pairing {
             host,
             over: PairedOver::Iroh,
             clock_off: enrolled.clock_off,
+            chats: enrolled.chats,
         })
     }
 }

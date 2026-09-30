@@ -163,11 +163,14 @@ pub(super) async fn start(
     // Phones on this network list the computer by its label. A network
     // without multicast only loses the nearby list; codes still work.
     let _ = openagents_connect::nearby::advertise(&endpoint, &shared.config.label);
-    let tasks = vec![
+    let mut tasks = vec![
         tokio::spawn(enroll(shared.clone(), call_queue)),
         tokio::spawn(reach(shared.clone(), session_queue)),
         tokio::spawn(nearby(gate.clone(), host, nearby_queue)),
     ];
+    if let (Some(chats), true) = (&shared.config.chats, shared.config.serve_chats) {
+        tasks.push(serve_chats(chats, &shared.config)?);
+    }
     Ok((
         Listener {
             endpoint,
@@ -191,8 +194,14 @@ async fn enroll(shared: Arc<Shared>, mut calls: mpsc::Receiver<EnrollCall>) {
         let shared = shared.clone();
         tokio::spawn(async move {
             let reply = redeem(&shared, &call.request.request).await;
+            let chats = match reply {
+                Some(_) => chat_invitation(&shared, &call.request.request).await,
+                None => None,
+            };
             let now = unix_time().unwrap_or_default();
-            let _ = call.reply.send(EnrollReply::new(now, reply));
+            let _ = call
+                .reply
+                .send(EnrollReply::new(now, reply).with_chats(chats));
             drop(permit);
         });
     }
@@ -216,6 +225,65 @@ pub(super) async fn redeem(shared: &Arc<Shared>, request: &str) -> Option<String
         .ok()?
         .ok()?;
     serde_json::to_string(&reply).ok()
+}
+
+/// Serve the read-only chat history observer on the relay, as tailnet
+/// admission does, so a phone that paired with a code reads its Coder chats.
+fn serve_chats(
+    chats: &crate::tailnet::Chats,
+    config: &crate::config::Config,
+) -> Result<JoinHandle<()>> {
+    coder_connect::host::ensure_parent(&chats.observer)
+        .map_err(|_| Error::Config("the chat history store cannot be created".into()))?;
+    let observer = coder_connect::host::Host::new(&chats.observer, config.policy).coder_only();
+    let relay = config.primary()?.to_owned();
+    let policy = config.policy;
+    Ok(tokio::spawn(async move {
+        if coder_connect::cli::serve_observer(observer, relay, policy)
+            .await
+            .is_err()
+        {
+            eprintln!("coder host: chat history stopped");
+        }
+    }))
+}
+
+/// A `coder-pair:` chat invitation for the device that signed `request`,
+/// only when it now holds a current grant with `observe`: a device the
+/// host refused never gets one. `None` when this host serves no chats.
+async fn chat_invitation(shared: &Arc<Shared>, request: &str) -> Option<String> {
+    let chats = shared.config.chats.clone()?;
+    let relay = shared.config.primary().ok()?.to_owned();
+    let policy = shared.config.policy;
+    let event: Event = serde_json::from_str(request).ok()?;
+    let device = event.pubkey;
+    let authority = shared.authority.clone();
+    tokio::task::spawn_blocking(move || {
+        let admitted = authority
+            .local(|host, now| host.devices(now))
+            .ok()?
+            .into_iter()
+            .any(|entry| {
+                entry.device == device
+                    && entry.state == coder_access::protocol::DeviceState::Active
+                    && entry.rights.contains(coder_access::Right::Observe)
+            });
+        if !admitted {
+            return None;
+        }
+        let now = unix_time().ok()?;
+        coder_connect::host::Host::new(&chats.observer, policy)
+            .invite(
+                &relay,
+                chats.sources,
+                now,
+                now.saturating_add(crate::tailnet::CHAT_GRANT_SECS),
+            )
+            .ok()
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Signs a nearby device's grant after the click: an approval grant on the

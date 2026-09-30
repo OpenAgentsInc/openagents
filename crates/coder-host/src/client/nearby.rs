@@ -77,6 +77,8 @@ pub async fn pair(
                 },
                 label: computer.label.clone(),
                 clock_off: clock_off(host_now, unix_time().unwrap_or(now)),
+                // The nearby exchange carries no chat invitation yet.
+                chats: None,
             })
         }
         DeviceOutcome::NotConnected => Err(NearbyFailure::NotConnected),

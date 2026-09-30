@@ -645,6 +645,21 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.iroh = connect.iroh;
     config.control = connect.control;
     config.label = connect.label;
+    // A phone that pairs with a connect code reads this host's Coder chats
+    // as a tailnet-admitted one does: the same observer and sources. When
+    // tailnet admission serves the observer, this only issues invitations.
+    if config.iroh.is_some() && tasks_dir.is_dir() {
+        config.chats = Some(crate::tailnet::Chats {
+            observer: home(".openagents/coder-connect")?,
+            sources: coder_history::Config {
+                coder: Some(tasks_dir.clone()),
+                ..crate::tailnet::default_sources()
+            },
+        });
+        config.serve_chats = !admission
+            .as_ref()
+            .is_some_and(|admission| admission.chats.is_some());
+    }
 
     raise_open_file_limit();
     let running = crate::serve::start(config, tasks).await?;

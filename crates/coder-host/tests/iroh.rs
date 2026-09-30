@@ -86,6 +86,37 @@ async fn a_phone_redeems_a_connect_code_over_iroh_and_a_second_phone_is_forbidde
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_phone_that_pairs_over_iroh_gets_a_chat_invitation_and_a_refused_one_does_not() {
+    let host = support::host_with(support::Options {
+        chats: true,
+        ..support::Options::default()
+    })
+    .await;
+    let (_, code) = host.code(false).await;
+    // The grant comes with a single-use invitation to the host's Coder
+    // chats, so the phone can read the tasks it starts there.
+    let phone = Phone::new().await;
+    let (_, _, answer) = phone.answer(&code, &host.relay, now()).await;
+    assert!(answer.reply.is_some());
+    let chats = answer.chats.expect("a chat invitation beside the grant");
+    assert!(chats.starts_with("coder-pair:"));
+    // A phone the host refuses gets its signed refusal and no invitation.
+    let thief = Phone::new().await;
+    let (_, _, answer) = thief.answer(&code, &host.relay, now()).await;
+    assert!(answer.reply.is_some());
+    assert!(answer.chats.is_none());
+    host.running.shutdown().await;
+
+    // A host that serves no chats sends none.
+    let plain = support::host().await;
+    let (_, code) = plain.code(false).await;
+    let (_, _, answer) = Phone::new().await.answer(&code, &plain.relay, now()).await;
+    assert!(answer.reply.is_some());
+    assert!(answer.chats.is_none());
+    plain.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_phone_whose_clock_is_off_by_thirty_seconds_still_pairs_and_works() {
     let host = host().await;
     for offset in [-30_i64, 30] {

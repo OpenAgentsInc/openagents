@@ -36,6 +36,26 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "31",
+        title: "Connect your Mac",
+        what_to_test: "On a Mac, download OpenAgents for Mac from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/0.1.0/OpenAgents-0.1.0.dmg, open it, drag OpenAgents to Applications, and open it: it shows a QR code. Tick Let this phone open a terminal on this Mac first if you want command cards. On the phone, tap Account, Computers, Connect a computer, and scan the code: both screens should say the computer is connected. On the Mac, choose a project folder and tick Let my phone start Coder here. In a new chat, ask for a change in your project on your Mac and tap Run Coder on your Mac: Coder's steps and reply should show in the chat. Ask who is in the Verse and tap Run on the command card. Then click Remove on the Mac: the phone should show the computer as Revoked. Codex or Claude Code must be signed in on the Mac.",
+        items: &[
+            Item {
+                title: "Connect your Mac",
+                detail: "Install OpenAgents for Mac, tap Connect a computer, and scan the code it shows. No Tailscale and no commands to type.",
+            },
+            Item {
+                title: "Run Coder on your Mac from chat",
+                detail: "Once your Mac is connected, Run Coder under a reply starts Coder there, and its steps and reply stream into the chat.",
+            },
+            Item {
+                title: "Command cards on your Mac",
+                detail: "If you let the phone open a terminal when you scanned, a read-only command card runs on your Mac.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "30",
         title: "Suggestions on every new chat",
         what_to_test: "Open the Chat tab: four suggestions such as Who are you? sit above the box. Tap Who are you? and read the answer. Tap the new-chat button at the top right: Who are you? is gone and another question takes its place. Close the app and open it again: Who are you? is still gone. Type What can you do? yourself, then start a new chat: that one is gone too.",

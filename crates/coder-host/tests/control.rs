@@ -168,7 +168,38 @@ async fn codes_are_minted_rotated_and_cancelled_over_the_socket() {
 async fn a_project_change_is_recorded_and_asks_the_host_to_start_again() {
     let host = host().await;
     let checkout = host.temp.path().join("site");
-    std::fs::create_dir_all(checkout.join(".git")).unwrap();
+    std::fs::create_dir_all(&checkout).unwrap();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&checkout)
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.invalid",
+            ])
+            .args(args)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "--quiet"]);
+    // A checkout with no commit has nothing to copy for Coder.
+    let Reply::Refused { .. } = call(
+        &host.socket,
+        Op::ProjectAdd {
+            path: checkout.display().to_string(),
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("a checkout with no commit is refused")
+    };
+    std::fs::write(checkout.join("README.md"), "site\n").unwrap();
+    git(&["add", "README.md"]);
+    git(&["commit", "--quiet", "-m", "first"]);
     let plain = host.temp.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
 
@@ -194,6 +225,27 @@ async fn a_project_change_is_recorded_and_asks_the_host_to_start_again() {
     };
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].label, "site");
+    // The person's checkout holds its own Git directory, so the host admits
+    // a detached worktree of it under its root, where Coder may write.
+    let admitted = std::path::PathBuf::from(&projects[0].path);
+    assert!(admitted.starts_with(host.root.canonicalize().unwrap().join("projects")));
+    assert!(admitted.join(".git").is_file());
+    assert_eq!(
+        std::fs::read_to_string(admitted.join("README.md")).unwrap(),
+        "site\n"
+    );
+    // Picking the same folder again admits the same worktree.
+    let Reply::Projects { projects } = call(
+        &host.socket,
+        Op::ProjectAdd {
+            path: checkout.display().to_string(),
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("projects")
+    };
+    assert_eq!(projects.len(), 1);
     tokio::time::timeout(Duration::from_secs(2), host.running.restart_requested())
         .await
         .expect("the host asks to start again");
@@ -372,6 +424,10 @@ async fn auto_start_changes_run_the_hosts_own_command() {
             "site",
             "--max-running",
             "2",
+            "--route",
+            "codex:gpt-6-luna",
+            "--route",
+            "claude:claude-opus-5-5",
             "--root",
             root.as_str()
         ]

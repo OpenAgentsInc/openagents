@@ -63,6 +63,11 @@ pub struct EnrollReply {
     /// JSON text. `None` when the host sends no signed reply, as for an
     /// unknown invitation or a wrong capability.
     pub reply: Option<String>,
+    /// A single-use `coder-pair:` invitation to the host's read-only Coder
+    /// chats, sent only beside a grant, so the phone can read the tasks it
+    /// starts. Absent from a host that serves no chats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chats: Option<String>,
 }
 
 impl EnrollReply {
@@ -72,7 +77,15 @@ impl EnrollReply {
             v: REPLY.into(),
             now,
             reply,
+            chats: None,
         }
+    }
+
+    /// The same reply carrying a chat invitation.
+    #[must_use]
+    pub fn with_chats(mut self, chats: Option<String>) -> Self {
+        self.chats = chats;
+        self
     }
 }
 

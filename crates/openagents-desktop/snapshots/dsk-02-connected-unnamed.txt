@@ -1,0 +1,13 @@
+vertical stack
+  heading "✓ Your phone is connected."
+  vertical stack [card]
+    body "Pick a project for Coder" [bold]
+    horizontal stack
+      body "/Users/kai/code/website"
+      button "Choose another folder…" -> choose_folder
+  vertical stack [card]
+    body "Coder uses Codex or Claude Code on this Mac" [bold]
+    body "✓  Codex · signed in"
+    body "–  Claude Code · not signed in"
+  checkbox [x] "Let my phone start Coder here" -> toggle_autostart
+  button "Done" -> done

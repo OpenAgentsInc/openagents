@@ -140,6 +140,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let owner = authority.host().owner()?;
 
     let mut terminals = coder_pty::host::Config::new();
+    bundled_commands_first(&mut terminals.base_env);
     terminals.generation = mailbox::terminal_generation(&host_key, config.generation);
     for (label, root) in &config.workspaces {
         terminals = terminals.workspace(mailbox::workspace_id(label), root);
@@ -749,6 +750,31 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
         .and_then(|()| file.sync_all())
         .map_err(|_| failed())?;
     std::fs::rename(&temporary, path).map_err(|_| failed())
+}
+
+/// The desktop app's bundle ships the `openagents` command beside this
+/// host (`Contents/MacOS`). Put that folder first on the `PATH` terminals
+/// get, so a phone's read-only command card runs the command that came with
+/// the app, on a Mac where nobody installed it. A host with no `openagents`
+/// beside it keeps the `PATH` it has.
+fn bundled_commands_first(env: &mut Vec<(String, String)>) {
+    let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf))
+        .filter(|dir| dir.join("openagents").is_file())
+    else {
+        return;
+    };
+    let Some(dir) = dir.to_str().filter(|dir| !dir.contains(':')) else {
+        return;
+    };
+    match env.iter_mut().find(|(name, _)| name == "PATH") {
+        Some((_, path)) => *path = format!("{dir}:{path}"),
+        None => env.push((
+            "PATH".into(),
+            format!("{dir}:/usr/bin:/bin:/usr/sbin:/sbin"),
+        )),
+    }
 }
 
 #[cfg(test)]

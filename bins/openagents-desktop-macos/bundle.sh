@@ -2,7 +2,8 @@
 # Builds OpenAgents for Mac and assembles `OpenAgents.app`.
 #
 # The bundle holds the window (`Contents/MacOS/OpenAgents`), the Coder host
-# and the binaries a task runs (`coder`, `microcoder`), the login agent the
+# and the binaries a task runs (`coder`, `microcoder`), the `openagents`
+# command a phone's command card runs, the login agent the
 # window registers on first launch
 # (`Contents/Library/LaunchAgents/com.openagents.desktop.host.plist`), and
 # an icon made from the OpenAgents iOS app icon. It is built for this Mac's
@@ -33,7 +34,7 @@ fi
 
 packages=(-p openagents-desktop)
 if [[ "${SKIP_CODER:-0}" != "1" ]]; then
-  packages+=(-p coder -p microcoder)
+  packages+=(-p coder -p microcoder -p openagents-cli)
 fi
 cargo build --release "${packages[@]}" --manifest-path "$root/Cargo.toml"
 version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml" |
@@ -47,6 +48,7 @@ cp "$target/release/openagents-desktop" "$app/Contents/MacOS/OpenAgents"
 if [[ "${SKIP_CODER:-0}" != "1" ]]; then
   cp "$target/release/coder" "$app/Contents/MacOS/coder"
   cp "$target/release/microcoder" "$app/Contents/MacOS/microcoder"
+  cp "$target/release/openagents" "$app/Contents/MacOS/openagents"
 fi
 cp "$here/com.openagents.desktop.host.plist" "$app/Contents/Library/LaunchAgents/"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

@@ -54,7 +54,7 @@ const EXCHANGE_LIMIT: Duration = Duration::from_secs(10);
 const CONCURRENT: usize = 8;
 #[cfg(feature = "host")]
 /// Chat grants last this long; the device asks again when one expires.
-const CHAT_GRANT_SECS: u64 = 29 * 24 * 60 * 60;
+pub(crate) const CHAT_GRANT_SECS: u64 = 29 * 24 * 60 * 60;
 
 #[cfg(feature = "host")]
 /// Where the macOS app keeps its command-line interface when `tailscale` is

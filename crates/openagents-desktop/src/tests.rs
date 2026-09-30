@@ -162,6 +162,17 @@ fn states() -> Vec<(&'static str, Model)> {
     };
     states.push(("dsk-02-connected", connected));
 
+    // A phone that paired by scanning gives the host no name.
+    let (mut scanned, _) = model(Screen::Connected {
+        device: device.clone(),
+    });
+    scanned.host = Some(host(vec![phone('d', "", true, 5)], true, true));
+    scanned.agents = Agents {
+        codex: true,
+        claude: false,
+    };
+    states.push(("dsk-02-connected-unnamed", scanned));
+
     let (mut picked, _) = model(Screen::Connected { device });
     picked.host = Some(host(vec![phone('d', "Kai's iPhone", true, 5)], true, true));
     picked.agents = Agents::default();
@@ -198,6 +209,11 @@ fn states() -> Vec<(&'static str, Model)> {
     confirm.confirming = Some("d".repeat(64));
     confirm.tasks = tasks;
     states.push(("dsk-03-confirm-remove", confirm));
+
+    let (mut unnamed_home, _) = model(Screen::Home);
+    unnamed_home.host = Some(host(vec![phone('d', "", true, 120)], true, true));
+    unnamed_home.confirming = Some("d".repeat(64));
+    states.push(("dsk-03-confirm-remove-unnamed", unnamed_home));
 
     let (mut offline, _) = model(Screen::Home);
     let mut state = host(vec![], false, false);

@@ -156,8 +156,9 @@ struct ConnectView: View {
                 Text(notice).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let done = screen.done {
+                // The app tints white, so the label is black to show on it.
                 Button(done) { bridge.connectClose() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
                     .accessibilityIdentifier("connect-done")
             }
         }

@@ -338,6 +338,7 @@ mod tests {
             label: "Studio Mac".into(),
             over: PairedOver::Iroh,
             clock_off: None,
+            chats: None,
         }
     }
 

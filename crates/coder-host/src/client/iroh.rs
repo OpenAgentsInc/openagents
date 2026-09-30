@@ -194,6 +194,9 @@ pub struct Enrolled {
     /// How far this phone's clock is from the host's, in seconds, when it
     /// is more than 60.
     pub clock_off: Option<u64>,
+    /// A `coder-pair:` invitation to the computer's Coder chats, when its
+    /// answer carried one (over iroh only).
+    pub chats: Option<String>,
 }
 
 /// Why pairing over iroh did not add the computer.
@@ -285,6 +288,9 @@ pub async fn enroll(
         route: IrohRoute::of(&parsed),
         label: parsed.label().to_owned(),
         clock_off,
+        chats: reply
+            .chats
+            .filter(|text| text.starts_with("coder-pair:") && text.len() <= 4096),
     })
 }
 
@@ -349,6 +355,7 @@ pub async fn enroll_on_relay(
         route: IrohRoute::of(&parsed),
         label: parsed.label().to_owned(),
         clock_off: None,
+        chats: None,
     })
 }
 

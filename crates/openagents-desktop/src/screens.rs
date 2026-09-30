@@ -256,7 +256,17 @@ fn device_label<'a>(model: &'a Model, device: &str) -> &'a str {
         .phones()
         .into_iter()
         .find(|d| d.device == device)
-        .map_or("Your phone", |d| d.label.as_str())
+        .map_or("Your phone", |d| phone_name(&d.label))
+}
+
+/// A phone's name as the host lists it, or **Your phone** when it has none:
+/// a phone that paired by scanning a code gives the host no name.
+fn phone_name(label: &str) -> &str {
+    if label.trim().is_empty() {
+        "Your phone"
+    } else {
+        label
+    }
 }
 
 /// The project row: the folder and **Choose folder…**, with the reason a
@@ -385,10 +395,16 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
                     vec![
                         text(
                             &format!("{key}-ask"),
-                            format!(
-                                "Remove {}? It can't reach this {computer} until it connects again.",
-                                device.label
-                            ),
+                            if device.label.trim().is_empty() {
+                                format!(
+                                    "Remove this phone? It can't reach this {computer} until it connects again."
+                                )
+                            } else {
+                                format!(
+                                    "Remove {}? It can't reach this {computer} until it connects again.",
+                                    device.label
+                                )
+                            },
                             TextRole::Body,
                         ),
                         stack(
@@ -428,7 +444,11 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
                         Axis::Vertical,
                         Space::None,
                         vec![
-                            text(&format!("{key}-name"), &device.label, TextRole::Body),
+                            text(
+                                &format!("{key}-name"),
+                                phone_name(&device.label),
+                                TextRole::Body,
+                            ),
                             text(&format!("{key}-seen"), detail, TextRole::Status),
                         ],
                     ),

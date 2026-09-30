@@ -193,7 +193,12 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             Ok(projects) => Reply::Projects { projects },
             Err(error) => host_refused(&error),
         },
-        Op::ProjectAdd { path } => change_projects(shared, |settings| add_project(settings, &path)),
+        Op::ProjectAdd { path } => match root(shared) {
+            Ok(host_root) => {
+                change_projects(shared, |settings| add_project(settings, &host_root, &path))
+            }
+            Err(error) => host_refused(&error),
+        },
         Op::NearbyPending {} => match shared.iroh.get() {
             Some(iroh) => Reply::Nearby {
                 pending: iroh.nearby.pending().map(prompt),
@@ -445,14 +450,59 @@ fn change_projects(
     }
 }
 
+/// Where [`git`] looks, in order, before the bare name. A service manager
+/// such as launchd may start the host with a short `PATH`.
+const GIT_PATHS: [&str; 3] = [
+    "/usr/bin/git",
+    "/opt/homebrew/bin/git",
+    "/run/current-system/sw/bin/git",
+];
+
+fn git() -> std::process::Command {
+    let program = GIT_PATHS
+        .iter()
+        .find(|path| Path::new(path).exists())
+        .copied()
+        .unwrap_or("git");
+    let mut command = std::process::Command::new(program);
+    command.stdin(std::process::Stdio::null());
+    command
+}
+
 /// Admit a Git checkout as a project, labelled by its directory name.
 /// Adding one already admitted is a no-op.
-fn add_project(settings: &mut ServeSettings, path: &str) -> Result<()> {
-    let root = std::fs::canonicalize(path)
+///
+/// Coder writes only in a worktree whose Git directory is outside it (the
+/// auto-start policy refuses any other), so a folder that holds its own
+/// Git directory, which is what a person picks, gets a detached worktree of
+/// its current commit under the host root's `projects/`, and that is what
+/// the host admits. The folder itself is never changed beyond Git's record
+/// of the worktree. A folder that is already such a worktree is admitted
+/// as it is.
+fn add_project(settings: &mut ServeSettings, host_root: &Path, path: &str) -> Result<()> {
+    let chosen = std::fs::canonicalize(path)
         .map_err(|_| Error::Config("that folder does not exist".into()))?;
-    if !root.is_dir() || !root.join(".git").exists() {
+    if !chosen.is_dir() || !chosen.join(".git").exists() {
         return Err(Error::Config("that folder is not a Git checkout".into()));
     }
+    let base: String = chosen
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "project".into())
+        .chars()
+        .filter(|c| !c.is_control() && *c != '/')
+        .take(64)
+        .collect();
+    let base = if base.is_empty() || base.starts_with('.') {
+        "project".into()
+    } else {
+        base
+    };
+    let root = if chosen.join(".git").is_dir() {
+        host_worktree(host_root, &chosen, &base)?
+    } else {
+        chosen
+    };
     if settings.workspaces.values().any(|held| *held == root) {
         return Ok(());
     }
@@ -461,19 +511,6 @@ fn add_project(settings: &mut ServeSettings, path: &str) -> Result<()> {
             "this computer admits at most 64 projects".into(),
         ));
     }
-    let base: String = root
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "project".into())
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(64)
-        .collect();
-    let base = if base.is_empty() {
-        "project".into()
-    } else {
-        base
-    };
     let mut label = base.clone();
     let mut n = 2;
     while settings.workspaces.contains_key(&label) {
@@ -482,6 +519,37 @@ fn add_project(settings: &mut ServeSettings, path: &str) -> Result<()> {
     }
     settings.workspaces.insert(label, root);
     Ok(())
+}
+
+/// The host's worktree of `checkout`: `HOST_ROOT/projects/NAME-HASH`, made
+/// detached at the checkout's current commit the first time and reused
+/// after, so picking the same folder again admits the same worktree.
+fn host_worktree(host_root: &Path, checkout: &Path, base: &str) -> Result<PathBuf> {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(checkout.as_os_str().as_encoded_bytes());
+    let name = format!("{base}-{}", hex(&digest[..4]));
+    let projects = host_root.join("projects");
+    let target = projects.join(name);
+    if !target.exists() {
+        std::fs::create_dir_all(&projects)
+            .map_err(|_| Error::Config("cannot make the host's projects folder".into()))?;
+        let output = git()
+            .arg("-C")
+            .arg(checkout)
+            .args(["worktree", "add", "--detach", "--quiet"])
+            .arg(&target)
+            .arg("HEAD")
+            .output()
+            .map_err(|_| Error::Config("cannot run git".into()))?;
+        if !output.status.success() {
+            let _ = std::fs::remove_dir(&target);
+            return Err(Error::Config(
+                "Git could not copy that folder for Coder; it needs at least one commit".into(),
+            ));
+        }
+    }
+    std::fs::canonicalize(&target)
+        .map_err(|_| Error::Config("the host's worktree is missing".into()))
 }
 
 /// The fields of the host's auto-start policy file that the window edits.
@@ -517,6 +585,10 @@ fn autostart_get(shared: &Shared) -> std::result::Result<Autostart, Box<Reply>> 
     })
 }
 
+/// The routes the switch admits, in preference order: Codex, then Claude
+/// Code, with the models `coder host autostart` documents.
+const ROUTES: [&str; 2] = ["codex:gpt-6-luna", "claude:claude-opus-5-5"];
+
 /// Change the policy through the host's own `coder host autostart`
 /// command, which checks every bound and records the change; a request on
 /// this socket is a command on the host.
@@ -549,6 +621,12 @@ fn autostart_set(
             command.args(["--workspace", project]);
         }
         command.args(["--max-running", &policy.max_running.to_string()]);
+        // Both local coding agents, in this order: each start takes the
+        // first one signed in on this computer with capacity, so a Mac with
+        // only Claude Code, or a Codex account at its limit, still runs.
+        for route in ROUTES {
+            command.args(["--route", route]);
+        }
     } else {
         command.arg("off");
     }

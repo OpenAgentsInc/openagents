@@ -1089,6 +1089,7 @@ impl Pairing {
                     host,
                     over: PairedOver::Relay,
                     clock_off: None,
+                    chats: None,
                 });
             }
             Scanned::Connect(text) => {
@@ -1140,6 +1141,7 @@ impl Pairing {
             host,
             over,
             clock_off: enrolled.clock_off,
+            chats: enrolled.chats,
         })
     }
 }
