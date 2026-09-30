@@ -47,6 +47,8 @@ pub struct DesktopApp {
     grid: Option<openagents_desktop::grid::Shared>,
     #[cfg(not(windows))]
     normal_wake: Option<Instant>,
+    /// The slide viewer over the page, while it shows (#10057).
+    slides: Option<openagents_desktop::slides::Slides>,
 }
 
 pub fn unix_now() -> u64 {
@@ -200,6 +202,7 @@ impl DesktopApp {
             grid: None,
             #[cfg(not(windows))]
             normal_wake: None,
+            slides: None,
         };
         app.present();
         app
@@ -207,6 +210,47 @@ impl DesktopApp {
 
     pub fn model(&self) -> &Model {
         &self.model
+    }
+
+    /// Shows the deck filed under `deck_id` in the slide viewer, over the
+    /// page, animating open unless "Reduce motion" is on.
+    pub fn open_presentation(
+        &mut self,
+        deck_id: &str,
+        now: Instant,
+    ) -> Result<(), openagents_deck::UnknownDeck> {
+        use std::sync::atomic::Ordering;
+        #[cfg(not(windows))]
+        let system = self.live && crate::platform::reduce_motion();
+        #[cfg(windows)]
+        let system = false;
+        let reduce = system || self.reduce_motion().load(Ordering::Relaxed);
+        let mut slides = openagents_desktop::slides::Slides::open(deck_id, now, reduce)?;
+        if let Some(chat) = &self.chat {
+            slides.set_unit(chat.viewport.2);
+        }
+        self.slides = Some(slides);
+        self.present();
+        Ok(())
+    }
+
+    /// The slide viewer, while it shows.
+    #[cfg(test)]
+    pub fn presentation(&self) -> Option<&openagents_desktop::slides::Slides> {
+        self.slides.as_ref()
+    }
+
+    /// Advances the slide viewer's animation to `now`, drops it once it
+    /// has closed, and says when it next wants a frame.
+    fn tick_slides(&mut self, now: Instant) -> Option<Instant> {
+        let slides = self.slides.as_mut()?;
+        slides.tick(now);
+        if slides.closed() {
+            self.slides = None;
+            self.present();
+            return None;
+        }
+        slides.next_wake(now)
     }
 
     /// Shows a desktop notification for each chat whose Coder now asks
@@ -312,6 +356,13 @@ impl DesktopApp {
             && let rust_native::Element::Stack { children, .. } = &mut root.element
         {
             children.push(floating);
+        }
+        if let Some(slides) = &self.slides
+            && let rust_native::Element::Stack { children, .. } = &mut root.element
+            && children.len() >= 2
+        {
+            children.truncate(2);
+            children.push(slides.node());
         }
         self.presenter.present(root);
         if let Some(chat) = &mut self.chat {
@@ -542,7 +593,10 @@ impl App for DesktopApp {
     }
 
     fn key_bindings(&self) -> &'static [KeyBinding] {
-        if self.navigation.is_none() || self.chat.as_ref().is_some_and(|chat| chat.modal()) {
+        if self.slides.is_some()
+            || self.navigation.is_none()
+            || self.chat.as_ref().is_some_and(|chat| chat.modal())
+        {
             return &[];
         }
         if self.chat.is_some() {
@@ -585,6 +639,7 @@ impl App for DesktopApp {
     }
 
     fn tick(&mut self, now: Instant) -> Option<Instant> {
+        let slides = self.tick_slides(now);
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             let changed = grid.borrow_mut().poll();
@@ -601,7 +656,7 @@ impl App for DesktopApp {
                 if changed {
                     self.present();
                 }
-                return Some(wake);
+                return Some(slides.map_or(wake, |frame| wake.min(frame)));
             }
         }
         if let Runner::Background(worker) = &self.runner {
@@ -661,7 +716,7 @@ impl App for DesktopApp {
         } else {
             wake
         };
-        Some(wake)
+        Some(slides.map_or(wake, |frame| wake.min(frame)))
     }
 
     fn view(&self) -> &ValidatedView<Intent> {
@@ -889,6 +944,15 @@ impl App for DesktopApp {
         event: rust_native_desktop::input::TextInput<'_>,
         now: Instant,
     ) -> bool {
+        if let Some(slides) = &mut self.slides {
+            // The viewer takes every key but the window's command keys.
+            let rust_native_desktop::input::TextInput::Key { key, command, .. } = event else {
+                return true;
+            };
+            let taken = slides.key(key, command, now);
+            self.present();
+            return taken;
+        }
         if self
             .chat
             .as_mut()
@@ -970,6 +1034,9 @@ impl App for DesktopApp {
         true
     }
     fn modal_root(&self) -> Option<&str> {
+        if self.slides.is_some() {
+            return Some(openagents_desktop::slides::NODE);
+        }
         self.chat.as_ref().and_then(|chat| chat.modal_root())
     }
 
@@ -985,6 +1052,13 @@ impl App for DesktopApp {
     }
 
     fn overlay_layout(&self) -> Option<rust_native_desktop::OverlayLayout> {
+        if self.slides.is_some() {
+            return Some(rust_native_desktop::OverlayLayout {
+                width: 0,
+                placement: rust_native_desktop::OverlayPlacement::Cover,
+                scrim: None,
+            });
+        }
         self.chat.as_ref().and_then(|chat| chat.overlay_layout())
     }
     fn allows_focus(&self, key: &str) -> bool {
@@ -1011,6 +1085,9 @@ impl App for DesktopApp {
     }
 
     fn surface_version(&self, resource: &str) -> Option<u64> {
+        if resource == openagents_desktop::slides::RESOURCE {
+            return self.slides.as_ref().map(|slides| slides.version());
+        }
         if let Some(percent) = parse_ring(resource) {
             return Some(u64::from(percent));
         }
@@ -1030,6 +1107,14 @@ impl App for DesktopApp {
         event: rust_native_desktop::input::SurfaceInput,
         now: Instant,
     ) -> bool {
+        if resource == openagents_desktop::slides::RESOURCE {
+            let handled = self
+                .slides
+                .as_mut()
+                .is_some_and(|slides| slides.input(event, now));
+            self.present();
+            return handled;
+        }
         let handled = self
             .chat
             .as_mut()
@@ -1062,6 +1147,9 @@ impl App for DesktopApp {
     }
 
     fn viewport(&mut self, width: f32, height: f32, scale: f32) {
+        if let Some(slides) = &mut self.slides {
+            slides.set_unit(scale);
+        }
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             grid.borrow_mut().viewport = (width, height, scale);
@@ -1087,6 +1175,9 @@ impl App for DesktopApp {
     }
 
     fn surface_size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
+        if resource == openagents_desktop::slides::RESOURCE {
+            return Some((available, 1.0));
+        }
         #[cfg(not(windows))]
         if resource == openagents_desktop::grid::WORLD
             && let Some(grid) = &self.grid
@@ -1113,6 +1204,12 @@ impl App for DesktopApp {
     }
 
     fn paint_surface(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) {
+        if resource == openagents_desktop::slides::RESOURCE {
+            if let Some(slides) = &mut self.slides {
+                slides.paint(frame, rect);
+            }
+            return;
+        }
         if self
             .chat
             .as_mut()
@@ -3938,6 +4035,11 @@ mod saved_fixtures {
 #[cfg(test)]
 #[path = "late_click_tests.rs"]
 mod late_click_tests;
+
+/// The slide viewer over the page (#10057).
+#[cfg(test)]
+#[path = "slides_shell_tests.rs"]
+mod slides_shell_tests;
 
 #[cfg(test)]
 mod coder_events {

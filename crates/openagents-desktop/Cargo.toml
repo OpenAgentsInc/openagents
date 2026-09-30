@@ -19,6 +19,7 @@ default = ["app"]
 # The window and its macOS glue.
 app = [
     "dep:rust-native-desktop",
+    "dep:openagents-deck",
     "dep:objc2",
     "dep:objc2-foundation",
     "dep:objc2-service-management",
@@ -60,6 +61,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 rust-native-desktop = { path = "../rust-native-desktop", optional = true }
+openagents-deck = { path = "../openagents-deck", optional = true }
 # The updater (`update`): HTTPS, Ed25519 and SHA-256, and version order.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 ring = { version = "0.17", optional = true }

@@ -287,12 +287,15 @@ impl WindowLayout {
 }
 
 /// Placement of a floating semantic node above a header split's two panes.
+/// Where the overlay sits; `Cover` lays it over the whole window, edge to
+/// edge, with no margin.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OverlayPlacement {
     Center,
     At { x: f32, y: f32 },
     TopRight { top: u16, right: u16 },
     Above { anchor: &'static str, gap: u16 },
+    Cover,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -341,6 +344,22 @@ pub fn lay_out_with_overlay<I>(
         scene,
         paint_clip: None,
     };
+    if overlay.placement == OverlayPlacement::Cover {
+        let bounds = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: width,
+            h: height,
+        };
+        engine.scene.ops.push(Op::PushClip(bounds));
+        let first_hit = engine.scene.hits.len();
+        engine.place_sized(node, 0.0, 0.0, width, height);
+        for hit in &mut engine.scene.hits[first_hit..] {
+            hit.clip = Some(bounds);
+        }
+        engine.scene.ops.push(Op::PopClip);
+        return engine.scene;
+    }
     let available = (width - 32.0).max(1.0);
     let requested = if overlay.width == 0 {
         available
@@ -364,6 +383,7 @@ pub fn lay_out_with_overlay<I>(
             };
             (rect.x + (rect.w - w) / 2.0, rect.y - h - f32::from(gap))
         }
+        OverlayPlacement::Cover => (0.0, 0.0),
     };
     if !x.is_finite() || !y.is_finite() {
         engine.scene.unsupported.insert("window.overlay.geometry");

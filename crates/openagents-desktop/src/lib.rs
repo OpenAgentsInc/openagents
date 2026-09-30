@@ -53,6 +53,8 @@ pub mod qr;
 pub mod screens;
 pub mod settings;
 #[cfg(feature = "app")]
+pub mod slides;
+#[cfg(feature = "app")]
 pub mod update;
 pub mod words;
 

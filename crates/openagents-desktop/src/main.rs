@@ -59,6 +59,8 @@ Usage: openagents-desktop [options]
   --update             install a newer release now: an AppImage replaces itself,
                        the Windows MSI installs after exit (Linux, Windows)
   --notify-test        show a test notification and say how it was delivered (Linux)
+  --open-deck ID       open the deck filed under ID in the slide viewer at launch,
+                       for testing (for example three-devdays-later)
   --help               this text";
 
 #[derive(Debug, Default)]
@@ -77,6 +79,7 @@ struct Options {
     check_update: bool,
     update: bool,
     notify_test: bool,
+    open_deck: Option<String>,
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -127,6 +130,9 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
             "--check-update" => options.check_update = true,
             "--update" => options.update = true,
             "--notify-test" => options.notify_test = true,
+            "--open-deck" => {
+                options.open_deck = Some(args.next().ok_or("--open-deck takes a deck id")?)
+            }
             "--help" | "-h" => options.help = true,
             // macOS passes a process serial number to an app opened from
             // the Finder on some versions.
@@ -277,6 +283,12 @@ fn main() -> ExitCode {
             },
             now,
         );
+    }
+    if let Some(deck) = &options.open_deck
+        && let Err(unknown) = app.open_presentation(deck, now)
+    {
+        eprintln!("{unknown}");
+        return ExitCode::FAILURE;
     }
     // Fill the usable display while preserving logical-point component sizes.
     let window = rust_native_desktop::window::Options {
@@ -488,6 +500,14 @@ mod tests {
         assert_eq!(options.fake_phones, 5);
         assert!(parse(["--fake-phones".to_string(), "33".to_string()].into_iter()).is_err());
         assert!(parse(["--bogus".to_string()].into_iter()).is_err());
+        let deck = parse(
+            ["--open-deck", "three-devdays-later"]
+                .into_iter()
+                .map(String::from),
+        )
+        .expect("parses");
+        assert_eq!(deck.open_deck.as_deref(), Some("three-devdays-later"));
+        assert!(parse(["--open-deck".to_string()].into_iter()).is_err());
     }
 
     /// Every QR code in an RGBA or RGB image, as a phone's scanner reads it.
