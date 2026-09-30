@@ -287,9 +287,8 @@ impl RouteId {
             }
             RouteId::ProductKb => {
                 "How to do something in the OpenAgents app or with OpenAgents services, or what \
-                 an OpenAgents feature is (connecting a phone or computer and what that needs, \
-                 such as whether Tailscale is required, the Grid, the Verse, XP, protocols such \
-                 as NIP-CJ); not the wallet, and not account settings"
+                 an OpenAgents feature is (connecting a computer, the Grid, the Verse, XP, \
+                 protocols such as NIP-CJ); not the wallet, and not account settings"
             }
             RouteId::CodebaseKb => {
                 "How the OpenAgents software itself is built: where something lives in the \
