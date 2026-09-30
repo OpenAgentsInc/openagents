@@ -46,6 +46,15 @@ application's backing data store. Use bounded windows for long content while
 retaining access to every original record. The v2 schema refuses earlier
 versions rather than silently converting them.
 
+Buttons inside transcript rows produce a native `button` widget with the
+semantic node key and enabled state. Their labels and bounds come from the
+shared row layout. An adapter returns the key only after a matching pointer
+release; the application resolves it against its current action registry and
+checks authority. Replacing a row cancels a press in progress. A display-list
+button carries no executable command or application intent. Transcript stack
+spacing maps `none`, `xs`, `sm`, `md`, and `lg` to 0, 4, 8, 16, and 24 points.
+Explicit stack padding and background frame a card inside the reading band.
+
 ## Revision and lifetime
 
 The application allocates a fresh instance when it mounts a new surface

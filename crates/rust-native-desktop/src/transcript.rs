@@ -12,6 +12,7 @@ use std::sync::Arc;
 /// An explicit interaction with transcript content, admitted by the application.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
+    Activate(String),
     OpenLink(String),
     Copy(String),
     Earlier,
@@ -106,6 +107,13 @@ impl Transcript {
             .filter(|row| self.rows.get(&row.key) != Some(*row))
             .cloned()
             .collect();
+        if self
+            .pressed_widget
+            .as_ref()
+            .is_some_and(|(key, _)| changed.iter().any(|row| &row.key == key))
+        {
+            self.pressed_widget = None;
+        }
         let drawing_changed = !changed.is_empty()
             || order != self.order
             || width != self.frame.width()
@@ -277,6 +285,9 @@ impl Transcript {
                             .kind
                             .clone();
                         return match widget {
+                            WidgetKind::Button { key, enabled: true } => {
+                                Some(Action::Activate(key))
+                            }
                             WidgetKind::Copy { text } => Some(Action::Copy(text)),
                             WidgetKind::Earlier { loading: false } => Some(Action::Earlier),
                             WidgetKind::Toggle { key, expanded } => {
@@ -335,7 +346,8 @@ impl Transcript {
             for (index, widget) in row.widgets.iter().enumerate().rev() {
                 if matches!(
                     widget.kind,
-                    WidgetKind::Copy { .. }
+                    WidgetKind::Button { enabled: true, .. }
+                        | WidgetKind::Copy { .. }
                         | WidgetKind::Toggle { .. }
                         | WidgetKind::Earlier { loading: false }
                 ) && x >= widget.x
@@ -344,6 +356,29 @@ impl Transcript {
                     && y < top + widget.y + widget.h
                 {
                     return Some((row.key.clone(), index));
+                }
+            }
+        }
+        None
+    }
+    /// Visible bounds of a current enabled transcript button, in viewport points.
+    pub fn control_bounds(&self, key: &str) -> Option<PxRect> {
+        for index in self.frame.rows_in(self.offset, self.offset + self.height) {
+            let row = self.frame.display(index)?;
+            let top = self.frame.placement(index)?.y - self.offset;
+            for widget in &row.widgets {
+                if matches!(&widget.kind, WidgetKind::Button { key: current, enabled: true } if current == key)
+                {
+                    let y = (top + widget.y).max(0.0);
+                    let bottom = (top + widget.y + widget.h).min(self.height);
+                    if bottom > y {
+                        return Some(PxRect {
+                            x: widget.x,
+                            y,
+                            w: widget.w,
+                            h: bottom - y,
+                        });
+                    }
                 }
             }
         }
@@ -615,7 +650,9 @@ impl Transcript {
                             );
                         }
                     }
-                    WidgetKind::Toggle { .. } | WidgetKind::Earlier { .. } => {}
+                    WidgetKind::Button { .. }
+                    | WidgetKind::Toggle { .. }
+                    | WidgetKind::Earlier { .. } => {}
                 }
             }
         }
@@ -783,5 +820,90 @@ mod tests {
             &mut fonts,
         );
         assert!(frame.pixels.iter().any(|value| *value > 0));
+    }
+}
+
+#[cfg(test)]
+mod button_tests {
+    use super::*;
+    use crate::input::SurfaceInput;
+    use rust_native::style::Style;
+    use rust_native::{Element, Node};
+
+    fn button(label: &str, enabled: bool) -> Node<()> {
+        Node {
+            key: "card-action".into(),
+            style: Style::default(),
+            element: Element::Button {
+                label: label.into(),
+                enabled,
+                icon: None,
+                intent: (),
+            },
+        }
+    }
+    fn position(transcript: &Transcript) -> (f32, f32) {
+        let widget = &transcript.frame.display(0).unwrap().widgets[0];
+        (
+            widget.x + widget.w / 2.0,
+            transcript.frame.placement(0).unwrap().y + widget.y + widget.h / 2.0,
+        )
+    }
+    #[test]
+    fn transcript_buttons_require_enabled_matching_release() {
+        let mut transcript = Transcript::default();
+        let mut fonts = Fonts::new();
+        transcript
+            .update(vec![button("Run", true)], 300.0, 300.0)
+            .unwrap();
+        let (x, y) = position(&transcript);
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            Some(Action::Activate("card-action".into()))
+        );
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x: 0.0, y: 0.0 }, &mut fonts),
+            None
+        );
+        transcript
+            .update(vec![button("Run", false)], 300.0, 300.0)
+            .unwrap();
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            None
+        );
+    }
+    #[test]
+    fn replacing_a_card_during_a_press_cannot_activate_the_new_action() {
+        let mut transcript = Transcript::default();
+        let mut fonts = Fonts::new();
+        transcript
+            .update(vec![button("First offer", true)], 300.0, 300.0)
+            .unwrap();
+        let (x, y) = position(&transcript);
+        transcript.pointer(SurfaceInput::Down { x, y, shift: false }, &mut fonts);
+        transcript
+            .update(vec![button("Another offer", true)], 300.0, 300.0)
+            .unwrap();
+        assert_eq!(
+            transcript.pointer(SurfaceInput::Up { x, y }, &mut fonts),
+            None
+        );
+        let mut frame = Frame::transparent(300, 300);
+        transcript.paint(
+            &mut frame,
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 300.0,
+                h: 300.0,
+            },
+            1.0,
+            &mut fonts,
+        );
+        assert!(frame.pixels.iter().any(|byte| *byte != 0));
     }
 }

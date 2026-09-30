@@ -35,9 +35,26 @@ const MAX_ARG_BYTES: usize = 200;
 /// who shares the chat.
 const MAX_JUDGMENT_BYTES: usize = playtest::report::MAX_JUDGMENT_BYTES;
 
+/// The native surface that sends this hosted conversation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Surface {
+    #[default]
+    Phone,
+    Desktop,
+}
+impl Surface {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Phone => "phone",
+            Self::Desktop => "desktop",
+        }
+    }
+}
+
 /// What a turn tells the worker about the phone.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Context {
+    pub surface: Surface,
     /// A computer this device may operate is ready, so dispatching Coder
     /// is one tap.
     pub computer_ready: bool,
@@ -60,7 +77,7 @@ impl Context {
     /// name, workspace, or amount.
     pub fn json(&self) -> Value {
         let mut context = json!({
-            "surface": "phone",
+            "surface": self.surface.word(),
             "computer_ready": self.computer_ready,
         });
         if let Some(build) = self.app_build.as_deref().filter(|build| build_like(build)) {
@@ -641,5 +658,27 @@ mod tests {
         phone.sort();
         assert!(!worker.is_empty());
         assert_eq!(phone, worker);
+    }
+}
+
+#[cfg(test)]
+mod desktop_context_tests {
+    #[test]
+    fn desktop_requests_identify_the_surface_without_claiming_computer_authority() {
+        let context = super::Context {
+            surface: super::Surface::Desktop,
+            ..Default::default()
+        };
+        let request =
+            crate::basic_coder::payload(&[crate::basic_coder::Turn::user("Hello")], &context);
+        assert_eq!(request["context"]["surface"], "desktop");
+        assert_eq!(request["client"], "openagents-desktop");
+        assert_eq!(request["context"]["computer_ready"], false);
+        assert!(
+            !request["instructions"]
+                .as_str()
+                .unwrap()
+                .contains("on their phone")
+        );
     }
 }

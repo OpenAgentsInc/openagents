@@ -91,18 +91,6 @@ fn used_key(host: &str, workspace: &str) -> String {
     format!("{host} {workspace}")
 }
 
-/// At most `limit` characters of `text`'s first line, with an ellipsis when
-/// cut.
-fn clip(text: &str, limit: usize) -> String {
-    let line = text.lines().next().unwrap_or_default().trim();
-    if line.chars().count() <= limit {
-        return line.to_owned();
-    }
-    let mut clipped: String = line.chars().take(limit.saturating_sub(1)).collect();
-    clipped.push('…');
-    clipped
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
@@ -571,6 +559,7 @@ impl CoderTab {
             None => (None, None),
         };
         Context {
+            surface: crate::router::Surface::Phone,
             computer_ready: matches!(self.availability(computers), Availability::Ready(_)),
             app_build: self.app_build.clone(),
             draft,
@@ -2302,14 +2291,7 @@ impl CoderTab {
     /// previous chat (those are behind the menu) and never a way to run
     /// Coder on a computer (that is an offer under a reply).
     fn candidates(&self) -> Vec<(String, Node<Intent>)> {
-        crate::first_run::SUGGESTIONS
-            .iter()
-            .filter(|suggestion| {
-                !self
-                    .basic
-                    .used(Some(suggestion.id), &[suggestion.label, suggestion.message])
-            })
-            .take(crate::first_run::SUGGESTIONS_SHOWN)
+        crate::cards::suggestions(self.basic.used_markers())
             .map(|suggestion| {
                 (
                     suggestion.id.to_owned(),
@@ -2392,7 +2374,7 @@ impl CoderTab {
                 source: None,
             },
         ));
-        if failed {
+        if failed || self.basic.turns(id).last().is_some_and(|turn| turn.stopped) {
             children.push(row(
                 "talk-retry-row",
                 vec![button("talk-retry", "Try again", Intent::Retry)],
@@ -2424,54 +2406,25 @@ impl CoderTab {
             .as_ref()
             .map(|meta| meta.offers.clone())
             .unwrap_or_default();
-        // The worker's judgment placed the last message on a computer, or
-        // offered to dispatch Coder: the way there is a chip under it.
-        let judged = !failed
-            && !busy
-            && (self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer)
-                || offers.contains(&Offer::RunCoder));
+        let computer_lane = self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer)
+            && crate::projection::completed(self.basic.turns(id), busy, failed);
+        let actions = crate::cards::reply_actions(
+            meta.as_ref(),
+            self.basic.used_markers(),
+            computer_lane,
+            &availability,
+            self.gym.latest_result().is_some(),
+        );
         let mut agents = vec![];
-        match &availability {
-            Availability::Ready(host) if judged => {
-                let label = format!("Run Coder on {}", host.label);
-                agents.push(pill("coder-run", &label, Glyph::Computer, Intent::RunCoder));
-            }
-            Availability::Connecting(_) | Availability::Offline(_) if judged => {
-                agents.extend(Self::unavailable(&availability));
-            }
-            Availability::NotConfigured if judged => {
-                agents.push(pill(
-                    "coder-connect",
-                    "Connect a computer",
-                    Glyph::Add,
-                    Intent::ConnectComputer,
-                ));
-            }
-            _ => {}
+        if let Some((key, value)) = &actions.notice {
+            agents.push(status(key, value));
         }
-        // Screens the router offered, named by the phone.
-        for (index, offer) in offers.iter().enumerate() {
-            let Offer::OpenScreen { screen } = offer else {
-                continue;
-            };
-            // The person's own result is a card; Add to the Gym needs one.
-            if *screen == Screen::GymResult
-                || (*screen == Screen::GymPublish && self.gym.latest_result().is_none())
+        for chip in &actions.chips {
+            if !matches!(chip.action, crate::cards::Action::Followup { .. })
+                && let Some(intent) = card_intent(chip.action.clone())
             {
-                continue;
+                agents.push(pill(&chip.key, &chip.label, chip.glyph, intent));
             }
-            let connecting =
-                *screen == Screen::Computers && matches!(availability, Availability::NotConfigured);
-            if connecting && judged {
-                continue;
-            }
-            let (label, glyph) = screen_chip(*screen, connecting);
-            agents.push(pill(
-                &format!("coder-screen-{index}"),
-                label,
-                glyph,
-                Intent::OpenScreen { screen: *screen },
-            ));
         }
         if !agents.is_empty() {
             children.push(wrap("coder-agents", agents));
@@ -2483,23 +2436,20 @@ impl CoderTab {
                 children.push(self.cli_card(id, index, argv, *runs_on, &availability));
             }
         }
-        if let Some(meta) = meta.as_ref() {
-            // Suggested next questions under a prepared answer, but none
-            // already used on this device: tapped, typed, or answered.
-            let chips: Vec<Node<Intent>> =
-                crate::projection::followups(meta, self.basic.used_markers())
-                    .map(|(index, followup)| {
-                        pill(
-                            &format!("coder-followup-{index}"),
-                            &clip(&followup.label, 60),
-                            Glyph::Ask,
-                            Intent::Followup { index },
-                        )
-                    })
-                    .collect();
-            if !chips.is_empty() {
-                children.push(wrap("coder-followups", chips));
-            }
+        let chips: Vec<_> = actions
+            .chips
+            .iter()
+            .filter_map(|chip| {
+                if matches!(chip.action, crate::cards::Action::Followup { .. }) {
+                    card_intent(chip.action.clone())
+                        .map(|intent| pill(&chip.key, &chip.label, chip.glyph, intent))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !chips.is_empty() {
+            children.push(wrap("coder-followups", chips));
         }
         let compose = self.compose.clone();
         let focus = compose.is_some();
@@ -3124,24 +3074,6 @@ fn ago(now: u64, then: u64) -> String {
     }
 }
 
-/// What **Wrong answer** says it sends before the person chooses.
-/// The chip an `open_screen` offer shows: the phone's own name for the
-/// screen, never the worker's words.
-fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
-    match screen {
-        Screen::Wallet => ("Open Wallet", Glyph::Wallet),
-        Screen::Computers if connecting => ("Connect a computer", Glyph::Add),
-        Screen::Computers => ("Your computers", Glyph::Computer),
-        Screen::Keys => ("Identity keys", Glyph::Key),
-        Screen::Playtest => ("Playtest", Glyph::Flag),
-        Screen::Report => ("Report a problem", Glyph::Flag),
-        Screen::VerseGym => ("See the board", Glyph::Check),
-        Screen::GymResult => ("See your result", Glyph::Check),
-        Screen::GymPublish => ("Add to the Gym", Glyph::Add),
-        Screen::GymTestSet => ("See the tests", Glyph::Ask),
-    }
-}
-
 /// Runs a read-only command an offer proposed on this phone, after the
 /// person's tap. The phone's own Rust core answers `computer list`,
 /// `show`, and `workspaces` from what it already knows; a command that
@@ -3408,4 +3340,18 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
             intent,
         },
     }
+}
+
+fn card_intent(action: crate::cards::Action) -> Option<Intent> {
+    use crate::cards::Action;
+    Some(match action {
+        Action::Retry => Intent::Retry,
+        Action::RunCoder => Intent::RunCoder,
+        Action::ConnectComputer => Intent::ConnectComputer,
+        Action::OpenScreen { screen } => Intent::OpenScreen { screen },
+        Action::Followup { index } => Intent::Followup { index },
+        Action::Suggestion { id } => Intent::Starter { id },
+        Action::RunCli { index } => Intent::RunCli { index },
+        Action::Gym { .. } => return None,
+    })
 }

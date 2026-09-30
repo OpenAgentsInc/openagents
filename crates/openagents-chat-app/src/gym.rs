@@ -1024,7 +1024,7 @@ impl Gym {
                 }
                 _ => {
                     run.state = RunState::Refused {
-                        why: "We couldn't read your trainer name on this phone. Try again in a moment.".into(),
+                        why: "We couldn't read your trainer name on this device. Try again in a moment.".into(),
                         connect: false,
                     };
                     Effect::None
@@ -1166,7 +1166,7 @@ impl Gym {
             Some(Place::Computer { host, task, .. }) => Effect::Command {
                 host: host.clone(),
                 task: task.clone(),
-                text: "Stopped from the phone.".into(),
+                text: "Stopped from this device.".into(),
                 stop: true,
             },
             _ => Effect::None,
@@ -1198,7 +1198,7 @@ impl Gym {
             }) => {
                 let Some(report) = run.outcome.as_ref().and_then(|o| o.report.clone()) else {
                     run.publish = PublishState::Failed {
-                        why: "We couldn't find the result's report on this phone.".into(),
+                        why: "We couldn't find the result's report on this device.".into(),
                     };
                     self.save();
                     return Effect::None;
@@ -1837,7 +1837,7 @@ impl Gym {
             (PublishState::None | PublishState::Failed { .. }, false) => {
                 if let PublishState::Failed { why } = &run.publish {
                     lines.push(line(
-                        &format!("We couldn't add your result: {why} It's saved on this phone."),
+                        &format!("We couldn't add your result: {why} It's saved on this device."),
                         Tone::Quiet,
                     ));
                 }
@@ -2010,7 +2010,7 @@ impl Gym {
             chips,
             source: standing
                 .read
-                .then(|| "From your XP, recomputed on this phone.".to_owned()),
+                .then(|| "From your XP, recomputed on this device.".to_owned()),
             busy: false,
         }
     }
@@ -2304,7 +2304,7 @@ impl Gym {
                 sections.push(Section {
                     heading: None,
                     lines: vec![line(
-                        &format!("We couldn't add your result: {why} It's saved on this phone."),
+                        &format!("We couldn't add your result: {why} It's saved on this device."),
                         Tone::Body,
                     )],
                     items: vec![],
@@ -2369,7 +2369,7 @@ impl Gym {
                         draft.cases.len()
                     ),
                     ui::draft_items(&draft, true),
-                    "Your draft. Only on this phone until you add it to the Gym.".to_owned(),
+                    "Your draft. Only on this device until you add it to the Gym.".to_owned(),
                     Some(talk.clone()),
                 )
             }

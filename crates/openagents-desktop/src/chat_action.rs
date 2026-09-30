@@ -3,6 +3,7 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
+    Card { key: String },
     Send,
     Stop,
     Retry,

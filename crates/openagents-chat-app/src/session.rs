@@ -14,6 +14,7 @@ pub struct PendingSend {
 /// A client owns selection and observations; its host owns encrypted records.
 /// Native drafts, focus, and signing credentials are adapter responsibilities.
 pub struct Session {
+    pub cards: crate::cards::Cards,
     pub selected: Option<String>,
     pub states: BTreeMap<String, Snapshot>,
     pub summaries: Vec<Summary>,
@@ -32,6 +33,7 @@ pub struct Session {
 impl Session {
     pub fn new(now: Instant) -> Self {
         Self {
+            cards: crate::cards::Cards::default(),
             selected: None,
             states: BTreeMap::new(),
             summaries: vec![],
@@ -127,14 +129,16 @@ impl Session {
     pub fn retry(&mut self) -> Option<(u64, Command)> {
         let chat = self.selected.clone()?;
         self.error = None;
-        let command = self
-            .send
-            .get(&chat)
-            .map_or(Command::Retry { chat }, |send| Command::Send {
-                chat: send.chat.clone(),
-                request: send.request.clone(),
-                text: send.text.clone(),
-            });
+        let default = if self.states.contains_key(&chat) {
+            Command::Retry { chat: chat.clone() }
+        } else {
+            Command::Create { chat: chat.clone() }
+        };
+        let command = self.send.get(&chat).map_or(default, |send| Command::Send {
+            chat: send.chat.clone(),
+            request: send.request.clone(),
+            text: send.text.clone(),
+        });
         Some(self.request(command))
     }
     pub fn earlier(&mut self) -> Option<(u64, Command)> {
@@ -154,6 +158,7 @@ impl Session {
         ticket: u64,
         result: Result<Snapshot, String>,
     ) -> Vec<(String, String)> {
+        let previous_error = self.error.clone();
         let mut accepted = vec![];
         let Some(command) = self.pending.remove(&ticket) else {
             return accepted;
@@ -162,7 +167,8 @@ impl Session {
             Err(error) => {
                 let target = match &command {
                     Command::List {} => None,
-                    Command::Create { chat }
+                    Command::UseSuggestion { chat, .. }
+                    | Command::Create { chat }
                     | Command::Read { chat, .. }
                     | Command::Send { chat, .. }
                     | Command::Retry { chat }
@@ -254,6 +260,10 @@ impl Session {
                                 || previous.start != snapshot.start
                                 || previous.busy != snapshot.busy
                                 || previous.partial != snapshot.partial
+                                || previous.failure != snapshot.failure
+                                || previous.storage_error != snapshot.storage_error
+                                || previous.used != snapshot.used
+                                || previous.computer != snapshot.computer
                         })
                     {
                         self.revision += 1;
@@ -280,6 +290,9 @@ impl Session {
                     self.select(&id);
                 }
             }
+        }
+        if self.error != previous_error {
+            self.revision += 1;
         }
         accepted
     }

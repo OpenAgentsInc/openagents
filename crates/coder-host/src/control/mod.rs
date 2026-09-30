@@ -868,6 +868,10 @@ fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
         ));
     }
     let chats = state.as_mut().expect("initialized chat state");
+    chats.set_context(openagents_chat::router::Context {
+        surface: openagents_chat::router::Surface::Desktop,
+        ..openagents_chat::router::Context::default()
+    });
     match openagents_chat::service::apply(
         chats,
         command,

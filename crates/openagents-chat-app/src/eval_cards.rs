@@ -761,7 +761,7 @@ pub fn draft_card(
         primary,
         secondary,
         chips: vec![],
-        source: Some("Only on this phone until you add it to the Gym.".into()),
+        source: Some("Only on this device until you add it to the Gym.".into()),
         busy: false,
     }
 }

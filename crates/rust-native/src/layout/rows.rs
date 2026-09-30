@@ -8,7 +8,7 @@ use super::display::{
 };
 use super::measure::{MeasureCache, MeasureRun, Measurer};
 use crate::markdown::{self, Align, Block, Item, Span};
-use crate::style::Color;
+use crate::style::{Color, Space};
 use crate::view::{Element, MessageRole, Node, TextRole, ToolState};
 
 /// The earlier control's row key. Node keys are ASCII identifiers, so it
@@ -707,12 +707,82 @@ impl Ctx<'_> {
                 children,
             } => self.tool(&node.key, name, detail, *state, children, false, x, y, w),
             Element::Working { label } => self.working(label, x, y),
-            Element::Stack { children, .. }
-            | Element::List { children, .. }
-            | Element::Transcript { children, .. } => {
+            Element::Stack { children, .. } => {
+                let spacing = |space: Option<Space>, default: f32| match space {
+                    Some(Space::None) => 0.0,
+                    Some(Space::Xs) => 4.0,
+                    Some(Space::Sm) => 8.0,
+                    Some(Space::Md) => 16.0,
+                    Some(Space::Lg) => 24.0,
+                    None => default,
+                };
+                let left = spacing(node.style.padding_start, 0.0).min(w / 4.0);
+                let right = spacing(node.style.padding_end, 0.0).min(w / 4.0);
+                let top = spacing(node.style.padding_top, 0.0);
+                let bottom = spacing(node.style.padding_bottom, 0.0);
+                let height =
+                    top + self.stack(
+                        children,
+                        x + left,
+                        y + top,
+                        (w - left - right).max(1.0),
+                        ink,
+                        spacing(node.style.gap, 8.0),
+                        in_tool,
+                    ) + bottom;
+                if let Some(background) = node.style.background {
+                    let mut bounds = rect(x, y, w, height, 10.0);
+                    bounds.fill = Some(Ink::Rgba([
+                        background.red,
+                        background.green,
+                        background.blue,
+                        background.alpha,
+                    ]));
+                    bounds.stroke = Some(Ink::Role(ColorRole::Border));
+                    self.out.rects.insert(0, bounds);
+                }
+                height
+            }
+            Element::List { children, .. } | Element::Transcript { children, .. } => {
                 self.stack(children, x, y, w, ink, 8.0, in_tool)
             }
-            Element::Button { label, .. } | Element::Surface { label, .. } => {
+            Element::Button { label, enabled, .. } => {
+                let pad = 10.0_f32.min(w / 4.0);
+                let style =
+                    self.style(15.0, Weight::Medium, if *enabled { ink } else { SECONDARY });
+                let height =
+                    self.para(
+                        &Para::plain(label, style),
+                        x + pad,
+                        y + 7.0,
+                        Wrap::At((w - 2.0 * pad).max(1.0)),
+                        2.0,
+                        AlignX::Center,
+                    )
+                    .0 + 14.0;
+                let mut bounds = rect(x, y, w, height, 7.0);
+                bounds.fill = Some(
+                    node.style
+                        .background
+                        .map_or(Ink::Role(ColorRole::Raised), |c| {
+                            Ink::Rgba([c.red, c.green, c.blue, c.alpha])
+                        }),
+                );
+                bounds.stroke = Some(Ink::Role(ColorRole::Border));
+                self.out.rects.push(bounds);
+                self.widget(
+                    x,
+                    y,
+                    w,
+                    height,
+                    WidgetKind::Button {
+                        key: node.key.clone(),
+                        enabled: *enabled,
+                    },
+                );
+                height
+            }
+            Element::Surface { label, .. } => {
                 let style = self.style(15.0, Weight::Regular, SECONDARY);
                 self.para(
                     &Para::plain(label, style),

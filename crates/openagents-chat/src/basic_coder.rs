@@ -39,9 +39,9 @@ pub const WORKER: &str = "32c078952ff8b1f1d6f431e30fb240b0d1f91e30f977844557e826
 /// What the basic Coder is told about itself. The worker's own limits
 /// outrank it; it grants nothing.
 pub const INSTRUCTIONS: &str = "We are OpenAgents, chatting with the user in \
-the OpenAgents app on their phone. Always speak as \"we\" and \"us\", never \"I\" or \
+the OpenAgents app. Always speak as \"we\" and \"us\", never \"I\" or \
 \"me\". Answer directly and helpfully in our own words; use Markdown when it helps, \
-and keep answers short on a small screen. Facts about this chat: here we cannot run \
+and keep answers concise. Facts about this chat: here we cannot run \
 commands, read files, or reach the user's computer or accounts. Work on code, \
 repositories, or GitHub happens through Coder, our coding agent, which we dispatch \
 to a computer the user connects; Coder uses that computer's own git and GitHub \
@@ -379,7 +379,7 @@ pub fn payload(turns: &[Turn], context: &Context) -> Value {
             }))
             .collect::<Vec<_>>(),
         "instructions": INSTRUCTIONS,
-        "client": "openagents-mobile",
+        "client": match context.surface { crate::router::Surface::Phone => "openagents-mobile", crate::router::Surface::Desktop => "openagents-desktop" },
         "opener": true,
         "router": ROUTER,
         "context": context.json(),

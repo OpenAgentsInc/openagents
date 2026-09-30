@@ -385,6 +385,25 @@ impl App for DesktopApp {
             if let Some(request) = request {
                 self.send(vec![request], now);
             }
+            let requests = self
+                .chat
+                .as_mut()
+                .map_or_else(Vec::new, |chat| chat.take_requests());
+            self.send(requests, now);
+            if let Some(screen) = self.chat.as_mut().and_then(|chat| chat.take_navigation()) {
+                use openagents_chat::router::Screen;
+                let action = match screen {
+                    Screen::Computers => Some(chrome::Action::Computers),
+                    Screen::Keys => Some(chrome::Action::Settings),
+                    Screen::VerseGym => Some(chrome::Action::Grid),
+                    _ => None,
+                };
+                if let Some(action) = action {
+                    self.activate(Intent::Navigate { action }, now);
+                } else if let Some(chat) = &mut self.chat {
+                    chat.navigation_notice("Open this destination on your phone.".into());
+                }
+            }
             self.present();
             return;
         }
@@ -495,6 +514,18 @@ impl App for DesktopApp {
             .as_mut()
             .is_some_and(|chat| chat.surface(resource, event, now));
         if handled {
+            let keys = self
+                .chat
+                .as_mut()
+                .map_or_else(Vec::new, |chat| chat.take_activated());
+            for key in keys {
+                self.activate(
+                    Intent::Chat {
+                        action: openagents_desktop::chat_action::Action::Card { key },
+                    },
+                    now,
+                );
+            }
             self.present();
         }
         handled
@@ -793,7 +824,7 @@ mod tests {
         );
     }
 
-    fn chat_fixture(rows: usize) -> (DesktopApp, Instant) {
+    pub(super) fn chat_fixture(rows: usize) -> (DesktopApp, Instant) {
         use openagents_chat::{
             basic_coder::Turn,
             service::{Command, Snapshot},
@@ -1533,6 +1564,115 @@ mod tests {
                         "step={step}, scale={scale}, background={background:?}, mismatch={mismatch:?}"
                     );
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod card_fixtures {
+    use super::*;
+    use openagents_chat::{
+        basic_coder::Turn,
+        router::Meta,
+        service::{Command, Snapshot},
+    };
+    use rust_native_desktop::input::SurfaceInput;
+
+    #[test]
+    fn cards_mount_paint_and_admit_only_their_current_buttons() {
+        let mut app = super::tests::chat_fixture(0).0;
+        let now = Instant::now();
+        let create = app.chat.as_mut().unwrap().new_chat();
+        app.send(vec![create], now);
+        app.present();
+        rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+        let panel = app.chat.as_mut().unwrap();
+        let bounds = panel
+            .transcript
+            .control_bounds("coder-suggest-meta.who")
+            .unwrap();
+        let x = bounds.x + bounds.w / 2.0;
+        let y = bounds.y + bounds.h / 2.0;
+        assert!(app.surface_input(
+            openagents_desktop::chat::TRANSCRIPT,
+            SurfaceInput::Down { x, y, shift: false },
+            now
+        ));
+        assert!(app.surface_input(
+            openagents_desktop::chat::TRANSCRIPT,
+            SurfaceInput::Up { x, y },
+            now
+        ));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "");
+        let captures =
+            std::env::var_os("OPENAGENTS_CARD_CAPTURE_DIR").map(std::path::PathBuf::from);
+        for (name, fixture) in [
+            (
+                "tool",
+                include_str!("../../coder/fixtures/nip-cj/router-card-tool.json"),
+            ),
+            (
+                "result",
+                include_str!("../../coder/fixtures/nip-cj/router-card-result.json"),
+            ),
+            (
+                "news",
+                include_str!("../../coder/fixtures/nip-cj/router-card-news.json"),
+            ),
+            (
+                "check",
+                include_str!("../../coder/fixtures/nip-cj/router-card-check.json"),
+            ),
+            (
+                "draft",
+                include_str!("../../coder/fixtures/nip-cj/router-card-draft.json"),
+            ),
+            (
+                "credit",
+                include_str!("../../coder/fixtures/nip-cj/router-card-credit.json"),
+            ),
+            (
+                "capability",
+                include_str!("../../coder/fixtures/nip-cj/router-card-capability.json"),
+            ),
+        ] {
+            let mut app = super::tests::chat_fixture(0).0;
+            let panel = app.chat.as_mut().unwrap();
+            let Request::Chat {
+                ticket,
+                command: Command::Read { chat, .. },
+            } = panel
+                .tick(Instant::now() + std::time::Duration::from_secs(2))
+                .unwrap()
+            else {
+                panic!("read")
+            };
+            let mut meta = Meta::default();
+            meta.carded(&serde_json::from_str(fixture).unwrap());
+            if name == "credit" {
+                meta.route = Some("eval.credit".into());
+            }
+            panel.outcome(
+                ticket,
+                Ok(Snapshot {
+                    chat: Some(chat),
+                    total: 2,
+                    turns: vec![
+                        Turn::user("Show this card"),
+                        Turn::assistant("Answer text", Some(meta)),
+                    ],
+                    ..Snapshot::default()
+                }),
+            );
+            app.present();
+            let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+            let panel = app.chat.as_ref().unwrap();
+            assert!(panel.transcript.rows() > 2, "{name}");
+            if let Some(directory) = &captures {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap())
+                    .unwrap();
             }
         }
     }

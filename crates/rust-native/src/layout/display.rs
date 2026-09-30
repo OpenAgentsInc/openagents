@@ -169,6 +169,8 @@ pub struct Link {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WidgetKind {
+    /// An application button; activation returns only its semantic node key.
+    Button { key: String, enabled: bool },
     /// A code block's copy control.
     Copy { text: String },
     /// A tap target that expands or collapses the tool row `key`.

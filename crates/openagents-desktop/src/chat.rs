@@ -39,6 +39,11 @@ pub struct Panel {
     transcript_size: (f32, f32),
     composer_rect: Option<PxRect>,
     rows_dirty: bool,
+    activated: Vec<String>,
+    press_revision: Option<u64>,
+    queued: Vec<Request>,
+    navigation: Option<openagents_chat::router::Screen>,
+    notice: Option<String>,
     waker: Option<rust_native_desktop::Waker>,
 }
 
@@ -58,6 +63,11 @@ impl Panel {
             transcript_size: (0.0, 0.0),
             composer_rect: None,
             rows_dirty: true,
+            activated: vec![],
+            press_revision: None,
+            queued: vec![],
+            navigation: None,
+            notice: None,
             waker: None,
         }
     }
@@ -85,7 +95,7 @@ impl Panel {
     fn busy(&self) -> bool {
         self.session.busy()
     }
-    fn state(&self) -> Option<&Snapshot> {
+    pub fn state(&self) -> Option<&Snapshot> {
         self.session.state()
     }
     /// The selected conversation's local draft, separate from saved messages.
@@ -128,6 +138,7 @@ impl Panel {
         self.projection = Projection::default();
         self.transcript_size = (0.0, 0.0);
         self.rows_dirty = true;
+        self.notice = None;
     }
     pub fn select_numeric(&mut self, id: u64) -> Option<Request> {
         let id = self
@@ -202,6 +213,18 @@ impl Panel {
             self.rows_dirty = true;
         }
     }
+    pub fn take_activated(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.activated)
+    }
+    pub fn take_requests(&mut self) -> Vec<Request> {
+        std::mem::take(&mut self.queued)
+    }
+    pub fn take_navigation(&mut self) -> Option<openagents_chat::router::Screen> {
+        self.navigation.take()
+    }
+    pub fn navigation_notice(&mut self, notice: String) {
+        self.notice = Some(notice);
+    }
     pub fn mounted(&mut self, view: &ValidatedView<Intent>) {
         if let Some(field) = self.field()
             && let Ok(mount) = field.draft.mount(view, "chat-composer")
@@ -218,6 +241,45 @@ impl Panel {
     ) -> Option<Request> {
         let id = self.session.selected.clone()?;
         match action {
+            Action::Card { key } => {
+                let previous = self.session.selected.clone();
+                let effect = self.session.card_action(&key);
+                if previous != self.session.selected {
+                    self.selected_changed(previous);
+                }
+                match effect {
+                    openagents_chat_app::cards::Effect::Requests(requests) => {
+                        self.rows_dirty = true;
+                        let mut requests = requests.into_iter().map(request);
+                        let first = requests.next();
+                        self.queued.extend(requests);
+                        first
+                    }
+                    openagents_chat_app::cards::Effect::Navigate(screen) => {
+                        self.navigation = Some(screen);
+                        None
+                    }
+                    openagents_chat_app::cards::Effect::Notice(notice) => {
+                        self.notice = Some(notice);
+                        None
+                    }
+                    openagents_chat_app::cards::Effect::Draft(text) => {
+                        let at = now.duration_since(self.born).as_millis() as u64;
+                        if let Some(field) = self.field()
+                            && let Ok(stamp) = field.draft.stamp()
+                        {
+                            let _ = field.draft.apply(
+                                &stamp,
+                                rust_native_desktop::composer::Input::Paste(&text),
+                                at,
+                            );
+                            field.focused = true;
+                        }
+                        None
+                    }
+                    openagents_chat_app::cards::Effect::None => None,
+                }
+            }
             Action::Send => {
                 let field = self.field()?;
                 let stamp = field.draft.stamp().ok()?;
@@ -283,6 +345,9 @@ impl Panel {
                 return false;
             }
             let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
+            if matches!(event, SurfaceInput::Down { .. }) {
+                self.press_revision = Some(self.session.revision);
+            }
             if matches!(event, SurfaceInput::Down { .. })
                 && let Some(field) = self.field()
             {
@@ -290,6 +355,12 @@ impl Panel {
             }
             if let Some(action) = self.transcript.pointer(event, &mut self.fonts) {
                 let destination = match action {
+                    rust_native_desktop::transcript::Action::Activate(key) => {
+                        if self.press_revision.take() == Some(self.session.revision) {
+                            self.activated.push(key);
+                        }
+                        return true;
+                    }
                     rust_native_desktop::transcript::Action::Copy(text) => {
                         let _ =
                             std::thread::Builder::new()
@@ -426,25 +497,41 @@ impl Panel {
     pub fn body(&mut self) -> Node<Intent> {
         let start = self.state().map_or(0, |state| state.start);
         if self.rows_dirty {
-            let turns = self
-                .state()
-                .map(|state| state.turns.clone())
-                .unwrap_or_default();
             let state = self.session.state();
+            let turns = state.map_or(&[][..], |state| state.turns.as_slice());
             let mut rows = self.projection.rows(
-                &turns,
+                turns,
                 start,
                 Reply {
                     partial: state.map_or("", |state| state.partial.as_str()),
                     busy: state.is_some_and(|state| state.busy),
-                    // The desktop presents retry controls beside the failure.
-                    failure: None,
+                    failure: self
+                        .session
+                        .error
+                        .as_deref()
+                        .or_else(|| state.and_then(|state| state.failure.as_deref())),
                 },
                 &appearance(),
             );
             if rows.is_empty() {
                 rows.push(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None)));
             }
+            let busy = self.busy();
+            let fallback = Snapshot {
+                chat: self.session.selected.clone(),
+                ..Snapshot::default()
+            };
+            let snapshot = self
+                .session
+                .selected
+                .as_ref()
+                .and_then(|id| self.session.states.get(id))
+                .unwrap_or(&fallback);
+            rows.extend(self.session.cards.rows_with(
+                snapshot,
+                busy,
+                self.session.error.as_deref(),
+            ));
             if self.transcript_rows != rows {
                 self.transcript_rows = rows;
                 let size = self.transcript_size;
@@ -476,52 +563,11 @@ impl Panel {
                 resource: TRANSCRIPT.into(),
             },
         }];
-        if let Some(meta) = self.state().and_then(|state| {
-            projection::actionable(
-                &state.turns,
-                self.busy(),
-                state.failure.is_some() || self.session.error.is_some(),
-            )
-        }) {
-            for (index, followup) in projection::followups(meta, &self.state().unwrap().used) {
-                controls.push(button(
-                    &format!("chat-followup-{index}"),
-                    &followup.label,
-                    Action::Followup {
-                        text: followup.label.clone(),
-                    },
-                    !self.busy(),
-                ));
-            }
-        }
         if !controls.is_empty() {
             children.push(stack("chat-reading-controls", Axis::Horizontal, controls));
         }
-        let failure = self
-            .session
-            .error
-            .clone()
-            .or_else(|| self.state().and_then(|state| state.failure.clone()));
-        if self
-            .state()
-            .and_then(|state| state.turns.last())
-            .is_some_and(|turn| turn.stopped && turn.role == Role::Assistant)
-        {
-            children.push(text(
-                "chat-stopped",
-                "Stopped receiving this reply. The hosted worker may still finish.",
-                TextRole::Status,
-            ));
-            children.push(button(
-                "chat-retry-stopped",
-                "Retry reply",
-                Action::Retry,
-                true,
-            ));
-        }
-        if let Some(failure) = failure {
-            children.push(text("chat-error", failure, TextRole::Status));
-            children.push(button("chat-retry", "Try again", Action::Retry, true));
+        if let Some(notice) = &self.notice {
+            children.push(text("chat-notice", notice, TextRole::Status));
         }
         stack("chat-body", Axis::Vertical, children)
     }

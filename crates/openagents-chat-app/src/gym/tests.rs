@@ -1861,3 +1861,80 @@ fn your_results_lists_full_runs_only() {
         "No results yet. Your first test takes a few minutes."
     );
 }
+
+#[test]
+fn desktop_and_phone_show_identical_worker_card_values() {
+    fn strip_ids(value: &mut Value) {
+        match value {
+            Value::Object(fields) => {
+                fields.remove("id");
+                for value in fields.values_mut() {
+                    strip_ids(value);
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    strip_ids(value);
+                }
+            }
+            _ => {}
+        }
+    }
+    for (name, route) in [
+        ("card-tool", "eval.run"),
+        ("card-result", "eval.result"),
+        ("card-news", "gym.news"),
+        ("card-check", "eval.check"),
+        ("card-draft", "eval.make"),
+        ("card-credit", "eval.credit"),
+        ("card-capability", "eval.find"),
+    ] {
+        let worker = Worker::default();
+        let mut phone = Phone::new(&worker, None);
+        phone.tab.gym = Gym::empty();
+        let feedback = vec![judgment(route), wire(name), result_fields(route)];
+        asked(
+            &mut phone,
+            &worker,
+            "Show this card",
+            "An answer",
+            &feedback,
+        );
+        let (_, view) = phone.render();
+        let mut meta = crate::router::Meta::default();
+        meta.judged(&feedback[0]);
+        meta.carded(&feedback[1]);
+        meta.resulted(&feedback[2]);
+        let mut desktop = crate::cards::Cards::default();
+        let snapshot = openagents_chat::service::Snapshot {
+            chat: Some("a".repeat(32)),
+            turns: vec![
+                crate::basic_coder::Turn::user("Show this card"),
+                crate::basic_coder::Turn::assistant("An answer", Some(meta)),
+            ],
+            total: 2,
+            ..Default::default()
+        };
+        let rows = desktop.rows(&snapshot);
+        assert!(!rows.is_empty(), "{name}");
+        let mut a = serde_json::to_value(view.cards.values().collect::<Vec<_>>()).unwrap();
+        let mut b = serde_json::to_value(desktop.gym.cards().values().collect::<Vec<_>>()).unwrap();
+        strip_ids(&mut a);
+        strip_ids(&mut b);
+        assert_eq!(a, b, "{name}");
+        // The desktop semantic rows retain every visible card title and label.
+        let encoded = serde_json::to_string(&rows).unwrap();
+        for card in desktop.gym.cards().values() {
+            assert!(encoded.contains(&card.title), "{name}: {}", card.title);
+            for button in card
+                .primary
+                .iter()
+                .chain(&card.secondary)
+                .chain(&card.chips)
+            {
+                assert!(encoded.contains(&button.label));
+                assert!(desktop.action(&button.id).is_some());
+            }
+        }
+    }
+}

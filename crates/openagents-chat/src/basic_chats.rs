@@ -83,6 +83,7 @@ pub struct BasicChats {
     storage_errors: BTreeMap<String, String>,
     dirty: BTreeSet<String>,
     dirty_index: bool,
+    dirty_used: bool,
     corrupt_index: bool,
     runtime: Option<Handle>,
     door: Option<Arc<dyn Door>>,
@@ -206,6 +207,7 @@ impl BasicChats {
             storage_errors,
             dirty: BTreeSet::new(),
             dirty_index: false,
+            dirty_used: false,
             corrupt_index,
             runtime,
             door,
@@ -252,9 +254,25 @@ impl BasicChats {
         while self.used.len() > MAX_USED {
             self.used.remove(0);
         }
-        if let Some(store) = &self.store {
-            let _ = store.write(USED_KEY, &self.used);
+        self.dirty_used = true;
+        self.save_used();
+    }
+
+    fn save_used(&mut self) {
+        match self
+            .store
+            .as_ref()
+            .map_or(Ok(()), |store| store.write(USED_KEY, &self.used))
+        {
+            Ok(()) => {
+                self.dirty_used = false;
+                self.storage_errors.remove(USED_KEY);
+            }
+            Err(error) => {
+                self.storage_errors.insert(USED_KEY.into(), error);
+            }
         }
+        self.storage_error = self.storage_errors.values().next().cloned();
     }
 
     /// No store and no door, as in tests of other surfaces.
@@ -836,6 +854,9 @@ impl BasicChats {
 
     /// Retry interrupted writes without appending or resending a message.
     pub fn flush_pending(&mut self) {
+        if self.dirty_used {
+            self.save_used();
+        }
         for id in self.dirty.iter().cloned().collect::<Vec<_>>() {
             self.save(&id);
         }

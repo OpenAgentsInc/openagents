@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
     List {},
+    UseSuggestion {
+        chat: String,
+        id: String,
+    },
     Create {
         chat: String,
     },
@@ -48,6 +52,9 @@ pub struct Snapshot {
     pub start: usize,
     pub total: usize,
     pub turns: Vec<Turn>,
+    /// The worker judged that this reply belongs on a computer; this grants no execution.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub computer: bool,
     pub busy: bool,
     pub partial: String,
     pub failure: Option<String>,
@@ -71,6 +78,21 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
     chats.settle(now);
     let (id, before) = match command {
         Command::List {} => (None, None),
+        Command::UseSuggestion { chat, id } => {
+            if !identity(&chat) || chats.get(&chat).is_none() {
+                return Err("Chat not found.".into());
+            }
+            if id.is_empty()
+                || id.len() > 96
+                || !id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._@-:".contains(&b))
+            {
+                return Err("Invalid suggestion ID.".into());
+            }
+            chats.use_suggestion(&id);
+            (Some(chat), None)
+        }
         Command::Create { chat } => {
             if !identity(&chat) {
                 return Err("Invalid chat ID.".into());
@@ -164,6 +186,7 @@ fn snapshot(
         snapshot.start = end.saturating_sub(16);
         snapshot.turns = turns[snapshot.start..end].to_vec();
         snapshot.storage_error = chats.storage_error.clone();
+        snapshot.computer = chats.lane(&id) == Some(crate::basic_coder::Lane::Computer);
         snapshot.busy = chats.busy(&id);
         snapshot.partial = chats.partial(&id);
         if let Tail::Failed(why) = chats.tail(&id) {
@@ -496,5 +519,39 @@ mod tests {
         assert!(chats.list()[0].archived);
         let chats = BasicChats::new(None, None, Some(open()));
         assert!(chats.list()[0].archived);
+    }
+}
+
+#[cfg(test)]
+mod suggestion_tests {
+    use super::*;
+    use crate::cache::Cache;
+    #[test]
+    fn used_suggestion_writes_retry_and_survive_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = secp256k1::SecretKey::from_byte_array([8; 32]).unwrap();
+        let open = || Cache::open(dir.path(), &key).unwrap();
+        let mut chats = BasicChats::new(None, None, Some(open()));
+        let chat = "a".repeat(32);
+        apply(&mut chats, Command::Create { chat: chat.clone() }, 1).unwrap();
+        let path = dir.path().join("used-suggestions.cache");
+        std::fs::create_dir(&path).unwrap();
+        let snapshot = apply(
+            &mut chats,
+            Command::UseSuggestion {
+                chat: chat.clone(),
+                id: "answer@2".into(),
+            },
+            2,
+        )
+        .unwrap();
+        assert!(snapshot.storage_error.is_some());
+        assert!(chats.used(Some("answer@3"), &[]));
+        std::fs::remove_dir(&path).unwrap();
+        let snapshot = apply(&mut chats, Command::Read { chat, before: None }, 3).unwrap();
+        assert!(snapshot.storage_error.is_none());
+        drop(chats);
+        let reopened = BasicChats::new(None, None, Some(open()));
+        assert!(reopened.used(Some("answer@1"), &[]));
     }
 }

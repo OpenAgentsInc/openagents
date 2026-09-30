@@ -96,6 +96,30 @@ impl Projection {
                 },
             });
         }
+        if !reply.busy
+            && turns
+                .last()
+                .is_some_and(|turn| turn.role == Role::Assistant && turn.stopped)
+        {
+            rows.push(Node {
+                key: "talk-stopped".into(),
+                style: Style::default(),
+                element: Element::Message {
+                    role: MessageRole::System,
+                    note: None,
+                    children: vec![Node {
+                        key: "talk-stopped-text".into(),
+                        style: appearance.status_style,
+                        element: Element::Text {
+                            value:
+                                "Stopped receiving this reply. The hosted worker may still finish."
+                                    .into(),
+                            role: rust_native::TextRole::Status,
+                        },
+                    }],
+                },
+            });
+        }
         rows
     }
 }
@@ -127,13 +151,9 @@ pub fn actionable(
     busy: bool,
     failure: bool,
 ) -> Option<&openagents_chat::router::Meta> {
-    if busy || failure {
-        return None;
-    }
-    turns
-        .last()
-        .filter(|turn| turn.role == Role::Assistant && !turn.stopped)
-        .and_then(|turn| turn.meta.as_ref())
+    completed(turns, busy, failure)
+        .then(|| turns.last().and_then(|turn| turn.meta.as_ref()))
+        .flatten()
 }
 
 /// Follow-up IDs preserve their index in the signed reply's metadata.
@@ -148,6 +168,14 @@ pub fn followups<'a>(
             &[&followup.label],
         )
     })
+}
+
+pub fn completed(turns: &[Turn], busy: bool, failure: bool) -> bool {
+    !busy
+        && !failure
+        && turns
+            .last()
+            .is_some_and(|turn| turn.role == Role::Assistant && !turn.stopped)
 }
 
 #[cfg(test)]
