@@ -10,6 +10,11 @@
 //! check, and **Done**, which closes the screen and returns to where it was
 //! opened. The chat's offer then reads **Run Coder on** that computer.
 //!
+//! The desktop app's QR code is a link,
+//! `https://openagents.com/connect#<code>`, so the phone's own camera opens
+//! the app with it too ([`Connect::link`]): the app shows this screen and
+//! pairs exactly as if the code had been scanned here.
+//!
 //! Nothing here holds authority. A code is a one-time capability the host
 //! checks; this screen keeps no code once it is handed to the pairing, and
 //! never logs one.
@@ -219,6 +224,14 @@ impl Connect {
         self.start(runtime, task);
     }
 
+    /// A link the app was opened with: show `SCR-22` and pair with it as a
+    /// scanned code. A pairing already in flight keeps its screen, and a
+    /// link that is not a computer's code shows why on the scanner.
+    pub fn link(&mut self, text: &str) {
+        self.open();
+        self.code(text);
+    }
+
     /// Move a finished pairing on: `SCR-23` when it landed, back to the
     /// scanner with the reason when it did not. Returns the computer that
     /// just paired, once.
@@ -412,6 +425,38 @@ mod tests {
         assert_eq!(connect.view(), None);
     }
 
+    /// The system camera opens the app with the QR code's link; the app
+    /// goes straight to pairing, handing the pairing the code's text form.
+    #[test]
+    fn a_link_from_the_camera_opens_connect_and_pairs() {
+        struct Seen(Arc<Mutex<Vec<String>>>);
+        impl Pair for Seen {
+            fn pair(&self, code: String) -> Pairing {
+                lock(&self.0).push(code);
+                Box::pin(async { Ok(studio()) })
+            }
+        }
+        let runtime = runtime();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut connect = Connect::new(
+            Some(Arc::new(Seen(seen.clone()))),
+            Some(runtime.handle().clone()),
+        );
+        assert_eq!(connect.view(), None);
+        connect.link("https://openagents.com/connect#AQID");
+        assert_eq!(connect.view().unwrap().stage, Stage::Connecting);
+        assert_eq!(settle(&mut connect).unwrap().label, "Studio Mac");
+        assert_eq!(connect.view().unwrap().stage, Stage::Connected);
+        assert_eq!(*lock(&seen), ["openagents-connect:AQID"]);
+
+        // A link that is not a computer's code opens the scanner with why.
+        connect.close();
+        connect.link("https://openagents.com/other#AQID");
+        let view = connect.view().unwrap();
+        assert_eq!(view.stage, Stage::Scan);
+        assert!(view.notice.unwrap().contains("isn't a code"));
+    }
+
     #[test]
     fn a_refused_pairing_returns_to_the_scanner_with_its_reason_and_the_clock() {
         let runtime = runtime();
@@ -499,5 +544,16 @@ mod tests {
                 .contains("Chats pairing code")
         );
         assert!(packet(app.respond(Request::ConnectClose))["connect"].is_null());
+        // Opened with a link that is not a computer's: the scanner says why.
+        let linked = packet(app.respond(Request::ConnectLink {
+            value: "https://openagents.com/connect".into(),
+        }));
+        assert_eq!(linked["connect"]["stage"], "scan");
+        assert!(
+            linked["connect"]["notice"]
+                .as_str()
+                .unwrap()
+                .contains("isn't a code")
+        );
     }
 }

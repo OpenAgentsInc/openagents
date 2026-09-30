@@ -299,6 +299,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     /** Connect a computer: open the scanner, hand Rust a code, or close. */
     fun connectOpen() = send(json("op" to "connect_open"))
     fun connectCode(value: String) = send(json("op" to "connect_code", "value" to value))
+    /** The app was opened with a connect link (the desktop app's QR code,
+     *  read by the system camera): show Connect a computer and pair with it. */
+    fun connectLink(value: String) = send(json("op" to "connect_link", "value" to value))
     fun connectClose() = send(json("op" to "connect_close"))
     fun connectNearby(id: String) = send(json("op" to "connect_nearby", "id" to id))
     fun refreshComputers() = send(json("op" to "computers_refresh"))

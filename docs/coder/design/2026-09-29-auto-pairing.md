@@ -261,6 +261,13 @@ inside a QR code a phone reads from a laptop screen. The invitation ID, capabili
 record are exactly NIP-HOST's host invitation; only the carriage is new, and
 the Nostr relay is not in the payload because the grant names it.
 
+The QR code shows the payload as a link, `https://openagents.com/connect#`
+followed by the same base64url, so the phone's own camera opens the app (an
+iOS universal link and a verified Android App Link) straight into pairing,
+and a phone without the app lands on a static page that says where to get
+it. The payload is the URL fragment, which never reaches the server, and
+readers accept both forms ([#9992](https://github.com/OpenAgentsInc/openagents/issues/9992)).
+
 **One-time, short, and only on an unlocked screen.**
 
 - The code exists only inside the desktop app's window, only while that

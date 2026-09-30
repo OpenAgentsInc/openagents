@@ -328,6 +328,13 @@ mod tests {
         );
         app.tick(start);
         let text = app.model().codes.shown().expect("a code").text.clone();
+        // The QR code carries the link, so the phone's own camera opens the
+        // app; the payload is the same code.
+        let text = openagents_connect::code::link(&text).expect("a connect code");
+        assert!(
+            text.starts_with("https://openagents.com/connect#"),
+            "{text}"
+        );
         let (views, _) = rust_native_desktop::capture_views(&mut app, 560.0, 720.0, 2.0);
         // Backdrops brighter and busier than the Grid ever is: all white,
         // white grid lines on black at the code's own module pitch, and
@@ -378,7 +385,12 @@ mod tests {
         let channels = info.color_type.samples();
         let found = scan(info.width as usize, info.height as usize, channels, &pixels);
         assert_eq!(found.len(), 1, "{found:?}");
-        assert!(found[0].starts_with("openagents-connect:"), "{found:?}");
+        // A capture from before the QR code carried the link shows the text
+        // form; either names a connect code.
+        assert!(
+            openagents_connect::code::canonical(&found[0]).is_some(),
+            "{found:?}"
+        );
     }
 
     #[test]

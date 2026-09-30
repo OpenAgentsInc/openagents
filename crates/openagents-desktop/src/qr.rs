@@ -1,8 +1,10 @@
 //! The pairing code as QR modules.
 //!
-//! The code text is encoded with `qrcodegen` at error-correction level M,
-//! which keeps a `openagents-connect:` payload (up to about 560
-//! characters) readable from a laptop screen. The window paints the modules
+//! The QR code carries the code's link form,
+//! `https://openagents.com/connect#<payload>` ([`code_modules`]), so the
+//! phone's own camera opens the OpenAgents app, not only the app's scanner.
+//! It is encoded with `qrcodegen` at error-correction level M, which keeps
+//! even the longest link (666 characters) readable from a laptop screen. The window paints the modules
 //! black on a white square with a four-module quiet zone, as scanners
 //! expect; an inverted code reads poorly on some phones.
 
@@ -25,6 +27,12 @@ impl Modules {
     }
 }
 
+/// The modules of the QR code for a connect code in either form: its link.
+/// `None` when `code` is not a connect code or does not fit.
+pub fn code_modules(code: &str) -> Option<Modules> {
+    modules(&openagents_connect::code::link(code)?)
+}
+
 /// The modules for `text`, or `None` when it does not fit a QR code.
 pub fn modules(text: &str) -> Option<Modules> {
     let code = QrCode::encode_text(text, QrCodeEcc::Medium).ok()?;
@@ -42,13 +50,25 @@ pub fn modules(text: &str) -> Option<Modules> {
 mod tests {
     use super::*;
 
+    use openagents_connect::code::{LINK_PREFIX, MAX_LINK_BYTES, PREFIX};
+
     #[test]
     fn a_full_size_code_fits() {
-        let text = format!("openagents-connect:{}", "A".repeat(540));
-        let modules = modules(&text).expect("fits");
-        // Version 19 or so: well under the largest QR code.
-        assert!(modules.size < 120, "{}", modules.size);
+        // The longest link a code can make.
+        let payload = "A".repeat(MAX_LINK_BYTES - LINK_PREFIX.len());
+        let modules = code_modules(&format!("{PREFIX}{payload}")).expect("fits");
+        // Version 24 at most: well under the largest QR code.
+        assert!(modules.size <= 17 + 4 * 24, "{}", modules.size);
         // The finder pattern's corner is dark.
         assert!(modules.get(0, 0));
+    }
+
+    #[test]
+    fn the_qr_code_carries_the_link_form() {
+        let text = format!("{PREFIX}AQID");
+        let link = format!("{LINK_PREFIX}AQID");
+        assert_eq!(code_modules(&text), modules(&link));
+        assert_eq!(code_modules(&link), modules(&link));
+        assert_eq!(code_modules("coder-host:AQID"), None);
     }
 }

@@ -4,12 +4,20 @@
   The app's default entitlements. Multicast lets nearby pairing listen for
   computers on _openagents._udp (mDNS, crates/openagents-connect/src/nearby.rs).
   Apple approved it for com.openagents.app, and the OpenAgents App Store
-  profile carries it. Push builds sign with Push/OpenAgents-Push.entitlements
-  instead, which repeats it.
+  profile carries it. Associated Domains (applinks:openagents.com) lets the
+  system camera open the app with the desktop app's pairing QR code, the
+  https://openagents.com/connect# link; openagents.com serves the matching
+  apple-app-site-association, and the profile carries the capability. Push
+  builds sign with Push/OpenAgents-Push.entitlements instead, which repeats
+  both.
 -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.developer.networking.multicast</key>
 	<true/>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:openagents.com</string>
+	</array>
 </dict>
 </plist>

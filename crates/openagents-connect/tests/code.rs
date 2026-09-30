@@ -7,8 +7,8 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openagents_connect::Code;
 use openagents_connect::code::{
-    CodeParts, ConnectCode, LIFETIME, MAX_ADDRS, MAX_LABEL_BYTES, MAX_RELAY_BYTES, MAX_TEXT_BYTES,
-    PREFIX,
+    CodeParts, ConnectCode, LIFETIME, LINK_PREFIX, MAX_ADDRS, MAX_LABEL_BYTES, MAX_LINK_BYTES,
+    MAX_RELAY_BYTES, MAX_TEXT_BYTES, PREFIX, canonical, link,
 };
 use serde_json::{Value, json};
 
@@ -505,6 +505,68 @@ fn issued_codes_round_trip_and_are_distinct() {
         ConnectCode::from_invitation(parts.clone(), &"ab".repeat(32), &"cd".repeat(32)).unwrap();
     assert_eq!(stored.invitation(), "ab".repeat(32));
     assert_eq!(stored.capability(), "cd".repeat(32));
+}
+
+/// The QR code shows the link form so a phone's own camera opens the app.
+/// The payload rides only in the fragment, which a browser never sends, and
+/// both forms name the same code.
+#[test]
+fn the_link_form_carries_the_code_only_in_its_fragment() {
+    let code = ConnectCode::issue(CodeParts {
+        host: host_hex(),
+        endpoint: endpoint(),
+        issued_at: ISSUED,
+        relay: Some("https://iroh.openagents.com/".parse().unwrap()),
+        addrs: vec!["192.168.1.20:47200".parse().unwrap()],
+        label: "Kai's MacBook".into(),
+    })
+    .unwrap();
+    let text = code.encode();
+    let linked = code.encode_link();
+    assert!(linked.len() <= MAX_LINK_BYTES);
+    assert_eq!(linked, format!("{LINK_PREFIX}{}", &text[PREFIX.len()..]));
+
+    // What a browser requests is `GET /connect` on openagents.com, with no
+    // query: everything after `#` stays on the phone.
+    let (request, fragment) = linked.split_once('#').unwrap();
+    assert_eq!(request, "https://openagents.com/connect");
+    assert!(!request.contains('?'));
+    assert_eq!(fragment, &text[PREFIX.len()..]);
+    for secret in [code.capability(), code.invitation()] {
+        assert!(!request.contains(&secret));
+    }
+
+    // Both forms parse to the same code, and each converts to the other.
+    assert_eq!(ConnectCode::parse(&linked, ISSUED + 1).unwrap(), code);
+    assert_eq!(ConnectCode::parse_shape(&text).unwrap(), code);
+    assert_eq!(canonical(&linked).as_deref(), Some(text.as_str()));
+    assert_eq!(canonical(&text).as_deref(), Some(text.as_str()));
+    assert_eq!(link(&text).as_deref(), Some(linked.as_str()));
+    assert_eq!(link(&linked).as_deref(), Some(linked.as_str()));
+
+    // Only the exact link: another scheme, host, path, or a query is no code.
+    let payload = &text[PREFIX.len()..];
+    for other in [
+        format!("http://openagents.com/connect#{payload}"),
+        format!("https://evil.example/connect#{payload}"),
+        format!("https://openagents.com/connect?{payload}"),
+        format!("https://openagents.com/connect/{payload}"),
+        format!("https://openagents.com.evil.example/connect#{payload}"),
+    ] {
+        assert_eq!(canonical(&other), None, "{other}");
+        assert_eq!(
+            ConnectCode::parse_shape(&other).unwrap_err().code,
+            Code::Malformed,
+            "{other}"
+        );
+    }
+    // A link past the payload's bound is refused as a text past it is.
+    assert_eq!(
+        ConnectCode::parse_shape(&format!("{LINK_PREFIX}{}", "A".repeat(MAX_TEXT_BYTES)))
+            .unwrap_err()
+            .code,
+        Code::Bounds
+    );
 }
 
 #[test]

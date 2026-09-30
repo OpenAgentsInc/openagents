@@ -4,7 +4,9 @@
 //! The phone's scanner (`SCR-22`) hands Rust the text of one QR code or one
 //! pasted code. [`classify`] decides which kind it is before anything is
 //! dialed: an `openagents-connect:` connect code from the OpenAgents
-//! desktop app (NIP-HOST, "Connect codes"), which carries the computer's
+//! desktop app (NIP-HOST, "Connect codes"), in its text form or as the
+//! `https://openagents.com/connect#` link its QR code shows (which the
+//! phone's own camera also opens the app with), which carries the computer's
 //! iroh address, or a `coder-host:` host invitation, which carries only its
 //! Nostr relay. Anything else is refused with a sentence that says what the
 //! person scanned. The live service pairs with the result
@@ -17,19 +19,23 @@
 
 use coder_access::protocol::INVITATION_PREFIX;
 
-/// The prefix of a connect code.
+/// The prefix of a connect code (`openagents_connect::code::PREFIX`).
 pub const CONNECT_PREFIX: &str = "openagents-connect:";
+/// The prefix of a connect code's link form, which the desktop app's QR
+/// code shows (`openagents_connect::code::LINK_PREFIX`).
+pub const CONNECT_LINK_PREFIX: &str = "https://openagents.com/connect#";
 /// The prefix of a Chats pairing code, which is never a computer code.
 const PAIR_PREFIX: &str = "coder-pair:";
 /// The most bytes a scanned or pasted code may have. A connect code is at
-/// most 654 bytes and a host invitation at most 640.
+/// most 654 bytes (666 as a link) and a host invitation at most 640.
 pub const MAX_CODE_BYTES: usize = 1024;
 
 /// A code the person scanned or pasted, by kind. The text holds a one-time
 /// capability until it is redeemed: never log it.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Scanned {
-    /// An `openagents-connect:` code from the desktop app.
+    /// An `openagents-connect:` code from the desktop app, always in its
+    /// text form: a scanned link is turned into the text it carries.
     Connect(String),
     /// A `coder-host:` invitation from `coder host invite` or another
     /// device.
@@ -72,6 +78,9 @@ pub fn classify(text: &str) -> Result<Scanned, String> {
     }
     if text.starts_with(CONNECT_PREFIX) {
         return Ok(Scanned::Connect(text.to_owned()));
+    }
+    if let Some(payload) = text.strip_prefix(CONNECT_LINK_PREFIX) {
+        return Ok(Scanned::Connect(format!("{CONNECT_PREFIX}{payload}")));
     }
     if text.starts_with(INVITATION_PREFIX) {
         return Ok(Scanned::HostInvitation(text.to_owned()));
@@ -160,6 +169,24 @@ mod tests {
             classify("coder-host:AAAA"),
             Ok(Scanned::HostInvitation("coder-host:AAAA".into()))
         );
+        // The link the desktop app's QR code shows, which the phone's own
+        // camera hands the app, is the same code.
+        assert_eq!(
+            classify("https://openagents.com/connect#AQID"),
+            Ok(Scanned::Connect("openagents-connect:AQID".into()))
+        );
+        // Only the exact link: another host or path is not a code.
+        for other in [
+            "https://evil.example/connect#AQID",
+            "http://openagents.com/connect#AQID",
+            "https://openagents.com/connect?AQID",
+            "https://openagents.com/connect/AQID",
+        ] {
+            assert!(
+                classify(other).unwrap_err().contains("isn't a code"),
+                "{other}"
+            );
+        }
         assert!(classify("coder-pair:AAAA").unwrap_err().contains("Chats"));
         assert!(
             classify("https://example.com")
@@ -169,6 +196,12 @@ mod tests {
         assert!(classify("").unwrap_err().contains("Paste"));
         let long = format!("{CONNECT_PREFIX}{}", "A".repeat(MAX_CODE_BYTES));
         assert!(classify(&long).unwrap_err().contains("too long"));
+    }
+
+    #[test]
+    fn the_prefixes_are_the_connect_codes() {
+        assert_eq!(CONNECT_PREFIX, openagents_connect::code::PREFIX);
+        assert_eq!(CONNECT_LINK_PREFIX, openagents_connect::code::LINK_PREFIX);
     }
 
     #[test]

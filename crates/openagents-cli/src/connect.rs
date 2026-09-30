@@ -184,9 +184,16 @@ async fn invite(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
             json!({"invitation": invitation, "code": code, "expires_at": expires_at, "rights": rights})
         );
     } else {
-        let qr =
-            coder_connect::pairing::terminal_qr_prefixed(openagents_connect::code::PREFIX, &code)
-                .map_err(|_| failed("the code cannot be drawn"))?;
+        // The QR shows the link form, so a phone's own camera opens the app.
+        let qr = openagents_connect::code::link(&code)
+            .and_then(|link| {
+                coder_connect::pairing::terminal_qr_prefixed(
+                    openagents_connect::code::LINK_PREFIX,
+                    &link,
+                )
+                .ok()
+            })
+            .ok_or_else(|| failed("the code cannot be drawn"))?;
         println!("{qr}");
         println!("Scan with the OpenAgents app on your phone: Connect a computer.");
         if terminal {

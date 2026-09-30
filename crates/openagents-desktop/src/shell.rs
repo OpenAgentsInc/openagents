@@ -178,7 +178,8 @@ impl App for DesktopApp {
             .as_ref()
             .is_none_or(|(text, _)| *text != shown.text)
         {
-            self.modules = qr::modules(&shown.text).map(|modules| (shown.text.clone(), modules));
+            self.modules =
+                qr::code_modules(&shown.text).map(|modules| (shown.text.clone(), modules));
         }
         let Some((_, modules)) = &self.modules else {
             return;

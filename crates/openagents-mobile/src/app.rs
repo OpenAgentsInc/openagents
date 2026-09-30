@@ -187,6 +187,12 @@ pub enum Request {
     ConnectCode {
         value: String,
     },
+    /// A connect link the phone opened the app with
+    /// (`https://openagents.com/connect#...`, from the system camera or a
+    /// tap): show `SCR-22` and pair with it, as a scan would.
+    ConnectLink {
+        value: String,
+    },
     /// Close `SCR-22` or `SCR-23` (**Done**).
     ConnectClose,
     /// A tap on a computer in **Nearby** on `SCR-22`.
@@ -1271,6 +1277,7 @@ impl App {
             }
             Request::ConnectOpen => self.connect.open(),
             Request::ConnectCode { value } => self.connect.code(&value),
+            Request::ConnectLink { value } => self.connect.link(&value),
             Request::ConnectClose => self.connect.close(),
             Request::ConnectNearby { id } => self.connect.nearby(&id),
             Request::ComputersRefresh => {

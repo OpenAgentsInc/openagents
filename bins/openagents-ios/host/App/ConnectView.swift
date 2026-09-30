@@ -6,12 +6,15 @@ import UIKit
 
 enum ConnectCode {
     /// A code from OpenAgents on a computer: the connect code the desktop app
-    /// shows, or a host invitation. Only the size and prefix are checked
-    /// here; Rust parses it.
+    /// shows (its QR code is the https://openagents.com/connect# link; older
+    /// ones show the openagents-connect: text), or a host invitation. Only
+    /// the size and prefix are checked here; Rust parses it.
+    static let prefixes = ["https://openagents.com/connect#", "openagents-connect:", "coder-host:"]
+
     static func accept(maximumBytes: Int) -> (String) throws -> String {
         { text in
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.hasPrefix("openagents-connect:") || trimmed.hasPrefix("coder-host:"),
+            guard prefixes.contains(where: { trimmed.hasPrefix($0) }),
                   trimmed.utf8.count <= maximumBytes else {
                 throw QRInvitation.Failure.message("This isn't a code from OpenAgents on a computer. Scan the code the OpenAgents app on your computer shows.")
             }

@@ -26,6 +26,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- The desktop app's pairing QR code is the App Link
+                 https://openagents.com/connect#<code>, so the system camera
+                 opens this app with it. openagents.com serves the matching
+                 /.well-known/assetlinks.json (this release key's SHA-256). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="openagents.com" android:path="/connect" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

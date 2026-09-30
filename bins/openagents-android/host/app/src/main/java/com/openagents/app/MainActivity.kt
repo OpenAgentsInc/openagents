@@ -4,6 +4,7 @@
 package com.openagents.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
@@ -258,6 +259,7 @@ class MainActivity : ComponentActivity() {
         }
         select(tab)
         open(route)
+        if (savedInstanceState == null) handleLink(intent)
         // Debug builds only: `--es coder_tap KEY[,KEY...]` taps Coder nodes in
         // order (a key ending in `*` taps the first whose key starts with the
         // rest), then `--es coder_send TEXT` sends TEXT from the composer.
@@ -805,6 +807,25 @@ class MainActivity : ComponentActivity() {
             if (tab == AppTab.WALLET && (walletLoading || ticks % 10 == 0) && !bridge.busy) bridge.snapshot()
             main.postDelayed(this, 1000)
         }
+    }
+
+    // The activity is single-task, so a link that arrives while it runs
+    // comes here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLink(intent)
+    }
+
+    /** The desktop app's QR code is https://openagents.com/connect#<code>:
+     *  the system camera opens this app with it, and Rust pairs as if it was
+     *  scanned. Rust checks the link; the code rides in the fragment. */
+    private fun handleLink(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val link = intent.dataString ?: return
+        // Handle each link once, not again when the activity is recreated.
+        intent.data = null
+        bridge.connectLink(link)
     }
 
     override fun onResume() {

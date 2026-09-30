@@ -128,7 +128,24 @@ no `=`) of these bytes, in order:
 | 0–48 | Label | UTF-8 without control characters: the computer's name, for display only. |
 
 No trailing bytes are allowed. The decoded payload is at most 476 bytes, so
-the string is at most 654 bytes. A reader refuses the whole code, before it
+the string is at most 654 bytes.
+
+The same payload has a second text form, the **connect link**:
+`https://openagents.com/connect#` followed by the same unpadded base64url,
+at most 666 bytes. The payload is the URL fragment, which a browser never
+sends to a server. A host shows the link in its QR code, so a phone's system
+camera, not only the companion app's scanner, can read it: the phone app
+claims the link as an iOS universal link and a verified Android App Link and
+opens straight into pairing, and on a phone without the app, the link opens
+a static `https://openagents.com/connect` page that says where to get it.
+That page runs no script and never reads or transmits the fragment.
+openagents.com serves the matching `/.well-known/apple-app-site-association`
+and `/.well-known/assetlinks.json` for `/connect` only.
+
+A reader accepts both forms and treats them as one code. It recognizes the
+link only by that exact prefix: another scheme, host, or path, a query, or a
+payload outside the fragment is not a connect code. Every rule below applies
+to the payload whichever form carried it. A reader refuses the whole code, before it
 dials anything, when the version is unknown, a length exceeds its bound, the
 bytes end early or run past the end, the expiry is not exactly 300 seconds
 after issue, a family byte is not `4` or `6`, a port is zero, two direct
@@ -181,10 +198,12 @@ one follows these rules, in addition to those for the capability above:
   300-second invitation life is only ever shortened.
 - Hiding the window, locking the screen, ten idle minutes, or a successful
   redemption cancels every outstanding connect code.
+- Its QR code shows the connect link; its copy action copies the
+  `openagents-connect:` text.
 - It copies the text form to the clipboard only on an explicit tap, and marks
   the clipboard entry to expire after 60 seconds where the platform allows.
 - It never writes the string, the capability, or the QR image to a log, a
-  file, a URL, or telemetry.
+  file, a URL other than the connect link's fragment, or telemetry.
 
 Rights for a connect code are fixed:
 
@@ -203,7 +222,10 @@ again; a rights change in place is not defined.
 
 The capability is a temporary bearer secret until redemption. Show it only
 to the enrolling device. It must not appear in a public event, URL, log,
-telemetry, or remote QR-generation service. The relay URL follows the shared
+telemetry, or remote QR-generation service; the one exception is the
+connect link's fragment, which stays on the phone that reads it. A phone
+app that opens from a connect link passes it only to its own pairing and
+keeps no copy. The relay URL follows the shared
 relay policy: `wss` with certificate validation and no credentials, query,
 or fragment. A scanned string cannot enable a loopback test profile.
 
@@ -977,9 +999,11 @@ With a desktop app and a connect code:
 
 1. On first run the desktop app's host creates its host key, iroh secret key,
    and owner key in the keychain and establishes that owner locally.
-2. The window shows `openagents-connect:<payload>` as a QR code for an
-   invitation with rights `observe, operate`, and replaces it every minute.
-3. The phone scans it, dials `<endpoint-id>` on `openagents/enroll/1`, sends
+2. The window shows the connect link `https://openagents.com/connect#<payload>`
+   as a QR code for an invitation with rights `observe, operate`, and
+   replaces it every minute.
+3. The phone scans it, with the app's scanner or the system camera, which
+   opens the app with the link. The app dials `<endpoint-id>` on `openagents/enroll/1`, sends
    the open message, checks the host key in the info message, and sends its
    signed `enroll.redeem`. The host commits the grant and answers. The phone
    checks both keys against the code, then saves its access record.
@@ -996,7 +1020,8 @@ delegated invitation after its issuer's revocation; revocation while a
 request is in flight; a stale epoch; a copied grant; a crash between
 consumption and reply; exact retries and a reused request ID; and per-right
 refusal, including that an `observe`-only device cannot create a task or
-open a terminal. Connect codes add: a round trip of the byte layout; each
+open a terminal. Connect codes add: a round trip of the byte layout and of
+both text forms, the link carrying the payload only in its fragment; each
 malformed case listed under [Connect codes](#connect-codes); a redemption
 over iroh; a code whose host key differs from the info message or the reply;
 rights other than the connect code rights; a clock more than 60 seconds off;

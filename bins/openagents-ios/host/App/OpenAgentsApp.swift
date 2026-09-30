@@ -21,7 +21,16 @@ struct OpenAgentsApp: App {
                     // Does nothing unless this build is configured for push.
                     PushRegistration.shared.start(deliver: { bridge.pushToken($0) },
                                                   failed: { bridge.pushFailed($0) })
+                    #if DEBUG || targetEnvironment(simulator)
+                    // `--connect-link URL` opens the app as the link would,
+                    // for a simulator that cannot verify openagents.com.
+                    if let link = AppTabLaunch.wallet("--connect-link") { bridge.connectLink(link) }
+                    #endif
                 }
+                // The desktop app's QR code is a universal link,
+                // https://openagents.com/connect#<code>: the system camera
+                // opens the app with it, and Rust pairs as if it was scanned.
+                .onOpenURL { url in bridge.connectLink(url.absoluteString) }
         }
     }
 }

@@ -1,7 +1,16 @@
 //! The `openagents-connect:` payload a computer shows as a QR code.
 //!
-//! The text is `openagents-connect:` followed by unpadded base64url of these
-//! bytes, in order:
+//! A code has two text forms that carry the same payload:
+//!
+//! - the **link**, `https://openagents.com/connect#<payload>`, which the QR
+//!   code shows so a phone's system camera opens the OpenAgents app (a
+//!   universal link on iOS, a verified App Link on Android) or, without the
+//!   app, a page that says where to get it. The payload is the URL
+//!   fragment, which a browser never sends to a server;
+//! - the **text**, `openagents-connect:<payload>`, the canonical form every
+//!   reader passes on after [`canonical`], which also reads the link.
+//!
+//! The payload is unpadded base64url of these bytes, in order:
 //!
 //! | Field | Bytes |
 //! | --- | --- |
@@ -21,8 +30,9 @@
 //! are exactly a NIP-HOST host invitation; only the carriage is new. The
 //! label is for display and is never an identity.
 //!
-//! The capability is a bearer secret until redemption: never log it or put
-//! it in a URL. [`ConnectCode`]'s `Debug` output leaves it out.
+//! The capability is a bearer secret until redemption: never log it, and
+//! never put it in a URL anywhere but the link's fragment. [`ConnectCode`]'s
+//! `Debug` output leaves it out.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -34,6 +44,8 @@ use crate::{CLOCK_SKEW, Code, Error, Result, fail, hex, unhex32};
 
 /// The text prefix.
 pub const PREFIX: &str = "openagents-connect:";
+/// The link prefix: everything before the payload, which is the fragment.
+pub const LINK_PREFIX: &str = "https://openagents.com/connect#";
 /// The only layout version.
 pub const VERSION: u8 = 1;
 /// A NIP-HOST host invitation lives exactly this long, in seconds.
@@ -49,8 +61,35 @@ pub const MAX_LABEL_BYTES: usize = 48;
 const FIXED_BYTES: usize = 1 + 4 * 32 + 2 * 8 + 3;
 /// Largest decoded payload.
 pub const MAX_BYTES: usize = FIXED_BYTES + MAX_RELAY_BYTES + MAX_ADDRS * 19 + MAX_LABEL_BYTES;
+/// Longest encoded payload, without a prefix.
+const MAX_PAYLOAD_TEXT_BYTES: usize = (MAX_BYTES * 4).div_ceil(3);
 /// Longest encoded text, prefix included.
-pub const MAX_TEXT_BYTES: usize = PREFIX.len() + (MAX_BYTES * 4).div_ceil(3);
+pub const MAX_TEXT_BYTES: usize = PREFIX.len() + MAX_PAYLOAD_TEXT_BYTES;
+/// Longest link, prefix included.
+pub const MAX_LINK_BYTES: usize = LINK_PREFIX.len() + MAX_PAYLOAD_TEXT_BYTES;
+
+/// The canonical `openagents-connect:` text of a code in either form, the
+/// text or the link, or `None` when `text` is neither. Only the prefix
+/// changes; the payload is not checked here.
+#[must_use]
+pub fn canonical(text: &str) -> Option<String> {
+    if text.starts_with(PREFIX) {
+        return Some(text.to_owned());
+    }
+    text.strip_prefix(LINK_PREFIX)
+        .map(|payload| format!("{PREFIX}{payload}"))
+}
+
+/// The link form of a code in either form, for the QR code, or `None` when
+/// `text` is neither.
+#[must_use]
+pub fn link(text: &str) -> Option<String> {
+    if text.starts_with(LINK_PREFIX) {
+        return Some(text.to_owned());
+    }
+    text.strip_prefix(PREFIX)
+        .map(|payload| format!("{LINK_PREFIX}{payload}"))
+}
 
 /// A parsed or freshly issued connect code.
 #[derive(Clone, PartialEq, Eq)]
@@ -198,6 +237,14 @@ impl ConnectCode {
         EndpointAddr::from_parts(self.endpoint, relay.chain(direct))
     }
 
+    /// Encode to the link a QR code shows, `https://openagents.com/connect#`
+    /// and the payload.
+    #[must_use]
+    pub fn encode_link(&self) -> String {
+        let text = self.encode();
+        format!("{LINK_PREFIX}{}", &text[PREFIX.len()..])
+    }
+
     /// Encode to the `openagents-connect:` text.
     #[must_use]
     pub fn encode(&self) -> String {
@@ -247,17 +294,25 @@ impl ConnectCode {
     }
 
     /// Parse without checking the time window. The host decides expiry;
-    /// use this only to show what a code names.
+    /// use this only to show what a code names. Both forms parse: the
+    /// `openagents-connect:` text and the `https://openagents.com/connect#`
+    /// link.
     ///
     /// # Errors
     /// As [`Self::parse`], without `expired`.
     pub fn parse_shape(text: &str) -> Result<Self> {
-        if text.len() > MAX_TEXT_BYTES {
+        let encoded = if let Some(encoded) = text.strip_prefix(LINK_PREFIX) {
+            encoded
+        } else if let Some(encoded) = text.strip_prefix(PREFIX) {
+            encoded
+        } else if text.len() > MAX_TEXT_BYTES {
+            return fail(Code::Bounds, "code exceeds its length bound");
+        } else {
+            return fail(Code::Malformed, "not an openagents-connect code");
+        };
+        if encoded.len() > MAX_PAYLOAD_TEXT_BYTES {
             return fail(Code::Bounds, "code exceeds its length bound");
         }
-        let encoded = text
-            .strip_prefix(PREFIX)
-            .ok_or_else(|| Error::new(Code::Malformed, "not an openagents-connect code"))?;
         let bytes = URL_SAFE_NO_PAD
             .decode(encoded)
             .map_err(|_| Error::new(Code::Malformed, "code is not unpadded base64url"))?;

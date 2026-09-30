@@ -573,6 +573,9 @@ final class MobileBridge: ObservableObject {
     /// Connect a computer: open the scanner, hand Rust a code, or close.
     func connectOpen() { send(["op": "connect_open"]) }
     func connectCode(_ value: String) { send(["op": "connect_code", "value": value]) }
+    /// The app was opened with a connect link (the desktop app's QR code,
+    /// read by the system camera): show Connect a computer and pair with it.
+    func connectLink(_ value: String) { send(["op": "connect_link", "value": value]) }
     func connectClose() { send(["op": "connect_close"]) }
     func connectNearby(_ id: String) { send(["op": "connect_nearby", "id": id]) }
 

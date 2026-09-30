@@ -12,6 +12,10 @@
 <dict>
 	<key>com.apple.developer.networking.multicast</key>
 	<true/>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:openagents.com</string>
+	</array>
 	<key>aps-environment</key>
 	<string>$(OPENAGENTS_APS_ENVIRONMENT)</string>
 </dict>
