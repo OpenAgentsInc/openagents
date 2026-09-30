@@ -311,3 +311,11 @@ and line height, row spacing, and bubble geometry for a mounted reader. The
 next update invalidates affected measurements. The defaults preserve existing
 reader geometry. A native field can likewise select bounded font, line,
 padding, and height metrics without changing editing or IME state.
+
+For measured designs, optional `Style.padding_points`, `gap_points`,
+`text_size`, `line_height`, `min_height`, and `button_padding` select exact
+logical-point dimensions. Explicit padding replaces semantic padding;
+button padding controls its horizontal and vertical content insets. A stack
+border reserves one point on each edge. View validation bounds all dimensions
+before an adapter lays out the tree. Existing semantic spacing and renderer
+defaults apply when these leaves are absent.

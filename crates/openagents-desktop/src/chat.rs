@@ -52,6 +52,7 @@ pub struct Panel {
     task_editor: BTreeMap<String, u64>,
     born: Instant,
     pub viewport: (f32, f32, f32),
+    pub column_width: f32,
     pub transcript: Transcript,
     fonts: Fonts,
     transcript_rows: Vec<Node<()>>,
@@ -82,7 +83,7 @@ impl Panel {
             saved_project: None,
             command_query: chat_field("Find a command or chat…"),
             command_token: String::new(),
-            search: chat_field("Search chats…"),
+            search: search_field(),
             rename: None,
             rename_pending: None,
             rename_focus: 0,
@@ -96,6 +97,7 @@ impl Panel {
             task_editor: BTreeMap::new(),
             born: now,
             viewport: (1200.0, 840.0, 1.0),
+            column_width: 768.0,
             transcript,
             fonts: Fonts::new(),
             transcript_rows: vec![],
@@ -1582,7 +1584,8 @@ impl Panel {
             .and_then(|id| self.fields.get(id))
             .map_or(56.0, |field| field.height(available));
         match resource {
-            COMMAND_QUERY | SEARCH | RENAME => Some((available, 56.0)),
+            SEARCH => Some((available, 28.0)),
+            COMMAND_QUERY | RENAME => Some((available, 56.0)),
             TRANSCRIPT => Some((
                 available,
                 (self.viewport.1
@@ -1989,14 +1992,6 @@ impl Panel {
                 Glyph::Paperclip,
                 false,
             ),
-            icon_button(
-                "chat-paste-image",
-                "Paste image or text",
-                Action::PasteImage,
-                !busy,
-                Glyph::Clipboard,
-                false,
-            ),
             text("chat-toolbar-space", "", TextRole::Status),
         ];
         if let Some(task) = task
@@ -2075,22 +2070,25 @@ impl Panel {
         if has_previews {
             content.push(stack("image-previews", Axis::Wrap, previews));
         }
-        let field_width =
-            (self.viewport.0 - crate::chrome::SIDEBAR_DEFAULT - 72.0).clamp(160.0, 704.0) - 80.0;
+        let field_width = (self.column_width - 114.0).max(1.0);
         let compact = !has_previews
             && task.is_none_or(|task| !task.active())
             && self.fields.get(&id).is_some_and(|field| {
-                !field.text().contains('\n') && field.height(field_width) <= 49.0
+                !field.text().contains('\n') && field.content_line_count(field_width - 16.0) == 1
             });
+        if let Some(field) = self.fields.get_mut(&id) {
+            field
+                .set_metrics(composer_metrics(compact))
+                .expect("valid composer metrics");
+        }
         let mut card = if compact {
             let attach = buttons.remove(0);
-            let paste = buttons.remove(0);
             buttons.remove(0); // Expanded-only flexible spacer.
             let send = buttons.pop().expect("composer send control");
             let mut card = stack(
                 "chat-composer-card",
                 Axis::Horizontal,
-                vec![attach, composer, paste, send],
+                vec![attach, composer, send],
             );
             card.style.padding_start = Some(Space::Sm);
             card.style.padding_end = Some(Space::Sm);
@@ -2098,10 +2096,8 @@ impl Panel {
             card
         } else {
             let mut toolbar = stack("chat-send-controls", Axis::Horizontal, buttons);
-            toolbar.style.padding_start = Some(Space::Sm);
-            toolbar.style.padding_end = Some(Space::Sm);
-            toolbar.style.padding_top = Some(Space::Xs);
-            toolbar.style.padding_bottom = Some(Space::Sm);
+            toolbar.style.padding_points = Some([2, 8, 8, 8]);
+            toolbar.style.min_height = Some(42);
             stack(
                 "chat-composer-card",
                 Axis::Vertical,
@@ -2111,7 +2107,7 @@ impl Panel {
         card.style.background = Some(openagents_chat_app::visual::COMPOSER);
         card.style.radius = Some(26);
         card.style.border = Some(openagents_chat_app::visual::COMPOSER_BORDER);
-        card.style.gap = Some(Space::None);
+        card.style.gap = Some(if compact { Space::Xs } else { Space::None });
         content.push(card);
         content.push(text(
             "chat-key-hint",
@@ -2134,17 +2130,40 @@ fn chat_transcript() -> Transcript {
     transcript
 }
 
+fn composer_metrics(compact: bool) -> rust_native_desktop::composer::field::Metrics {
+    rust_native_desktop::composer::field::Metrics {
+        font_size: 14.0,
+        line_height: 22.75,
+        padding: if compact {
+            [12.0, 8.0, 12.0, 8.0]
+        } else {
+            [16.0, 16.0, 4.0, 16.0]
+        },
+        min_height: if compact { 47.0 } else { 76.0 },
+        max_height: 260.0,
+    }
+}
+
+fn search_field() -> Field {
+    let mut field = chat_field("Filter sessions…");
+    field.set_unframed(true);
+    field
+        .set_metrics(rust_native_desktop::composer::field::Metrics {
+            font_size: 12.0,
+            line_height: 16.0,
+            padding: [6.0, 8.0, 6.0, 8.0],
+            min_height: 28.0,
+            max_height: 28.0,
+        })
+        .expect("valid filter metrics");
+    field
+}
+
 fn chat_field(placeholder: &str) -> Field {
     let mut field = Field::with_placeholder(placeholder);
     field.set_font_family(rust_native::layout::display::FontFamily::Geist);
     field
-        .set_metrics(rust_native_desktop::composer::field::Metrics {
-            font_size: 14.0,
-            line_height: 22.75,
-            padding: [12.0, 16.0, 12.0, 16.0],
-            min_height: 49.0,
-            max_height: 260.0,
-        })
+        .set_metrics(composer_metrics(true))
         .expect("valid composer metrics");
     field.set_colors(
         openagents_chat_app::visual::TEXT,

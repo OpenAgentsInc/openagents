@@ -283,17 +283,26 @@ fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
 fn stack(key: &str, axis: Axis, gap: Space, children: Vec<Node<Intent>>) -> Node<Intent> {
     let mut node = node(key, Element::Stack { axis, children });
     node.style.gap = Some(gap);
+    if key.starts_with("sidebar-group-")
+        || key.starts_with("project-group-")
+        || key == "sidebar-body"
+    {
+        node.style.gap_points = Some(2);
+    }
     node
 }
 
 fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
-    node(
+    let mut node = node(
         key,
         Element::Text {
             value: value.into(),
             role,
         },
-    )
+    );
+    node.style.text_size = Some(if role == TextRole::Heading { 11 } else { 12 });
+    node.style.line_height = Some(if role == TextRole::Heading { 14 } else { 16 });
+    node
 }
 
 fn action(
@@ -303,10 +312,12 @@ fn action(
     glyph: Option<Glyph>,
     selected: bool,
 ) -> Node<Intent> {
+    let label = label.into();
+    let multiline = label.contains('\n');
     let mut node = node(
         key,
         Element::Button {
-            label: label.into(),
+            label,
             enabled: true,
             icon: glyph.map(|glyph| Icon {
                 glyph,
@@ -321,6 +332,11 @@ fn action(
         foreground: Some(if selected { TEXT } else { MUTED }),
         align: Some(TextAlign::Start),
         weight: Some(TextWeight::Normal),
+        radius: Some(8),
+        text_size: Some(12),
+        line_height: Some(16),
+        button_padding: Some([8, 6]),
+        min_height: Some(if multiline { 45 } else { 28 }),
         ..Style::default()
     };
     node
@@ -346,50 +362,12 @@ fn icon_button(key: &str, label: &str, action: Action, glyph: Glyph) -> Node<Int
 }
 
 fn sidebar(state: &State) -> Node<Intent> {
-    let mut title = text("shell-brand", "OpenAgents", TextRole::Body);
-    title.style.weight = Some(TextWeight::Bold);
-    title.style.padding_start = Some(Space::Sm);
-    title.style.padding_top = Some(Space::Sm);
-    title.style.padding_bottom = Some(Space::Md);
-    let mut new = action(
-        "sidebar-new-chat",
-        "New chat",
-        Action::NewChat,
-        Some(Glyph::Compose),
-        false,
-    );
-    new.style.background = Some(CLEAR);
-    new.style.foreground = Some(TEXT);
-    let mut header_rows = vec![title, new];
-    if state.live {
-        let mut commands = node(
-            "sidebar-commands",
-            Element::Button {
-                label: "Commands · Cmd/Ctrl+K".into(),
-                enabled: true,
-                icon: Some(Icon {
-                    glyph: Glyph::Terminal,
-                    circular: false,
-                    pill: false,
-                }),
-                intent: Intent::Chat {
-                    action: crate::chat_action::Action::Palette,
-                },
-            },
-        );
-        commands.style = Style {
-            background: Some(SIDEBAR),
-            foreground: Some(MUTED),
-            align: Some(TextAlign::Start),
-            weight: Some(TextWeight::Normal),
-            ..Style::default()
-        };
-        header_rows.push(commands);
-        header_rows.push(node(
+    let header_rows = if state.live {
+        vec![node(
             "chat-search",
             Element::Composer {
                 token: "chat-search".into(),
-                placeholder: "Search chats…".into(),
+                placeholder: "Filter sessions…".into(),
                 max_bytes: 128,
                 enabled: true,
                 busy: false,
@@ -398,25 +376,12 @@ fn sidebar(state: &State) -> Node<Intent> {
                 draft: Some(state.search.clone()),
                 focus: false,
             },
-        ));
-    }
-    let header = stack("sidebar-header", Axis::Vertical, Space::Sm, header_rows);
-    let mut groups = vec![action(
-        "sidebar-grid",
-        "The Grid",
-        Action::Grid,
-        Some(Glyph::Cloud),
-        state.page == Page::Grid,
-    )];
-    if state.live {
-        groups.push(action(
-            "sidebar-saved",
-            "Saved sessions",
-            Action::Saved,
-            Some(Glyph::History),
-            state.page == Page::Saved,
-        ));
-    }
+        )]
+    } else {
+        vec![text("shell-brand", "OpenAgents", TextRole::Body)]
+    };
+    let header = stack("sidebar-header", Axis::Vertical, Space::None, header_rows);
+    let mut groups = vec![];
     for section in [
         Section::Pinned,
         Section::OpenAgents,
@@ -487,13 +452,20 @@ fn sidebar(state: &State) -> Node<Intent> {
             if closed { "+" } else { "−" },
             section.label()
         );
-        let mut rows = vec![action(
-            &format!("sidebar-section-{}", section.key()),
-            label,
-            Action::ToggleSection { section },
-            matches!(section, Section::OpenAgents | Section::Website).then_some(Glyph::Folder),
-            false,
-        )];
+        if count == 0 && matches!(section, Section::Pinned | Section::Archived) {
+            continue;
+        }
+        let mut rows = if state.live && section == Section::Recent {
+            vec![]
+        } else {
+            vec![action(
+                &format!("sidebar-section-{}", section.key()),
+                label,
+                Action::ToggleSection { section },
+                matches!(section, Section::OpenAgents | Section::Website).then_some(Glyph::Folder),
+                false,
+            )]
+        };
         if !closed {
             rows.extend(
                 state
@@ -521,33 +493,41 @@ fn sidebar(state: &State) -> Node<Intent> {
         ));
     }
     let body = stack("sidebar-body", Axis::Vertical, Space::Md, groups);
+    let mut command = icon_button(
+        "sidebar-commands",
+        "Commands · Cmd/Ctrl+K",
+        Action::NewChat,
+        Glyph::Terminal,
+    );
+    if let Element::Button { intent, .. } = &mut command.element {
+        *intent = Intent::Chat {
+            action: crate::chat_action::Action::Palette,
+        };
+    }
     let footer = stack(
         "sidebar-footer",
-        Axis::Vertical,
-        Space::Xs,
+        Axis::Horizontal,
+        Space::Sm,
         vec![
-            action(
+            icon_button(
                 "sidebar-computers",
                 "Phones and computers",
                 Action::Computers,
-                Some(Glyph::Computer),
-                state.page == Page::Computers,
+                Glyph::Computer,
             ),
-            action(
+            icon_button("sidebar-grid", "The Grid", Action::Grid, Glyph::Cloud),
+            icon_button(
+                "sidebar-saved",
+                "Saved sessions",
+                Action::Saved,
+                Glyph::History,
+            ),
+            command,
+            icon_button(
                 "sidebar-settings",
                 "Settings",
                 Action::Settings,
-                Some(Glyph::Menu),
-                state.page == Page::Settings,
-            ),
-            text(
-                "sidebar-preview",
-                if state.live {
-                    "Chats · on this computer"
-                } else {
-                    "Sample chats · on this computer"
-                },
-                TextRole::Status,
+                Glyph::Menu,
             ),
         ],
     );
@@ -643,15 +623,9 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             Page::Settings => "Settings".into(),
         }
     };
-    let subtitle = state
-        .selected()
-        .map_or("OpenAgents", |chat| match chat.section {
-            Section::OpenAgents => "OpenAgents / Project",
-            Section::Website => "Website / Project",
-            _ => "OpenAgents / Chat",
-        });
     let mut heading = text("shell-page-title", title, TextRole::Body);
-    heading.style.weight = Some(TextWeight::Bold);
+    heading.style.text_size = Some(12);
+    heading.style.line_height = Some(18);
     let mut header = stack(
         "shell-content-header",
         Axis::Horizontal,
@@ -667,15 +641,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 Action::ToggleSidebar,
                 Glyph::Menu,
             ),
-            stack(
-                "shell-page-heading",
-                Axis::Vertical,
-                Space::Xs,
-                vec![
-                    heading,
-                    text("shell-page-subtitle", subtitle, TextRole::Status),
-                ],
-            ),
+            heading,
             icon_button(
                 "shell-new-chat",
                 "New chat",
@@ -684,6 +650,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             ),
         ],
     );
+    header.style.min_height = Some(28);
     if state.live
         && state.selected().is_some()
         && !prompt

@@ -358,7 +358,26 @@ impl<I: Serialize> View<I> {
             if depth > MAX_DEPTH {
                 return Err(ViewError::DepthLimit);
             }
-            if node.style.radius.is_some_and(|radius| radius > 128) {
+            if node.style.radius.is_some_and(|radius| radius > 128)
+                || node
+                    .style
+                    .padding_points
+                    .is_some_and(|padding| padding.iter().any(|value| *value > 128))
+                || node
+                    .style
+                    .button_padding
+                    .is_some_and(|padding| padding.iter().any(|value| *value > 128))
+                || node.style.gap_points.is_some_and(|value| value > 400)
+                || node
+                    .style
+                    .text_size
+                    .is_some_and(|value| !(1..=400).contains(&value))
+                || node
+                    .style
+                    .line_height
+                    .is_some_and(|value| !(1..=800).contains(&value))
+                || node.style.min_height.is_some_and(|value| value > 4096)
+            {
                 return Err(ViewError::StyleBounds);
             }
             if !crate::valid_id(&node.key) {

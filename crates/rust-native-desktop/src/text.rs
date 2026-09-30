@@ -71,7 +71,7 @@ pub struct Fonts {
     shape: ShapeContext,
     scale: ScaleContext,
     faces: [FontRef<'static>; 20],
-    paragraphs: HashMap<(String, u64, u32), Rc<Paragraph>>,
+    paragraphs: HashMap<(String, u64, u32, u32), Rc<Paragraph>>,
     paragraph_bytes: usize,
     advances: HashMap<(String, u64), f32>,
     advance_bytes: usize,
@@ -122,10 +122,22 @@ impl Fonts {
     /// `text` in `font`, broken to fit `width` points, or only at hard line
     /// breaks when `width` is `None`.
     pub fn paragraph(&mut self, text: &str, font: Font, width: Option<f32>) -> Rc<Paragraph> {
+        self.paragraph_with_line_height(text, font, width, None)
+    }
+
+    /// Cache exact line boxes alongside text, face, and wrap width.
+    pub fn paragraph_with_line_height(
+        &mut self,
+        text: &str,
+        font: Font,
+        width: Option<f32>,
+        line_height: Option<f32>,
+    ) -> Rc<Paragraph> {
         let key = (
             text.to_string(),
             font_bits(font),
             width.map_or(u32::MAX, f32::to_bits),
+            line_height.map_or(0, f32::to_bits),
         );
         if let Some(paragraph) = self.paragraphs.get(&key) {
             return paragraph.clone();
@@ -135,7 +147,12 @@ impl Fonts {
             self.paragraph_bytes = 0;
         }
         self.paragraph_bytes += text.len();
-        let paragraph = Rc::new(self.break_lines(text, font, width));
+        let mut paragraph = self.break_lines(text, font, width);
+        if let Some(height) = line_height.filter(|height| height.is_finite() && *height > 0.0) {
+            paragraph.line_height = height;
+            paragraph.height = paragraph.lines.len() as f32 * height;
+        }
+        let paragraph = Rc::new(paragraph);
         self.paragraphs.insert(key, paragraph.clone());
         paragraph
     }

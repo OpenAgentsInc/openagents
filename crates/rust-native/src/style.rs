@@ -108,6 +108,24 @@ pub struct Style {
     /// Fill the remaining height of a bounded vertical container.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fill_height: Option<bool>,
+    /// Exact top, end, bottom, and start padding in logical points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub padding_points: Option<[u16; 4]>,
+    /// Exact spacing between children in logical points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_points: Option<u16>,
+    /// Text size in logical points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_size: Option<u16>,
+    /// Text line height in logical points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<u16>,
+    /// Minimum box height in logical points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_height: Option<u16>,
+    /// Horizontal and vertical button content insets in logical points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub button_padding: Option<[u16; 2]>,
 }
 
 /// A declaration contains only canonical leaf properties. A later explicit
@@ -127,6 +145,12 @@ pub struct StylePatch {
     pub radius: Patch<u16>,
     pub border: Patch<Color>,
     pub fill_height: Patch<bool>,
+    pub padding_points: Patch<[u16; 4]>,
+    pub gap_points: Patch<u16>,
+    pub text_size: Patch<u16>,
+    pub line_height: Patch<u16>,
+    pub min_height: Patch<u16>,
+    pub button_padding: Patch<[u16; 2]>,
 }
 
 impl StylePatch {
@@ -156,6 +180,12 @@ impl StylePatch {
             radius: self.radius.overlay(later.radius),
             border: self.border.overlay(later.border),
             fill_height: self.fill_height.overlay(later.fill_height),
+            padding_points: self.padding_points.overlay(later.padding_points),
+            gap_points: self.gap_points.overlay(later.gap_points),
+            text_size: self.text_size.overlay(later.text_size),
+            line_height: self.line_height.overlay(later.line_height),
+            min_height: self.min_height.overlay(later.min_height),
+            button_padding: self.button_padding.overlay(later.button_padding),
         }
     }
 
@@ -175,6 +205,12 @@ impl StylePatch {
             radius: self.radius.resolve(defaults.radius),
             border: self.border.resolve(defaults.border),
             fill_height: self.fill_height.resolve(defaults.fill_height),
+            padding_points: self.padding_points.resolve(defaults.padding_points),
+            gap_points: self.gap_points.resolve(defaults.gap_points),
+            text_size: self.text_size.resolve(defaults.text_size),
+            line_height: self.line_height.resolve(defaults.line_height),
+            min_height: self.min_height.resolve(defaults.min_height),
+            button_padding: self.button_padding.resolve(defaults.button_padding),
         }
     }
 }

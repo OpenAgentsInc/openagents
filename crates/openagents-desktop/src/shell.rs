@@ -194,6 +194,15 @@ impl DesktopApp {
 
     fn present(&mut self) {
         if let (Some(chat), Some(state)) = (&mut self.chat, &mut self.navigation) {
+            let leading = if state.collapsed {
+                0.0
+            } else {
+                state
+                    .sidebar_width
+                    .clamp(chrome::SIDEBAR_MIN, chrome::SIDEBAR_MAX)
+                    .min((chat.viewport.0 - 360.0).max(0.0))
+            };
+            chat.column_width = (chat.viewport.0 - leading - 56.0).clamp(1.0, 768.0);
             chat.show_saved(
                 state.page == Page::Saved,
                 self.model.project().map(|project| project.label.clone()),
@@ -1543,7 +1552,7 @@ mod tests {
                             if iteration % 2 == 0 {
                                 "sidebar-grid".into()
                             } else {
-                                "sidebar-new-chat".into()
+                                "shell-new-chat".into()
                             }
                         }),
                         ..Default::default()
@@ -2259,7 +2268,7 @@ mod chat_management {
         );
         for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
             let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
-            for key in ["chat-attach", "chat-paste-image", "chat-send", "chat-menu"] {
+            for key in ["chat-attach", "chat-send", "chat-menu"] {
                 let hit = scene.hits.iter().find(|h| h.key == key).unwrap();
                 assert!(hit.rect.y + hit.rect.h <= height, "{key}");
             }
@@ -2278,6 +2287,36 @@ mod command_fixtures {
     use super::*;
     use openagents_desktop::chat_action::Action as ChatAction;
     use rust_native_desktop::{App, input::TextInput};
+    #[test]
+    fn composer_wraps_and_collapses_without_losing_text_or_clipping_controls() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        key(&mut app, now, "n", true, false);
+        for (draft, expected) in [
+            ("Prompt with immediate spaces  ", 49.0),
+            ("First line\nSecond line  ", 120.0),
+        ] {
+            key(&mut app, now, "a", true, false);
+            app.text_input(TextInput::Commit(draft), now);
+            for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+                let (_, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+                let card = scene.bounds["chat-composer-card"];
+                assert_eq!(card.h, expected);
+                for node in ["chat-attach", "chat-send"] {
+                    let rect = scene.hits.iter().find(|hit| hit.key == node).unwrap().rect;
+                    assert!(rect.y >= card.y && rect.y + rect.h <= card.y + card.h);
+                }
+                assert!(!scene.hits.iter().any(|hit| hit.key == "chat-paste-image"));
+                assert_eq!(app.chat.as_ref().unwrap().draft(), draft);
+            }
+        }
+        key(&mut app, now, "a", true, false);
+        app.text_input(TextInput::Commit("x "), now);
+        app.navigation.as_mut().unwrap().collapsed = true;
+        app.present();
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+        assert_eq!(scene.bounds["chat-composer-card"].h, 49.0);
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "x ");
+    }
     fn key(app: &mut DesktopApp, now: Instant, key: &str, command: bool, shift: bool) {
         assert!(app.text_input(
             TextInput::Key {

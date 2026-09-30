@@ -374,12 +374,22 @@ struct Engine<'a> {
 
 /// Padding: top, end, bottom, start.
 fn padding(style: &Style) -> [f32; 4] {
-    [
-        space(style.padding_top),
-        space(style.padding_end),
-        space(style.padding_bottom),
-        space(style.padding_start),
-    ]
+    let border = if style.border.is_some() { 1.0 } else { 0.0 };
+    style
+        .padding_points
+        .map(|values| values.map(f32::from))
+        .unwrap_or([
+            space(style.padding_top),
+            space(style.padding_end),
+            space(style.padding_bottom),
+            space(style.padding_start),
+        ])
+        .map(|value| value + border)
+}
+fn button_padding(style: &Style) -> (f32, f32) {
+    style
+        .button_padding
+        .map_or(BUTTON_PAD, |[x, y]| (f32::from(x), f32::from(y)))
 }
 
 /// Whether a node keeps its own width in a stack rather than sharing the
@@ -531,7 +541,11 @@ impl Engine<'_> {
             TextRole::Code | TextRole::Terminal => (self.theme.code, Weight::Regular, true),
             TextRole::Body | TextRole::Markdown => (self.theme.body, Weight::Regular, false),
         };
-        let mut font = font(size, if bold { Weight::Bold } else { weight }, mono);
+        let mut font = font(
+            style.text_size.map_or(size, f32::from),
+            if bold { Weight::Bold } else { weight },
+            mono,
+        );
         font.family = self.theme.font_family;
         font
     }
@@ -559,13 +573,15 @@ impl Engine<'_> {
         } else {
             width.map(|width| width + 1.0)
         };
-        self.fonts.paragraph(value, font, width)
+        self.fonts
+            .paragraph_with_line_height(value, font, width, style.line_height.map(f32::from))
     }
 
     /// A node's width (at most `available`) and its height at that width.
     fn size<I>(&mut self, node: &Node<I>, available: f32) -> (f32, f32) {
         let [top, end, bottom, start] = padding(&node.style);
         let inner = (available - start - end).max(1.0);
+        let button_pad = button_padding(&node.style);
         let (w, h) = match &node.element {
             Element::Text { value, role } => {
                 let paragraph = self.paragraph(value, *role, &node.style, Some(inner));
@@ -619,15 +635,15 @@ impl Engine<'_> {
                             weight: node.style.weight.or(Some(TextWeight::Bold)),
                             ..node.style
                         },
-                        Some((inner - 2.0 * BUTTON_PAD.0 - icon_width).max(1.0)),
+                        Some((inner - 2.0 * button_pad.0 - icon_width).max(1.0)),
                     );
                     (
                         if node.style.align == Some(TextAlign::Start) {
                             inner
                         } else {
-                            paragraph.width + 2.0 * BUTTON_PAD.0 + icon_width
+                            paragraph.width + 2.0 * button_pad.0 + icon_width
                         },
-                        paragraph.height + 2.0 * BUTTON_PAD.1,
+                        paragraph.height + 2.0 * button_pad.1,
                     )
                 }
             }
@@ -688,11 +704,16 @@ impl Engine<'_> {
                 (paragraph.width, paragraph.height)
             }
         };
-        ((w + start + end).min(available), h + top + bottom)
+        (
+            (w + start + end).min(available),
+            (h + top + bottom).max(node.style.min_height.map_or(0.0, f32::from)),
+        )
     }
 
     fn gap<I>(&self, node: &Node<I>) -> f32 {
-        space(node.style.gap)
+        node.style
+            .gap_points
+            .map_or_else(|| space(node.style.gap), f32::from)
     }
 
     /// The width each child of a horizontal stack gets within `inner`.
@@ -1042,6 +1063,7 @@ impl Engine<'_> {
         y: f32,
         inner: f32,
     ) {
+        let button_pad = button_padding(&node.style);
         let hovered = self.interaction.hover.as_deref() == Some(node.key.as_str());
         let pressed = self.interaction.pressed.as_deref() == Some(node.key.as_str());
         let focused = self.interaction.focus.as_deref() == Some(node.key.as_str());
@@ -1222,7 +1244,7 @@ impl Engine<'_> {
                 label,
                 TextRole::Body,
                 &style,
-                Some((inner - 2.0 * BUTTON_PAD.0 - icon_width).max(1.0)),
+                Some((inner - 2.0 * button_pad.0 - icon_width).max(1.0)),
             );
             rect = Rect {
                 x,
@@ -1230,9 +1252,10 @@ impl Engine<'_> {
                 w: if node.style.align == Some(TextAlign::Start) {
                     inner
                 } else {
-                    paragraph.width + 2.0 * BUTTON_PAD.0 + icon_width
+                    paragraph.width + 2.0 * button_pad.0 + icon_width
                 },
-                h: paragraph.height + 2.0 * BUTTON_PAD.1,
+                h: (paragraph.height + 2.0 * button_pad.1)
+                    .max(node.style.min_height.map_or(0.0, f32::from)),
             };
             let pill = icon.is_some_and(|icon| icon.pill);
             let radius = if pill {
@@ -1258,8 +1281,8 @@ impl Engine<'_> {
             if let Some(icon) = icon {
                 self.scene.ops.push(Op::Glyph {
                     rect: Rect {
-                        x: x + BUTTON_PAD.0,
-                        y: y + BUTTON_PAD.1 + 1.0,
+                        x: x + button_pad.0,
+                        y: y + button_pad.1 + 1.0,
                         w: 16.0,
                         h: 16.0,
                     },
@@ -1267,11 +1290,12 @@ impl Engine<'_> {
                     color,
                 });
             }
+            let text_y = y + (rect.h - paragraph.height) / 2.0;
             self.text(
                 paragraph,
-                x + BUTTON_PAD.0 + icon_width,
-                y + BUTTON_PAD.1,
-                rect.w - 2.0 * BUTTON_PAD.0 - icon_width,
+                x + button_pad.0 + icon_width,
+                text_y,
+                rect.w - 2.0 * button_pad.0 - icon_width,
                 node.style.align.unwrap_or(TextAlign::Center),
                 color,
             );

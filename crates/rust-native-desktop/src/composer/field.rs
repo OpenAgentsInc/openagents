@@ -46,7 +46,7 @@ impl Default for Metrics {
 #[derive(Default)]
 struct HeightCache {
     text: Option<String>,
-    widths: Vec<(u32, f32)>,
+    widths: Vec<(u32, usize)>,
 }
 
 #[derive(Default)]
@@ -124,6 +124,18 @@ impl Field {
     }
     /// Grow from one line to eight lines, then scroll within the field.
     pub fn height(&self, width: f32) -> f32 {
+        (self.line_count(width) as f32 * self.metrics.line_height
+            + self.metrics.padding[0]
+            + self.metrics.padding[2])
+            .clamp(self.metrics.min_height, self.metrics.max_height)
+    }
+    /// Number of wrapped editing lines at the supplied content width.
+    pub fn line_count(&self, width: f32) -> usize {
+        self.content_line_count(width - self.metrics.padding[1] - self.metrics.padding[3])
+    }
+    /// Measure wrapping independently of the field's current insets and height.
+    pub fn content_line_count(&self, width: f32) -> usize {
+        let width = width.max(1.0);
         let text = self.text();
         {
             let cache = self.measured_height.borrow();
@@ -146,16 +158,12 @@ impl Field {
                 start16: 0,
                 end16: text.encode_utf16().count() as u32,
             }],
-            Some((width - self.metrics.padding[1] - self.metrics.padding[3]).max(1.0)),
+            Some(width),
         );
         let mut lines = measured.map_or(1, |measured| measured.lines.len().max(1));
         if text.ends_with('\n') {
             lines += 1;
         }
-        let height = (lines as f32 * self.metrics.line_height
-            + self.metrics.padding[0]
-            + self.metrics.padding[2])
-            .clamp(self.metrics.min_height, self.metrics.max_height);
         let mut cache = self.measured_height.borrow_mut();
         if cache.text.as_deref() != Some(text) {
             cache.text = Some(text.to_owned());
@@ -164,8 +172,8 @@ impl Field {
         if cache.widths.len() >= 8 {
             cache.widths.remove(0);
         }
-        cache.widths.push((width.to_bits(), height));
-        height
+        cache.widths.push((width.to_bits(), lines));
+        lines
     }
     pub fn start(&mut self, waker: crate::Waker) {
         self.waker = Some(waker);
