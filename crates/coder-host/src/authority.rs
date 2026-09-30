@@ -380,7 +380,11 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// Retry while another process holds the access store. Opening the store
 /// fails before any effect, so a retry cannot repeat one.
-fn busy_retry<T>(
+///
+/// # Errors
+/// The operation's own error, or `Conflict` once the store stays busy past
+/// the wait.
+pub fn busy_retry<T>(
     mut operation: impl FnMut() -> coder_access::Result<T>,
 ) -> coder_access::Result<T> {
     let started = Instant::now();

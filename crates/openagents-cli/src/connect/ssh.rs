@@ -1496,8 +1496,9 @@ fn ensure_host(
     if let Some(owner) = &remote.owner {
         let book = coder_host::access::host::Host::new(remote.state(), remote.policy());
         if book.state_path().exists() {
-            let current = book
-                .owner()
+            // The host this helper may adopt opens the same store as it
+            // serves; wait out its brief hold rather than refuse.
+            let current = coder_host::authority::busy_retry(|| book.owner())
                 .map_err(|error| format!("cannot read the host's owner: {error}"))?;
             if &current != owner {
                 return Err(format!(
