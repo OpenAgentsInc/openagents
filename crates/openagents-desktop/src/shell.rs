@@ -3178,6 +3178,85 @@ mod command_fixtures {
     use openagents_desktop::chat_action::Action as ChatAction;
     use rust_native_desktop::{App, input::TextInput};
     #[test]
+    fn rename_dialog_keeps_the_chat_mounted_and_preserves_the_draft() {
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            for scale in [1.0, 2.0] {
+                let (mut app, now) = super::tests::chat_fixture(0);
+                key(&mut app, now, "n", true, false);
+                app.text_input(TextInput::Commit("Keep this draft  "), now);
+                let (_, before) = rust_native_desktop::capture(&mut app, width, height, scale);
+                app.activate(
+                    Intent::Chat {
+                        action: ChatAction::Rename,
+                    },
+                    now,
+                );
+                let (frame, opened) = rust_native_desktop::capture(&mut app, width, height, scale);
+                let card = opened.bounds["chat-rename-controls"];
+                assert_eq!(card.w, 360.0);
+                assert!((card.x + card.w / 2.0 - width / 2.0).abs() < 0.01);
+                assert!((card.y + card.h / 2.0 - height / 2.0).abs() < 0.01);
+                for key in ["chat-transcript", "chat-composer-card"] {
+                    assert_eq!(opened.bounds[key], before.bounds[key]);
+                }
+                let field = opened.bounds["chat-rename-field"];
+                let input = opened.bounds["chat-rename"];
+                assert!(field.x > card.x && field.x + field.w < card.x + card.w);
+                assert!(input.h >= 22.75 && input.h < 24.0);
+                let cancel = opened.bounds["chat-cancel-name"];
+                let save = opened.bounds["chat-save-name"];
+                assert_eq!(cancel.h, 33.0);
+                assert_eq!(save.h, 33.0);
+                assert!((save.x - cancel.x - cancel.w - 8.0).abs() < 0.01);
+                assert!(opened.ops.iter().any(|op| matches!(op,
+                    rust_native_desktop::layout::Op::Text { paragraph, .. }
+                    if paragraph.text == "Rename chat" && paragraph.font.size == 15.0
+                        && paragraph.font.weight == rust_native::layout::display::Weight::Semibold)));
+                if let Some(path) = std::env::var_os("OPENAGENTS_RENAME_EVIDENCE") {
+                    let path = std::path::PathBuf::from(path);
+                    std::fs::create_dir_all(&path).unwrap();
+                    std::fs::write(
+                        path.join(format!("rename-{width}x{height}-{scale}x.png")),
+                        frame.png().unwrap(),
+                    )
+                    .unwrap();
+                }
+                assert!(!app.allows_focus("sidebar-profile"));
+                assert!(app.pointer_down(Some("sidebar-profile"), (8.0, 8.0), now));
+                assert!(app.chat.as_ref().unwrap().modal());
+                key(&mut app, now, "a", true, false);
+                app.text_input(
+                    TextInput::Preedit {
+                        text: "名前",
+                        selection: Some((0, 6)),
+                    },
+                    now,
+                );
+                key(&mut app, now, "Escape", false, false);
+                assert!(
+                    app.chat.as_ref().unwrap().modal(),
+                    "Escape first cancels composition"
+                );
+                key(&mut app, now, "Escape", false, false);
+                assert!(!app.chat.as_ref().unwrap().modal());
+                assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+                app.activate(
+                    Intent::Chat {
+                        action: ChatAction::Rename,
+                    },
+                    now,
+                );
+                key(&mut app, now, "Tab", false, false);
+                key(&mut app, now, "Enter", false, false);
+                assert!(
+                    !app.chat.as_ref().unwrap().modal(),
+                    "Cancel is first in button order"
+                );
+                assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+            }
+        }
+    }
+    #[test]
     fn profile_footer_matches_source_geometry_and_preserves_navigation() {
         use rust_native::layout::display::Weight;
         use rust_native_desktop::layout::Op;
@@ -3874,7 +3953,6 @@ mod command_fixtures {
             },
             now,
         );
-        key(&mut app, now, "Tab", false, false);
         key(&mut app, now, "Tab", false, false);
         key(&mut app, now, "Enter", false, false);
         assert!(
