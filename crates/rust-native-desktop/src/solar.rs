@@ -12,6 +12,7 @@ const COPY: &str = asset!("copy");
 fn asset(glyph: Glyph) -> Option<&'static str> {
     Some(match glyph {
         Glyph::Back => asset!("arrow-left"),
+        Glyph::Forward => asset!("arrow-right"),
         Glyph::Compose => asset!("pen-new-square"),
         Glyph::Edit => asset!("pen"),
         Glyph::Menu => asset!("sidebar-minimalistic-left"),
@@ -20,6 +21,7 @@ fn asset(glyph: Glyph) -> Option<&'static str> {
         Glyph::Computer => asset!("monitor"),
         Glyph::Cloud => asset!("cloud"),
         Glyph::Add => asset!("add-circle"),
+        Glyph::Plus => asset!("plus"),
         Glyph::ArrowUp => asset!("arrow-up"),
         Glyph::Paperclip => asset!("paperclip"),
         Glyph::Clipboard => COPY,

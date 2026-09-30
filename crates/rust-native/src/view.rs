@@ -188,6 +188,8 @@ pub struct Icon {
 pub enum Glyph {
     /// Go back to the previous screen.
     Back,
+    /// Go forward again after going back.
+    Forward,
     /// Start something new, such as a chat.
     Compose,
     /// Edit an item.
@@ -205,6 +207,8 @@ pub enum Glyph {
     Cloud,
     /// Add something, such as a computer.
     Add,
+    /// A plain plus, such as a titlebar's new-session control.
+    Plus,
     /// Submit or move up.
     ArrowUp,
     /// Return to the latest content below the viewport.
@@ -408,6 +412,17 @@ impl<I: Serialize> View<I> {
                 || node.style.button_detail.is_some_and(|detail| {
                     !(1..=400).contains(&detail.text_size)
                         || !(1..=800).contains(&detail.line_height)
+                })
+                || node.style.viewport.is_some_and(|viewport| {
+                    !(1..=4096).contains(&viewport.max_height)
+                        || viewport.fade > 128
+                        || !matches!(
+                            node.element,
+                            Element::Stack {
+                                axis: Axis::Vertical,
+                                ..
+                            }
+                        )
                 })
             {
                 return Err(ViewError::StyleBounds);

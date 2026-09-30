@@ -374,6 +374,18 @@ Control styles can set `glyph_size`, `glyph_gap`, and `glyph_color` independentl
 of the button's hit area. `monospace` selects the monospaced member of the
 application's font family. These tokens compose and reset through `StylePatch`;
 adapters document their support and preserve the control label as a fallback.
+A circular icon button takes an explicit `min_height` as its side, so a
+titlebar can draw compact 24-point controls; without it the adapter's icon size
+applies.
+
+An optional `Style.viewport` shows a vertical stack through a bounded, scrolled
+window: `max_height` (1–4096 points) caps the stack's height, the application's
+`offset` scrolls its content, including its padding, and `fade` (at most 128
+points) fades each edge that hides content toward the stack's background. The
+application owns the offset, so hover can never move rows; an adapter clamps it
+to the content, clips drawing and hit targets to the window, and reports the
+laid-out region. Other axes are invalid. An adapter without viewports lays out
+the whole stack.
 
 
 ## Button initials and text weights

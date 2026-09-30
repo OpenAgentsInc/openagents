@@ -28,7 +28,7 @@
 use crate::text::{Fonts, Paragraph, font};
 use crate::theme::{Theme, space};
 use rust_native::layout::display::Weight;
-use rust_native::style::{Color, Style, TextAlign, TextWeight};
+use rust_native::style::{Color, Style, TextAlign, TextWeight, Viewport};
 use rust_native::{Axis, Element, Glyph, Node, TextRole, View};
 use std::collections::BTreeSet;
 use std::rc::Rc;
@@ -135,6 +135,18 @@ pub struct Scene {
     pub unsupported: BTreeSet<&'static str>,
     /// Separate scroll regions and the resize seam in a split window.
     pub split: Option<SplitRegions>,
+    /// Application-scrolled viewports, in view order.
+    pub viewports: Vec<ViewportRegion>,
+}
+
+/// A laid-out [`Viewport`]: its visible rectangle, its scroll limit, and
+/// the applied offset, all in points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ViewportRegion {
+    pub key: String,
+    pub rect: Rect,
+    pub limit: f32,
+    pub offset: f32,
 }
 
 impl Scene {
@@ -343,6 +355,7 @@ pub fn lay_out_with_overlay<I>(
         interaction,
         scene,
         paint_clip: None,
+        viewport_content: false,
     };
     if overlay.placement == OverlayPlacement::Cover {
         let bounds = Rect {
@@ -484,6 +497,7 @@ pub fn lay_out_window<I>(
         interaction,
         scene: Scene::default(),
         paint_clip: None,
+        viewport_content: false,
     };
     let (_, content) = engine.size(&view.root, column);
     let top = if content + 2.0 * theme.margin <= height {
@@ -555,6 +569,7 @@ pub fn lay_out_with_layout<I>(
         interaction,
         scene: Scene::default(),
         paint_clip: None,
+        viewport_content: false,
     };
     if let Some(header) = header {
         engine.place_sized(header, 0.0, 0.0, width, header_height);
@@ -624,6 +639,8 @@ struct Engine<'a> {
     interaction: &'a Interaction,
     scene: Scene,
     paint_clip: Option<Rect>,
+    /// The next size or placement is a viewport's whole scrolled content.
+    viewport_content: bool,
 }
 
 /// Padding: top, end, bottom, start.
@@ -648,6 +665,12 @@ fn button_padding(style: &Style) -> (f32, f32) {
 
 /// Whether a node keeps its own width in a stack rather than sharing the
 /// stack's.
+/// A circular icon button's side: its minimum height when set, as a compact
+/// titlebar control, and the theme's icon size otherwise.
+fn control_side(style: &Style, theme: &Theme) -> f32 {
+    style.min_height.map_or(theme.icon_size, f32::from)
+}
+
 fn keeps_width<I>(node: &Node<I>) -> bool {
     if let Some(intrinsic) = node.style.intrinsic_width {
         return intrinsic;
@@ -908,6 +931,12 @@ impl Engine<'_> {
 
     /// A node's width (at most `available`) and its height at that width.
     fn size<I>(&mut self, node: &Node<I>, available: f32) -> (f32, f32) {
+        let content = std::mem::take(&mut self.viewport_content);
+        if let Some(viewport) = node.style.viewport.filter(|_| !content) {
+            self.viewport_content = true;
+            let (w, h) = self.size(node, available);
+            return (w, h.min(f32::from(viewport.max_height)));
+        }
         let [top, end, bottom, start] = padding(&node.style);
         let inner = (available - start - end).max(1.0);
         let button_pad = button_padding(&node.style);
@@ -946,7 +975,8 @@ impl Engine<'_> {
                         paragraph.height.max(CHECKBOX),
                     )
                 } else if icon.is_some_and(|icon| icon.circular) {
-                    (self.theme.icon_size, self.theme.icon_size)
+                    let side = control_side(&node.style, self.theme);
+                    (side, side)
                 } else if transparent(node.style.background) && node.style.button_avatar.is_none() {
                     let icon_width = if let Some(avatar) = node.style.button_avatar {
                         f32::from(avatar.size) + f32::from(node.style.glyph_gap.unwrap_or(8))
@@ -1115,12 +1145,83 @@ impl Engine<'_> {
         placed
     }
 
+    /// Places a viewport's whole content scrolled by the application's offset,
+    /// clipped to `rect`, with a fade on each edge that hides content.
+    fn place_viewport<I>(&mut self, node: &Node<I>, viewport: Viewport, rect: Rect) {
+        self.viewport_content = true;
+        let (_, full) = self.size(node, rect.w);
+        let limit = (full - rect.h).max(0.0);
+        let offset = f32::from(viewport.offset).min(limit);
+        let clip = self.paint_clip.map_or(rect, |outer| intersect(outer, rect));
+        self.scene.ops.push(Op::PushClip(clip));
+        let first_hit = self.scene.hits.len();
+        let previous = self.paint_clip.replace(clip);
+        self.viewport_content = true;
+        self.place_sized(node, rect.x, rect.y - offset, rect.w, full);
+        self.paint_clip = previous;
+        for hit in &mut self.scene.hits[first_hit..] {
+            hit.clip = Some(hit.clip.map_or(clip, |inner| intersect(inner, clip)));
+        }
+        if let Some(color) = node.style.background.filter(|color| color.alpha > 0) {
+            let depth = f32::from(viewport.fade).min(rect.h / 2.0);
+            let bands = depth.floor() as u16;
+            for band in 0..bands {
+                // Opaque at the edge, clear at the fade's depth: over the
+                // stack's own background this matches fading the content.
+                let alpha = f32::from(color.alpha) * (1.0 - (f32::from(band) + 0.5) / depth);
+                let color = Color {
+                    alpha: alpha.round().clamp(0.0, 255.0) as u8,
+                    ..color
+                };
+                for (hidden, y) in [
+                    (offset > 0.0, rect.y + f32::from(band)),
+                    (offset < limit, rect.y + rect.h - f32::from(band) - 1.0),
+                ] {
+                    if hidden && color.alpha > 0 {
+                        self.scene.ops.push(Op::Fill {
+                            rect: Rect {
+                                x: rect.x,
+                                y,
+                                w: rect.w,
+                                h: 1.0,
+                            },
+                            radius: 0.0,
+                            color,
+                        });
+                    }
+                }
+            }
+        }
+        self.scene.ops.push(Op::PopClip);
+        self.scene.bounds.insert(node.key.clone(), rect);
+        self.scene.viewports.push(ViewportRegion {
+            key: node.key.clone(),
+            rect: clip,
+            limit,
+            offset,
+        });
+    }
+
     /// Places `node` at `x`, `y` in a box `width` points wide.
     fn place<I>(&mut self, node: &Node<I>, x: f32, y: f32, width: f32) {
         let (_, height) = self.size(node, width);
         self.place_sized(node, x, y, width, height);
     }
     fn place_sized<I>(&mut self, node: &Node<I>, x: f32, y: f32, width: f32, height: f32) {
+        let content = std::mem::take(&mut self.viewport_content);
+        if let Some(viewport) = node.style.viewport.filter(|_| !content) {
+            self.place_viewport(
+                node,
+                viewport,
+                Rect {
+                    x,
+                    y,
+                    w: width,
+                    h: height,
+                },
+            );
+            return;
+        }
         self.scene.bounds.insert(
             node.key.clone(),
             Rect {
@@ -1546,11 +1647,12 @@ impl Engine<'_> {
                 h: height,
             };
         } else if let Some(icon) = icon.filter(|icon| icon.circular) {
+            let side = control_side(&node.style, &theme);
             rect = Rect {
                 x,
                 y,
-                w: theme.icon_size,
-                h: theme.icon_size,
+                w: side,
+                h: side,
             };
             let base = node.style.background.unwrap_or(theme.button);
             let color = node.style.foreground.unwrap_or(theme.text);
@@ -1566,7 +1668,7 @@ impl Engine<'_> {
             if base.alpha > 0 || (hovered && enabled) || (pressed && enabled) {
                 self.scene.ops.push(Op::Fill {
                     rect,
-                    radius: node.style.radius.map_or(theme.icon_size / 2.0, f32::from),
+                    radius: node.style.radius.map_or(side / 2.0, f32::from),
                     color: if !enabled {
                         mix(base, theme.background, theme.opacity.disabled_fill)
                     } else if (hovered || pressed) && node.style.hover_background.is_some() {
@@ -1584,26 +1686,10 @@ impl Engine<'_> {
             }
             self.scene.ops.push(Op::Glyph {
                 rect: Rect {
-                    x: x + (theme.icon_size
-                        - node
-                            .style
-                            .glyph_size
-                            .map_or(theme.icon_size / 2.0, f32::from))
-                        / 2.0,
-                    y: y + (theme.icon_size
-                        - node
-                            .style
-                            .glyph_size
-                            .map_or(theme.icon_size / 2.0, f32::from))
-                        / 2.0,
-                    w: node
-                        .style
-                        .glyph_size
-                        .map_or(theme.icon_size / 2.0, f32::from),
-                    h: node
-                        .style
-                        .glyph_size
-                        .map_or(theme.icon_size / 2.0, f32::from),
+                    x: x + (side - node.style.glyph_size.map_or(side / 2.0, f32::from)) / 2.0,
+                    y: y + (side - node.style.glyph_size.map_or(side / 2.0, f32::from)) / 2.0,
+                    w: node.style.glyph_size.map_or(side / 2.0, f32::from),
+                    h: node.style.glyph_size.map_or(side / 2.0, f32::from),
                 },
                 glyph: icon.glyph,
                 set: theme.icons,
@@ -1943,6 +2029,92 @@ mod tests {
             600.0,
             800.0,
         )
+    }
+
+    #[test]
+    fn a_viewport_clips_scrolls_fades_and_bounds_its_rows() {
+        let results = |offset: u16| {
+            let rows = (0..20)
+                .map(|index| {
+                    let mut row = button(&format!("row-{index}"), "Row", None);
+                    row.style.min_height = Some(30);
+                    row.style.button_padding = Some([8, 4]);
+                    row
+                })
+                .collect();
+            let mut list = node(
+                "results",
+                Style::default(),
+                Element::Stack {
+                    axis: Axis::Vertical,
+                    children: rows,
+                },
+            );
+            list.style.padding_points = Some([8, 8, 8, 8]);
+            list.style.gap_points = Some(2);
+            list.style.background = Some(Color::rgb(16, 16, 16));
+            list.style.viewport = Some(Viewport {
+                max_height: 200,
+                offset,
+                fade: 18,
+            });
+            node(
+                "panel",
+                Style::default(),
+                Element::Stack {
+                    axis: Axis::Vertical,
+                    children: vec![text("header", "Search"), list, text("footer", "Close")],
+                },
+            )
+        };
+        let full = 8.0 + 20.0 * 30.0 + 19.0 * 2.0 + 8.0;
+        let top = lay_out(results(0));
+        let rect = top.bounds["results"];
+        assert_eq!(rect.h, 200.0);
+        assert_eq!(top.bounds["footer"].y, rect.y + 200.0);
+        assert_eq!(
+            top.viewports,
+            vec![ViewportRegion {
+                key: "results".into(),
+                rect,
+                limit: full - 200.0,
+                offset: 0.0,
+            }]
+        );
+        assert_eq!(top.bounds["row-0"].y, rect.y + 8.0);
+        let fades = |scene: &Scene| {
+            scene
+                .ops
+                .iter()
+                .filter(|op| matches!(op, Op::Fill { rect: fill, .. } if fill.h == 1.0 && fill.w == rect.w))
+                .count()
+        };
+        // Only the bottom edge hides rows at the top of the list.
+        assert_eq!(fades(&top), 18);
+        // A row below the window is not a hit target through the clip.
+        let hidden = top.bounds["row-10"];
+        assert!(hidden.y > rect.y + rect.h);
+        assert!(top.hit(hidden.x + 4.0, hidden.y + 4.0).is_none());
+        let middle = lay_out(results(100));
+        assert_eq!(middle.bounds["row-0"].y, rect.y + 8.0 - 100.0);
+        assert_eq!(middle.bounds["results"], rect);
+        assert_eq!(fades(&middle), 36);
+        let row = middle.bounds["row-5"];
+        assert_eq!(
+            middle
+                .hit(row.x + 4.0, row.y + 4.0)
+                .map(|hit| hit.key.as_str()),
+            Some("row-5")
+        );
+        // A partly hidden row answers only inside the window.
+        let edge = middle.bounds["row-2"];
+        assert!(edge.y < rect.y && edge.y + edge.h > rect.y);
+        assert!(middle.hit(edge.x + 4.0, edge.y + 1.0).is_none());
+        // Offsets past the end clamp to the content.
+        let end = lay_out(results(u16::MAX));
+        assert_eq!(end.viewports[0].offset, full - 200.0);
+        assert_eq!(end.bounds["row-19"].y + 30.0 + 8.0, rect.y + 200.0);
+        assert_eq!(fades(&end), 18);
     }
 
     #[test]

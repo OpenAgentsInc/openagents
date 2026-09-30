@@ -75,6 +75,9 @@ pub enum Action {
     /// Settings' update button: restart into a waiting build, or open a
     /// newer package's download.
     Update,
+    /// The titlebar's history controls: the previous or next visited page.
+    Back,
+    Forward,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,7 +126,13 @@ pub struct State {
     pub settings: crate::settings::Settings,
     next_chat: u64,
     settings_return: Page,
+    /// Pages visited in this window, oldest first, and the current one.
+    history: Vec<Page>,
+    at: usize,
 }
+
+/// The most visited pages the titlebar's Back and Forward remember.
+const HISTORY_LIMIT: usize = 64;
 
 impl Default for State {
     fn default() -> Self {
@@ -226,6 +235,8 @@ impl Default for State {
                 })
                 .collect(),
             next_chat: 18,
+            history: vec![],
+            at: 0,
         }
     }
 }
@@ -292,9 +303,55 @@ impl State {
                     self.page = Page::Settings;
                 }
             }
-            // The shell runs it; the page stays.
-            Action::Update => {}
+            // The shell runs these; the page stays.
+            Action::Update | Action::Back | Action::Forward => {}
         }
+    }
+
+    /// Remembers the current page after navigation. Returning to a page
+    /// by Back or Forward keeps the pages after it; visiting a new page
+    /// drops them, as in a browser.
+    pub fn record(&mut self) {
+        if self.page == Page::Chat(0) || self.history.get(self.at) == Some(&self.page) {
+            return;
+        }
+        if !self.history.is_empty() {
+            self.history.truncate(self.at + 1);
+        }
+        self.history.push(self.page);
+        if self.history.len() > HISTORY_LIMIT {
+            self.history.remove(0);
+        }
+        self.at = self.history.len() - 1;
+    }
+
+    /// The page Back (`false`) or Forward (`true`) returns to, moving the
+    /// history there. Conversations that have since left the list are skipped.
+    pub fn step(&mut self, forward: bool) -> Option<Page> {
+        let mut at = self.at;
+        loop {
+            at = if forward {
+                at.checked_add(1).filter(|at| *at < self.history.len())?
+            } else {
+                at.checked_sub(1)?
+            };
+            let page = self.history[at];
+            if !matches!(page, Page::Chat(id) if !self.chats.iter().any(|chat| chat.id == id)) {
+                self.at = at;
+                return Some(page);
+            }
+        }
+    }
+
+    fn can_step(&self, forward: bool) -> bool {
+        let pages = if forward {
+            self.history.get(self.at + 1..).unwrap_or_default()
+        } else {
+            &self.history[..self.at.min(self.history.len())]
+        };
+        pages.iter().any(
+            |page| !matches!(page, Page::Chat(id) if !self.chats.iter().any(|chat| chat.id == *id)),
+        )
     }
 
     pub fn resize(&mut self, width: f32) {
@@ -413,6 +470,37 @@ fn icon_button(key: &str, label: &str, action: Action, glyph: Glyph) -> Node<Int
     );
     node.style.background = Some(CLEAR);
     node.style.foreground = Some(MUTED);
+    node
+}
+
+/// A 24-point titlebar control with Zeron's 11% hover wash; a disabled
+/// history control keeps its place with its arrow at 35% of the muted ink.
+fn cluster_button(
+    key: &str,
+    label: &str,
+    action: Action,
+    glyph: Glyph,
+    enabled: bool,
+) -> Node<Intent> {
+    let mut node = icon_button(key, label, action, glyph);
+    if let Element::Button { enabled: on, .. } = &mut node.element {
+        *on = enabled;
+    }
+    node.style.min_height = Some(24);
+    node.style.radius = Some(6);
+    node.style.glyph_size = Some(16);
+    node.style.hover_background = Some(SELECTED);
+    if !enabled {
+        node.style.glyph_color = Some(Color { alpha: 89, ..MUTED });
+    }
+    node
+}
+
+/// Fixed horizontal space in the titlebar.
+fn gap(key: &str, width: u16) -> Node<Intent> {
+    let mut node = stack(key, Axis::Horizontal, Space::None, vec![]);
+    node.style.padding_points = Some([0, 0, 0, width.min(128)]);
+    node.style.intrinsic_width = Some(true);
     node
 }
 
@@ -708,57 +796,134 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             Page::Settings => "Settings".into(),
         }
     };
+    // Zeron's unified titlebar (`render_titlebar_cluster`,
+    // `render_session_title_bar`): after the window controls, a 24-point
+    // sidebar toggle, then Back and Forward on a 2-point rhythm, and the
+    // new-session plus while a conversation is open, each group 8 points
+    // apart. The title starts past the sidebar's 16-point gutter.
+    let chat_page = matches!(state.page, Page::Chat(_)) && !prompt;
+    let session = chat_page && state.selected().is_some();
+    let mut toggle = cluster_button(
+        "shell-toggle-sidebar",
+        if state.collapsed {
+            "Show sidebar"
+        } else {
+            "Hide sidebar"
+        },
+        Action::ToggleSidebar,
+        Glyph::Menu,
+        true,
+    );
+    toggle.style.glyph_size = Some(16);
+    let cluster_start: u16 = if cfg!(target_os = "macos") {
+        if state.fullscreen { 12 } else { 88 }
+    } else {
+        10
+    };
+    let mut cluster = vec![
+        toggle,
+        gap("shell-titlebar-group-gap", 8),
+        cluster_button(
+            "shell-back",
+            "Back",
+            Action::Back,
+            Glyph::Back,
+            state.can_step(false),
+        ),
+        gap("shell-titlebar-history-gap", 2),
+        cluster_button(
+            "shell-forward",
+            "Forward",
+            Action::Forward,
+            Glyph::Forward,
+            state.can_step(true),
+        ),
+    ];
+    let mut cluster_end = f32::from(cluster_start) + 24.0 * 3.0 + 8.0 + 2.0;
+    // Zeron hides the plus on its blank new-session canvas and outside
+    // chats. OpenAgents keeps it, so New chat stays one visible,
+    // accessible control on every page.
+    {
+        cluster.push(gap("shell-titlebar-new-gap", 8));
+        cluster.push(cluster_button(
+            "shell-new-chat",
+            "New chat",
+            Action::NewChat,
+            Glyph::Plus,
+            true,
+        ));
+        cluster_end += 32.0;
+    }
+    let sidebar_width = if state.collapsed {
+        0.0
+    } else {
+        state.sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX)
+    };
+    // The title follows the controls by the 12-point identity gap, and
+    // otherwise begins 16 points into the conversation beside the sidebar.
+    let title_start = (sidebar_width + 16.0).max(cluster_end + 12.0);
+    let mut lead = title_start - cluster_end;
+    let mut part = 0;
+    while lead > 0.0 {
+        let width = lead.min(128.0);
+        cluster.push(gap(
+            &format!("shell-titlebar-title-gap-{part}"),
+            width as u16,
+        ));
+        lead -= width;
+        part += 1;
+    }
     let mut heading = text("shell-page-title", title, TextRole::Body);
     heading.style.text_size = Some(12);
     heading.style.line_height = Some(18);
-    let mut header = stack(
-        "shell-titlebar",
+    heading.style.weight = Some(TextWeight::Medium);
+    heading.style.foreground = Some(Color { alpha: 217, ..TEXT });
+    let mut identity = vec![heading];
+    if session
+        && let Some(project) = state
+            .selected()
+            .and_then(|chat| state.projects.get(&chat.id))
+    {
+        let mut target = text("shell-page-target", project.clone(), TextRole::Body);
+        target.style.text_size = Some(12);
+        target.style.line_height = Some(18);
+        target.style.weight = Some(TextWeight::Normal);
+        target.style.foreground = Some(Color {
+            alpha: 128,
+            ..MUTED
+        });
+        identity.push(target);
+    }
+    let mut identity = stack(
+        "shell-titlebar-identity",
         Axis::Horizontal,
-        Space::Sm,
-        vec![
-            icon_button(
-                "shell-toggle-sidebar",
-                if state.collapsed {
-                    "Show sidebar"
-                } else {
-                    "Hide sidebar"
-                },
-                Action::ToggleSidebar,
-                Glyph::Menu,
-            ),
-            heading,
-            icon_button(
-                "shell-new-chat",
-                "New chat",
-                Action::NewChat,
-                Glyph::Compose,
-            ),
-        ],
+        Space::None,
+        identity,
     );
+    identity.style.gap_points = Some(6);
+    identity.style.padding_points = Some([0, 8, 0, 0]);
+    cluster.push(identity);
+    let mut header = stack("shell-titlebar", Axis::Horizontal, Space::None, cluster);
+    header.style.gap_points = Some(0);
     header.style.min_height = Some(38);
-    header.style.padding_points = Some([
-        4,
-        10,
-        0,
-        if cfg!(target_os = "macos") && !state.fullscreen {
-            88
-        } else {
-            12
-        },
-    ]);
+    header.style.padding_points = Some([4, 6, 0, cluster_start]);
     header.style.background = Some(SIDEBAR);
     if state.live
-        && state.selected().is_some()
-        && !prompt
-        && matches!(state.page, Page::Chat(_))
+        && session
         && let Element::Stack { children, .. } = &mut header.element
     {
+        // OpenAgents keeps its chat actions in one trailing 28-point header
+        // control, drawn as Zeron's header icon buttons.
         let mut menu = icon_button("chat-menu", "Chat actions", Action::NewChat, Glyph::More);
         if let Element::Button { intent, .. } = &mut menu.element {
             *intent = Intent::Chat {
                 action: crate::chat_action::Action::Menu,
             };
         }
+        menu.style.min_height = Some(28);
+        menu.style.radius = Some(6);
+        menu.style.glyph_size = Some(16);
+        menu.style.hover_background = Some(SELECTED);
         children.push(menu);
     }
     let show_engine = state.live

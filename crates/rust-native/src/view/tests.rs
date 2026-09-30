@@ -906,3 +906,48 @@ fn button_avatars_are_bounded_serializable_presentation() {
         assert_eq!(invalid.validate().unwrap_err(), ViewError::StyleBounds);
     }
 }
+
+#[test]
+fn a_viewport_round_trips_and_is_bounded_to_vertical_stacks() {
+    use crate::style::Viewport;
+    let viewport = Viewport {
+        max_height: 360,
+        offset: 120,
+        fade: 18,
+    };
+    let stack = |axis| Node {
+        key: "results".into(),
+        style: Style {
+            viewport: Some(viewport),
+            ..Style::default()
+        },
+        element: Element::<()>::Stack {
+            axis,
+            children: vec![],
+        },
+    };
+    let view = View::new("viewport", 1, stack(Axis::Vertical));
+    let validated = view.clone().validate().unwrap();
+    let decoded = View::<()>::from_json(&validated.to_json().unwrap()).unwrap();
+    assert_eq!(decoded.view().root.style.viewport, Some(viewport));
+    for bad in [
+        Viewport {
+            max_height: 0,
+            ..viewport
+        },
+        Viewport {
+            max_height: 4097,
+            ..viewport
+        },
+        Viewport {
+            fade: 129,
+            ..viewport
+        },
+    ] {
+        let mut invalid = view.clone();
+        invalid.root.style.viewport = Some(bad);
+        assert_eq!(invalid.validate().unwrap_err(), ViewError::StyleBounds);
+    }
+    let horizontal = View::new("viewport", 1, stack(Axis::Horizontal));
+    assert_eq!(horizontal.validate().unwrap_err(), ViewError::StyleBounds);
+}

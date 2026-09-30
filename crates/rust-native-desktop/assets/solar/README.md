@@ -6,3 +6,7 @@ These unmodified Linear SVG assets come from the public
 [Zeron reference](https://github.com/zeronsh/zeron/tree/50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4/crates/ui/assets/icons).
 The Rust Native adapter renders the embedded assets locally and tints them at
 paint time. Rendering normalizes the SVG viewport dimensions to 24 points.
+
+`plus.svg` is not a Solar asset: it is the reference's own 16-point plus from
+the same MIT-licensed directory, used unmodified for the titlebar's new-chat
+control.

@@ -818,7 +818,7 @@ impl<A: App> Shell<A> {
                 if clip == split.leading.rect {
                     self.interaction.leading_scroll =
                         (split.leading.offset + delta).clamp(0.0, split.leading.limit);
-                } else {
+                } else if clip == split.content.rect {
                     self.interaction.content_scroll =
                         (split.content.offset + delta).clamp(0.0, split.content.limit);
                 }

@@ -331,6 +331,9 @@ impl DesktopApp {
             chat.sync_sidebar(state);
             state.settings.set_archived(chat.archived());
         }
+        if let Some(state) = &mut self.navigation {
+            state.record();
+        }
         let mut root = self.navigation.as_ref().map_or_else(
             || root(&self.model, unix_now()),
             |state| chrome::root(state, &self.model, unix_now()),
@@ -818,6 +821,26 @@ impl App for DesktopApp {
             return;
         }
         if let Intent::Navigate { action } = intent {
+            if matches!(action, chrome::Action::Back | chrome::Action::Forward) {
+                let page = self
+                    .navigation
+                    .as_mut()
+                    .and_then(|state| state.step(action == chrome::Action::Forward));
+                let action = match page {
+                    Some(Page::Chat(id)) => Some(chrome::Action::SelectChat { id }),
+                    Some(Page::Saved) => Some(chrome::Action::Saved),
+                    Some(Page::Grid) => Some(chrome::Action::Grid),
+                    Some(Page::Computers) => Some(chrome::Action::Computers),
+                    Some(Page::Settings) => Some(chrome::Action::Settings),
+                    None => None,
+                };
+                if let Some(action) = action {
+                    self.activate(Intent::Navigate { action }, now);
+                } else {
+                    self.present();
+                }
+                return;
+            }
             if action == chrome::Action::Update {
                 crate::updates::act();
                 self.present();
@@ -916,6 +939,17 @@ impl App for DesktopApp {
     ) -> bool {
         if let rust_native_desktop::input::NativeInput::Focus(focused) = event {
             self.focused = focused;
+        }
+        // An open command overlay owns the wheel, as Zeron's scrim does: the
+        // palette's results scroll, and the conversation beneath never does.
+        if let rust_native_desktop::input::NativeInput::Wheel { x, y, lines } = event
+            && let Some(chat) = self.chat.as_mut()
+            && chat.commands_open()
+        {
+            if chat.wheel_commands((x, y), lines * 40.0) {
+                self.present();
+            }
+            return true;
         }
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
@@ -2969,10 +3003,10 @@ mod chat_management {
                 assert_eq!(toggle.rect.y + toggle.rect.h / 2.0, 21.0);
                 assert!(
                     toggle.rect.x
-                        >= if cfg!(target_os = "macos") && !fullscreen {
-                            88.0
+                        >= if cfg!(target_os = "macos") {
+                            if fullscreen { 12.0 } else { 88.0 }
                         } else {
-                            12.0
+                            10.0
                         }
                 );
                 let composer = scene.bounds["chat-composer"];
@@ -2980,6 +3014,125 @@ mod chat_management {
                 assert_eq!(composer.h, 47.0);
             }
         }
+    }
+
+    #[test]
+    fn titlebar_matches_zeron_controls_and_steps_through_visited_chats() {
+        let now = Instant::now();
+        let (mut app, _) = DesktopApp::performance_fixture(0, 3, now);
+        let start = if cfg!(target_os = "macos") {
+            88.0
+        } else {
+            10.0
+        };
+        let hit = |scene: &rust_native_desktop::layout::Scene, key: &str| {
+            scene
+                .hits
+                .iter()
+                .find(|hit| hit.key == key)
+                .unwrap_or_else(|| panic!("{key}"))
+                .clone()
+        };
+        let ids: Vec<u64> = app
+            .navigation
+            .as_ref()
+            .unwrap()
+            .chats
+            .iter()
+            .map(|chat| chat.id)
+            .collect();
+        assert!(ids.len() >= 3);
+        for (width, height, scale) in [(1200.0, 840.0, 1.0), (760.0, 540.0, 2.0)] {
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+            if let Some(path) = std::env::var_os("OPENAGENTS_COMMAND_CAPTURE_DIR") {
+                let path = std::path::PathBuf::from(path);
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(
+                    path.join(format!("titlebar-{width}x{height}-{scale}x.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+            // Zeron: a 24-point sidebar toggle, Back and Forward two points
+            // apart, and the plus, groups eight points apart, centered 21
+            // points down the 38-point titlebar.
+            let expected = [
+                ("shell-toggle-sidebar", start),
+                ("shell-back", start + 32.0),
+                ("shell-forward", start + 58.0),
+                ("shell-new-chat", start + 90.0),
+            ];
+            for (key, x) in expected {
+                let control = hit(&scene, key);
+                assert_eq!(
+                    (control.rect.x, control.rect.w, control.rect.h),
+                    (x, 24.0, 24.0),
+                    "{key}"
+                );
+                assert_eq!(control.rect.y + 12.0, 21.0, "{key}");
+            }
+            // The title begins 16 points past the 256-point sidebar.
+            let title = scene.bounds["shell-page-title"];
+            assert_eq!(title.x, (256.0_f32 + 16.0).max(start + 126.0));
+            let menu = hit(&scene, "chat-menu");
+            assert_eq!((menu.rect.w, menu.rect.h), (28.0, 28.0));
+            assert_eq!(menu.rect.x + 28.0 + 6.0, width);
+            let heading = scene
+                .ops
+                .iter()
+                .find_map(|op| match op {
+                    rust_native_desktop::layout::Op::Text {
+                        paragraph, color, ..
+                    } if paragraph.text
+                        == app.navigation.as_ref().unwrap().selected().unwrap().title =>
+                    {
+                        Some((paragraph.font.size, paragraph.font.weight, color.alpha))
+                    }
+                    _ => None,
+                })
+                .expect("title text");
+            assert_eq!(
+                heading,
+                (12.0, rust_native::layout::display::Weight::Medium, 217)
+            );
+        }
+        let visit = |app: &mut DesktopApp, id: u64| {
+            app.activate(
+                Intent::Navigate {
+                    action: chrome::Action::SelectChat { id },
+                },
+                now,
+            );
+        };
+        let page = |app: &DesktopApp| app.navigation.as_ref().unwrap().page;
+        let enabled = |app: &mut DesktopApp, key: &str| {
+            let (_, scene) = rust_native_desktop::capture(app, 1200.0, 840.0, 1.0);
+            scene.hits.iter().any(|hit| hit.key == key && hit.enabled)
+        };
+        visit(&mut app, ids[0]);
+        visit(&mut app, ids[1]);
+        visit(&mut app, ids[2]);
+        assert_eq!(page(&app), Page::Chat(ids[2]));
+        assert!(enabled(&mut app, "shell-back"));
+        assert!(!enabled(&mut app, "shell-forward"));
+        let step = |app: &mut DesktopApp, action| {
+            app.activate(Intent::Navigate { action }, now);
+        };
+        step(&mut app, chrome::Action::Back);
+        assert_eq!(page(&app), Page::Chat(ids[1]));
+        step(&mut app, chrome::Action::Back);
+        assert_eq!(page(&app), Page::Chat(ids[0]));
+        assert!(enabled(&mut app, "shell-forward"));
+        step(&mut app, chrome::Action::Forward);
+        assert_eq!(page(&app), Page::Chat(ids[1]));
+        // Pages join the same history; a new visit drops the forward pages.
+        step(&mut app, chrome::Action::Settings);
+        assert_eq!(page(&app), Page::Settings);
+        assert!(!enabled(&mut app, "shell-forward"));
+        step(&mut app, chrome::Action::Back);
+        assert_eq!(page(&app), Page::Chat(ids[1]));
+        step(&mut app, chrome::Action::Forward);
+        assert_eq!(page(&app), Page::Settings);
     }
 
     #[test]
@@ -3438,54 +3591,171 @@ mod command_fixtures {
         }
     }
     #[test]
-    fn hovering_palette_edges_never_moves_rows_under_the_pointer() {
+    fn palette_scrolls_its_reference_viewport_without_moving_rows_on_hover() {
+        use rust_native_desktop::input::NativeInput;
+        use rust_native_desktop::layout::{Rect, Scene};
         for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
             for scale in [1.0, 2.0] {
                 let now = Instant::now();
                 let (mut app, _) = DesktopApp::performance_fixture(0, 500, now);
                 key(&mut app, now, "k", true, false);
                 let (_, initial) = rust_native_desktop::capture(&mut app, width, height, scale);
-                let rows = |scene: &rust_native_desktop::layout::Scene| {
+                let rows = |scene: &Scene| {
                     scene
                         .hits
                         .iter()
                         .filter(|hit| hit.key.starts_with("command-"))
-                        .map(|hit| (hit.key.clone(), hit.rect))
+                        .map(|hit| (hit.key.clone(), scene.bounds[&hit.key]))
                         .collect::<Vec<_>>()
                 };
+                let visible = |scene: &Scene| {
+                    let window = scene.viewports[0].rect;
+                    rows(scene)
+                        .into_iter()
+                        .filter(|(_, rect)| {
+                            rect.y + rect.h > window.y && rect.y < window.y + window.h
+                        })
+                        .collect::<Vec<_>>()
+                };
+                // Zeron: results at most (height - 180) clamped to 100..360,
+                // every action, and the first 30 matching conversations.
+                let viewport = initial.viewports[0].clone();
+                assert_eq!(viewport.key, "command-results");
+                assert_eq!(viewport.rect.h, (height - 180.0_f32).clamp(100.0, 360.0));
+                assert_eq!(viewport.offset, 0.0);
                 let initial_rows = rows(&initial);
-                let edge = initial
-                    .hits
+                let history: Vec<_> = initial_rows
                     .iter()
-                    .rev()
-                    .find(|hit| hit.key.starts_with("command-") && hit.enabled)
-                    .unwrap()
-                    .key
-                    .clone();
+                    .filter(|(key, _)| key.starts_with("command-switch-"))
+                    .collect();
+                assert_eq!(history.len(), 30);
+                assert!(history.iter().all(|(_, rect)| rect.h == 45.0));
+                // Content height: 8-point insets, 2-point gaps, 30-point
+                // actions, 45-point conversations, and the 15-point section rule.
+                let actions = initial_rows.len() - history.len();
+                let full = 8.0
+                    + actions as f32 * 30.0
+                    + 30.0 * 45.0
+                    + (initial_rows.len() - 1) as f32 * 2.0
+                    + 15.0
+                    + 2.0
+                    + 8.0;
+                assert_eq!(viewport.limit + viewport.rect.h, full);
+                let first_history = history[0].1;
+                let last_action = initial_rows[actions - 1].1;
+                assert_eq!(last_action.h, 30.0);
+                assert_eq!(
+                    first_history.y - (last_action.y + last_action.h),
+                    2.0 + 15.0 + 2.0
+                );
+                // The bottom edge fades while rows remain below it.
+                let fade = |scene: &Scene, y: f32| {
+                    scene.ops.iter().any(|op| {
+                        matches!(op, rust_native_desktop::layout::Op::Fill { rect, .. }
+                            if rect.h == 1.0 && rect.y == y && rect.w == viewport.rect.w)
+                    })
+                };
+                let bottom = viewport.rect.y + viewport.rect.h - 1.0;
+                assert!(fade(&initial, bottom));
+                assert!(!fade(&initial, viewport.rect.y));
+                // Hovering the partly hidden edge row changes selection only.
+                let edge = visible(&initial).last().unwrap().0.clone();
                 assert!(app.pointer_hover(Some(&edge), now));
-                for _ in 0..8 {
+                for _ in 0..4 {
                     let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
                     assert_eq!(rows(&scene), initial_rows);
+                    assert_eq!(scene.viewports[0].offset, 0.0);
                     assert_eq!(
                         scene.bounds["command-panel"],
                         initial.bounds["command-panel"]
                     );
                     assert!(!app.pointer_hover(Some(&edge), now));
                 }
-                key(&mut app, now, "ArrowDown", false, false);
-                let (_, scrolled) = rust_native_desktop::capture(&mut app, width, height, scale);
-                let scrolled_rows = rows(&scrolled);
-                assert_ne!(scrolled_rows[0].0, initial_rows[0].0);
-                // The next row is revealed with one row's movement, rather
-                // than recentering the selection in the whole list.
-                assert_eq!(scrolled_rows[0].0, initial_rows[1].0);
-                let edge = scrolled_rows.last().unwrap().0.clone();
-                app.pointer_hover(Some(&edge), now);
-                let (_, repeated) = rust_native_desktop::capture(&mut app, width, height, scale);
-                assert_eq!(rows(&repeated), scrolled_rows);
-                key(&mut app, now, "ArrowUp", false, false);
-                let (_, backwards) = rust_native_desktop::capture(&mut app, width, height, scale);
-                assert_eq!(rows(&backwards), scrolled_rows);
+                // The wheel over the results scrolls them by points; the
+                // selection stays on its row.
+                let inside = (
+                    viewport.rect.x + viewport.rect.w / 2.0,
+                    viewport.rect.y + viewport.rect.h / 2.0,
+                );
+                assert!(app.native_input(
+                    NativeInput::Wheel {
+                        x: inside.0,
+                        y: inside.1,
+                        lines: -1.0,
+                    },
+                    now
+                ));
+                let (frame, wheeled) = rust_native_desktop::capture(&mut app, width, height, scale);
+                if let Some(path) = std::env::var_os("OPENAGENTS_COMMAND_CAPTURE_DIR") {
+                    let path = std::path::PathBuf::from(path);
+                    std::fs::create_dir_all(&path).unwrap();
+                    std::fs::write(
+                        path.join(format!("palette-scroll-{width}x{height}-{scale}x.png")),
+                        frame.png().unwrap(),
+                    )
+                    .unwrap();
+                }
+                assert_eq!(wheeled.viewports[0].offset, 40.0);
+                assert_eq!(
+                    wheeled.bounds["command-panel"],
+                    initial.bounds["command-panel"]
+                );
+                for ((key, before), (after_key, after)) in initial_rows.iter().zip(rows(&wheeled)) {
+                    assert_eq!(key, &after_key);
+                    assert_eq!(after.y, before.y - 40.0);
+                }
+                assert!(fade(&wheeled, viewport.rect.y));
+                // Outside the results, the scrim takes the wheel: nothing
+                // beneath it scrolls and the results stay put.
+                let transcript = wheeled.bounds.get("chat-transcript").copied();
+                assert!(app.native_input(
+                    NativeInput::Wheel {
+                        x: 2.0,
+                        y: height - 2.0,
+                        lines: -3.0,
+                    },
+                    now
+                ));
+                let (_, scrim) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert_eq!(scrim.viewports[0].offset, 40.0);
+                assert_eq!(scrim.bounds.get("chat-transcript").copied(), transcript);
+                if scale != 1.0 {
+                    // Keyboard reveal is scale-independent layout; keep the
+                    // repeated full captures to one scale.
+                    continue;
+                }
+                // Keys reveal the selected row with the least movement.
+                for _ in 0..40 {
+                    key(&mut app, now, "ArrowDown", false, false);
+                    let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                    let window: Rect = scene.viewports[0].rect;
+                    let selected = scene
+                        .ops
+                        .iter()
+                        .find_map(|op| match op {
+                            rust_native_desktop::layout::Op::Fill { rect, color, .. }
+                                if *color == openagents_chat_app::visual::SELECTED
+                                    && rect.w < window.w =>
+                            {
+                                Some(*rect)
+                            }
+                            _ => None,
+                        })
+                        .expect("a selected row");
+                    assert!(selected.y >= window.y - 0.01);
+                    assert!(selected.y + selected.h <= window.y + window.h + 0.01);
+                }
+                // Wrapping to the first row returns to the top inset.
+                for _ in 0..initial_rows.len() {
+                    key(&mut app, now, "ArrowDown", false, false);
+                    let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                    if scene.viewports[0].offset == 0.0 {
+                        assert_eq!(rows(&scene), initial_rows);
+                        break;
+                    }
+                }
+                let (_, top) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert_eq!(top.viewports[0].offset, 0.0);
             }
         }
     }

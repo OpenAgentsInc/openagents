@@ -38,12 +38,26 @@ const MAX_PENDING_DROPS: usize = 16;
 pub const COMMAND_QUERY: &str = "composer:command-query";
 pub const SEARCH: &str = "composer:chat-search";
 pub const RENAME: &str = "composer:chat-rename";
+const COMMAND_RULE_HEADER: &str = "glyph:command-rule-header";
+const COMMAND_RULE_FOOTER: &str = "glyph:command-rule-footer";
+/// Zeron's palette: at most 30 conversations after filtering, 8-point list
+/// insets, a 2-point row gap, 30- and 45-point rows, an 18-point edge fade.
+const PALETTE_HISTORY_LIMIT: usize = 30;
+const PALETTE_PAD: f32 = 8.0;
+const PALETTE_GAP: f32 = 2.0;
+const PALETTE_SEPARATOR: f32 = 15.0;
+const PALETTE_ACTION_ROW: f32 = 30.0;
+const PALETTE_HISTORY_ROW: f32 = 45.0;
+const PALETTE_FADE: u16 = 18;
 
 pub struct Panel {
     commands: openagents_chat_app::commands::Overlay,
     command_rows: BTreeMap<String, usize>,
-    command_start: usize,
+    /// Points of palette results scrolled above the viewport; hover never moves it.
+    command_offset: f32,
     command_reveal: bool,
+    /// The painted header and footer rules around the palette's results.
+    command_band: (Option<PxRect>, Option<PxRect>),
     saved: openagents_chat_app::retained::Session,
     saved_visible: bool,
     saved_project: Option<String>,
@@ -145,8 +159,9 @@ impl Panel {
         Self {
             commands: openagents_chat_app::commands::Overlay::default(),
             command_rows: BTreeMap::new(),
-            command_start: 0,
+            command_offset: 0.0,
             command_reveal: false,
+            command_band: (None, None),
             saved: openagents_chat_app::retained::Session::default(),
             saved_visible: false,
             saved_project: None,
@@ -1411,8 +1426,7 @@ impl Panel {
                 return None;
             }
             Action::Command { key } => {
-                let registry = self.registry();
-                let entries = self.commands.entries(&registry);
+                let entries = self.command_entries();
                 if let Some(entry) = entries
                     .iter()
                     .find(|entry| &entry.key == key && entry.enabled)
@@ -1715,11 +1729,113 @@ impl Panel {
             !self.saved_visible && self.busy(),
         )
     }
+    /// The open overlay's entries. Zeron's palette keeps every action and at
+    /// most 30 matching conversations, limited after filtering so each chat
+    /// remains searchable.
+    fn command_entries(&self) -> Vec<openagents_chat_app::commands::Entry> {
+        let mut entries = self.commands.entries(&self.registry());
+        if self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette) {
+            let mut history = 0;
+            entries.retain(|entry| {
+                if matches!(
+                    entry.action,
+                    openagents_chat_app::commands::Action::Switch(_)
+                ) {
+                    history += 1;
+                    history <= PALETTE_HISTORY_LIMIT
+                } else {
+                    true
+                }
+            });
+        }
+        entries
+    }
+    /// The palette results' greatest height at the current window height.
+    fn palette_results_height(&self) -> f32 {
+        (self.viewport.1 - 180.0).clamp(100.0, 360.0)
+    }
+    /// Each palette row's scroll extent (a first history row includes the
+    /// section rule; the end rows include the list's padding) and the
+    /// content height, in points. Matches the laid-out rows exactly.
+    fn palette_extents(
+        &self,
+        entries: &[openagents_chat_app::commands::Entry],
+    ) -> (Vec<(f32, f32)>, f32) {
+        let mut extents = Vec::with_capacity(entries.len());
+        let (mut y, mut actions, mut history) = (PALETTE_PAD, false, false);
+        for (index, entry) in entries.iter().enumerate() {
+            if index > 0 {
+                y += PALETTE_GAP;
+            }
+            let top = if index == 0 { 0.0 } else { y };
+            let is_history = self.palette_history(entry).is_some();
+            if is_history && !history && actions {
+                y += PALETTE_SEPARATOR + PALETTE_GAP;
+            }
+            history |= is_history;
+            actions |= !is_history;
+            y += if is_history {
+                PALETTE_HISTORY_ROW
+            } else {
+                PALETTE_ACTION_ROW
+            };
+            let bottom = if index + 1 == entries.len() {
+                y + PALETTE_PAD
+            } else {
+                y
+            };
+            extents.push((top, bottom));
+        }
+        (extents, y + PALETTE_PAD)
+    }
+    fn palette_history(
+        &self,
+        entry: &openagents_chat_app::commands::Entry,
+    ) -> Option<&openagents_chat::basic_chats::Summary> {
+        let openagents_chat_app::commands::Action::Switch(id) = &entry.action else {
+            return None;
+        };
+        self.session
+            .summaries
+            .iter()
+            .find(|summary| &summary.id == id)
+    }
+    /// Scrolls the palette results by a wheel over them. Rows move beneath a
+    /// resting pointer without taking its selection, as in the reference.
+    pub fn wheel_commands(&mut self, point: (f32, f32), dy: f32) -> bool {
+        if self.commands.kind != Some(openagents_chat_app::commands::Kind::Palette) {
+            return false;
+        }
+        let scale = self.viewport.2.max(0.01);
+        let inside = match self.command_band {
+            (Some(top), Some(bottom)) => {
+                point.0 >= top.x / scale
+                    && point.0 < (top.x + top.w) / scale
+                    && point.1 >= (top.y + top.h) / scale
+                    && point.1 < bottom.y / scale
+            }
+            _ => false,
+        };
+        if inside && dy.is_finite() {
+            let (_, full) = self.palette_extents(&self.command_entries());
+            let limit = (full - self.palette_results_height()).max(0.0);
+            let offset = (self.command_offset - dy).clamp(0.0, limit);
+            if offset != self.command_offset {
+                self.command_offset = offset;
+                return true;
+            }
+        }
+        // The scrim owns the wheel: the conversation beneath never scrolls.
+        false
+    }
+    pub fn commands_open(&self) -> bool {
+        self.commands.kind.is_some()
+    }
     fn open_commands(&mut self, kind: openagents_chat_app::commands::Kind) {
         let searchable = kind == openagents_chat_app::commands::Kind::Palette;
         self.menu_point = None;
         self.menu_navigation = false;
-        self.command_start = 0;
+        self.command_offset = 0.0;
         self.command_reveal = false;
         self.rename = None;
         self.search.focused = false;
@@ -1746,6 +1862,7 @@ impl Panel {
     }
     fn close_overlay(&mut self) {
         self.commands.close();
+        self.command_band = (None, None);
         self.command_rows.clear();
         self.command_query.focused = false;
         self.rename = None;
@@ -2030,7 +2147,7 @@ impl Panel {
                 if self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette) {
                     self.commands.query = self.command_query.text().to_owned();
                     self.commands.selected = 0;
-                    self.command_start = 0;
+                    self.command_offset = 0.0;
                 }
                 return FieldAction::Edited;
             }
@@ -2054,14 +2171,14 @@ impl Panel {
                 }
                 if matches!(*key, "Tab" | "ArrowDown" | "ArrowUp") {
                     self.menu_navigation = true;
-                    let entries = self.commands.entries(&self.registry());
+                    let entries = self.command_entries();
                     self.commands
                         .navigate_entries(*key == "ArrowUp" || (*key == "Tab" && *shift), &entries);
                     self.command_reveal = true;
                     return FieldAction::Edited;
                 }
                 if *key == "Enter" {
-                    let entries = self.commands.entries(&self.registry());
+                    let entries = self.command_entries();
                     if let Some(entry) = entries.get(self.commands.selected).filter(|e| e.enabled) {
                         self.activated.push(format!("command:{}", entry.key));
                     }
@@ -2078,7 +2195,7 @@ impl Panel {
             if self.commands.query != query {
                 self.commands.query = query;
                 self.commands.selected = 0;
-                self.command_start = 0;
+                self.command_offset = 0.0;
             }
             return if result == FieldAction::Unhandled {
                 FieldAction::Edited
@@ -2353,7 +2470,11 @@ impl Panel {
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
             COMMAND_QUERY => Some(self.command_query.version()),
-            "glyph:command-search" | "glyph:command-shortcut" | "glyph:command-rule" => Some(0),
+            "glyph:command-search"
+            | "glyph:command-shortcut"
+            | "glyph:command-rule"
+            | COMMAND_RULE_HEADER
+            | COMMAND_RULE_FOOTER => Some(0),
             SEARCH => Some(self.search.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
@@ -2414,7 +2535,9 @@ impl Panel {
                 },
                 16.0,
             )),
-            "glyph:command-rule" => Some((available, 1.0)),
+            "glyph:command-rule" | COMMAND_RULE_HEADER | COMMAND_RULE_FOOTER => {
+                Some((available, 1.0))
+            }
             RENAME => self
                 .rename
                 .as_ref()
@@ -2446,7 +2569,15 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
-        if resource == "glyph:command-rule" {
+        if resource == COMMAND_RULE_HEADER {
+            self.command_band.0 = Some(rect);
+        } else if resource == COMMAND_RULE_FOOTER {
+            self.command_band.1 = Some(rect);
+        }
+        if matches!(
+            resource,
+            "glyph:command-rule" | COMMAND_RULE_HEADER | COMMAND_RULE_FOOTER
+        ) {
             frame.fill(
                 rect,
                 0.0,
@@ -2809,8 +2940,7 @@ impl Panel {
         self.command_rows.clear();
         if let Some(kind) = &self.commands.kind {
             let entries: Vec<_> = self
-                .commands
-                .entries(&self.registry())
+                .command_entries()
                 .into_iter()
                 .filter(|entry| {
                     *kind != openagents_chat_app::commands::Kind::Menu
@@ -2875,7 +3005,7 @@ impl Panel {
                 rows.push(command_surface(
                     "command-header-rule",
                     "Header separator",
-                    "glyph:command-rule",
+                    COMMAND_RULE_HEADER,
                 ));
             }
             if *kind == openagents_chat_app::commands::Kind::Profile {
@@ -2893,33 +3023,28 @@ impl Panel {
                     TextRole::Status,
                 ));
             }
-            let visible = if *kind == openagents_chat_app::commands::Kind::Palette {
-                ((self.viewport.1 - 180.0) / 45.0).clamp(3.0, 10.0) as usize
-            } else {
-                entries.len()
-            };
+            let palette = *kind == openagents_chat_app::commands::Kind::Palette;
             let mut actions_shown = false;
             let mut history_started = false;
-            // Scrolling belongs to keyboard navigation, not hover selection.
-            // Recentring on hover moves another row under the same pointer.
-            self.command_start = self
-                .command_start
-                .min(entries.len().saturating_sub(visible));
-            if self.command_reveal {
-                if self.commands.selected < self.command_start {
-                    self.command_start = self.commands.selected;
-                } else if self.commands.selected >= self.command_start + visible {
-                    self.command_start = self.commands.selected + 1 - visible;
+            if palette {
+                // Scrolling belongs to the wheel and keyboard navigation, not
+                // hover selection: revealing on hover moves another row under
+                // the same pointer.
+                let (extents, full) = self.palette_extents(&entries);
+                let visible = full.min(self.palette_results_height());
+                let limit = full - visible;
+                if std::mem::take(&mut self.command_reveal)
+                    && let Some(&(top, bottom)) = extents.get(self.commands.selected)
+                {
+                    if top < self.command_offset {
+                        self.command_offset = top;
+                    } else if bottom > self.command_offset + visible {
+                        self.command_offset = bottom - visible;
+                    }
                 }
-                self.command_reveal = false;
+                self.command_offset = self.command_offset.clamp(0.0, limit.max(0.0));
             }
-            let end = (self.command_start + visible).min(entries.len());
-            for (index, entry) in entries
-                .iter()
-                .enumerate()
-                .take(end)
-                .skip(self.command_start)
-            {
+            for (index, entry) in entries.iter().enumerate() {
                 if entry.enabled {
                     self.command_rows.insert(entry.key.clone(), index);
                 }
@@ -2937,14 +3062,7 @@ impl Panel {
                     &entry.label
                 };
                 let history = if *kind == Kind::Palette {
-                    if let C::Switch(id) = &entry.action {
-                        self.session
-                            .summaries
-                            .iter()
-                            .find(|summary| &summary.id == id)
-                    } else {
-                        None
-                    }
+                    self.palette_history(entry)
                 } else {
                     None
                 };
@@ -2969,7 +3087,9 @@ impl Panel {
                             "glyph:command-rule",
                         )],
                     );
-                    separator.style.padding_points = Some([8, 0, 8, 0]);
+                    // Zeron's rule sits inside the first history row with an
+                    // eight-point margin each side; the list gap supplies two.
+                    separator.style.padding_points = Some([8, 0, 6, 0]);
                     separator.style.gap = Some(Space::None);
                     items.push(separator);
                 }
@@ -3038,7 +3158,13 @@ impl Panel {
                         6
                     },
                 ]);
-                row.style.min_height = Some(if *kind == Kind::Profile { 32 } else { 30 });
+                row.style.min_height = Some(if *kind == Kind::Profile {
+                    32
+                } else if history.is_some() {
+                    PALETTE_HISTORY_ROW as u16
+                } else {
+                    PALETTE_ACTION_ROW as u16
+                });
                 row.style.radius = Some(if history.is_some() {
                     8
                 } else if *kind == openagents_chat_app::commands::Kind::Palette {
@@ -3072,12 +3198,20 @@ impl Panel {
                     [4, 4, 4, 4]
                 });
             results.style.gap_points = Some(2);
+            if palette {
+                results.style.background = Some(Color::rgb(16, 16, 16));
+                results.style.viewport = Some(rust_native::style::Viewport {
+                    max_height: self.palette_results_height() as u16,
+                    offset: self.command_offset.round() as u16,
+                    fade: PALETTE_FADE,
+                });
+            }
             rows.push(results);
             if *kind == openagents_chat_app::commands::Kind::Palette {
                 rows.push(command_surface(
                     "command-footer-rule",
                     "Footer separator",
-                    "glyph:command-rule",
+                    COMMAND_RULE_FOOTER,
                 ));
                 let mut hint = stack(
                     "command-footer",

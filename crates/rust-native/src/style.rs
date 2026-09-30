@@ -91,6 +91,22 @@ pub struct ButtonAvatar {
     pub foreground: Color,
 }
 
+/// A vertical stack shown through a bounded, scrolled window of its content.
+/// The application owns `offset`, so pointer hover can never move rows; the
+/// adapter clamps it to the content, clips the children, and fades each edge
+/// that hides content over `fade` points in the stack's background color.
+/// An adapter without it lays out the whole stack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Viewport {
+    /// The most height the stack takes, in points; shorter content keeps its own height.
+    pub max_height: u16,
+    /// Points of content scrolled above the window's top edge.
+    pub offset: u16,
+    /// The edge fade's depth in points; zero draws no fade.
+    pub fade: u16,
+}
+
 /// Unset preserves an earlier declaration. Reset removes it at this layer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -160,7 +176,8 @@ pub struct Style {
     /// Text line height in logical points.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_height: Option<u16>,
-    /// Minimum box height in logical points.
+    /// Minimum box height in logical points. A circular icon button takes it
+    /// as its side.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_height: Option<u16>,
     /// Horizontal and vertical button content insets in logical points.
@@ -190,6 +207,9 @@ pub struct Style {
     /// Offer the stack's other buttons as its first child's menu.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub menu: Option<Menu>,
+    /// Show a vertical stack through a bounded scrolled window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewport: Option<Viewport>,
 }
 
 /// A declaration contains only canonical leaf properties. A later explicit
@@ -225,6 +245,7 @@ pub struct StylePatch {
     pub glyph_color: Patch<Color>,
     pub monospace: Patch<bool>,
     pub menu: Patch<Menu>,
+    pub viewport: Patch<Viewport>,
 }
 
 impl StylePatch {
@@ -270,6 +291,7 @@ impl StylePatch {
             glyph_color: self.glyph_color.overlay(later.glyph_color),
             monospace: self.monospace.overlay(later.monospace),
             menu: self.menu.overlay(later.menu),
+            viewport: self.viewport.overlay(later.viewport),
         }
     }
 
@@ -305,6 +327,7 @@ impl StylePatch {
             glyph_color: self.glyph_color.resolve(defaults.glyph_color),
             monospace: self.monospace.resolve(defaults.monospace),
             menu: self.menu.resolve(defaults.menu),
+            viewport: self.viewport.resolve(defaults.viewport),
         }
     }
 }

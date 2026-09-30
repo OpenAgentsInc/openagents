@@ -22,7 +22,11 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
             line((0.65, 0.15), (0.3, 0.5));
             line((0.3, 0.5), (0.65, 0.85));
         }
-        Glyph::Add => {
+        Glyph::Forward => {
+            line((0.35, 0.15), (0.7, 0.5));
+            line((0.7, 0.5), (0.35, 0.85));
+        }
+        Glyph::Add | Glyph::Plus => {
             line((0.5, 0.15), (0.5, 0.85));
             line((0.15, 0.5), (0.85, 0.5));
         }
