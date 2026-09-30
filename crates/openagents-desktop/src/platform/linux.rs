@@ -496,10 +496,40 @@ pub fn screen_locked() -> bool {
         .is_ok_and(|output| output.status.success() && output.stdout.trim_ascii() == b"yes")
 }
 
-/// Whether the desktop asks for less motion: GNOME's animations turned off
+/// Whether the desktop asks for less motion: the desktop portal's
+/// `org.freedesktop.appearance` `reduced-motion` key where the portal has
+/// it, else GNOME's animations turned off
 /// (`org.gnome.desktop.interface enable-animations`). The backdrop then
 /// shows a still frame. `false` when there is no setting to ask.
 pub fn reduce_motion() -> bool {
+    let portal = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--timeout",
+            "1",
+            "--dest",
+            "org.freedesktop.portal.Desktop",
+            "--object-path",
+            "/org/freedesktop/portal/desktop",
+            "--method",
+            "org.freedesktop.portal.Settings.ReadOne",
+            "org.freedesktop.appearance",
+            "reduced-motion",
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| {
+            rust_native_desktop::theme::motion::parse_portal_reply(&String::from_utf8_lossy(
+                &output.stdout,
+            ))
+        });
+    if portal == Some(true) {
+        return true;
+    }
     Command::new("gsettings")
         .args(["get", "org.gnome.desktop.interface", "enable-animations"])
         .stdin(Stdio::null())

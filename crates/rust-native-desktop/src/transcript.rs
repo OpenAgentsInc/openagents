@@ -849,17 +849,7 @@ pub(crate) fn ink(ink: Ink) -> Color {
             blue,
             alpha,
         },
-        Ink::Role(role) => match role {
-            ColorRole::Primary => Color::rgb(230, 232, 235),
-            ColorRole::Tertiary => Color::rgb(103, 111, 122),
-            ColorRole::Secondary => Color::rgb(150, 155, 163),
-            ColorRole::Link => Color::rgb(158, 201, 242),
-            ColorRole::Bubble => Color::rgb(35, 40, 48),
-            ColorRole::Surface => Color::rgb(20, 23, 28),
-            ColorRole::Raised => Color::rgb(38, 43, 51),
-            ColorRole::Border => Color::rgb(61, 68, 78),
-            ColorRole::InlineCode => Color::rgb(41, 46, 55),
-        },
+        Ink::Role(role) => crate::theme::Roles::DESKTOP.color(role),
     }
 }
 

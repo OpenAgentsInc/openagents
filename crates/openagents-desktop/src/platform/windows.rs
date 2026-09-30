@@ -167,6 +167,25 @@ pub fn screen_locked() -> bool {
     sys::input_desktop_locked()
 }
 
+/// Whether Windows asks for less motion: "Show animations in Windows"
+/// turned off (`SPI_GETCLIENTAREAANIMATION`). `false` when it cannot be read.
+pub fn reduce_motion() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
+    };
+    let mut animate: i32 = 1;
+    // SAFETY: SPI_GETCLIENTAREAANIMATION writes one BOOL to the pointer.
+    let read = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            (&mut animate as *mut i32).cast(),
+            0,
+        )
+    };
+    read != 0 && animate == 0
+}
+
 /// Puts `text` on the clipboard with `clip.exe`. The code is ASCII.
 pub fn copy(text: &str) -> bool {
     let Ok(mut child) = no_window(&mut Command::new("clip.exe"))

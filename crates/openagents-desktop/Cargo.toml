@@ -82,7 +82,7 @@ keyring = { version = "=4.2.0", optional = true }
 # Windows: the Run key, the user's SID for the
 # control pipe, and the lock check (`src/platform/windows.rs`).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Registry", "Win32_System_StationsAndDesktops", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Registry", "Win32_System_StationsAndDesktops", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 # Watch and Play use the shared Grid. Verse does not
 # build for Windows, where the window keeps its plain background.

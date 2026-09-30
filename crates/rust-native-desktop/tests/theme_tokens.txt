@@ -1,0 +1,44 @@
+appearance Dark
+color.background #090b0eff
+color.text #e6e8ebff
+color.muted #969ba3ff
+color.rule #2b2f35ff
+color.button #f5f5f5ff
+color.button_text #000000ff
+color.link #aac8ffff
+color.focus #b8cfe7ff
+role.primary #e6e8ebff
+role.secondary #969ba3ff
+role.tertiary #676f7aff
+role.link #9ec9f2ff
+role.bubble #232830ff
+role.surface #14171cff
+role.raised #262b33ff
+role.border #3d444eff
+role.inline_code #292e37ff
+radius.card 12
+radius.button 7
+radius.check 4
+border.hairline 1
+border.control 1.5
+border.focus 2
+border.focus_offset 3
+shadow.raised 0 0 0 #00000000
+shadow.overlay 0 0 0 #00000000
+opacity.disabled 0.5
+opacity.disabled_fill 0.7
+opacity.hover_tint 0.08
+opacity.pressed_tint 0.15
+opacity.pressed_check 0.25
+opacity.hover_edge 0.3
+motion.fast 150ms
+motion.standard 200ms
+motion.slow 300ms
+motion.easing cubic-bezier(0.4, 0, 0.2, 1)
+type.body 13
+type.heading 26
+type.status 11
+type.code 13
+size.icon 32
+size.column 620
+size.margin 28

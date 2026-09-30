@@ -1183,7 +1183,7 @@ impl Engine<'_> {
                     h: height,
                 },
                 radius: node.style.radius.map_or(self.theme.card_radius, f32::from),
-                width: 1.0,
+                width: self.theme.border.hairline,
                 color,
             });
         }
@@ -1490,13 +1490,13 @@ impl Engine<'_> {
             let accent = if enabled { theme.button } else { theme.muted };
             if on {
                 let fill = if pressed {
-                    mix(accent, theme.background, 0.25)
+                    mix(accent, theme.background, theme.opacity.pressed_check)
                 } else {
                     accent
                 };
                 self.scene.ops.push(Op::Fill {
                     rect: boxed,
-                    radius: 4.0,
+                    radius: theme.radius.check,
                     color: fill,
                 });
                 self.scene.ops.push(Op::Check {
@@ -1511,9 +1511,17 @@ impl Engine<'_> {
                 };
                 self.scene.ops.push(Op::Stroke {
                     rect: boxed,
-                    radius: 4.0,
-                    width: 1.5,
-                    color: mix(edge, theme.text, if hovered { 0.3 } else { 0.0 }),
+                    radius: theme.radius.check,
+                    width: theme.border.control,
+                    color: mix(
+                        edge,
+                        theme.text,
+                        if hovered {
+                            theme.opacity.hover_edge
+                        } else {
+                            0.0
+                        },
+                    ),
                 });
             }
             let color = if enabled {
@@ -1553,21 +1561,21 @@ impl Engine<'_> {
                     color
                 }
             } else {
-                mix(color, theme.background, 0.5)
+                mix(color, theme.background, theme.opacity.disabled)
             };
             if base.alpha > 0 || (hovered && enabled) || (pressed && enabled) {
                 self.scene.ops.push(Op::Fill {
                     rect,
                     radius: node.style.radius.map_or(theme.icon_size / 2.0, f32::from),
                     color: if !enabled {
-                        mix(base, theme.background, 0.7)
+                        mix(base, theme.background, theme.opacity.disabled_fill)
                     } else if (hovered || pressed) && node.style.hover_background.is_some() {
                         node.style.hover_background.expect("explicit hover fill")
                     } else if hovered || pressed {
                         if base.alpha == 0 {
-                            mix(theme.background, theme.text, 0.08)
+                            mix(theme.background, theme.text, theme.opacity.hover_tint)
                         } else {
-                            mix(base, theme.background, 0.15)
+                            mix(base, theme.background, theme.opacity.pressed_tint)
                         }
                     } else {
                         base
@@ -1870,9 +1878,9 @@ impl Engine<'_> {
         }
         if focused {
             self.scene.ops.push(Op::Stroke {
-                rect: rect.inflate(3.0),
-                radius: theme.button_radius + 3.0,
-                width: 2.0,
+                rect: rect.inflate(theme.border.focus_offset),
+                radius: theme.button_radius + theme.border.focus_offset,
+                width: theme.border.focus,
                 color: theme.focus,
             });
         }

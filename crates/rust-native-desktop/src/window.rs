@@ -1241,6 +1241,8 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
         }
         let mut attributes = Window::default_attributes()
             .with_title(self.app.title())
+            // Dark only, whatever the system's appearance (`theme::APPEARANCE`).
+            .with_theme(Some(winit::window::Theme::Dark))
             .with_inner_size(LogicalSize::new(self.options.size.0, self.options.size.1))
             .with_min_inner_size(LogicalSize::new(
                 self.options.min_size.0,

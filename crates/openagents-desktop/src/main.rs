@@ -162,6 +162,7 @@ fn main() -> ExitCode {
         unsafe { std::env::set_var("HOME", profile) };
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    reduce_motion();
     #[cfg(windows)]
     if platform::wants_start_host(&args) {
         return match platform::start_host() {
@@ -272,6 +273,8 @@ fn main() -> ExitCode {
     let mut app = DesktopApp::window(model, context);
     // Settings' choices, kept beside Coder's (#10021).
     app.use_settings_file(coder::task::settings::path());
+    // The theme's motion tokens follow the Settings switch (#10021).
+    rust_native_desktop::theme::motion::follow(app.reduce_motion());
     #[cfg(not(windows))]
     let backdrop = backdrop(&options, &mut app);
     #[cfg(windows)]
@@ -313,6 +316,16 @@ fn main() -> ExitCode {
 /// The share of the display's usable area the window opens at.
 const WINDOW_FILL: f64 = 0.9;
 
+/// The system's "Reduce motion" setting, read again each call and shared
+/// with the theme's motion tokens (`theme::motion`), which also follow the
+/// person's switch in Settings. Decoration such as the Grid's camera stops
+/// while either holds.
+fn reduce_motion() -> bool {
+    let system = platform::reduce_motion();
+    rust_native_desktop::theme::motion::set_system(system);
+    system
+}
+
 /// The Grid behind the window, watched on the chosen relay, unless the
 /// person asked for a plain background. Windows has none.
 #[cfg(not(windows))]
@@ -329,7 +342,7 @@ fn backdrop(
     let grid = openagents_desktop::grid::Grid::new(relay.clone(), home(), options.fake_host);
     app.set_grid(grid.clone());
     let watch = (!options.no_backdrop).then(|| {
-        openagents_desktop::backdrop::GridBackdrop::new(&relay, Box::new(platform::reduce_motion))
+        openagents_desktop::backdrop::GridBackdrop::new(&relay, Box::new(reduce_motion))
             .follow(app.reduce_motion())
     });
     Some(Box::new(openagents_desktop::grid::Layer::new(grid, watch)))
@@ -475,6 +488,54 @@ fn capture_shell(directory: &std::path::Path) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Dark only, and reduced motion never restyles (#10022): the shell
+    /// paints a dark field with light text, and the same pixels whether
+    /// the system asks for reduced motion, the person does, or neither.
+    /// No system appearance is an input to the paint, so a light desktop
+    /// cannot change them either.
+    #[test]
+    fn the_shell_stays_dark_and_the_same_under_every_motion_setting() {
+        use rust_native_desktop::theme::motion;
+        use std::sync::atomic::Ordering;
+        let home = tempfile::tempdir().unwrap();
+        let fake = FakeHost::new("Studio Mac", shell::unix_now());
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            home.path().join("fixture-home"),
+        );
+        let now = Instant::now();
+        let mut app =
+            DesktopApp::inline_shell(Model::new(now, Screen::Home, Agent::Enabled), context);
+        app.tick(now);
+        // The Settings switch (#10021) the theme's motion tokens follow.
+        let switch = app.reduce_motion();
+        motion::follow(switch.clone());
+        let mut frames = Vec::new();
+        for (system, person) in [(false, false), (true, false), (false, true), (true, true)] {
+            motion::set_system(system);
+            switch.store(person, Ordering::Relaxed);
+            assert_eq!(app.theme().motion.reduced, system || person);
+            let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+            frames.push(frame.png().unwrap());
+        }
+        motion::set_system(false);
+        switch.store(false, Ordering::Relaxed);
+        assert!(frames.windows(2).all(|pair| pair[0] == pair[1]));
+        let theme = app.theme();
+        let luma = |c: rust_native::style::Color| {
+            (u32::from(c.red) * 2126 + u32::from(c.green) * 7152 + u32::from(c.blue) * 722) / 10_000
+        };
+        assert!(luma(theme.background) < 32);
+        assert!(luma(theme.text) > 200);
+        assert_eq!(
+            theme.appearance,
+            rust_native_desktop::theme::Appearance::Dark
+        );
+    }
 
     #[test]
     fn the_options_parse() {
