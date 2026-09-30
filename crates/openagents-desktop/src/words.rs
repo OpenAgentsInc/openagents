@@ -5,6 +5,14 @@
 //! relay, grant, workspace, tailnet, Tailscale, npub, or nsec. "Project"
 //! names a workspace and "phone" names a device.
 
+/// What the screens call the computer they run on: "Mac" on a Mac, and
+/// "computer" on Linux and Windows, where "Mac" would be wrong.
+pub const COMPUTER: &str = if cfg!(target_os = "macos") {
+    "Mac"
+} else {
+    "computer"
+};
+
 /// Banned on every desktop screen, compared whole-word and ignoring case
 /// and a plural `s`.
 pub const BANNED: &[&str] = &[
@@ -84,6 +92,7 @@ mod tests {
     fn banned_words_are_found_whole_and_plural() {
         assert_eq!(banned_in("Copy the host keys"), vec!["host", "keys"]);
         assert!(banned_in("Let this phone open a terminal on this Mac").is_empty());
+        assert!(banned_in("Let this phone open a terminal on this computer").is_empty());
         // Whole words only: "monkey" is not "key".
         assert!(banned_in("A monkey hosted nothing").is_empty());
     }

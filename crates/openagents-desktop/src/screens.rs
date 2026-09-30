@@ -148,7 +148,7 @@ fn task_status(status: &str) -> &'static str {
 /// The root of the current screen. `now` is Unix seconds, for "last seen".
 pub fn root(model: &Model, now: u64) -> Node<Intent> {
     if let Some(prompt) = model.nearby() {
-        return nearby::prompt(prompt, model.nearby_terminal());
+        return nearby::prompt(prompt, model.nearby_terminal(), model.computer);
     }
     match &model.screen {
         Screen::Connect => connect(model),
@@ -181,7 +181,7 @@ fn connect(model: &Model) -> Node<Intent> {
     )));
     middle.push(checkbox(
         "terminal",
-        "Let this phone open a terminal on this Mac",
+        &format!("Let this phone open a terminal on this {}", model.computer),
         model.codes.terminal(),
         Intent::ToggleTerminal,
         true,
@@ -212,17 +212,18 @@ fn connect(model: &Model) -> Node<Intent> {
 
 /// What shows where the code goes when there is none.
 fn waiting(model: &Model) -> Vec<Node<Intent>> {
-    let line = |value: &str| centered(text("waiting", value, TextRole::Body));
+    let line = |value: String| centered(text("waiting", value, TextRole::Body));
+    let computer = model.computer;
     if model.codes.held() == Some(Held::Idle) {
         return vec![
-            line("The code is hidden because nobody used this window for 10 minutes."),
+            line("The code is hidden because nobody used this window for 10 minutes.".into()),
             button("show", "Show the code", Intent::ShowCode, true),
         ];
     }
     if model.host.is_none() {
         return match &model.agent {
             Agent::NeedsApproval => vec![
-                line("OpenAgents needs your OK to run in the background."),
+                line("OpenAgents needs your OK to run in the background.".into()),
                 centered(text(
                     "approve",
                     "Turn on OpenAgents under Allow in the Background, then come back here.",
@@ -235,17 +236,19 @@ fn waiting(model: &Model) -> Vec<Node<Intent>> {
                     true,
                 ),
             ],
-            Agent::Failed(_) => vec![line(
-                "Coder couldn't start on this Mac. Quit OpenAgents and open it again.",
-            )],
-            Agent::NotRegistered => vec![line("Waiting for Coder on this Mac…")],
+            Agent::Failed(_) => vec![line(format!(
+                "Coder couldn't start on this {computer}. Quit OpenAgents and open it again."
+            ))],
+            Agent::NotRegistered => vec![line(format!("Waiting for Coder on this {computer}…"))],
             Agent::Enabled if model.reached => {
-                vec![line("Coder on this Mac stopped answering. Trying again…")]
+                vec![line(format!(
+                    "Coder on this {computer} stopped answering. Trying again…"
+                ))]
             }
-            Agent::Enabled => vec![line("Starting Coder on this Mac…")],
+            Agent::Enabled => vec![line(format!("Starting Coder on this {computer}…"))],
         };
     }
-    vec![line("Making a code…")]
+    vec![line("Making a code…".into())]
 }
 
 fn device_label<'a>(model: &'a Model, device: &str) -> &'a str {
@@ -311,7 +314,7 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
     let mut agents = vec![
         bold(
             "agents-title",
-            "Coder uses Codex or Claude Code on this Mac",
+            format!("Coder uses Codex or Claude Code on this {}", model.computer),
         ),
         signed_in("codex", "Codex", model.agents.codex),
         signed_in("claude", "Claude Code", model.agents.claude),
@@ -319,7 +322,10 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
     if !model.agents.codex && !model.agents.claude {
         agents.push(text(
             "agents-help",
-            "Sign in to Codex or Claude Code on this Mac so Coder can work here.",
+            format!(
+                "Sign in to Codex or Claude Code on this {} so Coder can work here.",
+                model.computer
+            ),
             TextRole::Status,
         ));
     }
@@ -345,23 +351,24 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
 /// phone.
 fn home(model: &Model, now: u64) -> Node<Intent> {
     let online = model.host.as_ref().is_some_and(|host| host.status.online);
+    let computer = model.computer;
     let status = if online && model.phones().is_empty() {
-        "Online."
+        "Online.".to_string()
     } else if online {
-        "Online. Your phone can reach this Mac."
+        format!("Online. Your phone can reach this {computer}.")
     } else if model.host.is_none() && model.old.is_some() {
-        "Coder runs here from an earlier setup."
+        "Coder runs here from an earlier setup.".to_string()
     } else {
-        "Offline."
+        "Offline.".to_string()
     };
     let mut phones = vec![bold("phones-title", "Phones")];
     let list = model.phones();
     if model.host.is_none() {
         let line = match model.old.as_ref().map(|old| old.phones) {
-            Some(Some(1)) => "1 phone can reach this Mac.".to_string(),
-            Some(Some(n)) => format!("{n} phones can reach this Mac."),
+            Some(Some(1)) => format!("1 phone can reach this {computer}."),
+            Some(Some(n)) => format!("{n} phones can reach this {computer}."),
             Some(None) => "Coder runs here from an earlier setup.".to_string(),
-            None => "Waiting for Coder on this Mac…".to_string(),
+            None => format!("Waiting for Coder on this {computer}…"),
         };
         phones.push(text("no-phones", line, TextRole::Status));
     } else if list.is_empty() {
@@ -379,7 +386,7 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
                         text(
                             &format!("{key}-ask"),
                             format!(
-                                "Remove {}? It can't reach this Mac until it connects again.",
+                                "Remove {}? It can't reach this {computer} until it connects again.",
                                 device.label
                             ),
                             TextRole::Body,
@@ -501,7 +508,7 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
     )
 }
 
-/// A Mac set up the old way: use that setup?
+/// A computer set up the old way: use that setup?
 fn adopt(model: &Model) -> Node<Intent> {
     let Some(old) = &model.old else {
         return home(model, 0);
@@ -516,12 +523,15 @@ fn adopt(model: &Model) -> Node<Intent> {
         vec![
             text(
                 "adopt-title",
-                "Use this Mac's existing Coder setup?",
+                format!("Use this {}'s existing Coder setup?", model.computer),
                 TextRole::Heading,
             ),
             text(
                 "adopt-line",
-                format!("This Mac already runs Coder. {phones} Your projects stay as they are."),
+                format!(
+                    "This {} already runs Coder. {phones} Your projects stay as they are.",
+                    model.computer
+                ),
                 TextRole::Body,
             ),
         ]
@@ -529,7 +539,7 @@ fn adopt(model: &Model) -> Node<Intent> {
         vec![
             text(
                 "adopt-title",
-                "This Mac already runs Coder.",
+                format!("This {} already runs Coder.", model.computer),
                 TextRole::Heading,
             ),
             text(

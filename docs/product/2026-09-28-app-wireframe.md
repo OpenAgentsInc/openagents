@@ -1776,6 +1776,10 @@ device. Every element is NEW. Coder's work on a project needs Codex or
 Claude Code signed in on the Mac; the milestone assumes the person already
 did that, and pairing never asks them to.
 
+The screens below show a Mac. On Linux and Windows every "this Mac" on them
+reads "this computer" (for example **Let this phone open a terminal on this
+computer**), and "This Mac" reads "This computer".
+
 ### DSK-01 Connect a phone
 
 The first-run window, and the window **Connect another phone** opens.

@@ -74,9 +74,13 @@ fn host(devices: Vec<Device>, project: bool, autostart: bool) -> Refreshed {
     }
 }
 
+/// A model on `screen`, in the Mac's words on every platform, so the
+/// snapshots are the same wherever the tests run.
 fn model(screen: Screen) -> (Model, Instant) {
     let now = Instant::now();
-    (Model::new(now, screen, Agent::Enabled, None), now)
+    let mut model = Model::new(now, screen, Agent::Enabled, None);
+    model.computer = "Mac";
+    (model, now)
 }
 
 /// A model on the code screen with a code showing.
@@ -248,6 +252,9 @@ fn states() -> Vec<(&'static str, Model)> {
         "adopt-uncounted",
         Model::new(now, Screen::Adopt, Agent::NotRegistered, Some(uncounted)),
     ));
+    for (_, model) in &mut states {
+        model.computer = "Mac";
+    }
     states
 }
 
@@ -329,6 +336,37 @@ fn the_terminal_checkbox_is_off_by_default() {
     let model = with_code(false);
     let outline = outline(&view_of(&model));
     assert!(outline.contains("checkbox [ ] \"Let this phone open a terminal on this Mac\""));
+}
+
+/// On Linux and Windows no screen says "Mac": each says "this computer"
+/// where a Mac's says "this Mac".
+#[test]
+fn off_a_mac_no_screen_says_mac() {
+    for (name, mut model) in states() {
+        model.computer = "computer";
+        let words = words(&view_of(&model));
+        for text in &words {
+            assert!(
+                !text
+                    .split(|c: char| !c.is_alphanumeric())
+                    .any(|w| w == "Mac"),
+                "{name} shows {text:?}"
+            );
+            assert!(banned_in(text).is_empty(), "{name} shows {text:?}");
+        }
+    }
+    let mut model = with_code(false);
+    model.computer = "computer";
+    let outline = outline(&view_of(&model));
+    assert!(outline.contains("checkbox [ ] \"Let this phone open a terminal on this computer\""));
+    assert_eq!(
+        crate::words::COMPUTER,
+        if cfg!(target_os = "macos") {
+            "Mac"
+        } else {
+            "computer"
+        }
+    );
 }
 
 /// The window process holds no secret: its sources never name a keychain

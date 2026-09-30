@@ -1,6 +1,6 @@
 //! `DSK-04`: a phone nearby wants to connect.
 //!
-//! A phone on the same Wi-Fi found this Mac and asked to connect. Both
+//! A phone on the same Wi-Fi found this computer and asked to connect. Both
 //! screens show the same six-digit code; the person checks that they match
 //! and clicks **Connect**. Nothing is connected without that click. The
 //! prompt shows over every other screen until it is answered, the phone
@@ -32,7 +32,8 @@ fn name(prompt: &NearbyPrompt) -> &str {
 }
 
 /// The prompt.
-pub fn prompt(prompt: &NearbyPrompt, terminal: bool) -> Node<Intent> {
+/// `computer` is what the screens call this computer ([`crate::words::COMPUTER`]).
+pub fn prompt(prompt: &NearbyPrompt, terminal: bool, computer: &str) -> Node<Intent> {
     let id = prompt.id;
     let mut code = centered(bold("code", grouped(&prompt.code)));
     code.element = rust_native::Element::Text {
@@ -58,7 +59,7 @@ pub fn prompt(prompt: &NearbyPrompt, terminal: bool) -> Node<Intent> {
         )),
         checkbox(
             "terminal",
-            "Let this phone open a terminal on this Mac",
+            &format!("Let this phone open a terminal on this {computer}"),
             terminal,
             Intent::NearbyTerminal,
             true,

@@ -285,6 +285,9 @@ pub struct Model {
     adopting: bool,
     /// `DSK-04`'s terminal checkbox, and the request it was set for.
     nearby_terminal: (u64, bool),
+    /// What the screens call this computer: "Mac" on a Mac, "computer" on
+    /// Linux and Windows ([`crate::words::COMPUTER`]).
+    pub computer: &'static str,
 }
 
 impl Model {
@@ -310,6 +313,7 @@ impl Model {
             clear: Vec::new(),
             adopting: false,
             nearby_terminal: (0, false),
+            computer: crate::words::COMPUTER,
         }
     }
 
