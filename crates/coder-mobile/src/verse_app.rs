@@ -754,7 +754,7 @@ pub(crate) struct Scene {
     secret: secp256k1::SecretKey,
     public_key: String,
     pub(crate) relay: Option<String>,
-    restore_spawn: bool,
+    pub(crate) restore_spawn: bool,
     synthetic: bool,
     spawn_pending: bool,
     camera_mode: CameraMode,
@@ -771,7 +771,7 @@ pub(crate) struct Scene {
     sprint: bool,
     computer_open: bool,
     computer_hud: crate::computer_hud::ComputerHud,
-    gym_open: bool,
+    pub(crate) gym_open: bool,
     gym_configuration_error: Option<String>,
     pub gym_board: verse::gym::Board,
     /// The host shows the native Gym panel, so a tap on the board may open
@@ -780,7 +780,7 @@ pub(crate) struct Scene {
     pub(crate) gym_panel: bool,
     /// The Grid's RESULTS board and its panel. It needs no Gym connection.
     results: verse::gym_results::Results,
-    results_open: bool,
+    pub(crate) results_open: bool,
     /// The host shows the native results panel, so a tap on the RESULTS
     /// board may open it and the board shows its tap cue.
     pub(crate) results_panel: bool,
@@ -788,7 +788,7 @@ pub(crate) struct Scene {
     /// notes, read while the player is in the Gym. It exists while the
     /// bare world has a relay.
     hall: Option<verse::gym_hall::Hall>,
-    evals_open: bool,
+    pub(crate) evals_open: bool,
     /// The host shows the native EVALS panel, so a tap on the EVALS board
     /// may open it and the board shows its tap cue.
     pub(crate) evals_panel: bool,
@@ -1575,7 +1575,7 @@ impl Scene {
     /// Every player's pubkey prefix over their head, and their level when
     /// their key has XP under the OpenAgents referee (`650a2a22 · lv 3`),
     /// this player's included unless the camera is inside its head.
-    fn player_tags(&self) -> verse::ui::UiBatch {
+    pub(crate) fn player_tags(&self) -> verse::ui::UiBatch {
         let mut ui = verse::ui::UiBatch::default();
         if !self.lifecycle.active() || self.panel_open() {
             return ui;
@@ -1799,6 +1799,15 @@ impl Scene {
     }
 
     pub fn update(&mut self, timestamp: f64) -> Result<Option<f32>, String> {
+        self.update_with_input(timestamp, None)
+    }
+
+    /// Native callers supply keyboard intent while sharing the same scene.
+    pub(crate) fn update_with_input(
+        &mut self,
+        timestamp: f64,
+        input: Option<InputState>,
+    ) -> Result<Option<f32>, String> {
         let Some(dt) = self
             .lifecycle
             .frame_delta(timestamp)
@@ -1855,7 +1864,11 @@ impl Scene {
                     .map(|shown| shown.pos)
                     .collect()
             }));
-        let input = self.input();
+        let input = if self.panel_open() {
+            InputState::default()
+        } else {
+            input.unwrap_or_else(|| self.input())
+        };
         let revision = self.world.zone_revision;
         self.world.tick(&input, dt);
         if self.world.zone_revision != revision {
@@ -3016,7 +3029,7 @@ impl Scene {
             )
     }
 
-    fn gym_hit(&self, x: f32, y: f32) -> bool {
+    pub(crate) fn gym_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         self.gym_panel
             && self.world.is_plaza()
@@ -3031,7 +3044,7 @@ impl Scene {
             )
     }
 
-    fn results_hit(&self, x: f32, y: f32) -> bool {
+    pub(crate) fn results_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         self.results_panel
             && self.world.is_plaza()
@@ -3046,7 +3059,7 @@ impl Scene {
             )
     }
 
-    fn evals_hit(&self, x: f32, y: f32) -> bool {
+    pub(crate) fn evals_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         self.evals_panel
             && self.hall.is_some()

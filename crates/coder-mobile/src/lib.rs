@@ -9,6 +9,7 @@ mod push;
 mod render;
 mod verse_app;
 mod verse_ffi;
+pub mod verse_surface;
 
 pub use app::{App, Config, Packet, Reply, Request};
 pub use coder_computers::terminal::screen::TerminalPacket;
