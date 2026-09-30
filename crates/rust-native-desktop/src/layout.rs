@@ -104,6 +104,8 @@ pub enum Op {
     Surface {
         resource: String,
         rect: Rect,
+        /// An application-owned drawing revision. `None` refreshes every frame.
+        version: Option<u64>,
     },
 }
 
@@ -654,6 +656,9 @@ impl Engine<'_> {
                 (w, h)
             }
             Element::Composer { placeholder, .. } => {
+                if let Some((w, h)) = (self.sizes)(&format!("composer:{}", node.key), inner) {
+                    return ((w + start + end).min(available), h + top + bottom);
+                }
                 let paragraph =
                     self.paragraph(placeholder, TextRole::Status, &node.style, Some(inner));
                 (paragraph.width, paragraph.height)
@@ -755,6 +760,20 @@ impl Engine<'_> {
                 self.text(paragraph, ix, iy, inner, align, color);
             }
             Element::Composer { placeholder, .. } => {
+                let resource = format!("composer:{}", node.key);
+                if let Some((w, h)) = (self.sizes)(&resource, inner) {
+                    self.scene.ops.push(Op::Surface {
+                        version: None,
+                        resource,
+                        rect: Rect {
+                            x: ix,
+                            y: iy,
+                            w: w.min(inner),
+                            h,
+                        },
+                    });
+                    return;
+                }
                 self.scene.unsupported.insert("composer");
                 let paragraph =
                     self.paragraph(placeholder, TextRole::Status, &node.style, Some(inner));
@@ -776,6 +795,7 @@ impl Engine<'_> {
                         TextAlign::End => inner - w,
                     };
                     self.scene.ops.push(Op::Surface {
+                        version: None,
                         resource: resource.clone(),
                         rect: Rect {
                             x: (ix + offset).round(),

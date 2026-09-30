@@ -40,12 +40,21 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// Paint within a pixel region, returning the previous clip to restore later.
+    pub fn clip_to(&mut self, rect: PxRect) -> Option<PxRect> {
+        let previous = self.clip;
+        self.clip = Some(previous.map_or(rect, |old| old.intersection(rect)));
+        previous
+    }
+    /// Restore a clip returned by `clip_to`.
+    pub fn restore_clip(&mut self, clip: Option<PxRect>) {
+        self.clip = clip;
+    }
+
     /// A frame filled with `color`.
     pub fn new(width: usize, height: usize, color: Color) -> Frame {
-        let mut pixels = Vec::with_capacity(width * height * 4);
-        for _ in 0..width * height {
-            pixels.extend_from_slice(&[color.red, color.green, color.blue, 255]);
-        }
+        let mut pixels = vec![0; width * height * 4];
+        repeat_pixel(&mut pixels, [color.red, color.green, color.blue, 255]);
         Frame {
             width,
             height,
@@ -129,9 +138,7 @@ impl Frame {
             let row = &mut self.pixels[(y * self.width + x0) * 4..(y * self.width + x1) * 4];
             if let Some(color) = background {
                 let pixel = [color.red, color.green, color.blue, 255];
-                for dest in row.chunks_exact_mut(4) {
-                    dest.copy_from_slice(&pixel);
-                }
+                repeat_pixel(row, pixel);
             } else {
                 row.fill(0);
             }
@@ -146,9 +153,7 @@ impl Frame {
         let row = &mut self.pixels[(y * self.width + x0) * 4..(y * self.width + x1) * 4];
         if color.alpha == 255 {
             let pixel = [color.red, color.green, color.blue, 255];
-            for dest in row.chunks_exact_mut(4) {
-                dest.copy_from_slice(&pixel);
-            }
+            repeat_pixel(row, pixel);
         } else {
             let alpha = u64::from(color.alpha) * 256 / 255;
             let inverse = 256 - alpha;
@@ -208,6 +213,23 @@ impl Frame {
                     .clamp(start as f32, x1 as f32) as usize;
                 self.span(y, start, end, color);
                 (start, end)
+            } else if let Some(width) = stroke {
+                let inner_radius = (radius - width).max(0.0);
+                let inner_h = hh - width;
+                if inner_h >= 0.5 && (y as f32 + 0.5 - cy).abs() <= inner_h - 0.5 {
+                    let inset = if (y as f32 + 0.5 - cy).abs() <= inner_h - inner_radius {
+                        width + 0.5
+                    } else {
+                        width + inner_radius + 0.5
+                    };
+                    let start = (rect.x + inset).ceil().clamp(x0 as f32, x1 as f32) as usize;
+                    let end = (rect.x + rect.w - inset)
+                        .floor()
+                        .clamp(start as f32, x1 as f32) as usize;
+                    (start, end)
+                } else {
+                    (x0, x0)
+                }
             } else {
                 (x0, x0)
             };
@@ -276,6 +298,20 @@ fn rounded_distance(px: f32, py: f32, hw: f32, hh: f32, radius: f32) -> f32 {
         qx.max(qy) - radius
     } else {
         (qx * qx + qy * qy).sqrt() - radius
+    }
+}
+
+// Double an initialized RGBA span using bulk copies, including in debug builds.
+fn repeat_pixel(row: &mut [u8], pixel: [u8; 4]) {
+    if row.is_empty() {
+        return;
+    }
+    row[..4].copy_from_slice(&pixel);
+    let mut initialized = 4;
+    while initialized < row.len() {
+        let count = initialized.min(row.len() - initialized);
+        row.copy_within(..count, initialized);
+        initialized += count;
     }
 }
 

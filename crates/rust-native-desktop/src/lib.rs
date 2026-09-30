@@ -31,10 +31,13 @@ pub mod backdrop;
 pub mod canvas;
 pub mod composer;
 mod icons;
+pub mod input;
 pub mod layout;
 pub mod paint;
 pub mod text;
 pub mod theme;
+pub mod timing;
+pub mod transcript;
 #[cfg(feature = "window")]
 pub mod window;
 
@@ -135,6 +138,28 @@ pub trait App {
     /// Runs an intent the current view resolved.
     fn activate(&mut self, intent: Self::Intent, now: Instant);
 
+    /// Native text input for a focused local editor. Return whether it was consumed.
+    fn text_input(&mut self, event: input::TextInput<'_>, now: Instant) -> bool {
+        let _ = (event, now);
+        false
+    }
+
+    /// Pointer input in a registered surface, with coordinates in local points.
+    fn surface_input(&mut self, resource: &str, event: input::SurfaceInput, now: Instant) -> bool {
+        let _ = (resource, event, now);
+        false
+    }
+
+    /// The logical viewport changed. Application surfaces can reserve its height.
+    fn viewport(&mut self, width: f32, height: f32, scale: f32) {
+        let _ = (width, height, scale);
+    }
+
+    /// The current text cursor, in window points, for the platform IME panel.
+    fn ime_cursor(&self) -> Option<(f64, f64)> {
+        None
+    }
+
     /// The window became visible (`true`) or hidden: minimized, covered,
     /// on another space, or behind a locked screen.
     fn shown(&mut self, visible: bool, now: Instant) {
@@ -152,6 +177,13 @@ pub trait App {
     /// registered it, and the adapter shows the surface's label instead.
     fn surface_size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
         let _ = (resource, available);
+        None
+    }
+
+    /// Drawing revision for a surface, including selection, focus, and scrolling.
+    /// `None` keeps the legacy behavior of refreshing it on every frame.
+    fn surface_version(&self, resource: &str) -> Option<u64> {
+        let _ = resource;
         None
     }
 

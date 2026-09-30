@@ -37,8 +37,8 @@ pub struct Paragraph {
 /// One line of a paragraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextLine {
-    /// The line's text, as a byte range of the paragraph, without trailing
-    /// whitespace or a line break.
+    /// The line's text as a byte range, excluding hard line breaks.
+    /// Display paragraphs trim trailing spaces; editable paragraphs retain them.
     pub start: usize,
     pub end: usize,
     /// The line's width, in points.
@@ -70,6 +70,7 @@ pub struct Fonts {
     scale: ScaleContext,
     faces: [FontRef<'static>; 4],
     paragraphs: HashMap<(String, u64, u32), Rc<Paragraph>>,
+    advances: HashMap<(String, u64), f32>,
     glyphs: HashMap<GlyphKey, Option<Glyph>>,
 }
 
@@ -105,6 +106,7 @@ impl Fonts {
             scale: ScaleContext::new(),
             faces: FACES.map(|data| FontRef::from_index(data, 0).expect("a bundled face")),
             paragraphs: HashMap::new(),
+            advances: HashMap::new(),
             glyphs: HashMap::new(),
         }
     }
@@ -126,6 +128,77 @@ impl Fonts {
         let paragraph = Rc::new(self.break_lines(text, font, width));
         self.paragraphs.insert(key, paragraph.clone());
         paragraph
+    }
+
+    /// The editing pen position, including trailing spaces and tab stops.
+    pub fn advance(&mut self, text: &str, font: Font) -> f32 {
+        let key = (text.to_owned(), font_bits(font));
+        if let Some(width) = self.advances.get(&key) {
+            return *width;
+        }
+        let spec = FontSpec::of(font);
+        let mut variations = vec![("wght", spec.weight)];
+        if spec.optical > 0.0 {
+            variations.push(("opsz", spec.optical));
+        }
+        let mut width = 0.0;
+        for (index, part) in text.split('\t').enumerate() {
+            if index > 0 {
+                width = ((width / 28.0f32).floor() + 1.0) * 28.0;
+            }
+            let mut shaper = self
+                .shape
+                .builder(self.faces[spec.face])
+                .size(spec.size)
+                .variations(variations.clone())
+                .features([("calt", u16::from(spec.calt))])
+                .build();
+            shaper.add_str(part);
+            shaper.shape_with(|cluster| {
+                width += cluster
+                    .glyphs
+                    .iter()
+                    .map(|glyph| glyph.advance)
+                    .sum::<f32>();
+            });
+        }
+        if self.advances.len() >= 4096 {
+            self.advances.clear();
+        }
+        self.advances.insert(key, width);
+        width
+    }
+
+    /// Wrapped editable lines retain spaces and an empty final line after Enter.
+    pub fn editable_paragraph(&mut self, text: &str, font: Font, width: f32) -> Rc<Paragraph> {
+        let mut paragraph = (*self.paragraph(text, font, Some(width))).clone();
+        for index in 0..paragraph.lines.len() {
+            let start = paragraph.lines[index].start;
+            let end = paragraph
+                .lines
+                .get(index + 1)
+                .map_or(text.len(), |line| line.start);
+            let end = start
+                + text[start..end]
+                    .trim_end_matches(['\r', '\n', '\u{85}', '\u{2028}', '\u{2029}'])
+                    .len();
+            paragraph.lines[index].end = end;
+        }
+        if paragraph.lines.is_empty()
+            || (text.ends_with(['\r', '\n', '\u{85}', '\u{2028}', '\u{2029}'])
+                && paragraph
+                    .lines
+                    .last()
+                    .is_some_and(|line| line.start != text.len()))
+        {
+            paragraph.lines.push(TextLine {
+                start: text.len(),
+                end: text.len(),
+                width: 0.0,
+            });
+        }
+        paragraph.height = paragraph.line_height() * paragraph.lines.len() as f32;
+        Rc::new(paragraph)
     }
 
     fn break_lines(&mut self, text: &str, font: Font, width: Option<f32>) -> Paragraph {
@@ -169,6 +242,35 @@ impl Fonts {
             height: line_height * lines.len() as f32,
             lines,
         }
+    }
+
+    /// Paint a pre-positioned transcript run at its measured baseline.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_run(
+        &mut self,
+        frame: &mut Frame,
+        text: &str,
+        font: Font,
+        x: f32,
+        baseline: f32,
+        scale: f32,
+        color: Color,
+    ) {
+        let paragraph = self.paragraph(text, font, None);
+        let spec = FontSpec::of(font);
+        let metrics = self.faces[spec.face].metrics(&[]).scale(spec.size * scale);
+        let offset = (paragraph.line_height() * scale - (metrics.ascent + metrics.descent)) / 2.0
+            + metrics.ascent;
+        self.draw(
+            frame,
+            &paragraph,
+            x,
+            baseline - offset,
+            paragraph.width,
+            TextAlign::Start,
+            scale,
+            color,
+        );
     }
 
     /// Paints `paragraph` with its top-left corner at `x`, `y` pixels, lines
@@ -268,7 +370,13 @@ impl Fonts {
                         let coverage = glyph.coverage[row * glyph.width + col];
                         if coverage > 0 {
                             frame.blend(
-                                left + col as i64,
+                                left + col as i64
+                                    + if paragraph.font.italic {
+                                        ((baseline - (top + row as i64) as f32) * 0.18).round()
+                                            as i64
+                                    } else {
+                                        0
+                                    },
                                 top + row as i64,
                                 color,
                                 f32::from(coverage) / 255.0,

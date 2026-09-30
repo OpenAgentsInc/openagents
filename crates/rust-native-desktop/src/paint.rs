@@ -23,7 +23,7 @@ impl Retained {
     }
 
     /// Updates a frame and returns the pixel regions to upload. Application
-    /// surfaces are refreshed even when their semantic resource stays the same.
+    /// surfaces without drawing revisions refresh on every update.
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
@@ -74,7 +74,12 @@ impl Retained {
                         }
                     }
                 }
-                if let Op::Surface { rect, .. } = new {
+                if let Op::Surface {
+                    rect,
+                    version: None,
+                    ..
+                } = new
+                {
                     add_region(
                         &mut regions,
                         pixels(*rect, scale, scroll).intersection(window),
@@ -246,8 +251,65 @@ fn paint_clipped(
                 frame.line(point(0.24, 0.52), point(0.42, 0.70), width, *color);
                 frame.line(point(0.42, 0.70), point(0.76, 0.32), width, *color);
             }
-            Op::Surface { resource, rect } => surfaces(resource, frame, px(rect)),
+            Op::Surface { resource, rect, .. } => surfaces(resource, frame, px(rect)),
         }
     }
     frame.set_clip(None);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn unchanged_surface_skips_paint_and_upload_and_changed_surface_matches_full_paint() {
+        let rect = Rect {
+            x: 20.0,
+            y: 20.0,
+            w: 60.0,
+            h: 30.0,
+        };
+        let mut scene = Scene {
+            ops: vec![Op::Surface {
+                resource: "test".into(),
+                rect,
+                version: Some(1),
+            }],
+            ..Scene::default()
+        };
+        let mut retained = Retained::default();
+        let mut fonts = Fonts::new();
+        let mut calls = 0;
+        let mut draw = |_: &str, frame: &mut Frame, rect: PxRect| {
+            calls += 1;
+            frame.fill(rect, 3.0, Color::rgb(120, 150, 180));
+        };
+        assert_eq!(
+            retained
+                .update(&scene, (100, 70), 1.0, 0.0, None, &mut fonts, &mut draw)
+                .len(),
+            1
+        );
+        assert!(
+            retained
+                .update(&scene, (100, 70), 1.0, 0.0, None, &mut fonts, &mut draw)
+                .is_empty()
+        );
+        if let Op::Surface { version, .. } = &mut scene.ops[0] {
+            *version = Some(2);
+        }
+        let damage = retained.update(&scene, (100, 70), 1.0, 0.0, None, &mut fonts, &mut draw);
+        assert_eq!(damage.len(), 1);
+        assert!(damage[0].w * damage[0].h < 100.0 * 70.0);
+        assert_eq!(calls, 2);
+        let mut expected = Frame::transparent(100, 70);
+        paint(
+            &scene,
+            &mut expected,
+            1.0,
+            0.0,
+            &mut fonts,
+            &mut |_, frame, rect| frame.fill(rect, 3.0, Color::rgb(120, 150, 180)),
+        );
+        assert_eq!(retained.frame().unwrap().pixels, expected.pixels);
+    }
 }

@@ -20,8 +20,10 @@
 //! application only the intent that view carried.
 
 use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
+use crate::input::{SurfaceInput, TextInput};
 use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_layout};
 use crate::text::Fonts;
+use crate::timing::{Phase, Timings};
 use crate::{App, Waker, paint};
 use rust_native::Activation;
 use std::sync::Arc;
@@ -173,6 +175,7 @@ fn run_shell<A: App>(
         foreground: paint::Retained::default(),
         hold: None,
         resizing: false,
+        timings: Timings::from_env(),
     };
     event_loop
         .run_app(&mut shell)
@@ -238,7 +241,6 @@ struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    bgra: bool,
     /// The format a render pass writes: the surface's, without sRGB
     /// encoding, since frames are already encoded.
     encoded: wgpu::TextureFormat,
@@ -280,6 +282,7 @@ struct Shell<A: App> {
     /// No backdrop frame before this: the surface skipped the last one.
     hold: Option<Instant>,
     resizing: bool,
+    timings: Timings,
 }
 
 impl<A: App> Shell<A> {
@@ -324,11 +327,36 @@ impl<A: App> Shell<A> {
 
     /// Brings the application up to now and repaints when its view moved.
     fn tick(&mut self) {
+        let started = Instant::now();
         let before = self.revision();
+        let (width, height) = self.logical_size();
+        self.app.viewport(width, height, self.scale());
         self.wake = self.app.tick(Instant::now());
-        if self.revision() != before {
+        if let Some(window) = &self.window {
+            let cursor = self.app.ime_cursor();
+            window.set_ime_allowed(cursor.is_some());
+            if let Some((x, y)) = cursor {
+                window.set_ime_cursor_area(LogicalPosition::new(x, y), LogicalSize::new(2.0, 20.0));
+            }
+        }
+        let surface_changed = self.scene.as_ref().is_some_and(|scene| {
+            scene.ops.iter().any(|op| {
+                if let crate::layout::Op::Surface {
+                    resource,
+                    version: Some(version),
+                    ..
+                } = op
+                {
+                    self.app.surface_version(resource) != Some(*version)
+                } else {
+                    false
+                }
+            })
+        });
+        if self.revision() != before || surface_changed {
             self.redraw();
         }
+        self.timings.record(Phase::Tick, started.elapsed(), 0, 0);
     }
 
     fn revision(&self) -> (String, u64) {
@@ -347,7 +375,19 @@ impl<A: App> Shell<A> {
             interaction: self.interaction.clone(),
             layout: self.app.window_layout(),
         };
-        if self.scene.is_none() || self.laid_out.as_ref() != Some(&key) {
+        let resized_surface = self.scene.as_ref().is_some_and(|scene| {
+            scene.ops.iter().any(|op| {
+                if let crate::layout::Op::Surface { resource, rect, .. } = op {
+                    self.app
+                        .surface_size(resource, rect.w)
+                        .is_some_and(|(_, height)| (height - rect.h).abs() > 0.5)
+                } else {
+                    false
+                }
+            })
+        });
+        if self.scene.is_none() || self.laid_out.as_ref() != Some(&key) || resized_surface {
+            let started = Instant::now();
             let theme = self.app.theme();
             let app = &self.app;
             let scene = lay_out_with_layout(
@@ -365,6 +405,7 @@ impl<A: App> Shell<A> {
                 self.interaction.content_scroll = split.content.offset;
             }
             self.scroll = self.scroll.clamp(0.0, (scene.height - height).max(0.0));
+            self.timings.record(Phase::Layout, started.elapsed(), 0, 0);
             self.scene = Some(scene);
             self.laid_out = Some(key);
         }
@@ -471,6 +512,40 @@ impl<A: App> Shell<A> {
         self.redraw();
     }
 
+    /// Route pointer input only through an actually visible registered surface.
+    fn surface(&mut self, make: impl FnOnce(f32, f32) -> SurfaceInput) -> bool {
+        let started = Instant::now();
+        let scale = self.scale();
+        let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
+        let mut clips: Vec<crate::layout::Rect> = Vec::new();
+        let mut target = None;
+        for op in &self.scene().ops {
+            match op {
+                crate::layout::Op::PushClip(rect) => clips.push(*rect),
+                crate::layout::Op::PopClip => {
+                    clips.pop();
+                }
+                crate::layout::Op::Surface { resource, rect, .. }
+                    if rect.contains(x, y) && clips.iter().all(|clip| clip.contains(x, y)) =>
+                {
+                    target = Some((resource.clone(), *rect))
+                }
+                _ => {}
+            }
+        }
+        let handled = if let Some((resource, rect)) = target {
+            self.app
+                .surface_input(&resource, make(x - rect.x, y - rect.y), Instant::now())
+        } else {
+            false
+        };
+        if handled {
+            self.timings.input(started);
+            self.timings.record(Phase::Input, started.elapsed(), 0, 0);
+        }
+        handled
+    }
+
     /// Answers one key. Returns false when the key asks to close.
     fn key(&mut self, key: &Key) -> bool {
         let command = self.modifiers.super_key() || self.modifiers.control_key();
@@ -527,12 +602,12 @@ impl<A: App> Shell<A> {
     fn drop_backdrop(&mut self, error: &str) {
         eprintln!("the backdrop stopped: {error}");
         self.backdrop = None;
-        self.compositor = None;
         self.redraw();
     }
 
     /// Draws the backdrop and lays the views over it.
     fn render_layers(&mut self) -> Result<(), String> {
+        let started = Instant::now();
         let Some((width, height)) = self
             .gpu
             .as_ref()
@@ -540,7 +615,15 @@ impl<A: App> Shell<A> {
         else {
             return Ok(());
         };
-        let look = self.options.look;
+        let look = if self.backdrop.is_some() {
+            self.options.look
+        } else {
+            Look {
+                dim: 1.0,
+                blur: 0.0,
+                scale: 0.25,
+            }
+        };
         let theme = self.app.theme();
         {
             let gpu = self.gpu.as_ref().expect("the gpu");
@@ -553,8 +636,17 @@ impl<A: App> Shell<A> {
             let scale = self.scale();
             let scroll = self.scroll;
             self.scene();
-            let scene = self.scene.take().expect("a scene");
+            let mut scene = self.scene.take().expect("a scene");
+            for op in &mut scene.ops {
+                if let crate::layout::Op::Surface {
+                    resource, version, ..
+                } = op
+                {
+                    *version = self.app.surface_version(resource);
+                }
+            }
             let app = &mut self.app;
+            let painting = Instant::now();
             let regions = self.foreground.update(
                 &scene,
                 (width as usize, height as usize),
@@ -564,7 +656,11 @@ impl<A: App> Shell<A> {
                 &mut self.fonts,
                 &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
             );
+            let pixels = regions.iter().map(|rect| (rect.w * rect.h) as u64).sum();
+            self.timings
+                .record(Phase::Paint, painting.elapsed(), pixels, regions.len());
             self.scene = Some(scene);
+            let uploading = Instant::now();
             let gpu = self.gpu.as_ref().expect("the gpu");
             self.compositor
                 .as_ref()
@@ -574,8 +670,11 @@ impl<A: App> Shell<A> {
                     self.foreground.frame().expect("a foreground"),
                     &regions,
                 );
+            self.timings
+                .record(Phase::Upload, uploading.elapsed(), pixels, regions.len());
             self.painted = true;
         }
+        let acquiring = Instant::now();
         let gpu = self.gpu.as_ref().expect("the gpu");
         let texture = match gpu.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture)
@@ -594,6 +693,9 @@ impl<A: App> Shell<A> {
                 return Err("the surface failed validation".to_string());
             }
         };
+        self.timings
+            .record(Phase::Acquire, acquiring.elapsed(), 0, 0);
+        let presenting = Instant::now();
         let output = texture.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(gpu.encoded),
             ..Default::default()
@@ -619,6 +721,15 @@ impl<A: App> Shell<A> {
         compositor.encode(&gpu.queue, &mut encoder, &output, theme.background, look);
         gpu.queue.submit([encoder.finish()]);
         texture.present();
+        self.timings
+            .record(Phase::Present, presenting.elapsed(), 0, 0);
+        self.timings.record(
+            Phase::Frame,
+            started.elapsed(),
+            u64::from(width) * u64::from(height),
+            0,
+        );
+        self.timings.presented();
         self.hold = None;
         if let Some(error) = failed {
             self.drop_backdrop(&error);
@@ -628,77 +739,10 @@ impl<A: App> Shell<A> {
 
     fn render(&mut self) -> Result<(), String> {
         if self.compositor.is_some() {
-            return self.render_layers();
+            self.render_layers()
+        } else {
+            Ok(())
         }
-        let Some((width, height)) = self
-            .gpu
-            .as_ref()
-            .map(|gpu| (gpu.config.width as usize, gpu.config.height as usize))
-        else {
-            return Ok(());
-        };
-        let scale = self.scale();
-        let theme = self.app.theme();
-        let scroll = self.scroll;
-        self.scene();
-        let scene = self.scene.take().expect("a scene");
-        let app = &mut self.app;
-        self.foreground.update(
-            &scene,
-            (width, height),
-            scale,
-            scroll,
-            Some(theme.background),
-            &mut self.fonts,
-            &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
-        );
-        self.scene = Some(scene);
-        let mut frame = self.foreground.frame().expect("a foreground").clone();
-        let gpu = self.gpu.as_mut().expect("the gpu");
-        if gpu.bgra {
-            for pixel in frame.pixels.chunks_exact_mut(4) {
-                pixel.swap(0, 2);
-            }
-        }
-        let texture = match gpu.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                gpu.surface.configure(&gpu.device, &gpu.config);
-                self.redraw();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
-            wgpu::CurrentSurfaceTexture::Timeout => {
-                self.redraw();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                return Err("the surface failed validation".to_string());
-            }
-        };
-        gpu.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &frame.pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width as u32 * 4),
-                rows_per_image: Some(height as u32),
-            },
-            wgpu::Extent3d {
-                width: width as u32,
-                height: height as u32,
-                depth_or_array_layers: 1,
-            },
-        );
-        gpu.queue.submit([]);
-        texture.present();
-        Ok(())
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -766,7 +810,6 @@ fn gpu(window: Arc<Window>) -> Result<Gpu, String> {
         device,
         queue,
         config,
-        bgra: matches!(format, F::Bgra8Unorm | F::Bgra8UnormSrgb),
         encoded: format.remove_srgb_suffix(),
     })
 }
@@ -817,9 +860,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
         }
         match gpu(window.clone()) {
             Ok(gpu) => {
-                if self.backdrop.is_some() {
-                    self.compositor = Some(Compositor::new(&gpu.device, gpu.encoded));
-                }
+                self.compositor = Some(Compositor::new(&gpu.device, gpu.encoded));
                 self.gpu = Some(gpu);
             }
             Err(error) => {
@@ -878,6 +919,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             }
             WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(true) => self.redraw(),
             WindowEvent::Focused(false) => {
+                self.app.text_input(TextInput::FocusLost, Instant::now());
                 self.resizing = false;
                 self.interaction.pressed = None;
                 self.modifiers = ModifiersState::empty();
@@ -887,16 +929,67 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
                     self.app.input(Instant::now());
-                    if !self.key(&event.logical_key) {
+                    let key = match &event.logical_key {
+                        Key::Character(value) => value.to_string(),
+                        Key::Named(value) => format!("{value:?}"),
+                        _ => String::new(),
+                    };
+                    let input_started = Instant::now();
+                    self.timings.input(input_started);
+                    let consumed = self.app.text_input(
+                        TextInput::Key {
+                            key: &key,
+                            text: event.text.as_deref(),
+                            command: self.modifiers.super_key() || self.modifiers.control_key(),
+                            alt: self.modifiers.alt_key(),
+                            shift: self.modifiers.shift_key(),
+                        },
+                        Instant::now(),
+                    );
+                    self.timings
+                        .record(Phase::Input, input_started.elapsed(), 0, 0);
+                    if !consumed && !self.key(&event.logical_key) {
                         event_loop.exit();
                         return;
                     }
                     self.tick();
+                    if consumed {
+                        self.redraw();
+                    }
                 }
+            }
+            WindowEvent::Ime(event) => {
+                match event {
+                    winit::event::Ime::Preedit(text, selection) => {
+                        self.app.text_input(
+                            TextInput::Preedit {
+                                text: &text,
+                                selection,
+                            },
+                            Instant::now(),
+                        );
+                    }
+                    winit::event::Ime::Commit(text) => {
+                        self.app
+                            .text_input(TextInput::Commit(&text), Instant::now());
+                    }
+                    winit::event::Ime::Disabled => {
+                        self.app
+                            .text_input(TextInput::CancelComposition, Instant::now());
+                    }
+                    _ => {}
+                }
+                self.tick();
+                self.redraw();
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.app.input(Instant::now());
                 self.cursor = position;
+                if self.surface(|x, y| SurfaceInput::Move { x, y }) {
+                    self.tick();
+                    self.redraw();
+                    return;
+                }
                 if self.resizing
                     && let WindowLayout::Split(split) = self.app.window_layout()
                 {
@@ -922,6 +1015,19 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     MouseScrollDelta::LineDelta(_, y) => y * 40.0,
                     MouseScrollDelta::PixelDelta(position) => position.y as f32 / self.scale(),
                 };
+                if self.surface(|x, y| SurfaceInput::Wheel {
+                    x,
+                    y,
+                    dx: match delta {
+                        MouseScrollDelta::LineDelta(x, _) => x * 40.0,
+                        MouseScrollDelta::PixelDelta(p) => p.x as f32,
+                    },
+                    dy: lines,
+                }) {
+                    self.tick();
+                    self.redraw();
+                    return;
+                }
                 if let Some(split) = self.scene().split {
                     let scale = self.scale();
                     let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
@@ -946,6 +1052,15 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 ..
             } => {
                 self.app.input(Instant::now());
+                let shift = self.modifiers.shift_key();
+                if self.surface(|x, y| match state {
+                    ElementState::Pressed => SurfaceInput::Down { x, y, shift },
+                    ElementState::Released => SurfaceInput::Up { x, y },
+                }) {
+                    self.tick();
+                    self.redraw();
+                    return;
+                }
                 let target = self.target();
                 match state {
                     ElementState::Pressed => {

@@ -6,6 +6,8 @@
 //! `Composer` contract. Window input, clipboard access, and painting are
 //! separate; this module does not send a message or decide its meaning.
 
+pub mod field;
+
 use rust_native::edit::{EditError, EditKind, Editor, Movement, Selection};
 use rust_native::{Activation, Element, InputError, Node, ValidatedView};
 use std::fmt;
