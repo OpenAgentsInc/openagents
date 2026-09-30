@@ -29,6 +29,7 @@ pub mod checks;
 pub mod cli;
 pub mod commands;
 pub mod interaction;
+pub mod issue_run;
 pub mod local;
 pub mod owner;
 pub mod remote;

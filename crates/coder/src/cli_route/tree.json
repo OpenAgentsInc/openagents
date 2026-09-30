@@ -3300,7 +3300,55 @@
                 ]
               }
             ],
-            "summary": "Run Coder on this computer for the thread's last offer, as send does.",
+            "summary": "Run Coder on this computer for the thread's last offer, as send does. When the message asks Coder to work a GitHub issue of this checkout's repository (\"work on #10034\"), Coder runs the issue flow: it claims the issue, works in a worktree of origin/main, runs the checks for what it touched, lands as the repository's .openagents/coder-issues.json says (this repository: rebase and push main when the checks pass; others: a pull request), comments the evidence, and closes the issue. Ctrl-C stops the flow.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "work",
+          "leaf": {
+            "path": [
+              "chat",
+              "work"
+            ],
+            "usage": [
+              "work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "work"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "issues",
+                    "value": "NUMBERS|LABEL",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "parallel",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "land",
+                    "value": "main|pr",
+                    "choices": [
+                      "main",
+                      "pr"
+                    ],
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Hand several issues to Coder, one issue flow each, each in its own thread: NUMBERS such as 10050,10051, or a LABEL's open issues. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3340,6 +3388,33 @@
           "name": "limit",
           "value": "N",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "issues",
+          "value": "NUMBERS|LABEL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "parallel",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "land",
+          "value": "main|pr",
+          "choices": [
+            "main",
+            "pr"
+          ],
           "optional": true,
           "repeated": true
         },

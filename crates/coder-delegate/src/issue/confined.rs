@@ -152,6 +152,12 @@ impl Setup {
             // A shared build directory can contain other attempts' source
             // and compiled answers. Sealed evaluations use their own.
             workdir.join("target")
+        } else if let Some(named) =
+            std::env::var_os("CARGO_TARGET_DIR").filter(|dir| seal.is_none() && !dir.is_empty())
+        {
+            // A normal run on a host that names its own build directory
+            // builds there, as the host's other cargo commands do.
+            PathBuf::from(named)
         } else {
             home.as_ref()
                 .map_or_else(|| workdir.join("target"), |dir| dir.join("target"))
@@ -214,9 +220,60 @@ pub fn environment(command: &mut Command, setup: &Setup, scratch: Option<&Path>)
     command.current_dir(&setup.workdir);
 }
 
+/// Which cargo command the gate runs on each package.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Suite {
+    /// `cargo test -q -p PACKAGE --all-features`.
+    Tests,
+    /// `cargo clippy -q -p PACKAGE --all-targets -- -D warnings`, which
+    /// builds the package's build scripts and macros, so it runs inside
+    /// the same boundary as the tests.
+    Clippy,
+}
+
+impl Suite {
+    /// The cargo arguments for `package`.
+    #[must_use]
+    pub fn args(self, package: &str) -> Vec<String> {
+        let words: &[&str] = match self {
+            Suite::Tests => &["test", "-q", "-p", package, "--all-features"],
+            Suite::Clippy => &[
+                "clippy",
+                "-q",
+                "-p",
+                package,
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        };
+        words.iter().map(|word| (*word).to_string()).collect()
+    }
+
+    /// What the command checks, in words.
+    #[must_use]
+    pub fn noun(self) -> &'static str {
+        match self {
+            Suite::Tests => "tests",
+            Suite::Clippy => "Clippy lints",
+        }
+    }
+}
+
 /// Runs each package's tests as the module docs say, and returns the
 /// failing ones with the end of their output, and how they ran.
 pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinement) {
+    run_suite(setup, packages, Suite::Tests).await
+}
+
+/// Runs `suite` on each package as the module docs say, and returns the
+/// failing ones with the end of their output, and how they ran.
+pub async fn run_suite(
+    setup: &Setup,
+    packages: &[String],
+    suite: Suite,
+) -> (Vec<String>, Confinement) {
     let network_off = setup.seal.offline();
     let mut record = Confinement {
         mode: "none",
@@ -313,10 +370,10 @@ pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinemen
     // directory, until the last test command is reaped.
     let mut failures = Vec::new();
     for package in packages {
-        say!("issue ▸ running the {package} tests");
-        let args = ["test", "-q", "-p", package.as_str(), "--all-features"];
+        say!("issue ▸ running the {package} {}", suite.noun());
+        let args = suite.args(package);
         let command = match &confined {
-            Some(boundary) => match boundary.command(&cargo, args) {
+            Some(boundary) => match boundary.command(&cargo, &args) {
                 Ok(mut command) => {
                     environment(&mut command, setup, boundary.scratch());
                     if boundary.confines_reads() {
@@ -339,7 +396,7 @@ pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinemen
             },
             None => {
                 let mut command = Command::new(&cargo);
-                command.args(args);
+                command.args(&args);
                 environment(&mut command, setup, None);
                 command
             }
@@ -348,7 +405,11 @@ pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinemen
             .bounded(supervise::Limits::within(DEADLINE).keeping(OUTPUT_KEPT))
             .run()
             .await;
-        if let Some(failure) = failure(package, &ended) {
+        let failed = match suite {
+            Suite::Tests => failure(package, &ended),
+            Suite::Clippy => lint_failure(package, &ended),
+        };
+        if let Some(failure) = failed {
             failures.push(failure);
         }
     }
@@ -376,6 +437,31 @@ pub async fn prefetch(setup: &Setup, cargo: &Path) -> String {
             ended.ending,
             crate::judge::clip(ended.stderr.text.trim(), 300)
         )
+    }
+}
+
+/// The problem one package's Clippy command leaves, or `None` when it
+/// finds nothing.
+pub fn lint_failure(package: &str, ended: &supervise::Ended) -> Option<String> {
+    match &ended.ending {
+        ending if ending.success() => None,
+        supervise::Ending::TimedOut => Some(format!(
+            "Clippy on {package} did not finish within {} seconds",
+            DEADLINE.as_secs()
+        )),
+        supervise::Ending::Failed(why) => Some(format!("Clippy on {package} could not run: {why}")),
+        supervise::Ending::Exited(_) => {
+            let text = format!("{}{}", ended.stdout.text, ended.stderr.text);
+            let lines: Vec<&str> = text
+                .lines()
+                .filter(|l| l.starts_with("error") || l.starts_with("warning") || l.contains("-->"))
+                .collect();
+            Some(format!(
+                "Clippy finds problems in {package} (`cargo clippy -p {package} --all-targets -- \
+                 -D warnings`): {}",
+                crate::judge::clip(&lines.join("\n"), TEST_OUTPUT_KEPT)
+            ))
+        }
     }
 }
 

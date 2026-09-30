@@ -357,6 +357,57 @@ pub struct Finished {
     pub worktree: String,
     /// The turn's ATIF trajectory file.
     pub trajectory: String,
+    /// The GitHub issue the run worked, and how it landed, when the run
+    /// was the issue flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<IssueLink>,
+}
+
+/// The GitHub issue an issue-flow run worked, for a result card: its
+/// link, and what the run did with it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueLink {
+    /// `owner/name`.
+    pub repository: String,
+    pub number: u64,
+    pub url: String,
+    pub title: String,
+    /// `landed` (pushed to the default branch), `pull_request`,
+    /// `unchanged`, `failed`, or `stopped`.
+    pub outcome: String,
+    /// The commits the run pushed, newest last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commits: Vec<String>,
+    /// The pull request the run opened, in pull-request mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_request: Option<String>,
+    /// Whether the run closed the issue.
+    pub closed: bool,
+}
+
+impl IssueLink {
+    /// The issue and what happened to it, in a line.
+    #[must_use]
+    pub fn line(&self) -> String {
+        let what = match self.outcome.as_str() {
+            "landed" => match self.commits.last() {
+                Some(commit) => format!(
+                    "landed {} on the default branch{}",
+                    &commit[..commit.len().min(10)],
+                    if self.closed { " and closed" } else { "" }
+                ),
+                None => "landed".to_owned(),
+            },
+            "pull_request" => match &self.pull_request {
+                Some(url) => format!("pull request {url}"),
+                None => "pull request".to_owned(),
+            },
+            "unchanged" => "nothing changed; left open".to_owned(),
+            "stopped" => "stopped; left open".to_owned(),
+            _ => "not landed; left open with a comment".to_owned(),
+        };
+        format!("Issue #{} ({}): {what}", self.number, self.url)
+    }
 }
 
 /// The turn ended without finishing.
@@ -368,6 +419,9 @@ pub struct Failure {
     pub ending: Option<String>,
     /// When a provider has capacity again, for `no_capacity`.
     pub resets_at: Option<u64>,
+    /// The GitHub issue the run worked, when the run was the issue flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<IssueLink>,
 }
 
 /// The turn was stopped, by the person or the host's deadline.
@@ -704,6 +758,7 @@ impl Mapper {
                     deletions,
                     worktree: worktree.to_owned(),
                     trajectory: trajectory.to_owned(),
+                    issue: None,
                 })
             }
             "asked_question" => CoderEvent::Question(Asked {
@@ -730,6 +785,7 @@ impl Mapper {
                 ),
                 ending: Some(ending.into()),
                 resets_at,
+                issue: None,
             }),
             other => {
                 let why = match &self.ending {
@@ -744,6 +800,7 @@ impl Mapper {
                     message: format!("Coder stopped before finishing: {why}."),
                     ending: Some(other.into()),
                     resets_at: None,
+                    issue: None,
                 })
             }
         }
@@ -821,9 +878,15 @@ pub fn text(event: &CoderEvent) -> Option<String> {
                     file.removed.map_or("?".into(), |n| n.to_string())
                 ));
             }
+            if let Some(issue) = &r.issue {
+                out.push_str(&format!("\n{}", issue.line()));
+            }
             out
         }
-        CoderEvent::Failure(f) => f.message.clone(),
+        CoderEvent::Failure(f) => match &f.issue {
+            Some(issue) => format!("{}\n{}", f.message, issue.line()),
+            None => f.message.clone(),
+        },
         CoderEvent::Stopped(s) => s.message.clone(),
     })
 }

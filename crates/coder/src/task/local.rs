@@ -130,7 +130,20 @@ fn git() -> std::process::Command {
     command
 }
 
-fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
+/// The branch `origin/HEAD` names in the checkout at `top`, or `main`.
+#[must_use]
+pub fn default_branch(top: &Path) -> String {
+    git_out(
+        top,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .ok()
+    .and_then(|name| name.trim().strip_prefix("origin/").map(str::to_owned))
+    .filter(|name| !name.is_empty())
+    .unwrap_or_else(|| "main".to_owned())
+}
+
+pub(crate) fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
     let output = git()
         .arg("-C")
         .arg(coder_boundary::plain_path(dir))
@@ -269,6 +282,7 @@ pub struct Local {
     /// The person's settings, or why they could not be read: a run then
     /// refuses rather than falling back to the defaults.
     settings: Result<settings::Coder, String>,
+    max_steps: std::sync::atomic::AtomicUsize,
 }
 
 impl std::fmt::Debug for Local {
@@ -296,6 +310,7 @@ impl Local {
             now: autostart::unix_now,
             controller: None,
             settings: Ok(settings::Coder::default()),
+            max_steps: std::sync::atomic::AtomicUsize::new(MAX_STEPS),
         }
     }
 
@@ -362,6 +377,19 @@ impl Local {
         ))
     }
 
+    /// Let each turn take up to `steps` steps instead of the default.
+    #[must_use]
+    pub fn with_max_steps(self, steps: usize) -> Self {
+        self.set_max_steps(steps);
+        self
+    }
+
+    /// Let each turn started from now on take up to `steps` steps.
+    pub fn set_max_steps(&self, steps: usize) {
+        self.max_steps
+            .store(steps.max(1), std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Start turns with `launcher` instead of a detached engine process.
     #[must_use]
     pub fn with_launcher(mut self, launcher: Box<dyn Launch>) -> Self {
@@ -416,7 +444,7 @@ impl Local {
                 controller,
                 model: routes[0].model.clone(),
                 effort: Some("medium".into()),
-                max_steps: MAX_STEPS,
+                max_steps: self.max_steps.load(std::sync::atomic::Ordering::Relaxed),
                 wall_seconds: WALL_SECONDS,
                 memory_bytes: MEMORY_BYTES,
                 write_workspace: true,
@@ -525,7 +553,32 @@ impl Local {
         prompt: &str,
         thread: Option<&str>,
     ) -> Result<Record, String> {
-        let checkout = self.project(dir)?;
+        self.start_from(dir, None, title, prompt, thread)
+    }
+
+    /// [`Local::start`], with the worktree made from the commit `base`
+    /// (such as the fetched `origin/main`) instead of the checkout's
+    /// `HEAD`. The issue flow starts here.
+    ///
+    /// # Errors
+    /// As [`Local::start`], or `base` names no commit.
+    pub fn start_from(
+        &self,
+        dir: &Path,
+        base: Option<&str>,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+    ) -> Result<Record, String> {
+        let mut checkout = self.project(dir)?;
+        if let Some(base) = base {
+            let commit = git_out(
+                &checkout.top,
+                &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
+            )
+            .map_err(|_| format!("{base} names no commit in {}", checkout.top.display()))?;
+            checkout.head = commit.trim().to_owned();
+        }
         let policy = self.policy(&checkout.name)?;
         let (order, runner) = self.choose(&policy)?;
         let now = (self.now)();
@@ -658,10 +711,19 @@ impl Local {
     /// # Errors
     /// The task is unknown or already ended.
     pub fn stop(&self, task: &str) -> Result<(), String> {
+        // An issue flow between turns (checking, landing) stops at its
+        // next step and says so on the issue.
+        let flow = super::issue_run::load(&self.store, task).filter(|flow| !flow.finished);
+        if flow.is_some() {
+            super::issue_run::request_stop(&self.store, task)?;
+        }
         let current = Store::open(&self.store)
             .and_then(|store| store.show(task))
             .map_err(|e| e.to_string())?;
         if !matches!(current.status, Status::Queued | Status::Running) {
+            if flow.is_some() {
+                return Ok(());
+            }
             return Err("This task is not running.".into());
         }
         let command = Command {
@@ -738,6 +800,7 @@ impl Local {
                 .as_ref()
                 .map(settings::Coder::provider_list)
                 .unwrap_or_else(|_| ROUTES.iter().map(|(p, _)| *p).collect()),
+            noted: 0,
         }
     }
 }
@@ -1080,6 +1143,8 @@ pub struct Follow {
     /// The providers the run admits, whose earliest reset a `no_capacity`
     /// ending names.
     providers: Vec<Provider>,
+    /// The issue flow's notes already emitted.
+    noted: usize,
 }
 
 impl Follow {
@@ -1098,6 +1163,33 @@ impl Follow {
         });
     }
 
+    /// The issue flow's notes not yet emitted that follow turns up to
+    /// `through` (0: before the first turn).
+    fn notes(
+        &mut self,
+        flow: Option<&super::issue_run::Flow>,
+        through: usize,
+        out: &mut Vec<Line>,
+    ) {
+        let Some(flow) = flow else {
+            return;
+        };
+        while let Some(note) = flow.notes.get(self.noted) {
+            if note.after_turn > through {
+                break;
+            }
+            self.noted += 1;
+            let event = CoderEvent::Step(coder_events::Step {
+                turn: note.after_turn.max(1),
+                step_id: 0,
+                kind: coder_events::StepKind::Note,
+                source: "system".into(),
+                text: note.text.clone(),
+            });
+            self.line(event, out);
+        }
+    }
+
     /// The events recorded since the last poll, and where the task is.
     ///
     /// # Errors
@@ -1111,6 +1203,7 @@ impl Follow {
                 .and_then(|store| store.show(&self.task))
                 .map_err(|e| e.to_string())?;
             let mut record = record(&self.store, &self.task);
+            let flow = super::issue_run::load(&self.store, &self.task);
             if let Some(state) = self.ended {
                 let runs = task.earlier.len() + usize::from(task.run.is_some());
                 if task.turn() > self.turn && runs >= self.turn {
@@ -1123,6 +1216,7 @@ impl Follow {
                 }
             }
             if self.mapper.is_none() {
+                self.notes(flow.as_ref(), self.turn - 1, &mut out);
                 if let Some(started) = record.as_ref().and_then(|r| r.started(self.turn)) {
                     self.line(started, &mut out);
                 }
@@ -1132,42 +1226,40 @@ impl Follow {
             let runs: Vec<&owner::Run> = task.earlier.iter().chain(task.run.iter()).collect();
             let Some(run) = runs.get(self.turn - 1).copied() else {
                 // Not admitted yet.
-                if task.status == Status::Cancelled {
-                    let event = CoderEvent::Stopped(coder_events::Stopped {
-                        turn: self.turn,
-                        message: "Coder stopped before the turn started.".into(),
-                    });
-                    self.line(event, &mut out);
-                    self.ended = Some(State::Ended);
-                    return Ok((out, State::Ended));
-                }
                 let since = record
                     .as_ref()
                     .and_then(|r| r.turns.iter().find(|t| t.turn == self.turn))
                     .map_or(0, |t| t.at);
-                if let Some(why) = launch_error(&self.store, &self.task, since) {
-                    let event = CoderEvent::Failure(coder_events::Failure {
+                let unstarted = if task.status == Status::Cancelled {
+                    Some(CoderEvent::Stopped(coder_events::Stopped {
                         turn: self.turn,
-                        message: format!("Coder did not start: {why}"),
-                        ending: Some("not_started".into()),
-                        resets_at: None,
-                    });
-                    self.line(event, &mut out);
-                    self.ended = Some(State::Ended);
-                    return Ok((out, State::Ended));
+                        message: "Coder stopped before the turn started.".into(),
+                    }))
+                } else {
+                    unadmitted(&self.store, &self.task, since, (self.now)()).map(|why| {
+                        CoderEvent::Failure(coder_events::Failure {
+                            turn: self.turn,
+                            message: why,
+                            ending: Some("not_started".into()),
+                            resets_at: None,
+                            issue: None,
+                        })
+                    })
+                };
+                let Some(event) = unstarted else {
+                    return Ok((out, State::Running));
+                };
+                self.notes(flow.as_ref(), self.turn, &mut out);
+                if flow.as_ref().is_some_and(|flow| !flow.finished) {
+                    return Ok((out, State::Running));
                 }
-                if since > 0 && (self.now)().saturating_sub(since) > ADMISSION_WAIT {
-                    let event = CoderEvent::Failure(coder_events::Failure {
-                        turn: self.turn,
-                        message: "Coder did not start: the engine never admitted the task.".into(),
-                        ending: Some("not_started".into()),
-                        resets_at: None,
-                    });
-                    self.line(event, &mut out);
-                    self.ended = Some(State::Ended);
-                    return Ok((out, State::Ended));
-                }
-                return Ok((out, State::Running));
+                let event = match &flow {
+                    Some(flow) => flow.ending(event),
+                    None => event,
+                };
+                self.line(event, &mut out);
+                self.ended = Some(State::Ended);
+                return Ok((out, State::Ended));
             };
             let trace = self.store.join(&run.admission.trace_file);
             let steps: Vec<Value> = atif::log::read(&trace)
@@ -1190,6 +1282,14 @@ impl Follow {
             let Some(result) = &run.result else {
                 return Ok((out, State::Running));
             };
+            // An issue flow checks and lands after its latest turn: that
+            // turn's ending waits for the flow's, which it carries.
+            self.notes(flow.as_ref(), self.turn, &mut out);
+            let last = task.turn() == self.turn;
+            if last && flow.as_ref().is_some_and(|flow| !flow.finished) {
+                return Ok((out, State::Running));
+            }
+            let flow = flow.filter(|_| last);
             // The turn ended: its ending, as recorded the first time.
             let kept = record
                 .as_ref()
@@ -1206,9 +1306,12 @@ impl Follow {
                         .as_ref()
                         .map(|r| r.base.clone())
                         .or_else(|| task.intent.workspace.source_revision.clone());
-                    let files = base
-                        .map(|base| changes(Path::new(&worktree), &base))
-                        .unwrap_or_default();
+                    let files = match flow.as_ref().and_then(|flow| flow.files.clone()) {
+                        Some(files) => files,
+                        None => base
+                            .map(|base| changes(Path::new(&worktree), &base))
+                            .unwrap_or_default(),
+                    };
                     let resets_at = (result.ending == capacity::NO_CAPACITY_ENDING)
                         .then(|| {
                             let book = capacity::Book::load(&self.store);
@@ -1222,6 +1325,10 @@ impl Follow {
                         &trace.display().to_string(),
                         resets_at,
                     );
+                    let end = match &flow {
+                        Some(flow) => flow.ending(end),
+                        None => end,
+                    };
                     if let Some(record) = record.as_mut() {
                         record.ends.insert(self.turn, end.clone());
                         let _ = save(&self.store, record);
@@ -1246,6 +1353,18 @@ impl Follow {
             return Ok((out, state));
         }
     }
+}
+
+/// Why a turn started at `since` (Unix seconds) will never be admitted:
+/// the engine's launcher wrote an error, or it waited longer than the
+/// admission bound. `None` while it may still start.
+#[must_use]
+pub fn unadmitted(store: &Path, task: &str, since: u64, now: u64) -> Option<String> {
+    if let Some(why) = launch_error(store, task, since) {
+        return Some(format!("Coder did not start: {why}"));
+    }
+    (since > 0 && now.saturating_sub(since) > ADMISSION_WAIT)
+        .then(|| "Coder did not start: the engine never admitted the task.".to_owned())
 }
 
 /// The error the engine's launcher wrote for `task` since `since`, if its

@@ -1,0 +1,1690 @@
+//! A GitHub issue handed to Coder from a chat, worked on this computer
+//! from claim to close.
+//!
+//! When a person asks a chat to work an issue ("work on #10034", "take
+//! OpenAgentsInc/openagents#10034"), the chat router judges the message is
+//! coding work and Jev chooses the issue among the references the message
+//! names ([`asked`]); the reference itself is a bounded field read only
+//! after that, as `AGENTS.md` requires. `openagents chat work --issues`
+//! hands several issues over the same way, one flow per issue. A flow:
+//!
+//! 1. reads the issue, its comments, and the issues it links, and posts a
+//!    claim comment ([`CLAIM_MARK`]);
+//! 2. starts a local run ([`super::local`]) in Coder's own worktree of the
+//!    fetched default branch (`origin/main` here), with the issue as the
+//!    prompt, so the engine, provider failover, the dev-tools boundary
+//!    (#10045), and the event stream are the chat's own;
+//! 3. runs the repository's checks for what the change touches
+//!    ([`Checks`]): the tests of each touched Rust package inside a write
+//!    boundary, and, as the repository's policy asks, `cargo fmt --check`
+//!    and Clippy, plus the issue flow's diff checks; when they find
+//!    problems, a fix turn continues the same task, up to
+//!    [`Policy::fix_rounds`] times;
+//! 4. commits, and lands as the repository's [`Policy`] says: onto the
+//!    default branch after a rebase, running the checks again whenever the
+//!    rebase moved the base (this repository's policy), or as a pull
+//!    request;
+//! 5. comments the commit and the evidence on the issue and closes it.
+//!
+//! A flow never pushes a change whose checks failed: a red check, a run
+//! that did not converge within its bounds, a question instead of a
+//! result, or a stop leaves an honest comment with what was tried and the
+//! failing output, and the issue open.
+//!
+//! Every step shows in the task's event stream: the flow writes its notes
+//! and outcome beside the task (`<store>/local/<task>.issue.json`), and
+//! [`super::local::Follow`] interleaves them with the turns' events and
+//! holds the last turn's ending until the flow ends, so that ending
+//! carries the issue link ([`openagents_chat::coder_events::IssueLink`]).
+//! The CLI, the desktop, and the phone read the same stream.
+//!
+//! GitHub is reached through the `gh` CLI the person is signed in to
+//! ([`Gh`]); nothing here reads, stores, or prints a token.
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use openagents_chat::coder_events::{self, CoderEvent, FileChange, IssueLink, Mapper};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+pub use coder_delegate::issue::Reference;
+
+use super::local::{self, Local, Record};
+use super::{Status, Store};
+
+/// The version of the flow file a follower reads.
+pub const FLOW_SCHEMA: &str = "openagents.coder.issue-run.v1";
+/// The repository's issue-flow policy, relative to its top level.
+pub const POLICY_FILE: &str = ".openagents/coder-issues.json";
+/// Marks a claim comment a flow posts.
+pub const CLAIM_MARK: &str = "<!-- openagents-coder-claim";
+/// Marks a comment that releases a flow's claim: the flow ended without
+/// landing, so another may take the issue.
+pub const RELEASE_MARK: &str = "<!-- openagents-coder-release -->";
+/// How often a flow reads its task while a turn runs.
+const POLL: Duration = Duration::from_millis(1000);
+/// The most bytes of the issue's comments the prompt carries.
+const COMMENTS_MAX: usize = 6_000;
+/// The most issues the body links whose text the prompt carries.
+const LINKED_MAX: usize = 3;
+/// The most bytes of one linked issue the prompt carries.
+const LINKED_BYTES: usize = 1_500;
+/// The most bytes of failing output a failure comment quotes.
+const FAILING_MAX: usize = 6_000;
+
+// ---------------------------------------------------------------------------
+// The flow file: what followers read.
+
+/// One line the flow says between turns.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Note {
+    /// The turn it follows; 0 is before the first.
+    pub after_turn: usize,
+    pub text: String,
+}
+
+/// An issue flow as its followers read it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Flow {
+    pub schema: String,
+    pub task: String,
+    /// The issue, and, once the flow ends, what it did with it.
+    pub link: IssueLink,
+    /// What the flow said, in order.
+    pub notes: Vec<Note>,
+    /// Whether the flow ended; the last turn's ending waits for it.
+    pub finished: bool,
+    /// What the flow did, in a sentence, once it ended.
+    #[serde(default)]
+    pub closing: String,
+    /// What the landed change touched, when it landed: the last turn's
+    /// ending names these instead of the worktree's difference from its
+    /// first base, which a rebase moved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<FileChange>>,
+}
+
+impl Flow {
+    /// The last turn's ending once the flow ended: the engine's ending
+    /// with the issue and the flow's closing sentence.
+    #[must_use]
+    pub fn ending(&self, end: CoderEvent) -> CoderEvent {
+        let link = self.link.clone();
+        let closing = self.closing.trim().to_owned();
+        let landed = matches!(
+            link.outcome.as_str(),
+            "landed" | "pull_request" | "unchanged"
+        );
+        let failure = |turn: usize, message: String, ending: &str| {
+            CoderEvent::Failure(coder_events::Failure {
+                turn,
+                message,
+                ending: Some(ending.to_owned()),
+                resets_at: None,
+                issue: Some(link.clone()),
+            })
+        };
+        match end {
+            CoderEvent::Result(mut result) if landed => {
+                if !closing.is_empty() {
+                    result.summary = if result.summary.trim().is_empty() {
+                        closing
+                    } else {
+                        format!("{}\n\n{closing}", result.summary.trim_end())
+                    };
+                }
+                result.insertions = result.files_changed.iter().filter_map(|c| c.added).sum();
+                result.deletions = result.files_changed.iter().filter_map(|c| c.removed).sum();
+                result.issue = Some(link);
+                CoderEvent::Result(result)
+            }
+            CoderEvent::Result(result) => failure(
+                result.turn,
+                closing,
+                &format!("issue_{}", self.link.outcome),
+            ),
+            CoderEvent::Failure(mut failed) => {
+                if !closing.is_empty() {
+                    failed.message = format!("{} {closing}", failed.message.trim_end());
+                }
+                failed.issue = Some(link);
+                CoderEvent::Failure(failed)
+            }
+            CoderEvent::Question(asked) | CoderEvent::Approval(asked) => failure(
+                asked.turn,
+                format!(
+                    "Coder asked instead of finishing: {} {closing}",
+                    asked.text.trim()
+                ),
+                "issue_asked",
+            ),
+            CoderEvent::Stopped(mut stopped) => {
+                if !closing.is_empty() {
+                    stopped.message = format!("{} {closing}", stopped.message.trim_end());
+                }
+                CoderEvent::Stopped(stopped)
+            }
+            other => other,
+        }
+    }
+}
+
+fn flow_path(store: &Path, task: &str) -> PathBuf {
+    store.join("local").join(format!("{task}.issue.json"))
+}
+
+fn stop_path(store: &Path, task: &str) -> PathBuf {
+    store.join("local").join(format!("{task}.issue-stop"))
+}
+
+/// The issue flow of `task` in `store`, when one works it.
+#[must_use]
+pub fn load(store: &Path, task: &str) -> Option<Flow> {
+    let bytes = std::fs::read(flow_path(store, task)).ok()?;
+    serde_json::from_slice::<Flow>(&bytes)
+        .ok()
+        .filter(|flow| flow.schema == FLOW_SCHEMA && flow.task == task)
+}
+
+fn save(store: &Path, flow: &Flow) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(flow).map_err(|e| e.to_string())?;
+    super::autostart::write_private(&flow_path(store, &flow.task), &bytes)
+}
+
+/// Asks `task`'s issue flow to stop at its next step.
+///
+/// # Errors
+/// The request cannot be written.
+pub fn request_stop(store: &Path, task: &str) -> Result<(), String> {
+    super::autostart::write_private(&stop_path(store, task), b"stop\n")
+}
+
+fn stop_requested(store: &Path, task: &str) -> bool {
+    stop_path(store, task).exists()
+}
+
+// ---------------------------------------------------------------------------
+// The repository's policy.
+
+/// How a green change lands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Land {
+    /// Rebase onto the default branch and push it.
+    Main,
+    /// Push a branch and open a pull request.
+    PullRequest,
+}
+
+impl Land {
+    /// Reads `main` or `pr` (`pull_request`).
+    ///
+    /// # Errors
+    /// Any other word.
+    pub fn parse(word: &str) -> Result<Self, String> {
+        match word.trim() {
+            "main" => Ok(Land::Main),
+            "pr" | "pull_request" | "pull-request" => Ok(Land::PullRequest),
+            other => Err(format!("--land is `main` or `pr`, not `{other}`")),
+        }
+    }
+}
+
+/// A repository's issue-flow policy, from [`POLICY_FILE`]. A repository
+/// without one lands as a pull request and runs only the tests.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Policy {
+    #[serde(default = "Policy::pull_request")]
+    pub land: Land,
+    /// The branch changes start from and land on; `origin/HEAD`'s by
+    /// default.
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// How long another's claim comment keeps a queue off an issue.
+    #[serde(default = "Policy::six")]
+    pub claim_hours: u64,
+    /// Fix turns after the checks find problems.
+    #[serde(default = "Policy::three")]
+    pub fix_rounds: usize,
+    /// Run `cargo fmt --check` on each touched package.
+    #[serde(default)]
+    pub fmt: bool,
+    /// Run Clippy with warnings denied on each touched package.
+    #[serde(default)]
+    pub clippy: bool,
+    /// Steps each turn may take.
+    #[serde(default = "Policy::steps")]
+    pub max_steps: usize,
+    /// A line appended to each commit message, such as a trailer.
+    #[serde(default)]
+    pub trailer: Option<String>,
+}
+
+impl Default for Policy {
+    fn default() -> Self {
+        Policy {
+            land: Land::PullRequest,
+            branch: None,
+            claim_hours: Policy::six(),
+            fix_rounds: Policy::three(),
+            fmt: false,
+            clippy: false,
+            max_steps: Policy::steps(),
+            trailer: None,
+        }
+    }
+}
+
+impl Policy {
+    fn pull_request() -> Land {
+        Land::PullRequest
+    }
+    fn six() -> u64 {
+        6
+    }
+    fn three() -> usize {
+        3
+    }
+    fn steps() -> usize {
+        60
+    }
+
+    /// The policy the checkout at `top` commits, or the default.
+    ///
+    /// # Errors
+    /// The file exists and is not a policy.
+    pub fn load(top: &Path) -> Result<Self, String> {
+        let path = top.join(POLICY_FILE);
+        match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| {
+                format!("{} is not an issue-flow policy: {error}", path.display())
+            }),
+            Err(_) => Ok(Policy::default()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GitHub.
+
+/// One comment on an issue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Comment {
+    pub body: String,
+    /// Unix seconds.
+    pub at: u64,
+}
+
+/// An issue as the flow reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Issue {
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub url: String,
+    pub open: bool,
+    pub comments: Vec<Comment>,
+}
+
+/// What the flow asks of GitHub.
+pub trait Tracker: Send + Sync {
+    /// `owner/name` of the GitHub repository the checkout at `dir` is.
+    ///
+    /// # Errors
+    /// Why it cannot tell.
+    fn repository(&self, dir: &Path) -> Result<String, String>;
+    /// # Errors
+    /// Why the issue cannot be read.
+    fn issue(&self, repository: &str, number: u64) -> Result<Issue, String>;
+    /// # Errors
+    /// Why the comment was not posted.
+    fn comment(&self, repository: &str, number: u64, body: &str) -> Result<(), String>;
+    /// # Errors
+    /// Why the issue was not closed.
+    fn close(&self, repository: &str, number: u64) -> Result<(), String>;
+    /// The open issues with `label`, oldest first.
+    ///
+    /// # Errors
+    /// Why they cannot be listed.
+    fn labeled(&self, repository: &str, label: &str) -> Result<Vec<u64>, String>;
+    /// Opens a pull request from `branch` onto `base`; returns its URL.
+    ///
+    /// # Errors
+    /// Why it was not opened.
+    fn pull_request(
+        &self,
+        dir: &Path,
+        repository: &str,
+        branch: &str,
+        base: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<String, String>;
+}
+
+/// GitHub through the `gh` CLI the person is signed in to.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Gh;
+
+fn gh(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
+    let mut command = std::process::Command::new("gh");
+    command
+        .args(args)
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .stdin(std::process::Stdio::null());
+    if let Some(dir) = dir {
+        command.current_dir(dir);
+    }
+    let output = command.output().map_err(|_| {
+        "cannot run gh; install the GitHub CLI and sign in with `gh auth login`".to_owned()
+    })?;
+    if !output.status.success() {
+        let why = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "gh {}: {}",
+            args[..2.min(args.len())].join(" "),
+            clip(why.trim(), 400)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+impl Tracker for Gh {
+    fn repository(&self, dir: &Path) -> Result<String, String> {
+        gh(
+            Some(dir),
+            &[
+                "repo",
+                "view",
+                "--json",
+                "nameWithOwner",
+                "-q",
+                ".nameWithOwner",
+            ],
+        )
+        .map(|name| name.trim().to_owned())
+    }
+
+    fn issue(&self, repository: &str, number: u64) -> Result<Issue, String> {
+        let text = gh(
+            None,
+            &[
+                "issue",
+                "view",
+                &number.to_string(),
+                "-R",
+                repository,
+                "--json",
+                "number,title,body,url,state,comments",
+            ],
+        )?;
+        let value: Value = serde_json::from_str(&text)
+            .map_err(|error| format!("unexpected gh output: {error}"))?;
+        Ok(Issue {
+            number,
+            title: value["title"].as_str().unwrap_or_default().to_owned(),
+            body: value["body"].as_str().unwrap_or_default().to_owned(),
+            url: value["url"].as_str().unwrap_or_default().to_owned(),
+            open: value["state"].as_str() != Some("CLOSED"),
+            comments: value["comments"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|comment| Comment {
+                    body: comment["body"].as_str().unwrap_or_default().to_owned(),
+                    at: comment["createdAt"]
+                        .as_str()
+                        .and_then(iso_seconds)
+                        .unwrap_or(0),
+                })
+                .collect(),
+        })
+    }
+
+    fn comment(&self, repository: &str, number: u64, body: &str) -> Result<(), String> {
+        gh(
+            None,
+            &[
+                "issue",
+                "comment",
+                &number.to_string(),
+                "-R",
+                repository,
+                "--body",
+                body,
+            ],
+        )
+        .map(|_| ())
+    }
+
+    fn close(&self, repository: &str, number: u64) -> Result<(), String> {
+        gh(
+            None,
+            &[
+                "issue",
+                "close",
+                &number.to_string(),
+                "-R",
+                repository,
+                "--reason",
+                "completed",
+            ],
+        )
+        .map(|_| ())
+    }
+
+    fn labeled(&self, repository: &str, label: &str) -> Result<Vec<u64>, String> {
+        let text = gh(
+            None,
+            &[
+                "issue", "list", "-R", repository, "--state", "open", "--label", label, "--limit",
+                "100", "--json", "number",
+            ],
+        )?;
+        let value: Value = serde_json::from_str(&text)
+            .map_err(|error| format!("unexpected gh output: {error}"))?;
+        let mut numbers: Vec<u64> = value
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|issue| issue["number"].as_u64())
+            .collect();
+        numbers.sort_unstable();
+        Ok(numbers)
+    }
+
+    fn pull_request(
+        &self,
+        dir: &Path,
+        repository: &str,
+        branch: &str,
+        base: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<String, String> {
+        gh(
+            Some(dir),
+            &[
+                "pr", "create", "-R", repository, "--head", branch, "--base", base, "--title",
+                title, "--body", body,
+            ],
+        )
+        .map(|url| url.trim().to_owned())
+    }
+}
+
+/// Unix seconds of an ISO time such as `2026-09-30T12:00:00Z`.
+fn iso_seconds(text: &str) -> Option<u64> {
+    let number = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hour * 3_600 + minute * 60 + second).ok()
+}
+
+/// Why a queue leaves `issue` alone: a claim comment within `hours` that
+/// no later release comment answered. A claim is a comment that starts
+/// with "Claimed", the workspace's convention for agents, or carries
+/// [`CLAIM_MARK`].
+#[must_use]
+pub fn claimed(issue: &Issue, now: u64, hours: u64) -> Option<String> {
+    let mut claim: Option<&Comment> = None;
+    for comment in &issue.comments {
+        let body = comment.body.trim_start();
+        let is_claim = body
+            .get(..7)
+            .is_some_and(|head| head.eq_ignore_ascii_case("claimed"))
+            || body.contains(CLAIM_MARK);
+        if is_claim {
+            claim = Some(comment);
+        } else if body.contains(RELEASE_MARK) {
+            claim = None;
+        }
+    }
+    let claim = claim?;
+    let age = now.saturating_sub(claim.at);
+    (age < hours * 3_600).then(|| {
+        format!(
+            "#{} was claimed {} ago: \"{}\"",
+            issue.number,
+            ago(age),
+            clip(claim.body.lines().next().unwrap_or("").trim(), 120)
+        )
+    })
+}
+
+fn ago(seconds: u64) -> String {
+    match seconds {
+        0..=119 => format!("{seconds} seconds"),
+        120..=7_199 => format!("{} minutes", seconds / 60),
+        _ => format!("{} hours", seconds / 3_600),
+    }
+}
+
+/// The issues `spec` names: numbers (`10050,10051`, `#10050 #10051`) or,
+/// when it names none, a label.
+///
+/// # Errors
+/// The label cannot be listed.
+pub fn select(tracker: &dyn Tracker, repository: &str, spec: &str) -> Result<Vec<u64>, String> {
+    let words: Vec<&str> = spec
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(|word| word.trim().trim_start_matches('#'))
+        .filter(|word| !word.is_empty())
+        .collect();
+    if !words.is_empty()
+        && words
+            .iter()
+            .all(|word| word.chars().all(|c| c.is_ascii_digit()))
+    {
+        let mut numbers: Vec<u64> = Vec::new();
+        for word in words {
+            let number = word
+                .parse::<u64>()
+                .map_err(|_| format!("`{word}` is not an issue number"))?;
+            if !numbers.contains(&number) {
+                numbers.push(number);
+            }
+        }
+        return Ok(numbers);
+    }
+    let label = spec.trim().strip_prefix("label:").unwrap_or(spec.trim());
+    tracker.labeled(repository, label)
+}
+
+// ---------------------------------------------------------------------------
+// Choosing the issue a chat message asks for.
+
+/// The issue a chat message asks Coder to work, when it asks for one:
+/// code finds the references in `request` and `earlier` (bounded fields),
+/// and Jev chooses among them or answers none
+/// ([`coder_delegate::issue::asked`]). Without Jev, or with no
+/// reference, `None`: the message runs as ordinary coding work.
+pub async fn asked(
+    request: &str,
+    earlier: &str,
+    jev: Option<jev::Client>,
+    workdir: &Path,
+) -> Option<Reference> {
+    let request = coder_delegate::terminal::Request {
+        workdir: workdir.to_path_buf(),
+        request: request.to_owned(),
+        earlier: earlier.to_owned(),
+        resume: None,
+        read_only: false,
+        clarify: false,
+        agent: coder_delegate::delegate::Agent::Codex,
+        model: None,
+        binary: None,
+        credential: coder_delegate::delegate::Credential::Missing,
+        jev: Some(jev?),
+        artifacts: std::env::temp_dir(),
+        issues: true,
+        issue: false,
+        review: false,
+        extra: (),
+    };
+    let recorder = coder_delegate::record::Recorder::default();
+    let _quiet = coder_delegate::say::capture(Box::new(|_| {}));
+    coder_delegate::issue::asked(&request, &recorder).await
+}
+
+/// [`asked`] on a thread of its own, for a caller that may run inside an
+/// async runtime.
+#[must_use]
+pub fn asked_blocking(request: &str, earlier: &str, workdir: &Path) -> Option<Reference> {
+    // No reference, no question: Jev is not reached.
+    if coder_delegate::issue::references(request).is_empty()
+        && coder_delegate::issue::references(earlier).is_empty()
+    {
+        return None;
+    }
+    let (request, earlier, workdir) = (
+        request.to_owned(),
+        earlier.to_owned(),
+        workdir.to_path_buf(),
+    );
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .ok()?;
+        let (jev, _) = crate::delegate_door::jev_from(&crate::delegate_door::env_value);
+        runtime.block_on(asked(&request, &earlier, jev, &workdir))
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
+// ---------------------------------------------------------------------------
+// The checks.
+
+/// What the checks found and how they ran.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Checked {
+    /// Each problem, with its failing output; empty when green.
+    pub problems: Vec<String>,
+    /// What ran, in sentences, for the evidence comment.
+    pub ran: Vec<String>,
+}
+
+/// Runs the repository's checks on the change in a worktree.
+pub trait Checks: Send + Sync {
+    /// Checks the staged change in `worktree` (the flow stages it).
+    fn check(&self, worktree: &Path, policy: &Policy) -> Checked;
+}
+
+/// The issue flow's gate ([`coder_delegate::issue::gate`]): the touched
+/// packages' tests in a write boundary, and the diff checks; then
+/// `cargo fmt --check` and Clippy when the policy asks.
+pub struct Gate {
+    pub jev: Option<jev::Client>,
+}
+
+impl Checks for Gate {
+    fn check(&self, worktree: &Path, policy: &Policy) -> Checked {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                return Checked {
+                    problems: vec![format!("the checks could not start: {error}")],
+                    ran: Vec::new(),
+                };
+            }
+        };
+        let said = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        let heard = said.clone();
+        let _captured = coder_delegate::say::capture(Box::new(move |line| {
+            heard.borrow_mut().push(line.trim().to_owned());
+        }));
+        runtime.block_on(async {
+            let recorder = coder_delegate::record::Recorder::default();
+            let (mut problems, tested) =
+                coder_delegate::issue::gate(worktree, self.jev.as_ref(), &recorder, None).await;
+            let mut ran = Vec::new();
+            let packages = tested
+                .as_ref()
+                .map(|tested| tested.packages.clone())
+                .unwrap_or_default();
+            if let Some(tested) = &tested {
+                ran.push(tested.describe());
+            }
+            ran.push(
+                "The diff checks ran: style, figures with no source, broken links, code that \
+                 depends on what changed, and plain wording."
+                    .to_owned(),
+            );
+            if policy.fmt && !packages.is_empty() {
+                let mut unformatted = Vec::new();
+                for package in &packages {
+                    let output = std::process::Command::new("cargo")
+                        .args(["fmt", "-p", package, "--", "--check"])
+                        .current_dir(worktree)
+                        .stdin(std::process::Stdio::null())
+                        .output();
+                    match output {
+                        Ok(output) if output.status.success() => {}
+                        Ok(output) => unformatted.push(format!(
+                            "`cargo fmt -p {package} -- --check` finds unformatted code: {}",
+                            clip(&String::from_utf8_lossy(&output.stdout), FAILING_MAX / 2)
+                        )),
+                        Err(error) => {
+                            unformatted.push(format!("cargo fmt could not run: {error}"));
+                        }
+                    }
+                }
+                ran.push(format!(
+                    "`cargo fmt --check` ran on {}: {}.",
+                    names(&packages),
+                    if unformatted.is_empty() {
+                        "formatted"
+                    } else {
+                        "unformatted code"
+                    }
+                ));
+                problems.extend(unformatted);
+            }
+            if policy.clippy && !packages.is_empty() {
+                use coder_delegate::issue::confined;
+                match confined::Setup::for_run(worktree, None) {
+                    Ok(setup) => {
+                        let (lints, _) =
+                            confined::run_suite(&setup, &packages, confined::Suite::Clippy).await;
+                        ran.push(format!(
+                            "Clippy with warnings denied ran on {} in the same boundary: {}.",
+                            names(&packages),
+                            if lints.is_empty() {
+                                "no findings"
+                            } else {
+                                "findings"
+                            }
+                        ));
+                        problems.extend(lints);
+                    }
+                    Err(why) => problems.push(format!("Clippy could not run: {why}")),
+                }
+            }
+            Checked { problems, ran }
+        })
+    }
+}
+
+fn names(packages: &[String]) -> String {
+    packages
+        .iter()
+        .map(|package| format!("`{package}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+// ---------------------------------------------------------------------------
+// The flow.
+
+/// Only one flow lands at a time in this process, so parallel flows
+/// rebase onto each other instead of racing the push.
+static LANDING: Mutex<()> = Mutex::new(());
+
+/// Why a flow did not start.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Refused {
+    /// Another claim holds the issue (only a queue checks).
+    Claimed(String),
+    /// The issue is closed.
+    Closed(String),
+    /// Anything else, in a sentence.
+    Failed(String),
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refused::Claimed(why) | Refused::Closed(why) | Refused::Failed(why) => f.write_str(why),
+        }
+    }
+}
+
+/// A flow that started: its local run, working.
+pub struct Started {
+    pub record: Record,
+    pub issue: Issue,
+    pub repository: String,
+    work: Work,
+}
+
+/// What a started flow carries into [`Started::finish`].
+struct Work {
+    store: PathBuf,
+    local: Arc<Local>,
+    tracker: Arc<dyn Tracker>,
+    checks: Arc<dyn Checks>,
+    policy: Policy,
+    branch: String,
+    top: PathBuf,
+    now: fn() -> u64,
+}
+
+/// Starts issue flows on this computer.
+pub struct Runner {
+    pub local: Arc<Local>,
+    pub tracker: Arc<dyn Tracker>,
+    pub checks: Arc<dyn Checks>,
+    /// Overrides the repository's landing policy.
+    pub land: Option<Land>,
+    /// A queue skips claimed issues; a person naming one issue does not.
+    pub skip_claimed: bool,
+    pub now: fn() -> u64,
+}
+
+impl Runner {
+    /// The runner over `store` with `gh`, the gate, and Jev as this
+    /// computer reaches it.
+    #[must_use]
+    pub fn new(store: PathBuf) -> Self {
+        let (jev, _) = crate::delegate_door::jev_from(&crate::delegate_door::env_value);
+        Runner {
+            local: Arc::new(Local::here(store)),
+            tracker: Arc::new(Gh),
+            checks: Arc::new(Gate { jev }),
+            land: None,
+            skip_claimed: false,
+            now: super::autostart::unix_now,
+        }
+    }
+
+    /// Claims `number` and starts its first turn in a worktree of the
+    /// fetched default branch of the checkout `dir` is in, for the chat
+    /// `thread`.
+    ///
+    /// # Errors
+    /// Why the flow did not start; nothing was claimed unless the start
+    /// itself failed after the claim, which then says so on the issue.
+    pub fn begin(
+        &self,
+        dir: &Path,
+        reference: &Reference,
+        thread: Option<&str>,
+    ) -> Result<Started, Refused> {
+        let checkout = local::checkout(dir).map_err(Refused::Failed)?;
+        let mut policy = Policy::load(&checkout.top).map_err(Refused::Failed)?;
+        if let Some(land) = self.land {
+            policy.land = land;
+        }
+        let here = self.tracker.repository(&checkout.top).map_err(|why| {
+            Refused::Failed(format!(
+                "Coder cannot tell which GitHub repository {} is: {why}",
+                checkout.top.display()
+            ))
+        })?;
+        let repository = match &reference.repository {
+            Some(named) if !named.eq_ignore_ascii_case(&here) => {
+                return Err(Refused::Failed(format!(
+                    "Coder works the issues of the checkout it runs in ({here}); \
+                     {named}#{} is in another repository. Run this from a checkout of {named}.",
+                    reference.number
+                )));
+            }
+            _ => here,
+        };
+        let number = reference.number;
+        let issue = self.tracker.issue(&repository, number).map_err(|why| {
+            Refused::Failed(format!("Coder could not read {repository}#{number}: {why}"))
+        })?;
+        if !issue.open {
+            return Err(Refused::Closed(format!("{repository}#{number} is closed.")));
+        }
+        let mut notes = Vec::new();
+        let note = |notes: &mut Vec<Note>, text: String| {
+            notes.push(Note {
+                after_turn: 0,
+                text,
+            })
+        };
+        note(
+            &mut notes,
+            format!("Issue #{number}: {} ({})", issue.title, issue.url),
+        );
+        if let Some(why) = claimed(&issue, (self.now)(), policy.claim_hours) {
+            if self.skip_claimed {
+                return Err(Refused::Claimed(why));
+            }
+            note(
+                &mut notes,
+                format!("{why}. You asked for this issue by name, so Coder works it anyway."),
+            );
+        }
+        let branch = match &policy.branch {
+            Some(branch) => branch.clone(),
+            None => local::default_branch(&checkout.top),
+        };
+        local::git_out(&checkout.top, &["fetch", "-q", "origin", &branch]).map_err(|why| {
+            Refused::Failed(format!("Git could not fetch origin/{branch}: {why}"))
+        })?;
+        let base = format!("origin/{branch}");
+        let prompt = prompt(&issue, &self.linked(&repository, &issue));
+        let title = format!("#{number}: {}", issue.title);
+        let local = Arc::clone(&self.local);
+        local.set_max_steps(policy.max_steps);
+        let record = local
+            .start_from(dir, Some(&base), &title, &prompt, thread)
+            .map_err(Refused::Failed)?;
+        let land = match policy.land {
+            Land::Main => format!("lands it on `{branch}` when the checks pass"),
+            Land::PullRequest => "opens a pull request when the checks pass".to_owned(),
+        };
+        let claim = format!(
+            "Claimed: Coder is working on this from an OpenAgents chat on this computer (task \
+             `{}`), in its own worktree of `{base}`. It runs the repository's checks, {land}, \
+             and comments the evidence here.\n\n{CLAIM_MARK} task={} -->",
+            &record.task[..12],
+            record.task
+        );
+        let mut flow = Flow {
+            schema: FLOW_SCHEMA.into(),
+            task: record.task.clone(),
+            link: IssueLink {
+                repository: repository.clone(),
+                number,
+                url: issue.url.clone(),
+                title: issue.title.clone(),
+                outcome: "working".into(),
+                commits: Vec::new(),
+                pull_request: None,
+                closed: false,
+            },
+            notes,
+            finished: false,
+            closing: String::new(),
+            files: None,
+        };
+        match self.tracker.comment(&repository, number, &claim) {
+            Ok(()) => flow.notes.push(Note {
+                after_turn: 0,
+                text: format!("Claimed #{number} with a comment on the issue."),
+            }),
+            Err(why) => flow.notes.push(Note {
+                after_turn: 0,
+                text: format!(
+                    "Coder could not post its claim comment ({why}); it works the issue anyway."
+                ),
+            }),
+        }
+        flow.notes.push(Note {
+            after_turn: 0,
+            text: format!(
+                "Working in {} from {base} ({}); Coder {land}.",
+                record.worktree,
+                &record.base[..record.base.len().min(10)]
+            ),
+        });
+        save(local.store(), &flow).map_err(Refused::Failed)?;
+        Ok(Started {
+            record,
+            issue,
+            repository,
+            work: Work {
+                store: local.store().to_path_buf(),
+                local,
+                tracker: Arc::clone(&self.tracker),
+                checks: Arc::clone(&self.checks),
+                policy,
+                branch,
+                top: checkout.top,
+                now: self.now,
+            },
+        })
+    }
+
+    /// The issues `issue` links, as the prompt quotes them.
+    fn linked(&self, repository: &str, issue: &Issue) -> Vec<Issue> {
+        coder_delegate::issue::references(&issue.body)
+            .into_iter()
+            .filter(|reference| {
+                reference.number != issue.number
+                    && reference
+                        .repository
+                        .as_deref()
+                        .is_none_or(|named| named.eq_ignore_ascii_case(repository))
+            })
+            .take(LINKED_MAX)
+            .filter_map(|reference| self.tracker.issue(repository, reference.number).ok())
+            .collect()
+    }
+}
+
+/// The first turn's prompt: the issue, its comments, the issues it
+/// links, and the issue flow's directions.
+fn prompt(issue: &Issue, linked: &[Issue]) -> String {
+    let mut text = format!(
+        "# Issue #{}: {}\n\n{}\n\n{}\n",
+        issue.number,
+        issue.title,
+        issue.body.trim(),
+        issue.url
+    );
+    let comments: Vec<&Comment> = issue
+        .comments
+        .iter()
+        .filter(|comment| {
+            !comment.body.contains(CLAIM_MARK)
+                && !comment
+                    .body
+                    .trim_start()
+                    .get(..7)
+                    .is_some_and(|head| head.eq_ignore_ascii_case("claimed"))
+        })
+        .collect();
+    if !comments.is_empty() {
+        let mut quoted = String::new();
+        for comment in comments.iter().rev() {
+            if quoted.len() > COMMENTS_MAX {
+                break;
+            }
+            quoted = format!("---\n{}\n{quoted}", comment.body.trim());
+        }
+        text.push_str(&format!(
+            "\n## Comments on the issue\n\n{}\n",
+            clip(&quoted, COMMENTS_MAX)
+        ));
+    }
+    if !linked.is_empty() {
+        text.push_str("\n## Issues it links\n");
+        for other in linked {
+            text.push_str(&format!(
+                "\n### #{}: {}\n\n{}\n",
+                other.number,
+                other.title,
+                clip(other.body.trim(), LINKED_BYTES)
+            ));
+        }
+    }
+    text.push_str(&format!(
+        "\n{}\n",
+        coder_delegate::terminal::ISSUE_DIRECTIONS
+    ));
+    text
+}
+
+/// How one turn ended, as the flow reads it.
+enum Turn {
+    Finished { summary: String },
+    Asked(String),
+    Stopped(String),
+    Failed(String),
+}
+
+impl Started {
+    /// Works the flow to its end: waits for each turn, checks, fixes,
+    /// lands, comments, and closes. Blocks; run it on a thread of its
+    /// own. Returns the flow as its followers read it.
+    #[must_use]
+    pub fn finish(self) -> Flow {
+        let Started {
+            record,
+            issue,
+            repository,
+            work,
+        } = self;
+        let mut flow = load(&work.store, &record.task).unwrap_or_else(|| Flow {
+            schema: FLOW_SCHEMA.into(),
+            task: record.task.clone(),
+            link: IssueLink {
+                repository: repository.clone(),
+                number: issue.number,
+                url: issue.url.clone(),
+                title: issue.title.clone(),
+                outcome: "working".into(),
+                commits: Vec::new(),
+                pull_request: None,
+                closed: false,
+            },
+            notes: Vec::new(),
+            finished: false,
+            closing: String::new(),
+            files: None,
+        });
+        let worktree = PathBuf::from(&record.worktree);
+        let mut run = Run {
+            work: &work,
+            flow: &mut flow,
+            record: &record,
+            issue: &issue,
+            repository: &repository,
+            worktree: &worktree,
+            turn: 1,
+            summaries: Vec::new(),
+            checked: Checked::default(),
+            rounds: 0,
+        };
+        run.drive();
+        flow
+    }
+}
+
+/// A flow while it works.
+struct Run<'a> {
+    work: &'a Work,
+    flow: &'a mut Flow,
+    record: &'a Record,
+    issue: &'a Issue,
+    repository: &'a str,
+    worktree: &'a Path,
+    turn: usize,
+    summaries: Vec<String>,
+    checked: Checked,
+    rounds: usize,
+}
+
+impl Run<'_> {
+    fn note(&mut self, text: impl Into<String>) {
+        self.flow.notes.push(Note {
+            after_turn: self.turn,
+            text: text.into(),
+        });
+        let _ = save(&self.work.store, self.flow);
+    }
+
+    fn stopping(&self) -> bool {
+        stop_requested(&self.work.store, &self.record.task)
+    }
+
+    fn drive(&mut self) {
+        loop {
+            match self.wait() {
+                Turn::Finished { summary } => {
+                    if !summary.trim().is_empty() {
+                        self.summaries.push(summary);
+                    }
+                }
+                Turn::Stopped(why) => return self.stopped(&why),
+                Turn::Asked(text) => {
+                    return self.failed(
+                        &format!(
+                            "Coder asked a question instead of finishing: {}",
+                            clip(text.trim(), 600)
+                        ),
+                        None,
+                    );
+                }
+                Turn::Failed(why) => return self.failed(&why, None),
+            }
+            if self.stopping() {
+                return self.stopped("Stopped by the person who started it.");
+            }
+            let _ = local::git_out(self.worktree, &["add", "-A"]);
+            let staged = local::git_out(self.worktree, &["diff", "--cached", "--name-only"])
+                .unwrap_or_default();
+            if staged.trim().is_empty() {
+                return self.unchanged();
+            }
+            self.note("Running the repository's checks on the change.");
+            self.checked = self.work.checks.check(self.worktree, &self.work.policy);
+            if self.stopping() {
+                return self.stopped("Stopped by the person who started it.");
+            }
+            if self.checked.problems.is_empty() {
+                self.note("The checks pass.");
+                break;
+            }
+            let count = self.checked.problems.len();
+            let listed = clip(&self.checked.problems.join("; "), 600);
+            if self.rounds >= self.work.policy.fix_rounds {
+                self.note(format!(
+                    "The checks still find {count} problem(s) after {} fix turn(s): {listed}",
+                    self.rounds
+                ));
+                let problems = self.checked.problems.clone();
+                return self.failed(
+                    &format!(
+                        "The repository's checks still fail after {} fix turn(s), so Coder \
+                         pushed nothing.",
+                        self.rounds
+                    ),
+                    Some(&problems),
+                );
+            }
+            self.rounds += 1;
+            self.note(format!(
+                "The checks find {count} problem(s): {listed}. Coder fixes them (fix turn {} of {}).",
+                self.rounds, self.work.policy.fix_rounds
+            ));
+            let request = coder_delegate::issue::fix_request(
+                self.worktree,
+                self.issue.number,
+                &self.checked.problems,
+            );
+            match self.work.local.answer(&self.record.task, &request) {
+                Ok(_) => self.turn += 1,
+                Err(why) => {
+                    let problems = self.checked.problems.clone();
+                    return self.failed(
+                        &format!("The fix turn could not start: {why}"),
+                        Some(&problems),
+                    );
+                }
+            }
+        }
+        match self.work.policy.land {
+            Land::Main => self.land_main(),
+            Land::PullRequest => self.land_pull_request(),
+        }
+    }
+
+    /// Waits for the current turn to end.
+    fn wait(&mut self) -> Turn {
+        let store = &self.work.store;
+        let task = &self.record.task;
+        let since = local::record(store, task)
+            .and_then(|r| r.turns.iter().find(|t| t.turn == self.turn).map(|t| t.at))
+            .unwrap_or_else(|| (self.work.now)());
+        loop {
+            let current = match Store::open(store).and_then(|tasks| tasks.show(task)) {
+                Ok(current) => current,
+                Err(error) => {
+                    return Turn::Failed(format!("Coder's task could not be read: {error}"));
+                }
+            };
+            let runs: Vec<&super::owner::Run> =
+                current.earlier.iter().chain(current.run.iter()).collect();
+            match runs.get(self.turn - 1) {
+                Some(run) => {
+                    if let Some(result) = &run.result {
+                        let trace = store.join(&run.admission.trace_file);
+                        let mut mapper = Mapper::new(self.turn, None);
+                        if let Ok(recording) = atif::log::read(&trace) {
+                            for step in recording.document()["steps"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                            {
+                                let _ = mapper.step(step);
+                            }
+                        }
+                        return match mapper.end(&result.ending, Vec::new(), "", "", None) {
+                            CoderEvent::Result(finished) => Turn::Finished {
+                                summary: finished.summary,
+                            },
+                            CoderEvent::Question(asked) | CoderEvent::Approval(asked) => {
+                                Turn::Asked(asked.text)
+                            }
+                            CoderEvent::Stopped(stopped) => Turn::Stopped(stopped.message),
+                            CoderEvent::Failure(failed) => Turn::Failed(failed.message),
+                            _ => Turn::Failed(format!("Coder ended as {}.", result.ending)),
+                        };
+                    }
+                }
+                None => {
+                    if current.status == Status::Cancelled {
+                        return Turn::Stopped("Coder stopped before the turn started.".into());
+                    }
+                    if let Some(why) = local::unadmitted(store, task, since, (self.work.now)()) {
+                        return Turn::Failed(why);
+                    }
+                }
+            }
+            std::thread::sleep(POLL);
+        }
+    }
+
+    /// Commits the staged change; returns the commit.
+    fn commit(&mut self) -> Result<String, String> {
+        let _ = local::git_out(self.worktree, &["add", "-A"]);
+        let what = if self.summaries.is_empty() {
+            "Worked by Coder.".to_owned()
+        } else {
+            self.summaries
+                .iter()
+                .map(|summary| summary.trim().to_owned())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        };
+        let started = self.record.turns.first();
+        let by = started.map_or_else(String::new, |start| {
+            format!(" ({} {})", start.provider, start.model)
+        });
+        let mut body = format!(
+            "{}\n\nWorked by Coder from an OpenAgents chat{by} for issue #{}.\nIssue: {}",
+            clip(&what, 4_000),
+            self.issue.number,
+            self.issue.url
+        );
+        if let Some(trailer) = &self.work.policy.trailer {
+            body.push_str(&format!("\n\n{}", trailer.trim()));
+        }
+        local::git_out(
+            self.worktree,
+            &["commit", "-q", "-m", &self.issue.title, "-m", &body],
+        )
+        .map_err(|why| format!("Git could not commit: {why}"))?;
+        local::git_out(self.worktree, &["rev-parse", "HEAD"]).map(|head| head.trim().to_owned())
+    }
+
+    fn land_main(&mut self) {
+        let _landing = LANDING.lock().unwrap_or_else(|poison| poison.into_inner());
+        let branch = self.work.branch.clone();
+        let mut base = self.record.base.clone();
+        for attempt in 0..3 {
+            if self.stopping() {
+                return self.stopped("Stopped by the person who started it, before landing.");
+            }
+            if let Err(why) = local::git_out(self.worktree, &["fetch", "-q", "origin", &branch]) {
+                return self.failed(&format!("Git could not fetch origin/{branch}: {why}"), None);
+            }
+            let upstream =
+                local::git_out(self.worktree, &["rev-parse", &format!("origin/{branch}")])
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned();
+            if upstream.is_empty() {
+                return self.failed(&format!("origin/{branch} names no commit."), None);
+            }
+            if upstream != base {
+                self.note(format!(
+                    "{branch} moved to {}; Coder rebases the change onto it and runs the checks again.",
+                    &upstream[..10.min(upstream.len())]
+                ));
+                if let Err(why) = self.rebase(&upstream) {
+                    return self.failed(&why, None);
+                }
+                base = upstream.clone();
+                self.checked = self.work.checks.check(self.worktree, &self.work.policy);
+                if !self.checked.problems.is_empty() {
+                    let problems = self.checked.problems.clone();
+                    return self.failed(
+                        &format!(
+                            "After the rebase onto {branch}, the repository's checks fail, so \
+                             Coder pushed nothing."
+                        ),
+                        Some(&problems),
+                    );
+                }
+                self.note("The checks pass on the rebased change.");
+            }
+            let commit = match self.commit() {
+                Ok(commit) => commit,
+                Err(why) => return self.failed(&why, None),
+            };
+            self.note(format!(
+                "Pushing {} to {branch}.",
+                &commit[..10.min(commit.len())]
+            ));
+            match local::git_out(
+                self.worktree,
+                &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+            ) {
+                Ok(_) => {
+                    let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
+                    self.flow.files = Some(files.clone());
+                    self.flow.link.commits = vec![commit.clone()];
+                    self.flow.link.outcome = "landed".into();
+                    let url = format!("https://github.com/{}/commit/{commit}", self.repository);
+                    let comment = self.evidence(
+                        &format!(
+                            "Coder landed this on `{branch}` in [{}]({url}) and closed the issue.",
+                            &commit[..10]
+                        ),
+                        &files,
+                    );
+                    let commented =
+                        self.work
+                            .tracker
+                            .comment(self.repository, self.issue.number, &comment);
+                    let closed = self.work.tracker.close(self.repository, self.issue.number);
+                    self.flow.link.closed = closed.is_ok();
+                    let mut closing = format!("Landed {} on {branch}", &commit[..10]);
+                    match (&commented, &closed) {
+                        (Ok(()), Ok(())) => closing.push_str(&format!(
+                            ", commented the evidence, and closed #{}.",
+                            self.issue.number
+                        )),
+                        _ => closing.push_str(&format!(
+                            "; {}.",
+                            [commented.err(), closed.err()]
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<_>>()
+                                .join("; ")
+                        )),
+                    }
+                    return self.end(closing);
+                }
+                Err(why) if attempt < 2 => {
+                    self.note(format!(
+                        "The push was refused ({}); Coder tries again on the new {branch}.",
+                        clip(&why, 200)
+                    ));
+                    let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+                }
+                Err(why) => {
+                    let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+                    return self.failed(&format!("Git could not push to {branch}: {why}"), None);
+                }
+            }
+        }
+    }
+
+    /// Moves the staged change onto `upstream`.
+    fn rebase(&mut self, upstream: &str) -> Result<(), String> {
+        let _ = local::git_out(self.worktree, &["add", "-A"]);
+        local::git_out(
+            self.worktree,
+            &[
+                "commit",
+                "-q",
+                "--no-verify",
+                "-m",
+                "coder: change before rebase",
+            ],
+        )
+        .map_err(|why| format!("Git could not hold the change for the rebase: {why}"))?;
+        if let Err(why) = local::git_out(self.worktree, &["rebase", "-q", upstream]) {
+            let _ = local::git_out(self.worktree, &["rebase", "--abort"]);
+            let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+            return Err(format!(
+                "The change conflicts with the newer {}, so Coder pushed nothing: {}",
+                self.work.branch,
+                clip(&why, 400)
+            ));
+        }
+        local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"])
+            .map(|_| ())
+            .map_err(|why| format!("Git could not stage the rebased change: {why}"))
+    }
+
+    fn land_pull_request(&mut self) {
+        let commit = match self.commit() {
+            Ok(commit) => commit,
+            Err(why) => return self.failed(&why, None),
+        };
+        let branch = format!(
+            "coder/issue-{}-{}",
+            self.issue.number,
+            &self.record.task[..8]
+        );
+        if let Err(why) = local::git_out(
+            self.worktree,
+            &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+        ) {
+            return self.failed(&format!("Git could not push {branch}: {why}"), None);
+        }
+        let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
+        self.flow.files = Some(files.clone());
+        self.flow.link.commits = vec![commit.clone()];
+        let body = self.evidence(&format!("Coder's change for {}.", self.issue.url), &files);
+        let body = format!("{body}\n\nCloses #{}", self.issue.number);
+        match self.work.tracker.pull_request(
+            &self.work.top,
+            self.repository,
+            &branch,
+            &self.work.branch,
+            &self.issue.title,
+            &body,
+        ) {
+            Ok(url) => {
+                self.flow.link.outcome = "pull_request".into();
+                self.flow.link.pull_request = Some(url.clone());
+                let _ = self.work.tracker.comment(
+                    self.repository,
+                    self.issue.number,
+                    &format!("Coder opened {url} for this issue; the checks pass on it."),
+                );
+                self.end(format!("Opened pull request {url}."))
+            }
+            Err(why) => self.failed(&format!("The pull request was not opened: {why}"), None),
+        }
+    }
+
+    /// The evidence comment: `headline`, what changed, the checks, and
+    /// the run.
+    fn evidence(&self, headline: &str, files: &[FileChange]) -> String {
+        let mut text = format!("{headline}\n\n");
+        if !self.summaries.is_empty() {
+            text.push_str("**What Coder did**\n\n");
+            for summary in &self.summaries {
+                text.push_str(&format!("{}\n\n", clip(summary.trim(), 2_000)));
+            }
+        }
+        if !files.is_empty() {
+            text.push_str("**Files**\n\n");
+            for file in files {
+                text.push_str(&format!(
+                    "- {} `{}` (+{} -{})\n",
+                    file.status,
+                    file.path,
+                    file.added.map_or("?".into(), |n| n.to_string()),
+                    file.removed.map_or("?".into(), |n| n.to_string())
+                ));
+            }
+            text.push('\n');
+        }
+        text.push_str("**Checks**\n\n");
+        for ran in &self.checked.ran {
+            text.push_str(&format!("- {ran}\n"));
+        }
+        text.push_str("- The checks passed on the exact change that landed.\n\n");
+        text.push_str(&self.run_line());
+        text
+    }
+
+    fn run_line(&self) -> String {
+        let record = local::record(&self.work.store, &self.record.task);
+        let turns = record.as_ref().map_or(1, |r| r.turns.len());
+        let providers: Vec<String> = record
+            .iter()
+            .flat_map(|r| r.turns.iter())
+            .map(|turn| format!("{} {}", turn.provider, turn.model))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        format!(
+            "**Run**: task `{}`, {turns} turn(s) ({} fix turn(s)) on {}, from an OpenAgents chat \
+             on the owner's computer.",
+            &self.record.task[..12],
+            self.rounds,
+            if providers.is_empty() {
+                "a local provider".to_owned()
+            } else {
+                providers.join(", ")
+            }
+        )
+    }
+
+    fn unchanged(&mut self) {
+        self.flow.link.outcome = "unchanged".into();
+        let what = self.summaries.join("\n\n");
+        let comment = format!(
+            "Coder worked this issue and changed nothing, so nothing landed and the issue stays \
+             open.\n\n{}\n\n{}\n\n{RELEASE_MARK}",
+            if what.trim().is_empty() {
+                "It gave no summary.".to_owned()
+            } else {
+                format!("**What Coder said**\n\n{}", clip(what.trim(), 3_000))
+            },
+            self.run_line()
+        );
+        let _ = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        self.end(format!(
+            "Coder changed nothing, so nothing landed; #{} stays open with a comment.",
+            self.issue.number
+        ));
+    }
+
+    fn stopped(&mut self, why: &str) {
+        self.flow.link.outcome = "stopped".into();
+        let comment = format!(
+            "Coder stopped working on this before it landed anything: {why} The issue stays \
+             open. Any partial change is in Coder's worktree `{}` on the computer that ran it.\n\n{}\n\n{RELEASE_MARK}",
+            self.worktree.display(),
+            self.run_line()
+        );
+        let _ = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        self.end(format!(
+            "Nothing landed; #{} stays open with a comment.",
+            self.issue.number
+        ));
+    }
+
+    fn failed(&mut self, why: &str, problems: Option<&[String]>) {
+        self.flow.link.outcome = "failed".into();
+        let mut comment = format!("Coder tried this issue and did not land a change. {why}\n\n");
+        if !self.summaries.is_empty() {
+            comment.push_str("**What Coder tried**\n\n");
+            for summary in &self.summaries {
+                comment.push_str(&format!("{}\n\n", clip(summary.trim(), 1_500)));
+            }
+        }
+        if let Some(problems) = problems {
+            comment.push_str("**What the checks found**\n\n```text\n");
+            comment.push_str(&clip(&problems.join("\n\n"), FAILING_MAX).replace("```", "'''"));
+            comment.push_str("\n```\n\n");
+        }
+        comment.push_str(&format!(
+            "Nothing was pushed, and the issue stays open. The change is in Coder's worktree \
+             `{}` on the computer that ran it.\n\n{}\n\n{RELEASE_MARK}",
+            self.worktree.display(),
+            self.run_line()
+        ));
+        let _ = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        self.end(format!(
+            "{why} Nothing was pushed; #{} stays open with a comment.",
+            self.issue.number
+        ));
+    }
+
+    fn end(&mut self, closing: String) {
+        self.note(closing.clone());
+        self.flow.closing = closing;
+        self.flow.finished = true;
+        let _ = save(&self.work.store, self.flow);
+        let _ = std::fs::remove_file(stop_path(&self.work.store, &self.record.task));
+    }
+}
+
+/// What `to` changed since `from` in `worktree`.
+fn changed_by(worktree: &Path, from: &str, to: &str) -> Vec<FileChange> {
+    let mut out = Vec::new();
+    let statuses =
+        local::git_out(worktree, &["diff", "--name-status", from, to]).unwrap_or_default();
+    let numstat = local::git_out(worktree, &["diff", "--numstat", from, to]).unwrap_or_default();
+    for line in numstat.lines() {
+        let mut parts = line.splitn(3, '\t');
+        let (Some(added), Some(removed), Some(path)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let status = statuses
+            .lines()
+            .find(|line| line.ends_with(&format!("\t{path}")))
+            .and_then(|line| line.chars().next())
+            .map_or("modified", |code| match code {
+                'A' => "added",
+                'D' => "deleted",
+                'R' => "renamed",
+                _ => "modified",
+            });
+        out.push(FileChange {
+            path: path.to_owned(),
+            status: status.to_owned(),
+            added: added.parse().ok(),
+            removed: removed.parse().ok(),
+        });
+    }
+    out
+}
+
+fn clip(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_owned();
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
+
+#[cfg(test)]
+#[path = "issue_run_tests.rs"]
+mod tests;

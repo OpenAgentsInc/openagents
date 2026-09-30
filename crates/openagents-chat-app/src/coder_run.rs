@@ -1071,6 +1071,9 @@ impl Rows {
                     ));
                 }
                 lines.push((format!("In {}", result.worktree), true));
+                if let Some(issue) = &result.issue {
+                    lines.push((issue.line(), false));
+                }
                 let mut node = card(&key, "Coder finished", &[]);
                 if let Element::Stack { children, .. } = &mut node.element {
                     if !result.summary.trim().is_empty() {
@@ -1088,11 +1091,11 @@ impl Rows {
             }
             CoderEvent::Failure(failure) => {
                 self.close_turn();
-                self.rows.push(card(
-                    &key,
-                    "Coder didn't finish",
-                    &[(failure.message.clone(), false)],
-                ));
+                let mut lines = vec![(failure.message.clone(), false)];
+                if let Some(issue) = &failure.issue {
+                    lines.push((issue.line(), false));
+                }
+                self.rows.push(card(&key, "Coder didn't finish", &lines));
             }
             CoderEvent::Stopped(stopped) => {
                 self.close_turn();

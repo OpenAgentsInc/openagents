@@ -515,6 +515,20 @@ impl CoderLane {
                     let path = std::path::Path::new(dir);
                     match self.local().project(path) {
                         Ok(_) => {
+                            // A chat that asks Coder to work a GitHub issue
+                            // runs the issue flow (#10049); Jev chooses the
+                            // issue among the references the chat names.
+                            if let Some(reference) =
+                                coder::task::issue_run::asked_blocking(&prompt, "", path)
+                            {
+                                let record = start_issue(&store, path, reference, chat)?;
+                                let _ = std::fs::write(last_project(&store), &record.checkout);
+                                return Ok(Answer::Started {
+                                    task: record.task,
+                                    project: record.project,
+                                    checkout: record.checkout,
+                                });
+                            }
                             let record = self.local().start(path, &title, &prompt, Some(chat))?;
                             let _ = std::fs::write(last_project(&store), &record.checkout);
                             return Ok(Answer::Started {
@@ -578,6 +592,39 @@ impl CoderLane {
             Request::Choose => unreachable!("the folder chooser runs on the local lane"),
         }
     }
+}
+
+/// Starts the issue flow for `reference` in the checkout at `path` for the
+/// chat, on a thread of its own that works it to its end; returns the
+/// run's record once its first turn started. The chat follows the task as
+/// any local run, and the flow's steps and issue link arrive in its
+/// events.
+fn start_issue(
+    store: &std::path::Path,
+    path: &std::path::Path,
+    reference: coder::task::issue_run::Reference,
+    chat: &str,
+) -> Result<coder::task::local::Record, String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let (store, dir, chat) = (store.to_path_buf(), path.to_path_buf(), chat.to_owned());
+    std::thread::spawn(move || {
+        let runner = coder::task::issue_run::Runner::new(store);
+        match runner.begin(&dir, &reference, Some(&chat)) {
+            Ok(started) => {
+                let _ = sender.send(Ok(started.record.clone()));
+                let _ = started.finish();
+            }
+            Err(refused) => {
+                let _ = sender.send(Err(format!(
+                    "Coder did not take #{}: {refused}",
+                    reference.number
+                )));
+            }
+        }
+    });
+    receiver
+        .recv()
+        .unwrap_or_else(|_| Err("Coder could not start the issue flow.".into()))
 }
 
 /// Names a file every Coder event the window receives is appended to, as

@@ -120,6 +120,20 @@ pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u
             return EXIT_FAILURE;
         }
     };
+    // The router judged this is coding work; Jev now judges whether it
+    // asks to work a GitHub issue, choosing among the references the
+    // messages name (a bounded field read only after routing).
+    let (request, earlier) = asked_of(&thread.turns);
+    let dir = here.clone();
+    let reference = tokio::task::spawn_blocking(move || {
+        coder::task::issue_run::asked_blocking(&request, &earlier, &dir)
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(reference) = reference {
+        return start_issue(output, backend, id, &here, reference).await;
+    }
     let run = runner(backend, id);
     let title = thread.summary.title.clone();
     let chat = id.to_owned();
@@ -162,6 +176,120 @@ pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u
         })),
     );
     follow_task(output, backend, id, &record.task, 1).await
+}
+
+/// The thread's last message, and the conversation before it, for Jev's
+/// choice of issue.
+fn asked_of(turns: &[openagents_chat::basic_coder::Turn]) -> (String, String) {
+    use openagents_chat::basic_coder::Role;
+    let last = turns.iter().rposition(|turn| turn.role == Role::User);
+    let Some(last) = last else {
+        return (String::new(), String::new());
+    };
+    let earlier = turns[..last]
+        .iter()
+        .rev()
+        .take(6)
+        .rev()
+        .map(|turn| {
+            let who = if turn.role == Role::User {
+                "user"
+            } else {
+                "assistant"
+            };
+            format!("{who}: {}", turn.text.trim())
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    (turns[last].text.clone(), earlier)
+}
+
+/// Start the issue flow for `reference` on this computer for the thread
+/// `id`: claim, a worktree of the fetched default branch, the checks, and
+/// landing as the repository's policy says, all streamed as the thread's
+/// Coder events. The flow runs on a thread of this process until it ends.
+async fn start_issue(
+    output: &Output,
+    backend: &mut Backend,
+    id: &str,
+    here: &std::path::Path,
+    reference: coder::task::issue_run::Reference,
+) -> u8 {
+    let report = |accepted: bool, message: &str, task: Option<serde_json::Value>| {
+        event(
+            output,
+            json!({"event": "coder", "thread": id, "accepted": accepted, "message": message, "task": task}),
+        );
+        if !output.json() {
+            eprintln!("{message}");
+        }
+    };
+    let store = store(backend, id);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let dir = here.to_path_buf();
+    let chat = id.to_owned();
+    let number = reference.number;
+    let flow = std::thread::spawn(move || {
+        let runner = coder::task::issue_run::Runner::new(store);
+        match runner.begin(&dir, &reference, Some(&chat)) {
+            Ok(started) => {
+                let _ = sender.send(Ok((started.record.clone(), started.issue.url.clone())));
+                Some(started.finish())
+            }
+            Err(refused) => {
+                let _ = sender.send(Err(refused.to_string()));
+                None
+            }
+        }
+    });
+    let begun = tokio::task::spawn_blocking(move || receiver.recv())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_else(|| Err("Coder could not start the issue flow.".into()));
+    let (record, url) = match begun {
+        Ok(begun) => begun,
+        Err(message) => {
+            let _ = flow.join();
+            report(
+                false,
+                &format!("Coder did not take #{number}: {message}"),
+                None,
+            );
+            return EXIT_FAILURE;
+        }
+    };
+    let bound = backend
+        .apply(Command::BindCoder {
+            chat: id.to_owned(),
+            host: local::LOCAL_HOST.into(),
+            task: record.task.clone(),
+            project: Some(record.project.clone()),
+        })
+        .await;
+    if let Err(why) = bound {
+        eprintln!(
+            "openagents chat: Coder started, but the thread could not record its task ({why})."
+        );
+    }
+    report(
+        true,
+        &format!(
+            "Coder took issue #{number} ({url}) as task {} in a worktree of {}.",
+            record.task, record.project
+        ),
+        Some(json!({
+            "host": local::LOCAL_HOST,
+            "task": record.task,
+            "project": record.project,
+            "worktree": record.worktree,
+            "issue": number,
+            "issue_url": url,
+        })),
+    );
+    let code = follow_flow(output, backend, id, &record.task).await;
+    let _ = tokio::task::spawn_blocking(move || flow.join()).await;
+    code
 }
 
 /// `chat follow`: replay the thread's task from its first event and keep
@@ -254,6 +382,25 @@ pub(super) async fn answer(output: &Output, backend: &mut Backend, id: &str, tex
 /// Stream `task`'s events from `turn` on until it ends or asks. Ctrl-C
 /// stops following, not the task.
 async fn follow_task(output: &Output, backend: &Backend, id: &str, task: &str, turn: usize) -> u8 {
+    follow_from(output, backend, id, task, turn, false).await
+}
+
+/// Stream an issue flow's task to its end. Ctrl-C asks the flow to stop:
+/// it stops the running turn, or stops before landing, and says so on the
+/// issue; the stream then shows how it ended.
+async fn follow_flow(output: &Output, backend: &Backend, id: &str, task: &str) -> u8 {
+    follow_from(output, backend, id, task, 1, true).await
+}
+
+async fn follow_from(
+    output: &Output,
+    backend: &Backend,
+    id: &str,
+    task: &str,
+    turn: usize,
+    flow: bool,
+) -> u8 {
+    let mut stopping = false;
     let mut follow: Follow =
         runner(backend, id).follow(task, Some(id), Some(answer_hint(backend, id)));
     let interrupt = tokio::signal::ctrl_c();
@@ -295,7 +442,22 @@ async fn follow_task(output: &Output, backend: &Backend, id: &str, task: &str, t
         }
         tokio::select! {
             () = tokio::time::sleep(POLL) => {}
-            _ = &mut interrupt => {
+            _ = &mut interrupt, if !stopping => {
+                if flow {
+                    stopping = true;
+                    let run = runner(backend, id);
+                    let stopped = task.to_owned();
+                    let asked = tokio::task::spawn_blocking(move || run.stop(&stopped)).await;
+                    eprintln!(
+                        "Stopping: Coder ends the issue flow at its next step and says so on the \
+                         issue.{}",
+                        match asked {
+                            Ok(Err(why)) => format!(" ({why})"),
+                            _ => String::new(),
+                        }
+                    );
+                    continue;
+                }
                 eprintln!(
                     "Stopped following. Coder keeps working: follow it with `openagents chat follow{} --thread {id}`, or stop it with `openagents chat stop{} --thread {id}`.",
                     flag(backend), flag(backend)
@@ -350,6 +512,9 @@ fn show(output: &Output, line: &Line) {
                 );
             }
             println!("worktree: {}", result.worktree);
+            if let Some(issue) = &result.issue {
+                println!("{}", issue.line());
+            }
             let _ = std::io::stdout().flush();
         }
         CoderEvent::Question(asked) | CoderEvent::Approval(asked) => {

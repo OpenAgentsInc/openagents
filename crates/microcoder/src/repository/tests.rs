@@ -2125,4 +2125,369 @@ mod local_run {
         assert_one_clean_stop(&store, &task);
         assert!(!Path::new(&record.worktree).join("after.txt").exists());
     }
+
+    mod issue_flow {
+        use super::*;
+        use coder::task::issue_run::{
+            CLAIM_MARK, Checked, Checks, Comment, Issue, Policy, RELEASE_MARK, Reference, Runner,
+            Tracker,
+        };
+        use std::sync::Arc;
+
+        /// GitHub as the flow sees it: one issue, and every comment and
+        /// close it made.
+        #[derive(Default)]
+        struct FakeGitHub {
+            comments: Mutex<Vec<String>>,
+            closed: Mutex<Vec<u64>>,
+        }
+
+        impl Tracker for FakeGitHub {
+            fn repository(&self, _: &Path) -> Result<String, String> {
+                Ok("acme/slugs".into())
+            }
+            fn issue(&self, _: &str, number: u64) -> Result<Issue, String> {
+                Ok(Issue {
+                    number,
+                    title: "Add a slug helper".into(),
+                    body: "Add helper.py with one helper.".into(),
+                    url: format!("https://github.com/acme/slugs/issues/{number}"),
+                    open: true,
+                    comments: vec![Comment {
+                        body: "Please keep it small.".into(),
+                        at: 1,
+                    }],
+                })
+            }
+            fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
+                self.comments.lock().unwrap().push(body.into());
+                Ok(())
+            }
+            fn close(&self, _: &str, number: u64) -> Result<(), String> {
+                self.closed.lock().unwrap().push(number);
+                Ok(())
+            }
+            fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
+                Ok(vec![])
+            }
+            fn pull_request(
+                &self,
+                _: &Path,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> Result<String, String> {
+                Err("not in this test".into())
+            }
+        }
+
+        /// The repository's checks, answering in turn; green once the
+        /// answers run out.
+        struct Answers(Mutex<VecDeque<Vec<String>>>);
+
+        impl Checks for Answers {
+            fn check(&self, worktree: &Path, _: &Policy) -> Checked {
+                assert!(worktree.join("helper.py").exists(), "the change is checked");
+                Checked {
+                    problems: self.0.lock().unwrap().pop_front().unwrap_or_default(),
+                    ran: vec!["The fake checks ran.".into()],
+                }
+            }
+        }
+
+        fn git(dir: &Path, args: &[&str]) -> String {
+            let output = std::process::Command::new("git")
+                .args(["-c", "user.name=F", "-c", "user.email=f@example.invalid"])
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git {args:?}: {output:?}");
+            String::from_utf8_lossy(&output.stdout).trim().to_owned()
+        }
+
+        /// A checkout whose `origin` is a bare repository with `main`,
+        /// with `policy` committed as the repository's issue-flow policy.
+        fn published(root: &Path, policy: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+            let top = checkout(root);
+            std::fs::create_dir_all(top.join(".openagents")).unwrap();
+            std::fs::write(top.join(".openagents/coder-issues.json"), policy).unwrap();
+            git(&top, &["add", "-A"]);
+            git(&top, &["commit", "-qm", "policy"]);
+            git(&top, &["config", "user.name", "F"]);
+            git(&top, &["config", "user.email", "f@example.invalid"]);
+            let origin = root.join("origin.git");
+            git(root, &["init", "-q", "--bare", origin.to_str().unwrap()]);
+            git(&top, &["remote", "add", "origin", origin.to_str().unwrap()]);
+            git(&top, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+            (top, origin)
+        }
+
+        fn runner(
+            root: &Path,
+            script: VecDeque<(Script, Script)>,
+            checks: Answers,
+            github: Arc<FakeGitHub>,
+        ) -> Runner {
+            let local = Local::new(root.join("tasks"))
+                .with_probe(signed_in)
+                .with_controller(std::env::current_exe().unwrap())
+                .with_launcher(Box::new(Scripted(Mutex::new(script))));
+            Runner {
+                local: Arc::new(local),
+                tracker: github,
+                checks: Arc::new(checks),
+                land: None,
+                skip_claimed: false,
+                now: coder::task::autostart::unix_now,
+            }
+        }
+
+        /// #10049: a chat hands an issue to Coder; it claims it, works it
+        /// in a worktree of origin/main, fixes what the checks find,
+        /// rebases onto a main that moved, checks again, pushes main,
+        /// comments the evidence, and closes the issue. The stream shows
+        /// every step and ends in a result that links the issue, and it
+        /// replays identically.
+        #[test]
+        fn an_issue_lands_on_main_with_evidence_and_closes() {
+            let root = tempfile::tempdir().unwrap();
+            let (top, origin) = published(
+                root.path(),
+                r#"{"land": "main", "fix_rounds": 2, "max_steps": 30}"#,
+            );
+            let script = VecDeque::from([
+                (
+                    vec![
+                        Ok(write("printf 'x\\n' > helper.py")),
+                        Ok(finished("I added helper.py.")),
+                    ],
+                    vec![],
+                ),
+                (
+                    vec![
+                        Ok(write("printf 'y\\n' >> helper.py")),
+                        Ok(finished("I fixed the lint.")),
+                    ],
+                    vec![],
+                ),
+            ]);
+            let github = Arc::new(FakeGitHub::default());
+            let checks = Answers(Mutex::new(VecDeque::from([vec![
+                "lint: helper.py needs a second line".to_owned(),
+            ]])));
+            let runner = runner(root.path(), script, checks, github.clone());
+            let reference = Reference {
+                repository: None,
+                number: 7,
+            };
+            let thread = "a".repeat(32);
+            let started = runner.begin(&top, &reference, Some(&thread)).unwrap();
+            let task = started.record.task.clone();
+            let base = git(&top, &["rev-parse", "origin/main"]);
+            assert_eq!(
+                started.record.base, base,
+                "the worktree starts at origin/main"
+            );
+
+            // Someone else lands on main meanwhile.
+            let other = root.path().join("other");
+            git(
+                root.path(),
+                &[
+                    "clone",
+                    "-q",
+                    origin.to_str().unwrap(),
+                    other.to_str().unwrap(),
+                ],
+            );
+            std::fs::write(other.join("notes.txt"), "later\n").unwrap();
+            git(&other, &["add", "-A"]);
+            git(&other, &["commit", "-qm", "someone else"]);
+            git(&other, &["push", "-q", "origin", "HEAD:main"]);
+            let theirs = git(&other, &["rev-parse", "HEAD"]);
+
+            let flow = started.finish();
+            assert!(flow.finished);
+            assert_eq!(flow.link.outcome, "landed", "{flow:#?}");
+            assert!(flow.link.closed);
+            let landed = git(
+                &other,
+                &["ls-remote", origin.to_str().unwrap(), "refs/heads/main"],
+            );
+            let landed = landed.split_whitespace().next().unwrap().to_owned();
+            assert_eq!(flow.link.commits, std::slice::from_ref(&landed));
+            git(&other, &["fetch", "-q", "origin"]);
+            assert_eq!(
+                git(&other, &["rev-parse", &format!("{landed}~1")]),
+                theirs,
+                "rebased onto main"
+            );
+            assert_eq!(
+                git(&other, &["show", &format!("{landed}:helper.py")]),
+                "x\ny"
+            );
+            assert_eq!(
+                git(&other, &["log", "-1", "--format=%s", &landed]),
+                "Add a slug helper"
+            );
+            // The person's checkout is untouched.
+            assert!(!top.join("helper.py").exists());
+
+            let comments = github.comments.lock().unwrap().clone();
+            assert_eq!(comments.len(), 2, "{comments:#?}");
+            assert!(comments[0].starts_with("Claimed: ") && comments[0].contains(CLAIM_MARK));
+            assert!(
+                comments[1].contains("landed this on `main`"),
+                "{}",
+                comments[1]
+            );
+            assert!(
+                comments[1].contains("helper.py") && comments[1].contains("The fake checks ran.")
+            );
+            assert_eq!(*github.closed.lock().unwrap(), [7]);
+
+            let local = runner.local.clone();
+            let (lines, state) = drain(&local, &task);
+            assert_eq!(state, State::Ended);
+            let notes: Vec<String> = lines
+                .iter()
+                .filter_map(|line| match &line.event {
+                    CoderEvent::Step(step)
+                        if step.kind == openagents_chat::coder_events::StepKind::Note =>
+                    {
+                        Some(step.text.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                notes[0].starts_with("Issue #7: Add a slug helper"),
+                "{notes:#?}"
+            );
+            assert!(
+                notes.iter().any(|n| n.starts_with("Claimed #7")),
+                "{notes:#?}"
+            );
+            assert!(
+                notes.iter().any(|n| n.contains("fix turn 1 of 2")),
+                "{notes:#?}"
+            );
+            assert!(
+                notes.iter().any(|n| n.contains("rebases the change")),
+                "{notes:#?}"
+            );
+            // The claim comes before the first turn starts.
+            let first_start = lines
+                .iter()
+                .position(|l| l.event.name() == "coder_started")
+                .unwrap();
+            assert!(matches!(&lines[0].event, CoderEvent::Step(_)) && first_start > 0);
+            // Two turns: the work, then the fix; the first ends as a
+            // result without the issue, the last carries it.
+            let results: Vec<_> = lines
+                .iter()
+                .filter_map(|line| match &line.event {
+                    CoderEvent::Result(result) => Some(result.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(results.len(), 2);
+            assert!(results[0].issue.is_none());
+            let last = results.last().unwrap();
+            let issue = last.issue.as_ref().unwrap();
+            assert_eq!(
+                (issue.number, issue.outcome.as_str(), issue.closed),
+                (7, "landed", true)
+            );
+            assert_eq!(issue.url, "https://github.com/acme/slugs/issues/7");
+            assert_eq!(last.files_changed.len(), 1, "{:?}", last.files_changed);
+            assert_eq!(last.files_changed[0].path, "helper.py");
+            assert_eq!((last.insertions, last.deletions), (2, 0));
+            assert!(last.summary.contains("closed #7"), "{}", last.summary);
+            assert!(matches!(lines.last().unwrap().event, CoderEvent::Result(_)));
+            // A later follower replays the same stream.
+            let (again, _) = drain(&local, &task);
+            assert_eq!(again, lines);
+        }
+
+        /// A change whose checks stay red is never pushed: the issue gets
+        /// an honest comment with the failing output, stays open, and the
+        /// claim is released.
+        #[test]
+        fn red_checks_push_nothing_and_say_why_on_the_issue() {
+            let root = tempfile::tempdir().unwrap();
+            let (top, origin) = published(root.path(), r#"{"land": "main", "fix_rounds": 0}"#);
+            let before = git(
+                &top,
+                &["ls-remote", origin.to_str().unwrap(), "refs/heads/main"],
+            );
+            let script = VecDeque::from([(
+                vec![
+                    Ok(write("printf 'x\\n' > helper.py")),
+                    Ok(finished("I added helper.py.")),
+                ],
+                vec![],
+            )]);
+            let github = Arc::new(FakeGitHub::default());
+            let checks = Answers(Mutex::new(VecDeque::from([vec![
+                "the slugs tests fail: assertion failed".to_owned(),
+            ]])));
+            let runner = runner(root.path(), script, checks, github.clone());
+            let reference = Reference {
+                repository: Some("acme/slugs".into()),
+                number: 8,
+            };
+            let started = runner.begin(&top, &reference, None).unwrap();
+            let task = started.record.task.clone();
+            let flow = started.finish();
+            assert_eq!(flow.link.outcome, "failed");
+            assert!(!flow.link.closed && flow.link.commits.is_empty());
+            assert_eq!(
+                git(
+                    &top,
+                    &["ls-remote", origin.to_str().unwrap(), "refs/heads/main"]
+                ),
+                before,
+                "main did not move"
+            );
+            let comments = github.comments.lock().unwrap().clone();
+            assert_eq!(comments.len(), 2);
+            assert!(
+                comments[1].contains("did not land a change"),
+                "{}",
+                comments[1]
+            );
+            assert!(comments[1].contains("assertion failed"));
+            assert!(comments[1].contains(RELEASE_MARK));
+            assert!(github.closed.lock().unwrap().is_empty());
+            let (lines, state) = drain(&runner.local, &task);
+            assert_eq!(state, State::Ended);
+            let CoderEvent::Failure(failure) = &lines.last().unwrap().event else {
+                panic!("{:?}", lines.last())
+            };
+            let issue = failure.issue.as_ref().unwrap();
+            assert_eq!((issue.number, issue.outcome.as_str()), (8, "failed"));
+            assert!(
+                failure.message.contains("Nothing was pushed"),
+                "{}",
+                failure.message
+            );
+
+            // A different repository's issue is refused plainly.
+            let elsewhere = Reference {
+                repository: Some("other/repo".into()),
+                number: 1,
+            };
+            let Err(refused) = runner.begin(&top, &elsewhere, None) else {
+                panic!("started")
+            };
+            assert!(
+                refused.to_string().contains("another repository"),
+                "{refused}"
+            );
+        }
+    }
 }

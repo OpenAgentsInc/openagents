@@ -36,6 +36,8 @@ use crate::{Args, EXIT_FAILURE, runtime};
 
 #[path = "chat_coder.rs"]
 mod coder_run;
+#[path = "chat_work.rs"]
+mod work;
 
 pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
   send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]
@@ -63,6 +65,20 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         Print the thread as an ATIF-v1.8 trajectory whose session_id is ID.
   run-coder --thread ID
         Run Coder on this computer for the thread's last offer, as send does.
+        When the message asks Coder to work a GitHub issue of this
+        checkout's repository (\"work on #10034\"), Coder runs the issue
+        flow: it claims the issue, works in a worktree of origin/main, runs
+        the checks for what it touched, lands as the repository's
+        .openagents/coder-issues.json says (this repository: rebase and push
+        main when the checks pass; others: a pull request), comments the
+        evidence, and closes the issue. Ctrl-C stops the flow.
+  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]
+        Hand several issues to Coder, one issue flow each, each in its own
+        thread: NUMBERS such as 10050,10051, or a LABEL's open issues.
+        --parallel (1 to 4, default 1) runs that many at once, each in its
+        own worktree. Issues claimed in the last hours (the repository's
+        claim window) and closed issues are skipped. --land overrides the
+        repository's policy.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
@@ -93,6 +109,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("follow", Effect::ReadOnly),
     Declared::computer("stop", Effect::Publishes),
     Declared::computer("answer", Effect::Publishes),
+    Declared::computer("work", Effect::Publishes),
 ];
 
 /// How long a reply is waited for by default: the chat worker's own limit.
@@ -101,7 +118,9 @@ const DEFAULT_TIMEOUT: u64 = 120;
 const POLL: Duration = Duration::from_millis(80);
 /// The message the apps show when a person stops a reply.
 const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
-const OPTIONS: &[&str] = &["thread", "timeout", "limit", "socket"];
+const OPTIONS: &[&str] = &[
+    "thread", "timeout", "limit", "socket", "issues", "parallel", "land",
+];
 const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder", "no-run"];
 
 /// What `send` does when OpenAgents judges the message is coding work.
@@ -129,9 +148,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{USAGE}");
             return 0;
         }
-        "send" | "threads" | "read" | "export" | "run-coder" | "follow" | "stop" | "answer" => {
-            (first.as_str(), &words[1..])
-        }
+        "send" | "threads" | "read" | "export" | "run-coder" | "follow" | "stop" | "answer"
+        | "work" => (first.as_str(), &words[1..]),
         // `openagents chat MESSAGE` is `openagents chat send MESSAGE`.
         _ => ("send", words),
     };
@@ -169,6 +187,10 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             .ok_or_else(|| Failure::Usage(format!("`chat {command}` needs --thread ID")))
     };
     match command {
+        "work" => {
+            no_positional(args)?;
+            work::work(output, args).await
+        }
         "send" => {
             let message = message(args.positional())?;
             let timeout = match args.number("timeout", DEFAULT_TIMEOUT) {

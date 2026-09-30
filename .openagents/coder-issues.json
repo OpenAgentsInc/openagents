@@ -1,0 +1,8 @@
+{
+  "land": "main",
+  "claim_hours": 6,
+  "fix_rounds": 3,
+  "fmt": true,
+  "clippy": true,
+  "max_steps": 60
+}

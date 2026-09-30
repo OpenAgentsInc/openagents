@@ -31,6 +31,7 @@ openagents chat threads [--all] [--limit N]
 openagents chat read --thread ID
 openagents chat export --thread ID
 openagents chat run-coder --thread ID
+openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]
 ```
 
 Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
@@ -52,6 +53,8 @@ Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
   turn the answer starts.
 - `run-coder` runs Coder for the thread's last offer, as `send` does
   without `--no-run` (useful after `--no-run`).
+- `work` hands several GitHub issues to Coder, one issue flow each
+  ([below](#working-a-github-issue)).
 
 Thread IDs are 32 lowercase hex characters, the IDs the phone and the
 desktop use.
@@ -176,6 +179,90 @@ Exit codes after a run: `0` when the turn finished or asked, `1` when it
 failed, was stopped, or could not start (not a checkout, no provider signed
 in, no capacity).
 
+### Working a GitHub issue
+
+A message that asks Coder to work a GitHub issue of this checkout's
+repository, such as `openagents chat "work on #10051"` or "take
+OpenAgentsInc/openagents#10051", runs the **issue flow** instead of an
+ordinary run ([#10049](https://github.com/OpenAgentsInc/openagents/issues/10049)).
+The router judges the message is coding work, as for any run; Jev then
+chooses the issue among the references the message and the thread name, or
+answers none. The reference is a bounded field read after that judgment;
+no keyword decides. The shared code is
+[`coder::task::issue_run`](../../crates/coder/src/task/issue_run.rs), and
+the desktop's chat runs the same flow.
+
+1. **Claim.** It reads the issue, its comments, and up to three issues it
+   links, and posts a claim comment (`Claimed: Coder is working on this…`).
+2. **Work.** It fetches the default branch and starts a local run, as
+   above, in Coder's own worktree of `origin/main` (not the checkout's
+   `HEAD`), with the issue as the prompt and up to the policy's
+   `max_steps` steps a turn.
+3. **Check.** It runs the repository's checks for what the change touched:
+   each touched Rust package's tests inside a write boundary with
+   credentials withheld, the issue flow's diff checks (style, figures with
+   no source, broken links, code that depends on what changed, plain
+   wording), and, when the policy asks, `cargo fmt --check` and Clippy with
+   warnings denied. When they find problems, a fix turn continues the same
+   task with the problems and the diff, up to `fix_rounds` times.
+4. **Land.** It commits (the issue's title, Coder's summary, and the issue
+   link) and lands as the repository's policy says. `main`: fetch, rebase
+   onto the newer `main` when it moved and run the checks again, then push;
+   a refused push retries on the newer `main`. `pull_request`: push a
+   `coder/issue-N-…` branch and open a pull request that closes the issue.
+   Flows in one process land one at a time.
+5. **Close.** It comments the commit, the files, the checks that ran, and
+   the run (task, turns, provider and model) on the issue, and closes it.
+
+It never pushes a red change. When the checks still fail after the fix
+turns, a rebase conflicts, the run doesn't converge within its bounds (a
+failure ending), Coder asks a question instead of finishing, nothing
+changed, or the person stops it, the flow comments what it tried and the
+failing output, releases its claim, and leaves the issue open with the
+change in Coder's worktree.
+
+The repository's policy is `.openagents/coder-issues.json` at its top
+level; without one a flow opens a pull request and runs only the tests and
+diff checks. This repository's:
+
+```json
+{ "land": "main", "claim_hours": 6, "fix_rounds": 3, "fmt": true, "clippy": true, "max_steps": 60 }
+```
+
+`branch` names another branch than `origin/HEAD`'s, and `trailer` adds a
+line to each commit message.
+
+**The stream.** Every step is in the task's events: the flow's notes
+(`step` events of kind `note`: the issue, the claim, the worktree, the
+checks, fix turns, the rebase, the push, and the ending) come between the
+turns' events, and the last turn's ending waits for the flow, so it carries
+the outcome. A landed flow ends in a `result` whose `summary` ends with what
+the flow did and whose `issue` names the issue: `repository`, `number`,
+`url`, `title`, `outcome` (`landed`, `pull_request`, `unchanged`, `failed`,
+`stopped`), `commits`, `pull_request`, and `closed`. A flow that did not
+land ends in a `failure` (or `stopped`) with the same `issue`. The flow
+keeps its notes beside the task (`<store>/local/<task>.issue.json`), so
+`follow`, the desktop, and the phone show the same run.
+
+**Stopping.** Ctrl-C while the flow runs (or `chat stop`, or the apps' stop)
+stops the running turn, or, between turns, stops the flow before its next
+step; it says so on the issue. The flow itself runs in the process that
+started it: closing that process mid-flow leaves the claim without an
+ending comment.
+
+**A queue.** `openagents chat work --issues 10052,10053` (or `--issues
+LABEL`, a label's open issues) works several issues, one at a time or
+`--parallel N` (up to 4) at once, each in its own worktree and its own
+thread titled with the issue. It skips a closed issue and one with a claim
+comment (a comment starting "Claimed", or Coder's claim marker) from the
+last `claim_hours` hours that no later Coder comment released. Each flow's
+events stream with an `issue` field (text mode prefixes `#N`); each issue
+ends with an `issue` line (`outcome`: `landed`, `pull_request`, `failed`,
+`stopped`, `unchanged`, `skipped`, `closed`, or `not_started`, and
+`message`, `thread`, `task`, `commits`), and the queue with `queue_done`.
+It exits 0 when every issue landed or was skipped. `--land main|pr`
+overrides the policy.
+
 ### Coder events
 
 Under `--json`, every event of the task follows the chat's own events as one
@@ -200,8 +287,8 @@ the envelope has `turn` (from 1; an answer starts the next turn).
 | `progress` | `step`, `max_steps`, `seconds`, `done` (Jev's probability that the task is done, or null) |
 | `question` | `text`, `answer` (the command that answers it) |
 | `approval` | `text`, `answer` |
-| `result` | `summary` (Coder's reply), `files_changed` (`path`, `status`, `added`, `removed`), `insertions`, `deletions`, `worktree`, `trajectory` (the turn's ATIF file) |
-| `failure` | `message`, `ending` (such as `no_capacity`, `loop_incomplete`, `not_started`), `resets_at` |
+| `result` | `summary` (Coder's reply), `files_changed` (`path`, `status`, `added`, `removed`), `insertions`, `deletions`, `worktree`, `trajectory` (the turn's ATIF file), and, for the issue flow, `issue` ([above](#working-a-github-issue)) |
+| `failure` | `message`, `ending` (such as `no_capacity`, `loop_incomplete`, `not_started`, `issue_failed`), `resets_at`, and, for the issue flow, `issue` |
 | `stopped` | `message` |
 
 A turn ends with exactly one of `result`, `question`, `approval`,
