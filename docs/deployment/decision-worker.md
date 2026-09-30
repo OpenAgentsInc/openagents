@@ -113,7 +113,7 @@ The worker answers keys nobody provisioned, so its open lane is metered
 | Jobs per caller key per UTC day | 2,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Jobs for every caller together per UTC day | 20,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Request ciphertext | 256 KiB | `limit_exceeded` |
-| Models | `jev-1.13.0`, `jev-latest` (and the alias `typesafe/jev-1.13` from a build at or after NIP-DEC's commit) | `not_admitted` |
+| Models | `jev-1.13.0`, `jev-latest`, and the alias `typesafe/jev-1.13` | `not_admitted` |
 | Jobs at once | 8 | `busy` |
 
 - The total is the spend bound: a caller can mint any number of keys. At
@@ -264,3 +264,43 @@ structured `state` and questions to TypeSafe unchanged.
 service={"door":"https://api.typesafe.ai","version":"decision-worker@04113fec9d"}
 input_tokens=Some(677) in 553 ms`. The `typesafe/jev-1.13` alias and the
 HTTP-status reading of an untyped door error arrive with the next release.
+
+Release `5710e1311c` (2026-09-30,
+[#10048](https://github.com/OpenAgentsInc/openagents/issues/10048), "NIP-DEC
+everywhere") replaced it: built with `cargo zigbuild` as above, installed as
+`/opt/decision-worker/releases/5710e1311c` beside `04113fec9d`, `current`
+moved to it, and `decision-worker` restarted. The environment file was not
+changed, so the backup door is off; `coder-worker.service`,
+`coder-worker-chat.service`, and `/opt/coder-worker` were not touched. The
+journal:
+
+```text
+decision-worker: pubkey ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc
+decision-worker: upstream https://api.typesafe.ai
+decision-worker: relay wss://relay.openagents.com
+decision-worker: open lane under $TYPESAFE_API_KEY, models jev-1.13.0,jev-latest, quota 2000/key/day 60/key/min 20000/day total
+decision-worker: backup door https://openrouter.ai/api/alpha/decisions off: $OPENROUTER_API_KEY is not set
+```
+
+Live checks the same day, with no key, in a temporary `HOME`:
+
+- `live_hosted_docs_examples_answer_under_the_alias`: all five TypeSafe
+  docs examples (`crates/gateway/tests/fixtures/typesafe-docs`) asked under
+  `typesafe/jev-1.13`, each answered as `jev-1.13.0` by
+  `decision-worker@5710e1311c` in 509 to 558 ms, recorded `via: hosted`
+  with `cost_usd` (for example the invoice battery: `customer_name` chose
+  `Beaver Dam Logistics` at 1.0, `amount_due` level 2, `payment_terms` Net
+  30, 0.0000335 USD); `live_hosted_structured_decision_answers` and
+  `live_hosted_decision_answers` answered as before.
+- `openagents chat --local "add a unit test for slugify"` in a scratch
+  checkout, with the owner's Codex login linked in: the task finished
+  (`test_slugs.py`, +15), and the thread's exported ATIF holds five
+  `openagents.decision-call.v1` calls from the repository adapter
+  (`openagents.microcoder.judge.v1`), each with the structured request (an
+  object `state` and three nouls), `via: hosted`, `service`
+  `decision-worker@5710e1311c`, 677 to 912 ms, usage, and `cost_usd`, beside
+  the chat router's call; no "no Jev key" line.
+
+The backup door is on once `OPENROUTER_API_KEY` is in
+`/etc/decision-worker/decision-worker.env` and the worker restarts; the
+owner step is in the workspace's `NEEDS_OWNER.md`.

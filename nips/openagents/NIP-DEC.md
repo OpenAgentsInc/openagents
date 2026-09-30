@@ -185,11 +185,10 @@ aliases and sends the door the canonical name:
 `nostr::decision::canonical_model` resolves an alias, and
 `jev::nip_dec::openrouter_model` gives OpenRouter's name for a canonical
 one (`jev-1.13.0` → `typesafe/jev-1.13`; another bare name `n` →
-`typesafe/n`). The hosted decision
-worker's deployed release (`04113fec9d`) admits `jev-1.13.0` and
-`jev-latest`; a worker built from this NIP's commit on also admits
-`typesafe/jev-1.13`, with no config change. A model a worker does not admit
-is refused `not_admitted`.
+`typesafe/n`). The hosted decision worker's deployed release
+(`5710e1311c`) admits `jev-1.13.0`, `jev-latest`, and the alias
+`typesafe/jev-1.13`. A model a worker does not admit is refused
+`not_admitted`.
 
 ## HTTP-gateway equivalence
 

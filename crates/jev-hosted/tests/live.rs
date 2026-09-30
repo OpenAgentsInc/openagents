@@ -145,3 +145,73 @@ async fn live_hosted_structured_decision_answers() {
     assert_eq!(queue.choice, "billing");
     assert!(refund.noul > 0.5);
 }
+
+/// Every TypeSafe docs example (`crates/gateway/tests/fixtures/typesafe-docs`)
+/// read into the shared model and asked of the deployed worker under
+/// OpenRouter's model name, `typesafe/jev-1.13`, which the worker admits as
+/// an alias of `jev-1.13.0`; the answer is recorded the way every caller
+/// records a decision call. Opt in the same way.
+#[tokio::test]
+#[ignore = "reaches the deployed decision worker on wss://relay.openagents.com"]
+async fn live_hosted_docs_examples_answer_under_the_alias() {
+    let home = std::env::var_os("HOME").expect("HOME");
+    let dir = std::path::PathBuf::from(home).join(".openagents");
+    let env = |name: &str| std::env::var(name).ok();
+    assert!(
+        jev_hosted::local_key(&env, &dir).is_none(),
+        "run this with no TypeSafe key, so the hosted service answers"
+    );
+    let resolved = jev_hosted::resolve(
+        &env,
+        &dir,
+        &jev_hosted::Door {
+            url: jev_hosted::DOOR,
+            model: "typesafe/jev-1.13",
+        },
+        &|config| config,
+    )
+    .expect("the hosted service resolves");
+    let examples = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../gateway/tests/fixtures/typesafe-docs");
+    let mut paths: Vec<_> = std::fs::read_dir(&examples)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        let mut body: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        body["model"] = serde_json::json!("typesafe/jev-1.13");
+        let decision = jev::DecisionRequest::from_value(body.clone()).unwrap();
+        let started = std::time::Instant::now();
+        let result = resolved
+            .client
+            .system_one(jev::SystemOneRequest::from_decision(decision.clone()))
+            .await;
+        let milliseconds = started.elapsed().as_millis() as u64;
+        let record = jev_hosted::decision_record(
+            "live",
+            path.file_stem().unwrap().to_string_lossy(),
+            &resolved.client,
+            body,
+            result.as_ref(),
+            milliseconds,
+        );
+        let response = result.unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        response.check_against(&decision.questions).unwrap();
+        let call = record.call();
+        println!(
+            "{}: model {} answers={} via={} service={} cost_usd={} in {} ms",
+            path.file_name().unwrap().to_string_lossy(),
+            response.model,
+            call.extra["answers"],
+            call.extra["via"],
+            call.extra["service"],
+            call.extra["cost_usd"],
+            milliseconds
+        );
+        assert_eq!(response.model, "jev-1.13.0");
+        assert_eq!(call.extra["via"], "hosted");
+    }
+}

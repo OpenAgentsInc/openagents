@@ -250,6 +250,11 @@ pub fn decision_key(path: &Path) -> Result<SecretKey, String> {
                     .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
             }
             let secret = SecretKey::new(&mut secp256k1::rand::rng());
+            // Written whole to a private file first, then linked into
+            // place: a reader racing the first use never sees the key
+            // half-written, and a second maker loses the link and uses
+            // the first maker's key.
+            let partial = path.with_extension(format!("key.{}", random_id()));
             let mut options = std::fs::OpenOptions::new();
             options.write(true).create_new(true);
             #[cfg(unix)]
@@ -257,11 +262,14 @@ pub fn decision_key(path: &Path) -> Result<SecretKey, String> {
                 use std::os::unix::fs::OpenOptionsExt;
                 options.mode(0o600);
             }
-            let written = options.open(path).and_then(|mut file| {
+            let written = options.open(&partial).and_then(|mut file| {
                 use std::io::Write;
-                file.write_all(format!("{}\n", secret.display_secret()).as_bytes())
+                file.write_all(format!("{}\n", secret.display_secret()).as_bytes())?;
+                file.sync_all()
             });
-            match written {
+            let linked = written.and_then(|()| std::fs::hard_link(&partial, path));
+            let _ = std::fs::remove_file(&partial);
+            match linked {
                 Ok(()) => Ok(secret),
                 // Another process made it first: use theirs.
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -755,6 +763,26 @@ mod tests {
         assert!(matches!(again.via, Via::Hosted { .. }));
         assert_eq!(std::fs::read_to_string(key).unwrap(), made);
         assert!(!format!("{:?}", first.client).contains(made.trim()));
+    }
+
+    #[test]
+    fn racing_first_uses_all_read_one_whole_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(KEY_FILE);
+        let keys: Vec<String> = std::thread::scope(|scope| {
+            let makers: Vec<_> = (0..16)
+                .map(|_| {
+                    scope.spawn(|| decision_key(&path).map(|key| key.display_secret().to_string()))
+                })
+                .collect();
+            makers
+                .into_iter()
+                .map(|maker| maker.join().unwrap().unwrap())
+                .collect()
+        });
+        assert!(keys.windows(2).all(|pair| pair[0] == pair[1]));
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(left.len(), 1, "no partial key file is left behind");
     }
 
     #[test]
