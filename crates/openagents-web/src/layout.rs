@@ -8,6 +8,12 @@ use axum::response::{Html, IntoResponse, Response};
 /// The copyright line the footer carries.
 pub const COPYRIGHT: &str = "\u{a9} 2026 OpenAgents, Inc.";
 
+/// The source code, linked from every footer.
+pub const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
+
+/// OpenAgents on X, linked from every footer.
+pub const X: &str = "https://x.com/OpenAgentsInc";
+
 /// The sections the header links to, in order.
 pub const SECTIONS: [(&str, &str); 2] = [("Install", "/install"), ("Docs", "/docs")];
 
@@ -72,7 +78,9 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 <div class=\"scroller\"><main id=\"content\" tabindex=\"-1\">{body}</main>\
 <footer class=\"site-footer\"><span class=\"copyright\">{COPYRIGHT}</span>\
 <nav aria-label=\"Legal\"><a href=\"/terms\">Terms</a>\
-<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a></nav>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{GITHUB}\" rel=\"noopener\">GitHub</a>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{X}\" rel=\"noopener\">X</a></nav>\
 </footer></div></body></html>"
     )
 }
@@ -105,6 +113,10 @@ mod tests {
         let html = document("Install OpenAgents", Some("/install"), "<p>x</p>");
         assert_eq!(html.matches("href=\"/terms\"").count(), 1);
         assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
+        assert!(html.contains(
+            "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
+        ));
+        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
         assert!(html.contains("<a href=\"/install\" aria-current=\"page\">Install</a>"));
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
