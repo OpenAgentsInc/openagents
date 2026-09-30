@@ -656,6 +656,88 @@ pub unsafe extern "C" fn rust_native_source_retire(name: *const u8, name_len: us
     }
 }
 
+/// A native text field's shared draft (`crate::edit::mirror::Mirror`), for
+/// one composer field. Free it once with `rust_native_editor_destroy`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_native_editor_create() -> *mut crate::edit::mirror::Mirror {
+    catch_unwind(|| Box::into_raw(Box::default())).unwrap_or(ptr::null_mut())
+}
+
+/// Answers one JSON editing request (`Mirror::call_json`). Calls on one
+/// handle must not overlap; the editor is fast enough for the UI thread.
+///
+/// # Safety
+/// `handle` must be a live handle from `rust_native_editor_create`, and
+/// `bytes` must point to `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_editor_call(
+    handle: *mut crate::edit::mirror::Mirror,
+    bytes: *const u8,
+    len: usize,
+) -> RustNativeBuffer {
+    if handle.is_null() || bytes.is_null() || len == 0 {
+        return buffer(vec![]);
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+        unsafe { &mut *handle }.call_json(bytes)
+    }))
+    .map(buffer)
+    .unwrap_or_else(|_| buffer(vec![]))
+}
+
+/// # Safety
+/// The handle must come from `rust_native_editor_create`, have no call in
+/// progress, and not be destroyed already.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_editor_destroy(handle: *mut crate::edit::mirror::Mirror) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle)) }
+    }
+}
+
+/// Paint-only syntax spans for a code block's text, as JSON
+/// `[[start16, len16, [r, g, b, a]], ...]` (`crate::syntax::Utf16Span`), in
+/// the dark palette or, with `light` nonzero, the light one. Runs the
+/// highlighter on the calling thread: call it from the adapter's worker.
+/// Unknown languages and texts over `syntax::MAX_BYTES` return `[]`; an
+/// empty buffer means the input was unreadable.
+///
+/// # Safety
+/// `language` must point to `language_len` bytes and `text` to `text_len`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_syntax_spans(
+    language: *const u8,
+    language_len: usize,
+    text: *const u8,
+    text_len: usize,
+    light: u8,
+) -> RustNativeBuffer {
+    if language.is_null()
+        || text.is_null()
+        || language_len == 0
+        || language_len > 32
+        || text_len > crate::syntax::MAX_BYTES
+    {
+        return buffer(vec![]);
+    }
+    catch_unwind(|| {
+        let language = unsafe { std::slice::from_raw_parts(language, language_len) };
+        let text = unsafe { std::slice::from_raw_parts(text, text_len) };
+        let (Ok(language), Ok(text)) = (std::str::from_utf8(language), std::str::from_utf8(text))
+        else {
+            return vec![];
+        };
+        let spans: Vec<_> = crate::syntax::highlight_utf16(language, text, light != 0)
+            .into_iter()
+            .map(|span| (span.start, span.len, span.rgba))
+            .collect();
+        serde_json::to_vec(&spans).unwrap_or_default()
+    })
+    .map(buffer)
+    .unwrap_or_else(|_| buffer(vec![]))
+}
+
 /// # Safety
 /// The buffer must be an unmodified, not-yet-freed result from this library.
 #[unsafe(no_mangle)]

@@ -20,6 +20,13 @@ void *openagents_mobile_create(const uint8_t *configuration, size_t length);
 OpenAgentsMobileBuffer openagents_mobile_call(void *handle, const uint8_t *request, size_t length);
 void openagents_mobile_buffer_free(OpenAgentsMobileBuffer buffer);
 void openagents_mobile_destroy(void *handle);
+// Attach a photo's encoded bytes (PNG or JPEG, at most 8 MiB) to the open
+// chat's draft; answers with the app packet. On the handle's queue.
+OpenAgentsMobileBuffer openagents_mobile_attach_image(void *handle, const uint8_t *name, size_t name_length,
+                                                      const uint8_t *bytes, size_t length);
+// The encoded bytes the chat's image surface `resource` ("image:{id}")
+// shows, or an empty buffer. On the handle's queue.
+OpenAgentsMobileBuffer openagents_mobile_image(void *handle, const uint8_t *resource, size_t length);
 
 // Blocks the calling thread until the app packet changes: returns Rust's
 // change count once it differs from `seen`, or `seen` after `timeout_ms` (at

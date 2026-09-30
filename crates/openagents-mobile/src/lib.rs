@@ -131,6 +131,64 @@ pub unsafe extern "C" fn openagents_mobile_call(
     .unwrap_or_else(|_| buffer(vec![]))
 }
 
+/// Attach an image to the open chat's draft: `name` is its file name and
+/// `bytes` its encoded PNG or JPEG. Answers with the app packet; an empty
+/// result means the request failed.
+///
+/// # Safety
+/// As `openagents_mobile_call`: a live handle with exclusive access, and
+/// `name` and `bytes` pointing to `name_len` and `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn openagents_mobile_attach_image(
+    handle: *mut App,
+    name: *const u8,
+    name_len: usize,
+    bytes: *const u8,
+    len: usize,
+) -> OpenAgentsMobileBuffer {
+    if handle.is_null()
+        || name.is_null()
+        || bytes.is_null()
+        || name_len > 1024
+        || len == 0
+        || len > openagents_chat_app::attachments::MAX_IMAGE_BYTES
+    {
+        return buffer(vec![]);
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        let name = unsafe { std::slice::from_raw_parts(name, name_len) };
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
+        let name = String::from_utf8_lossy(name);
+        unsafe { &mut *handle }.attach_image(&name, bytes)
+    }))
+    .map(buffer)
+    .unwrap_or_else(|_| buffer(vec![]))
+}
+
+/// The encoded bytes of the chat's image surface `resource`
+/// (`image:{id}`), or an empty buffer.
+///
+/// # Safety
+/// As `openagents_mobile_call`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn openagents_mobile_image(
+    handle: *mut App,
+    resource: *const u8,
+    len: usize,
+) -> OpenAgentsMobileBuffer {
+    if handle.is_null() || resource.is_null() || len == 0 || len > 96 {
+        return buffer(vec![]);
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        let resource = unsafe { std::slice::from_raw_parts(resource, len) };
+        std::str::from_utf8(resource)
+            .map(|resource| unsafe { &*handle }.image(resource))
+            .unwrap_or_default()
+    }))
+    .map(buffer)
+    .unwrap_or_else(|_| buffer(vec![]))
+}
+
 /// # Safety
 /// The buffer must be an unmodified, not-yet-freed result from this library.
 #[unsafe(no_mangle)]

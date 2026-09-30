@@ -406,6 +406,19 @@ impl<I: Serialize> View<I> {
             {
                 return Err(ViewError::StyleBounds);
             }
+            if node.style.menu.is_some() {
+                // A menu card: the card, then at least one button to offer.
+                let Element::Stack { children, .. } = &node.element else {
+                    return Err(ViewError::NotInteractive);
+                };
+                if children.len() < 2
+                    || children[1..]
+                        .iter()
+                        .any(|child| !matches!(child.element, Element::Button { .. }))
+                {
+                    return Err(ViewError::NotInteractive);
+                }
+            }
             if !crate::valid_id(&node.key) {
                 return Err(ViewError::Identity);
             }

@@ -11,6 +11,8 @@ use std::fmt;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
+pub mod mirror;
+
 const HISTORY_STEPS: usize = 128;
 const HISTORY_BYTES: usize = 512 * 1024;
 const COALESCE_MS: u64 = 500;
@@ -189,6 +191,13 @@ impl Editor {
     }
     pub fn marked_range(&self) -> Option<Range<usize>> {
         self.composition.as_ref().map(|c| c.range.clone())
+    }
+    /// Whether undo would change the draft: a history step or a composition.
+    pub fn can_undo(&self) -> bool {
+        self.composition.is_some() || !self.undo.entries.is_empty()
+    }
+    pub fn can_redo(&self) -> bool {
+        self.composition.is_none() && !self.redo.entries.is_empty()
     }
     pub fn selected_text(&self) -> &str {
         &self.text[self.selection.range()]

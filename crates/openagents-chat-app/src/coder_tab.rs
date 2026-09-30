@@ -168,6 +168,29 @@ pub enum Intent {
     Starter {
         id: String,
     },
+    /// A choice from a saved chat's card menu: the shared chat commands'
+    /// menu (`commands::Kind::Menu`), as the desktop offers it.
+    ChatMenu {
+        id: String,
+        action: ChatMenuAction,
+    },
+    /// Ask the host for a photo to attach to the draft.
+    AttachImage,
+    /// Take an attached image off the draft.
+    RemoveImage {
+        id: String,
+    },
+}
+
+/// The chat card menu's choices the phone carries out. Rename needs a text
+/// field of its own and stays on the desktop for now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatMenuAction {
+    Pin,
+    Unpin,
+    Archive,
+    Restore,
 }
 
 /// A screen of another tab the host should show, once, or something the
@@ -196,6 +219,9 @@ pub enum Go {
     /// The chat tab's own screens changed (menu, chat, or the Gym intro):
     /// the host shows the one `gym.screen` names.
     Gym,
+    /// Open the system photo picker; the host sends the chosen image's
+    /// bytes back to attach them to the draft.
+    PickImage,
 }
 
 impl Go {
@@ -401,6 +427,9 @@ pub struct CoderTab {
     thread_link: Option<Arc<dyn crate::host_threads::Link>>,
     /// The open computer thread's rendered turns.
     thread_projection: crate::projection::Projection,
+    /// Images attached to each conversation's draft, bounded and decoded by
+    /// the shared attachments code the desktop uses.
+    images: crate::attachments::Drafts,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -441,6 +470,7 @@ impl CoderTab {
             threads: crate::host_threads::HostThreads::default(),
             thread_link: None,
             thread_projection: crate::projection::Projection::default(),
+            images: crate::attachments::Drafts::default(),
         }
     }
 
@@ -646,6 +676,97 @@ impl CoderTab {
     /// The screen of another tab to show now, once.
     pub fn take_go(&mut self) -> Option<Go> {
         self.go.take()
+    }
+
+    /// The conversation a draft's images belong to: the open basic chat,
+    /// computer thread, or Coder chat, or the new chat.
+    fn draft_key(&self) -> String {
+        if let Some(id) = &self.talk {
+            return format!("talk:{id}");
+        }
+        if let Some((host, thread)) = self.threads.opened() {
+            return format!("thread:{host}:{thread}");
+        }
+        if let Some(open) = &self.open {
+            return format!("task:{}:{}", open.host, open.task);
+        }
+        "new".into()
+    }
+
+    /// Attach an image the host's picker read. Decoding and its bounds are
+    /// the shared attachments code's; a refusal shows as the tab's notice.
+    pub fn attach_image(&mut self, name: &str, bytes: Vec<u8>) {
+        let key = self.draft_key();
+        let result = crate::attachments::Image::decode(name, bytes)
+            .and_then(|image| self.images.add(&key, image));
+        self.notice = result.err();
+    }
+
+    /// The attached image an `image:{id}` surface shows, from the open
+    /// draft.
+    pub fn image(&self, resource: &str) -> Option<&crate::attachments::Image> {
+        let id = resource.strip_prefix("image:")?;
+        self.images
+            .get(&self.draft_key())
+            .iter()
+            .find(|image| image.id == id)
+    }
+
+    /// The draft's attachments above the composer: an attach control and a
+    /// card per image, whose surface shows the image and whose label is its
+    /// alternative text.
+    fn attachments(&self) -> Node<Intent> {
+        let mut children = vec![icon_button(
+            "coder-attach",
+            "Attach image",
+            Glyph::Paperclip,
+            true,
+            Intent::AttachImage,
+        )];
+        for image in self.images.get(&self.draft_key()) {
+            children.push(Node {
+                key: format!("image-{}", image.id),
+                style: Style {
+                    gap: Some(Space::Xs),
+                    ..Style::default()
+                },
+                element: Element::Stack {
+                    axis: Axis::Vertical,
+                    children: vec![
+                        node(
+                            &format!("image-preview-{}", image.id),
+                            Element::Surface {
+                                resource: format!("image:{}", image.id),
+                                label: format!(
+                                    "{} · {} × {}",
+                                    image.name, image.width, image.height
+                                ),
+                            },
+                        ),
+                        button(
+                            &format!("image-remove-{}", image.id),
+                            "Remove",
+                            Intent::RemoveImage {
+                                id: image.id.clone(),
+                            },
+                        ),
+                    ],
+                },
+            });
+        }
+        Node {
+            key: "coder-attachments".into(),
+            style: Style {
+                gap: Some(Space::Sm),
+                padding_start: Some(Space::Sm),
+                padding_end: Some(Space::Sm),
+                ..Style::default()
+            },
+            element: Element::Stack {
+                axis: Axis::Wrap,
+                children,
+            },
+        }
     }
 
     /// A basic reply is streaming: ask for packets quickly.
@@ -1083,6 +1204,26 @@ impl CoderTab {
                 self.composers += 1;
                 self.thread_projection = crate::projection::Projection::default();
                 self.threads.open(&host, &thread, link);
+            }
+            Intent::ChatMenu { id, action } => {
+                let result = match action {
+                    ChatMenuAction::Pin => self.basic.pin(&id, true),
+                    ChatMenuAction::Unpin => self.basic.pin(&id, false),
+                    ChatMenuAction::Archive => {
+                        self.basic.archive(&id, unix_now());
+                        Ok(())
+                    }
+                    ChatMenuAction::Restore => {
+                        self.basic.restore(&id);
+                        Ok(())
+                    }
+                };
+                self.notice = result.err();
+            }
+            Intent::AttachImage => self.go = Some(Go::PickImage),
+            Intent::RemoveImage { id } => {
+                let key = self.draft_key();
+                self.images.remove(&key, &id);
             }
             Intent::OpenTalk { id } => {
                 self.keep(true);
@@ -1907,6 +2048,12 @@ impl CoderTab {
         if prompt.is_empty() {
             return;
         }
+        // Every route the phone sends on carries text only: keep the
+        // images and the words rather than drop the images silently.
+        if let Some(reason) = self.images.hosted_send_refusal(&self.draft_key()) {
+            self.notice = Some(reason.into());
+            return;
+        }
         // A computer's own thread: the computer appends it and answers.
         if self.threads.opened().is_some() {
             if self.threads.send(prompt) {
@@ -2322,22 +2469,25 @@ impl CoderTab {
                     group: crate::chat_list::group(summary),
                     last: Some(summary.updated),
                     updated: summary.updated,
-                    row: button(
-                        &format!("talk-{}", &summary.id[..16.min(summary.id.len())]),
-                        &format!(
-                            "{}\n{place} · {} · {}",
-                            summary.title,
-                            ago(now, summary.updated),
-                            match crate::chat_list::group(summary) {
-                                crate::chat_list::Group::Pinned => "Pinned".into(),
-                                crate::chat_list::Group::Archived => "Archived".into(),
-                                crate::chat_list::Group::Project(p) => p,
-                                crate::chat_list::Group::Recent => "Saved".into(),
-                            }
+                    row: chat_card(
+                        summary,
+                        button(
+                            &format!("talk-{}", &summary.id[..16.min(summary.id.len())]),
+                            &format!(
+                                "{}\n{place} · {} · {}",
+                                summary.title,
+                                ago(now, summary.updated),
+                                match crate::chat_list::group(summary) {
+                                    crate::chat_list::Group::Pinned => "Pinned".into(),
+                                    crate::chat_list::Group::Archived => "Archived".into(),
+                                    crate::chat_list::Group::Project(p) => p,
+                                    crate::chat_list::Group::Recent => "Saved".into(),
+                                }
+                            ),
+                            Intent::OpenTalk {
+                                id: summary.id.clone(),
+                            },
                         ),
-                        Intent::OpenTalk {
-                            id: summary.id.clone(),
-                        },
                     ),
                 }
             })
@@ -2523,6 +2673,7 @@ impl CoderTab {
                 },
             });
         }
+        children.push(self.attachments());
         // The tab exists to write a message: it opens ready to type.
         children.push(self.composer_with(
             "Message OpenAgents".to_owned(),
@@ -2712,6 +2863,7 @@ impl CoderTab {
         }
         let compose = self.compose.clone();
         let focus = compose.is_some();
+        children.push(self.attachments());
         children.push(self.composer_with(
             "Message OpenAgents".to_owned(),
             true,
@@ -3809,6 +3961,59 @@ fn pill(key: &str, label: &str, glyph: Glyph, intent: Intent) -> Node<Intent> {
         });
     }
     node
+}
+
+/// A saved chat's card with its context menu: the shared chat commands'
+/// menu entries (`commands::Kind::Menu`) that apply to it, as items a long
+/// press offers. Each item is a button in the view, so it activates only
+/// against the revision that showed it.
+fn chat_card(summary: &openagents_chat::basic_chats::Summary, row: Node<Intent>) -> Node<Intent> {
+    use crate::commands::{Action, Kind, Overlay};
+    let registry =
+        crate::commands::registry(std::slice::from_ref(summary), Some(&summary.id), false);
+    let mut overlay = Overlay::default();
+    overlay.open(Kind::Menu);
+    let items: Vec<Node<Intent>> = overlay
+        .entries(&registry)
+        .into_iter()
+        .filter(|entry| entry.enabled)
+        .filter_map(|entry| {
+            let (action, glyph, suffix) = match entry.action {
+                Action::Pin if summary.pinned => (ChatMenuAction::Unpin, Glyph::Pin, "unpin"),
+                Action::Pin => (ChatMenuAction::Pin, Glyph::Pin, "pin"),
+                Action::Archive => (ChatMenuAction::Archive, Glyph::Archive, "archive"),
+                Action::Restore => (ChatMenuAction::Restore, Glyph::Restore, "restore"),
+                _ => return None,
+            };
+            Some(icon_button(
+                &format!("{}-{suffix}", row.key),
+                &entry.label,
+                glyph,
+                false,
+                Intent::ChatMenu {
+                    id: summary.id.clone(),
+                    action,
+                },
+            ))
+        })
+        .collect();
+    if items.is_empty() {
+        return row;
+    }
+    let mut children = vec![row];
+    let key = format!("{}-card", children[0].key);
+    children.extend(items);
+    Node {
+        key,
+        style: Style {
+            menu: Some(rust_native::style::Menu::Context),
+            ..Style::default()
+        },
+        element: Element::Stack {
+            axis: Axis::Vertical,
+            children,
+        },
+    }
 }
 
 fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {

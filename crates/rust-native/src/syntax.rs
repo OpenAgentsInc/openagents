@@ -111,6 +111,90 @@ impl Default for Palette {
         }
     }
 }
+impl Palette {
+    /// Foregrounds for a light background: the same kinds as the default
+    /// dark palette, darkened to keep contrast on white.
+    pub const fn light() -> Self {
+        let text = [36, 41, 47, 255];
+        Self::plain(text)
+            .with(Kind::Comment, [106, 115, 125, 255])
+            .with(Kind::String, [3, 102, 50, 255])
+            .with(Kind::StringSpecial, [3, 102, 50, 255])
+            .with(Kind::Escape, [3, 102, 50, 255])
+            .with(Kind::Keyword, [155, 35, 146, 255])
+            .with(Kind::Function, [0, 92, 197, 255])
+            .with(Kind::FunctionBuiltin, [0, 92, 197, 255])
+            .with(Kind::Macro, [0, 92, 197, 255])
+            .with(Kind::Type, [149, 88, 0, 255])
+            .with(Kind::TypeBuiltin, [149, 88, 0, 255])
+            .with(Kind::Number, [176, 64, 16, 255])
+            .with(Kind::Constant, [176, 64, 16, 255])
+            .with(Kind::Operator, [60, 90, 140, 255])
+            .with(Kind::Property, [5, 80, 174, 255])
+    }
+}
+
+/// A span in UTF-16 code units, for platform text systems: `start` and `len`
+/// in the paragraph, and the foreground as RGBA.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Utf16Span {
+    pub start: u32,
+    pub len: u32,
+    pub rgba: [u8; 4],
+}
+
+/// Converts UTF-8 spans of `text` to UTF-16 ranges. Spans that do not name
+/// character boundaries of `text` are dropped rather than rounded.
+pub fn utf16_spans(text: &str, spans: &[Span]) -> Vec<Utf16Span> {
+    let mut out = Vec::with_capacity(spans.len());
+    let mut units = 0u32;
+    let mut byte = 0usize;
+    // Spans arrive in order and do not overlap, so one pass converts them.
+    let mut at = |target: usize| -> Option<u32> {
+        if target < byte || !text.is_char_boundary(target) {
+            return None;
+        }
+        units += text[byte..target].encode_utf16().count() as u32;
+        byte = target;
+        Some(units)
+    };
+    for span in spans {
+        let (Some(start), Some(end)) = (at(span.start), at(span.end)) else {
+            continue;
+        };
+        if end > start {
+            out.push(Utf16Span {
+                start,
+                len: end - start,
+                rgba: span.foreground,
+            });
+        }
+    }
+    out
+}
+
+/// Highlights synchronously with one process-wide highlighter, for adapters
+/// that call from their own worker thread (the phone hosts). The first call
+/// compiles the grammar queries. Unknown languages and oversized inputs
+/// return no spans.
+pub fn highlight_utf16(language: &str, text: &str, light: bool) -> Vec<Utf16Span> {
+    static SHARED: std::sync::LazyLock<std::sync::Mutex<Highlighter>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(Highlighter::default()));
+    if text.len() > MAX_BYTES || language.is_empty() {
+        return vec![];
+    }
+    let palette = if light {
+        Palette::light()
+    } else {
+        Palette::default()
+    };
+    let spans = match SHARED.lock() {
+        Ok(highlighter) => highlighter.spans_with_palette(language, text, palette),
+        Err(_) => return vec![],
+    };
+    utf16_spans(text, &spans)
+}
+
 const CAPTURES: [(&str, Kind); 30] = [
     ("comment", Kind::Comment),
     ("string", Kind::String),
@@ -454,6 +538,35 @@ mod tests {
         assert_eq!(cache.get("rust", source), Some(spans.as_slice()));
         assert!(!cache.set_palette(palette));
         assert_eq!(cache.get("rust", source), Some(spans.as_slice()));
+    }
+    #[test]
+    fn phone_spans_are_utf16_and_cover_the_text() {
+        let text = "// café 🦀\nfn main() { let s = \"héllo\"; }\n";
+        for light in [false, true] {
+            let spans = highlight_utf16("rust", text, light);
+            assert!(!spans.is_empty());
+            let total: u32 = spans.iter().map(|s| s.len).sum();
+            assert_eq!(total as usize, text.encode_utf16().count());
+            let mut next = 0;
+            for span in &spans {
+                assert_eq!(span.start, next);
+                next = span.start + span.len;
+            }
+            let palette = if light {
+                Palette::light()
+            } else {
+                Palette::default()
+            };
+            assert!(spans.iter().any(|s| s.rgba == palette.color(Kind::Keyword)));
+        }
+        assert!(highlight_utf16("unknown", text, false).is_empty());
+        assert!(highlight_utf16("", text, false).is_empty());
+        let bad = [Span {
+            start: 1,
+            end: 3,
+            foreground: [0; 4],
+        }];
+        assert!(utf16_spans("é", &bad).is_empty());
     }
     #[test]
     fn highlights_common_languages_without_changing_bytes() {

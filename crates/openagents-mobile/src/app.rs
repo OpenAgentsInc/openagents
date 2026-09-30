@@ -1044,6 +1044,25 @@ impl App {
         })
     }
 
+    /// Attach an image the host's photo picker read to the open draft, and
+    /// answer with the app packet. The shared attachments code decodes and
+    /// bounds it (PNG or JPEG, 8 MiB, 4096 pixels a side, four per draft);
+    /// a refusal shows as the chat's notice.
+    pub fn attach_image(&mut self, name: &str, bytes: Vec<u8>) -> Vec<u8> {
+        self.coder.attach_image(name, bytes);
+        serde_json::to_vec(&self.call(Request::Snapshot)).unwrap_or_default()
+    }
+
+    /// The encoded bytes an `image:{id}` surface in the chat shows, which
+    /// the attachments code already decoded and bounded; empty when the
+    /// open draft has no such image.
+    pub fn image(&self, resource: &str) -> Vec<u8> {
+        self.coder
+            .image(resource)
+            .map(|image| image.bytes.as_ref().clone())
+            .unwrap_or_default()
+    }
+
     /// Answer one request as JSON: a terminal request with the terminal
     /// packet, anything else with the app packet.
     pub fn respond(&mut self, request: Request) -> Vec<u8> {

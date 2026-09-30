@@ -54,6 +54,19 @@ pub enum TextAlign {
     End,
 }
 
+/// How a stack offers some of its buttons as a native menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Menu {
+    /// A card with a context menu. The stack's first child is the card, and
+    /// every other child is a button the card's menu offers: on a long press
+    /// on a phone (`UIMenu`, `PopupMenu`), or on a secondary click on a
+    /// desktop. Each item activates through the view like any button, so a
+    /// stale menu refuses. An adapter without menus lays the children out on
+    /// the stack's axis.
+    Context,
+}
+
 /// Presentation of a button label's secondary line, after its first newline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,6 +169,9 @@ pub struct Style {
     /// Use the monospaced member of the selected font family.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monospace: Option<bool>,
+    /// Offer the stack's other buttons as its first child's menu.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub menu: Option<Menu>,
 }
 
 /// A declaration contains only canonical leaf properties. A later explicit
@@ -188,6 +204,7 @@ pub struct StylePatch {
     pub glyph_gap: Patch<u16>,
     pub glyph_color: Patch<Color>,
     pub monospace: Patch<bool>,
+    pub menu: Patch<Menu>,
 }
 
 impl StylePatch {
@@ -230,6 +247,7 @@ impl StylePatch {
             glyph_gap: self.glyph_gap.overlay(later.glyph_gap),
             glyph_color: self.glyph_color.overlay(later.glyph_color),
             monospace: self.monospace.overlay(later.monospace),
+            menu: self.menu.overlay(later.menu),
         }
     }
 
@@ -262,6 +280,7 @@ impl StylePatch {
             glyph_gap: self.glyph_gap.resolve(defaults.glyph_gap),
             glyph_color: self.glyph_color.resolve(defaults.glyph_color),
             monospace: self.monospace.resolve(defaults.monospace),
+            menu: self.menu.resolve(defaults.menu),
         }
     }
 }

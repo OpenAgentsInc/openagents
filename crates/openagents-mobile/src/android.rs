@@ -9,6 +9,8 @@
 //! share are here, so host tests cover them.
 use crate::{App, Config, Launch, Request};
 
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod editors;
 #[cfg(target_os = "android")]
 mod exports;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]

@@ -128,4 +128,27 @@ RustNativeBuffer rust_native_frame_key(const void *frame, uint32_t index);
 RustNativeBuffer rust_native_frame_display(const void *frame, uint32_t index);
 void rust_native_frame_release(const void *frame);
 
+// A native text field's shared draft (rust_native::edit::mirror): the
+// field reports each change as JSON and shows the state the reply names.
+// Requests: {"op": "mount", "token", "max_bytes", "draft"}, {"op": "apply",
+// "stamp", "change": {"op": "sync", "text", "selection": [anchor, caret],
+// "marked": [start, end] or null, "at_ms"} | {"op": "select", "selection"} |
+// {"op": "delete", "backwards", "at_ms"} | {"op": "undo"} | {"op": "redo"}},
+// {"op": "submitted", "stamp", "text"}, and {"op": "dispose"}. Positions are
+// UTF-16. Replies: {"state": {"stamp", "text", "selection", "marked",
+// "can_undo", "can_redo"}} or {"error": code, "state"}. Free replies with
+// rust_native_layout_buffer_free.
+void *rust_native_editor_create(void);
+RustNativeBuffer rust_native_editor_call(void *handle, const uint8_t *request, size_t length);
+void rust_native_editor_destroy(void *handle);
+
+// Paint-only syntax spans for one code block's text (a display list's
+// code_blocks names the paragraph and language), as JSON
+// [[start16, len16, [r, g, b, a]], ...] in the dark palette or, with light
+// nonzero, the light one. Runs the highlighter on the calling thread: call it
+// from a worker. Unknown languages return []. Free with
+// rust_native_layout_buffer_free.
+RustNativeBuffer rust_native_syntax_spans(const uint8_t *language, size_t language_length,
+                                          const uint8_t *text, size_t length, uint8_t light);
+
 #endif

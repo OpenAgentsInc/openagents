@@ -1188,9 +1188,10 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     assert_eq!(hand.asked()[2].len(), 5);
 
     let list = fixture.list();
+    // The card wraps the row with its menu; the row itself opens the chat.
     let row = keys(&list)
         .into_iter()
-        .find(|key| key.starts_with("talk-"))
+        .find(|key| key.starts_with("talk-") && !key.ends_with("-card"))
         .expect("the conversation in the list");
     let label = node(&list, &row).unwrap()["element"]["props"]["label"]
         .as_str()
@@ -2467,4 +2468,115 @@ fn an_older_computer_shows_no_stop_control_while_its_reply_streams() {
     assert_eq!(composer["busy"], true);
     assert!(composer["stop"].is_null(), "no stop control: {composer}");
     let _ = chat;
+}
+
+/// A saved chat's card in the previous chats carries the shared chat menu:
+/// pin, then unpin, archive, then restore, each carried out on the saved
+/// conversation and offered again from the new state.
+#[test]
+fn saved_chat_cards_offer_the_shared_chat_menu() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.list();
+    fixture.tap("coder-back");
+    fixture.say("Keep this chat");
+    hand.say("Kept.", true);
+    fixture.render();
+    let list = fixture.list();
+    let card = keys(&list)
+        .into_iter()
+        .find(|key| key.starts_with("talk-") && key.ends_with("-card"))
+        .expect("a chat card");
+    let row = card.trim_end_matches("-card").to_owned();
+    let card_node = node(&list, &card).unwrap();
+    assert_eq!(card_node["style"]["menu"], "context");
+    let items = |view: &Value| -> Vec<String> {
+        node(view, &format!("{row}-card")).unwrap()["element"]["props"]["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .skip(1)
+            .map(|item| {
+                item["element"]["props"]["label"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect()
+    };
+    assert_eq!(items(&list), ["Pin chat", "Archive chat"]);
+    // The card itself still opens the chat.
+    assert_eq!(
+        node(&list, &card).unwrap()["element"]["props"]["children"][0]["key"],
+        row.as_str()
+    );
+    let list = fixture.tap(&format!("{row}-pin"));
+    assert_eq!(items(&list), ["Unpin chat", "Archive chat"]);
+    let list = fixture.tap(&format!("{row}-archive"));
+    assert_eq!(items(&list), ["Unpin chat", "Restore chat"]);
+    let list = fixture.tap(&format!("{row}-restore"));
+    assert_eq!(items(&list), ["Unpin chat", "Archive chat"]);
+}
+
+/// The attach control asks the host for a photo; an attached image shows
+/// as an `image:` surface card with its alternative text, a text-only send
+/// keeps the words and the image, and removing the image lets it send.
+#[test]
+fn attached_images_show_as_shared_image_nodes_and_are_not_dropped() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.list();
+    let screen = fixture.tap("coder-back");
+    assert!(node(&screen, "coder-attach").is_some());
+    fixture.tap("coder-attach");
+    assert_eq!(
+        fixture.coder.take_go(),
+        Some(crate::coder_tab::Go::PickImage)
+    );
+    let png = openagents_chat_app::attachments::Image::pixels(3, 2, vec![200; 24]).unwrap();
+    fixture
+        .coder
+        .attach_image("Photo.png", png.bytes.as_ref().clone());
+    let screen = fixture.render();
+    let surface = nodes(&screen)
+        .into_iter()
+        .find(|node| node["element"]["kind"] == "surface")
+        .expect("an image surface")
+        .clone();
+    let resource = surface["element"]["props"]["resource"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(resource.starts_with("image:"));
+    assert_eq!(surface["element"]["props"]["label"], "Photo.png · 3 × 2");
+    assert_eq!(
+        fixture.coder.image(&resource).unwrap().bytes.as_slice(),
+        png.bytes.as_slice()
+    );
+    // A bad image is refused with a notice and adds nothing.
+    fixture
+        .coder
+        .attach_image("bad.png", b"not an image".to_vec());
+    let screen = fixture.render();
+    assert!(
+        texts(&screen)
+            .iter()
+            .any(|text| text.contains("PNG or JPEG"))
+    );
+    // A text-only route keeps the draft rather than drop the image.
+    let token = composer_of(&screen)["token"].as_str().unwrap().to_owned();
+    fixture
+        .coder
+        .submit(&token, "Look at this", None, &mut fixture.chats);
+    let screen = fixture.render();
+    assert_eq!(composer_of(&screen)["token"], token.as_str());
+    assert!(texts(&screen).iter().any(|text| text.contains("text only")));
+    assert!(hand.asked().is_empty());
+    let id = resource.trim_start_matches("image:");
+    fixture.tap(&format!("image-remove-{id}"));
+    assert!(fixture.coder.image(&resource).is_none());
+    fixture.say("Look at this");
+    assert_eq!(hand.asked().len(), 1);
 }

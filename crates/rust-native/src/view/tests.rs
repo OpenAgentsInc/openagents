@@ -780,3 +780,70 @@ fn shortcut_hints_are_bounded_and_leave_the_typed_activation_unchanged() {
         })
     );
 }
+
+#[test]
+fn context_menu_cards_offer_buttons_that_activate_through_the_view() {
+    fn button(key: &str, intent: u8) -> Node<u8> {
+        Node {
+            key: key.into(),
+            style: Style::default(),
+            element: Element::Button {
+                label: key.into(),
+                enabled: true,
+                icon: None,
+                shortcut: None,
+                intent,
+            },
+        }
+    }
+    let card = |children: Vec<Node<u8>>| Node {
+        key: "card".into(),
+        style: Style {
+            menu: Some(crate::style::Menu::Context),
+            ..Style::default()
+        },
+        element: Element::Stack {
+            axis: Axis::Vertical,
+            children,
+        },
+    };
+    let view = View::new("chats", 3, card(vec![button("open", 1), button("pin", 2)]))
+        .validate()
+        .unwrap();
+    let json = view.to_json().unwrap();
+    assert!(String::from_utf8_lossy(&json).contains("\"menu\":\"context\""));
+    let decoded = View::<u8>::from_json(&json).unwrap();
+    let pin = Activation {
+        instance: "chats".into(),
+        revision: 3,
+        node: "pin".into(),
+    };
+    assert_eq!(decoded.activate(&pin), Ok(&2));
+    // A menu from an older revision refuses.
+    assert_eq!(
+        decoded.activate(&Activation { revision: 2, ..pin }),
+        Err(ViewError::StaleActivation)
+    );
+    // A menu needs a card and at least one button to offer.
+    assert!(
+        View::new("chats", 1, card(vec![button("open", 1)]))
+            .validate()
+            .is_err()
+    );
+    let text = Node {
+        key: "note".into(),
+        style: Style::default(),
+        element: Element::Text {
+            value: "note".into(),
+            role: TextRole::Body,
+        },
+    };
+    assert!(
+        View::new("chats", 1, card(vec![button("open", 1), text]))
+            .validate()
+            .is_err()
+    );
+    let mut lone = button("lone", 1);
+    lone.style.menu = Some(crate::style::Menu::Context);
+    assert!(View::new("chats", 1, lone).validate().is_err());
+}

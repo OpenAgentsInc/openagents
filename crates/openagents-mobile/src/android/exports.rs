@@ -1,8 +1,8 @@
 //! Android's JNI exports. See the parent module for the contract.
 use super::{
     BridgeError, MAX_CONFIG_BYTES, MAX_HANDLES, MAX_REQUEST_BYTES, MAX_VERSE_CONFIG_BYTES,
-    MAX_VERSE_REQUEST_BYTES, create_app, error, guarded, packet_text, respond, surface_config,
-    transcripts,
+    MAX_VERSE_REQUEST_BYTES, create_app, editors, error, guarded, packet_text, respond,
+    surface_config, transcripts,
 };
 use crate::App;
 use coder_mobile::VerseHandle;
@@ -618,6 +618,132 @@ pub extern "system" fn Java_com_openagents_app_TranscriptNative_publish<'local>(
             let name = input(env, &name, 96)?;
             let node = input(env, &node, transcripts::MAX_UPDATE_BYTES)?;
             guarded(|| transcripts::publish(&name, &node))
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_EditorNative_create<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> i64 {
+    unowned
+        .with_env(|_| -> Result<_, BridgeError> { guarded(editors::create) })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_EditorNative_call<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+    request: JString<'local>,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let request = input(env, &request, editors::MAX_REQUEST_CHARS)?;
+            let bytes = guarded(|| editors::call(handle, &request))?;
+            output(env, bytes)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_EditorNative_destroy<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+) {
+    unowned
+        .with_env(|_| -> Result<_, BridgeError> {
+            guarded(|| {
+                editors::destroy(handle);
+                Ok(())
+            })
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Paint-only syntax spans for one code block (`editors::highlight`). Call
+/// it from a worker thread; the first call compiles the grammars.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_highlight<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    language: JString<'local>,
+    text: JString<'local>,
+    light: bool,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let language = input(env, &language, 32)?;
+            let text = input(env, &text, rust_native::syntax::MAX_BYTES)?;
+            let bytes = guarded(|| Ok(editors::highlight(&language, &text, light)))?;
+            output(env, bytes)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Attach an image the photo picker read to the open chat's draft
+/// (`App::attach_image`); answers with the app packet.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_attachImage<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+    name: JString<'local>,
+    bytes: JByteArray<'local>,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            main_thread(false)?;
+            let name = input(env, &name, 1024)?;
+            let length = bytes.len(env)?;
+            if length == 0 || length > openagents_chat_app::attachments::MAX_IMAGE_BYTES {
+                return Err(error("The image exceeds its size limit"));
+            }
+            let data = env.convert_byte_array(&bytes)?;
+            let packet = guarded(|| {
+                APPS.with(|apps| {
+                    let mut apps = apps
+                        .try_borrow_mut()
+                        .map_err(|_| error("An app call is already in progress"))?;
+                    let app = apps
+                        .get_mut(&handle)
+                        .ok_or_else(|| error("App handle is stale or belongs to another thread"))?;
+                    Ok(app.attach_image(&name, data))
+                })
+            })?;
+            output(env, packet)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// The encoded bytes of the chat's image surface `resource`, or an empty
+/// array.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_image<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+    resource: JString<'local>,
+) -> JByteArray<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            main_thread(false)?;
+            let resource = input(env, &resource, 96)?;
+            let data = guarded(|| {
+                APPS.with(|apps| {
+                    let apps = apps
+                        .try_borrow()
+                        .map_err(|_| error("An app call is already in progress"))?;
+                    let app = apps
+                        .get(&handle)
+                        .ok_or_else(|| error("App handle is stale or belongs to another thread"))?;
+                    Ok(app.image(&resource))
+                })
+            })?;
+            Ok(env.byte_array_from_slice(&data)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
