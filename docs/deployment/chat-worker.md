@@ -829,3 +829,38 @@ computer, the run's title, and the host-side usage and project labels were
 covered by the tests, not on the simulator. Build 38 was uploaded with
 `build.sh upload` at 2026-09-30T19:41:40-07:00 and is `VALID`, in Internal
 Testers (`IN_BETA_TESTING`).
+
+Release `ff3a99aad6` (2026-10-01 UTC,
+[#10077](https://github.com/OpenAgentsInc/openagents/issues/10077)) makes a
+chat on a computer know it is on that computer: each turn's `context` names
+where Coder runs (`computer`) and the chat's project folder (`project`), the
+model is told so, and prepared and knowledge answers follow the chat's place
+([the router design](../coder/design/2026-09-28-chat-router.md#where-the-chat-runs-10077)).
+The route question did not change (`chat-router-v4@ca74e9da5045`, no
+recalibration). It was built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/ff3a99aad6` with the current
+`knowledge/openagents/` (two entries tagged `off-computer`; copied with
+`COPYFILE_DISABLE=1`, no `._*` files) and `codebase-kb.gz` from
+`92aef353b7`, checked with `--check` under the chat environment ("the
+configuration is safe to deploy"), and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; the environment file and unit
+did not change, `coder-worker.service` and `/opt/coder-worker/current` were
+not touched, and `92aef353b7` stays in `releases/` for rollback. The log
+names `router chat-router-v4@ca74e9da5045 (Live), bank
+chat-answers-v1@b0dcde048be6 with 67 answers` and `product kb
+openagents-product@4085953fbecf (60 entries)`. Live checks:
+
+- `live_basic_coder_streams_a_reply` with `OPENAGENTS_TEST_CHAT_SURFACE=desktop`
+  and `OPENAGENTS_TEST_CHAT_PROJECT=/Users/someone/work/openagents`: "whats
+  your working dir" answered "Our working directory is
+  `/Users/someone/work/openagents`." (route `cli` at 0.32, so the model
+  answered from its note; no offer, no "connect a computer"); "how do I
+  connect another computer" answered from product knowledge with the QR,
+  nearby, and `openagents connect invite` steps.
+- The same test as a phone with no computer: "Run the tests in my
+  repository and fix the failing one" answered "That needs a computer.
+  Connect one and we'll dispatch Coder there with this conversation." with
+  the Computers offer.
+- `openagents chat --scratch --no-run --json` from a checkout: "whats your
+  working dir" named the checkout's path; "how do I connect another
+  computer" gave the pairing steps.
