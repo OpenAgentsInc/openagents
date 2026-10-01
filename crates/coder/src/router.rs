@@ -1741,6 +1741,12 @@ pub const NO_DOCS_NOTE: &str = "We have no documented answer to this question. S
 answer only what you are sure of, and do not invent OpenAgents product facts, screens, or \
 commands.";
 
+/// What the product note adds to [`grounded_note`]: a summary or
+/// description of a document a passage links, such as one of our essays,
+/// gives that link.
+pub const PRODUCT_LINKS: &str = " When you summarize or describe a document a passage \
+links, such as one of our essays, give its link from the passage.";
+
 /// The instruction a grounded model gets: answer only from `passages`, and
 /// cite their ids.
 #[must_use]
@@ -1756,6 +1762,10 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
          square brackets, like [{}].",
         passages.first().map_or("id", |passage| passage.id.as_str())
     );
+    if corpus == Corpus::Product {
+        // A summary of one of our essays links it (#10102).
+        note.push_str(PRODUCT_LINKS);
+    }
     if let Some(commit) = commit {
         note.push_str(&format!(" Say that this is as of commit {commit}."));
     }
@@ -1772,6 +1782,25 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_product_note_asks_for_the_links_of_what_it_summarizes() {
+        let passage = seams::Passage {
+            id: "openagents.ttc-overview@2".into(),
+            title: "Our essay Test-Time Capabilities".into(),
+            text: "Linked on GitHub at https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-09-29-test-time-capabilities.md".into(),
+            source: "docs/essays/2026-09-29-test-time-capabilities.md".into(),
+            relevance: 0.95,
+            answer: None,
+            off_computer: false,
+        };
+        let note = grounded_note(Corpus::Product, std::slice::from_ref(&passage), None);
+        assert!(note.contains(PRODUCT_LINKS));
+        assert!(
+            note.contains("https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/")
+        );
+        assert!(!grounded_note(Corpus::Codebase, &[passage], None).contains(PRODUCT_LINKS));
+    }
 
     #[test]
     fn route_words_round_trip_and_describe_themselves() {
