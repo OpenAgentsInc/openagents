@@ -134,4 +134,16 @@ unpublished version, missing platform), with no bucket and no network.
 
 | Version | Channel | Commit | Date |
 | --- | --- | --- | --- |
-| `1.0.0-rc.1` | `rc` | see the manifest | 2026-10-01 |
+| `1.0.0-rc.1` | `rc` | `8701d2f8bf` | 2026-10-01 |
+
+`1.0.0-rc.1` built all seven platforms on one Mac. Notarization:
+`cfb4306d-b2f3-4b31-8a03-e8a36c9856a2` (macos-aarch64) and
+`ad204ab0-8f6b-413a-8b9f-1335e95d8acf` (macos-x86_64), both `Accepted`;
+Gatekeeper accepted all four macOS binaries on the first assessment, and
+again with a browser quarantine flag after a public install. Installed with
+the published `install.sh` into a temporary home on a Mac (macos-aarch64)
+and on NixOS (linux-x86_64): `openagents --version` printed
+`openagents 1.0.0-rc.1 (OpenAgentsInc/openagents 8701d2f8bf clean)`, and
+`openagents terminal --scratch` in a pty showed the `OpenAgents v1.0.0-rc.1`
+welcome card and an answer from the live chat worker. The Windows build was
+not run on Windows.
