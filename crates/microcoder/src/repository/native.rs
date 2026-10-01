@@ -105,6 +105,9 @@ impl Judge for NativeJudge<'_> {
             response.as_ref(),
             milliseconds,
         );
+        // How the answer was reached, as the record names it: a local
+        // key's call the hosted service carried is `hosted`.
+        let via = record.via.clone().unwrap_or_else(|| "direct".to_string());
         let _ = self
             .host
             .append(&Step::called(record.call()).taking(milliseconds));
@@ -114,7 +117,7 @@ impl Judge for NativeJudge<'_> {
                     .noting("decision_response",json!({"model":response.model,"request_id":response.raw().request_id(),
                         "status":response.raw().status,"body_bytes":response.raw().bytes,
                         "input_tokens":response.usage.input_tokens,"output_tokens":response.usage.output_tokens,
-                        "door":client.base_url(),"via":if client.service().is_some() {"hosted"} else {"direct"},
+                        "door":client.base_url(),"via":via,
                         "service":response.service(),"milliseconds":milliseconds})));
                 if let Err(error) = retained {
                     return Judgment {
@@ -165,7 +168,7 @@ impl Judge for NativeJudge<'_> {
                     &Step::said(Source::System, "Decision response was unavailable.").noting(
                         "decision_response",
                         json!({"error":error.to_string(),"body":"unavailable","billing":"unknown",
-                            "door":client.base_url(),"via":if client.service().is_some() {"hosted"} else {"direct"},
+                            "door":client.base_url(),"via":via,
                             "milliseconds":milliseconds}),
                     ),
                 );

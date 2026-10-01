@@ -803,15 +803,23 @@ pub async fn execute(
     match &judge {
         Ok(judge) => {
             // Which service answers this run's judgments: TypeSafe directly
-            // under this computer's key, or the hosted decision service.
+            // under this computer's key (with the doors it falls back to
+            // when that key cannot answer), or the hosted decision service.
             let service = judge.client.service();
+            let doors = judge.client.doors();
             let _ = host.append(
                 &Step::said(
                     Source::System,
-                    &match &service {
-                        Some(_) => "Jev answers through the OpenAgents hosted decision service."
-                            .to_string(),
-                        None => {
+                    &match (&service, &doors) {
+                        (Some(_), _) => {
+                            "Jev answers through the OpenAgents hosted decision service."
+                                .to_string()
+                        }
+                        (None, Some(doors)) => format!(
+                            "Jev answers under this computer's TypeSafe key first, and \
+                             through the next of its {doors} when a door cannot answer."
+                        ),
+                        (None, None) => {
                             "Jev answers directly under this computer's TypeSafe key.".to_string()
                         }
                     },
@@ -819,7 +827,8 @@ pub async fn execute(
                 .noting(
                     "decision_service",
                     json!({"door":judge.client.base_url(),"model":judge.client.default_model(),
-                        "via":if service.is_some() {"hosted"} else {"direct"},"service":service}),
+                        "via":if service.is_some() {"hosted"} else {"direct"},"service":service,
+                        "doors":doors}),
                 ),
             );
         }

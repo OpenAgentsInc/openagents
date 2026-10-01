@@ -40,6 +40,15 @@
 //! straight to the next one, then the door is asked again. The bench is
 //! logged once, when it starts. When a benched first door is skipped and
 //! no other door answers, its remembered refusal stands.
+//!
+//! A door may also be one another service carries ([`Door::carried`]): the
+//! decision is handed to that service's [`Exchange`] as it came, in
+//! TypeSafe's shape. A computer whose own TypeSafe key cannot pay uses this
+//! for its last door, the hosted OpenAgents decision service
+//! (`crates/jev-hosted`). Its answer keeps the `service` object the service
+//! added (the door it used, its build) and gains `service.exchange`, the
+//! service that carried it, so a decision record says the hosted service
+//! answered.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -264,17 +273,27 @@ struct Benched {
     refusal: Reply,
 }
 
-/// A door [`Failover`] asks, with its key.
+/// How [`Failover`] reaches a door.
+#[derive(Clone)]
+enum Carrier {
+    /// HTTP, under the door's own key.
+    Http(ApiKey),
+    /// Another service, which carries the call itself.
+    Exchange(Arc<dyn Exchange>),
+}
+
+/// A door [`Failover`] asks, with its key or its carrier.
 #[derive(Clone)]
 pub struct Door {
     /// What an answer from this door names in `service.door`.
     pub door: String,
     /// For the primary, its base URL (a call's path is appended); for a
-    /// fallback, the full decision URL.
+    /// fallback, the full decision URL; for a carried door, what carries
+    /// it.
     pub url: String,
     /// How the door names Jev.
     pub naming: Naming,
-    key: ApiKey,
+    carrier: Carrier,
 }
 
 impl Door {
@@ -290,7 +309,21 @@ impl Door {
             door: door.into(),
             url: url.into(),
             naming,
-            key,
+            carrier: Carrier::Http(key),
+        }
+    }
+
+    /// A door another service carries: each decision attempt goes to
+    /// `exchange` as it came (TypeSafe's shape, the canonical model), and
+    /// this process holds no key for it. `door` names it in logs and in
+    /// [`Failover`]'s description.
+    #[must_use]
+    pub fn carried(door: impl Into<String>, exchange: Arc<dyn Exchange>) -> Self {
+        Self {
+            door: door.into(),
+            url: exchange.service(),
+            naming: Naming::Canonical,
+            carrier: Carrier::Exchange(exchange),
         }
     }
 
@@ -301,10 +334,19 @@ impl Door {
     }
 
     /// The door's key, for the one caller that must scrub it from what it
-    /// writes. Never log it.
+    /// writes; `None` for a carried door. Never log it.
     #[must_use]
-    pub fn key(&self) -> &ApiKey {
-        &self.key
+    pub fn key(&self) -> Option<&ApiKey> {
+        match &self.carrier {
+            Carrier::Http(key) => Some(key),
+            Carrier::Exchange(_) => None,
+        }
+    }
+
+    /// Whether another service carries this door ([`Door::carried`]).
+    #[must_use]
+    pub fn is_carried(&self) -> bool {
+        matches!(self.carrier, Carrier::Exchange(_))
     }
 }
 
@@ -314,7 +356,13 @@ impl fmt::Debug for Door {
             .field("door", &self.door)
             .field("url", &self.url)
             .field("naming", &self.naming)
-            .field("key", &"***")
+            .field(
+                "key",
+                &match self.carrier {
+                    Carrier::Http(_) => "***",
+                    Carrier::Exchange(_) => "carried",
+                },
+            )
             .finish()
     }
 }
@@ -422,6 +470,31 @@ impl Failover {
         &self.fallbacks
     }
 
+    /// Ask `door` once: over HTTP at `url` under its key, or through its
+    /// carrier with `body` in place of the call's.
+    async fn ask(
+        &self,
+        door: &Door,
+        url: &str,
+        call: &Call,
+        body: Option<Vec<u8>>,
+        timeout: Duration,
+    ) -> Result<Reply, Failure> {
+        match &door.carrier {
+            Carrier::Http(key) => self.send(url, key, call, body, timeout).await,
+            Carrier::Exchange(exchange) => {
+                let carried = Call {
+                    body,
+                    timeout,
+                    ..call.clone()
+                };
+                tokio::time::timeout(timeout, exchange.exchange(carried))
+                    .await
+                    .unwrap_or(Err(Failure::Timeout))
+            }
+        }
+    }
+
     async fn send(
         &self,
         url: &str,
@@ -503,13 +576,7 @@ impl Failover {
         let base = format!("{}{}", self.primary.url.trim_end_matches('/'), call.path);
         if !decision || self.fallbacks.is_empty() {
             return self
-                .send(
-                    &base,
-                    &self.primary.key,
-                    &call,
-                    call.body.clone(),
-                    call.timeout,
-                )
+                .ask(&self.primary, &base, &call, call.body.clone(), call.timeout)
                 .await;
         }
         let request: Option<Value> = call
@@ -537,7 +604,7 @@ impl Failover {
                     _ => left,
                 };
                 asked += 1;
-                let (url, body) = if is_primary {
+                let (url, body) = if is_primary || door.is_carried() {
                     (base.clone(), call.body.clone())
                 } else {
                     let body = request.clone().map(|mut body| {
@@ -548,10 +615,7 @@ impl Failover {
                     });
                     (door.url.clone(), body)
                 };
-                (
-                    self.send(&url, &door.key, &call, body, timeout).await,
-                    false,
-                )
+                (self.ask(door, &url, &call, body, timeout).await, false)
             };
             match answered {
                 Ok(mut reply) if (200..300).contains(&reply.status) => {
@@ -560,7 +624,21 @@ impl Failover {
                     {
                         normalize_answer(&mut value);
                         if let Some(map) = value.as_object_mut() {
-                            map.insert("service".to_string(), json!({"door": door.door}));
+                            let service = match &door.carrier {
+                                // The carrier's own `service` (the door it
+                                // used, its build) stands, and names it.
+                                Carrier::Exchange(exchange) => {
+                                    let mut service = map
+                                        .get("service")
+                                        .filter(|service| service.is_object())
+                                        .cloned()
+                                        .unwrap_or_else(|| json!({}));
+                                    service["exchange"] = json!(exchange.service());
+                                    service
+                                }
+                                Carrier::Http(_) => json!({"door": door.door}),
+                            };
+                            map.insert("service".to_string(), service);
                         }
                         if let Ok(bytes) = serde_json::to_vec(&value) {
                             reply.body = bytes;

@@ -346,7 +346,9 @@ impl Profile {
     ///
     /// A keyed door goes through the one resolver every Jev caller shares
     /// (`jev_hosted::resolve`, its local-key door): the profile's credential
-    /// talks to the profile's URL directly. A relay profile goes through the
+    /// talks to the profile's URL directly, and at TypeSafe's door a
+    /// decision it cannot answer (no credits, a refused key) fails over to
+    /// the backup doors and last to the hosted service. A relay profile goes through the
     /// same resolver's hosted door: each judgment is a NIP-DEC decision job
     /// to the profile's worker on the profile's relay, signed by this
     /// computer's decision key. A credential-free local door is a plain
@@ -358,7 +360,28 @@ impl Profile {
     pub fn client_in(&self, dir: &std::path::Path) -> Result<jev::Client, Refusal> {
         let keyed = |url: &Sourced<String>, model: &Sourced<String>, key: &ApiKey| {
             let key = key.expose().to_string();
-            let env = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| key.clone());
+            // The profile's credential is the TypeSafe door's key; the
+            // backup doors behind it (`jev_hosted::local_doors`) read
+            // their own keys and the hosted service's settings from this
+            // process, as every other local Jev caller does.
+            let env = |name: &str| {
+                if name == TYPESAFE_KEY_VAR {
+                    Some(key.clone())
+                } else if jev::doors::FALLBACKS
+                    .iter()
+                    .any(|fallback| fallback.key_var == name)
+                    || [
+                        jev_hosted::HOSTED_VAR,
+                        jev_hosted::RELAY_VAR,
+                        jev_hosted::WORKER_VAR,
+                    ]
+                    .contains(&name)
+                {
+                    std::env::var(name).ok()
+                } else {
+                    None
+                }
+            };
             jev_hosted::resolve(
                 &env,
                 dir,

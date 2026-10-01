@@ -299,3 +299,85 @@ async fn an_unreachable_service_says_so() {
     let why = jev_hosted::unavailable(&error).expect("unreachable is unavailable");
     assert!(why.starts_with("Jev is unreachable"), "{why}");
 }
+
+/// A TypeSafe door that answers every call 402: a key with no credits.
+async fn no_credits_door() -> (String, Arc<AtomicUsize>) {
+    let asked = Arc::new(AtomicUsize::new(0));
+    let counter = asked.clone();
+    let router = axum::Router::new().route(
+        "/v1/systemone",
+        axum::routing::post(move || {
+            let counter = counter.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                (
+                    StatusCode::PAYMENT_REQUIRED,
+                    axum::Json(json!({"error": {"code": "payment_required",
+                        "message": "Your organization has no available TypeSafe API credits."}})),
+                )
+                    .into_response()
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (format!("http://{address}"), asked)
+}
+
+#[tokio::test]
+async fn a_local_key_with_no_credits_is_answered_by_the_hosted_worker() {
+    let (relay, worker, answered, _jobs) = hosted_rig(10).await;
+    let (typesafe, asked) = no_credits_door().await;
+    let home = tempfile::tempdir().unwrap();
+    let vars: HashMap<&str, String> = HashMap::from([
+        (jev_hosted::RELAY_VAR, relay.clone()),
+        (jev_hosted::WORKER_VAR, worker.clone()),
+    ]);
+    let env = |name: &str| vars.get(name).cloned();
+    let backups = jev_hosted::local_doors(&env, home.path());
+    assert_eq!(backups.len(), 1, "no gateway or OpenRouter key here");
+    assert!(
+        !home.path().join(jev_hosted::KEY_FILE).exists(),
+        "the hosted door makes its key only when first asked"
+    );
+    let client = jev_hosted::with_backups(
+        "ts-out-of-credit".to_string(),
+        backups,
+        &Door {
+            url: &typesafe,
+            model: "jev-1.13.0",
+        },
+        &|config| config,
+    )
+    .unwrap();
+    assert_eq!(client.doors(), Some(format!("doors {typesafe} → {relay}")));
+
+    for _ in 0..3 {
+        let response = client
+            .system_one(jev::SystemOneRequest::new(
+                "cargo test: 3 passed",
+                question(),
+            ))
+            .await
+            .expect("the hosted worker answers for the key that cannot pay");
+        assert!((response.noul("tests_pass").unwrap().noul - 0.75).abs() < 1e-9);
+        let service = response.service().unwrap();
+        assert_eq!(service["door"], "https://api.typesafe.ai");
+        assert!(service["exchange"].as_str().unwrap().contains(&worker));
+        // The record names the hosted service as what answered.
+        let record = jev_hosted::decision_record(
+            "d",
+            "judge",
+            &client,
+            json!({"model": "jev-1.13.0"}),
+            Ok(&response),
+            1,
+        );
+        assert_eq!(record.via.as_deref(), Some("hosted"));
+    }
+    // The 402 benched the person's own door: asked once, then skipped.
+    assert_eq!(asked.load(Ordering::SeqCst), 1);
+    assert_eq!(answered.load(Ordering::SeqCst), 3);
+    assert!(home.path().join(jev_hosted::KEY_FILE).exists());
+}

@@ -268,6 +268,21 @@ the decision worker remember a door that refused for its key or account
 refused the same way again. The decision worker never benches the
 upstream for a provisioned principal, whose key is the caller's.
 
+A computer's own TypeSafe key (`TYPESAFE_API_KEY`, else `api_key` in
+`~/.openagents/jev.json`) is asked first, as the person's own, and is not
+the only door (`jev_hosted::resolve`): when it cannot answer for its own
+reasons, a decision goes on to the Vercel AI Gateway and OpenRouter when
+their keys are set on that computer, then to the hosted decision service
+as a decision job, keyless, the same door a computer with no key uses
+(`jev::doors::Door::carried`; off under `OPENAGENTS_JEV_HOSTED=off`). The
+hosted service is itself gateway-first on its open lane, so a key out of
+credits still gets answers. The refusing door is benched as above. An
+answer the hosted service carried keeps the `service` object it added
+(`door`, `version`) and gains `service.exchange`, the service that carried
+it, and its decision record says `via` `hosted`. A server's backup doors
+(`jev_hosted::resolve_with_fallbacks`) are the keys it holds and never
+include the hosted service.
+
 A client that turns a relay refusal back into an HTTP-shaped
 error (`jev_hosted` does, so every Jev caller sees one error shape) uses the
 same table.

@@ -10,7 +10,13 @@
 //! computer's decision key, which the worker's usage log records per job.
 //!
 //! [`resolve`] is the one resolver: a local key when there is one, else
-//! the hosted service, else no Jev and the reason. A hosted call that
+//! the hosted service, else no Jev and the reason. A local key for
+//! TypeSafe's door is not the only door, though: a key that cannot pay
+//! (402) or is refused (401) would leave the computer with no Jev at all,
+//! so its decisions fail over ([`jev::doors::Failover`]) to the Vercel AI
+//! Gateway and OpenRouter when their keys are set here, and last to the
+//! hosted service, keyless — the door a computer with no key uses. The
+//! refusing door is benched for [`jev::doors::BENCH`]. A hosted call that
 //! cannot be answered fails with a message that says why — "Jev is
 //! unreachable: …" or "Jev refused: busy …" — and [`unavailable`] reads
 //! that reason back out of a [`jev::Error`], so a caller can stop asking
@@ -109,6 +115,14 @@ pub struct Door<'a> {
 /// `api_key` in `<dir>/jev.json`), else the hosted decision service, else
 /// the reason there is none.
 ///
+/// A local key for TypeSafe's door ([`DOOR`]) is asked first, as the
+/// person's own; when it cannot answer for a reason of its own
+/// ([`jev::doors::fails_over`]: no credits, a refused key, a timeout, an
+/// outage), a decision goes on to the Vercel AI Gateway
+/// (`AI_GATEWAY_API_KEY`) and OpenRouter (`OPENROUTER_API_KEY`) when their
+/// keys are set, then to the hosted decision service, which needs no key
+/// ([`local_doors`]). A local key for any other door is that door alone.
+///
 /// `dir` is `~/.openagents`. `tune` adjusts either client's settings — a
 /// timeout, a retry policy — and must not set a key or a base URL.
 ///
@@ -124,18 +138,80 @@ pub fn resolve(
     tune: &dyn Fn(jev::Config) -> jev::Config,
 ) -> Result<Resolved, String> {
     if let Some((key, source)) = local_key(env, dir) {
-        let client = jev::Client::new(
-            tune(jev::Config::new().api_key(key))
-                .base_url(door.url)
-                .default_model(door.model),
-        )
-        .map_err(|error| format!("Jev: {error}"))?;
+        let backups = if door.url.trim_end_matches('/') == DOOR {
+            local_doors(env, dir)
+        } else {
+            Vec::new()
+        };
+        let client = with_backups(key, backups, door, tune)?;
         return Ok(Resolved {
             client,
             via: Via::Direct { source },
         });
     }
     hosted(env, dir, door, tune)
+}
+
+/// The doors a local TypeSafe key falls back to, in order: the Vercel AI
+/// Gateway and OpenRouter when `env` holds their keys, then the hosted
+/// decision service, keyless, unless [`HOSTED_VAR`] turns it off. The
+/// hosted door reads or makes this computer's decision key only when it is
+/// first asked.
+#[must_use]
+pub fn local_doors(env: &dyn Fn(&str) -> Option<String>, dir: &Path) -> Vec<jev::doors::Door> {
+    let mut doors: Vec<jev::doors::Door> = jev::doors::FALLBACKS
+        .iter()
+        .filter_map(|fallback| {
+            present(env(fallback.key_var))
+                .map(|key| jev::doors::Door::fallback(fallback, jev::ApiKey::new(key)))
+        })
+        .collect();
+    if !env(HOSTED_VAR).is_some_and(|value| value.trim() == "off") {
+        let relay = present(env(RELAY_VAR)).unwrap_or_else(|| RELAY.to_string());
+        let worker = present(env(WORKER_VAR)).unwrap_or_else(|| WORKER.to_string());
+        let exchange = LazyHosted {
+            relay: relay.clone(),
+            worker,
+            key: dir.join(KEY_FILE),
+            built: std::sync::OnceLock::new(),
+        };
+        doors.push(jev::doors::Door::carried(relay, Arc::new(exchange)));
+    }
+    doors
+}
+
+/// A client asking `door` under `key` first and each of `backups` after
+/// it ([`resolve`]'s local-key client). With no backups it is a plain
+/// client to `door`. With some, an attempt may take [`HOSTED_TIMEOUT`]
+/// unless `tune` sets less, and the first door keeps
+/// [`jev::defaults::TIMEOUT`] of it, so a hung door leaves the others time.
+///
+/// # Errors
+///
+/// The client cannot be built; the message never carries a key.
+pub fn with_backups(
+    key: String,
+    backups: Vec<jev::doors::Door>,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+) -> Result<jev::Client, String> {
+    let config = if backups.is_empty() {
+        tune(jev::Config::new().api_key(key))
+    } else {
+        let failover = jev::doors::Failover::new(
+            jev::doors::Door::new(
+                door.url.trim_end_matches('/'),
+                door.url,
+                jev::doors::Naming::Canonical,
+                jev::ApiKey::new(key),
+            ),
+            backups,
+        )
+        .primary_timeout(jev::defaults::TIMEOUT);
+        tune(jev::Config::new().timeout(HOSTED_TIMEOUT)).exchange(jev::doors::exchange(failover))
+    };
+    jev::Client::new(config.base_url(door.url).default_model(door.model))
+        .map_err(|error| format!("Jev: {error}"))
 }
 
 /// One fallback door as a process found it at start: the door, the
@@ -169,7 +245,9 @@ impl std::fmt::Display for Fallback {
 /// asked only when the doors before it could not answer for their own
 /// reasons, never for a refusal of the question. The gateway routes Jev to
 /// TypeSafe itself, so it is the primary. A door whose variable is unset or
-/// blank is off. With no fallback on, the client is exactly [`resolve`]'s.
+/// blank is off. With no fallback on, the client is the keyed door alone:
+/// a server's backups are the keys it holds, and unlike [`resolve`]'s
+/// local-key client it never falls back to the hosted service.
 /// `primary_timeout` caps the first door's share of an attempt when more
 /// than one door is on, so a hung door leaves the others time. Every route
 /// but a decision goes to TypeSafe.
@@ -206,7 +284,16 @@ pub fn resolve_with_fallbacks(
         return resolve(env, dir, door, tune).map(|resolved| (resolved, Vec::new()));
     };
     if keyed.is_empty() {
-        return resolve(env, dir, door, tune).map(|resolved| (resolved, found));
+        // A server's TypeSafe door alone: its fallbacks are the keys it
+        // holds, not the hosted service.
+        let client = with_backups(key, Vec::new(), door, tune)?;
+        return Ok((
+            Resolved {
+                client,
+                via: Via::Direct { source },
+            },
+            found,
+        ));
     }
     let mut failover = jev::doors::Failover::new(
         jev::doors::Door::new(
@@ -618,6 +705,45 @@ impl Exchange for RelayExchange {
     }
 }
 
+/// [`RelayExchange`] built on first use: the hosted door behind a local
+/// key, which reads or makes the decision key only when a decision
+/// reaches it.
+struct LazyHosted {
+    relay: String,
+    worker: String,
+    key: PathBuf,
+    built: std::sync::OnceLock<Result<RelayExchange, String>>,
+}
+
+impl std::fmt::Debug for LazyHosted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LazyHosted")
+            .field("relay", &self.relay)
+            .field("worker", &self.worker)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Exchange for LazyHosted {
+    fn exchange(&self, call: Call) -> Pending<'_> {
+        let built = self.built.get_or_init(|| {
+            decision_key(&self.key)
+                .and_then(|secret| RelayExchange::new(&self.relay, &self.worker, secret))
+        });
+        match built {
+            Ok(exchange) => exchange.exchange(call),
+            Err(why) => {
+                let why = format!("{UNREACHABLE}: {why}");
+                Box::pin(async move { Err(Failure::Unreachable(why)) })
+            }
+        }
+    }
+
+    fn service(&self) -> String {
+        format!("hosted decision service {} on {}", self.worker, self.relay)
+    }
+}
+
 /// The NIP-DEC decision job a request becomes (`crates/nostr`,
 /// `decision::RequestBody`): the same `model`, `state`, and `questions`,
 /// under the caller's logical `request` id and one-based `attempt`. The
@@ -734,6 +860,15 @@ pub fn served(
     match result {
         Ok(response) => {
             record.service = response.service();
+            // A local key's last door is the hosted service: its answer
+            // names the exchange that carried it.
+            if record
+                .service
+                .as_ref()
+                .is_some_and(|service| service.get("exchange").is_some())
+            {
+                record.via = Some("hosted".to_string());
+            }
             record.request_id = response.request_id().map(str::to_string);
             record.usage = serde_json::to_value(response.usage).ok();
             record.cost_usd = response.usage.cost_usd();
@@ -841,6 +976,60 @@ mod tests {
         std::fs::write(dir.path().join(JEV_FILE), r#"{"api_key":"ts-file"}"#).unwrap();
         let resolved = resolve(&no_env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
         assert!(matches!(resolved.via, Via::Direct { .. }));
+    }
+
+    #[test]
+    fn a_local_key_for_typesafe_falls_back_to_the_other_doors_then_the_hosted_service() {
+        let dir = tempfile::tempdir().unwrap();
+        let only = |names: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                names
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| (*value).to_string())
+            }
+        };
+        let env = only(&[(TYPESAFE_KEY_VAR, "ts")]);
+        let resolved = resolve(&env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(
+            resolved.client.doors().as_deref(),
+            Some("doors https://api.typesafe.ai → wss://relay.openagents.com")
+        );
+        // Still the person's own key first: direct, not hosted.
+        assert_eq!(resolved.client.service(), None);
+        assert_eq!(via(&resolved.client), "direct");
+        assert_eq!(resolved.client.timeout(), HOSTED_TIMEOUT);
+        assert!(
+            !dir.path().join(KEY_FILE).exists(),
+            "no decision key until the hosted door is asked"
+        );
+
+        let env = only(&[
+            (TYPESAFE_KEY_VAR, "ts"),
+            ("AI_GATEWAY_API_KEY", "vck"),
+            ("OPENROUTER_API_KEY", "or"),
+        ]);
+        let resolved = resolve(&env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(
+            resolved.client.doors().as_deref(),
+            Some(
+                "doors https://api.typesafe.ai → https://ai-gateway.vercel.sh → \
+                 https://openrouter.ai → wss://relay.openagents.com"
+            )
+        );
+
+        // The hosted service turned off, or another door: the key alone.
+        let env = only(&[(TYPESAFE_KEY_VAR, "ts"), (HOSTED_VAR, "off")]);
+        let resolved = resolve(&env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(resolved.client.doors(), None);
+        let other = Door {
+            url: "https://decision.example",
+            model: "jev-1.13.0",
+        };
+        let env = only(&[(TYPESAFE_KEY_VAR, "ts"), ("AI_GATEWAY_API_KEY", "vck")]);
+        let resolved = resolve(&env, dir.path(), &other, &|config| config).unwrap();
+        assert_eq!(resolved.client.doors(), None);
+        assert!(!format!("{:?}", resolved.client).contains("vck"));
     }
 
     #[test]

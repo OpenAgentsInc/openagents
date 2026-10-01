@@ -562,7 +562,7 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
         secrets.extend(
             pin.fallbacks
                 .iter()
-                .map(|door| door.key().expose().to_string()),
+                .filter_map(|door| door.key().map(|key| key.expose().to_string())),
         );
     }
     let refused_credential =
@@ -839,10 +839,11 @@ pub fn write_results(
         "partial": evaluation.partial,
     });
     std::fs::write(dir.join("run.json"), json_bytes(&record)).map_err(io)?;
-    let fallback_keys = setup
-        .decision
-        .into_iter()
-        .flat_map(|pin| pin.fallbacks.iter().map(|door| door.key().expose()));
+    let fallback_keys = setup.decision.into_iter().flat_map(|pin| {
+        pin.fallbacks
+            .iter()
+            .filter_map(|door| door.key().map(jev::ApiKey::expose))
+    });
     for secret in [
         Some(setup.door.key.expose()),
         setup.decision.map(|pin| pin.key.expose()),

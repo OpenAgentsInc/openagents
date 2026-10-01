@@ -657,3 +657,86 @@ async fn with_typesafe_last_it_answers_when_the_others_cannot() -> Outcome {
     assert_eq!(openrouter_seen.lock().await.len(), 1);
     Ok(())
 }
+
+/// A carried door: another service (the hosted decision service) that
+/// answers a decision as it came, adding its own `service` object, and
+/// counts what it was handed.
+#[derive(Debug, Default)]
+struct Carrier {
+    handed: std::sync::Mutex<Vec<jev::exchange::Call>>,
+}
+
+impl jev::exchange::Exchange for Carrier {
+    fn exchange(&self, call: jev::exchange::Call) -> jev::exchange::Pending<'_> {
+        self.handed.lock().unwrap().push(call);
+        Box::pin(async {
+            let mut answer: Value = serde_json::from_str(TYPESAFE_ANSWER).unwrap();
+            answer["service"] =
+                json!({"door": "https://ai-gateway.vercel.sh", "version": "decision-worker/test"});
+            Ok(jev::exchange::Reply {
+                status: 200,
+                headers: vec![("content-type".into(), "application/json".into())],
+                body: answer.to_string().into_bytes(),
+            })
+        })
+    }
+
+    fn service(&self) -> String {
+        "hosted decision service w on wss://relay.test".to_string()
+    }
+}
+
+#[tokio::test]
+async fn a_key_that_cannot_pay_falls_through_to_a_carried_door_and_is_benched() -> Outcome {
+    let (typesafe, typesafe_seen) = door(Behavior::Answer(402, NO_CREDITS.into())).await?;
+    let carrier = Arc::new(Carrier::default());
+    let failover = Failover::new(
+        Door::new(
+            doors::TYPESAFE_DOOR,
+            typesafe.as_str(),
+            Naming::Canonical,
+            ApiKey::new("ts-key"),
+        ),
+        vec![Door::carried(
+            "wss://relay.test",
+            Arc::clone(&carrier) as Arc<dyn jev::exchange::Exchange>,
+        )],
+    );
+    let client = Client::new(
+        Config::new()
+            .exchange(doors::exchange(failover))
+            .base_url(doors::TYPESAFE_DOOR)
+            .default_model("jev-1.13.0")
+            .timeout(Duration::from_secs(5))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                ..RetryPolicy::default()
+            }),
+    )?;
+    assert_eq!(
+        client.doors().as_deref(),
+        Some("doors https://api.typesafe.ai → wss://relay.test")
+    );
+    for _ in 0..3 {
+        let response = client.system_one(fixture_request()).await?;
+        // The carrier's own service object stands and names the carrier.
+        assert_eq!(
+            response.service(),
+            Some(json!({
+                "door": "https://ai-gateway.vercel.sh",
+                "version": "decision-worker/test",
+                "exchange": "hosted decision service w on wss://relay.test"
+            }))
+        );
+    }
+    // TypeSafe refused once for its account and was benched; every call
+    // reached the carried door, as it came, with no key.
+    assert_eq!(typesafe_seen.lock().await.len(), 1);
+    let handed = carrier.handed.lock().unwrap();
+    assert_eq!(handed.len(), 3);
+    assert_eq!(handed[0].path, "/v1/systemone");
+    let body: Value = serde_json::from_slice(handed[0].body.as_deref().unwrap())?;
+    assert_eq!(body["model"], "jev-1.13.0");
+    assert!(!format!("{handed:?}").contains("ts-key"));
+    Ok(())
+}
