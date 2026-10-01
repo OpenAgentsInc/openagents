@@ -157,6 +157,7 @@ fn a_phone_pairs_over_loopback_iroh_then_creates_a_task_over_iroh() {
                 prompt: "Fix the flaky test in the checkout.".into(),
                 workspace: "checkout".into(),
                 images: Vec::new(),
+                engine: None,
             },
         )
         .unwrap();

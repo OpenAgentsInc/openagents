@@ -483,6 +483,7 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
         prompt: "Find why the parser test fails one run in ten.".into(),
         workspace: "checkout".into(),
         images: Vec::new(),
+        engine: None,
     };
     let Outcome::Dispatched { receipt } = direct
         .call(Operation::CreateTask {
@@ -845,6 +846,7 @@ async fn send_screenshot(link: &Link, inspect: &Inspect) {
         prompt: "Fix the layout in this screenshot.".into(),
         workspace: "checkout".into(),
         images: vec![upload.reference.clone()],
+        engine: None,
     };
     let Outcome::Dispatched { receipt } = link
         .call(Operation::CreateTask { task: create })
@@ -870,6 +872,7 @@ async fn send_screenshot(link: &Link, inspect: &Inspect) {
                 prompt: "Another".into(),
                 workspace: "checkout".into(),
                 images: vec![other],
+                engine: None,
             },
         })
         .await

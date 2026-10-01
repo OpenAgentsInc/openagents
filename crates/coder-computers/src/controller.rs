@@ -515,12 +515,47 @@ impl Computers {
         if images.is_empty() {
             return self.start_task(host, workspace, prompt);
         }
+        self.start_task_requesting(host, workspace, prompt, images, None)
+    }
+
+    /// [`Computers::start_task_with_images`] for a person who asked for
+    /// `engine` (#10081), the chat offer's typed engine. The request names
+    /// it only when `host`'s presence advertises
+    /// [`coder_access::protocol::TASK_ENGINE`]: an older host rejects the
+    /// field, so it gets the request it always got and runs its default.
+    /// The host puts the engine first only among the routes its owner's
+    /// policy admits; it is a request, never permission.
+    ///
+    /// # Errors
+    /// As [`Computers::start_task_with_images`].
+    pub fn start_task_requesting(
+        &mut self,
+        host: &str,
+        workspace: &str,
+        prompt: &str,
+        images: &[coder_access::media::Upload],
+        engine: Option<nostr::cj_conversation::Engine>,
+    ) -> Result<String, Refusal> {
         self.allow(Action::Operate { host })?;
-        let service = &mut self.service;
-        let references = coder_access::media::send(images, |put| service.put_artifact(host, put))
-            .map_err(Refusal::Failed)?;
+        let accepts_engine = self
+            .snapshot()
+            .host(host)
+            .and_then(|record| record.presence.as_ref())
+            .is_some_and(|received| {
+                received
+                    .presence
+                    .supports(coder_access::protocol::TASK_ENGINE)
+            });
+        let references = if images.is_empty() {
+            Vec::new()
+        } else {
+            let service = &mut self.service;
+            coder_access::media::send(images, |put| service.put_artifact(host, put))
+                .map_err(Refusal::Failed)?
+        };
         let mut task = coder_access::client::tasks::input(prompt, workspace);
         task.images = references;
+        task.engine = engine.filter(|_| accepts_engine);
         let id = self
             .service
             .create_task(host, &task)
@@ -879,6 +914,7 @@ impl Computers {
                     prompt,
                     workspace: workspace.clone(),
                     images: Vec::new(),
+                    engine: None,
                 };
                 self.service
                     .create_task(&host, &task)

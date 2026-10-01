@@ -107,6 +107,21 @@ pub fn provider_of(engine: nostr::cj_conversation::Engine) -> Provider {
     }
 }
 
+/// The engine a person names for `provider`: [`provider_of`] read back
+/// (#10081). Vertex, Coder's own fallback, is no engine a person names.
+#[must_use]
+pub fn engine_of(provider: Provider) -> Option<nostr::cj_conversation::Engine> {
+    use nostr::cj_conversation::Engine;
+    match provider {
+        Provider::Codex => Some(Engine::Codex),
+        Provider::Claude => Some(Engine::ClaudeCode),
+        Provider::Grok => Some(Engine::GrokBuild),
+        Provider::OpenCode => Some(Engine::OpenCode),
+        Provider::Devin => Some(Engine::Devin),
+        Provider::Vertex => None,
+    }
+}
+
 /// The name a person reads for `provider`.
 #[must_use]
 pub fn provider_name(provider: Provider) -> &'static str {

@@ -229,6 +229,7 @@ fn create() -> Operation {
             prompt: "Run the tests and report.".into(),
             workspace: "checkout".into(),
             images: Vec::new(),
+            engine: None,
         },
     }
 }

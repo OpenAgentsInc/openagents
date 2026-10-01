@@ -502,6 +502,14 @@ pub struct Entry {
     /// Never a model, a bound, or a route the policy does not admit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested: Option<String>,
+    /// For `started`: why the provider in `requested` did not start the
+    /// turn, when it did not (#10081). The task's summary says so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passed: Option<coder_host::Passed>,
+    /// For `started` with `passed`: the provider that starts the turn
+    /// instead, as its word.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runs: Option<String>,
 }
 
 impl Entry {
@@ -519,6 +527,8 @@ impl Entry {
             detail: None,
             resets_at: None,
             requested: None,
+            passed: None,
+            runs: None,
         }
     }
 
@@ -771,6 +781,20 @@ impl Autostart {
             .rev()
             .find(|entry| entry.event == "no_capacity" && entry.task.as_deref() == Some(task))
             .map(|entry| entry.resets_at)
+    }
+
+    /// When the person asked for a provider and it did not start `task`'s
+    /// latest started turn (#10081): the provider asked for, the one that
+    /// started instead, and why.
+    #[must_use]
+    pub fn passed_over(&self, task: &str) -> Option<(Provider, Provider, coder_host::Passed)> {
+        let entry = journal(&self.root)
+            .into_iter()
+            .rev()
+            .find(|entry| entry.event == "started" && entry.task.as_deref() == Some(task))?;
+        let asked = entry.requested.as_deref().and_then(Provider::from_config)?;
+        let runs = entry.runs.as_deref().and_then(Provider::from_config)?;
+        Some((asked, runs, entry.passed?))
     }
 
     /// Why the policy ended `task` at `turn` because its owner process never
@@ -1091,10 +1115,10 @@ impl Autostart {
                 }
                 // The person's requested provider first, when the policy
                 // admits it; the model the task recorded is that route's.
-                let policy = requested
-                    .get(&id)
-                    .and_then(|provider| policy.preferring(*provider))
-                    .unwrap_or_else(|| policy.clone());
+                let asked = requested.get(&id).copied();
+                let preferred = asked.and_then(|provider| policy.preferring(provider));
+                let not_allowed = asked.is_some() && preferred.is_none();
+                let policy = preferred.unwrap_or_else(|| policy.clone());
                 if task.intent.configuration.model.as_deref() != Some(&policy.engine.model) {
                     write(
                         Entry::new(now, "skipped")
@@ -1134,6 +1158,24 @@ impl Autostart {
                     }
                 };
                 active += 1;
+                // Why the requested provider does not start this turn, when
+                // it does not (#10081): from the policy and the same books
+                // the choice read, never from text.
+                let passed = asked.and_then(|asked| {
+                    if not_allowed {
+                        Some(coder_host::Passed::NotAllowed)
+                    } else if order.first().is_some_and(|route| route.provider == asked) {
+                        None
+                    } else if !order.iter().any(|route| route.provider == asked) {
+                        Some(coder_host::Passed::NotSignedIn)
+                    } else if !book.has_capacity(asked, now) {
+                        Some(coder_host::Passed::Refused {
+                            until: book.earliest_reset(&[asked], now),
+                        })
+                    } else {
+                        Some(coder_host::Passed::NearLimit)
+                    }
+                });
                 if policy.engine.usage_probe.is_some() {
                     let mut entry = Entry::new(now, "usage").task(&id).at_turn(turn).detail(
                         policy
@@ -1160,15 +1202,24 @@ impl Autostart {
                     task.revision,
                     order,
                     policy,
+                    asked,
+                    passed,
                 ));
             }
             plans
         };
-        for (id, turn, workspace, intent_digest, revision, order, policy) in plans {
+        for (id, turn, workspace, intent_digest, revision, order, policy, asked, passed) in plans {
             let entry = match self.start(&policy, &order, &id, &intent_digest, revision) {
                 Ok(launched) => {
                     let mut entry = Entry::new(now, "started").task(&id).at_turn(turn);
                     entry.workspace = Some(workspace);
+                    entry.requested = asked.map(|provider| provider.as_str().to_owned());
+                    if passed.is_some() {
+                        entry.passed = passed;
+                        entry.runs = order
+                            .first()
+                            .map(|route| route.provider.as_str().to_owned());
+                    }
                     entry.grant_digest = Some(launched.grant_digest);
                     entry.owner_process = Some(launched.owner_process);
                     entry.detail = Some(format!(
@@ -2328,6 +2379,7 @@ mod tests {
             prompt: "Find why it fails.".into(),
             workspace: workspace.into(),
             images: Vec::new(),
+            engine: None,
         }
     }
 
@@ -3033,6 +3085,107 @@ mod tests {
         s.inbox.create(&task, "host", &create("allowed")).unwrap();
         let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
         assert_eq!(configuration.provider, "claude");
+    }
+
+    /// A device's own `task.create` names the engine the person asked for
+    /// (#10081): the host puts it first among its policy's routes, exactly
+    /// as its own chat's preference, and the summary says nothing more.
+    #[test]
+    fn a_devices_requested_engine_starts_first_when_the_policy_admits_it() {
+        use nostr::cj_conversation::Engine;
+        let s = setup();
+        routed(1).save(&s.root).unwrap();
+        let task = "6".repeat(64);
+        let asked = TaskCreate {
+            engine: Some(Engine::ClaudeCode),
+            ..create("allowed")
+        };
+        let receipt = s.inbox.create(&task, "phone", &asked).unwrap();
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(
+            stored.intent.configuration.model.as_deref(),
+            Some("claude-opus-5-5")
+        );
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "claude");
+        assert_eq!(configuration.fallbacks.len(), 1);
+        assert_eq!(configuration.fallbacks[0].provider, "codex");
+        assert_eq!(s.inbox.note(&task), None);
+        // A retry of the same request is the same task.
+        assert_eq!(s.inbox.create(&task, "phone", &asked).unwrap(), receipt);
+    }
+
+    /// A device cannot widen the owner's policy (#10081): an engine the
+    /// policy admits no route for adds none, the task runs on the policy's
+    /// own first route, and its summary says why in plain words.
+    #[test]
+    fn a_devices_requested_engine_outside_the_policy_falls_back_and_says_why() {
+        use nostr::cj_conversation::Engine;
+        let s = setup();
+        routed(1).save(&s.root).unwrap();
+        let task = "8".repeat(64);
+        let asked = TaskCreate {
+            engine: Some(Engine::Devin),
+            ..create("allowed")
+        };
+        s.inbox.create(&task, "phone", &asked).unwrap();
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(
+            stored.intent.configuration.model.as_deref(),
+            Some("gpt-6-luna")
+        );
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "codex");
+        assert_eq!(configuration.model, "gpt-6-luna");
+        assert_eq!(configuration.fallbacks.len(), 1);
+        assert_eq!(configuration.fallbacks[0].provider, "claude");
+        let started = journal(&s.root)
+            .into_iter()
+            .find(|entry| entry.event == "started")
+            .unwrap();
+        assert_eq!(started.requested.as_deref(), Some("devin"));
+        assert_eq!(started.passed, Some(coder_host::Passed::NotAllowed));
+        let note = s.inbox.note(&task).unwrap();
+        assert_eq!(
+            note,
+            coder_host::Note::Requested {
+                asked: Engine::Devin,
+                runs: "Codex",
+                why: coder_host::Passed::NotAllowed,
+            }
+        );
+        assert_eq!(
+            note.headline(),
+            "You asked for Devin; it is not one of the engines this computer's Coder policy allows, so Codex is running."
+        );
+    }
+
+    /// A requested engine at its limit falls back, and the summary names
+    /// when the limit resets (#10081).
+    #[test]
+    fn a_devices_requested_engine_at_its_limit_says_until_when() {
+        use nostr::cj_conversation::Engine;
+        let s = setup();
+        routed(1).save(&s.root).unwrap();
+        exhaust_codex(&s.store);
+        let task = "9".repeat(64);
+        let asked = TaskCreate {
+            engine: Some(Engine::Codex),
+            ..create("allowed")
+        };
+        s.inbox.create(&task, "phone", &asked).unwrap();
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "claude");
+        assert_eq!(
+            s.inbox.note(&task),
+            Some(coder_host::Note::Requested {
+                asked: Engine::Codex,
+                runs: "Claude Code",
+                why: coder_host::Passed::Refused {
+                    until: Some(500_000)
+                },
+            })
+        );
     }
 
     #[test]

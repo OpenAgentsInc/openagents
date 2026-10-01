@@ -287,6 +287,7 @@ pub(super) fn task() -> Operation {
             prompt: "Summarize the synthetic fixture".into(),
             workspace: "fixture".into(),
             images: Vec::new(),
+            engine: None,
         },
     }
 }

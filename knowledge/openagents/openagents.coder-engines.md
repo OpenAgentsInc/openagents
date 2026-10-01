@@ -16,7 +16,9 @@ answer: >-
   host sends each task to a connected model provider that has capacity, and
   fails over to another when one runs out. A task can also hand work to
   OpenCode or Devin, and that session shows inside its chat. The computer's
-  owner sets the engine and model on the host; the phone doesn't choose them.
+  owner sets the engines and models on the host. When you ask for one by
+  name, such as "run this with Claude Code", Coder asks your computer to start
+  with it if the owner allows it there, and says why when it can't.
 status: admitted
 author: openagents
 provenance:
@@ -27,15 +29,16 @@ provenance:
     - bins/openagents-ios/README.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-30: an engine named in chat now reaches the computer from the phone too (#10081); checked against INVARIANTS.md."
 ---
 
 ## Answer
 
-Coder runs on your computer, with the access you granted that computer. Its host sends each task to a connected model provider that has capacity, and fails over to another when one runs out. A task can also hand work to OpenCode or Devin, and that session shows inside its chat. The computer's owner sets the engine and model on the host; the phone doesn't choose them.
+Coder runs on your computer, with the access you granted that computer. Its host sends each task to a connected model provider that has capacity, and fails over to another when one runs out. A task can also hand work to OpenCode or Devin, and that session shows inside its chat. The computer's owner sets the engines and models on the host. When you ask for one by name, such as "run this with Claude Code", Coder asks your computer to start with it if the owner allows it there, and says why when it can't.
 
 ## Details
 
-- A device sends only a workspace label, a title, and a prompt, and can't choose the engine, model, or limits.
+- A device sends a workspace label, a title, a prompt, and at most the engine you asked for. That engine only goes first among the ones the owner already allows; a device can't add an engine or choose the model or limits.
 - There's no model picker in the app yet.
 
 ## Sources

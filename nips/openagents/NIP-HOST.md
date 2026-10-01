@@ -678,7 +678,27 @@ A request is `openagents.host-request.v1`:
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
-most 128 bytes, never a path. `terminal.open` carries `{cols, rows}`, each
+most 128 bytes, never a path. Two optional members follow, each omitted
+when empty so a create without them encodes exactly as before. `images` names
+images the device already sent with `artifact.put`, each `{digest,
+media_type, size, name}`; the host binds only complete images that same
+device sent. `engine`
+is the coding engine the person asked for, the typed `engine` of the chat's
+[CJ](NIP-CJ.md) `run_coder` offer and never words from the conversation: one
+of `codex`, `claude_code`, `grok_build`, `opencode`, or `devin`; any other
+value is malformed. It is a request, not permission. The host puts that
+engine's routes first only among the routes its owner's auto-start policy
+already admits; it never adds a route, a model, or a limit, and without a
+policy the task stays inert as always. When the engine does not start the
+task (the policy admits no route for it, it is not signed in, it is refused
+for a limit, or it is near its usage threshold), the task's activity summary
+headline says so while the task runs, from the host's own typed state: "You
+asked for Devin; it is not one of the engines this computer's Coder policy
+allows, so Codex is running." A host whose `task.create` reads `engine`
+advertises the `task-engine` capability in its [REACH](NIP-REACH.md)
+presence. A host that predates it rejects the unknown member, so a device
+sends `engine` only to a host that advertises `task-engine`, and otherwise
+sends the request without it; that host runs its own default. `terminal.open` carries `{cols, rows}`, each
 1–1,000; [TERM](NIP-TERM.md) defines the session and stream.
 `workspace.list` carries nothing and returns `{workspaces}`: the labels
 `task.create` accepts on this host, sorted and distinct, at most 64, each

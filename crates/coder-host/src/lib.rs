@@ -63,18 +63,21 @@ pub use coder_access::protocol::{
 pub use config::Config;
 #[cfg(feature = "host")]
 pub use serve::{Running, start};
-pub use tasks::{NoTasks, Note, Principal, Reviewed, Standing, StartCause, TaskRef, Tasks};
+pub use tasks::{NoTasks, Note, Passed, Principal, Reviewed, Standing, StartCause, TaskRef, Tasks};
 
 /// The host protocol version the ready record and presence report.
 pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 
 /// Capability flags this host advertises in presence and its ready record.
-pub const CAPABILITIES: [&str; 6] = [
+/// `task-engine` says its `task.create` accepts the engine the person asked
+/// for (#10081).
+pub const CAPABILITIES: [&str; 7] = [
     "activity-summary",
     "direct-tcp",
     "relay-control",
     "task-control",
     "task-create",
+    coder_access::protocol::TASK_ENGINE,
     "terminal",
 ];
 

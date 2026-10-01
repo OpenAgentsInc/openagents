@@ -2192,6 +2192,10 @@ impl CoderTab {
         // Titled by the message that asked for the work (#10073).
         let title = openagents_chat::delegation::title(&chat_title, self.basic.turns(&id));
         let prompt = openagents_chat::delegation::prompt(&chat_title, self.basic.turns(&id));
+        // The engine the reply's typed `run_coder` offer named (#10081),
+        // never read from text: the computer puts it first among what its
+        // owner's policy allows, and says why when it can't.
+        let engine = openagents_chat::delegation::requested(self.basic.turns(&id));
         // The draft's images go to this computer with the task; the hosted
         // conversation never carries them. A refusal keeps the draft.
         let key = format!("talk:{id}");
@@ -2202,7 +2206,7 @@ impl CoderTab {
                 return;
             }
         };
-        match computers.start_task_with_images(&host, &workspace, &prompt, &uploads) {
+        match computers.start_task_requesting(&host, &workspace, &prompt, &uploads, engine) {
             Ok(task) => {
                 self.images.clear(&key);
                 let now = computers.snapshot().now;

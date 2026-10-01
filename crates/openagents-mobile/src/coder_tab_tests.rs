@@ -2796,6 +2796,11 @@ struct Delivery {
     chunks: usize,
     /// Each accepted task's images, with the bytes the computer holds.
     created: Vec<Vec<(coder_host::access::media::ImageRef, Vec<u8>)>>,
+    /// The capabilities each computer's presence advertises; no presence
+    /// when unset.
+    advertise: Option<Vec<&'static str>>,
+    /// The engine each accepted task asked for (#10081).
+    engines: Vec<Option<nostr::cj_conversation::Engine>>,
 }
 
 /// The fixture's hosts, keeping image chunks as a host does, with a start
@@ -2807,7 +2812,31 @@ struct Imaging {
 
 impl ComputersService for Imaging {
     fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
-        self.inner.snapshot()
+        let mut snapshot = self.inner.snapshot()?;
+        if let Some(capabilities) = self.delivery.lock().unwrap().advertise.clone() {
+            for host in &mut snapshot.hosts {
+                host.presence = Some(coder_host::reach::presence::Received {
+                    presence: coder_host::reach::presence::Presence {
+                        v: coder_host::reach::presence::SCHEMA.into(),
+                        requires: vec![],
+                        host: host.key.clone(),
+                        owner: host.key.clone(),
+                        generation: 1,
+                        protocol: coder_host::PROTOCOL_VERSION,
+                        compatibility: coder_host::reach::presence::VersionRange {
+                            min: coder_host::PROTOCOL_VERSION,
+                            max: coder_host::PROTOCOL_VERSION,
+                        },
+                        capabilities: capabilities.iter().map(|c| (*c).to_owned()).collect(),
+                        observed_at: snapshot.now,
+                        telemetry: None,
+                        meta: None,
+                    },
+                    received_at: snapshot.now,
+                });
+            }
+        }
+        Ok(snapshot)
     }
     fn refresh_workspaces(&mut self, host: &str) -> Answer<()> {
         self.inner.refresh_workspaces(host)
@@ -2838,6 +2867,7 @@ impl ComputersService for Imaging {
         delivery
             .created
             .push(self.inner.task_images.get(&id).cloned().unwrap_or_default());
+        delivery.engines.push(task.engine);
         Ok(id)
     }
     fn nudge_host(&mut self, host: &str) -> Answer<()> {
@@ -2913,6 +2943,66 @@ fn image_surfaces(view: &Value) -> usize {
 /// computer as its exact bytes. A computer that refuses the task, or whose
 /// answer is lost, leaves the draft's images where they were; the hosted
 /// conversation still refuses them.
+/// The engine the reply's typed `run_coder` offer named reaches the computer
+/// in the phone's own `task.create` (#10081), so a run asked of Claude Code
+/// is asked of Claude Code there; never read from the words. A computer
+/// whose presence does not say it reads the field gets the request it always
+/// got, and runs its default.
+#[test]
+fn run_coder_asks_the_computer_for_the_engine_the_offer_named() {
+    use nostr::cj_conversation::Engine;
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec![
+            "task-create",
+            coder_host::access::protocol::TASK_ENGINE,
+        ]),
+        ..Delivery::default()
+    }));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    let offer = |hand: &Hand, engine: Option<&str>| {
+        let mut offer = json!({"v": 2, "type": "offer", "offer": "run_coder",
+            "target": "connected_computer", "label": "Run Coder"});
+        if let Some(engine) = engine {
+            offer["engine"] = json!(engine);
+        }
+        hand.route(&[offer]);
+        hand.say("We'll dispatch Coder to take this on.", true);
+    };
+    fixture.say("Do a test delegation to claude");
+    offer(&hand, Some("claude_code"));
+    fixture.tap("coder-run");
+    assert!(fixture.coder.open_task().is_some());
+    assert_eq!(delivery.lock().unwrap().engines, [Some(Engine::ClaudeCode)]);
+
+    // A reply that named no engine asks for none. Meanwhile the computer
+    // is replaced by one that predates the field; the phone reads that
+    // from its presence with the start's refresh.
+    fixture.tap("coder-new");
+    fixture.say("Fix the flaky test in my repo");
+    offer(&hand, None);
+    delivery.lock().unwrap().advertise = Some(vec!["task-create"]);
+    fixture.tap("coder-run");
+    assert_eq!(
+        delivery.lock().unwrap().engines,
+        [Some(Engine::ClaudeCode), None]
+    );
+
+    // A computer that predates the field is never sent it.
+    fixture.tap("coder-new");
+    fixture.say("Do a test delegation to devin");
+    offer(&hand, Some("devin"));
+    fixture.tap("coder-run");
+    assert_eq!(
+        delivery.lock().unwrap().engines,
+        [Some(Engine::ClaudeCode), None, None]
+    );
+}
+
 #[test]
 fn run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost() {
     let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery::default()));

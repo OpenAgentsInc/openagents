@@ -58,6 +58,7 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
             prompt: "Synthetic request".into(),
             workspace: "checkout".into(),
             images: Vec::new(),
+            engine: None,
         };
         let id = client.create_task(&request, create.clone()).unwrap();
         assert_eq!(client.create_task(&request, create.clone()).unwrap(), id);
@@ -140,7 +141,7 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
         use coder_history::{CatalogRequest, TranscriptRequest};
         use openagents_desktop::control::{Op, Reply};
         let mut client = SocketControl::new(socket);
-        assert_eq!(client.create_task(&"1".repeat(64), TaskCreate { title: "Scratch task".into(), prompt: "Synthetic request".into(), workspace: "checkout".into(), images: Vec::new() }).unwrap(), id);
+        assert_eq!(client.create_task(&"1".repeat(64), TaskCreate { title: "Scratch task".into(), prompt: "Synthetic request".into(), workspace: "checkout".into(), images: Vec::new(), engine: None }).unwrap(), id);
         // A recorded engine fixture supplies ATIF evidence without running an
         // engine, touching a login, or executing the inert submitted request.
         let trace = format!("{{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":1790570162020,\"session\":{{\"id\":\"{id}\",\"model\":\"synthetic\",\"door\":\"synthetic\",\"repository\":\"/synthetic\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}}}\n{{\"record\":\"step\",\"step\":{{\"at\":1790570162024,\"source\":\"User\",\"message\":\"Synthetic request\"}}}}\n");

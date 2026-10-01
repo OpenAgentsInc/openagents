@@ -134,12 +134,15 @@ impl Tasks for Inbox {
             })?;
         }
         // The engine the person asked for, when the host said so for this
-        // request: its route goes first, if the owner's policy admits it.
+        // request (its own chat's offer), or else the device's typed field
+        // (#10081): its route goes first, if the owner's policy admits it.
+        // Neither adds a route, a model, or a limit.
         let requested = self
             .preferences
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(key)
+            .or(task.engine)
             .map(super::settings::provider_of);
         // Under the owner's policy the task records the engine's model, which
         // its grant must name; otherwise no model, as always.
@@ -472,6 +475,18 @@ impl Tasks for Inbox {
             let cause = autostart.not_started(id, task.turn_started())?;
             return Some(Note::NotStarted { cause });
         }
+        // A started turn the person asked another engine for says why that
+        // engine is not the one running (#10081), until the task ends.
+        if matches!(task.status, Status::Queued | Status::Running)
+            && let Some(autostart) = self.autostart.as_ref()
+            && let Some((asked, runs, why)) = autostart.passed_over(id)
+        {
+            return Some(Note::Requested {
+                asked: super::settings::engine_of(asked)?,
+                runs: super::settings::provider_name(runs),
+                why,
+            });
+        }
         None
     }
 
@@ -637,6 +652,7 @@ mod tests {
             prompt: "Find why the test fails one run in ten.".into(),
             workspace: "checkout".into(),
             images: Vec::new(),
+            engine: None,
         }
     }
 

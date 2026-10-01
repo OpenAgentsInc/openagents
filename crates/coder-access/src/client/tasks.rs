@@ -31,6 +31,7 @@ pub fn input(prompt: &str, workspace: &str) -> TaskCreate {
         prompt: prompt.into(),
         workspace: workspace.into(),
         images: Vec::new(),
+        engine: None,
     }
 }
 
@@ -84,5 +85,31 @@ mod tests {
         Operation::CreateTask { task }.validate().unwrap();
         assert_eq!(title("\n  \n"), "Task");
         assert_eq!(title("  Fix\ttest\nDetails"), "Fix test");
+    }
+
+    /// The engine the person asked for is an additive, closed field: a
+    /// create without one encodes exactly as before it existed, and a word
+    /// outside the closed set is refused (#10081).
+    #[test]
+    fn a_requested_engine_is_additive_and_closed() {
+        use nostr::cj_conversation::Engine;
+        let plain = input("Fix the parser", "openagents");
+        let bytes = serde_json::to_value(&plain).unwrap();
+        assert_eq!(
+            bytes,
+            serde_json::json!({"title": "Fix the parser", "prompt": "Fix the parser", "workspace": "openagents"})
+        );
+        let mut asked = plain.clone();
+        asked.engine = Some(Engine::ClaudeCode);
+        let value = serde_json::to_value(&asked).unwrap();
+        assert_eq!(value["engine"], "claude_code");
+        assert_eq!(
+            serde_json::from_value::<TaskCreate>(value.clone()).unwrap(),
+            asked
+        );
+        Operation::CreateTask { task: asked }.validate().unwrap();
+        let mut unknown = value;
+        unknown["engine"] = serde_json::json!("cursor");
+        assert!(serde_json::from_value::<TaskCreate>(unknown).is_err());
     }
 }

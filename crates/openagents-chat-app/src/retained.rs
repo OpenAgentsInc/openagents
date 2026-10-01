@@ -299,6 +299,7 @@ impl Session {
             prompt,
             workspace: workspace.into(),
             images: Vec::new(),
+            engine: None,
         };
         if (coder_host::access::protocol::Operation::CreateTask { task: task.clone() })
             .validate()

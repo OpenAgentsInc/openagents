@@ -306,7 +306,20 @@ pub struct TaskCreate {
     /// without images keeps its bytes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<crate::media::ImageRef>,
+    /// The coding engine the person asked for (#10081): the typed `engine`
+    /// of the chat's NIP-CJ `run_coder` offer, never read from text. The
+    /// host puts it first only among the routes its owner's policy admits,
+    /// and says plainly when it can't; it never adds a route, a model, or a
+    /// limit. Absent means no preference, so a task without one keeps its
+    /// bytes. A host that predates it rejects the field, so a device sends
+    /// it only to a host whose presence advertises [`TASK_ENGINE`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<nostr::cj_conversation::Engine>,
 }
+
+/// The presence capability a host advertises when its `task.create`
+/// accepts [`TaskCreate::engine`] (#10081).
+pub const TASK_ENGINE: &str = "task-engine";
 
 /// What a durable task command asks for. The device picks it from task
 /// state and its rights, never from the text.
