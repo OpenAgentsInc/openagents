@@ -13,7 +13,8 @@
 #      readable there
 #      without copying or changing them (see "Engine logins" below), and a
 #      scratch Git repository with a linked worktree of it, the shape of the
-#      owner's ~/work/openagents-host-tasks.
+#      owner's ~/work/openagents-host-tasks, and a local bare repository as
+#      its `origin` (push-main pushes there, never to a real remote).
 #   2. The build's own `coder host serve --control` in that HOME, the
 #      worktree registered as its project (`project_add`, as the app's
 #      folder picker sends) and auto-start on (`autostart_set`, as the app's
@@ -109,7 +110,7 @@ say() { echo "==> $*" >&2; }
 
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
-desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude phone-start-at-once ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok push-main ui-stop-coder ui-no-attach open-deck phone-claude phone-start-at-once ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
 gate_scenarios="explain-error plugins-chat essays-chat"
 scenarios="$desktop_scenarios $gate_scenarios"
 
@@ -354,6 +355,7 @@ git config --global init.defaultBranch main >/dev/null
 # in ~/work (#10078 exhausted the host's 256 open files on such a tree).
 repo="$H/work/acceptance-repo"
 worktree="$H/work/acceptance-repo-host-tasks"
+remote="$H/work/acceptance-remote.git"
 mkdir -p "$repo"
 python3 - "$repo" "$H/work" <<'PY' || die "cannot create the scratch tree"
 import os, sys
@@ -376,10 +378,16 @@ PY
   printf '# Acceptance notes\n\nA scratch repository for the release acceptance gate.\n' > NOTES.md &&
   printf 'def add(a, b):\n    return a + b\n' > calc.py &&
   git add . && git commit -q -m "Scratch repository" &&
-  git worktree add -q -b host-tasks "$worktree"
+  git worktree add -q -b host-tasks "$worktree" &&
+  git init -q --bare "$remote" &&
+  git remote add origin "$remote" &&
+  git push -q origin main
 ) || die "cannot create the scratch repository"
 export OPENAGENTS_ACCEPTANCE_PROJECT="$worktree"
 export OPENAGENTS_ACCEPTANCE_REPO="$repo"
+# push-main (#10104): Coder, asked to commit and push to main, must do it
+# without asking; the scenario reads this remote's main before and after.
+export OPENAGENTS_ACCEPTANCE_REMOTE="$remote"
 
 # Coder's start setting, as the app's Settings page writes it.
 "$openagents" settings set coder.start at_once >/dev/null 2>"$evidence/settings.log" \

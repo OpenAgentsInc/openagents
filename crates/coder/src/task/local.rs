@@ -1870,8 +1870,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let run = local(dir.path(), both);
         let policy = run.policy("proj").unwrap();
-        // A person's own run uses this computer's tools (#10045).
-        assert_eq!(policy.engine.access, adapter::Access::Toolchains);
+        // A person's own run has every step approved: full access (#10104).
+        assert_eq!(policy.engine.access, adapter::Access::Full);
         let (order, runner) = run.choose(&policy).unwrap();
         assert_eq!(order[0].provider, Provider::Codex);
         assert_eq!(order[1].provider, Provider::Claude);
@@ -2001,7 +2001,7 @@ mod tests {
                     .map(|p| p.threshold_percent),
                 Some(usage::DEFAULT_THRESHOLD_PERCENT)
             );
-            assert_eq!(policy.engine.access, adapter::Access::Toolchains);
+            assert_eq!(policy.engine.access, adapter::Access::Full);
             assert!(!run.asks_first());
             let mut first = plain.policy("proj").unwrap();
             first.changed_at = 0;

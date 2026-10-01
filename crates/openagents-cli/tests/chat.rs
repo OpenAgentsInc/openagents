@@ -512,7 +512,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             "coder.start": "at_once",
             "coder.usage_threshold_percent": 90,
             "coder.projects": [],
-            "coder.access": "toolchains",
+            "coder.access": "full",
         })
     );
     let coder_message = |run: &Run| {
@@ -615,14 +615,17 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(run!("settings", "set", "coder.providers", "vertex").code, 1);
     assert_eq!(run!("settings", "get", "coder.model").code, 64);
     assert_eq!(run!("settings", "frob").code, 64);
-    assert_eq!(run!("settings", "set", "coder.access", "full").code, 0);
+    assert_eq!(
+        run!("settings", "set", "coder.access", "toolchains").code,
+        0
+    );
     assert_eq!(
         run!("settings", "set", "coder.usage_threshold_percent", "off").code,
         0
     );
     let saved: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
     assert_eq!(saved["schema"], "openagents.settings.v1");
-    assert_eq!(saved["coder"]["access"], "full");
+    assert_eq!(saved["coder"]["access"], "toolchains");
     assert_eq!(saved["coder"]["usage_threshold_percent"], Value::Null);
 
     // Every setting unset: the run is the default one again.

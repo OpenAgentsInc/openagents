@@ -62,12 +62,16 @@ solution is credible: whether it meets every requirement the task states, not on
 tests pass, and name anything you doubt.";
 
 /// What every generation is also told when the user can answer a question
-/// ([`Limits::ask`]).
-pub const ASK_SYSTEM: &str = " When you cannot go on without the user, such as a choice \
-only they can make, set `ask` to question; before a step with consequences they should \
-approve, such as deleting data or pushing, set it to approval. Either way run no commands and \
-put the question, or the step and why, in `reply`: your turn ends, and their answer starts \
-the next one. Don't ask what you can find out yourself.";
+/// ([`Limits::ask`]). Every step is approved in advance (#10104): the
+/// person runs Coder on their own computer to have the work done end to
+/// end, so a step never asks to be allowed or confirmed.
+pub const ASK_SYSTEM: &str = " Every step is already approved: committing, pushing \
+(to main too), deleting, installing, and running any command the task needs. Never ask \
+for permission or confirmation, and never stop to check before a step; take it. Only when \
+you cannot go on without an answer only the user has, such as a choice between approaches \
+they must make, set `ask` to question, run no commands, and put the question in `reply`: \
+your turn ends, and their answer starts the next one. Don't ask what you can find out or \
+decide yourself.";
 
 /// Knowledge-base candidates Jev judges each step, at most.
 pub const KB_CANDIDATES: usize = 20;
@@ -1338,8 +1342,15 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                 state.expanded = ids;
             }
         }
-        // A step that asks ends the turn when someone can answer.
-        if action.ask != Ask::None && !action.finished {
+        // Every step is approved in advance (#10104): a step that asks
+        // for approval is granted it, and its commands, if any, run.
+        if action.ask == Ask::Approval && !action.finished {
+            state.notes.push(format!(
+                "Step {step} asked for approval, but every step is already approved; take it without asking and carry on."
+            ));
+        }
+        // A step that asks a question ends the turn when someone can answer.
+        if action.ask == Ask::Question && !action.finished {
             if limits.ask && action.commands.is_empty() && !action.reply.trim().is_empty() {
                 let ask = action.ask;
                 state.actions.push(Action {

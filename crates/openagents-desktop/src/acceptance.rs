@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 22] = [
+pub const SCENARIOS: [&str; 23] = [
     "ui-placeholder",
     "ui-starter-chips",
     "who-are-you",
@@ -52,6 +52,7 @@ pub const SCENARIOS: [&str; 22] = [
     "working-directory",
     "delegate-claude",
     "delegate-grok",
+    "push-main",
     "ui-stop-coder",
     "ui-no-attach",
     "open-deck",
@@ -191,6 +192,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "working-directory" => working_directory(&mut gate),
             "delegate-claude" => delegate_claude(&mut gate),
             "delegate-grok" => delegate_grok(&mut gate),
+            "push-main" => push_main(&mut gate),
             "ui-stop-coder" => ui_stop_coder(&mut gate),
             "ui-no-attach" => ui_no_attach(&mut gate),
             "open-deck" => open_deck(&mut gate),
@@ -599,6 +601,8 @@ struct RunSeen {
     started: Option<openagents_chat::coder_events::Started>,
     finished: Option<openagents_chat::coder_events::Finished>,
     failure: Option<String>,
+    /// The question or approval the run's turn ended asking, named by kind.
+    asked: Option<String>,
 }
 
 /// Waits for Coder to start for `chat`, and then, when `finish`, for its
@@ -609,6 +613,7 @@ fn follow_run(gate: &mut Gate, chat: &str, finish: bool) -> RunSeen {
         started: None,
         finished: None,
         failure: None,
+        asked: None,
     };
     let began = pump(gate, START_WAIT, |gate| {
         gate.panel().coder_run(chat).is_some()
@@ -633,7 +638,11 @@ fn follow_run(gate: &mut Gate, chat: &str, finish: bool) -> RunSeen {
         let ended = lines.iter().any(|line| {
             matches!(
                 line.event,
-                CoderEvent::Result(_) | CoderEvent::Failure(_) | CoderEvent::Stopped(_)
+                CoderEvent::Result(_)
+                    | CoderEvent::Failure(_)
+                    | CoderEvent::Stopped(_)
+                    | CoderEvent::Question(_)
+                    | CoderEvent::Approval(_)
             )
         });
         // A start the runner refused shows as a failed run with no lines.
@@ -656,6 +665,12 @@ fn follow_run(gate: &mut Gate, chat: &str, finish: bool) -> RunSeen {
                 CoderEvent::Stopped(stopped) => {
                     seen.failure = Some(format!("Coder stopped: {stopped:?}"))
                 }
+                CoderEvent::Question(asked) => {
+                    seen.asked = Some(format!("a question: {:?}", excerpt(&asked.text)));
+                }
+                CoderEvent::Approval(asked) => {
+                    seen.asked = Some(format!("for approval: {:?}", excerpt(&asked.text)));
+                }
                 _ => {}
             }
         }
@@ -667,6 +682,14 @@ fn follow_run(gate: &mut Gate, chat: &str, finish: bool) -> RunSeen {
             .into_iter()
             .find(|row| row.contains("Coder didn't") || row.contains("did not start"))
             .or_else(|| Some("Coder did not start".into()));
+    }
+    if finish
+        && seen.started.is_some()
+        && seen.finished.is_none()
+        && seen.failure.is_none()
+        && let Some(asked) = &seen.asked
+    {
+        seen.failure = Some(format!("Coder asked {asked} instead of finishing"));
     }
     if finish && seen.started.is_some() && seen.finished.is_none() && seen.failure.is_none() {
         seen.failure = Some(format!(
@@ -1494,9 +1517,10 @@ fn delegate_grok(gate: &mut Gate) -> Outcome {
             &done.trajectory,
             gate.evidence("delegate-grok").join("turn.atif.jsonl"),
         );
-        // At the default access Grok Build runs inside Coder's boundary,
-        // and the host allows the commands it asks for (#10092): the turn
-        // ran at least one.
+        // At the default full access Grok Build runs with
+        // `--always-approve` (#10104); under a named toolchains access the
+        // host allows the commands it asks for inside its boundary
+        // (#10092). Either way the turn ran at least one.
         commands = ran_commands(&std::fs::read_to_string(&done.trajectory).unwrap_or_default());
         if commands == 0 {
             problems.push("Grok Build ran no shell command".into());
@@ -1509,6 +1533,77 @@ fn delegate_grok(gate: &mut Gate) -> Outcome {
             seen.task.unwrap_or_default(),
             started.map_or("?", |s| s.model.as_str()),
             started.map(|s| s.reason.clone()).unwrap_or_default(),
+            excerpt(&seen.finished.map(|f| f.summary).unwrap_or_default())
+        ))
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
+/// The scratch repository's `main` on its bare remote, if it has one.
+fn remote_main(remote: &str) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args(["--git-dir", remote, "rev-parse", "--verify", "-q", "main"])
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+}
+
+/// Coder approves every step and never asks (#10104): asked to commit a
+/// line and push it to `main`, a run on the default settings finishes with
+/// no question or approval event, and the scratch repository's bare
+/// remote (`OPENAGENTS_ACCEPTANCE_REMOTE`) then has a new `main` whose
+/// change touches NOTES.md.
+fn push_main(gate: &mut Gate) -> Outcome {
+    if let Some(skip) = gate.need(true, false) {
+        return skip;
+    }
+    const ASK: &str = "commit a short NOTES.md line and push it to main";
+    let remote = std::env::var("OPENAGENTS_ACCEPTANCE_REMOTE")
+        .map_err(|_| "the gate set no OPENAGENTS_ACCEPTANCE_REMOTE".to_string())?;
+    let before = remote_main(&remote).ok_or_else(|| format!("{remote} has no main"))?;
+    let chat = new_chat(gate, "push-main")?;
+    send(gate, ASK)?;
+    let seen = follow_run(gate, &chat, true);
+    gate.save_chat("push-main");
+    let _ = gate.capture("push-main", "chat-1200x840-1x", 1200.0, 840.0, 1.0);
+    let mut problems = Vec::new();
+    if let Some(asked) = &seen.asked {
+        problems.push(format!("Coder asked {asked}"));
+    }
+    if let Some(failure) = &seen.failure {
+        problems.push(format!("Coder: {failure}"));
+    }
+    if let Some(done) = &seen.finished {
+        let _ = std::fs::copy(
+            &done.trajectory,
+            gate.evidence("push-main").join("turn.atif.jsonl"),
+        );
+    }
+    let after = remote_main(&remote).unwrap_or_default();
+    if after == before {
+        problems.push(format!("the remote's main is still {before}"));
+    } else {
+        let changed = std::process::Command::new("git")
+            .args(["--git-dir", &remote, "diff", "--name-only", &before, &after])
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+            .unwrap_or_default();
+        if !changed.lines().any(|path| path == "NOTES.md") {
+            problems.push(format!(
+                "the remote's new main {after} does not change NOTES.md (changed: {:?})",
+                changed.trim()
+            ));
+        }
+    }
+    if problems.is_empty() {
+        let started = seen.started.as_ref();
+        Ok(format!(
+            "Coder {} on {} committed and pushed {after} to main with no question or approval: {:?}",
+            seen.task.unwrap_or_default(),
+            started.map_or("?", |s| s.provider.as_str()),
             excerpt(&seen.finished.map(|f| f.summary).unwrap_or_default())
         ))
     } else {

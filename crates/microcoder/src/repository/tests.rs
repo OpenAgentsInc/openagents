@@ -1841,6 +1841,22 @@ mod local_run {
     /// this run's temporary directory named `/tmp/scratch`. It is written
     /// under `UPDATE_FIXTURES=1`; otherwise the fixture must hold the same
     /// events, in order, as this run.
+    /// The first task of the kept fixture `name`, as it was recorded.
+    fn recorded_first_task(name: &str) -> Vec<Line> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../openagents-chat/fixtures/coder-events")
+            .join(format!("{name}.ndjson"));
+        let kept: Vec<Line> = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("no {}", path.display()))
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let first = kept[0].task.clone();
+        kept.into_iter()
+            .take_while(|line| line.task == first)
+            .collect()
+    }
+
     fn fixture(name: &str, root: &Path, lines: &[Line]) {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../openagents-chat/fixtures/coder-events")
@@ -2012,10 +2028,13 @@ mod local_run {
         let top = checkout(root.path());
         let script = VecDeque::from([
             (
-                vec![Ok(asking(
-                    "May I delete slugs.py?",
-                    crate::models::Ask::Approval,
-                ))],
+                vec![
+                    Ok(asking(
+                        "May I delete slugs.py?",
+                        crate::models::Ask::Approval,
+                    )),
+                    Ok(finished("I deleted slugs.py.")),
+                ],
                 vec![],
             ),
             (
@@ -2029,13 +2048,26 @@ mod local_run {
             .with_probe(signed_in)
             .with_controller(std::env::current_exe().unwrap())
             .with_launcher(Box::new(Scripted(Mutex::new(script), None)));
-        let approval = local.start(&top, "tidy", "tidy up", None).unwrap();
-        let (lines, state) = drain(&local, &approval.task);
+        // Every step is approved in advance (#10104): a step that asks for
+        // approval is granted it, and the turn ends with its result, never
+        // waiting on the person.
+        let approved = local.start(&top, "tidy", "tidy up", None).unwrap();
+        let (lines, state) = drain(&local, &approved.task);
         assert_eq!(
             (state, *names(&lines).last().unwrap()),
-            (State::Waiting, "approval")
+            (State::Ended, "result")
         );
-        let mut endings = lines;
+        assert!(
+            !lines.iter().any(|line| matches!(
+                line.event,
+                CoderEvent::Approval(_) | CoderEvent::Question(_)
+            )),
+            "{lines:?}"
+        );
+        // The fixture keeps a task recorded before #10104 that waits on an
+        // approval, as an older task store still holds; it still reads and
+        // renders.
+        let mut endings = recorded_first_task("other-endings");
 
         let exhausted = local.start(&top, "tidy", "tidy up", None).unwrap();
         let (lines, state) = drain(&local, &exhausted.task);

@@ -75,16 +75,18 @@ or the owner's host.
      the owner's refresh token, so the gate copies the login only while it
      has more than an hour left (a full run takes under half that). With
      less, run `grok` once to refresh it, then run the gate. The real file is
-     only read. At the default `toolchains` access, Coder runs Grok Build
-     inside its own boundary with another copy of that login in the turn's
-     scratch, removed when the turn ends (#10092).
+     only read. At the default `full` access (#10104), Coder runs Grok Build
+     with `--always-approve` as the person; under a named `toolchains`
+     access it runs it inside its own boundary with another copy of that
+     login in the turn's scratch, removed when the turn ends (#10092).
 
    Only the Codex and Grok Build login files are copied, and nothing is
    printed. A missing login is a FAIL unless you pass
    `--allow-missing-engine`.
 3. **The owner's project shape.** The gate makes a scratch repository and a
    linked worktree of it, `acceptance-repo-host-tasks`, like
-   `~/work/openagents-host-tasks`. The tree is big enough to matter: 400
+   `~/work/openagents-host-tasks`, with a local bare repository,
+   `acceptance-remote.git`, as its `origin`. The tree is big enough to matter: 400
    directories and 3,200 files in the repository and 650 sibling folders beside
    it, like `~/work`.
 4. **The build's own host, under the app's limits.** The gate runs
@@ -147,7 +149,8 @@ conversation run in the owner's order.
 | `followup-coder` | Then "now also list the top-level files in a note": the router hands it to Coder, which continues the same task as its next turn, in the same worktree, and finishes; the person's message shows above the "Coder continued … (turn N)" card. | #10094 |
 | `working-directory` | "What's the working directory right now?" names the project folder, never says to connect a computer, and starts no Coder. | #10077, #10079 |
 | `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |
-| `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091, #10092 (Grok Build runs inside Coder's toolchains boundary) |
+| `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091, #10092 |
+| `push-main` | "commit a short NOTES.md line and push it to main", in its own chat, on the default settings: Coder starts, commits, pushes, and finishes with no question or approval event, and the scratch repository's bare remote then has a new `main` that changes NOTES.md. | #10104 (Coder approves every step and never asks) |
 | `ui-stop-coder` | While Coder runs, the transcript's **Stop Coder** is as wide as its words (under 160 points and a third of the transcript), as the phone draws it. Measured during the first run an earlier scenario followed; run alone, it starts one. | #10091, #10075 |
 | `ui-no-attach` | The desktop is text only: the composer has no attach control at 1200x840 and 760x540, and a PNG dropped on the window and an image paste are dropped quietly (no image card, no notice, the draft stays empty). It replaced `image-to-coder` when attachments were turned off everywhere on 2026-10-01. | #10093, #10095 |
 | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |

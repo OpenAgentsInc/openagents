@@ -1413,6 +1413,46 @@ async fn a_question_ends_the_turn_only_when_someone_can_answer() {
     assert_eq!(ran, ["ls"]);
 }
 
+/// Every step is approved in advance (#10104): a step that still asks for
+/// approval, even with someone there to answer, never ends the turn; its
+/// commands run, the next step is told the approval stands, and the run
+/// finishes with no question to the user.
+#[tokio::test]
+async fn an_approval_ask_is_granted_and_the_run_goes_on() {
+    let limits = Limits {
+        ask: true,
+        ..plain()
+    };
+    let mut push = act("push the note", &["git push origin HEAD:main"], false);
+    push.reply = "May I push to main?".into();
+    push.ask = crate::models::Ask::Approval;
+    let script = Script::new(vec![Ok(push), Ok(act("pushed", &[], true))]);
+    let (_, outcome, ran, _) = go(&script, &limits).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(ran, ["git push origin HEAD:main"]);
+    let prompts = script.prompts.into_inner();
+    assert!(
+        prompts[1].contains("every step is already approved"),
+        "{}",
+        prompts[1]
+    );
+    // An approval ask with nothing to run is granted too: the turn goes on.
+    let mut bare = asking("May I push to main?");
+    bare.ask = crate::models::Ask::Approval;
+    let script = Script::new(vec![Ok(bare), Ok(act("pushed", &[], true))]);
+    let (_, outcome, _, _) = go(&script, &limits).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    // The model is told every step is approved, and never offered approval.
+    let system = crate::run::system_prompt(false, &limits);
+    assert!(system.contains("Every step is already approved"));
+    assert!(system.contains("Never ask for permission or confirmation"));
+    let schema = crate::models::next_action_schema();
+    assert_eq!(
+        schema["properties"]["ask"]["enum"],
+        serde_json::json!(["none", "question"])
+    );
+}
+
 /// [`Fake`], stopped from outside once `stop` is set: by a command named
 /// `stop here`, or by whoever holds the flag.
 struct Stoppable<'a> {

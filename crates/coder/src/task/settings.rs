@@ -5,11 +5,12 @@
 //! computer: `$OPENAGENTS_SETTINGS`, else `~/.openagents/settings.json`
 //! ([`path`]). A missing file, or a missing field, means the default, and
 //! the defaults are exactly what a computer does with no file at all
-//! (#10032, #10045, #10091): Codex, then Claude Code, then Grok Build (each
-//! only when signed in here), a coding request runs at once,
+//! (#10032, #10045, #10091, #10104): Codex, then Claude Code, then Grok
+//! Build (each only when signed in here), a coding request runs at once,
 //! a fresh usage reading at or above 90% passes a provider over, any Git
-//! checkout is a project, and commands run in the filesystem boundary with
-//! this computer's toolchains.
+//! checkout is a project, and every step is approved: commands run as the
+//! person's own user with full access, so each engine's own permission
+//! asks are granted and Coder commits and pushes without asking.
 //!
 //! ```json
 //! {
@@ -19,7 +20,7 @@
 //!     "start": "at_once",
 //!     "usage_threshold_percent": 90,
 //!     "projects": [],
-//!     "access": "toolchains"
+//!     "access": "full"
 //!   }
 //! }
 //! ```
@@ -287,8 +288,17 @@ fn default_threshold() -> Option<u8> {
     Some(usage::DEFAULT_THRESHOLD_PERCENT)
 }
 
+/// Full access (#10104): the person runs Coder on their own computer to
+/// have the work done end to end, so every step is approved by default.
+/// `toolchains` and `boundary` stay for a person who names them.
 fn default_access() -> Access {
-    Access::Toolchains
+    Access::Full
+}
+
+/// A file names `access` only when the person chose other than the
+/// default, so a file saved for another setting keeps following it.
+fn is_default_access(access: &Access) -> bool {
+    *access == default_access()
 }
 
 /// What Coder may use on this computer for a person's own runs.
@@ -312,10 +322,11 @@ pub struct Coder {
     /// paths. Empty: any Git checkout.
     #[serde(default)]
     pub projects: Vec<PathBuf>,
-    /// What a run's commands may reach: `toolchains` (the filesystem
-    /// boundary with this computer's developer tools), `full` (no sandbox,
-    /// as the person's own user), or `boundary` (the plain boundary).
-    #[serde(default = "default_access")]
+    /// What a run's commands may reach: `full` (the default: no sandbox,
+    /// as the person's own user, every engine's permission asks granted),
+    /// `toolchains` (the filesystem boundary with this computer's developer
+    /// tools), or `boundary` (the plain boundary).
+    #[serde(default = "default_access", skip_serializing_if = "is_default_access")]
     pub access: Access,
 }
 
@@ -737,11 +748,46 @@ mod tests {
             Some(usage::DEFAULT_THRESHOLD_PERCENT)
         );
         assert!(coder.projects.is_empty());
-        assert_eq!(coder.access, Access::Toolchains);
+        assert_eq!(coder.access, Access::Full);
         std::fs::write(&file, format!(r#"{{"schema":"{SCHEMA}","coder":{{}}}}"#)).unwrap();
         assert_eq!(Settings::load(&file).unwrap(), Settings::default());
         std::fs::write(&file, format!(r#"{{"schema":"{SCHEMA}"}}"#)).unwrap();
         assert_eq!(Settings::load(&file).unwrap(), Settings::default());
+    }
+
+    /// Every step is approved by default (#10104): no file means full
+    /// access, a file saved for another setting does not pin a narrower
+    /// one, and a file that names `toolchains` or `boundary` keeps it.
+    #[test]
+    fn full_access_is_the_default_and_a_named_boundary_still_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        assert_eq!(Settings::default().coder.access, Access::Full);
+        let mut settings = Settings::default();
+        settings.set("coder.start", "at_once", dir.path()).unwrap();
+        settings.save(&file).unwrap();
+        let saved = std::fs::read_to_string(&file).unwrap();
+        assert!(!saved.contains("\"access\""), "{saved}");
+        assert_eq!(Settings::load(&file).unwrap().coder.access, Access::Full);
+        for (named, access) in [
+            ("toolchains", Access::Toolchains),
+            ("boundary", Access::Boundary),
+            ("full", Access::Full),
+        ] {
+            std::fs::write(
+                &file,
+                format!(r#"{{"schema":"{SCHEMA}","coder":{{"access":"{named}"}}}}"#),
+            )
+            .unwrap();
+            let loaded = Settings::load(&file).unwrap();
+            assert_eq!(loaded.coder.access, access, "{named}");
+            loaded.save(&file).unwrap();
+            assert_eq!(
+                Settings::load(&file).unwrap().coder.access,
+                access,
+                "{named}"
+            );
+        }
     }
 
     #[test]

@@ -18,12 +18,12 @@ Keys:
   coder.providers                 Coding agents Coder may use, first preferred:
                                   codex, claude, grok, opencode:PROVIDER/MODEL, devin,
                                   comma-separated, each optionally NAME:MODEL
-                                  (default codex,claude).
+                                  (default codex,claude,grok).
   coder.start                     at_once or ask_first (default at_once).
   coder.usage_threshold_percent   1 to 100, or off (default 90).
   coder.projects                  Folders whose Git checkouts are projects,
                                   comma-separated; empty is any (default).
-  coder.access                    toolchains, full, or boundary (default toolchains).
+  coder.access                    full, toolchains, or boundary (default full: every step approved).
 Settings live in ~/.openagents/settings.json (OPENAGENTS_SETTINGS overrides the
 file); openagents chat, the desktop app, and a host on this computer read it.";
 

@@ -313,9 +313,9 @@ pub struct NextAction {
     #[serde(default)]
     pub reply: String,
     /// The step asks the user, whose answer starts the next turn: an open
-    /// question, or approval of a step before the engine takes it. The
-    /// question is `reply`. `none` on every other step; absent in replies
-    /// recorded before the field existed.
+    /// question, which is `reply`. `none` on every other step; absent in
+    /// replies recorded before the field existed. `approval` is no longer
+    /// offered (#10104), and a reply that still names it is granted.
     #[serde(default)]
     pub ask: Ask,
 }
@@ -328,7 +328,9 @@ pub enum Ask {
     None,
     /// An open question; the user answers in words.
     Question,
-    /// Approval of a step the reply names; the user approves or denies.
+    /// Approval of a step the reply names. No longer offered (#10104):
+    /// every step is approved in advance, so the loop grants it and goes
+    /// on. Kept so replies and runs recorded before then still read.
     Approval,
 }
 
@@ -348,8 +350,8 @@ pub fn next_action_schema() -> Value {
             },
             "ask": {
                 "type": "string",
-                "enum": ["none", "question", "approval"],
-                "description": "none on almost every step. question when you cannot go on without an answer only the user has, such as a choice between approaches they must make; approval when a step has consequences the user should approve first, such as deleting data or pushing. Asking ends your turn with no commands; the reply holds the question, and the user's answer starts your next turn."
+                "enum": ["none", "question"],
+                "description": "none on almost every step. question only when you cannot go on without an answer only the user has, such as a choice between approaches they must make. Every step is already approved, so never ask for permission or confirmation. Asking ends your turn with no commands; the reply holds the question, and the user's answer starts your next turn."
             },
             "rationale": {
                 "type": "string",
