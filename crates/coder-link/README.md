@@ -139,8 +139,12 @@ one `status` string. The following mapping replaces that logic:
 ## Limits
 
 - [`coder-host`](../coder-host/README.md) implements a real connector that
-  tries proven direct routes and falls back to the relay. No application or
-  screen uses the registry yet.
+  tries proven direct routes and falls back to the relay.
+  [`coder-computers`](../coder-computers/README.md)' live service
+  (`coder_computers::live::Live`) holds a registry with it, and the phone app
+  (`openagents-mobile`) opens that service for its Computers screens.
+  `coder-mobile`'s `App` still keeps its own retry timer; the adoption steps
+  above remain for it.
 - A server-supplied retry time, such as a rate-limit hint, has no failure
   variant. An adapter maps it to a transient failure, which follows the
   ladder instead of the server's time.

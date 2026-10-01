@@ -1,22 +1,51 @@
 # openagents-desktop
 
-**OpenAgents** for desktop opens into a chat shell with a sidebar and the live
-Grid behind its main pane. The sidebar currently contains sample chats;
-selecting or creating one changes only the window's presentation state.
-**Phones and computers** opens the existing pairing and computer controls.
-Their design is
+**OpenAgents** for desktop opens into chat: a sidebar of your saved chats, a
+transcript, and an editable composer, with the live Grid behind the main pane
+on macOS and Linux. Chats are hosted OpenAgents conversations that persist
+across restarts; a coding request runs Coder on this computer
+([local Coder](../../docs/desktop/local-coder.md)). The same shared Rust
+(`openagents-chat`, `openagents-chat-app`) drives the phones' chat.
+**Phones and computers** opens the pairing and computer controls. Their design is
 [Connect a computer by scanning a QR code](../../docs/coder/design/2026-09-29-auto-pairing.md);
 the screens are `DSK-01` to `DSK-03` in the
 [wireframe](../../docs/product/2026-09-28-app-wireframe.md).
+
+## What is built
+
+Status on `main` after the 2026-09-30 landings. Each row links its
+verification record; owner-only checks are in the workspace `NEEDS_OWNER.md`.
+
+| Feature | Platforms | Limits | Record |
+| --- | --- | --- | --- |
+| Chat: persisted chats, streaming hosted replies, stop and retry, Markdown and code, image drafts, search, pin, archive, rename, command palette | macOS, Linux, Windows | Hosted chat sends text only; an image draft is kept and Send is refused | [closeout](../../docs/desktop/verification/2026-09-30-basic-chat-closeout/verification.md) |
+| Coder from chat: live events, stop, steer, queue, questions, approvals, saved Codex and Claude Code sessions, engine and usage, **What changed** diff pane | macOS, Linux, Windows | Saved-session browsing reads `.codex` and `.claude` on macOS and Linux only; the diff pane is read-only | [local Coder](../../docs/desktop/local-coder.md) |
+| Gym and evals in chat: the phone's cards and sheets, the shared hosted runner, runs kept in an encrypted store | Cards: macOS, Linux, Windows. Runner and saved runs: macOS, Linux | The trainer key is the Grid's world key, which Windows does not have (`chat_gym` is not built there) | [Gym cards](../../docs/desktop/verification/2026-09-30-gym-cards/verification.md) |
+| Settings: Appearance (Reduce motion), Text size, Keyboard shortcuts, Notifications, Phones and computers, Archived chats | macOS, Linux, Windows | Dark only; there is no light theme. On macOS and Windows the Notifications page still shows a line from before #10061 and #10062 saying this computer doesn't show notifications yet ([`src/settings.rs`](src/settings.rs)); the notifications row below is current | [settings](../../docs/desktop/verification/2026-09-30-settings/README.md) |
+| Theme tokens and reduced motion (system setting or the app's switch) | macOS, Linux, Windows | | [theme tokens](../../docs/desktop/verification/2026-09-30-theme-tokens/verification.md) |
+| Screen readers through AccessKit (VoiceOver, Orca, Narrator) | macOS, Linux, Windows | Checked headlessly and with a macOS AX probe; a person's screen-reader pass is an owner check | [accessibility](../../docs/desktop/verification/2026-09-30-accessibility/verification.md) |
+| Native menu bar from the command registry | macOS | Linux and Windows keep the in-window menus | [menus, notifications, update](../../docs/desktop/verification/2026-09-30-menus-notify-update/verification.md) |
+| Coder notifications (question, approval, finished, failed) whose click opens the chat | Linux (portal, else notification server), macOS (notification center, asked on the first notice), Windows (toasts) | macOS needs the app bundle; Windows needs the MSI's AppUserModelID registration. A click after the app quit opens nothing on macOS or Windows | [Linux](../../docs/desktop/verification/2026-09-30-linux-integration/README.md), [Windows](../../docs/desktop/verification/2026-09-30-windows-notifications/verification.md), [release](../../docs/desktop/release.md#releasing-for-windows) |
+| **Update ready** strip with **Restart to update** | macOS, Linux, Windows | A development build never checks | [menus, notifications, update](../../docs/desktop/verification/2026-09-30-menus-notify-update/verification.md) |
+| Slide viewer: a deck opened from chat (`presentation.open`) or `--open-deck ID`, animated open and close, full screen | macOS, Linux, Windows | Decks open only in the desktop app; the phone and terminal say so | [captures](../../docs/desktop/verification/2026-09-30-slide-viewer/slides-viewer.png), [route](../../docs/coder/measurements/2026-09-30-presentation-route.md) |
+| The Grid: Watch backdrop and Play | macOS, Linux | Verse does not build on Windows | [playable Grid](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md) |
+
+Packages: the signed, notarized macOS `.dmg`; the Linux 1.0.0 AppImage and
+`.deb` ([record](../../docs/desktop/verification/2026-09-30-linux-release/README.md));
+Windows MSIs are built but unsigned, published only to a test prefix until an
+Authenticode certificate exists, so `/install` does not offer Windows yet
+([record](../../docs/desktop/verification/2026-09-30-windows/verification.md)).
+See [release](../../docs/desktop/release.md).
 
 ## The shell and sidebar
 
 The shell reimplements Zeron's inset content pane, grouped chat list, and
 anchored footer ([port audit](../../docs/research/2026-09-29-comet-desktop-ui-port-audit.md),
 [#9993](https://github.com/OpenAgentsInc/openagents/issues/9993)).
-[`src/chrome.rs`](src/chrome.rs) owns its bounded sample data and typed
-navigation actions. It projects existing Rust Native elements; desktop layout
-stays in the adapter.
+[`src/chrome.rs`](src/chrome.rs) owns the typed navigation actions; the
+chat window ([`src/chat.rs`](src/chat.rs)) fills the sidebar from the saved
+chat list (`openagents_chat_app::chat_list`). The shell projects existing
+Rust Native elements; desktop layout stays in the adapter.
 
 - Drag the sidebar seam to resize it from 224 to 400 points.
 - Click the main header's sidebar button, or press Ctrl+B (Cmd+B on macOS),
@@ -24,17 +53,15 @@ stays in the adapter.
 - Click a section to hide or reveal its chats. The list scrolls independently
   while the header and footer stay in place. Tab brings a focused row into view;
   Enter or Space activates it.
-- **New chat**, or Ctrl+N (Cmd+N on macOS), adds a sample chat for this window.
-  Closing the window discards sample navigation and chats.
-- **The Grid** opens the world view. **Phones and computers** and **Settings**
-  lead to the existing computer controls. Opening a chat cancels any displayed
-  pairing code.
+- **New chat**, or Ctrl+N (Cmd+N on macOS), opens a new chat at the top of
+  Recent.
+- **The Grid** opens the world view. **Phones and computers** opens the
+  computer controls, and **Settings** its six pages. Opening a chat cancels any
+  displayed pairing code.
 
 The window requests 90% of the usable display area, with a 1200×840-point
 fallback and a minimum of 760×540. A tiling desktop controls its placement.
-Views can grow to 1.6× their size at 1200×840 points. The shell
-retains the current painter and backdrop; it does not implement a transcript
-or editable composer yet.
+Views can grow to 1.6× their size at 1200×840 points.
 
 The foreground retains its pixels between interactions and repaints changed
 controls. Screen-lock checks run on a separate background thread, once a
@@ -105,7 +132,9 @@ frame gaps. Focus loss, hidden windows, modals, and navigation release input
 and pause or end the session. Reduce motion affects Watch; deliberate Play
 still moves. If cursor capture fails, keyboard movement and wheel zoom remain
 available. `--no-backdrop` disables Watch's background and still allows Play.
-Windows shows an unsupported state until Verse portability lands (#10027).
+Windows shows an unsupported state: Verse does not build there, and Windows
+chat parity ([#10027](https://github.com/OpenAgentsInc/openagents/issues/10027))
+shipped without it.
 
 `--fake-host` uses an offline player fixture and reads committed results;
 it creates no world key and joins no relay as a player. See the

@@ -37,6 +37,11 @@ into them.
     through the new `App::focus_request` hook, which calls winit
     `focus_window`.
   - macOS and Windows still drop notices (see "Not verified").
+    Since then macOS notices go through the notification center (#10061)
+    and Windows notices are toasts (#10062), and their clicks take the same
+    `native::open_chat` path; see
+    [Windows notifications](../2026-09-30-windows-notifications/verification.md)
+    and [release](../../release.md#releasing-for-windows).
 - **Update strip** (`strip.rs`). When the updater holds a downloaded,
   verified build, a small strip at the top right says **Update ready** and
   shows **Restart to update**.

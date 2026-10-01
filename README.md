@@ -96,9 +96,9 @@ A phone ran one of these tests end to end, from chat to +25 XP
 
 | Platform | Status |
 | --- | --- |
-| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 21 are uploaded: build 19 sends every new chat to OpenAgents, build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat (test a tool, make your own by chatting, Add to the Gym, check others' results for XP, Gym news, and the Gym board in the Verse). See [OpenAgents for iOS](bins/openagents-ios/README.md). |
+| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 36 are uploaded: build 19 sends every new chat to OpenAgents, build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat (test a tool, make your own by chatting, Add to the Gym, check others' results for XP, Gym news, and the Gym board in the Verse). See [OpenAgents for iOS](bins/openagents-ios/README.md). |
 | Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
-| Computer | Install Coder and link the computer so the phone can dispatch work to it. See [Coder](#coder). |
+| Computer | OpenAgents for desktop 1.0.0: chat, Coder on this computer, and phone pairing. A signed `.dmg` for macOS and an AppImage and `.deb` for Linux (x86_64) are on the [install page](https://openagents.com/install); Windows packages are unsigned and not published yet. See [OpenAgents desktop](crates/openagents-desktop/README.md). Or install Coder alone and link the computer so the phone can dispatch work to it; see [Coder](#coder). |
 
 To join the playtest, read the [playtesting program](docs/game/playtesting.md)
 and the [launch roadmap](docs/roadmap/2026-09-29-launch-roadmap.md). The

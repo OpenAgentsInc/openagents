@@ -75,7 +75,8 @@ dependency the workspace did not already have; the accessibility adapter
 | `Surface` | The application's `surface_size` and `paint_surface`; an unregistered resource shows its label. |
 | `style.background` on a stack | A card with rounded corners. |
 | `style.padding`, `gap`, `foreground` | As given (`xs` 4, `sm` 8, `md` 16, `lg` 28 points). |
-| `Transcript`, `Message`, `Tool`, `Composer` | Not supported: recorded in `Scene::unsupported` and drawn as their children or label. |
+| `Composer` | The application's `composer:{key}` surface when the application sizes one, as the desktop chat does with [`composer::field`](src/composer/field.rs); otherwise its placeholder, recorded in `Scene::unsupported`. |
+| `Transcript`, `Message`, `Tool` | Not supported as elements: recorded in `Scene::unsupported` and drawn as their children. The desktop chat paints its transcript in an application surface instead. |
 
 The application supplies the palette through `App::theme`; the defaults are
 white on black.
@@ -125,10 +126,10 @@ clears only the submitted edit sequence. Both APIs reimplement Zeron's retained
 composer editing design for
 [#9996](https://github.com/OpenAgentsInc/openagents/issues/9996).
 
-This module runs in headless input fixtures. Window key and IME events,
-clipboard access, focus and caret painting, and the application send callback
-are not connected yet. The support table above still describes the window's
-actual rendering capabilities.
+[`composer::field`](src/composer/field.rs) connects it to the window: key
+and IME events, selection, clipboard, caret painting, and the send action
+([#10004](https://github.com/OpenAgentsInc/openagents/issues/10004),
+[composer record](../../docs/desktop/verification/2026-09-30-composer/verification.md)).
 
 ## Use it
 

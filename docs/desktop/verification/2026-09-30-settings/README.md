@@ -22,6 +22,10 @@ Settings has six pages, chosen from a row of chips at the top:
 - **Notifications**: a switch for Coder's notifications. Linux delivers them
   (#10026). On macOS and Windows the page says this computer doesn't show them
   yet.
+  Later the same day macOS (#10061) and Windows (#10062) started delivering
+  them too; see
+  [Windows notifications](../2026-09-30-windows-notifications/verification.md).
+  The page's macOS and Windows line was not updated with them.
 - **Phones and computers**: the existing pairing screens (`screens::root`),
   unchanged. Their buttons keep the person on Settings. Leaving the page for
   another Settings page, a chat, or the Grid cancels a shown code, as leaving

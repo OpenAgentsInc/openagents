@@ -1,4 +1,4 @@
-# Releasing OpenAgents for Mac (and Linux)
+# Releasing OpenAgents for Mac, Linux, and Windows
 
 How to turn the desktop app into the `.dmg` people download: signed with
 the OpenAgents Developer ID, hardened runtime, notarized by Apple, stapled,

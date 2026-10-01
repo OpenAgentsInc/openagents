@@ -27,6 +27,7 @@ unless a row explicitly describes the implementation.
 
 ## Contents
 
+- [Status on 2026-09-30](#status-on-2026-09-30)
 - [Executive summary](#executive-summary)
 - [Completed in this session](#completed-in-this-session)
 - [Comet architecture overview](#comet-architecture-overview)
@@ -40,6 +41,38 @@ unless a row explicitly describes the implementation.
 - [Phased plan](#phased-plan)
 - [Proposed issue breakdown](#proposed-issue-breakdown)
 - [Open questions](#open-questions)
+
+## Status on 2026-09-30
+
+The rest of this audit is the September 29 snapshot: where it says the
+transcript, composer, menus, settings, or review pane are missing or pending,
+that was true then and is no longer. The application rows of the
+[issue breakdown](#proposed-issue-breakdown) landed under tracker
+[#10003](https://github.com/OpenAgentsInc/openagents/issues/10003), all now
+closed. The [desktop README](../../crates/openagents-desktop/README.md#what-is-built)
+lists what is built per platform, with its limits and verification records.
+
+| Audit rows | Delivered by |
+| --- | --- |
+| CDP-00, CDP-10 (long-content measurement, transcript painter, selection) | #10005, #10010 |
+| CDP-06, CDP-07 (editing contract, IME, clipboard) | #10004 |
+| CDP-08, CDP-11, CDP-19 (commands, key map, overlays, menus, palette) | #10013 |
+| CDP-12, CDP-25 (motion tokens, reduced motion, theme) | #10022, dark only by owner direction rather than light and dark |
+| CDP-13 (images) | #10011 |
+| CDP-14 (syntax spans) | #10010 and #10019 on the desktop, #10028 on the phones |
+| CDP-15 (AccessKit) | #10024 |
+| CDP-16, CDP-17 (real chat state, transcript and chat cards) | #10006, #10007, #10009 |
+| CDP-18 (composer attachments, queue, questions) | #10011, #10016 |
+| CDP-20 (native menu bar and notifications) | #10023 (macOS menu bar), #10026 (Linux), #10061 (macOS), #10062 (Windows) |
+| CDP-21 (diff pane and **What changed**) | #10019 |
+| CDP-22 (settings) | #10021 |
+| CDP-23 (phone hosts) | #10028 |
+
+The framework rows CDP-01 to CDP-05, CDP-09, and CDP-24 were not reconciled
+here. Open question 2 is settled: the desktop and the phones share
+`openagents-chat` and `openagents-chat-app`. Open question 4 is settled:
+Windows runs chat without the Verse backdrop
+([#10027](https://github.com/OpenAgentsInc/openagents/issues/10027)).
 
 ## Executive summary
 

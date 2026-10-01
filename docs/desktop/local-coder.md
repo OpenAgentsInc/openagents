@@ -132,7 +132,8 @@ chat follow` prints.
 ## Saved Codex and Claude Code sessions
 
 **Saved sessions** reads this computer's `.codex` and `.claude` directories
-through `coder-history`. The desktop worker opens the configured local roots
+through `coder-history`, on macOS and Linux; `coder-history` does not read
+them on Windows. The desktop worker opens the configured local roots
 only when you request the list. Catalog pages show each session's title,
 harness, and saved time. Transcript pages use the shared phone conversation
 parser and Rust Native transcript surface. The original files remain read-only.
@@ -161,8 +162,9 @@ while the request was pending.
 
 These local file reads do not extend phone observer authority. The existing
 NIP history connection continues to expose only Coder sources. The portable
-reader and continuation factory compile in the phone's Rust library; native
-phone mounting remains part of #10028.
+reader and continuation factory compile in the phone's Rust library; no phone
+screen mounts them yet. #10028 (closed) brought the phones the shared editing,
+card menus, images, and code colors, not these surfaces.
 
 ## Engine and usage
 
@@ -179,7 +181,7 @@ to send it to that provider's own usage endpoint.
 
 The ring and the route cards reimplement Zeron's account usage rings (public
 MIT zeronsh/zeron) in Rust Native. The shared strip lives in
-`openagents-chat-app`. Mounting it on a phone remains part of #10028.
+`openagents-chat-app`; no phone screen mounts it yet.
 
 ## What changed
 
@@ -191,4 +193,4 @@ The shared parser in `openagents-chat-app` keeps the lines. The desktop paints
 only the lines that fit in the pane, one line at a time, and applies syntax
 spans as color. Spans do not change the line height. The card and the pane
 reimplement Zeron's unified diff pane (public MIT zeronsh/zeron) in Rust
-Native. Mounting the card on a phone remains part of #10028.
+Native. No phone screen mounts the card yet.
