@@ -391,7 +391,8 @@ struct GymShareSheet: UIViewControllerRepresentable {
 /// once the surface shows them, waiting up to 30 seconds for each. A key
 /// ending in `*` taps the first node whose key starts with the rest, such as
 /// `task-*` for the first chat in the menu. A step `send:TEXT` sends TEXT
-/// from the screen's composer, `sleep:N` waits N seconds, and `try:KEY`
+/// from the screen's composer; it is the last step, and TEXT is the rest of
+/// the list, commas and all (#10118). `sleep:N` waits N seconds, and `try:KEY`
 /// taps KEY only if the screen shows it now (a tap the screen may have
 /// replaced before it arrived, tried again), and `attach:PATH` hands the
 /// image file at PATH to the draft as the photo picker would (dropped while
@@ -402,7 +403,15 @@ enum CoderLaunchTaps {
         #if DEBUG || targetEnvironment(simulator)
         let arguments = ProcessInfo.processInfo.arguments
         if let index = arguments.firstIndex(of: "--coder-tap"), index + 1 < arguments.count {
-            for key in arguments[index + 1].split(separator: ",").map(String.init) {
+            var steps: [String] = []
+            for piece in arguments[index + 1].split(separator: ",", omittingEmptySubsequences: false).map(String.init) {
+                if let last = steps.last, last.hasPrefix("send:") {
+                    steps[steps.count - 1] = last + "," + piece
+                } else {
+                    steps.append(piece)
+                }
+            }
+            for key in steps where !key.isEmpty {
                 if key.hasPrefix("sleep:") {
                     try? await Task.sleep(for: .seconds(Double(key.dropFirst(6)) ?? 1))
                     continue
