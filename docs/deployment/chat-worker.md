@@ -890,3 +890,29 @@ asked for Claude Code; it will do this."; "delegate this" got a
 `run_coder` offer with no engine ("Codex will do this."); and "ask Claude
 what a monad is" stayed `general` with no offer. `--no-run` now reports
 this computer's readiness, so its offer is the one a run would take.
+
+TestFlight build 39 (1.0.0, archived from `846965af1c`, 2026-10-01 UTC)
+changes no worker release; it ships the phone side of releases
+`ff3a99aad6` (#10077) and `fac6e46861` (#10076). Each phone turn's
+`context` names the paired computer by its label (`computer: paired`),
+even while it is offline, so the chat does not ask to connect one. In a
+computer's chat opened on the phone, Run Coder (`thread.run`) starts on the
+engine the reply's `run_coder` offer names, and a Coder run started from a
+chat shows the person's message once with "Continued from the OpenAgents
+app" as its note. A Run Coder from the phone's own chat creates the task
+with the prompt only (`start_task_with_images`), so the computer does not
+learn the requested engine there; that start uses the computer's own
+order. #10075's chip sizing changes no phone surface: the phone draws its
+chips outside the transcript, and its transcript buttons are neither pills
+nor `intrinsic_width`. The mobile tests (154 passed), `openagents-chat-app`
+(136), and `openagents-chat` (59) pass. On a fresh iPhone 17 Pro simulator
+(iOS 26.5, deleted afterwards) build 39 launched and the changelog showed
+1.0.0 (39). With `--chat-script "do a test delegation to claude"` and no
+computer paired, the live chat worker answered "That needs a computer.
+Connect one and we'll dispatch Coder there with this conversation." with a
+**Connect a computer** chip drawn as before, no Gym test card, and no
+judge row; that reply does not name Claude Code. Engine starts on a paired
+computer, the start card's reason, and the handoff note were covered by
+the tests, not on the simulator. Build 39 was uploaded with `build.sh
+upload` at 2026-09-30T20:57:18-07:00 and is `VALID`, in Internal Testers
+(`IN_BETA_TESTING`).

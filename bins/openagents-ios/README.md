@@ -61,8 +61,9 @@ The app has four tabs, shown as icons:
   no computer the chip is **Connect a computer**. No Run Coder or Open Coder
   button stands above the field; a task a conversation started is in the
   previous chats. Each job also asks for the chat router (`router`) with a bounded
-  `context` (the surface, whether a computer is ready, and the build; no
-  computer's name). The router's offers show as the phone's own controls,
+  `context` (the surface, whether a computer is ready, the paired
+  computer's label even while it is offline, so the chat never asks to
+  connect one (#10077), and the build; never a workspace path). The router's offers show as the phone's own controls,
   acting only on a tap: Run Coder or **Connect a computer**, a screen
   (Wallet, Account > Computers, Identity keys, Playtest, Report a problem),
   or a read-only `openagents` command as a card with a **Run** button. A
@@ -343,13 +344,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `38` |
+| Marketing version and build | `1.0.0` / `39` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `38` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `39` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution
