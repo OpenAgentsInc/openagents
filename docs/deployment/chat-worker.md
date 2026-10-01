@@ -990,3 +990,36 @@ chat-answers-v1@8b7c39100770 with 70 answers`. `openagents chat --scratch
 `route-map-chat` scenario, asking as the desktop app, got
 `meta.map.desktop@1` with the `routes.map` offer, whose tap opened the Map
 page.
+
+Release `4887ff17b2` (2026-10-01 UTC,
+[#10090](https://github.com/OpenAgentsInc/openagents/issues/10090)) gives
+the chat every plugin in the Gym from the hosted runner's catalog
+(`deploy/eval-runner/catalog`): "Which plugins are in the Gym?" is
+grounded on the generated `openagents.plugin-list` note, "What plugins can
+I test?" gets the bank's `eval.run.choose` naming all six before Project
+map's test set, each plugin's note takes its summary from its
+`package.json`, and on the desktop "open the map" is the route map, not the
+Project map plugin. The route rubric moved the question set to
+`chat-router-v4@4438ef518b3d`; the bank is `chat-answers-v1@73f988d8ec5a`
+with 71 answers; `calibration-v2.json` was refit from the published run
+([measurement](../coder/measurements/2026-10-01-plugin-catalog-route.md)),
+and serving keeps calibration off. It was built with `cargo zigbuild` as
+above, installed as `/opt/coder-worker/releases/4887ff17b2` with the
+current `knowledge/openagents/` (65 files, no `._*` files; the worker logs
+64 entries) and `codebase-kb.gz` copied from `f04b34bad8`, checked with
+`--check` under the chat environment ("the configuration is safe to
+deploy"), and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file and unit did not change,
+`coder-worker.service` and `/opt/coder-worker/current` (`0757355c1d`) were
+not touched, and `f04b34bad8` stays in `releases/` for rollback. The log
+names `router chat-router-v4@4438ef518b3d (Live)`, `gym records: 6 tools,
+3 builds, 8 notes`. From a fresh key with the phone's context
+(`live_basic_coder_streams_a_reply`): "Which plugins are in the Gym?"
+listed all six with their package lines (grounded on `product.kb`);
+"What does the Dependency check plugin do?" was answered from our note
+(`openagents.tool-dependency-check@2`); "What plugins can I test?" named
+all six and offered Project map's test set with its card. With the
+desktop's context, "open the map" and "show me how you route things" got
+`meta.map.desktop@1` with **Open the map** (`routes.map`), and "test
+project map" got the Project map card and **Start the test**. The release
+gate's new `plugins-chat` scenario and `route-map-chat` passed against it.
