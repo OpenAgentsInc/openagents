@@ -1464,12 +1464,8 @@ impl Panel {
             && let Some(existing) = self.runs.get_mut(&chat)
             && existing.routes_followups()
         {
-            if let Some((ticket, request)) = existing.continue_with(&text) {
-                self.queued.push(Request::CoderRun {
-                    chat: chat.clone(),
-                    ticket,
-                    request,
-                });
+            // It goes at the run's next tick.
+            if existing.continue_with(&text) {
                 self.rows_dirty = true;
             }
             return;
@@ -4506,19 +4502,24 @@ mod start_setting_tests {
             panel
         };
         let mut handed = finished(openagents_chat::delegation::DISPATCH_ROUTE);
-        let requests = handed.take_requests();
-        assert!(
-            requests.iter().any(|request| matches!(
-                request,
-                Request::CoderRun {
-                    request: coder_run::Request::Continue { task: t, text },
-                    ..
-                } if *t == task && text == "now add a test"
-            )),
-            "{requests:?}"
+        let (_, _, request) = next_run(&mut handed);
+        assert_eq!(
+            request,
+            coder_run::Request::Continue {
+                task: task.clone(),
+                text: "now add a test".into()
+            }
         );
         let mut answered = finished("general");
-        assert!(answered.take_requests().is_empty());
+        let chat = "c".repeat(32);
+        let run = answered.runs.get_mut(&chat).unwrap();
+        let (_, request) = run
+            .tick(Instant::now() + std::time::Duration::from_secs(5))
+            .unwrap();
+        assert!(
+            !matches!(request, coder_run::Request::Continue { .. }),
+            "{request:?}"
+        );
         assert!(
             answered
                 .coder_run(&"c".repeat(32))

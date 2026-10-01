@@ -397,7 +397,7 @@ fn a_finished_run_routes_followups_and_continues_on_a_dispatch() {
         "Queue a message for Coder's next turn…"
     );
     assert!(working.result().is_none());
-    assert!(working.continue_with("now add a test").is_none());
+    assert!(!working.continue_with("now add a test"));
 
     let mut done = fed(whole, State::Ended);
     assert!(done.routes_followups());
@@ -407,7 +407,10 @@ fn a_finished_run_routes_followups_and_continues_on_a_dispatch() {
     assert_eq!(result.turn, 2);
     assert_eq!(result.engine.as_deref(), Some("claude"));
     assert!(result.summary.contains("I added test_slugs.py."));
-    let (_, request) = done.continue_with("now add a test").unwrap();
+    assert!(done.continue_with("now add a test"));
+    // One request at a time.
+    assert!(!done.continue_with("and another"));
+    let (_, request) = done.tick(Instant::now()).unwrap();
     assert_eq!(
         request,
         Request::Continue {
@@ -415,8 +418,6 @@ fn a_finished_run_routes_followups_and_continues_on_a_dispatch() {
             text: "now add a test".into()
         }
     );
-    // One request at a time.
-    assert!(done.continue_with("and another").is_none());
 }
 
 /// A turn the chat's router handed to Coder follows the chat's reply that

@@ -411,18 +411,27 @@ impl Run {
 
     /// Hand `text` to Coder as the next turn of this task, in the same
     /// worktree: the router judged a follow-up is more work for it
-    /// (#10094). `None` unless the turn has ended, or while another
-    /// request is on its way.
-    pub fn continue_with(&mut self, text: &str) -> Option<(u64, Request)> {
+    /// (#10094). The continue goes at the next [`Run::tick`]. `false`
+    /// unless the turn has ended and nothing else is due.
+    pub fn continue_with(&mut self, text: &str) -> bool {
         let text = text.trim();
-        if text.is_empty() || text.len() > MAX_MESSAGE || !self.routes_followups() {
-            return None;
+        if text.is_empty()
+            || text.len() > MAX_MESSAGE
+            || !self.routes_followups()
+            || self.due.is_some()
+            || self.busy()
+        {
+            return false;
         }
-        let task = self.task.clone()?;
-        self.request(Request::Continue {
+        let Some(task) = self.task.clone() else {
+            return false;
+        };
+        self.due = Some(Request::Continue {
             task,
             text: text.into(),
-        })
+        });
+        self.revision += 1;
+        true
     }
 
     /// The other way to send while Coder works: stop and send.

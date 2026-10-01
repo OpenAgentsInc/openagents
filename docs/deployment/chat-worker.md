@@ -1052,3 +1052,30 @@ on the simulator, and `plugin list` on a paired computer was covered by
 the tests, not on the simulator. Build 41 was uploaded with `build.sh
 upload` at 2026-10-01T01:06:03-07:00 and is `VALID`, in Internal Testers
 (`IN_BETA_TESTING`).
+
+Release `9afc94bd92` (2026-10-01 UTC,
+[#10094](https://github.com/OpenAgentsInc/openagents/issues/10094)) makes a
+follow-up after a Coder run the router's: a turn whose `context.coder_run`
+says the chat's run ended gives its summary, files, and commands to the
+chat model's instructions and puts only a fixed line that it ended before
+the latest message for Jev, so "summarize what happened" is answered in
+chat and "now add a test" is a dispatch that continues the same task. The
+rubric moved the question set to `chat-router-v4@1d266532e7d0`; the bank is
+`chat-answers-v1@43063f287db6` with 71 answers (`meta.privacy@3`);
+`calibration-v2.json` was refit from the published run
+([measurement](../coder/measurements/2026-10-01-coder-followup-route.md)),
+and serving keeps calibration off. It was built with `cargo zigbuild` as
+above, installed as `/opt/coder-worker/releases/9afc94bd92` with the
+current `knowledge/openagents/` (65 files, no `._*` files; the worker logs
+64 entries) and `codebase-kb.gz` copied from `4887ff17b2`, checked with
+`--check` under the chat environment ("the configuration is safe to
+deploy"), and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file and unit did not change,
+`coder-worker.service` and `/opt/coder-worker/current` (`0757355c1d`) were
+not touched, and `4887ff17b2` stays in `releases/` for rollback. The log
+names `router chat-router-v4@1d266532e7d0 (Live)`. Against it, the release
+gate's `delegate-now`, `followup-chat` ("summarize what happened" answered
+on `general` from the run's result, no new Coder turn), `followup-coder`
+("now also list the top-level files in a note" continued the same task as
+turn 2 and finished, the message above its card), and `delegate-claude`
+passed with real engines, debug builds (`--bin-dir`).
