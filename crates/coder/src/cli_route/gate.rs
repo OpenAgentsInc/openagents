@@ -68,6 +68,34 @@ mod tests {
         }
     }
 
+    /// The phone's read-only table in every build up to TestFlight 40,
+    /// before #10087 (`crates/openagents-chat/src/router.rs` `READ_ONLY`
+    /// at d8f7c3db4f). Those phones set aside any card not in it.
+    const SHIPPED_PHONE_READ_ONLY: &[(&str, &[&str])] = &[
+        ("computer", &["list", "show", "workspaces"]),
+        ("verse", &["who", "quests", "board", "xp"]),
+        ("kb", &["search"]),
+        ("cap", &["list"]),
+        ("prg", &["list"]),
+        ("ext", &["list"]),
+        ("session", &["list"]),
+    ];
+
+    /// Every phone command goes out as argv a shipped phone accepts
+    /// (#10089): `plugin list` is offered as `ext list`.
+    #[test]
+    fn every_phone_command_goes_out_as_a_shipped_phone_accepts() {
+        for path in PHONE_COMMANDS {
+            let argv = crate::cli_route::tree::wire_argv(&words(path));
+            assert!(
+                SHIPPED_PHONE_READ_ONLY
+                    .iter()
+                    .any(|(group, leaves)| argv[0] == *group && leaves.contains(&argv[1].as_str())),
+                "{path} goes out as {argv:?}"
+            );
+        }
+    }
+
     #[test]
     fn no_surface_offers_money_or_secrets() {
         for leaf in bundled().leaves() {

@@ -75,6 +75,44 @@ mod word {
     }
 }
 
+/// Each renamed command's words in the tree and the older words a
+/// proposal's argv carries on the wire, longest first. `plugin` was `ext`
+/// and `plugin test` was `ext eval` until #10087: phones up to TestFlight
+/// 40 accept only `ext list` as a read-only card, and an older
+/// `openagents` on a connected computer knows only `ext`, while every
+/// `openagents` since keeps `ext` and `eval` as aliases. So the tree, its
+/// labels, and the descent say `plugin`, and the offer runs `ext` (#10089).
+pub const WIRE_NAMES: &[(&[&str], &[&str])] = &[
+    (&["plugin", "test"], &["ext", "eval"]),
+    (&["plugin"], &["ext"]),
+];
+
+/// `argv` (group first) with its leading words renamed by the first
+/// [`WIRE_NAMES`] pair that matches: to the wire's names, or back.
+fn renamed(argv: &[String], to_wire: bool) -> Vec<String> {
+    for &(tree, wire) in WIRE_NAMES {
+        let (from, to) = if to_wire { (tree, wire) } else { (wire, tree) };
+        if argv.len() >= from.len() && argv.iter().zip(from).all(|(word, name)| word == name) {
+            let mut out: Vec<String> = to.iter().map(|word| (*word).to_string()).collect();
+            out.extend(argv[from.len()..].iter().cloned());
+            return out;
+        }
+    }
+    argv.to_vec()
+}
+
+/// `argv` (group first) under the names the wire carries.
+#[must_use]
+pub fn wire_argv(argv: &[String]) -> Vec<String> {
+    renamed(argv, true)
+}
+
+/// `argv` (group first) under the tree's names.
+#[must_use]
+pub fn tree_argv(argv: &[String]) -> Vec<String> {
+    renamed(argv, false)
+}
+
 /// A command's effect and place, declared by the module that owns its
 /// `USAGE`. `path` is the command's words after the group, space-joined
 /// (`"list"`, `"channel open"`, `"control move"`), or empty for a group
@@ -516,6 +554,33 @@ Options: --store DIR.";
                 .iter()
                 .any(|e| e.contains("`xp` has no help registered"))
         );
+    }
+
+    #[test]
+    fn a_renamed_command_goes_out_under_its_older_name() {
+        let words = |text: &str| text.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        for (tree, wire) in [
+            ("plugin list --limit 5", "ext list --limit 5"),
+            ("plugin test run DIR --trust", "ext eval run DIR --trust"),
+            ("plugin defaults show", "ext defaults show"),
+            ("computer list", "computer list"),
+        ] {
+            assert_eq!(wire_argv(&words(tree)), words(wire), "{tree}");
+            assert_eq!(tree_argv(&words(wire)), words(tree), "{wire}");
+        }
+        // Only the leading command words are names.
+        assert_eq!(
+            wire_argv(&words("plugin list --type test")),
+            words("ext list --type test")
+        );
+        for (tree, wire) in WIRE_NAMES {
+            let tree: Vec<String> = tree.iter().map(|w| (*w).to_string()).collect();
+            assert!(bundled().node(&tree).is_some(), "{tree:?} is in the tree");
+            assert!(
+                bundled().group(wire[0]).is_none(),
+                "{wire:?} is only a wire name"
+            );
+        }
     }
 
     #[test]

@@ -249,8 +249,10 @@ impl Outcome {
     }
 }
 
-/// The command words of `argv` (group and subcommands), without values.
+/// The command words of `argv` (group and subcommands), without values,
+/// by the tree's names.
 fn command_words(argv: &[String]) -> Vec<String> {
+    let argv = tree::tree_argv(argv);
     let Some(first) = argv.first() else {
         return Vec::new();
     };
@@ -456,6 +458,8 @@ impl CommandRoute {
             });
         }
         let runs_on = gate::runs_on(leaf, ask.surface);
+        // Offered under the names every phone and computer knows.
+        let argv = tree::wire_argv(&argv);
         Ok(Outcome::Proposal {
             execution: execution(&argv, runs_on),
             argv,

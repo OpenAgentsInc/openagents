@@ -383,6 +383,9 @@ pub enum RunsOn {
 /// The `openagents` commands the phone chat may propose: read-only ones
 /// only (the owner's decision for the phone), as `(group, subcommands)`.
 /// Anything else, whatever the offer's `effect` says, is set aside.
+/// `ext` is the older name of `plugin`: the worker sends `ext list`, which
+/// every phone and every `openagents` knows, and a phone accepts either
+/// (#10089).
 pub const READ_ONLY: &[(&str, &[&str])] = &[
     ("computer", &["list", "show", "workspaces"]),
     ("verse", &["who", "quests", "board", "xp"]),
@@ -390,6 +393,7 @@ pub const READ_ONLY: &[(&str, &[&str])] = &[
     ("cap", &["list"]),
     ("prg", &["list"]),
     ("plugin", &["list"]),
+    ("ext", &["list"]),
     ("session", &["list"]),
 ];
 
@@ -996,7 +1000,9 @@ mod tests {
 
     /// The phone's read-only list is the owner's list the worker's CLI
     /// route offers from (`coder::cli_route::gate::PHONE_COMMANDS`), which
-    /// this crate cannot depend on: read it from its source.
+    /// this crate cannot depend on: read it from its source. It also takes
+    /// `ext list`, the wire name the worker sends for `plugin list`
+    /// (`coder::cli_route::tree::WIRE_NAMES`).
     #[test]
     fn the_read_only_list_matches_the_worker_phone_list() {
         let gate = include_str!("../../coder/src/cli_route/gate.rs");
@@ -1013,6 +1019,7 @@ mod tests {
                     .map(str::to_owned)
             })
             .collect();
+        worker.push("ext list".to_string());
         worker.sort();
         let mut phone: Vec<String> = READ_ONLY
             .iter()
@@ -1021,6 +1028,24 @@ mod tests {
         phone.sort();
         assert!(!worker.is_empty());
         assert_eq!(phone, worker);
+    }
+
+    /// A plugin listing card is accepted under either name (#10089).
+    #[test]
+    fn a_plugin_listing_is_read_only_under_either_name() {
+        let words = |text: &str| text.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        assert!(read_only(&words("ext list")));
+        assert!(read_only(&words("ext list --limit 5")));
+        assert!(read_only(&words("plugin list")));
+        assert!(!read_only(&words("ext eval run DIR")));
+        assert!(!read_only(&words("plugin test run DIR")));
+        for argv in [words("ext list"), words("plugin list")] {
+            let offer = Offer::Cli {
+                argv,
+                runs_on: RunsOn::ConnectedComputer,
+            };
+            assert_eq!(Offer::parse(&offer.wire()), Some(offer));
+        }
     }
 
     #[test]

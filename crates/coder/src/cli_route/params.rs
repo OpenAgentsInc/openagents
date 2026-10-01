@@ -553,7 +553,8 @@ fn check_form(form: &Form, group: &Node, words: &[String]) -> Result<(), String>
     Ok(())
 }
 
-/// Check `argv` (group first) against every form of `leaf`, with the
+/// Check `argv` (group first, under the tree's names or the wire's,
+/// [`super::tree::WIRE_NAMES`]) against every form of `leaf`, with the
 /// command's own argument parser: the words match, every required
 /// positional and option is present, nothing unknown is given, counts are
 /// numbers, and enum values are ones the usage lists.
@@ -562,6 +563,7 @@ fn check_form(form: &Form, group: &Node, words: &[String]) -> Result<(), String>
 ///
 /// The first form's refusal when no form accepts it.
 pub fn validate(leaf: &Leaf, group: &Node, argv: &[String]) -> Result<(), String> {
+    let argv = super::tree::tree_argv(argv);
     let Some((first, words)) = argv.split_first() else {
         return Err("the command is empty".to_string());
     };
@@ -671,6 +673,18 @@ mod tests {
         let (exec, _) = leaf("computer exec");
         assert!(validate(exec, computer, &argv_of("computer exec box -- ls -la")).is_ok());
         assert!(validate(exec, computer, &argv_of("computer exec box")).is_err());
+    }
+
+    /// A renamed command validates under its wire names too (#10089).
+    #[test]
+    fn validates_a_renamed_command_under_either_name() {
+        let (list, plugin) = leaf("plugin list");
+        assert!(validate(list, plugin, &argv_of("plugin list --limit 5")).is_ok());
+        assert!(validate(list, plugin, &argv_of("ext list --limit 5")).is_ok());
+        assert!(validate(list, plugin, &argv_of("cap list")).is_err());
+        let (run, _) = leaf("plugin test run");
+        assert!(validate(run, plugin, &argv_of("ext eval run DIR --trust")).is_ok());
+        assert!(validate(run, plugin, &argv_of("plugin test run DIR --trust")).is_ok());
     }
 
     #[test]

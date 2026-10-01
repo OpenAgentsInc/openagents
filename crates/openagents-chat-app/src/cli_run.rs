@@ -222,12 +222,16 @@ mod tests {
                 "{argv}"
             );
         }
-        assert_eq!(
-            target(&words("verse who"), None, None),
-            Err(CliOutcome::Refused(
-                "Connect a computer to run this.".into()
-            ))
-        );
+        // A plugin listing runs under either name (#10089).
+        for argv in ["verse who", "ext list", "plugin list"] {
+            assert_eq!(
+                target(&words(argv), None, None),
+                Err(CliOutcome::Refused(
+                    "Connect a computer to run this.".into()
+                )),
+                "{argv}"
+            );
+        }
     }
 
     #[test]

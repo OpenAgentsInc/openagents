@@ -135,6 +135,24 @@ pub struct Score {
 #[must_use]
 pub fn score(tree: &CommandTree, row: &Row, outcome: &Outcome) -> Score {
     let mut score = Score::default();
+    // A proposal's argv carries wire names (`ext`); the labels use the
+    // tree's (`plugin`).
+    let outcome = &match outcome {
+        Outcome::Proposal {
+            argv,
+            effect,
+            runs_on,
+            execution,
+            trail,
+        } => Outcome::Proposal {
+            argv: super::tree::tree_argv(argv),
+            effect: *effect,
+            runs_on: *runs_on,
+            execution: execution.clone(),
+            trail: trail.clone(),
+        },
+        other => other.clone(),
+    };
     if let Outcome::Proposal { argv, effect, .. } = outcome {
         let path = longest_path(tree, argv);
         if let (Some(leaf), Some(group)) = (tree.leaf(&path), tree.group(&argv[0])) {
@@ -329,5 +347,13 @@ mod tests {
         assert!(money.forbidden);
         let ok = score(tree, none, &Outcome::NoCommand { trail: Vec::new() });
         assert!(ok.correct);
+        // A plugin listing goes out as `ext list`; the label says `plugin`.
+        let plugins = set
+            .rows
+            .iter()
+            .find(|row| row.command == ["plugin", "list"] && row.surface == "phone")
+            .unwrap();
+        let wire = score(tree, plugins, &proposal(&["ext", "list"], Effect::ReadOnly));
+        assert!(wire.valid && wire.correct && !wire.off_list);
     }
 }

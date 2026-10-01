@@ -183,6 +183,49 @@ async fn a_phone_listing_runs_on_the_phone() {
     assert!(matches!(outcome.answer(), CliAnswer::Proposal(_)));
 }
 
+/// "list my plugins" on the phone is offered as `ext list`, the argv every
+/// shipped phone and every `openagents` accepts, though the tree and the
+/// descent say `plugin` (#10089).
+#[tokio::test]
+async fn a_phone_plugin_listing_goes_out_as_ext_list() {
+    let (jev, seen) = judge(vec![sure(descend::LEVEL_QUESTION, "list")]);
+    let route = CommandRoute::new(jev, Arc::new(NoFill));
+    let outcome = route
+        .outcome(&ask("plugin", "list my plugins", Surface::Phone))
+        .await
+        .unwrap();
+    let Outcome::Proposal {
+        argv,
+        effect,
+        runs_on,
+        execution,
+        ..
+    } = &outcome
+    else {
+        panic!("{outcome:?}");
+    };
+    assert_eq!(argv, &words("ext list"));
+    assert_eq!(*effect, Effect::ReadOnly);
+    assert_eq!(*runs_on, RunsOn::ConnectedComputer);
+    assert_eq!(
+        execution,
+        &Some(Execution::Computer {
+            command: words("openagents --json ext list")
+        })
+    );
+    let CliAnswer::Proposal(proposal) = outcome.answer() else {
+        panic!("{outcome:?}");
+    };
+    assert_eq!(proposal.argv, words("ext list"));
+    // The evidence and the descent use the tree's names.
+    assert_eq!(outcome.evidence()["command"], json!(["plugin", "list"]));
+    let sent = seen.lock().unwrap();
+    let options = sent[0]["questions"][descend::LEVEL_QUESTION]["criteria"]
+        .as_object()
+        .unwrap();
+    assert!(options.contains_key("list") && options.contains_key("test"));
+}
+
 #[tokio::test]
 async fn free_text_is_written_by_the_model_and_checked() {
     let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "search")]);
