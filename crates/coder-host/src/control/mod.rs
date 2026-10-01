@@ -300,6 +300,7 @@ fn answer(shared: &Shared, op: Op) -> Reply {
         }
         Op::TaskHistory { query } => tasks::history(shared, query),
         Op::Status {} => status(shared),
+        Op::TailnetStatus {} => tailnet_status(shared),
         Op::InviteCreate {} => invite(shared),
         Op::InviteCancel { invitation } => {
             match shared
@@ -593,6 +594,32 @@ fn status(shared: &Shared) -> Reply {
             |r| r.version.clone(),
         ),
     })
+}
+
+/// Tailnet admission as this process started it (#10125).
+fn tailnet_status(shared: &Shared) -> Reply {
+    let tailnet = shared
+        .tailnet
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    match tailnet {
+        Some(crate::serve::Tailnet::On { address, chats }) => Reply::Tailnet {
+            address: Some(address.to_string()),
+            chats,
+            off: None,
+        },
+        Some(crate::serve::Tailnet::Off { reason }) => Reply::Tailnet {
+            address: None,
+            chats: false,
+            off: Some(reason),
+        },
+        None => Reply::Tailnet {
+            address: None,
+            chats: false,
+            off: None,
+        },
+    }
 }
 
 /// The rights a connect code carries: [`Rights::pairing`], every right an

@@ -111,6 +111,10 @@ pub enum Op {
     ChatMigrate { home: String },
     /// The host's identity, reachability, and counts.
     Status {},
+    /// Whether tailnet admission serves, and where (#10125). A separate
+    /// operation, so a client older than it reads `status` unchanged; a
+    /// host older than it refuses it as `malformed`.
+    TailnetStatus {},
     /// Create a host invitation and its `openagents-connect:` code. A QR
     /// pairing grants every right an owner's phone uses: `observe`,
     /// `operate`, `terminal`, `review`, `access_read`, and `access_admin`.
@@ -200,6 +204,14 @@ pub enum Reply {
         present: u32,
     },
     Status(Status),
+    /// Tailnet admission (#10125): `address` is the tailnet `IP:PORT` it
+    /// serves on; `off` says why it is not serving although configured.
+    /// Neither is set when the host has no tailnet admission configured.
+    Tailnet {
+        address: Option<String>,
+        chats: bool,
+        off: Option<String>,
+    },
     /// `code` is the `openagents-connect:` text. It carries a bearer
     /// capability: show it only in the code window.
     Invite {

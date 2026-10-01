@@ -112,6 +112,11 @@ pub struct Chats {
 pub struct Settings {
     /// The host's access store.
     pub state: PathBuf,
+    /// Where the host key lives when another program keeps it, such as the
+    /// desktop app's keychain (`serve --keychain` or `--keys DIR`): the same
+    /// source the serving host signs with (#10125). `None` reads the store's
+    /// own key file.
+    pub keys: Option<crate::serve::keys::Keys>,
     pub policy: RelayPolicy,
     /// The relay invitations name: the host's primary relay.
     pub relay: String,
@@ -121,6 +126,24 @@ pub struct Settings {
     pub port: u16,
     pub tailscale: PathBuf,
     pub chats: Option<Chats>,
+}
+
+#[cfg(feature = "host")]
+impl Settings {
+    /// The host's access store with its key from where the serving host
+    /// keeps it, so an invitation issued here names and is signed by the
+    /// same host key a device redeems it with.
+    #[must_use]
+    pub fn access(&self) -> coder_access::host::Host {
+        match &self.keys {
+            Some(keys) => coder_access::host::Host::with_keys(
+                &self.state,
+                self.policy,
+                Arc::new(crate::serve::keys::HostKey(keys.0.clone())),
+            ),
+            None => coder_access::host::Host::new(&self.state, self.policy),
+        }
+    }
 }
 
 #[cfg(feature = "host")]
@@ -281,10 +304,21 @@ pub fn is_tailnet(ip: IpAddr) -> bool {
 #[cfg(feature = "host")]
 /// Bind the admission listener on this machine's tailnet address and serve
 /// it until the process stops. With chats, also serve read-only history.
+/// `serving` is the host key the running host signs with: admission starts
+/// only when its access store reads that same key, so no invitation names
+/// another identity.
 ///
 /// # Errors
-/// Reports a missing Tailscale, or a listener that cannot bind.
-pub async fn start(settings: Settings) -> Result<SocketAddr> {
+/// Reports a missing Tailscale, a host key that cannot be read or is not
+/// `serving`, or a listener that cannot bind.
+pub async fn start(settings: Settings, serving: &str) -> Result<SocketAddr> {
+    let access = settings.access();
+    let host_key = retry_busy(|| access.public_key())?;
+    if host_key != serving {
+        return Err(Error::Config(
+            "the access store's host key is not the serving host's".into(),
+        ));
+    }
     let me = me(&settings.tailscale).await?;
     let listener = TcpListener::bind(listen_address(&me, settings.port)?)
         .await
@@ -320,12 +354,12 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
             }
         });
     }
-    let host_key = coder_access::host::Host::new(&settings.state, settings.policy).public_key()?;
     let observer = settings.chats.as_ref().map(|chats| {
         Arc::new(coder_connect::host::Host::new(&chats.observer, settings.policy).coder_only())
     });
     let shared = Arc::new(Shared {
         settings,
+        access,
         me,
         host: host_key,
         observer,
@@ -359,8 +393,15 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
                     return;
                 }
                 let _ = tokio::time::timeout(EXCHANGE_LIMIT, async {
-                    let reply =
-                        answer(&line, peer.ip(), &shared.settings, &shared.me, &shared.host).await;
+                    let reply = answer(
+                        &line,
+                        peer.ip(),
+                        &shared.settings,
+                        &shared.access,
+                        &shared.me,
+                        &shared.host,
+                    )
+                    .await;
                     let mut bytes = serde_json::to_vec(&reply).unwrap_or_default();
                     bytes.push(b'\n');
                     write.write_all(&bytes).await?;
@@ -401,6 +442,8 @@ const OWNER_FOR: Duration = Duration::from_secs(10 * 60);
 #[cfg(feature = "host")]
 struct Shared {
     settings: Settings,
+    /// The access store, holding the host key once read.
+    access: coder_access::host::Host,
     me: Me,
     host: String,
     observer: Option<Arc<coder_connect::host::Host>>,
@@ -517,7 +560,14 @@ fn refusal(owner: &Owner, me: &Me) -> Option<String> {
 }
 
 #[cfg(feature = "host")]
-async fn answer(line: &[u8], peer: IpAddr, settings: &Settings, me: &Me, host: &str) -> Admission {
+async fn answer(
+    line: &[u8],
+    peer: IpAddr,
+    settings: &Settings,
+    access: &coder_access::host::Host,
+    me: &Me,
+    host: &str,
+) -> Admission {
     let mut reply = Admission {
         v: REPLY.into(),
         host: host.into(),
@@ -553,7 +603,6 @@ async fn answer(line: &[u8], peer: IpAddr, settings: &Settings, me: &Me, host: &
     let Ok(now) = crate::unix_time() else {
         return refuse(reply, "unavailable");
     };
-    let access = coder_access::host::Host::new(&settings.state, settings.policy);
     let invitation = retry_busy(|| {
         access.invite(
             &settings.relay,
@@ -673,6 +722,60 @@ mod tests {
         assert!(parse_whois(&tagged).unwrap().tagged);
     }
 
+    /// #10125: a host whose key another program keeps (`serve --keychain`
+    /// or `--keys DIR`) has no key file in its access store. Admission
+    /// reads the key from the same source the host signs with, issues
+    /// invitations under that key, and starts only when it is the serving
+    /// host's key.
+    #[tokio::test]
+    async fn admission_uses_the_serving_hosts_key_source() {
+        use crate::serve::keys::{FileKeySource, HostKey, Keys, owner};
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("coder-access");
+        let source: Arc<dyn crate::serve::keys::KeySource> =
+            Arc::new(FileKeySource::new(dir.path().join("keys")));
+        let serving = coder_access::host::Host::with_keys(
+            &state,
+            RelayPolicy::Production,
+            Arc::new(HostKey(source.clone())),
+        );
+        coder_access::host::ensure_parent(&state).unwrap();
+        let owner_key = coder_reach::pubkey(&owner(source.as_ref()).unwrap());
+        let host_key = serving.init(&owner_key).unwrap();
+        // The store's own key file is absent: the old read failed here.
+        assert!(
+            coder_access::host::Host::new(&state, RelayPolicy::Production)
+                .public_key()
+                .is_err()
+        );
+        let mut settings = Settings {
+            state,
+            keys: Some(Keys(source)),
+            policy: RelayPolicy::Production,
+            relay: "wss://relay.example".into(),
+            rights: Rights::standard(),
+            grant_secs: 3600,
+            port: 0,
+            tailscale: PathBuf::from("/nonexistent/tailscale"),
+            chats: None,
+        };
+        let access = settings.access();
+        assert_eq!(access.public_key().unwrap(), host_key);
+        let now = crate::unix_time().unwrap();
+        access
+            .invite(&settings.relay, Rights::standard(), now, now + 3600)
+            .unwrap();
+        // Another serving key: refused before Tailscale is asked.
+        let other = start(settings.clone(), &"0".repeat(64)).await.unwrap_err();
+        assert!(other.to_string().contains("serving host"), "{other}");
+        // The serving key: past the key check, to the missing Tailscale.
+        let missing = start(settings.clone(), &host_key).await.unwrap_err();
+        assert!(!missing.to_string().contains("serving host"), "{missing}");
+        // Without the key source the store cannot name its key at all.
+        settings.keys = None;
+        assert!(start(settings, &host_key).await.is_err());
+    }
+
     #[test]
     fn the_listener_binds_only_a_tailnet_address() {
         let me = |ip: &str| Me {
@@ -707,6 +810,7 @@ mod tests {
         let shared = Shared {
             settings: Settings {
                 state: PathBuf::from("/nonexistent"),
+                keys: None,
                 policy: RelayPolicy::Production,
                 relay: "wss://relay.example".into(),
                 rights: Rights::standard(),
@@ -718,6 +822,7 @@ mod tests {
             },
             me,
             host: "hostkey".into(),
+            access: coder_access::host::Host::new("/nonexistent", RelayPolicy::Production),
             observer: None,
             owners: std::sync::Mutex::default(),
         };
@@ -741,6 +846,7 @@ mod tests {
     async fn refuses_malformed_and_non_tailnet_callers_before_whois() {
         let settings = Settings {
             state: PathBuf::from("/nonexistent"),
+            keys: None,
             policy: RelayPolicy::Production,
             relay: "wss://relay.example".into(),
             rights: Rights::standard(),
@@ -759,6 +865,7 @@ mod tests {
             b"{}",
             "100.64.0.2".parse().unwrap(),
             &settings,
+            &settings.access(),
             &me,
             "hostkey",
         )
@@ -769,6 +876,7 @@ mod tests {
             &line,
             "192.168.1.2".parse().unwrap(),
             &settings,
+            &settings.access(),
             &me,
             "hostkey",
         )
@@ -779,6 +887,7 @@ mod tests {
             &line,
             "100.64.0.2".parse().unwrap(),
             &settings,
+            &settings.access(),
             &me,
             "hostkey",
         )

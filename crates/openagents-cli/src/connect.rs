@@ -306,10 +306,34 @@ async fn status(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
     let Reply::Status(status) = host.call(Op::Status {}).await? else {
         return Err(failed("the host answered another question"));
     };
-    let value = serde_json::to_value(&status).unwrap_or(Value::Null);
+    // Tailnet admission (#10125); a host older than it refuses the
+    // question, and the status reads as before.
+    let tailnet = match host.call(Op::TailnetStatus {}).await {
+        Ok(Reply::Tailnet {
+            address,
+            chats,
+            off,
+        }) => Some((address, chats, off)),
+        _ => None,
+    };
+    let mut value = serde_json::to_value(&status).unwrap_or(Value::Null);
+    let tailnet_line = match &tailnet {
+        Some((Some(address), chats, _)) => {
+            value["tailnet"] = json!({"address": address, "chats": chats});
+            format!(
+                "\ntailnet {address}{}",
+                if *chats { " with chats" } else { "" }
+            )
+        }
+        Some((None, _, Some(off))) => {
+            value["tailnet"] = json!({"off": off});
+            format!("\ntailnet off: {off}")
+        }
+        _ => String::new(),
+    };
     output.emit(&value, |_| {
         format!(
-            "{}\n{}\nhost {}\nendpoint {}\nphones {}\nopen codes {}",
+            "{}\n{}\nhost {}\nendpoint {}\nphones {}\nopen codes {}{tailnet_line}",
             if status.label.is_empty() {
                 "This computer"
             } else {

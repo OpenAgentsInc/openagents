@@ -18,6 +18,7 @@ fn every_op() -> Vec<Op> {
             task: "11".repeat(32),
         },
         Op::Status {},
+        Op::TailnetStatus {},
         Op::InviteCreate {},
         Op::InviteCancel {
             invitation: "11".repeat(32),
@@ -154,6 +155,16 @@ fn replies_round_trip() {
             code: "openagents-connect:AQ".into(),
             expires_at: 1_800_000_300,
             rights: vec!["observe".into(), "operate".into()],
+        },
+        Reply::Tailnet {
+            address: Some("100.64.0.9:47109".into()),
+            chats: true,
+            off: None,
+        },
+        Reply::Tailnet {
+            address: None,
+            chats: false,
+            off: Some("tailscale is not running".into()),
         },
         Reply::Cancelled { count: 2 },
         Reply::Devices {

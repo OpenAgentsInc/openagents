@@ -246,6 +246,29 @@ async fn the_socket_is_private_and_serves_only_this_user() {
     assert_eq!(status.endpoint.len(), 64);
     assert_eq!(status.label, "Studio Mac");
     assert_eq!(status.devices, 0);
+    // Tailnet admission (#10125): none configured, then as the serving
+    // program records it.
+    let tailnet = || async { call(&host.socket, Op::TailnetStatus {}).await.unwrap() };
+    assert_eq!(
+        tailnet().await,
+        Reply::Tailnet {
+            address: None,
+            chats: false,
+            off: None
+        }
+    );
+    host.running.set_tailnet(coder_host::serve::Tailnet::On {
+        address: "100.64.0.9:47109".parse().unwrap(),
+        chats: true,
+    });
+    assert_eq!(
+        tailnet().await,
+        Reply::Tailnet {
+            address: Some("100.64.0.9:47109".into()),
+            chats: true,
+            off: None
+        }
+    );
     // A second host cannot take a live socket.
     let bound =
         coder_host::control::socket::bind(&host.socket, coder_host::control::own_uid()).await;

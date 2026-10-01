@@ -92,6 +92,18 @@ pub(crate) struct Shared {
     /// presence loop; empty until the first reading, and always where the
     /// serving program lists none.
     pub(crate) engines: std::sync::Mutex<Vec<String>>,
+    /// Tailnet admission as the control socket's `tailnet_status` reports
+    /// it (#10125): `None` until the serving program says.
+    pub(crate) tailnet: std::sync::Mutex<Option<Tailnet>>,
+}
+
+/// Tailnet admission's state, as the serving program started it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Tailnet {
+    /// Serving on this tailnet address.
+    On { address: SocketAddr, chats: bool },
+    /// Configured, but it could not start.
+    Off { reason: String },
 }
 
 /// A running host.
@@ -200,6 +212,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         grants_changed: tokio::sync::Notify::new(),
         restart: tokio::sync::watch::channel(false).0,
         engines: std::sync::Mutex::new(Vec::new()),
+        tailnet: std::sync::Mutex::new(None),
     });
 
     let (ready, relay_ready) = tokio::sync::oneshot::channel();
@@ -304,6 +317,15 @@ impl Running {
             .iroh
             .get()
             .map(|iroh| iroh.endpoint.local_addr())
+    }
+
+    /// Record whether tailnet admission serves, for `tailnet_status`.
+    pub fn set_tailnet(&self, tailnet: Tailnet) {
+        *self
+            .shared
+            .tailnet
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tailnet);
     }
 
     /// The control socket's path, when the host serves one.

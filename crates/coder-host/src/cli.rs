@@ -634,6 +634,8 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     let admission = match &tailnet {
         Some(setting) => Some(crate::tailnet::Settings {
             state: state.clone(),
+            // The key source the serving host signs with (#10125).
+            keys: connect.keys.clone(),
             policy,
             relay: relays
                 .first()
@@ -727,12 +729,20 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     }
     if let Some(admission) = admission {
         let chats = admission.chats.is_some();
-        match crate::tailnet::start(admission).await {
-            Ok(address) => eprintln!(
-                "coder host: tailnet admission on {address}{}",
-                if chats { " with chats" } else { "" }
-            ),
-            Err(error) => eprintln!("coder host: tailnet admission is off: {error}"),
+        match crate::tailnet::start(admission, running.host_key()).await {
+            Ok(address) => {
+                eprintln!(
+                    "coder host: tailnet admission on {address}{}",
+                    if chats { " with chats" } else { "" }
+                );
+                running.set_tailnet(crate::serve::Tailnet::On { address, chats });
+            }
+            Err(error) => {
+                eprintln!("coder host: tailnet admission is off: {error}");
+                running.set_tailnet(crate::serve::Tailnet::Off {
+                    reason: error.to_string(),
+                });
+            }
         }
     }
     let restart = tokio::select! {
