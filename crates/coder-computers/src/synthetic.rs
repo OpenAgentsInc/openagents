@@ -135,6 +135,10 @@ pub struct Synthetic {
     pub queues: BTreeMap<String, (Option<String>, Vec<QueueItem>)>,
     /// Hosts this device nudged, in order.
     pub nudged: Vec<String>,
+    /// Image bytes each host holds, by digest, as `artifact.put` left them.
+    pub artifacts: BTreeMap<(String, String), Vec<u8>>,
+    /// The images each created task named, by task, with their bytes.
+    pub task_images: BTreeMap<String, Vec<(coder_access::media::ImageRef, Vec<u8>)>>,
 }
 
 impl Synthetic {
@@ -325,6 +329,8 @@ impl Synthetic {
             calls: Vec::new(),
             queues: BTreeMap::new(),
             nudged: Vec::new(),
+            artifacts: BTreeMap::new(),
+            task_images: BTreeMap::new(),
         }
     }
 
@@ -632,6 +638,32 @@ impl ComputersService for Synthetic {
         }
         Ok(())
     }
+    /// Keep a chunk as a host does: in order, and checked against its
+    /// digest once whole.
+    fn put_artifact(
+        &mut self,
+        host: &str,
+        put: &coder_access::media::ArtifactPut,
+    ) -> Result<coder_access::media::ArtifactState> {
+        self.calls
+            .push(format!("put_artifact {host} {} {}", put.digest, put.offset));
+        self.host(host)?;
+        let chunk = put.bytes()?;
+        let held = self
+            .artifacts
+            .entry((host.to_owned(), put.digest.clone()))
+            .or_default();
+        if put.offset == held.len() as u64 {
+            held.extend(chunk);
+        }
+        let received = held.len() as u64;
+        let complete = received == put.size && coder_access::media::digest(held) == put.digest;
+        Ok(coder_access::media::ArtifactState {
+            digest: put.digest.clone(),
+            received,
+            complete,
+        })
+    }
     fn create_task(&mut self, host: &str, task: &TaskCreate) -> Result<String> {
         // Record the workspace and title, never the prompt.
         self.calls.push(format!(
@@ -646,8 +678,20 @@ impl ComputersService for Synthetic {
         {
             return Err(Error::new(Code::Forbidden, "unknown synthetic workspace"));
         }
+        let mut images = Vec::new();
+        for image in &task.images {
+            let bytes = self
+                .artifacts
+                .get(&(host.to_owned(), image.digest.clone()))
+                .filter(|bytes| coder_access::media::digest(bytes) == image.digest)
+                .ok_or_else(|| Error::new(Code::Conflict, "the host holds no such image"))?;
+            images.push((image.clone(), bytes.clone()));
+        }
         self.tasks += 1;
         let subject = format!("{:064x}", 0x7a5c_0000_u64 + self.tasks);
+        if !images.is_empty() {
+            self.task_images.insert(subject.clone(), images);
+        }
         self.summarize(host, &subject, 1, Phase::Queued, &task.title)?;
         Ok(subject)
     }

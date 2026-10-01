@@ -693,6 +693,7 @@ mod tests {
             stages,
             Ok(jev()),
             "fixture-session",
+            &[],
         )
         .await
         .unwrap()
@@ -894,9 +895,16 @@ mod tests {
         admitted.model = "claude-opus-5-5-medium".into();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
             vec![Stage::Agent(AgentEngine::Devin, admitted, agent)];
-        let task = run_stages(host, store.clone(), stages, Ok(jev()), "fixture-session")
-            .await
-            .unwrap();
+        let task = run_stages(
+            host,
+            store.clone(),
+            stages,
+            Ok(jev()),
+            "fixture-session",
+            &[],
+        )
+        .await
+        .unwrap();
         let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
         assert_ne!(result.exit_code, Some(0));
         // No prompt was sent.

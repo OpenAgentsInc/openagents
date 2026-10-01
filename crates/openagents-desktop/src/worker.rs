@@ -492,6 +492,7 @@ impl CoderLane {
                 title,
                 prompt,
                 mut dirs,
+                images,
             } => {
                 let store = self.local().store().to_path_buf();
                 if let Ok(last) = std::fs::read_to_string(last_project(&store)) {
@@ -518,8 +519,11 @@ impl CoderLane {
                             // A chat that asks Coder to work a GitHub issue
                             // runs the issue flow (#10049); Jev chooses the
                             // issue among the references the chat names.
-                            if let Some(reference) =
-                                coder::task::issue_run::asked_blocking(&prompt, "", path)
+                            // The issue flow takes text only; a start that
+                            // carries images is an ordinary task with them.
+                            if images.is_empty()
+                                && let Some(reference) =
+                                    coder::task::issue_run::asked_blocking(&prompt, "", path)
                             {
                                 let record = start_issue(&store, path, reference, chat)?;
                                 let _ = std::fs::write(last_project(&store), &record.checkout);
@@ -529,7 +533,13 @@ impl CoderLane {
                                     checkout: record.checkout,
                                 });
                             }
-                            let record = self.local().start(path, &title, &prompt, Some(chat))?;
+                            let record = self.local().start_with_images(
+                                path,
+                                &title,
+                                &prompt,
+                                Some(chat),
+                                &images,
+                            )?;
                             let _ = std::fs::write(last_project(&store), &record.checkout);
                             return Ok(Answer::Started {
                                 task: record.task,
@@ -1066,6 +1076,7 @@ mod tests {
             title: "t".into(),
             prompt: "add a test".into(),
             dirs: vec![empty.display().to_string()],
+            images: vec![],
         }) else {
             panic!("a folder that is not a checkout asks for one")
         };
@@ -1074,6 +1085,7 @@ mod tests {
             title: "add a test".into(),
             prompt: "add a test".into(),
             dirs: vec![empty.display().to_string(), top.display().to_string()],
+            images: vec![],
         }) else {
             panic!("start")
         };
@@ -1113,6 +1125,7 @@ mod tests {
             title: "again".into(),
             prompt: "again".into(),
             dirs: vec![],
+            images: vec![],
         }) else {
             panic!("start in the last project")
         };
@@ -1219,6 +1232,7 @@ mod tests {
             title: "t".into(),
             prompt: "add a test".into(),
             dirs: vec![slugs.display().to_string()],
+            images: vec![],
         }) else {
             panic!("a checkout outside the project folders asks for one")
         };
@@ -1232,6 +1246,7 @@ mod tests {
             title: "add a test".into(),
             prompt: "add a test".into(),
             dirs: vec![parser.display().to_string()],
+            images: vec![],
         }) else {
             panic!("start in a project folder")
         };

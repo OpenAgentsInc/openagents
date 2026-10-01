@@ -335,6 +335,7 @@ fn provided(
                 model: state.model.clone(),
                 effort: Some(CODEX_EFFORT.to_string()),
                 cache_key: session.to_string(),
+                images: Vec::new(),
             })))
         }
         Provider::Claude => microcoder_loop::claude::ClaudeGenerator::from_env(&state.model, None)

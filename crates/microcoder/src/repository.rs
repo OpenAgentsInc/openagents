@@ -728,6 +728,53 @@ pub async fn execute(
         .await
         .map_err(|error| error.to_string())
         .map_err(unstarted(StartCause::Admission))?;
+    // The person's attached images, read back and checked against the
+    // digests the admitted intent names. Codex and Claude Code take them
+    // natively; a whole-agent route (Devin, OpenCode, Grok Build) is left
+    // out, and a task no image-capable route can serve is refused.
+    let images = match host.images() {
+        Ok(images) => images
+            .into_iter()
+            .map(|(reference, bytes)| crate::images::InputImage {
+                media_type: reference.media_type,
+                bytes: std::sync::Arc::new(bytes),
+            })
+            .collect::<Vec<_>>(),
+        Err(error) => {
+            return refuse_images(
+                host,
+                format!("Coder couldn't read the attached images: {error}"),
+            );
+        }
+    };
+    let (stages, unavailable) = if images.is_empty() {
+        (stages, unavailable)
+    } else {
+        let mut unavailable = unavailable;
+        let kept = image_stages(stages, &mut unavailable);
+        if kept.is_empty() {
+            return refuse_images(
+                host,
+                "This computer's Coder routes can't take images. Use Codex or Claude Code for a task with images.".into(),
+            );
+        }
+        let _ = host.append(
+            &Step::said(
+                Source::System,
+                "The person's attached images go with each step's message.",
+            )
+            .noting(
+                "images",
+                json!(
+                    images
+                        .iter()
+                        .map(crate::images::InputImage::record)
+                        .collect::<Vec<_>>()
+                ),
+            ),
+        );
+        (kept, unavailable)
+    };
     if !unavailable.is_empty() {
         let _ = host.append(
             &Step::said(
@@ -777,8 +824,42 @@ pub async fn execute(
         stages,
         judge.map(|judge| judge.client),
         &session,
+        &images,
     )
     .await
+    .map_err(|error| Failure::run(error.to_string()))
+}
+
+/// The stages that can take images, in order: the model loops (Codex and
+/// Claude Code take images natively). Each whole-agent route is left out,
+/// and `unavailable` says why.
+fn image_stages<T>(stages: Vec<Stage<T>>, unavailable: &mut Vec<Value>) -> Vec<Stage<T>> {
+    let mut kept = Vec::new();
+    for stage in stages {
+        match stage {
+            Stage::Agent(engine, route, _) => unavailable.push(json!({"route":route,
+                "unavailable":format!("{} can't take images.", engine.name())})),
+            stage => kept.push(stage),
+        }
+    }
+    kept
+}
+
+/// End an admitted task whose images no admitted route can take, or whose
+/// images cannot be read, before any model call: the reason is the task's
+/// fault and its transcript says it.
+fn refuse_images(host: Host, reason: String) -> Result<task::Task, Failure> {
+    let _ = host.append(
+        &Step::said(Source::System, &reason).noting("images_refused", json!({"reason":reason})),
+    );
+    host.fail(reason.clone());
+    let configuration = host.configuration().clone();
+    host.finish(
+        "cancelled_or_host_refusal",
+        false,
+        json!({"configuration":configuration,"refusal":reason,"independent_checks":"not_run",
+            "billing":"none","automatic_crash_resume":false}),
+    )
     .map_err(|error| Failure::run(error.to_string()))
 }
 
@@ -832,6 +913,7 @@ async fn run_stages<T: codex_transport::Transport>(
     stages: Vec<Stage<T>>,
     client: Result<jev::Client, String>,
     session: &str,
+    images: &[crate::images::InputImage],
 ) -> Result<task::Task, task::Error> {
     let count = stages.len();
     let mut refusals: Vec<Refusal> = Vec::new();
@@ -839,9 +921,15 @@ async fn run_stages<T: codex_transport::Transport>(
         let last = index + 1 == count;
         match stage {
             Stage::Loop(clients) => {
-                let (state, outcome) =
-                    native::run_stage(&host, book.clone(), clients, client.clone(), session)
-                        .await?;
+                let (state, outcome) = native::run_stage(
+                    &host,
+                    book.clone(),
+                    clients,
+                    client.clone(),
+                    session,
+                    images,
+                )
+                .await?;
                 if matches!(outcome.ending, Ending::NoCapacity { .. }) && !last && !host.cancelled()
                 {
                     continue;

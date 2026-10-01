@@ -187,6 +187,7 @@ fn run() -> Result<Value, String> {
                 adapter: task::adapter::NAME.into(),
                 model: Some(model.clone()),
             },
+            images: Vec::new(),
         };
         let task_id = format!("repository-{name}");
         let store = root.join(format!("{name}-tasks"));

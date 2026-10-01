@@ -17,6 +17,8 @@ mod scenario;
 struct Memory {
     tasks: Mutex<BTreeMap<String, scenario::TaskView>>,
     applied: Mutex<BTreeMap<String, TaskRef>>,
+    /// Image bytes each device sent, by digest.
+    uploads: Mutex<BTreeMap<(String, String), Vec<u8>>>,
 }
 
 impl Memory {
@@ -36,9 +38,21 @@ impl Memory {
 }
 
 impl Tasks for Memory {
-    fn create(&self, key: &str, _: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
+    fn create(&self, key: &str, device: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
         if task.workspace != "checkout" {
             return Err(Code::Forbidden);
+        }
+        let mut images = Vec::new();
+        for image in &task.images {
+            let bytes = self
+                .uploads
+                .lock()
+                .unwrap()
+                .get(&(device.to_owned(), image.digest.clone()))
+                .filter(|bytes| coder_host::access::media::digest(bytes) == image.digest)
+                .cloned()
+                .ok_or(Code::Conflict)?;
+            images.push((image.digest.clone(), bytes));
         }
         self.once(key, |tasks| {
             tasks.insert(
@@ -49,6 +63,7 @@ impl Tasks for Memory {
                     prompt: task.prompt.clone(),
                     status: "queued".into(),
                     started: false,
+                    images,
                 },
             );
             Ok(TaskRef {
@@ -56,6 +71,28 @@ impl Tasks for Memory {
                 revision: 1,
                 phase: Phase::Queued,
             })
+        })
+    }
+
+    /// Keep chunks in order for each device, as a durable owner does.
+    fn put_artifact(
+        &self,
+        device: &str,
+        put: &coder_host::access::media::ArtifactPut,
+    ) -> Result<coder_host::access::media::ArtifactState, Code> {
+        let chunk = put.bytes().map_err(|_| Code::Malformed)?;
+        let mut uploads = self.uploads.lock().unwrap();
+        let held = uploads
+            .entry((device.to_owned(), put.digest.clone()))
+            .or_default();
+        if put.offset == held.len() as u64 {
+            held.extend(chunk);
+        }
+        Ok(coder_host::access::media::ArtifactState {
+            digest: put.digest.clone(),
+            received: held.len() as u64,
+            complete: held.len() as u64 == put.size
+                && coder_host::access::media::digest(held) == put.digest,
         })
     }
 

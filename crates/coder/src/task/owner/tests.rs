@@ -55,6 +55,7 @@ fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
                     adapter: "bounded-command".into(),
                     model: None,
                 },
+                images: Vec::new(),
             },
         },
     };

@@ -204,6 +204,21 @@ pub trait Tasks: Send + Sync {
         Err(Code::Unsupported)
     }
 
+    /// Keep one chunk of an image `device` will name in `task.create`
+    /// (`artifact.put`, [`coder_access::media`]), for that device only,
+    /// and answer what is held. The default refuses as `unsupported`, so a
+    /// host whose task owner keeps no images refuses before any task.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn put_artifact(
+        &self,
+        _device: &str,
+        _put: &coder_access::media::ArtifactPut,
+    ) -> Result<coder_access::media::ArtifactState, Code> {
+        Err(Code::Unsupported)
+    }
+
     /// Record and evaluate a durable task command. The device's command ID
     /// is its idempotency key across NIP-HOST requests: a replay returns
     /// the recorded disposition and never runs the command twice. The

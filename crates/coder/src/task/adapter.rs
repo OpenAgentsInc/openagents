@@ -839,6 +839,24 @@ impl Host {
         &self.admission.context.prompt
     }
 
+    /// The images the person attached to this task, as its admitted intent
+    /// names them, each read back from the task store and checked against
+    /// its digest and type ([`super::media::load`]).
+    ///
+    /// # Errors
+    /// An image is missing or its bytes differ.
+    pub fn images(&self) -> Result<Vec<(coder_host::access::media::ImageRef, Vec<u8>)>, Error> {
+        self.task
+            .intent
+            .images
+            .iter()
+            .map(|reference| {
+                super::media::load(&self.owner.dir, &self.task.task_id, reference)
+                    .map(|bytes| (reference.clone(), bytes))
+            })
+            .collect()
+    }
+
     /// The task's earlier turns that ran, oldest first, as this turn's
     /// trace carries them.
     pub fn earlier(&self) -> &[EarlierTurn] {

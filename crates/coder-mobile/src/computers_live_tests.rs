@@ -317,6 +317,7 @@ fn the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_h
                 title: "Fix the flaky parser test".into(),
                 prompt: "Find why the parser test fails one run in ten.".into(),
                 workspace: "checkout".into(),
+                images: Vec::new(),
             },
         }))
         .unwrap()
@@ -482,6 +483,7 @@ fn serve_a_host_for_a_device_run() {
                     title: "Device run task".into(),
                     prompt: "Created by the fixture for the activity screen.".into(),
                     workspace: "checkout".into(),
+                    images: Vec::new(),
                 },
             }))
             .unwrap();

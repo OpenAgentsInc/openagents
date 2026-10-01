@@ -15,6 +15,7 @@ name = "coder-access"
 required-features = ["host"]
 
 [dependencies]
+base64 = "0.22"
 coder-connect = { path = "../coder-connect", default-features = false }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }

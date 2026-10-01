@@ -24,7 +24,8 @@
 //! [`xpnet`] publishes quests and awards and derives the XP ledger (NIP-XP).
 
 pub use microcoder_loop::{
-    MODEL, STRONG_MODEL, capacity, claude, door, env, failover, gate, models, run, state, vertex,
+    MODEL, STRONG_MODEL, capacity, claude, door, env, failover, gate, images, models, run, state,
+    vertex,
 };
 
 pub mod kbinput;

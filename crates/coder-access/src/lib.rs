@@ -10,6 +10,7 @@ pub mod cj;
 pub mod client;
 #[cfg(feature = "host")]
 pub mod host;
+pub mod media;
 pub mod protocol;
 pub mod review;
 pub mod rights;

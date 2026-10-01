@@ -1568,6 +1568,7 @@ dependencies = [
 name = "coder-access"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "coder-connect",
  "futures-util",
  "nostr",
@@ -5967,6 +5968,7 @@ version = "0.1.0"
 dependencies = [
  "acp-client",
  "atif",
+ "base64 0.22.1",
  "coder",
  "coder-boundary",
  "coder-history",
@@ -5999,6 +6001,7 @@ version = "0.1.0"
 dependencies = [
  "acp-client",
  "atif",
+ "base64 0.22.1",
  "coder-boundary",
  "codex-transport",
  "jev",

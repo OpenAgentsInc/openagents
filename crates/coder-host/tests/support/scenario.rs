@@ -63,6 +63,8 @@ pub struct TaskView {
     pub status: String,
     /// Whether the owner started anything for it.
     pub started: bool,
+    /// The images the task holds, by digest, with the bytes the owner kept.
+    pub images: Vec<(String, Vec<u8>)>,
 }
 
 pub type Inspect = Box<dyn Fn(&str) -> Option<TaskView> + Send>;
@@ -480,6 +482,7 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
         title: "Fix the flaky parser test".into(),
         prompt: "Find why the parser test fails one run in ten.".into(),
         workspace: "checkout".into(),
+        images: Vec::new(),
     };
     let Outcome::Dispatched { receipt } = direct
         .call(Operation::CreateTask {
@@ -501,6 +504,7 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
             prompt: create.prompt.clone(),
             status: "queued".into(),
             started: false,
+            images: Vec::new(),
         }
     );
     let summary = eventually("the queued summary", || async {
@@ -541,6 +545,9 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
         .await;
     let fallback = link_owner.link();
     assert_eq!(fallback.route(), &Route::Relay(relay.clone()));
+
+    step("send a screenshot through the relay and create a task naming it");
+    send_screenshot(&fallback, &inspect).await;
     // The direct attachment ended with its transport; the terminal did not.
     let second = attached(
         &terminal(
@@ -795,4 +802,77 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     running.shutdown().await;
     assert!(!temp.path().join("host/runtime").exists());
     step("done");
+}
+
+/// A screenshot reaches the task owner as its exact bytes, chunk by chunk,
+/// through the relay binding's message bound; a task names it by digest.
+async fn send_screenshot(link: &Link, inspect: &Inspect) {
+    use coder_host::access::media::{self, ArtifactState, Upload};
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.extend((0..100_000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8));
+    let upload = Upload::new("Settings layout.png", Arc::new(bytes.clone())).unwrap();
+    let mut last = None;
+    for chunk in upload.chunks(0) {
+        let answered = link
+            .call(Operation::PutArtifact {
+                artifact: chunk.clone(),
+            })
+            .await
+            .unwrap();
+        let Outcome::Artifact { artifact } = answered else {
+            panic!("artifact.put answered another outcome")
+        };
+        // An exact retry after a lost reply answers the same.
+        let again = link
+            .call(Operation::PutArtifact { artifact: chunk })
+            .await
+            .unwrap();
+        assert_eq!(
+            again,
+            Outcome::Artifact {
+                artifact: artifact.clone()
+            }
+        );
+        last = Some(artifact);
+    }
+    let ArtifactState {
+        complete, received, ..
+    } = last.unwrap();
+    assert!(complete);
+    assert_eq!(received, bytes.len() as u64);
+    let create = TaskCreate {
+        title: "Fix the settings layout".into(),
+        prompt: "Fix the layout in this screenshot.".into(),
+        workspace: "checkout".into(),
+        images: vec![upload.reference.clone()],
+    };
+    let Outcome::Dispatched { receipt } = link
+        .call(Operation::CreateTask { task: create })
+        .await
+        .unwrap()
+    else {
+        panic!("task.create answered another outcome")
+    };
+    let view = inspect(&receipt.reference).unwrap();
+    assert_eq!(
+        view.images,
+        vec![(upload.reference.digest.clone(), bytes.clone())]
+    );
+    assert_eq!(media::digest(&view.images[0].1), upload.reference.digest);
+    // A task naming an image this device never sent is refused, and so is
+    // a chunk that is not PNG or JPEG.
+    let mut other = upload.reference.clone();
+    other.digest = media::digest(b"never sent");
+    let refused = link
+        .call(Operation::CreateTask {
+            task: TaskCreate {
+                title: "Another".into(),
+                prompt: "Another".into(),
+                workspace: "checkout".into(),
+                images: vec![other],
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(access_code(refused), Code::Conflict);
 }

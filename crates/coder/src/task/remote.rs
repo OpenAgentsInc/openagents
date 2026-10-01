@@ -102,6 +102,16 @@ impl Tasks for Inbox {
             .workspaces
             .get(&task.workspace)
             .ok_or(Code::Forbidden)?;
+        // Images bind before the task exists: each must be one this device
+        // sent complete (`artifact.put`), or one a retry of this request
+        // already bound. The task's intent then names exactly those bytes.
+        coder_host::access::media::validate_all(&task.images).map_err(|_| Code::Malformed)?;
+        for image in &task.images {
+            super::media::adopt(&self.store, device, key, image).map_err(|error| match error {
+                Error::NotFound => Code::Conflict,
+                other => refusal(other),
+            })?;
+        }
         // Under the owner's policy the task records the engine's model, which
         // its grant must name; otherwise no model, as always.
         let model = self
@@ -125,6 +135,7 @@ impl Tasks for Inbox {
                         adapter: super::adapter::NAME.into(),
                         model,
                     },
+                    images: task.images.clone(),
                 },
             },
         };
@@ -169,6 +180,18 @@ impl Tasks for Inbox {
                 prompt: prompt.into(),
                 reason: "Steered by an enrolled device".into(),
             },
+        })
+    }
+
+    /// Keep an image chunk for `device` in this task store's uploads.
+    fn put_artifact(
+        &self,
+        device: &str,
+        put: &coder_host::access::media::ArtifactPut,
+    ) -> Result<coder_host::access::media::ArtifactState, Code> {
+        super::media::put(&self.store, device, put).map_err(|error| match error {
+            Error::Corrupt(_) => Code::Conflict,
+            other => refusal(other),
         })
     }
 
@@ -582,6 +605,7 @@ mod tests {
             title: "Fix the flaky test".into(),
             prompt: "Find why the test fails one run in ten.".into(),
             workspace: "checkout".into(),
+            images: Vec::new(),
         }
     }
 

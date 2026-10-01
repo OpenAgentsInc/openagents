@@ -402,6 +402,7 @@ async fn go(options: Options) -> Result<u8, String> {
                 model: actual_model,
                 effort: options.effort.clone(),
                 cache_key: session,
+                images: Vec::new(),
             }),
             recipient,
         ))

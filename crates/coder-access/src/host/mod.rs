@@ -131,6 +131,16 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::review::Publication, Code> {
         Err(Code::Unsupported)
     }
+    /// Keep one chunk of an image for `device`, which holds `operate`
+    /// (`artifact.put`), and answer what the host holds of that image. A
+    /// host without a task owner keeps no images.
+    fn put_artifact(
+        &mut self,
+        _device: &str,
+        _put: &crate::media::ArtifactPut,
+    ) -> std::result::Result<crate::media::ArtifactState, Code> {
+        Err(Code::Unsupported)
+    }
 }
 /// Where the host keeps agent spend requests (phase 1 agent spending). The
 /// host has checked the sender's `operate` right, and for `spend.list` that
@@ -662,7 +672,7 @@ impl Host {
                     {
                         // Authority was rechecked above; the retained bytes are current.
                         return Ok(reply.clone());
-                    } else if request.op.reads_only() {
+                    } else if !request.op.retains_reply() {
                         // A read changes nothing, so its reply is not
                         // retained: a thread polled while its reply streams
                         // would otherwise fill the store with pages.
@@ -884,6 +894,19 @@ impl Host {
                     Err(code) => Err(Error::new(code, "the host refused the publication")),
                 }
             }
+            Operation::PutArtifact { artifact } => match dispatch.put_artifact(&p.key, artifact) {
+                Ok(state) => {
+                    let outcome = Outcome::Artifact { artifact: state };
+                    match outcome.validate() {
+                        Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                        _ => Err(Error::new(
+                            Code::Unavailable,
+                            "the host's image state is invalid",
+                        )),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host did not keep the image")),
+            },
             Operation::SettleSpend { receipt } => {
                 match dispatch.spends().map(|s| s.settle(&p.key, receipt, now)) {
                     Some(Ok(recorded)) => {

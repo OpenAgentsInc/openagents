@@ -570,6 +570,40 @@ impl Local {
         prompt: &str,
         thread: Option<&str>,
     ) -> Result<Record, String> {
+        self.start_full(dir, base, title, prompt, thread, &[])
+    }
+
+    /// [`Local::start`] with the images a chat on this computer attached:
+    /// their exact bytes are kept with the task ([`super::media`]) and the
+    /// task's intent names them, so the run's grant admits exactly those
+    /// bytes and the engine reads them back checked. A run whose first
+    /// route cannot take images is refused before anything is saved.
+    ///
+    /// # Errors
+    /// As [`Local::start`], or an image is not a PNG or JPEG within its
+    /// bounds, or the first route cannot take images.
+    pub fn start_with_images(
+        &self,
+        dir: &Path,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+        images: &[super::media::wire::Upload],
+    ) -> Result<Record, String> {
+        self.start_full(dir, None, title, prompt, thread, images)
+    }
+
+    fn start_full(
+        &self,
+        dir: &Path,
+        base: Option<&str>,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+        images: &[super::media::wire::Upload],
+    ) -> Result<Record, String> {
+        let references: Vec<_> = images.iter().map(|image| image.reference.clone()).collect();
+        super::media::wire::validate_all(&references).map_err(|error| error.message)?;
         let mut checkout = self.project(dir)?;
         if let Some(base) = base {
             let commit = git_out(
@@ -589,6 +623,18 @@ impl Local {
             now,
             nonce()
         ));
+        // Codex and Claude Code take images natively; the whole-agent
+        // routes do not, and a run never silently drops an attached image.
+        if !images.is_empty() && !matches!(order[0].provider, Provider::Codex | Provider::Claude) {
+            return Err(format!(
+                "{} can't take images. Use Codex or Claude Code for a task with images, or remove the images.",
+                settings::provider_name(order[0].provider)
+            ));
+        }
+        for image in images {
+            super::media::save(&self.store, &task, &image.reference, &image.bytes)
+                .map_err(|error| format!("Coder could not keep the attached image: {error}"))?;
+        }
         let worktree = self.worktree(&checkout, &task)?;
         let model = order[0].model.clone();
         let intent = TaskIntent {
@@ -602,6 +648,7 @@ impl Local {
                 adapter: adapter::NAME.into(),
                 model: Some(model),
             },
+            images: references,
         };
         let command = Command {
             schema: COMMAND_SCHEMA.into(),
@@ -1710,6 +1757,53 @@ mod tests {
             first.changed_at = 0;
             assert_eq!(policy, first);
         }
+    }
+
+    /// A chat's images start a run here as exact bytes bound to the task's
+    /// intent; a first route that cannot take images refuses before
+    /// anything is saved, and the caller keeps its draft.
+    #[test]
+    fn attached_images_are_kept_with_the_task_and_named_by_its_intent() {
+        use super::super::media::wire::Upload;
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend((0..40_000u32).map(|i| (i % 253) as u8));
+        let upload = Upload::new("Layout.png", std::sync::Arc::new(png.clone())).unwrap();
+        let run = local(dir.path(), both).with_launcher(Box::new(Held));
+        let record = run
+            .start_with_images(
+                &top,
+                "Fix the layout",
+                "Fix the layout in this screenshot.",
+                None,
+                std::slice::from_ref(&upload),
+            )
+            .unwrap();
+        let task = Store::open(run.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+        assert_eq!(task.intent.images, vec![upload.reference.clone()]);
+        let kept = super::super::media::load(run.store(), &record.task, &upload.reference).unwrap();
+        assert_eq!(kept, png);
+
+        let agents = settings::Coder {
+            providers: vec!["opencode:anthropic/claude-sonnet-5".parse().unwrap()],
+            ..settings::Coder::default()
+        };
+        let refused = local(dir.path(), both)
+            .with_settings(agents)
+            .with_launcher(Box::new(Held));
+        let before = Store::open(refused.store()).unwrap().list().unwrap().len();
+        let why = refused
+            .start_with_images(&top, "t", "p", None, std::slice::from_ref(&upload))
+            .unwrap_err();
+        assert!(why.starts_with("OpenCode can't take images."), "{why}");
+        assert_eq!(
+            Store::open(refused.store()).unwrap().list().unwrap().len(),
+            before
+        );
     }
 
     /// `coder.providers` decides which providers may run and in what

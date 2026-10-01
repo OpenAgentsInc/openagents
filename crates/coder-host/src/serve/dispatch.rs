@@ -99,6 +99,15 @@ impl Dispatch for Dispatcher {
         Some(&mut self.spends)
     }
 
+    /// One image chunk, kept by the task owner for this device only.
+    fn put_artifact(
+        &mut self,
+        device: &str,
+        put: &coder_access::media::ArtifactPut,
+    ) -> Result<coder_access::media::ArtifactState, Code> {
+        self.shared.tasks.clone().put_artifact(device, put)
+    }
+
     /// The configured workspace labels. The roots they name stay on the host.
     fn workspaces(&mut self) -> Result<Vec<String>, Code> {
         Ok(self.shared.config.workspaces.keys().cloned().collect())

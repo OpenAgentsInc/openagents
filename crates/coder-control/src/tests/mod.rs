@@ -73,6 +73,7 @@ impl Fixture {
                         adapter: "bounded-command".into(),
                         model: None,
                     },
+                    images: Vec::new(),
                 },
             },
         };

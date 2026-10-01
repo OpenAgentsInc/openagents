@@ -175,6 +175,12 @@ impl Session {
         {
             return None;
         }
+        // The host's handoff starts Coder from the conversation's text; it
+        // carries no images, so it never drops the draft's silently.
+        if let Some(reason) = self.images.hosted_send_refusal(&chat) {
+            self.error = Some(reason.into());
+            return None;
+        }
         self.error = None;
         Some(self.request(Command::RunCoder { chat }))
     }

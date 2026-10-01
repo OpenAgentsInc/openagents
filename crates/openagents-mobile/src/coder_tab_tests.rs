@@ -2749,3 +2749,229 @@ fn a_computer_that_reviews_nothing_shows_no_change_card() {
     fixture.coder.flush(Some(&mut fixture.computers));
     assert!(node(&fixture.render(), "coder-changes").is_none());
 }
+
+/// What [`Imaging`] does with a start, and what reached the computer.
+#[derive(Default)]
+struct Delivery {
+    /// The computer refuses the task.
+    refuse: bool,
+    /// The computer takes the task but its answer never arrives.
+    lose_answer: bool,
+    /// Image chunks sent.
+    chunks: usize,
+    /// Each accepted task's images, with the bytes the computer holds.
+    created: Vec<Vec<(coder_host::access::media::ImageRef, Vec<u8>)>>,
+}
+
+/// The fixture's hosts, keeping image chunks as a host does, with a start
+/// the test can refuse or whose answer it can lose.
+struct Imaging {
+    inner: Synthetic,
+    delivery: std::sync::Arc<std::sync::Mutex<Delivery>>,
+}
+
+impl ComputersService for Imaging {
+    fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
+        self.inner.snapshot()
+    }
+    fn refresh_workspaces(&mut self, host: &str) -> Answer<()> {
+        self.inner.refresh_workspaces(host)
+    }
+    fn put_artifact(
+        &mut self,
+        host: &str,
+        put: &coder_host::access::media::ArtifactPut,
+    ) -> Answer<coder_host::access::media::ArtifactState> {
+        self.delivery.lock().unwrap().chunks += 1;
+        self.inner.put_artifact(host, put)
+    }
+    fn create_task(&mut self, host: &str, task: &coder_host::TaskCreate) -> Answer<String> {
+        let mut delivery = self.delivery.lock().unwrap();
+        if delivery.refuse {
+            return Err(coder_host::access::Error::new(
+                coder_host::Code::Unsupported,
+                "this computer keeps no images",
+            ));
+        }
+        let id = self.inner.create_task(host, task)?;
+        if delivery.lose_answer {
+            return Err(coder_host::access::Error::new(
+                coder_host::Code::Transport,
+                "the answer was lost",
+            ));
+        }
+        delivery
+            .created
+            .push(self.inner.task_images.get(&id).cloned().unwrap_or_default());
+        Ok(id)
+    }
+    fn nudge_host(&mut self, host: &str) -> Answer<()> {
+        self.inner.nudge_host(host)
+    }
+    fn set_enabled(&mut self, host: &str, enabled: bool) -> Answer<()> {
+        self.inner.set_enabled(host, enabled)
+    }
+    fn retry_now(&mut self, host: &str) -> Answer<()> {
+        self.inner.retry_now(host)
+    }
+    fn forget(&mut self, host: &str) -> Answer<()> {
+        self.inner.forget(host)
+    }
+    fn redeem_invitation(&mut self, invitation: &str) -> Answer<String> {
+        self.inner.redeem_invitation(invitation)
+    }
+    fn approve_enrollment(
+        &mut self,
+        host: &str,
+        enrollment: &str,
+        code: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<()> {
+        self.inner
+            .approve_enrollment(host, enrollment, code, rights, grant_expires_at)
+    }
+    fn deny_enrollment(&mut self, host: &str, enrollment: &str) -> Answer<()> {
+        self.inner.deny_enrollment(host, enrollment)
+    }
+    fn connect_ssh(&mut self, destination: &str) -> Answer<()> {
+        self.inner.connect_ssh(destination)
+    }
+    fn run_without_local_host(&mut self) -> Answer<()> {
+        self.inner.run_without_local_host()
+    }
+    fn refresh_devices(&mut self, host: &str) -> Answer<()> {
+        self.inner.refresh_devices(host)
+    }
+    fn create_invitation(
+        &mut self,
+        host: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<coder_computers::CreatedInvitation> {
+        self.inner.create_invitation(host, rights, grant_expires_at)
+    }
+    fn cancel_invitation(&mut self, host: &str, invitation: &str) -> Answer<()> {
+        self.inner.cancel_invitation(host, invitation)
+    }
+    fn revoke(&mut self, host: &str, device: &str) -> Answer<()> {
+        self.inner.revoke(host, device)
+    }
+    fn complete_first_run(&mut self) -> Answer<()> {
+        self.inner.complete_first_run()
+    }
+}
+
+fn image_surfaces(view: &Value) -> usize {
+    nodes(view)
+        .into_iter()
+        .filter(|node| {
+            node["element"]["kind"] == "surface"
+                && node["element"]["props"]["resource"]
+                    .as_str()
+                    .is_some_and(|resource| resource.starts_with("image:"))
+        })
+        .count()
+}
+
+/// Run Coder carries the conversation's attached screenshot to the
+/// computer as its exact bytes. A computer that refuses the task, or whose
+/// answer is lost, leaves the draft's images where they were; the hosted
+/// conversation still refuses them.
+#[test]
+fn run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost() {
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery::default()));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.say("Fix the layout of my settings page");
+    hand.judge(crate::basic_coder::Lane::Computer);
+    hand.say("That needs a computer.", true);
+    let pixels: Vec<u8> = (0..64u32 * 48 * 4).map(|i| (i % 251) as u8).collect();
+    let image = openagents_chat_app::attachments::Image::pixels(64, 48, pixels).unwrap();
+    let bytes = image.bytes.as_ref().clone();
+    fixture.coder.attach_image("Settings.png", bytes.clone());
+    let chat = fixture.render();
+    assert_eq!(image_surfaces(&chat), 1);
+    // The hosted conversation still takes text only.
+    let token = composer_of(&chat)["token"].as_str().unwrap().to_owned();
+    let asked = hand.asked().len();
+    fixture
+        .coder
+        .submit(&token, "And the header", None, &mut fixture.chats);
+    assert_eq!(hand.asked().len(), asked);
+    assert!(
+        texts(&fixture.render())
+            .iter()
+            .any(|t| t.contains("text only"))
+    );
+
+    // A computer that refuses: no task, and the draft keeps its image.
+    delivery.lock().unwrap().refuse = true;
+    let chat = fixture.tap("coder-run");
+    assert!(fixture.coder.open_task().is_none());
+    assert_eq!(image_surfaces(&chat), 1);
+    assert!(
+        texts(&chat)
+            .iter()
+            .any(|t| t.contains("couldn't accept this")),
+        "{:?}",
+        texts(&chat)
+    );
+
+    // An answer that never arrives: the draft keeps its image too.
+    {
+        let mut delivery = delivery.lock().unwrap();
+        delivery.refuse = false;
+        delivery.lose_answer = true;
+    }
+    let chat = fixture.tap("coder-run");
+    assert!(fixture.coder.open_task().is_none());
+    assert_eq!(image_surfaces(&chat), 1);
+
+    // Accepted: the computer holds the exact bytes, and the draft lets go.
+    delivery.lock().unwrap().lose_answer = false;
+    fixture.tap("coder-run");
+    assert!(fixture.coder.open_task().is_some());
+    let delivery = delivery.lock().unwrap();
+    assert!(delivery.chunks >= 1);
+    let [images] = delivery.created.as_slice() else {
+        panic!("one task with images")
+    };
+    let [(reference, held)] = images.as_slice() else {
+        panic!("one image")
+    };
+    assert_eq!(held, &bytes);
+    assert_eq!(reference.media_type, "image/png");
+    assert_eq!(reference.digest, coder_host::access::media::digest(&bytes));
+    // The lost answer's task is still on the computer: a retry after a lost
+    // answer starts a second task until the client keeps its submissions
+    // (G05). The draft let its images go only on the accepted start.
+    assert_eq!(delivery.created.len(), 1);
+}
+
+/// An image that isn't PNG or JPEG, or is too large, is refused before
+/// anything is sent.
+#[test]
+fn unsupported_and_oversized_images_are_refused_before_send() {
+    let mut drafts = openagents_chat_app::attachments::Drafts::default();
+    let mut image = openagents_chat_app::attachments::Image::pixels(1, 1, vec![0; 4]).unwrap();
+    image.bytes = std::sync::Arc::new(b"GIF89a not a png".to_vec());
+    drafts.add("talk:a", image.clone()).unwrap();
+    assert!(
+        drafts
+            .uploads("talk:a")
+            .unwrap_err()
+            .contains("PNG or JPEG")
+    );
+    let mut drafts = openagents_chat_app::attachments::Drafts::default();
+    let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
+    big.resize(openagents_chat_app::attachments::MAX_IMAGE_BYTES + 1, 0);
+    image.bytes = std::sync::Arc::new(big);
+    drafts.add("talk:b", image).unwrap();
+    assert!(drafts.uploads("talk:b").unwrap_err().contains("8 MiB"));
+    assert_eq!(drafts.get("talk:b").len(), 1);
+}

@@ -595,6 +595,7 @@ fn dispatch(
                     .option("workspace")
                     .ok_or("--workspace LABEL is required")?
                     .to_owned(),
+                images: Vec::new(),
             };
             connected(live, host, args)?;
             let id = live.create_task(host, &task).map_err(|e| e.to_string())?;

@@ -201,6 +201,7 @@ fn ended_task(dir: &Path) {
                     adapter: "microcoder-repository".into(),
                     model: Some("gpt-6-luna".into()),
                 },
+                images: Vec::new(),
             },
         },
     };

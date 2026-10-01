@@ -101,6 +101,8 @@ pub struct ClaudeGenerator {
     pub bypass_permissions: bool,
     /// A process started ahead of its prompt ([`ClaudeGenerator::warm`]).
     warm: std::sync::Mutex<Option<Box<Warm>>>,
+    /// Images every step's user message carries after its text.
+    images: Vec<crate::images::InputImage>,
 }
 
 /// A started binary waiting for its prompt, and the system text it was
@@ -129,7 +131,37 @@ impl ClaudeGenerator {
             binary,
             bypass_permissions: false,
             warm: std::sync::Mutex::new(None),
+            images: Vec::new(),
         }
+    }
+
+    /// This generator, with `images` on every step's user message.
+    #[must_use]
+    pub fn with_images(mut self, images: Vec<crate::images::InputImage>) -> Self {
+        self.images = images;
+        self
+    }
+
+    /// The `stream-json` user message one step writes to the binary: the
+    /// prompt, then each image as a base64 `image` block.
+    #[must_use]
+    pub fn message(&self, prompt: &str) -> serde_json::Value {
+        let content = if self.images.is_empty() {
+            json!(prompt)
+        } else {
+            serde_json::Value::Array(
+                std::iter::once(json!({"type":"text","text":prompt}))
+                    .chain(self.images.iter().map(crate::images::InputImage::claude))
+                    .collect(),
+            )
+        };
+        json!({"type":"user","message":{"role":"user","content":content}})
+    }
+
+    /// The images each step carries.
+    #[must_use]
+    pub fn images(&self) -> &[crate::images::InputImage] {
+        &self.images
     }
 
     /// This generator, passing `--permission-mode bypassPermissions` when
@@ -708,8 +740,7 @@ impl ClaudeGenerator {
             },
         };
         if let Some(mut stdin) = child.stdin.take() {
-            let mut line =
-                json!({"type":"user","message":{"role":"user","content":prompt}}).to_string();
+            let mut line = self.message(prompt).to_string();
             line.push('\n');
             let written = stdin.write_all(line.as_bytes()).await;
             drop(stdin);
@@ -1120,6 +1151,45 @@ printf '{{"type":"result","is_error":false,"result":"","structured_output":{{"re
             .unwrap()
             .reply;
         assert_ne!(other, pid);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn attached_images_reach_claude_code_as_their_exact_bytes() {
+        use base64::Engine as _;
+        let dir = tempfile::tempdir().unwrap();
+        let received = dir.path().join("received");
+        let binary = stand_in(
+            dir.path(),
+            &format!(
+                r#"read -r line
+printf '%s' "$line" > '{}'
+printf '%s\n' '{{"type":"result","is_error":false,"result":"","structured_output":{{"reply":"seen","ask":"none","rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true}}}}'
+"#,
+                received.display()
+            ),
+        );
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend((0..50_000u32).map(|i| (i * 13 % 256) as u8));
+        let image = crate::images::InputImage {
+            media_type: "image/png".into(),
+            bytes: std::sync::Arc::new(png.clone()),
+        };
+        let generator =
+            ClaudeGenerator::new("haiku".into(), None, binary).with_images(vec![image.clone()]);
+        let reply = generator.invoke("SYS", "Fix this layout").await;
+        assert_eq!(reply.generated.action.unwrap().reply, "seen");
+        let line: Value =
+            serde_json::from_str(&std::fs::read_to_string(&received).unwrap()).unwrap();
+        let content = &line["message"]["content"];
+        assert_eq!(content[0], json!({"type":"text","text":"Fix this layout"}));
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(content[1]["source"]["media_type"], "image/png");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(content[1]["source"]["data"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(bytes, png);
+        assert_eq!(nostr::contracts::digest_bytes(&bytes), image.digest());
     }
 
     #[test]

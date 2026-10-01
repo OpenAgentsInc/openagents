@@ -215,6 +215,7 @@ mod tests {
                         adapter: "bounded-command".into(),
                         model: None,
                     },
+                    images: Vec::new(),
                 },
             },
         };

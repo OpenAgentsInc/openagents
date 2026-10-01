@@ -17,7 +17,7 @@ impl<T: codex_transport::Transport> codex_transport::Transport for Transport<'_,
         request: &codex_transport::Request,
     ) -> Result<codex_transport::Reply, codex_transport::TransportError> {
         let sequence=self.host.effect("codex_request",json!({"model":request.model,"instructions":request.instructions,
-            "input":request.input,"tools":request.tools,"effort":request.effort,"cache_key":request.cache_key,
+            "input":crate::images::redacted(&json!(request.input)),"tools":request.tools,"effort":request.effort,"cache_key":request.cache_key,
             "parallel_tools":request.parallel_tools})).map_err(|error|codex_transport::TransportError::Failed(error.to_string()))?;
         let response = match self.replies {
             Some(replies) => {
@@ -206,7 +206,8 @@ impl Generate for Claude<'_> {
         let sequence = match self.host.effect(
             "claude_request",
             json!({"binary":self.inner.binary,"args":self.inner.args(system),"model":self.inner.model,
-                "effort":self.inner.effort,"prompt":prompt}),
+                "effort":self.inner.effort,"prompt":prompt,
+                "images":self.inner.images().iter().map(crate::images::InputImage::record).collect::<Vec<_>>()}),
         ) {
             Ok(sequence) => sequence,
             Err(error) => return refused_generation(&self.inner.model, false, &error.to_string()),
@@ -272,6 +273,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     clients: Vec<(GrantRoute, Client<T>)>,
     client: Result<jev::Client, String>,
     session: &str,
+    images: &[crate::images::InputImage],
 ) -> Result<(State, crate::run::Outcome), task::Error> {
     let replies = Replies::new(host);
     let replies = &replies;
@@ -290,11 +292,12 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
                     model: route.model.clone(),
                     effort: route.effort.clone(),
                     cache_key: session.to_owned(),
+                    images: images.to_vec(),
                 }),
                 Client::Claude(generator) => Native::Claude(Claude {
                     host,
                     replies,
-                    inner: generator,
+                    inner: generator.with_images(images.to_vec()),
                     refusal: RefCell::new(None),
                 }),
             };

@@ -2127,8 +2127,19 @@ impl CoderTab {
             .get(&id)
             .map_or_else(|| "Chat".to_owned(), |summary| summary.title.clone());
         let prompt = openagents_chat::delegation::prompt(&title, self.basic.turns(&id));
-        match computers.start_task(&host, &workspace, &prompt) {
+        // The draft's images go to this computer with the task; the hosted
+        // conversation never carries them. A refusal keeps the draft.
+        let key = format!("talk:{id}");
+        let uploads = match self.images.uploads(&key) {
+            Ok(uploads) => uploads,
+            Err(reason) => {
+                self.notice = Some(reason);
+                return;
+            }
+        };
+        match computers.start_task_with_images(&host, &workspace, &prompt, &uploads) {
             Ok(task) => {
+                self.images.clear(&key);
                 let now = computers.snapshot().now;
                 self.list.list.titles.insert(task.clone(), title);
                 self.list.list.sent.insert(task.clone(), now);

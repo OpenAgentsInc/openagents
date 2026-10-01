@@ -57,6 +57,7 @@ fn intent(workspace: &Path, title: &str) -> TaskIntent {
             adapter: "bounded-command".into(),
             model: None,
         },
+        images: Vec::new(),
     }
 }
 fn make_grant(intent: &TaskIntent, id: &str, program: &Path, args: Vec<String>) -> Value {

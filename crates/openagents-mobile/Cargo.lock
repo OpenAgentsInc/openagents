@@ -1596,6 +1596,7 @@ dependencies = [
 name = "coder-access"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "coder-connect",
  "nostr",
  "nostr-transport",

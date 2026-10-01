@@ -300,6 +300,12 @@ pub struct TaskCreate {
     pub prompt: String,
     /// A host-scoped workspace label. The host resolves it; it is never a path.
     pub workspace: String,
+    /// Images the device sent first with `artifact.put`, by digest. The
+    /// host binds the verified bytes it holds for this device to the task;
+    /// a host that holds none of them refuses. Absent means none, so a task
+    /// without images keeps its bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<crate::media::ImageRef>,
 }
 
 /// What a durable task command asks for. The device picks it from task
@@ -586,6 +592,11 @@ pub enum Operation {
         head_commit: String,
         head: String,
     },
+    /// One chunk of an image for a task this device is about to create
+    /// (`crate::media`). Idempotent: the host keeps the bytes for this
+    /// device only and answers what it holds.
+    #[serde(rename = "artifact.put")]
+    PutArtifact { artifact: crate::media::ArtifactPut },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -596,6 +607,14 @@ impl Operation {
             self,
             Self::ListThreads {} | Self::ReadThread { .. } | Self::ReviewTask { .. }
         )
+    }
+    /// Whether the host retains this operation's reply for an exact retry.
+    /// A read is not retained, and neither is an image chunk: a chunk is
+    /// idempotent where the host keeps it, and an image's many chunks would
+    /// otherwise fill the reply store.
+    #[must_use]
+    pub fn retains_reply(&self) -> bool {
+        !self.reads_only() && !matches!(self, Self::PutArtifact { .. })
     }
     pub fn name(&self) -> &'static str {
         match self {
@@ -624,6 +643,7 @@ impl Operation {
             Self::RunThread { .. } => "thread.run",
             Self::ReviewTask { .. } => "task.review",
             Self::PublishTask { .. } => "task.publish",
+            Self::PutArtifact { .. } => "artifact.put",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -653,7 +673,8 @@ impl Operation {
             | Self::SendThread { .. }
             | Self::StopThread { .. }
             | Self::RunThread { .. }
-            | Self::PublishTask { .. } => Some(Right::Operate),
+            | Self::PublishTask { .. }
+            | Self::PutArtifact { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -738,7 +759,9 @@ impl Operation {
                 if task.prompt.is_empty() || task.prompt.len() > 16 * 1024 {
                     return fail(Code::Bounds, "task prompt exceeds its bound");
                 }
+                crate::media::validate_all(&task.images)?;
             }
+            Self::PutArtifact { artifact } => artifact.validate()?,
             Self::OpenTerminal { cols, rows } => {
                 if !(1..=1000).contains(cols) || !(1..=1000).contains(rows) {
                     return fail(Code::Bounds, "terminal size exceeds its bound");
@@ -916,6 +939,10 @@ pub enum Outcome {
     Published {
         publication: Box<crate::review::Publication>,
     },
+    /// What the host holds of an image after `artifact.put`.
+    Artifact {
+        artifact: crate::media::ArtifactState,
+    },
 }
 
 /// The longest `coder-pair:` invitation a `chats` outcome carries.
@@ -1047,6 +1074,9 @@ impl Outcome {
                     && publication.base == *base
                     && publication.head_commit == *head_commit
                     && publication.head == *head
+            }
+            (Operation::PutArtifact { artifact }, Self::Artifact { artifact: state }) => {
+                state.digest == artifact.digest && state.received <= artifact.size
             }
             (Operation::SettleSpend { receipt }, Self::Settled { receipt: recorded }) => {
                 recorded.request == receipt.request && recorded.grant == receipt.grant

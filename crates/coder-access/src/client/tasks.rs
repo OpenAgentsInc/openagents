@@ -30,6 +30,7 @@ pub fn input(prompt: &str, workspace: &str) -> TaskCreate {
         title: title(prompt),
         prompt: prompt.into(),
         workspace: workspace.into(),
+        images: Vec::new(),
     }
 }
 

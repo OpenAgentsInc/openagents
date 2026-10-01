@@ -39,6 +39,16 @@ async fn host_serve_composes_access_reach_terminals_and_the_task_inbox() {
                 }
                 .into(),
                 started: task.execution != Execution::NotStarted || task.run.is_some(),
+                // The bytes the task owner kept, read back and checked.
+                images: task
+                    .intent
+                    .images
+                    .iter()
+                    .map(|image| {
+                        let bytes = coder::task::media::load(&store, &task.task_id, image).ok()?;
+                        Some((image.digest.clone(), bytes))
+                    })
+                    .collect::<Option<Vec<_>>>()?,
             })
         });
         (Arc::new(inbox) as Arc<dyn Tasks>, inspect)

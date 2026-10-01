@@ -26,6 +26,17 @@ pub(super) fn fixture_with(
     model: &str,
     change: impl FnOnce(&mut Configuration),
 ) -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
+    fixture_images(model, change, &[], "Write result.txt containing output.")
+}
+
+/// [`fixture_with`], with `images` attached to the task as a device's
+/// upload binds them: kept in the store's task media, named by the intent.
+pub(super) fn fixture_images(
+    model: &str,
+    change: impl FnOnce(&mut Configuration),
+    images: &[coder::task::media::wire::Upload],
+    prompt: &str,
+) -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
     let root = tempfile::tempdir().unwrap();
     let repo = root.path().join("repo");
     let checkout = root.path().join("checkout");
@@ -70,7 +81,7 @@ pub(super) fn fixture_with(
         action: Action::Submit {
             intent: TaskIntent {
                 title: "Repository fixture".into(),
-                prompt: "Write result.txt containing output.".into(),
+                prompt: prompt.into(),
                 workspace: Workspace {
                     path: checkout.canonicalize().unwrap().display().to_string(),
                     source_revision: None,
@@ -79,10 +90,20 @@ pub(super) fn fixture_with(
                     adapter: NAME.into(),
                     model: Some(model.into()),
                 },
+                images: images.iter().map(|image| image.reference.clone()).collect(),
             },
         },
     };
     let mut inbox = Store::open(&store).unwrap();
+    // As a device sends them: chunk by chunk to the host's uploads, then
+    // bound to the task its `task.create` names.
+    let device = "d".repeat(64);
+    for image in images {
+        for chunk in image.chunks(0) {
+            coder::task::media::put(&store, &device, &chunk).unwrap();
+        }
+        coder::task::media::adopt(&store, &device, "fixture", &image.reference).unwrap();
+    }
     inbox.apply(&serde_json::to_vec(&command).unwrap()).unwrap();
     let task = inbox.show("fixture").unwrap();
     let grant = task::owner::Grant {
@@ -1504,6 +1525,7 @@ async fn an_empty_directory_inside_a_repository_is_not_a_workspace() {
                     adapter: NAME.into(),
                     model: Some("fixture-model".into()),
                 },
+                images: Vec::new(),
             },
         },
     };
@@ -2714,4 +2736,220 @@ mod local_run {
             assert_eq!(last.issue.as_ref().unwrap().outcome, "failed");
         }
     }
+}
+
+fn image_uploads() -> Vec<coder::task::media::wire::Upload> {
+    let png = {
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.extend((0..70_000u32).map(|i| (i * 31 % 256) as u8));
+        bytes
+    };
+    let jpeg = {
+        let mut bytes = vec![0xff, 0xd8, 0xff, 0xe0];
+        bytes.extend((0..5_000u32).map(|i| (i * 17 % 256) as u8));
+        bytes
+    };
+    vec![
+        coder::task::media::wire::Upload::new("layout.png", std::sync::Arc::new(png)).unwrap(),
+        coder::task::media::wire::Upload::new("photo.jpg", std::sync::Arc::new(jpeg)).unwrap(),
+    ]
+}
+
+/// A fake Codex transport the test keeps a handle to after the run takes it.
+struct Recording(std::rc::Rc<codex_transport::fake::FakeTransport>);
+
+impl codex_transport::Transport for Recording {
+    async fn respond(
+        &self,
+        request: &codex_transport::Request,
+    ) -> Result<codex_transport::Reply, codex_transport::TransportError> {
+        self.0.respond(request).await
+    }
+}
+
+/// The decoded bytes of each `input_image` data URL in a Codex request.
+fn codex_images(request: &codex_transport::Request) -> Vec<(String, Vec<u8>)> {
+    use base64::Engine as _;
+    request
+        .input
+        .iter()
+        .filter_map(|item| item["content"].as_array())
+        .flatten()
+        .filter(|part| part["type"] == "input_image")
+        .map(|part| {
+            let url = part["image_url"].as_str().unwrap();
+            let (head, data) = url.split_once(";base64,").unwrap();
+            (
+                head.trim_start_matches("data:").to_owned(),
+                base64::engine::general_purpose::STANDARD
+                    .decode(data)
+                    .unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn attached_images_reach_the_codex_engine_as_their_exact_bytes() {
+    let uploads = image_uploads();
+    let (_root, store, grant) =
+        fixture_images("fixture-model", |_| {}, &uploads, "Fix the layout.");
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let loaded = host.images().unwrap();
+    let images: Vec<crate::images::InputImage> = loaded
+        .into_iter()
+        .map(|(reference, bytes)| crate::images::InputImage {
+            media_type: reference.media_type,
+            bytes: std::sync::Arc::new(bytes),
+        })
+        .collect();
+    let fake = codex_transport::fake::FakeTransport::default();
+    let action = serde_json::to_string(&done()).unwrap();
+    fake.then(codex_transport::Reply {
+        id: Some("image-fixture".into()),
+        model: "fixture-model".into(),
+        items: vec![json!({"type":"message","content":[{"type":"output_text","text":action}]})],
+        usage: codex_transport::TokenUsage::default(),
+    });
+    let fake = std::rc::Rc::new(fake);
+    let stages: Vec<Stage<Recording>> = vec![Stage::Loop(vec![(
+        route("codex", "fixture-model"),
+        Client::Codex(Recording(fake.clone())),
+    )])];
+    let task = run_stages(
+        host,
+        store.clone(),
+        stages,
+        Err("off in this fixture".into()),
+        "fixture-session",
+        &images,
+    )
+    .await
+    .unwrap();
+    assert_eq!(task.execution, task::Execution::Finished);
+    let requests = fake.requests();
+    assert_eq!(requests.len(), 1);
+    let received = codex_images(&requests[0]);
+    let expected: Vec<(String, Vec<u8>)> = uploads
+        .iter()
+        .map(|upload| (upload.reference.media_type.clone(), upload.bytes.to_vec()))
+        .collect();
+    assert_eq!(received, expected);
+    for ((_, bytes), upload) in received.iter().zip(&uploads) {
+        assert_eq!(
+            coder::task::media::wire::digest(bytes),
+            upload.reference.digest
+        );
+    }
+    // The transcript keeps each image's digest and size, not its bytes.
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    for upload in &uploads {
+        assert!(trace.contains(&upload.reference.digest), "{trace}");
+    }
+    assert!(!trace.contains(";base64,"));
+}
+
+#[tokio::test]
+async fn a_task_whose_image_bytes_changed_is_refused_before_any_model_call() {
+    let uploads = image_uploads();
+    let (_root, store, grant) =
+        fixture_images("fixture-model", |_| {}, &uploads[..1], "Fix the layout.");
+    let path = coder::task::media::path(&store, "fixture", &uploads[0].reference).unwrap();
+    let mut changed = uploads[0].bytes.to_vec();
+    changed[20] ^= 1;
+    std::fs::write(&path, changed).unwrap();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    assert!(host.images().is_err());
+    let task = refuse_images(host, "Coder couldn't read the attached images.".into()).unwrap();
+    assert_ne!(task.execution, task::Execution::Finished);
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("images_refused"));
+    assert!(!trace.contains("codex_request"));
+}
+
+#[test]
+fn whole_agent_routes_are_left_out_of_a_task_with_images() {
+    let agent = |engine| Stage::<Recording>::Agent(engine, route("codex", "m"), "/bin/true".into());
+    let mut unavailable = Vec::new();
+    let only_agents = image_stages(
+        vec![agent(AgentEngine::Devin), agent(AgentEngine::Grok)],
+        &mut unavailable,
+    );
+    assert!(only_agents.is_empty());
+    assert_eq!(unavailable.len(), 2);
+    assert_eq!(unavailable[0]["unavailable"], "Devin can't take images.");
+    let fake = std::rc::Rc::new(codex_transport::fake::FakeTransport::default());
+    let mut unavailable = Vec::new();
+    let kept = image_stages(
+        vec![
+            agent(AgentEngine::OpenCode),
+            Stage::Loop(vec![(route("codex", "m"), Client::Codex(Recording(fake)))]),
+        ],
+        &mut unavailable,
+    );
+    assert!(matches!(kept.as_slice(), [Stage::Loop(_)]));
+    assert_eq!(unavailable[0]["unavailable"], "OpenCode can't take images.");
+}
+
+/// Live: the owner's Codex login reads a screenshot attached to a scratch
+/// task and acts on it. Set `OPENAGENTS_LIVE_IMAGE` to a PNG or JPEG and
+/// `OPENAGENTS_LIVE_IMAGE_WANT` to the word the model must write to
+/// `answer.txt`. The task store, workspace, and repository are scratch; the
+/// login is only read.
+#[tokio::test]
+#[ignore = "live: needs the owner's Codex login and OPENAGENTS_LIVE_IMAGE"]
+async fn live_codex_acts_on_an_attached_screenshot() {
+    let path = std::env::var("OPENAGENTS_LIVE_IMAGE").expect("OPENAGENTS_LIVE_IMAGE");
+    let want = std::env::var("OPENAGENTS_LIVE_IMAGE_WANT").expect("OPENAGENTS_LIVE_IMAGE_WANT");
+    let model = std::env::var("OPENAGENTS_LIVE_MODEL").unwrap_or_else(|_| "gpt-6-luna".into());
+    let bytes = std::fs::read(path).unwrap();
+    let upload =
+        coder::task::media::wire::Upload::new("screenshot.png", std::sync::Arc::new(bytes))
+            .unwrap();
+    let (root, store, grant) = fixture_images(
+        &model,
+        |c| c.model = model.clone(),
+        std::slice::from_ref(&upload),
+        "Look at the attached image. Write the name of the one color that fills it, as one lowercase word, to answer.txt in the repository, then finish.",
+    );
+    // A real model needs more than the fixture's eight seconds.
+    let mut grant: Value = serde_json::from_slice(&grant).unwrap();
+    grant["wall_seconds"] = json!(300);
+    let grant = serde_json::to_vec(&grant).unwrap();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let images: Vec<crate::images::InputImage> = host
+        .images()
+        .unwrap()
+        .into_iter()
+        .map(|(reference, bytes)| crate::images::InputImage {
+            media_type: reference.media_type,
+            bytes: std::sync::Arc::new(bytes),
+        })
+        .collect();
+    let login = codex_transport::codex::Login::default_path().unwrap();
+    let transport = codex_transport::codex::CodexTransport::new(login, "live-image").unwrap();
+    let mut primary = route("codex", &model);
+    primary.effort = Some("medium".into());
+    let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
+        vec![Stage::Loop(vec![(primary, Client::Codex(transport))])];
+    let task = run_stages(
+        host,
+        store.clone(),
+        stages,
+        Err("off".into()),
+        "live-image",
+        &images,
+    )
+    .await
+    .unwrap();
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains(&upload.reference.digest), "{trace}");
+    assert!(!trace.contains(";base64,"));
+    let answer = std::fs::read_to_string(root.path().join("checkout/answer.txt"))
+        .unwrap_or_else(|_| panic!("no answer.txt; ending {:?}", task.execution));
+    println!("answer.txt: {answer:?}");
+    assert!(
+        answer.to_lowercase().contains(&want.to_lowercase()),
+        "{answer}"
+    );
 }

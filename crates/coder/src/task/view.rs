@@ -261,6 +261,7 @@ mod tests {
                     adapter: "bounded-command".into(),
                     model: None,
                 },
+                images: Vec::new(),
             },
             intent_digest: "0".repeat(64),
             status: Status::Running,

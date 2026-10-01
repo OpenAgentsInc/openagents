@@ -2206,6 +2206,7 @@ mod tests {
             title: "Fix the flaky test".into(),
             prompt: "Find why it fails.".into(),
             workspace: workspace.into(),
+            images: Vec::new(),
         }
     }
 

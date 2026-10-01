@@ -51,6 +51,9 @@ pub enum Request {
         title: String,
         prompt: String,
         dirs: Vec<String>,
+        /// The draft's images, as their exact bytes; the adapter keeps them
+        /// with the task ([`crate::attachments::Drafts::uploads`]).
+        images: Vec<crate::attachments::Upload>,
     },
     /// The task's events since the last poll.
     Poll { task: String },
@@ -183,6 +186,11 @@ pub struct Run {
     title: String,
     prompt: String,
     dirs: Vec<String>,
+    /// The images the start carries until a task holds them.
+    images: Vec<crate::attachments::Upload>,
+    /// The start that carried images was accepted; the adapter drops the
+    /// draft's images once ([`Run::take_delivered`]).
+    delivered: bool,
     lines: VecDeque<Line>,
     state: State,
     queue: VecDeque<String>,
@@ -209,10 +217,24 @@ impl Run {
     /// project and the picked one, in that order.
     #[must_use]
     pub fn start(chat: &str, title: &str, prompt: &str, dirs: Vec<String>, now: Instant) -> Self {
+        Self::start_with_images(chat, title, prompt, dirs, Vec::new(), now)
+    }
+
+    /// [`Run::start`] carrying the draft's `images` to the task.
+    #[must_use]
+    pub fn start_with_images(
+        chat: &str,
+        title: &str,
+        prompt: &str,
+        dirs: Vec<String>,
+        images: Vec<crate::attachments::Upload>,
+        now: Instant,
+    ) -> Self {
         let mut run = Self::new(chat, now);
         run.title = title.into();
         run.prompt = prompt.into();
         run.dirs = dirs;
+        run.images = images;
         run.phase = Phase::Starting;
         run.due = Some(run.start_request());
         run
@@ -238,6 +260,8 @@ impl Run {
             title: String::new(),
             prompt: String::new(),
             dirs: vec![],
+            images: vec![],
+            delivered: false,
             lines: VecDeque::new(),
             state: State::Running,
             queue: VecDeque::new(),
@@ -260,7 +284,15 @@ impl Run {
             title: self.title.clone(),
             prompt: self.prompt.clone(),
             dirs: self.dirs.clone(),
+            images: self.images.clone(),
         }
+    }
+
+    /// Whether a start that carried the draft's images was accepted since
+    /// the last call: the task holds them, so the draft lets them go. A
+    /// refused or lost start keeps them.
+    pub fn take_delivered(&mut self) -> bool {
+        std::mem::take(&mut self.delivered)
     }
 
     /// What the row button `key` does now, and to what.
@@ -528,6 +560,10 @@ impl Run {
                 self.task = Some(task.clone());
                 self.project = Some(project.clone());
                 self.bind = Some((task, project));
+                if !self.images.is_empty() {
+                    self.images.clear();
+                    self.delivered = true;
+                }
                 // The chat's own project, should it start again.
                 self.dirs.retain(|known| *known != checkout);
                 self.dirs.insert(0, checkout);

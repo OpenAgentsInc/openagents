@@ -36,6 +36,7 @@ tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+base64 = "0.22"
 tempfile = "3"
 # The Coder event stream a local run's fixture test reads.
 openagents-chat = { path = "../openagents-chat" }

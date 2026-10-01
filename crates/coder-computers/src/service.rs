@@ -156,6 +156,19 @@ pub trait ComputersService {
             "this client can't order work",
         ))
     }
+    /// Send one chunk of an image a task will name (`artifact.put`). The
+    /// host keeps it for this device only and answers what it holds.
+    fn put_artifact(
+        &mut self,
+        host: &str,
+        put: &coder_access::media::ArtifactPut,
+    ) -> Result<coder_access::media::ArtifactState> {
+        let _ = (host, put);
+        Err(Error::new(
+            Code::Unsupported,
+            "this client can't send images",
+        ))
+    }
     /// Order work on a host (`task.create`). Returns the host-issued task
     /// ID. The host records the task; it runs only under the host's own
     /// execution policy.

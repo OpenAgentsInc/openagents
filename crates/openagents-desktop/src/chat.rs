@@ -700,13 +700,23 @@ impl Panel {
             .find(|summary| summary.id == chat)
             .map_or_else(|| "Coder task".to_owned(), |summary| summary.title.clone());
         let prompt = openagents_chat::delegation::prompt(&title, &snapshot.turns);
+        // The draft's images go to this computer's run, never to the
+        // hosted conversation; a refusal keeps the draft.
+        let images = match self.session.images.uploads(chat) {
+            Ok(images) => images,
+            Err(reason) => {
+                self.notice = Some(reason);
+                return;
+            }
+        };
         self.runs.insert(
             chat.to_owned(),
-            Run::start(
+            Run::start_with_images(
                 chat,
                 &title,
                 &prompt,
                 self.coder_projects.clone(),
+                images,
                 Instant::now(),
             ),
         );
@@ -778,6 +788,10 @@ impl Panel {
         let revision = run.revision;
         let accepted = run.outcome(ticket, result, Instant::now());
         if revision != run.revision && self.session.selected.as_ref() == Some(&chat) {
+            self.rows_dirty = true;
+        }
+        if run.take_delivered() {
+            self.session.images.clear(&chat);
             self.rows_dirty = true;
         }
         let submission = self.run_submissions.remove(&(chat.clone(), ticket));
@@ -4148,6 +4162,73 @@ mod start_setting_tests {
         assert!(asks.sent.is_empty(), "the reply was judged once");
         asks.start_run(&chat);
         assert!(asks.coder_run(&chat).is_some());
+    }
+
+    /// The next Coder run request the panel sends, answering reads.
+    fn next_run(panel: &mut Panel) -> (String, u64, coder_run::Request) {
+        for step in 0..40 {
+            match panel.tick(Instant::now() + std::time::Duration::from_millis(step * 10)) {
+                Some(Request::CoderRun {
+                    chat,
+                    ticket,
+                    request,
+                }) => return (chat, ticket, request),
+                Some(Request::Chat { ticket, command }) => {
+                    let snapshot = panel.session.states.values().next().cloned().unwrap();
+                    let _ = command;
+                    panel.outcome(ticket, Ok(snapshot));
+                }
+                _ => {}
+            }
+        }
+        panic!("no Coder run request")
+    }
+
+    /// Run Coder on this computer carries the chat's draft images as their
+    /// exact bytes; a start that fails keeps them in the draft, and only an
+    /// accepted start lets them go. The hosted send still refuses them.
+    #[test]
+    fn a_run_carries_the_drafts_images_and_keeps_them_until_accepted() {
+        let chat = "c".repeat(32);
+        let mut panel = replied(|| true);
+        let image = openagents_chat_app::attachments::Image::pixels(5, 4, vec![77; 80]).unwrap();
+        let bytes = image.bytes.as_ref().clone();
+        panel.session.images.add(&chat, image).unwrap();
+        assert!(panel.session.images.hosted_send_refusal(&chat).is_some());
+        panel.start_run(&chat);
+        let (started, ticket, request) = next_run(&mut panel);
+        assert_eq!(started, chat);
+        let coder_run::Request::Start { images, .. } = &request else {
+            panic!("{request:?}")
+        };
+        assert_eq!(images.len(), 1);
+        assert_eq!(*images[0].bytes, bytes);
+        assert_eq!(images[0].reference.size, bytes.len() as u64);
+        assert_eq!(images[0].reference.media_type, "image/png");
+        // A failed start, or one whose answer is lost: the draft keeps them.
+        panel.run_outcome(chat.clone(), ticket, Err("Coder could not start".into()));
+        assert_eq!(panel.session.images.get(&chat).len(), 1);
+        // Retried and accepted: the task holds them; the draft lets go.
+        let retried = panel
+            .runs
+            .get_mut(&chat)
+            .unwrap()
+            .action(coder_run::Action::Retry, "")
+            .unwrap();
+        let coder_run::Request::Start { images, .. } = &retried.1 else {
+            panic!("{:?}", retried.1)
+        };
+        assert_eq!(*images[0].bytes, bytes);
+        panel.run_outcome(
+            chat.clone(),
+            retried.0,
+            Ok(coder_run::Answer::Started {
+                task: "b".repeat(64),
+                project: "openagents".into(),
+                checkout: "/w/openagents".into(),
+            }),
+        );
+        assert!(panel.session.images.get(&chat).is_empty());
     }
 }
 

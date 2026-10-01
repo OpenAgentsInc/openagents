@@ -39,6 +39,7 @@ fn submit(command_id: &str, task_id: &str) -> Vec<u8> {
                     adapter: "microluna".into(),
                     model: Some("example/model".into()),
                 },
+                images: Vec::new(),
             },
         },
     })

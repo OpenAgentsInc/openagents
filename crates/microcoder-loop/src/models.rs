@@ -517,6 +517,8 @@ pub struct CodexGenerator<T: codex_transport::Transport = codex_transport::codex
     pub effort: Option<String>,
     /// The prompt-cache key; steps of one run share it.
     pub cache_key: String,
+    /// Images every step's user message carries after its text.
+    pub images: Vec<crate::images::InputImage>,
 }
 
 /// `next_action` as a strict function tool: its parameters are the action.
@@ -620,7 +622,9 @@ impl<T: codex_transport::Transport> CodexGenerator<T> {
             input: vec![json!({
                 "type": "message",
                 "role": "user",
-                "content": [{ "type": "input_text", "text": prompt }],
+                "content": std::iter::once(json!({ "type": "input_text", "text": prompt }))
+                    .chain(self.images.iter().map(crate::images::InputImage::codex))
+                    .collect::<Vec<_>>(),
             })],
             tools: Vec::new(),
             effort: self.effort.clone(),
@@ -1008,6 +1012,7 @@ mod codex_tests {
             model: "gpt-6-luna".to_string(),
             effort: Some("medium".to_string()),
             cache_key: "run".to_string(),
+            images: Vec::new(),
         }
     }
 

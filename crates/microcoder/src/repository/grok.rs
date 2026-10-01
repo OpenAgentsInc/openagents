@@ -264,6 +264,7 @@ mod tests {
             stages,
             Ok(jev()),
             "fixture-session",
+            &[],
         )
         .await
         .unwrap()

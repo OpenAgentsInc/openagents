@@ -497,6 +497,39 @@ impl Computers {
         Ok(id)
     }
 
+    /// [`Computers::start_task`] with images: each image's exact bytes go
+    /// to `host` first (`artifact.put`, resuming where the host holds), and
+    /// the task names them by digest. Nothing is created when any image
+    /// fails to arrive; the caller keeps its draft.
+    ///
+    /// # Errors
+    /// As [`Computers::start_task`], or an image the host refused or did
+    /// not hold whole.
+    pub fn start_task_with_images(
+        &mut self,
+        host: &str,
+        workspace: &str,
+        prompt: &str,
+        images: &[coder_access::media::Upload],
+    ) -> Result<String, Refusal> {
+        if images.is_empty() {
+            return self.start_task(host, workspace, prompt);
+        }
+        self.allow(Action::Operate { host })?;
+        let service = &mut self.service;
+        let references = coder_access::media::send(images, |put| service.put_artifact(host, put))
+            .map_err(Refusal::Failed)?;
+        let mut task = coder_access::client::tasks::input(prompt, workspace);
+        task.images = references;
+        let id = self
+            .service
+            .create_task(host, &task)
+            .map_err(Refusal::Failed)?;
+        self.reload();
+        self.rebuild().map_err(Refusal::Failed)?;
+        Ok(id)
+    }
+
     /// Leave first run for the Computers screen, for a client that adds hosts
     /// on its own, such as through NIP-HOST tailnet admission.
     pub fn finish_first_run(&mut self) -> Result<(), Refusal> {
@@ -845,6 +878,7 @@ impl Computers {
                     title: task_title(&prompt),
                     prompt,
                     workspace: workspace.clone(),
+                    images: Vec::new(),
                 };
                 self.service
                     .create_task(&host, &task)

@@ -1964,6 +1964,25 @@ impl ComputersService for Live {
         Ok(())
     }
 
+    fn put_artifact(
+        &mut self,
+        host: &str,
+        put: &coder_access::media::ArtifactPut,
+    ) -> Result<coder_access::media::ArtifactState> {
+        match self.call(
+            host,
+            Operation::PutArtifact {
+                artifact: put.clone(),
+            },
+        )? {
+            Outcome::Artifact { artifact } => Ok(artifact),
+            _ => Err(Error::new(
+                Code::Malformed,
+                "the host did not answer the image chunk",
+            )),
+        }
+    }
+
     fn create_task(&mut self, host: &str, task: &TaskCreate) -> Result<String> {
         let reference = self.dispatched(host, Operation::CreateTask { task: task.clone() })?;
         Ok(reference)

@@ -31,6 +31,7 @@ pub mod commands;
 pub mod interaction;
 pub mod issue_run;
 pub mod local;
+pub mod media;
 pub mod owner;
 pub mod publish;
 pub mod remote;
@@ -150,6 +151,12 @@ pub struct TaskIntent {
     pub prompt: String,
     pub workspace: Workspace,
     pub configuration: RequestedConfiguration,
+    /// Images the person attached, kept in the task store by digest
+    /// ([`media`]). The intent's digest, which the execution grant binds,
+    /// covers them. Absent means none, so a task without images keeps its
+    /// bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<coder_host::access::media::ImageRef>,
 }
 
 /// User requests accepted by the durable inbox.

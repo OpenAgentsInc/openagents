@@ -125,7 +125,26 @@ impl Drafts {
         (!self.get(chat).is_empty())
             .then_some("Hosted chat accepts text only. Remove the images to send.")
     }
+    /// The draft's images as a Coder task carries them to the computer that
+    /// runs it: the exact bytes and the digest each is named by. Phone and
+    /// desktop both send what this returns. A refusal names the image that
+    /// cannot go, before anything is sent; the draft is unchanged either way.
+    pub fn uploads(&self, chat: &str) -> Result<Vec<Upload>, String> {
+        self.get(chat)
+            .iter()
+            .map(|image| {
+                Upload::new(&image.name, image.bytes.clone()).map_err(|error| error.message)
+            })
+            .collect()
+    }
+    /// Drop the draft's images once the run that carries them is accepted.
+    pub fn clear(&mut self, chat: &str) {
+        self.images.remove(chat);
+    }
 }
+
+/// One image on its way to a Coder task ([`Drafts::uploads`]).
+pub use coder_host::access::media::Upload;
 
 #[cfg(test)]
 mod tests {
@@ -169,6 +188,28 @@ mod tests {
         assert!(Image::pixels(2, 1, vec![]).is_err());
         assert!(Image::decode("large", vec![0; MAX_IMAGE_BYTES + 1]).is_err());
     }
+    #[test]
+    fn a_coding_route_carries_the_exact_draft_bytes_and_keeps_the_draft() {
+        let mut drafts = Drafts::default();
+        let image = Image::pixels(3, 2, vec![9; 24]).unwrap();
+        let bytes = image.bytes.clone();
+        drafts.add("talk:a", image).unwrap();
+        let uploads = drafts.uploads("talk:a").unwrap();
+        assert_eq!(uploads.len(), 1);
+        assert_eq!(*uploads[0].bytes, *bytes);
+        assert_eq!(uploads[0].reference.media_type, "image/png");
+        assert_eq!(
+            uploads[0].reference.digest,
+            coder_host::access::media::digest(&bytes)
+        );
+        // Building uploads sends nothing and keeps the draft; a hosted send
+        // still refuses.
+        assert_eq!(drafts.get("talk:a").len(), 1);
+        assert!(drafts.hosted_send_refusal("talk:a").is_some());
+        drafts.clear("talk:a");
+        assert!(drafts.get("talk:a").is_empty());
+    }
+
     #[test]
     fn bounds_image_count_across_each_conversation() {
         let mut drafts = Drafts::default();

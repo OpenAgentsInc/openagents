@@ -990,11 +990,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         "shell-content-footer",
         Axis::Horizontal,
         Space::Sm,
-        vec![text(
-            "shell-content-note",
-            "OpenAgents",
-            TextRole::Status,
-        )],
+        vec![text("shell-content-note", "OpenAgents", TextRole::Status)],
     );
     let mut content = stack(
         "shell-content",

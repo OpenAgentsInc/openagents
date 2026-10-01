@@ -85,6 +85,7 @@ fn fixture(access: Access) -> Option<(tempfile::TempDir, PathBuf, Vec<u8>)> {
                     adapter: NAME.into(),
                     model: Some("fixture-model".into()),
                 },
+                images: Vec::new(),
             },
         },
     };
