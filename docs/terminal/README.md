@@ -52,23 +52,21 @@ The first thing it shows is the welcome card:
 - **Thread:** new, or the one it reopened.
 
 Below the transcript sits the composer. Its top line says what is happening
-(`ready`, `replying`, `Coder · step 4 · ≈40% done · 12s`) and where the
-threads live and which folder this is; its bottom line names the engine and
-the thread.
+(`ready`, `replying`, `Coder · step 4 · ≈40% done · 12s`); its bottom line
+names the engine and the thread.
 
-Replies render as Markdown. Under a reply, the router's offers and follow-ups
-show as lines: a follow-up is asked with Alt+1 to Alt+9, and a card that opens
-in the app (a Gym result, a deck, the wallet) says where to open it.
+Replies render as Markdown. Suggested follow-ups are not shown here; a card
+that opens in the app (a Gym result, a deck, the wallet) says where to open
+it.
 
 ## Keys
 
 | Key | Does |
 | --- | --- |
 | Enter | Send. On an empty line, start the Coder run OpenAgents offered. |
-| Alt+Enter, Ctrl+J | A new line in the message. |
+| Option+Enter (Alt+Enter on Linux), Ctrl+J | A new line in the message. |
 | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
 | Ctrl+T | The thread list. |
-| Alt+1 to Alt+9 | Ask a suggested follow-up. |
 | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
 | PageUp, PageDown | Scroll the transcript. |
 | Up, Down | Move in the message, then through your earlier messages. |

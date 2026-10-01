@@ -32,13 +32,6 @@ fn ctrl(c: char) -> KeyEvent {
     }
 }
 
-fn alt(c: char) -> KeyEvent {
-    KeyEvent {
-        modifiers: KeyModifiers::ALT,
-        ..key(KeyCode::Char(c))
-    }
-}
-
 fn typed(app: &mut App, text: &str) -> Vec<Action> {
     for c in text.chars() {
         assert!(app.key(&key(KeyCode::Char(c)), 80).is_empty());
@@ -236,7 +229,7 @@ fn a_question_from_coder_is_answered_from_the_composer() {
 }
 
 #[test]
-fn an_offer_waits_for_enter_on_an_empty_line_and_followups_take_alt_digits() {
+fn an_offer_waits_for_enter_on_an_empty_line_and_shows_no_followups() {
     let mut app = app();
     app.fresh = false;
     let meta = Meta {
@@ -251,8 +244,12 @@ fn an_offer_waits_for_enter_on_an_empty_line_and_followups_take_alt_digits() {
     assert!(app.offer);
     let shown = shown(&mut app);
     assert!(shown.contains("Enter to run Coder."), "{shown}");
-    assert!(shown.contains("Alt+1 What can Coder do?"), "{shown}");
-    let actions = app.key(&alt('1'), 80);
+    // Suggested follow-ups are the apps' chips; the terminal shows none.
+    assert!(
+        !shown.contains("What can Coder do?") && !shown.contains("Alt+"),
+        "{shown}"
+    );
+    let actions = typed(&mut app, "What can Coder do?");
     let [Action::Run(Op::Send { text, .. })] = actions.as_slice() else {
         panic!("{actions:?}");
     };

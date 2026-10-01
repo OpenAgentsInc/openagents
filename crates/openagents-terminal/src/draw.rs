@@ -27,14 +27,12 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         return (area.x, area.y);
     }
     let status = app.status();
-    let location = app.location();
     let tail = app.tail();
     let busy = app.busy();
     let prompt = if busy { frame_for(app.tick) } else { PROMPT };
     let mut composer = Composer::new(&mut app.editor, ladder)
         .prompt(prompt)
         .status(&status)
-        .location(&location)
         .tokens(&tail);
     let box_height = composer.height(area.width).min(area.height);
     let log = Rect::new(

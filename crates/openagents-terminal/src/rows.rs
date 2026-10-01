@@ -13,7 +13,7 @@ use ratatui::text::Line;
 pub enum Row {
     /// A message, or a finished reply.
     Turn(Who, String),
-    /// A line under a turn: an offer, a follow-up, a notice.
+    /// A line under a turn: an offer or a notice.
     Note(String, Intensity),
     /// A framed card: welcome, help, pairing.
     Card(Card),

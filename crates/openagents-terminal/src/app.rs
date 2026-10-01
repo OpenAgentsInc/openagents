@@ -107,8 +107,6 @@ pub struct App {
     pub asked: bool,
     /// The last reply offered a Coder run that waits for Enter.
     pub offer: bool,
-    /// The last reply's follow-ups, picked with Alt+1..9.
-    pub followups: Vec<String>,
     /// Who runs Coder now, for the status line.
     pub engine: Option<String>,
     pub overlay: Option<Overlay>,
@@ -145,7 +143,6 @@ impl App {
             running: false,
             asked: false,
             offer: false,
-            followups: Vec::new(),
             engine: None,
             overlay: None,
             pairing: false,
@@ -182,7 +179,6 @@ impl App {
         self.running = false;
         self.asked = false;
         self.offer = false;
-        self.followups.clear();
         self.engine = None;
         self.seen.clear();
         self.scroll = 0;
@@ -256,13 +252,6 @@ impl App {
             (KeyCode::PageDown, _, _) => {
                 self.scroll = self.scroll.saturating_sub(10);
                 Vec::new()
-            }
-            (KeyCode::Char(digit @ '1'..='9'), false, true) => {
-                let index = digit as usize - '1' as usize;
-                match self.followups.get(index).cloned() {
-                    Some(label) => self.send(label),
-                    None => Vec::new(),
-                }
             }
             _ => match handle_key(&mut self.editor, usize::from(width), key) {
                 ComposerAction::Submitted(draft) => self.submit(&draft),
@@ -390,7 +379,6 @@ impl App {
         }
         self.push(Row::Turn(Who::You, text.clone()));
         self.offer = false;
-        self.followups.clear();
         if self.asked && self.task.is_some() {
             self.asked = false;
             return vec![Action::Run(Op::Answer {
@@ -566,8 +554,8 @@ impl App {
         }
     }
 
-    /// What the router said beside a reply: offers, who would run Coder,
-    /// and follow-ups.
+    /// What the router said beside a reply: offers and who would run
+    /// Coder. Suggested follow-ups are the apps' chips, not shown here.
     fn notes(&mut self, meta: &Meta, offered: bool, running: bool) {
         let mut coder = offered;
         for offer in &meta.offers {
@@ -612,18 +600,6 @@ impl App {
         if let Some(runner) = meta.runner.as_ref().filter(|runner| !plain(runner)) {
             self.note(runner.text());
         }
-        self.followups = meta
-            .followups
-            .iter()
-            .take(9)
-            .map(|followup| followup.label.clone())
-            .collect();
-        for (index, label) in self.followups.clone().iter().enumerate() {
-            self.push(Row::Note(
-                format!("Alt+{} {label}", index + 1),
-                Intensity::ThreeQuarters,
-            ));
-        }
     }
 
     /// The status rail's left text: what is happening.
@@ -650,16 +626,6 @@ impl App {
             _ if self.offer => "Enter starts Coder".into(),
             _ => "ready".into(),
         }
-    }
-
-    /// The status rail's right text: where the threads live and the folder.
-    pub fn location(&self) -> String {
-        let backend = match self.backend {
-            Kind::Host => "host",
-            Kind::InProcess => "this terminal",
-            Kind::Scratch => "scratch",
-        };
-        format!("{backend} · {}", self.folder)
     }
 
     /// The bottom rail's right text: the engine and the thread.
@@ -751,10 +717,6 @@ pub fn help() -> Card {
             "stop the reply, or stop the Coder run".to_owned(),
         ),
         ("Ctrl+T".to_owned(), "threads".to_owned()),
-        (
-            "Alt+1..9".to_owned(),
-            "ask a suggested follow-up".to_owned(),
-        ),
         (
             "Ctrl+S".to_owned(),
             "keep this computer's chats in sync with your phone".to_owned(),

@@ -53,7 +53,25 @@ impl Card {
             return self.unframed(width, ladder);
         }
         let art_width = self.art.iter().map(|row| cells(row)).max().unwrap_or(0);
-        let outer = width.min(CARD_WIDTH_MAX).max((art_width + 4).min(width));
+        let mut outer = width.min(CARD_WIDTH_MAX).max((art_width + 4).min(width));
+        // A card of facts alone (no prose, art, or keys) is as wide as its
+        // longest line, as the old Coder Terminal's welcome card was.
+        if self.body.is_empty() && self.art.is_empty() && self.keys.is_empty() {
+            let widest = self
+                .rows
+                .iter()
+                .map(|(label, _)| cells(label))
+                .max()
+                .unwrap_or(0);
+            let value = self
+                .rows
+                .iter()
+                .map(|(_, value)| cells(value))
+                .max()
+                .unwrap_or(0);
+            let natural = (widest + 2 + value).max(cells(&self.title) + 4) + 4;
+            outer = outer.min(natural.max(CARD_WIDTH_MIN));
+        }
         let inner = outer - 4;
 
         let mut content = self.content(inner, ladder);
@@ -279,6 +297,33 @@ mod tests {
             art: vec!["#".repeat(30)],
             keys: vec![("Enter".into(), "send".into())],
         }
+    }
+
+    #[test]
+    fn a_card_of_facts_is_as_wide_as_its_longest_line() {
+        let facts = Card {
+            title: "OpenAgents v1.0.0".into(),
+            rows: vec![
+                ("Project".into(), "openagents".into()),
+                ("Agents".into(), "Codex · Claude Code".into()),
+            ],
+            body: Vec::new(),
+            art: Vec::new(),
+            keys: Vec::new(),
+        };
+        let lines = facts.lines(120, Ladder::new(crate::Colors::None));
+        let width = |line: &Line<'_>| {
+            cells(
+                &line
+                    .spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>(),
+            )
+        };
+        // "Agents   Codex · Claude Code": 7 + 2 + 19, inside "│ … │".
+        assert_eq!(width(&lines[0]), 7 + 2 + 19 + 4);
+        assert!(lines.iter().all(|line| width(line) == width(&lines[0])));
     }
 
     #[test]
