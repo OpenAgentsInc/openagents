@@ -1997,11 +1997,9 @@ mod local_run {
             panic!("{:?}", second[0])
         };
         assert_eq!((started.turn, started.provider.as_str()), (2, "claude"));
+        // It says which engine runs and never names a limit (#10120).
         assert!(
-            started
-                .reason
-                .starts_with("Codex reached its usage limit until ")
-                && started.reason.ends_with("; using Claude Code."),
+            started.reason.contains("Claude Code") && !started.reason.contains("limit"),
             "{}",
             started.reason
         );
