@@ -733,6 +733,7 @@ fn ui_starter_chips(gate: &mut Gate) -> Outcome {
         .take(openagents_chat_app::first_run::SUGGESTIONS_SHOWN)
         .collect();
     let mut lines_at = vec![];
+    let mut tapped: Option<String> = None;
     for (width, height, file) in [
         (1200.0, 840.0, "starters-1200x840-2x"),
         (760.0, 540.0, "starters-760x540-2x"),
@@ -767,20 +768,48 @@ fn ui_starter_chips(gate: &mut Gate) -> Outcome {
             if gate.panel().transcript.control_bounds(&key).is_some() {
                 return Err(format!("{key} is in the transcript"));
             }
+            // A click at the chip's middle is routed as the window routes
+            // it: to the chip, not the empty transcript beneath (#10098).
+            let (x, y) = (
+                chip.rect.x + chip.rect.w / 2.0,
+                chip.rect.y + chip.rect.h / 2.0,
+            );
+            if let Some((surface, _)) = scene.surface_at(x, y) {
+                return Err(format!(
+                    "a click on {key} goes to the {surface} surface ({file}.png)"
+                ));
+            }
+            let clicked = scene.hit(x, y).map(|hit| hit.key.clone());
+            if clicked.as_deref() != Some(key.as_str()) {
+                return Err(format!("a click on {key} reaches {clicked:?} ({file}.png)"));
+            }
+            if starter.id == starters[0].id {
+                tapped.get_or_insert(key.clone());
+            }
             if !lines.contains(&(chip.rect.y as i32)) {
                 lines.push(chip.rect.y as i32);
             }
         }
+        if let Some(send) = scene.hits.iter().find(|hit| hit.key == "chat-send")
+            && let Some((surface, _)) = scene.surface_at(
+                send.rect.x + send.rect.w / 2.0,
+                send.rect.y + send.rect.h / 2.0,
+            )
+        {
+            return Err(format!(
+                "a click on Send goes to the {surface} surface ({file}.png)"
+            ));
+        }
         lines_at.push(lines.len());
     }
-    // A tap on "Who are you?" sends it, as the phone's chip does.
+    // A tap on "Who are you?" sends it, as the phone's chip does: the key
+    // the click at its middle reached.
     let first = starters[0];
+    let tapped = tapped.ok_or("no click reached the first starter")?;
     let before = gate.panel().state().map_or(0, |s| s.total);
     gate.app.activate(
         Intent::Chat {
-            action: openagents_desktop::chat_action::Action::Card {
-                key: format!("coder-suggest-{}", first.id),
-            },
+            action: openagents_desktop::chat_action::Action::Card { key: tapped },
         },
         Instant::now(),
     );

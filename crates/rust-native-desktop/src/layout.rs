@@ -118,6 +118,10 @@ pub struct Hit {
     pub enabled: bool,
     /// The visible portion of a scroll container, when this control is in one.
     pub clip: Option<Rect>,
+    /// How many ops the scene held when this button was laid out: a
+    /// surface whose op comes before it is drawn beneath the button, so the
+    /// button, not the surface, takes the pointer over it (#10098).
+    pub layer: usize,
 }
 
 /// A laid-out view.
@@ -173,6 +177,38 @@ impl Scene {
         }
         None
     }
+    /// The registered surface that takes the pointer at `x`, `y`: the
+    /// last one drawn under the point, inside every clip around it, and
+    /// with its visible rectangle. A button drawn after that surface and
+    /// under the point covers it, so the point is the button's and no
+    /// surface's: a new chat's centered composer and its starter chips sit
+    /// over the empty transcript (#10098).
+    pub fn surface_at(&self, x: f32, y: f32) -> Option<(String, Rect)> {
+        let mut clips: Vec<Rect> = Vec::new();
+        let mut found = None;
+        for (index, op) in self.ops.iter().enumerate() {
+            match op {
+                Op::PushClip(rect) => clips.push(*rect),
+                Op::PopClip => {
+                    clips.pop();
+                }
+                Op::Surface { resource, rect, .. }
+                    if rect.contains(x, y) && clips.iter().all(|clip| clip.contains(x, y)) =>
+                {
+                    found = Some((index, resource.clone(), *rect));
+                }
+                _ => {}
+            }
+        }
+        let (index, resource, rect) = found?;
+        let covered = self.hits.iter().any(|hit| {
+            hit.layer > index
+                && hit.rect.contains(x, y)
+                && hit.clip.is_none_or(|clip| clip.contains(x, y))
+        });
+        (!covered).then_some((resource, rect))
+    }
+
     /// The enabled button under `x`, `y`, if any.
     pub fn hit(&self, x: f32, y: f32) -> Option<&Hit> {
         self.hits.iter().rev().find(|hit| {
@@ -255,6 +291,61 @@ mod gpu_surface_tests {
             })
         );
         assert_eq!(scene.surface_rect("absent"), None);
+    }
+
+    /// A button drawn over a surface takes the pointer there; a surface
+    /// drawn over a button keeps it; elsewhere the surface has it (#10098).
+    #[test]
+    fn a_button_drawn_over_a_surface_takes_the_pointer() {
+        let whole = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 400.0,
+            h: 400.0,
+        };
+        let chip = Rect {
+            x: 100.0,
+            y: 100.0,
+            w: 80.0,
+            h: 28.0,
+        };
+        let mut scene = Scene {
+            ops: vec![
+                Op::Surface {
+                    resource: "transcript".into(),
+                    rect: whole,
+                    version: None,
+                },
+                Op::Fill {
+                    rect: chip,
+                    radius: 14.0,
+                    color: Color::rgb(0, 0, 0),
+                },
+            ],
+            hits: vec![Hit {
+                rect: chip,
+                key: "chip".into(),
+                enabled: true,
+                clip: None,
+                layer: 2,
+            }],
+            ..Scene::default()
+        };
+        assert_eq!(scene.surface_at(120.0, 110.0), None);
+        assert_eq!(
+            scene.hit(120.0, 110.0).map(|hit| hit.key.as_str()),
+            Some("chip")
+        );
+        assert_eq!(
+            scene.surface_at(20.0, 20.0),
+            Some(("transcript".to_string(), whole))
+        );
+        // A button laid out before the surface is beneath it.
+        scene.hits[0].layer = 0;
+        assert_eq!(
+            scene.surface_at(120.0, 110.0),
+            Some(("transcript".to_string(), whole))
+        );
     }
 }
 
@@ -1252,6 +1343,7 @@ impl Engine<'_> {
                         key: node.key.clone(),
                         enabled: *enabled,
                         clip: self.paint_clip,
+                        layer: self.scene.ops.len(),
                     });
                     return;
                 }
@@ -1975,6 +2067,7 @@ impl Engine<'_> {
             key: node.key.clone(),
             enabled,
             clip: None,
+            layer: self.scene.ops.len(),
         });
     }
 }

@@ -3023,7 +3023,49 @@ pub(super) mod card_fixtures {
                 }
                 previous = Some(hit.rect);
                 assert!(panel.transcript.control_bounds(&key).is_none(), "{key}");
+                // A click at the chip's middle reaches the chip, not the
+                // empty transcript the centered group sits over (#10098).
+                let (x, y) = (hit.rect.x + hit.rect.w / 2.0, hit.rect.y + hit.rect.h / 2.0);
+                assert_eq!(
+                    scene.surface_at(x, y),
+                    None,
+                    "{key} at {name}: the pointer goes to a surface"
+                );
+                assert_eq!(
+                    scene.hit(x, y).map(|hit| hit.key.as_str()),
+                    Some(key.as_str())
+                );
             }
+            // Send, in the centered composer, is no surface's either, and
+            // the composer's text takes the pointer as before.
+            let send = scene
+                .hits
+                .iter()
+                .find(|hit| hit.key == "chat-send")
+                .unwrap_or_else(|| panic!("chat-send at {name}"));
+            let (x, y) = (
+                send.rect.x + send.rect.w / 2.0,
+                send.rect.y + send.rect.h / 2.0,
+            );
+            assert_eq!(scene.surface_at(x, y), None, "chat-send at {name}");
+            let composer = scene
+                .ops
+                .iter()
+                .find_map(|op| match op {
+                    rust_native_desktop::layout::Op::Surface { resource, rect, .. }
+                        if resource.starts_with("composer:") =>
+                    {
+                        Some(*rect)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("a composer surface at {name}"));
+            assert!(
+                scene
+                    .surface_at(composer.x + 8.0, composer.y + composer.h / 2.0)
+                    .is_some_and(|(resource, _)| resource.starts_with("composer:")),
+                "the composer's text at {name}"
+            );
             assert!(
                 !scene.hits.iter().any(|hit| hit.key
                     == format!(

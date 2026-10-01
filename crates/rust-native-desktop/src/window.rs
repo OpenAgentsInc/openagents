@@ -832,22 +832,8 @@ impl<A: App> Shell<A> {
         let started = Instant::now();
         let scale = self.scale();
         let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
-        let mut clips: Vec<crate::layout::Rect> = Vec::new();
-        let mut target = None;
-        for op in &self.scene().ops {
-            match op {
-                crate::layout::Op::PushClip(rect) => clips.push(*rect),
-                crate::layout::Op::PopClip => {
-                    clips.pop();
-                }
-                crate::layout::Op::Surface { resource, rect, .. }
-                    if rect.contains(x, y) && clips.iter().all(|clip| clip.contains(x, y)) =>
-                {
-                    target = Some((resource.clone(), *rect))
-                }
-                _ => {}
-            }
-        }
+        // A button drawn over a surface takes the pointer there (#10098).
+        let target = self.scene().surface_at(x, y);
         let mut target = self
             .captured_surface
             .clone()
