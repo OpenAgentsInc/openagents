@@ -870,7 +870,11 @@ fn autostart_get(shared: &Shared) -> std::result::Result<Autostart, Box<Reply>> 
 /// Code, then Grok Build (#10091), with the models `coder host autostart`
 /// documents, as a person's own local runs default to
 /// (`coder::task::settings`).
-const ROUTES: [&str; 3] = ["codex:gpt-6.1-sol", "claude:claude-opus-5-5", "grok:default"];
+const ROUTES: [&str; 3] = [
+    "codex:gpt-6.1-sol",
+    "claude:claude-opus-5-5",
+    "grok:default",
+];
 
 /// Change the policy through the host's own `coder host autostart`
 /// command, which checks every bound and records the change; a request on
