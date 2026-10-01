@@ -48,6 +48,30 @@ to a computer the user connects; Coder uses that computer's own git and GitHub \
 login. When a request needs that, say so in one short sentence in our own words. \
 Never name or describe buttons or screens: the app shows the right action itself.";
 
+/// [`INSTRUCTIONS`] for a chat on a computer that is itself where Coder
+/// runs ([`crate::router::Computer::Here`]): the desktop app, or
+/// `openagents chat` on a computer (#10077). The worker adds what the
+/// turn's context names, such as the project folder.
+pub const INSTRUCTIONS_ON_COMPUTER: &str = "We are OpenAgents, chatting with the user in the \
+OpenAgents app on their own computer. Always speak as \"we\" and \"us\", never \"I\" or \
+\"me\". Answer directly and helpfully in our own words; use Markdown when it helps, and keep \
+answers concise. Facts about this chat: this computer is where Coder, our coding agent, runs, \
+with this computer's own git and GitHub login. Our replies in this chat do not run commands or \
+read files themselves; work on code, files, or repositories goes to Coder here on this computer. \
+When a request needs that, say so in one short sentence in our own words. Never tell the user \
+to connect a computer unless they ask about adding another one. Never name or describe buttons \
+or screens: the app shows the right action itself.";
+
+/// The instructions a turn sends for its context.
+#[must_use]
+pub fn instructions(context: &Context) -> &'static str {
+    if context.here() {
+        INSTRUCTIONS_ON_COMPUTER
+    } else {
+        INSTRUCTIONS
+    }
+}
+
 /// How long the worker has to answer at all, connection included.
 const CONTACT: Duration = Duration::from_secs(30);
 /// The longest one job may take, connection included.
@@ -390,7 +414,7 @@ pub fn payload(turns: &[Turn], context: &Context) -> Value {
                 "content": truncate(&turn.text, MAX_TRANSCRIPT_BYTES),
             }))
             .collect::<Vec<_>>(),
-        "instructions": INSTRUCTIONS,
+        "instructions": instructions(context),
         "client": context.surface.client(),
         "opener": true,
         "router": ROUTER,
@@ -1144,7 +1168,11 @@ mod tests {
 /// says a computer is ready, as a phone with one connected does;
 /// `OPENAGENTS_TEST_CHAT_SURFACE=desktop` (or `terminal`) asks as that
 /// surface does, so "open the Test-Time Capabilities deck" gets the
-/// desktop's `open_presentation` offer.
+/// desktop's `open_presentation` offer. `OPENAGENTS_TEST_CHAT_PROJECT=/path`
+/// says this device is the computer Coder runs on, with that project
+/// folder, as the desktop app and `openagents chat` do (#10077);
+/// `OPENAGENTS_TEST_CHAT_PAIRED=NAME` says a phone is paired with the
+/// computer NAME.
 #[cfg(test)]
 #[test]
 #[ignore = "network: needs the chat worker on the relay"]
@@ -1168,6 +1196,20 @@ fn live_basic_coder_streams_a_reply() {
             _ => Context::default().surface,
         },
         computer_ready: std::env::var("OPENAGENTS_TEST_CHAT_COMPUTER_READY").as_deref() == Ok("1"),
+        computer: match (
+            std::env::var("OPENAGENTS_TEST_CHAT_PROJECT"),
+            std::env::var("OPENAGENTS_TEST_CHAT_PAIRED"),
+        ) {
+            (Ok(_), _) => Some(crate::router::Computer::Here {
+                name: None,
+                engines: vec![],
+            }),
+            (_, Ok(name)) => Some(crate::router::Computer::Paired { name }),
+            _ => None,
+        },
+        project: std::env::var("OPENAGENTS_TEST_CHAT_PROJECT")
+            .ok()
+            .and_then(|path| crate::router::Project::at(&path)),
         ..Context::default()
     };
     let asking = if std::env::var("OPENAGENTS_TEST_CHAT_LEGACY").as_deref() == Ok("1") {

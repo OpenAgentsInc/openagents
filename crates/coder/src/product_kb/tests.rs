@@ -293,6 +293,7 @@ fn a_grounded_reply_is_checked_against_the_passages_it_was_given() {
             source: "bins/openagents-ios/README.md".into(),
             relevance: 0.9,
             answer: None,
+            off_computer: false,
         }],
         commit: None,
         needs_dispatch: false,
@@ -376,6 +377,7 @@ fn product_citations_are_taken_out_as_the_reply_streams() {
             source: "knowledge/openagents/openagents.connect-computer.md".into(),
             relevance: 0.9,
             answer: None,
+            off_computer: false,
         }],
         ..Grounding::default()
     };

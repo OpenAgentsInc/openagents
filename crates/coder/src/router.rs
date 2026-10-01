@@ -469,8 +469,138 @@ impl Surface {
 /// The longest `context.app_build`, in bytes.
 pub const MAX_BUILD_BYTES: usize = 64;
 
+/// The longest computer name `context.computer.name` may carry, in
+/// characters.
+pub const MAX_COMPUTER_NAME_CHARS: usize = 64;
+/// The most coding agents `context.computer.engines` names.
+pub const MAX_ENGINES: usize = 4;
+/// The longest `context.project.name`, in bytes.
+pub const MAX_PROJECT_NAME_BYTES: usize = 128;
+/// The longest `context.project.path`, in bytes.
+pub const MAX_PROJECT_PATH_BYTES: usize = 1024;
+
+/// Where Coder runs for the chat, as the request's `context.computer`
+/// says (#10077).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Computer {
+    /// The device that sent the turn is itself a Coder computer (the
+    /// desktop app, or `openagents chat` on a computer).
+    Here {
+        /// The label the person gave it, when it has one.
+        name: Option<String>,
+        engines: Vec<Engine>,
+    },
+    /// The phone is paired with a ready computer, named by its label.
+    Paired { name: String },
+}
+
+/// One coding agent on the computer and whether a Coder run may use it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Engine {
+    /// `codex`, `claude`, or another bounded agent word.
+    pub engine: String,
+    pub state: EngineState,
+}
+
+/// A coding agent's readiness on the computer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EngineState {
+    Ready,
+    NotSignedIn,
+    Limited,
+}
+
+/// The chat's project folder, as `context.project` says.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Project {
+    pub name: String,
+    /// Its absolute path; read only beside [`Computer::Here`].
+    pub path: Option<String>,
+}
+
+/// A printable, non-blank string of at most `bytes` bytes and `chars`
+/// characters, else `None`.
+fn bounded(value: &Value, bytes: usize, chars: usize) -> Option<String> {
+    value
+        .as_str()
+        .filter(|text| {
+            !text.trim().is_empty()
+                && text.len() <= bytes
+                && text.chars().count() <= chars
+                && !text.chars().any(char::is_control)
+        })
+        .map(str::to_string)
+}
+
+impl Computer {
+    /// Reads `context.computer`. An unknown place, or a paired computer
+    /// with no name within its bound, is `None`; an engine that is not a
+    /// bounded word with a known state is left out.
+    fn of(value: &Value) -> Option<Self> {
+        let name = bounded(
+            &value["name"],
+            4 * MAX_COMPUTER_NAME_CHARS,
+            MAX_COMPUTER_NAME_CHARS,
+        );
+        match value["place"].as_str()? {
+            "here" => Some(Computer::Here {
+                name,
+                engines: value["engines"]
+                    .as_array()
+                    .map(|engines| {
+                        engines
+                            .iter()
+                            .filter_map(Engine::of)
+                            .take(MAX_ENGINES)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            }),
+            "paired" => Some(Computer::Paired { name: name? }),
+            _ => None,
+        }
+    }
+}
+
+impl Engine {
+    fn of(value: &Value) -> Option<Self> {
+        let engine = value["engine"].as_str().filter(|word| {
+            (1..=16).contains(&word.len())
+                && word
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+        })?;
+        let state = match value["state"].as_str()? {
+            "ready" => EngineState::Ready,
+            "not_signed_in" => EngineState::NotSignedIn,
+            "limited" => EngineState::Limited,
+            _ => return None,
+        };
+        Some(Engine {
+            engine: engine.to_string(),
+            state,
+        })
+    }
+
+    /// `Codex is ready`, for the model's note.
+    fn line(&self) -> String {
+        let who = match self.engine.as_str() {
+            "codex" => "Codex",
+            "claude" => "Claude Code",
+            other => other,
+        };
+        match self.state {
+            EngineState::Ready => format!("{who} is ready"),
+            EngineState::NotSignedIn => format!("{who} is not signed in"),
+            EngineState::Limited => format!("{who} is at its usage limit"),
+        }
+    }
+}
+
 /// The bounded context a request may carry. It holds no credential, key,
-/// host name, or amount, and it never reaches a seam.
+/// host address, or amount, and it never reaches a seam: the computer's
+/// name and the project folder reach only the chat model's instructions
+/// ([`Context::note`]) and the bank's `chat.*` slots ([`Context::facts`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Context {
     /// Where the chat is; the phone when unsaid.
@@ -479,6 +609,11 @@ pub struct Context {
     pub computer_ready: Option<bool>,
     /// The app's build, for the bank's version-specific entries.
     pub app_build: Option<String>,
+    /// Where Coder runs for this chat; unknown when unsaid, as from a
+    /// client before #10077.
+    pub computer: Option<Computer>,
+    /// The chat's project folder.
+    pub project: Option<Project>,
 }
 
 impl Context {
@@ -487,6 +622,26 @@ impl Context {
     /// context only ever narrows what is offered.
     #[must_use]
     pub fn of(value: &Value) -> Self {
+        let computer = Computer::of(&value["computer"]);
+        let here = matches!(computer, Some(Computer::Here { .. }));
+        let project = bounded(
+            &value["project"]["name"],
+            MAX_PROJECT_NAME_BYTES,
+            MAX_PROJECT_NAME_BYTES,
+        )
+        .map(|name| Project {
+            name,
+            // A path is read only from the computer it names.
+            path: here
+                .then(|| {
+                    bounded(
+                        &value["project"]["path"],
+                        MAX_PROJECT_PATH_BYTES,
+                        MAX_PROJECT_PATH_BYTES,
+                    )
+                })
+                .flatten(),
+        });
         Self {
             surface: value["surface"].as_str().and_then(Surface::parse),
             computer_ready: value["computer_ready"].as_bool(),
@@ -496,6 +651,8 @@ impl Context {
                     build.len() <= MAX_BUILD_BYTES && !build.chars().any(char::is_control)
                 })
                 .map(str::to_string),
+            computer,
+            project,
         }
     }
 
@@ -503,6 +660,98 @@ impl Context {
     #[must_use]
     pub fn surface(&self) -> Surface {
         self.surface.unwrap_or(Surface::Phone)
+    }
+
+    /// The device that sent the turn is itself where Coder runs.
+    #[must_use]
+    pub fn here(&self) -> bool {
+        matches!(self.computer, Some(Computer::Here { .. }))
+    }
+
+    /// The bank's facts for this turn: the worker's own, placed on a
+    /// computer when the turn is ([`Facts::on_computer`]), with the
+    /// computer's name and the project folder in the `chat.*` slots.
+    #[must_use]
+    pub fn facts(&self, base: &Facts) -> Facts {
+        let mut facts = base.clone().on_computer(self.here());
+        let name = match &self.computer {
+            Some(Computer::Here { name, .. }) => name.clone(),
+            Some(Computer::Paired { name }) => Some(name.clone()),
+            None => None,
+        };
+        if let Some(name) = name {
+            facts = facts.set("chat.computer", name);
+        }
+        if let Some(project) = &self.project {
+            facts = facts.set("chat.project", project.name.clone());
+            if let Some(path) = &project.path {
+                facts = facts.set("chat.project_path", path.clone());
+            }
+        }
+        facts
+    }
+
+    /// What the chat model is told about where this chat runs, beside the
+    /// caller's instructions: on a computer, that Coder runs here and never
+    /// to connect a computer, the agents' readiness, and the project
+    /// folder as the working directory; on a paired phone, the computer's
+    /// name. `None` for a turn with no computer (the phone's default),
+    /// whose instructions already say how Coder is reached.
+    #[must_use]
+    pub fn note(&self) -> Option<String> {
+        let mut note = match self.computer.as_ref()? {
+            Computer::Here { name, engines } => {
+                let mut note = String::from(
+                    "About this chat: it runs in the OpenAgents app on the user's own computer",
+                );
+                if let Some(name) = name {
+                    note.push_str(&format!(" (named {name:?})"));
+                }
+                note.push_str(
+                    ", and that computer is where Coder, our coding agent, works. Never tell \
+                     the user to connect a computer and never say we can't reach their \
+                     computer; explain connecting another computer or a phone only when they \
+                     ask about that.",
+                );
+                if !engines.is_empty() {
+                    let lines: Vec<String> = engines.iter().map(Engine::line).collect();
+                    note.push_str(&format!(
+                        " Coding agents on this computer: {}.",
+                        lines.join("; ")
+                    ));
+                }
+                note
+            }
+            Computer::Paired { name } => format!(
+                "About this chat: it runs in the OpenAgents app on the user's phone, which is \
+                 paired with their computer {name:?}. Coder, our coding agent, works on {name:?} \
+                 when the user starts it from this chat, so never tell them to connect a \
+                 computer; explain connecting another computer only when they ask about that."
+            ),
+        };
+        if let Some(project) = &self.project {
+            match (&project.path, self.here()) {
+                (Some(path), true) => note.push_str(&format!(
+                    " This chat's project folder is {:?}, at {path:?}. That folder is the \
+                     working directory Coder uses here, so answer questions about the working \
+                     directory, the current folder, or the project from it.",
+                    project.name
+                )),
+                _ => note.push_str(&format!(
+                    " This chat's project folder on that computer is {:?}.",
+                    project.name
+                )),
+            }
+        }
+        if self.here() {
+            note.push_str(
+                " Our replies in this chat don't run commands or read files themselves: when \
+                 an answer needs the folder's contents or a command run, say in one short \
+                 sentence that Coder can do that here on this computer. This replaces anything \
+                 earlier in these instructions about connecting a computer.",
+            );
+        }
+        Some(note)
     }
 }
 
@@ -1112,9 +1361,11 @@ pub enum Grounded {
 
 /// Reads a retrieval: dispatch when the corpus says so, a whole reviewed
 /// answer when the top passage carries one at [`KB_ANSWER_CONFIDENCE`] and
-/// the message needs no specifics, else the relevant passages.
+/// the message needs no specifics, else the relevant passages. In a chat
+/// on a computer (`here`), an answer written for a chat that is not
+/// ([`seams::Passage::off_computer`]) is never whole.
 #[must_use]
-pub fn grounded(grounding: &seams::Grounding, needs_specifics: f64) -> Grounded {
+pub fn grounded(grounding: &seams::Grounding, needs_specifics: f64, here: bool) -> Grounded {
     if grounding.needs_dispatch {
         return Grounded::Dispatch;
     }
@@ -1129,6 +1380,7 @@ pub fn grounded(grounding: &seams::Grounding, needs_specifics: f64) -> Grounded 
     if let Some(top) = passages.first()
         && top.relevance >= KB_ANSWER_CONFIDENCE
         && needs_specifics < policy::SPECIFICS_CEILING
+        && !(here && top.off_computer)
         && top
             .answer
             .as_deref()
@@ -1214,6 +1466,137 @@ mod tests {
             "surface": "fridge", "computer_ready": "yes", "app_build": "x".repeat(65)
         }));
         assert_eq!(odd, Context::default());
+    }
+
+    /// A knowledge answer written for a chat that is not on a computer is
+    /// never shown whole on one; it still grounds the reply (#10077).
+    #[test]
+    fn an_off_computer_answer_is_never_whole_on_a_computer() {
+        let grounding = seams::Grounding {
+            passages: vec![seams::Passage {
+                id: "openagents.chat-and-coder@1".into(),
+                title: "Chatting with OpenAgents".into(),
+                text: "We can't reach your computer.".into(),
+                source: "knowledge/openagents/openagents.chat-and-coder.md".into(),
+                relevance: 0.95,
+                answer: Some("From the chat we can't reach your computer.".into()),
+                off_computer: true,
+            }],
+            ..seams::Grounding::default()
+        };
+        assert!(matches!(
+            grounded(&grounding, 0.0, false),
+            Grounded::Answer(_)
+        ));
+        assert!(matches!(
+            grounded(&grounding, 0.0, true),
+            Grounded::Passages(passages) if passages.len() == 1
+        ));
+        // The corpus marks exactly the entries that say so.
+        let corpus =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../knowledge/openagents");
+        for id in ["openagents.chat-and-coder", "openagents.overview"] {
+            let text = std::fs::read_to_string(corpus.join(format!("{id}.md"))).unwrap();
+            assert!(
+                text.lines().any(|line| line.starts_with("tags:")
+                    && line.contains(crate::product_kb::OFF_COMPUTER_TAG)),
+                "{id}"
+            );
+        }
+    }
+
+    /// The computer and project a turn names are read within their bounds
+    /// (#10077): the desktop's fixture reads whole; a paired phone's path,
+    /// an unknown place, a nameless paired computer, an engine that is no
+    /// bounded word, and an overlong or controlled name are left out.
+    #[test]
+    fn the_computer_context_is_bounded_and_typed() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../fixtures/nip-cj/router-request-computer.json"
+        ))
+        .unwrap();
+        let context = Context::of(&fixture["context"]);
+        assert!(context.here());
+        assert_eq!(
+            context.computer,
+            Some(Computer::Here {
+                name: Some("Studio Mac".into()),
+                engines: vec![
+                    Engine {
+                        engine: "codex".into(),
+                        state: EngineState::Limited
+                    },
+                    Engine {
+                        engine: "claude".into(),
+                        state: EngineState::Ready
+                    },
+                ],
+            })
+        );
+        assert_eq!(
+            context.project,
+            Some(Project {
+                name: "openagents".into(),
+                path: Some("/Users/someone/work/openagents".into()),
+            })
+        );
+        let facts = context.facts(&Facts::default());
+        assert!(facts.is_on_computer());
+        assert_eq!(facts.get("chat.project"), Some("openagents"));
+        assert_eq!(
+            facts.get("chat.project_path"),
+            Some("/Users/someone/work/openagents")
+        );
+        assert_eq!(facts.get("chat.computer"), Some("Studio Mac"));
+
+        let phone = Context::of(&json!({
+            "surface": "phone",
+            "computer": { "place": "paired", "name": "Studio Mac" },
+            "project": { "name": "openagents", "path": "/Users/someone/work/openagents" },
+        }));
+        assert!(!phone.here());
+        assert_eq!(phone.project.as_ref().unwrap().path, None);
+        assert!(!phone.facts(&Facts::default()).is_on_computer());
+        assert!(phone.note().unwrap().contains("paired with their computer"));
+        assert_eq!(Context::default().note(), None);
+
+        for computer in [
+            json!({ "place": "garage", "name": "x" }),
+            json!({ "place": "paired" }),
+            json!({ "place": "paired", "name": "x".repeat(MAX_COMPUTER_NAME_CHARS + 1) }),
+            json!({ "place": "paired", "name": "bad\u{1b}[2J" }),
+            json!("here"),
+        ] {
+            assert_eq!(
+                Context::of(&json!({ "computer": computer })).computer,
+                None,
+                "{computer}"
+            );
+        }
+        let odd = Context::of(&json!({
+            "computer": { "place": "here", "name": "", "engines": [
+                { "engine": "Codex", "state": "ready" },
+                { "engine": "codex", "state": "sleepy" },
+                { "engine": "claude", "state": "not_signed_in" },
+            ] },
+            "project": { "name": "", "path": "/x" },
+        }));
+        assert_eq!(
+            odd.computer,
+            Some(Computer::Here {
+                name: None,
+                engines: vec![Engine {
+                    engine: "claude".into(),
+                    state: EngineState::NotSignedIn
+                }],
+            })
+        );
+        assert_eq!(odd.project, None);
+        let long = Context::of(&json!({
+            "computer": { "place": "here" },
+            "project": { "name": "deep", "path": "/".repeat(MAX_PROJECT_PATH_BYTES + 1) },
+        }));
+        assert_eq!(long.project.unwrap().path, None);
     }
 
     /// Money and secrets are never proposed from chat, and the phone gets

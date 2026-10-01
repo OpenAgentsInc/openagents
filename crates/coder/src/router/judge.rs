@@ -539,9 +539,28 @@ mod tests {
         let answer = serde_json::to_value(questions.get("answer")).unwrap();
         assert_eq!(
             answer["criteria"].as_object().unwrap().len(),
-            bank.answers.iter().filter(|entry| !entry.records).count() + 1,
-            "every entry but the Gym's records entries is selectable on a metered gateway worker"
+            bank.answers
+                .iter()
+                .filter(|entry| !entry.records && entry.place != crate::router::bank::Place::Here)
+                .count()
+                + 1,
+            "every entry but the Gym's records entries and the computer's own variants is \
+             selectable on a metered gateway worker off a computer"
         );
+        // On a computer, each `.here` variant is offered instead of its
+        // base (#10077); the working-directory one needs the project folder.
+        let here = super::questions(
+            bank,
+            &facts().on_computer(true),
+            &[],
+            &[],
+            &Admitted::default(),
+            &[],
+        );
+        let here = serde_json::to_value(here.get("answer")).unwrap();
+        assert!(here["criteria"].get("meta.who.here").is_some());
+        assert!(here["criteria"].get("meta.who").is_none());
+        assert!(here["criteria"].get("meta.limits_chat.here").is_none());
         assert!(answer["criteria"].get("eval.check.none").is_none());
         // An entry whose slot the worker cannot fill is not offered.
         let bare = serde_json::to_value(questions_without_quota().get("answer")).unwrap();

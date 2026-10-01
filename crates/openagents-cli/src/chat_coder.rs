@@ -82,6 +82,38 @@ pub(super) fn ready(store: PathBuf) -> bool {
     here.is_some_and(|dir| run.project(&dir).is_ok()) && run.ready()
 }
 
+/// What a turn from this command tells the chat worker about this computer
+/// (#10077): the terminal surface, whether a Coder run could start
+/// ([`ready`]), that this computer is where Coder runs with its coding
+/// agents' readiness, and the project folder: the checkout this command
+/// runs in. `no_run` (`--no-run`) reads no agent and says Coder can't
+/// start. Reads only.
+pub(super) fn context(store: PathBuf, no_run: bool) -> openagents_chat::router::Context {
+    use openagents_chat::router::{Computer, Context, Engine, Project, Surface};
+    let engines = if no_run {
+        Vec::new()
+    } else {
+        Local::here(store.clone())
+            .predict()
+            .map(|runner| Engine::from_runner(&runner))
+            .unwrap_or_default()
+    };
+    let project = std::env::current_dir()
+        .ok()
+        .and_then(|dir| local::checkout(&dir).ok())
+        .and_then(|checkout| Project::at(&checkout.top.display().to_string()));
+    Context {
+        surface: Surface::Terminal,
+        computer_ready: !no_run && ready(store),
+        computer: Some(Computer::Here {
+            name: None,
+            engines,
+        }),
+        project,
+        ..Context::default()
+    }
+}
+
 /// Start Coder on this computer for the thread `id`, in the checkout the
 /// command runs in, bind the task to the thread, and follow it.
 pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u8 {

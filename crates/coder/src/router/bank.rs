@@ -38,6 +38,9 @@ pub const MAX_TEXT_CHARS: usize = 600;
 /// of the admitted-capability set, and `deck.*` keys only by
 /// [`super::policy::decide`], from the decks the desktop app ships
 /// ([`super::decks`]), each for an entry that sets [`Entry::records`].
+/// `chat.*` keys are filled only by [`super::Context::facts`], from the
+/// request's bounded `context`: the computer's name and the chat's project
+/// folder, the person's own words and paths (#10077).
 pub const FACT_KEYS: &[&str] = &[
     "worker.lane.display",
     "worker.door.display",
@@ -50,7 +53,44 @@ pub const FACT_KEYS: &[&str] = &[
     "capability.line",
     "deck.title",
     "deck.list",
+    "chat.computer",
+    "chat.project",
+    "chat.project_path",
 ];
+
+/// The id suffix of an entry's variant for a chat on a computer: the entry
+/// `meta.who` answers off a computer and `meta.who.here` on one
+/// ([`Bank::placed`]).
+pub const HERE_SUFFIX: &str = ".here";
+
+/// Where an entry may be shown (#10077).
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Place {
+    /// On any surface.
+    #[default]
+    Any,
+    /// Only in a chat on the computer Coder runs on (the request's
+    /// `context.computer` is `here`): the desktop app, or `openagents chat`
+    /// on a computer.
+    Here,
+    /// Only in a chat that is not on such a computer: a phone, or a client
+    /// that does not say.
+    Away,
+}
+
+impl Place {
+    /// Whether an entry with this place may show in a chat that is, or is
+    /// not, on a computer.
+    #[must_use]
+    pub fn admits(self, on_computer: bool) -> bool {
+        match self {
+            Place::Any => true,
+            Place::Here => on_computer,
+            Place::Away => !on_computer,
+        }
+    }
+}
 
 /// The routes whose entries must cite sources: every factual answer.
 const SOURCED: &[RouteId] = &[
@@ -144,6 +184,11 @@ pub struct Entry {
     /// it.
     #[serde(default)]
     pub records: bool,
+    /// Where it may be shown: an entry whose words assume the chat is or
+    /// is not on a computer says so, and its variant for the other place is
+    /// `id.here` ([`HERE_SUFFIX`]).
+    #[serde(default)]
+    pub place: Place,
 }
 
 impl Entry {
@@ -187,10 +232,12 @@ impl Entry {
         ))
     }
 
-    /// Whether the entry can be shown at all with these facts.
+    /// Whether the entry can be shown at all with these facts: in its
+    /// place, with every slot filled.
     #[must_use]
     pub fn eligible(&self, facts: &Facts) -> bool {
-        self.render(facts).is_some() || self.stem(facts).is_some()
+        self.place.admits(facts.on_computer)
+            && (self.render(facts).is_some() || self.stem(facts).is_some())
     }
 
     /// Whether the `answer` question may offer it: eligible, and not an
@@ -290,6 +337,17 @@ impl Bank {
         self.answers.iter().find(|entry| entry.id == id)
     }
 
+    /// The entry code picks by `id`, for the chat's place: its
+    /// `id.here` variant in a chat on a computer, when it has one.
+    #[must_use]
+    pub fn placed(&self, id: &str, facts: &Facts) -> Option<&Entry> {
+        facts
+            .on_computer
+            .then(|| self.entry(&format!("{id}{HERE_SUFFIX}")))
+            .flatten()
+            .or_else(|| self.entry(id))
+    }
+
     /// The opener with `id`.
     #[must_use]
     pub fn opener(&self, id: &str) -> Option<&Opener> {
@@ -303,7 +361,7 @@ impl Bank {
         entry
             .followups
             .iter()
-            .filter_map(|id| self.entry(id))
+            .filter_map(|id| self.placed(id, facts))
             .filter(|next| next.eligible(facts))
             .filter_map(|next| Some((next.id.clone(), next.chip.clone()?)))
             .collect()
@@ -315,9 +373,26 @@ impl Bank {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Facts {
     values: BTreeMap<String, String>,
+    /// The chat is on the computer Coder runs on, so entries placed
+    /// `away` are not shown and `here` ones are.
+    on_computer: bool,
 }
 
 impl Facts {
+    /// The same facts for a chat that is, or is not, on the computer Coder
+    /// runs on.
+    #[must_use]
+    pub fn on_computer(mut self, here: bool) -> Self {
+        self.on_computer = here;
+        self
+    }
+
+    /// Whether these facts are for a chat on a computer.
+    #[must_use]
+    pub fn is_on_computer(&self) -> bool {
+        self.on_computer
+    }
+
     /// Sets `key` (one of [`FACT_KEYS`]) to `value`.
     ///
     /// # Panics
@@ -498,6 +573,27 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
                 || *route == RouteId::PresentationOpen
                 || (*route == RouteId::WorkDispatch && capability_slot)
         });
+        // A `.here` variant is shown only on a computer, beside its base,
+        // which is shown only away from one; `chat.*` slots fill only from
+        // a computer or a paired phone's context, so they need a place.
+        if let Some(base) = id.strip_suffix(HERE_SUFFIX) {
+            if entry.place != Place::Here {
+                push(id, "a .here variant needs place = \"here\"".into());
+            }
+            match bank.entry(base) {
+                None => push(id, format!("varies the unknown entry {base}")),
+                Some(base) if base.place != Place::Away => {
+                    push(
+                        id,
+                        format!("varies {}, which needs place = \"away\"", base.id),
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        if entry.facts.values().any(|key| key.starts_with("chat.")) && entry.place == Place::Any {
+            push(id, "a chat.* slot needs a place".into());
+        }
         if entry.records && !picked_by_code {
             push(
                 id,
@@ -660,6 +756,95 @@ when = "x"
             .map(|(id, _)| id)
             .collect();
         assert_eq!(chips, ["meta.capabilities"]);
+    }
+
+    /// An entry whose words assume the chat is not on a computer has a
+    /// `.here` variant, and each shows only in its place: code that picks
+    /// `dispatch.no_computer` gets the variant on a computer, the `answer`
+    /// question offers one of the pair, and followups follow the place
+    /// (#10077).
+    #[test]
+    fn here_variants_show_only_on_a_computer() {
+        let bank = Bank::builtin();
+        let away = Facts::default();
+        let here = Facts::default().on_computer(true);
+        for id in [
+            "meta.who",
+            "meta.capabilities",
+            "meta.coder",
+            "meta.github",
+            "dispatch.no_computer",
+        ] {
+            let base = bank.entry(id).unwrap();
+            let variant = bank.entry(&format!("{id}{HERE_SUFFIX}")).unwrap();
+            assert!(base.eligible(&away) && !base.eligible(&here), "{id}");
+            assert!(variant.eligible(&here) && !variant.eligible(&away), "{id}");
+            assert_eq!(bank.placed(id, &here), Some(variant));
+            assert_eq!(bank.placed(id, &away), Some(base));
+            let text = variant.render(&here).unwrap().to_lowercase();
+            assert!(!text.contains("connect"), "{id}: {text}");
+            assert!(variant.offer().is_none(), "{id}");
+        }
+        // The working-directory answer needs the project folder.
+        let limits = bank.entry("meta.limits_chat.here").unwrap();
+        assert!(!limits.eligible(&here));
+        let placed = here
+            .clone()
+            .set("chat.project", "openagents")
+            .set("chat.project_path", "/Users/someone/work/openagents");
+        assert!(
+            limits
+                .render(&placed)
+                .unwrap()
+                .contains("the project folder openagents at /Users/someone/work/openagents")
+        );
+        // A chip never offers to connect a computer on one.
+        let capabilities = bank.entry("meta.capabilities.here").unwrap();
+        let chips: Vec<String> = bank
+            .followups(capabilities, &placed)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(chips, ["meta.coder.here", "meta.limits_chat.here"]);
+        let lint = |source: &str| lint(&Bank::parse(source).unwrap(), None).join("\n");
+        let problems = lint(
+            r#"
+bank = "test"
+[[answer]]
+id = "meta.x"
+version = 1
+routes = ["smalltalk"]
+when = "x"
+text = "Hi."
+
+[[answer]]
+id = "meta.x.here"
+version = 1
+routes = ["smalltalk"]
+when = "x"
+text = "Hi from {project}."
+facts = { project = "chat.project" }
+
+[[answer]]
+id = "meta.y.here"
+version = 1
+routes = ["smalltalk"]
+place = "here"
+when = "x"
+text = "Hi."
+"#,
+        );
+        for expected in [
+            "meta.x.here: a .here variant needs place = \"here\"",
+            "meta.x.here: varies meta.x, which needs place = \"away\"",
+            "meta.x.here: a chat.* slot needs a place",
+            "meta.y.here: varies the unknown entry meta.y",
+        ] {
+            assert!(
+                problems.contains(expected),
+                "missing `{expected}` in\n{problems}"
+            );
+        }
     }
 
     #[test]

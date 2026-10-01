@@ -178,6 +178,10 @@ pub struct Passage {
     /// The router may serve it whole (T0) at relevance at least
     /// [`super::KB_ANSWER_CONFIDENCE`] when the message needs no specifics.
     pub answer: Option<String>,
+    /// The reviewed answer assumes the chat is not on a computer (the
+    /// entry's `off-computer` tag), so a chat on the computer Coder runs on
+    /// never shows it whole; the passage still grounds the model (#10077).
+    pub off_computer: bool,
 }
 
 /// What a retrieval found.

@@ -7,7 +7,7 @@ summary: >-
   The Chat tab talks with OpenAgents, which can't reach your computer; Coder
   is the coding agent we dispatch to a computer you've connected when a
   message needs one.
-tags: [chat, coder, dispatch, computer]
+tags: [chat, coder, dispatch, computer, off-computer]
 applies_when: >-
   The user asks the difference between chatting with OpenAgents and Coder,
   what Coder is, or when Coder gets involved; not how to connect a computer,

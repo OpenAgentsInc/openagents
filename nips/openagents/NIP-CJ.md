@@ -51,9 +51,23 @@ override host policy. Client is informational and conveys no authority.
 A request MAY also carry `router` (the name of a routing question set the
 worker serves, such as `chat-router-v1`) and `context`, a bounded object of
 `surface` (`phone`, `desktop`, or `terminal`), `computer_ready` (boolean),
-and `app_build` (at most 64 bytes). Context carries no credential, key, host
-name, or amount; a worker ignores fields it does not know and never lets
-context widen what it does. A request MAY also carry `draft` (added
+and `app_build` (at most 64 bytes). Added 2026-09-30: `computer`, where
+Coder runs for the chat, as `{place: "here", name?, engines}` when the
+sending device is itself that computer (the desktop app, or the terminal on
+a computer) or `{place: "paired", name}` when a phone is paired with one;
+`name` is the label the person gave the computer (at most 64 characters),
+and `engines` is at most 4 `{engine, state}` with `engine` a word of at most
+16 lowercase ASCII letters, digits, `-`, or `_` (such as `codex` or
+`claude`) and `state` `ready`, `not_signed_in`, or `limited`. Also
+`project`, the chat's project folder, as `{name, path?}`: `name` at most
+128 bytes, and `path`, the folder's absolute path of at most 1024 bytes,
+only beside `place: "here"` (a worker ignores a path from anywhere else).
+Every string is printable; a value past its bound is left out, never cut.
+The computer's name and the project folder are the person's own data: a
+worker uses them only to tell its model where the chat runs and to fill its
+own reviewed answers, and sends them to no other service. Context carries
+no credential, key, host address, or amount; a worker ignores fields it
+does not know and never lets context widen what it does. A request MAY also carry `draft` (added
 2026-09-28 for the
 [extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile);
 the draft, cards, and offers below are implemented in `crates/nostr`

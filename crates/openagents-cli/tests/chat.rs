@@ -246,6 +246,16 @@ async fn chat_streams_routes_continues_threads_and_exports_atif() {
         "terminal"
     );
     assert_eq!(payloads.lock().unwrap()[0]["client"], "openagents-cli");
+    // A terminal is on a computer; outside a checkout it names no project.
+    assert_eq!(
+        payloads.lock().unwrap()[0]["context"]["computer"]["place"],
+        "here"
+    );
+    assert!(
+        payloads.lock().unwrap()[0]["context"]
+            .get("project")
+            .is_none()
+    );
     // The scratch store is its own, and nothing was written under HOME.
     assert!(!home.path().join(".openagents").exists());
 
@@ -481,7 +491,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     }
     let worker = SecretKey::from_byte_array([0x53; 32]).unwrap();
     let worker_hex = hex(&public(&worker).serialize());
-    let (url, _payloads) = relay(worker).await;
+    let (url, payloads) = relay(worker).await;
     macro_rules! run {
         ($($arg:expr),* $(,)?) => {
             openagents_in(&top, home.path(), &url, &worker_hex, &[$($arg),*]).await
@@ -518,6 +528,23 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
         coder_message(&plain).contains("Neither Codex nor Claude Code is signed in"),
         "{}",
         plain.stdout
+    );
+    // The turn told the worker that this computer is where Coder runs, its
+    // agents' readiness, and the checkout as the project folder (#10077).
+    let context = payloads.lock().unwrap()[0]["context"].clone();
+    assert_eq!(context["surface"], "terminal");
+    assert_eq!(context["computer"]["place"], "here");
+    assert_eq!(
+        context["computer"]["engines"],
+        json!([{"engine": "codex", "state": "not_signed_in"},
+               {"engine": "claude", "state": "not_signed_in"}])
+    );
+    assert_eq!(context["project"]["name"], "slugs");
+    assert!(
+        context["project"]["path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("/slugs")),
+        "{context}"
     );
 
     // Claude Code only.

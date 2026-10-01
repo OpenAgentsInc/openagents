@@ -147,6 +147,24 @@ async fn a_paired_phone_reads_a_host_thread_and_continues_it() {
         assert!(Instant::now() < deadline, "the worker never answered");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    // The turn tells the worker that this computer is where Coder runs,
+    // by its label, and the chat's project folder with its path (#10077).
+    let first = payloads.lock().unwrap()[0].clone();
+    let context = &first["context"];
+    assert_eq!(context["surface"], "desktop");
+    assert_eq!(context["computer"]["place"], "here");
+    assert_eq!(context["computer"]["name"], "Studio Mac");
+    assert_eq!(context["project"]["name"], "checkout");
+    assert!(
+        context["project"]["path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("/checkout")),
+        "{context}"
+    );
+    assert_eq!(
+        first["instructions"],
+        openagents_chat::basic_coder::INSTRUCTIONS_ON_COMPUTER
+    );
 
     // A phone pairs with a connect code and opens a direct channel.
     let phone = Phone::new().await;

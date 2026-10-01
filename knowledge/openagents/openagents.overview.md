@@ -7,7 +7,7 @@ summary: >-
   OpenAgents is a phone app, on iPhone and Android, for chatting with us and
   commanding your own computers, with a shared world, a bitcoin wallet, and
   open-source code.
-tags: [overview, app, product]
+tags: [overview, app, product, off-computer]
 applies_when: >-
   The user asks what OpenAgents is, what the app is for, or what it does
   overall; not who is answering in this chat, and not which AI model powers

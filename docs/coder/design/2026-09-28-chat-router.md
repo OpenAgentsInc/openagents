@@ -80,7 +80,7 @@ NIP-HOST `terminal.open`, on the connected computer.
 | Model door | `crates/coder/src/generate.rs` | Vercel AI Gateway, lane `gemini` = `google/gemini-3.8-flash` (also `glm` = `zai/glm-5.3-flash`). 3.0 to 4.3 s to first token. |
 | First response | `crates/coder/src/first.rs`, `crates/coder/src/router/` | Before the router: one Jev request beside the model call (`action`, `lane`, `opener`), the argmax opener as partial `seq` 0 about 0.6 s after Send. Now a turn that asks for `router` gets the `chat-router-v1` judgment instead (route, prepared answer, risk, lane, opener), and `first.rs` keeps only what the router and the suggestion ranking share. Opt-in, so Microcoder's cloud steps keep JSON-only replies. |
 | Rank | `crates/coder/src/first.rs` | A `rank` job orders up to 16 candidate repos or actions by one Choice. Metered as a turn. |
-| Phone | `crates/openagents-mobile/src/basic_coder.rs`, `router.rs`, `coder_tab.rs` | Sends the instructions (speaking as OpenAgents, in the plural), the bounded transcript, `client`, `opener: true`, and the `router` request with a bounded `context` (surface, whether a computer is ready, build). No credential, model, grant, or computer name. Shows the router's offers as its own controls: Run Coder or Connect a computer, screen chips, read-only command cards, follow-up chips, a "Prepared answer" note, and **Wrong answer**. Every new chat goes to OpenAgents; Coder runs on a computer only when the person picks one. Ships in TestFlight build 20 (build 19 sends only `opener`). |
+| Phone | `crates/openagents-mobile/src/basic_coder.rs`, `router.rs`, `coder_tab.rs` | Sends the instructions (speaking as OpenAgents, in the plural), the bounded transcript, `client`, `opener: true`, and the `router` request with a bounded `context` (surface, whether a computer is ready, build, and since #10077 the paired computer's name and the chat's project folder name). No credential, model, grant, or path. Shows the router's offers as its own controls: Run Coder or Connect a computer, screen chips, read-only command cards, follow-up chips, a "Prepared answer" note, and **Wrong answer**. Every new chat goes to OpenAgents; Coder runs on a computer only when the person picks one. Ships in TestFlight build 20 (build 19 sends only `opener`). |
 | Jev client | `crates/jev` | `SystemOneRequest` with `Noul` (probability of yes), `Choice` (up to 255 options, with `confidence` and full `probabilities`), `Score` (2 to 10 ordered levels). Questions in one request are answered independently and in parallel. |
 | Decision profile | `crates/coder/src/decision.rs`, `crates/coder/src/profiles.rs` | Resolves the one `jev::Client` every call site uses (hosted `jev-latest`, or local Kev/Lev). |
 | Knowledge base | `crates/knowledge`, `knowledge/`, [the KB design](knowledge-base.md), [NIP-KB](../../../nips/openagents/NIP-KB.md) | 211 entries of coding knowledge (methods, edge cases, slips). Retrieval is embeddings (`text-embedding-3-small` via OpenAI or OpenRouter, or Vertex) plus BM25, then a Jev Noul relevance filter. Product entries now live in `knowledge/openagents/` (52 admitted) and are served by `coder::product_kb`; see [Product knowledge base](#product-knowledge-base). |
@@ -646,10 +646,14 @@ none of it still renders the reply correctly.
 ```
 
 `router` asks for routing and implies `opener`. `context` is bounded,
-optional, and carries no credential, key, host name, or amount: `surface`
+optional, and carries no credential, key, host address, or amount: `surface`
 (`phone`, `desktop`, `terminal`), `computer_ready` (whether the device has a
 ready computer, so the dispatch answer can say "connect one first"), and the
-build (for the bank's version-specific entries). The worker still chooses
+build (for the bank's version-specific entries). Since #10077 it also
+carries `computer` (this device is where Coder runs, with its agents'
+readiness, or the phone's paired computer by name) and `project` (the
+chat's project folder, with its path only from a computer); see
+[Where the chat runs](#where-the-chat-runs-10077). The worker still chooses
 its own model; the request never names one.
 
 **Judgment feedback (`27000`)** gains typed fields beside today's `set`,
@@ -1528,6 +1532,59 @@ reading at 0.60 (`DECK_CONFIDENCE`) serves `presentation.open` ("Opening
 unsure one, serves the plain `presentation.unknown` refusal, which lists
 the decks there are. All three lines are records entries, picked by code;
 the `answer` question never offers them. The model call is dropped.
+
+## Where the chat runs (#10077)
+
+On 2026-09-30 the desktop app answered "Whats your working dir" with "We do
+not have a working directory here … we can dispatch Coder to a computer you
+connect." On a computer that is wrong: the app *is* the connected computer,
+with Coder, its coding agents, and a project folder. Every turn now carries
+where the chat runs as typed `context`, and the worker conditions on it.
+The route question did not change, so the question set's digest, its
+calibration, and the labeled set stand; nothing reads message text.
+
+**What each surface sends** (`openagents_chat::router::Context`):
+
+| Surface | `computer` | `project` |
+| --- | --- | --- |
+| Desktop app (through the host, `coder_host::control::apply_chat`) | `here`, the host's label, and its coding agents' readiness from the run's own prediction (`Engine::from_runner`) | the project the chat's Coder task was bound to, else the host's first project (where a new run starts), with the picked folder's path |
+| `openagents chat` without a host | `here`, with its agents' readiness (none read under `--no-run`) | the checkout it runs in, with its path |
+| `openagents chat` through the host | as the desktop app | as the desktop app |
+| Phone with a paired computer | `paired`, by the computer's label, even while it is offline | the name of the folder the chat's Coder task named, never a path |
+| Phone with none | absent | absent |
+
+**What the worker does** (`coder::router::Context`):
+
+- **The model's instructions.** `Context::note` adds where the chat runs to
+  the caller's instructions: on a computer, that Coder runs here, never to
+  tell the person to connect a computer (unless they ask about adding
+  another), the agents' readiness, and the project folder as the working
+  directory; on a paired phone, the computer's name. A desktop or terminal
+  turn also sends `basic_coder::INSTRUCTIONS_ON_COMPUTER`, which never says
+  we can't reach the computer.
+- **Prepared answers.** A bank entry whose words assume the chat is off a
+  computer is `place = "away"`, and its variant `id.here` is `place =
+  "here"` (`meta.who`, `meta.capabilities`, `meta.limits_chat`,
+  `meta.coder`, `meta.github`, `dispatch.no_computer`). Only the entries in
+  the chat's place are eligible, so the `answer` question offers one of each
+  pair, code that picks an entry by id gets the variant (`Bank::placed`),
+  and follow-up chips follow the place. `meta.limits_chat.here` names the
+  project folder and its path from the `chat.project` and
+  `chat.project_path` facts, and is not offered without them; on a
+  computer whose agents can't take work, `dispatch.no_computer.here` says
+  so, with no offer to connect a computer.
+- **Knowledge answers.** A product entry tagged `off-computer`
+  (`openagents.chat-and-coder`, `openagents.overview`) is never served
+  whole on a computer; it still grounds the model there. Questions about
+  connecting another computer or a phone still get the pairing answers.
+- **Local state.** A question about the working directory, the project, or
+  where Coder works is answered from the context (the bank's
+  `meta.limits_chat.here`, or the model told the folder); work that needs
+  the folder's contents goes to Coder on this computer through the existing
+  `work.dispatch` route.
+- **Privacy.** The computer's name and the project folder reach only the
+  worker and the chat model's instructions, never a seam (personalization,
+  embeddings, Jev), and the privacy answer says so (`meta.privacy@2`).
 
 ### The offer and the desktop
 

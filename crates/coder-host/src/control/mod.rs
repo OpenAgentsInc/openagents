@@ -1019,6 +1019,65 @@ fn computer_ready(shared: &Shared) -> bool {
         || LOCAL_CODER.get().is_some_and(|ready| ready())
 }
 
+/// What a hosted chat turn on this computer tells the chat worker
+/// (#10077): the desktop surface, that this computer is where Coder runs,
+/// its label and coding agents' readiness, and the chat's project folder:
+/// the project its Coder task was bound to (`bound`, a label or a folder
+/// name), else the first project, where a new run starts. No key, address,
+/// or account.
+fn chat_context(shared: &Shared, bound: Option<&str>) -> openagents_chat::router::Context {
+    use openagents_chat::router::{Computer, Context, Engine, Project as Folder, Surface};
+    let engines = LOCAL_RUNNER
+        .get()
+        .and_then(|predict| predict())
+        .map(|runner| Engine::from_runner(&runner))
+        .unwrap_or_default();
+    let name = (!shared.config.label.is_empty()).then(|| shared.config.label.clone());
+    // The recorded projects, as the window lists them; else the ones this
+    // host was started with.
+    let projects = root(shared)
+        .and_then(|root| projects(&root))
+        .ok()
+        .filter(|projects| !projects.is_empty())
+        .unwrap_or_else(|| {
+            shared
+                .config
+                .workspaces
+                .iter()
+                .map(|(label, path)| Project {
+                    label: label.clone(),
+                    folder: root(shared)
+                        .ok()
+                        .and_then(|root| picked_folder(&root, path))
+                        .map(|folder| folder.display().to_string()),
+                    path: path.display().to_string(),
+                })
+                .collect()
+        });
+    Context {
+        surface: Surface::Desktop,
+        computer_ready: computer_ready(shared),
+        computer: Some(Computer::Here { name, engines }),
+        project: chat_project(&projects, bound).and_then(|project| Folder::at(project.shown())),
+        ..Context::default()
+    }
+}
+
+/// The project a chat's turn names: the one its Coder task was bound to,
+/// by label or folder name, else the first.
+fn chat_project<'a>(projects: &'a [Project], bound: Option<&str>) -> Option<&'a Project> {
+    bound
+        .and_then(|want| {
+            projects.iter().find(|project| {
+                project.label == want
+                    || Path::new(project.shown())
+                        .file_name()
+                        .is_some_and(|name| name == want)
+            })
+        })
+        .or_else(|| projects.first())
+}
+
 /// The host's threads: the store in `<host root>/basic-chats`, opened on
 /// first use.
 fn open_chats(
@@ -1119,11 +1178,28 @@ pub(crate) fn apply_chat(
         .unwrap_or_else(|poison| poison.into_inner());
     open_chats(shared, &mut state)?;
     let chats = state.as_mut().expect("initialized chat state");
-    chats.set_context(openagents_chat::router::Context {
-        surface: openagents_chat::router::Surface::Desktop,
-        computer_ready: computer_ready(shared),
-        ..openagents_chat::router::Context::default()
-    });
+    // Only a send or a retry asks the worker, so only they read this
+    // computer's agents and projects for the turn's context.
+    let asking = match &command {
+        openagents_chat::service::Command::Send { chat, .. }
+        | openagents_chat::service::Command::Retry { chat } => Some(chat.clone()),
+        _ => None,
+    };
+    let context = match asking {
+        Some(chat) => {
+            let bound = chats
+                .get(&chat)
+                .and_then(|summary| summary.coder.as_ref())
+                .and_then(|spawned| spawned.project.clone());
+            chat_context(shared, bound.as_deref())
+        }
+        None => openagents_chat::router::Context {
+            surface: openagents_chat::router::Surface::Desktop,
+            computer_ready: computer_ready(shared),
+            ..openagents_chat::router::Context::default()
+        },
+    };
+    chats.set_context(context);
     let mut snapshot = openagents_chat::service::apply(
         chats,
         command,

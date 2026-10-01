@@ -31,11 +31,24 @@ bank = "chat-answers-v1"
 id = "meta.who"
 version = 1
 routes = ["meta"]
+place = "away"
 when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
 examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
 text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to a computer you've connected."
 chip = "Who are you?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
+followups = ["meta.capabilities", "meta.model", "meta.pricing"]
+
+[[answer]]
+id = "meta.who.here"
+version = 1
+routes = ["meta"]
+place = "here"
+when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
+examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
+text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs this computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to work here."
+chip = "Who are you?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.capabilities", "meta.model", "meta.pricing"]
 
 [[answer]]
@@ -63,6 +76,7 @@ followups = ["meta.model", "meta.privacy"]
 id = "meta.capabilities"
 version = 2
 routes = ["meta"]
+place = "away"
 when = "The user asks in general what we can do, how we can help, or whether we can write code, without naming a project, file, error, or task of their own"
 text = "In this chat we can answer questions, explain code and concepts, and help you plan and write. We can't run code, read files, or reach your computer from here: work on code and repositories goes to Coder, our coding agent, which we dispatch to a computer you connect, with this conversation as its task."
 chip = "What can you do?"
@@ -70,14 +84,38 @@ sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers", "meta.limits_chat"]
 
 [[answer]]
+id = "meta.capabilities.here"
+version = 1
+routes = ["meta"]
+place = "here"
+when = "The user asks in general what we can do, how we can help, or whether we can write code, without naming a project, file, error, or task of their own"
+text = "In this chat we can answer questions, explain code and concepts, and help you plan and write. Our replies here don't run code or read files themselves: work on code and repositories goes to Coder, our coding agent, which works on this computer with this conversation as its task."
+chip = "What can you do?"
+sources = ["crates/openagents-chat/src/basic_coder.rs"]
+followups = ["meta.coder", "meta.limits_chat"]
+
+[[answer]]
 id = "meta.limits_chat"
 version = 2
 routes = ["meta"]
+place = "away"
 when = "The user asks whether we can see their files or screen, run code, or reach their computer or repository from this chat, without asking for a specific task to be done; not whether we can browse the web"
 text = "In this chat we can't run code, read files, or reach your computer or accounts. That work goes to Coder, our coding agent, which we dispatch to a computer you connect."
 chip = "Can you see my files?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers"]
+
+[[answer]]
+id = "meta.limits_chat.here"
+version = 1
+routes = ["meta"]
+place = "here"
+when = "The user asks whether we can see their files or screen, run code, or reach their computer or repository from this chat, or which folder or working directory this chat is in, without asking for a specific task to be done; not whether we can browse the web"
+text = "This chat is on your computer, in the project folder {project} at {project_path}. Our replies here don't run code or read files themselves; that work goes to Coder, our coding agent, which works in that folder on this computer."
+facts = { project = "chat.project", project_path = "chat.project_path" }
+chip = "Can you see my files?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder-host/src/control/mod.rs"]
+followups = ["meta.coder"]
 
 [[answer]]
 id = "meta.web_access"
@@ -93,6 +131,7 @@ followups = ["meta.capabilities", "meta.model"]
 id = "meta.coder"
 version = 2
 routes = ["meta"]
+place = "away"
 when = "The user asks what Coder is or how Coder works, in general"
 examples = ["how does coder work", "what actually happens when you dispatch coder"]
 text = "Coder is our coding agent. When a task needs a computer, we dispatch Coder to a computer you connect, with this conversation as its task, and it works there with that computer's own git and GitHub login."
@@ -101,9 +140,22 @@ sources = ["crates/openagents-mobile/src/basic_coder.rs", "README.md"]
 followups = ["account.computers", "meta.github", "meta.pricing"]
 
 [[answer]]
+id = "meta.coder.here"
+version = 1
+routes = ["meta"]
+place = "here"
+when = "The user asks what Coder is or how Coder works, in general"
+examples = ["how does coder work", "what actually happens when you dispatch coder"]
+text = "Coder is our coding agent. When a task needs it, we dispatch Coder on this computer, with this conversation as its task, and it works here with this computer's own git and GitHub login."
+chip = "What is Coder?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "README.md"]
+followups = ["meta.github", "meta.pricing"]
+
+[[answer]]
 id = "meta.github"
 version = 1
 routes = ["meta"]
+place = "away"
 when = "The user asks us to connect to, sign in to, or link their GitHub account, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
 not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
 examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub"]
@@ -111,6 +163,19 @@ text = "We work with GitHub through a computer you connect: Coder, our coding ag
 chip = "How do you work with GitHub?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers"]
+
+[[answer]]
+id = "meta.github.here"
+version = 1
+routes = ["meta"]
+place = "here"
+when = "The user asks us to connect to, sign in to, or link their GitHub account, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
+not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
+examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub"]
+text = "We work with GitHub through this computer: Coder, our coding agent, runs here and uses this computer's own git and GitHub login."
+chip = "How do you work with GitHub?"
+sources = ["crates/openagents-chat/src/basic_coder.rs"]
+followups = ["meta.coder"]
 
 [[answer]]
 id = "meta.open_source"
@@ -147,11 +212,11 @@ followups = ["meta.pricing"]
 
 [[answer]]
 id = "meta.privacy"
-version = 1
+version = 2
 routes = ["meta"]
 when = "The user asks what happens to their messages, who can read or see them, or whether their data is private; not whether we keep, delete, or train on their chats"
 examples = ["who can see what I type here"]
-text = "Your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. To answer, we send your messages to {recipients}. Our worker doesn't store your message text."
+text = "Your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. To answer, we send your messages to {recipients}. On a computer, or a phone paired with one, each message also names that computer and this chat's project folder, which only our worker and our chat model read. Our worker doesn't store your message text."
 facts = { recipients = "worker.recipients" }
 chip = "What happens to my messages?"
 sources = ["nips/openagents/NIP-CJ.md", "INVARIANTS.md", "crates/coder/src/bin/coder-worker.rs"]
@@ -295,10 +360,20 @@ sources = ["crates/coder/src/router/capability.rs", "crates/openagents-mobile/sr
 id = "dispatch.no_computer"
 version = 1
 routes = ["work.dispatch"]
+place = "away"
 when = "The user wants work done on code or a repository, and no computer is connected yet"
 text = "That needs a computer. Connect one and we'll dispatch Coder there with this conversation."
 offer = { screen = "account.computers", label = "Connect a computer" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
+
+[[answer]]
+id = "dispatch.no_computer.here"
+version = 1
+routes = ["work.dispatch"]
+place = "here"
+when = "The user wants work done on code or a repository on this computer, and no coding agent can take it here yet"
+text = "That needs Coder, and no coding agent can take it on this computer right now. Once Codex or Claude Code is signed in here with room to work, we'll dispatch Coder with this conversation."
+sources = ["crates/openagents-chat/src/coder_events.rs", "crates/coder/src/task/local.rs"]
 
 # ---------------------------------------------------------------------------
 # cli: the openagents command

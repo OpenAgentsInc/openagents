@@ -21,6 +21,10 @@ Each file is a knowledge entry of kind `product` with an id under
   neighbor is close.
 - **Body.** The answer, then details a grounded reply may use, then the
   sources.
+- **`off-computer`.** Tag an entry whose `answer` assumes the chat is not
+  on a computer ("we can't reach your computer"). A chat on the computer
+  Coder runs on (the desktop app, or `openagents chat`) never shows that
+  answer whole; the entry still grounds the model's reply there.
 - **Admission.** An entry is served only when `status: admitted`. Its
   `evidence` records the review against its sources. The answer text is
   user-facing copy: a change bumps `version` and needs the owner's review.

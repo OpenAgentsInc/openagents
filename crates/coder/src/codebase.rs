@@ -770,6 +770,7 @@ pub fn passages(judged: &Judged) -> Vec<crate::router::seams::Passage> {
             source: excerpt.chunk.cite(),
             relevance: excerpt.relevance,
             answer: None,
+            off_computer: false,
         })
         .collect()
 }

@@ -660,9 +660,11 @@ impl CoderTab {
     }
 
     /// What the next basic turn tells the worker: whether a computer is
-    /// ready, and the build. No computer's name or workspace.
-    /// It also carries the open chat's test-set draft and its last try,
-    /// which only the phone keeps.
+    /// ready and, when one is, its name (the label the person gave it), so
+    /// the chat never asks them to connect one (#10077); the open chat's
+    /// project folder by name when its Coder task named one, never a path;
+    /// and the build. It also carries the open chat's test-set draft and
+    /// its last try, which only the phone keeps.
     fn router_context(&mut self, computers: Option<&Computers>) -> Context {
         let (draft, tried) = match self.talk.clone() {
             Some(id) => {
@@ -671,9 +673,30 @@ impl CoderTab {
             }
             None => (None, None),
         };
+        // A paired computer is named even while it is offline: the person
+        // has one, so the chat never asks them to connect one.
+        let availability = self.availability(computers);
+        let ready = matches!(availability, Availability::Ready(_));
+        let paired = match availability {
+            Availability::Ready(host)
+            | Availability::Connecting(host)
+            | Availability::Offline(host) => Some(host.label.clone()),
+            Availability::NotConfigured => None,
+        };
+        let project = self
+            .talk
+            .as_deref()
+            .and_then(|id| self.basic.get(id))
+            .and_then(|summary| summary.coder.as_ref())
+            .and_then(|spawned| spawned.project.clone())
+            .map(|name| crate::router::Project { name, path: None });
         Context {
             surface: crate::router::Surface::Phone,
-            computer_ready: matches!(self.availability(computers), Availability::Ready(_)),
+            computer_ready: ready,
+            computer: paired
+                .filter(|name| !name.trim().is_empty())
+                .map(|name| crate::router::Computer::Paired { name }),
+            project,
             app_build: self.app_build.clone(),
             draft,
             tried,

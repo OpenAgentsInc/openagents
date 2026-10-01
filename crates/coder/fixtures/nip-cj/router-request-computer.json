@@ -1,0 +1,22 @@
+{
+  "v": 2,
+  "requires": [],
+  "task": "whats your working dir",
+  "transcript": [{ "role": "user", "content": "whats your working dir" }],
+  "client": "openagents-desktop",
+  "opener": true,
+  "router": "chat-router-v2",
+  "context": {
+    "surface": "desktop",
+    "computer_ready": true,
+    "computer": {
+      "place": "here",
+      "name": "Studio Mac",
+      "engines": [
+        { "engine": "codex", "state": "limited" },
+        { "engine": "claude", "state": "ready" }
+      ]
+    },
+    "project": { "name": "openagents", "path": "/Users/someone/work/openagents" }
+  }
+}

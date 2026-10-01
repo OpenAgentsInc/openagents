@@ -24,7 +24,7 @@ use coder::cli_route::tree::{Declared, Effect};
 use openagents_chat::basic_chats::{BasicChats, Summary};
 use openagents_chat::basic_coder::{self, Role, Turn};
 use openagents_chat::cache::Cache;
-use openagents_chat::router::{Context, Meta, Offer, Surface};
+use openagents_chat::router::{Context, Meta, Offer};
 use openagents_chat::service::{self, Command, Snapshot};
 use openagents_connect::control::{self, Op, Reply, Request};
 use secp256k1::SecretKey;
@@ -367,8 +367,8 @@ impl Backend {
                     home.display()
                 )));
             }
-            let ready = !args.switch("no-run") && coder_run::ready(home.join("tasks"));
-            return Self::local(home, true, ready);
+            let context = coder_run::context(home.join("tasks"), args.switch("no-run"));
+            return Self::local(home, true, context);
         }
         let named = args.option("socket").map(PathBuf::from);
         if !args.switch("local")
@@ -394,8 +394,9 @@ impl Backend {
                 Err(_) => {}
             }
         }
-        let ready = !args.switch("no-run") && coder_run::ready(coder::task::local::default_store());
-        Self::local(home(), false, ready)
+        let context =
+            coder_run::context(coder::task::local::default_store(), args.switch("no-run"));
+        Self::local(home(), false, context)
     }
 
     /// Ask the host to take in the threads this command kept without one
@@ -436,9 +437,10 @@ impl Backend {
         }
     }
 
-    /// The service in this process. `ready` says whether Coder can run on
-    /// this computer for this thread now, which the router is told.
-    fn local(home: PathBuf, scratch: bool, ready: bool) -> Result<Self, Failure> {
+    /// The service in this process. `context` says whether Coder can run
+    /// on this computer for this thread now, and that this computer and
+    /// its checkout are where it runs, which the router is told.
+    fn local(home: PathBuf, scratch: bool, context: Context) -> Result<Self, Failure> {
         let secret = device_key(&home, true).map_err(failed)?;
         let store = Cache::open(&home.join("threads"), &secret)
             .map_err(|error| failed(format!("cannot open the chat store: {error}")))?;
@@ -454,11 +456,7 @@ impl Backend {
         );
         // Coder runs on this computer when it is in a checkout and a coding
         // agent is signed in here with capacity.
-        chats.set_context(Context {
-            surface: Surface::Terminal,
-            computer_ready: ready,
-            ..Context::default()
-        });
+        chats.set_context(context);
         Ok(Self::Local {
             chats: Box::new(chats),
             scratch,

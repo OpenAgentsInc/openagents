@@ -57,6 +57,11 @@ pub const CANDIDATES: usize = 8;
 /// The most passages a grounding keeps.
 pub const KEEP: usize = 6;
 
+/// The tag of an entry whose reviewed answer assumes the chat is not on a
+/// computer ("we can't reach your computer"): a chat on the computer Coder
+/// runs on never shows it whole (#10077).
+pub const OFF_COMPUTER_TAG: &str = "off-computer";
+
 /// The earlier turns Jev reads besides the latest message, newest last.
 pub const EARLIER_TURNS: usize = 4;
 
@@ -491,6 +496,7 @@ pub fn read(
                 source: entry.cites.first().cloned().unwrap_or_default(),
                 relevance: relevance(n),
                 answer: if chosen { entry.answer.clone() } else { None },
+                off_computer: entry.tags.iter().any(|tag| tag == OFF_COMPUTER_TAG),
             }
         })
         .collect();

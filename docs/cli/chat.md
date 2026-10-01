@@ -119,6 +119,16 @@ relay and worker (the fixture tests use a local relay). The request says
 `surface: "terminal"` and `client: "openagents-cli"`; through the host it
 says what the host says (`desktop`). No model key is needed.
 
+Each turn also tells the worker that this computer is where Coder runs
+(`context.computer`, with Codex's and Claude Code's readiness; none is read
+under `--no-run`) and names the project folder: the Git checkout the command
+runs in, by name and path (`context.project`). Through the host, the project
+is the one the thread's Coder task used, else the host's first project. So
+"what's your working dir" is answered with that folder, and the chat never
+asks you to connect a computer
+([#10077](https://github.com/OpenAgentsInc/openagents/issues/10077)). The
+folder's name and path go only to our chat worker and its chat model.
+
 ## Coder on this computer
 
 The router may judge that a message is work for a computer: a Coder offer

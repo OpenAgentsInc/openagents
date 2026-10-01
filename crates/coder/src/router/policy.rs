@@ -363,8 +363,10 @@ fn dispatches(entry: &Entry) -> bool {
     entry.answers(RouteId::WorkDispatch) || entry.answers(RouteId::Cli)
 }
 
+/// The whole answer code picks by `id`, in the chat's place: on a
+/// computer, its `.here` variant when it has one ([`Bank::placed`]).
 fn final_of(bank: &Bank, facts: &Facts, id: &str) -> Option<Tier> {
-    let entry = bank.entry(id)?;
+    let entry = bank.placed(id, facts)?;
     Some(Tier::CannedFinal {
         text: entry.render(facts)?,
         offer: entry.offer(),

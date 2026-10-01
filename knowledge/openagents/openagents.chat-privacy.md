@@ -38,6 +38,7 @@ Each message is signed by your phone's device key and encrypted to our chat work
 ## Details
 
 - The request carries the conversation, instructions, a client name, and the first-response request, and no credential, model choice, or grant.
+- On a computer (the desktop app or `openagents chat`), or from a phone paired with one, the request also names that computer by the label you gave it and the chat's project folder, with the folder's path only from the computer itself. Only the chat worker and the chat model read them, so the chat knows it is on your computer and can say which folder it works in (#10077).
 - The phone shows only answers signed by the worker's key, tagged to its own request and device.
 - There is no account, sign-in, or key to paste: the device key made on first launch signs the request.
 

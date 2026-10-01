@@ -1400,9 +1400,11 @@ fn run_coder_starts_a_task_with_the_conversation() {
     assert_eq!(fixture.coder.open_task(), Some((host, task)));
 }
 
-/// Every basic turn asks for the chat router with a context that says only
-/// whether a computer is ready and which build this is: never a computer's
-/// name or workspace.
+/// Every basic turn asks for the chat router with a bounded context: whether
+/// a computer is ready, which build this is, and, with a paired computer,
+/// its label, so the chat never asks the person to connect one (#10077);
+/// never a workspace path or a key. With none, the context names no
+/// computer, and the chat still offers to connect one.
 #[test]
 fn a_turn_asks_for_routing_with_a_bounded_context() {
     let hand = Hand::default();
@@ -1416,17 +1418,27 @@ fn a_turn_asks_for_routing_with_a_bounded_context() {
         [crate::router::Context {
             computer_ready: true,
             app_build: Some("1.0.0 (19)".into()),
+            computer: Some(crate::router::Computer::Paired {
+                name: "Studio Mac".into()
+            }),
             ..crate::router::Context::default()
         }]
     );
-    let wire = contexts[0].json().to_string();
-    assert!(!wire.contains("Studio Mac"), "{wire}");
+    let wire = contexts[0].json();
+    assert_eq!(
+        wire["computer"],
+        serde_json::json!({"place": "paired", "name": "Studio Mac"})
+    );
+    assert!(wire.get("project").is_none(), "{wire}");
 
     let bare = Hand::default();
     let mut none =
         Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&bare);
     none.say("Who are you?");
-    assert!(!bare.contexts.lock().unwrap()[0].computer_ready);
+    let context = bare.contexts.lock().unwrap()[0].clone();
+    assert!(!context.computer_ready);
+    assert_eq!(context.computer, None);
+    assert!(context.json().get("computer").is_none());
 }
 
 /// The canned answer the router chose, as the worker sends it.

@@ -1664,6 +1664,15 @@ impl Job {
                         .as_str()
                         .unwrap_or_default()
                         .to_string();
+                    // Where the chat runs, from its typed context: on a
+                    // computer, Coder runs here and the project folder is
+                    // the working directory (#10077).
+                    if let Some(note) = turn.context.note() {
+                        if !instructions.is_empty() {
+                            instructions.push_str("\n\n");
+                        }
+                        instructions.push_str(&note);
+                    }
                     if opener && triage.is_some() {
                         if !instructions.is_empty() {
                             instructions.push_str("\n\n");
@@ -1773,11 +1782,14 @@ impl Job {
             } else {
                 &[]
             };
+        // The bank's facts for this turn: placed on a computer when the
+        // turn is, with the computer's name and project folder (#10077).
+        let facts = turn.context.facts(&routing.facts);
         let request = router::request(
             &turn.message,
             input,
             bank,
-            &routing.facts,
+            &facts,
             &groups,
             &tools,
             &admitted,
@@ -1802,7 +1814,7 @@ impl Job {
                         eprintln!("judge answered by fallback door {door} in {milliseconds} ms");
                     }
                     let answered_by = (door, response.model.clone());
-                    let mut reading = router::reading(&response, bank, &routing.facts, &admitted);
+                    let mut reading = router::reading(&response, bank, &facts, &admitted);
                     if let Some(map) = &routing.calibration {
                         map.apply(&mut reading);
                     }
@@ -1811,7 +1823,7 @@ impl Job {
                         router::decide(
                             &reading,
                             bank,
-                            &routing.facts,
+                            &facts,
                             &router::Situation {
                                 mode,
                                 context: &context,
@@ -1942,7 +1954,8 @@ impl Job {
         turn: &Turn,
     ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
         let bank = Bank::builtin();
-        let facts = &self.routing.facts;
+        let placed = turn.context.facts(&self.routing.facts);
+        let facts = &placed;
         let seams = &self.routing.seams;
         let (mut generating, mut incoming) =
             start_model(self.door.clone(), instructions.to_string(), input.to_vec());
@@ -2295,7 +2308,7 @@ impl Job {
                             }
                         }
                         (SeamOutcome::Grounded(Ok(found)), Tier::Grounded { corpus, lead: shown }) => {
-                            match router::grounded(&found, routing.needs_specifics) {
+                            match router::grounded(&found, routing.needs_specifics, turn.context.here()) {
                                 router::Grounded::Answer(passage) => {
                                     let text = passage.answer.clone().unwrap_or_default();
                                     send(0, &text)?;
@@ -2377,7 +2390,7 @@ impl Job {
                                         router::Screen::Wallet => "wallet.send",
                                         _ => "account.computers",
                                     };
-                                    if let Some(entry) = bank.entry(id)
+                                    if let Some(entry) = bank.placed(id, facts)
                                         && let Some(text) = entry.render(facts)
                                     {
                                         send(0, &text)?;
@@ -2554,7 +2567,12 @@ impl Job {
         if let Some(shown) = shown {
             offer(shown)?;
         }
-        let mut record = served_of(routing, tier, bank, &self.routing.facts);
+        let mut record = served_of(
+            routing,
+            tier,
+            bank,
+            &turn.context.facts(&self.routing.facts),
+        );
         if let Some(model) = model {
             record.model = Some(model);
         }
@@ -3424,6 +3442,18 @@ mod tests {
 
     /// The router's answers with the route named.
     fn routed(route: &str, answer: &str, specifics: f64, opener: &str) -> Value {
+        routed_in(&Value::Null, route, answer, specifics, opener)
+    }
+
+    /// [`routed`] for a turn with `context`, whose place and slots decide
+    /// which answers the question offers.
+    fn routed_in(
+        context: &Value,
+        route: &str,
+        answer: &str,
+        specifics: f64,
+        opener: &str,
+    ) -> Value {
         let bank = Bank::builtin();
         let openers: Vec<&str> = bank
             .openers
@@ -3434,7 +3464,12 @@ mod tests {
         // The loopback door is no gateway and the test worker has no
         // quota, so the answers that need either are not offered, and the
         // judge answers only the rest.
-        let facts = router::worker_facts(GEMINI, None, None, &Seams::default());
+        let facts = router::Context::of(context).facts(&router::worker_facts(
+            GEMINI,
+            None,
+            None,
+            &Seams::default(),
+        ));
         let answers: Vec<&str> = bank
             .answers
             .iter()
@@ -3447,7 +3482,7 @@ mod tests {
             .map(|route| route.word())
             .chain(["none"])
             .collect();
-        json!({
+        let mut answers = json!({
             "action": sure("respond", &["respond", "clarify", "end_conversation", "none"]),
             "route": sure(route, &routes),
             "lane": sure(if answer == "none" { "computer" } else { "chat" }, &["chat", "computer", "none"]),
@@ -3456,7 +3491,17 @@ mod tests {
             "opener": sure(opener, &openers),
             "capability": capability("not-a-capability-request", &[]),
             "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement", "none"]),
-        })
+        });
+        // A desktop turn also asks which deck (#10058).
+        if router::Context::of(context).surface() == router::Surface::Desktop {
+            let decks: Vec<&str> = router::decks()
+                .iter()
+                .map(|deck| deck.id)
+                .chain(["none"])
+                .collect();
+            answers["deck"] = sure("none", &decks);
+        }
+        answers
     }
 
     /// The `capability` answer over the built-in admitted set, `extra`
@@ -4200,6 +4245,7 @@ mod tests {
             source: "docs/coder/runtime/host-service.md".into(),
             relevance,
             answer: answer.map(str::to_string),
+            off_computer: false,
         }
     }
 
@@ -4810,5 +4856,153 @@ mod tests {
         assert_eq!(result["model"], "interview-test");
         assert_eq!(of_type(&frames, "card")[0]["card"], "draft");
         assert_eq!(of_type(&frames, "offer")[0]["suite"], "draft");
+    }
+
+    // ---------------------------------------------------------------------
+    // Where the chat runs (#10077)
+    // ---------------------------------------------------------------------
+
+    /// The desktop's context: this computer is where Coder runs, with the
+    /// chat's project folder, as `router-request-computer.json` carries it.
+    fn on_computer(ready: bool) -> Value {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../fixtures/nip-cj/router-request-computer.json"
+        ))
+        .unwrap();
+        let mut context = fixture["context"].clone();
+        context["computer_ready"] = json!(ready);
+        context
+    }
+
+    /// On a computer, "what's your working dir" is answered from the turn's
+    /// context: the project folder by name and path, with no offer and no
+    /// word about connecting a computer.
+    #[tokio::test]
+    async fn on_a_computer_the_working_directory_is_the_project_folder() {
+        let answers = routed_in(
+            &on_computer(true),
+            "meta",
+            "meta.limits_chat.here",
+            0.1,
+            "none",
+        );
+        let frames = frames_through(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("whats your working dir", on_computer(true)),
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["answer"], "meta.limits_chat.here@1");
+        let text = result["text"].as_str().unwrap();
+        assert!(
+            text.contains("openagents at /Users/someone/work/openagents"),
+            "{text}"
+        );
+        assert!(!text.to_lowercase().contains("connect"), "{text}");
+        assert!(of_type(&frames, "offer").is_empty());
+        // The phone's version of the same answer is not shown there, and
+        // the desktop's is not shown on a phone.
+        let phone = frames_through(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed("meta", "meta.limits_chat.here", 0.1, "none"),
+            )),
+            routed_turn("whats your working dir", json!({ "surface": "phone" })),
+        )
+        .await;
+        assert_ne!(phone.last().unwrap().1["answer"], "meta.limits_chat.here@1");
+    }
+
+    /// Work asked for on a computer whose coding agents can't take it is
+    /// told so, with no offer to connect a computer; a phone with none
+    /// still gets that offer.
+    #[tokio::test]
+    async fn on_a_computer_dispatch_never_asks_to_connect_one() {
+        let answers = routed_in(
+            &on_computer(false),
+            "work.dispatch",
+            "dispatch.stem",
+            0.9,
+            "none",
+        );
+        let frames = frames_through(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("look through my repo", on_computer(false)),
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["answer"], "dispatch.no_computer.here@1");
+        assert!(
+            !result["text"].as_str().unwrap().contains("Connect one"),
+            "{result}"
+        );
+        assert!(of_type(&frames, "offer").is_empty());
+        // A ready computer gets the dispatch offer, as on a paired phone.
+        let ready = frames_through(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed_in(
+                    &on_computer(true),
+                    "work.dispatch",
+                    "dispatch.stem",
+                    0.9,
+                    "none",
+                ),
+            )),
+            routed_turn("look through my repo", on_computer(true)),
+        )
+        .await;
+        assert_eq!(of_type(&ready, "offer")[0]["offer"], "run_coder");
+    }
+
+    /// The chat model is told where the chat runs: on a computer, that
+    /// Coder runs here, never to connect a computer, the agents'
+    /// readiness, and the project folder as the working directory; on a
+    /// paired phone, the computer's name; on a phone with none, nothing.
+    #[tokio::test]
+    async fn the_model_is_told_where_the_chat_runs() {
+        let instructions = |context: Value| async move {
+            let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+            let (url, seen) = serve_recorded(1, Duration::ZERO, "text/event-stream", stream.into());
+            let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+            let mut payload = routed_turn("whats your working dir", context);
+            payload["instructions"] = json!("We are OpenAgents.");
+            let frames = frames_through(door, None, payload).await;
+            assert_eq!(frames.last().unwrap().1["type"], "result");
+            let seen = seen.lock().unwrap();
+            seen[0]["instructions"].as_str().unwrap().to_string()
+        };
+        let here = instructions(on_computer(true)).await;
+        assert!(
+            here.starts_with("We are OpenAgents.\n\nAbout this chat:"),
+            "{here}"
+        );
+        for words in [
+            "on the user's own computer (named \"Studio Mac\")",
+            "Never tell the user to connect a computer",
+            "Codex is at its usage limit; Claude Code is ready",
+            "\"openagents\", at \"/Users/someone/work/openagents\"",
+            "working directory",
+        ] {
+            assert!(here.contains(words), "{words} in {here}");
+        }
+        let paired = instructions(json!({
+            "surface": "phone", "computer_ready": true,
+            "computer": { "place": "paired", "name": "Studio Mac" },
+            // A path from a phone is never read.
+            "project": { "name": "openagents", "path": "/Users/someone/work/openagents" },
+        }))
+        .await;
+        assert!(
+            paired.contains("paired with their computer \"Studio Mac\""),
+            "{paired}"
+        );
+        assert!(!paired.contains("/Users/someone"), "{paired}");
+        let phone = instructions(json!({ "surface": "phone", "computer_ready": false })).await;
+        assert_eq!(phone, "We are OpenAgents.");
     }
 }

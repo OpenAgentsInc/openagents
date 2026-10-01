@@ -3,8 +3,12 @@
 //!
 //! A chat turn asks the worker for routing (`router`) and says what the
 //! phone can do next (`context`): which surface it is, whether a computer
-//! is ready, and the app's build. The context carries no credential, key,
-//! host name, workspace, or amount.
+//! is ready, and the app's build. Since #10077 it also says where Coder
+//! runs for this chat ([`Computer`]): this device itself, with its coding
+//! agents' readiness, or the phone's paired computer by the name the
+//! person gave it; and the chat's project folder ([`Project`]), with its
+//! path only on a computer. The context carries no credential, key, host
+//! address, or amount, and every field is bounded.
 //!
 //! The worker answers with typed observations beside its text: the
 //! judgment (which prepared answer, route, and tier), and offers (`offer`
@@ -63,6 +67,167 @@ impl Surface {
     }
 }
 
+/// The most characters of a computer's name the context carries.
+pub const MAX_COMPUTER_NAME_CHARS: usize = 64;
+/// The most coding agents the context names.
+pub const MAX_ENGINES: usize = 4;
+/// The most bytes of a project folder's name the context carries.
+pub const MAX_PROJECT_NAME_BYTES: usize = 128;
+/// The most bytes of a project folder's path the context carries.
+pub const MAX_PROJECT_PATH_BYTES: usize = 1024;
+
+/// Where Coder runs for this chat, as a turn tells the worker (#10077).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Computer {
+    /// This device is itself a Coder computer: the desktop app, or
+    /// `openagents chat` on a computer. `name` is the label the person gave
+    /// it, when it has one.
+    Here {
+        name: Option<String>,
+        engines: Vec<Engine>,
+    },
+    /// The phone's ready paired computer, by the label the person gave it.
+    Paired { name: String },
+}
+
+/// One coding agent on this computer and whether a Coder run may use it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Engine {
+    /// `codex` or `claude`: lowercase letters, digits, `-`, or `_`, at
+    /// most 16 bytes.
+    pub engine: String,
+    pub state: EngineState,
+}
+
+/// A coding agent's readiness, without its account or usage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EngineState {
+    Ready,
+    NotSignedIn,
+    /// Signed in, but at or near a usage limit.
+    Limited,
+}
+
+impl EngineState {
+    fn word(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::NotSignedIn => "not_signed_in",
+            Self::Limited => "limited",
+        }
+    }
+}
+
+impl Engine {
+    /// The agents a Coder run here would weigh, from the run's own
+    /// prediction ([`crate::coder_events::Runner`]): the one that runs is
+    /// ready, the ones passed over are not signed in or limited.
+    #[must_use]
+    pub fn from_runner(runner: &crate::coder_events::Runner) -> Vec<Engine> {
+        use crate::coder_events::{PassedOver, Runner};
+        let mut engines = Vec::new();
+        let mut push = |engine: &str, state| {
+            if !engines.iter().any(|known: &Engine| known.engine == engine) {
+                engines.push(Engine {
+                    engine: engine.to_owned(),
+                    state,
+                });
+            }
+        };
+        match runner {
+            Runner::Runs {
+                provider, passed, ..
+            } => {
+                for over in passed {
+                    let state = match over.why {
+                        PassedOver::NotSignedIn => EngineState::NotSignedIn,
+                        _ => EngineState::Limited,
+                    };
+                    push(&over.provider, state);
+                }
+                push(provider, EngineState::Ready);
+            }
+            Runner::NotSignedIn { providers } => {
+                for provider in providers {
+                    push(provider, EngineState::NotSignedIn);
+                }
+            }
+            Runner::NoCapacity { .. } => {}
+        }
+        engines.retain(Engine::bounded);
+        engines.truncate(MAX_ENGINES);
+        engines
+    }
+
+    fn bounded(&self) -> bool {
+        (1..=16).contains(&self.engine.len())
+            && self
+                .engine
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+    }
+}
+
+/// The chat's project folder: its name, and on a computer its path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Project {
+    pub name: String,
+    /// The folder's absolute path, sent only from a computer ([`Computer::Here`]).
+    pub path: Option<String>,
+}
+
+impl Project {
+    /// The project for `folder`, an absolute path: its last component names
+    /// it. `None` for a path with no name.
+    #[must_use]
+    pub fn at(folder: &str) -> Option<Project> {
+        let name = std::path::Path::new(folder)
+            .file_name()?
+            .to_str()?
+            .to_owned();
+        Some(Project {
+            name,
+            path: Some(folder.to_owned()),
+        })
+    }
+}
+
+/// Printable, not blank, and at most `max_bytes` bytes and `max_chars`
+/// characters.
+fn plain(text: &str, max_bytes: usize, max_chars: usize) -> bool {
+    !text.trim().is_empty()
+        && text.len() <= max_bytes
+        && text.chars().count() <= max_chars
+        && !text.chars().any(char::is_control)
+}
+
+impl Computer {
+    fn json(&self) -> Option<Value> {
+        let name_ok =
+            |name: &str| plain(name, 4 * MAX_COMPUTER_NAME_CHARS, MAX_COMPUTER_NAME_CHARS);
+        match self {
+            Self::Here { name, engines } => {
+                let mut value = json!({
+                    "place": "here",
+                    "engines": engines
+                        .iter()
+                        .filter(|engine| engine.bounded())
+                        .take(MAX_ENGINES)
+                        .map(|engine| json!({"engine": engine.engine, "state": engine.state.word()}))
+                        .collect::<Vec<_>>(),
+                });
+                if let Some(name) = name.as_deref().filter(|name| name_ok(name)) {
+                    value["name"] = json!(name);
+                }
+                Some(value)
+            }
+            Self::Paired { name } => {
+                name_ok(name).then(|| json!({"place": "paired", "name": name}))
+            }
+        }
+    }
+}
+
 /// What a turn tells the worker about the phone.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Context {
@@ -72,6 +237,12 @@ pub struct Context {
     pub computer_ready: bool,
     /// The app's version and build, as `1.0.0 (19)`.
     pub app_build: Option<String>,
+    /// Where Coder runs for this chat (#10077): this device, or the
+    /// phone's paired computer. `None` on a phone with no computer ready.
+    pub computer: Option<Computer>,
+    /// The chat's project folder. Its path is sent only with
+    /// [`Computer::Here`].
+    pub project: Option<Project>,
     /// The conversation's open test-set draft (`openagents.eval-draft.v1`),
     /// which the phone keeps and resends each turn: the request's `draft`,
     /// beside `context`, never inside it. Data, never an instruction.
@@ -86,7 +257,8 @@ pub struct Context {
 
 impl Context {
     /// The request's `context` object: bounded, and without a key, host
-    /// name, workspace, or amount.
+    /// address, or amount. A computer's name and the project folder are
+    /// the person's own words and paths, each within its bound or left out.
     pub fn json(&self) -> Value {
         let mut context = json!({
             "surface": self.surface.word(),
@@ -95,7 +267,35 @@ impl Context {
         if let Some(build) = self.app_build.as_deref().filter(|build| build_like(build)) {
             context["app_build"] = json!(build);
         }
+        if let Some(computer) = self.computer.as_ref().and_then(Computer::json) {
+            context["computer"] = computer;
+        }
+        if let Some(project) = &self.project
+            && plain(
+                &project.name,
+                MAX_PROJECT_NAME_BYTES,
+                MAX_PROJECT_NAME_BYTES,
+            )
+        {
+            let mut value = json!({"name": project.name});
+            // A path is sent only from the computer it names.
+            if self.here()
+                && let Some(path) = project
+                    .path
+                    .as_deref()
+                    .filter(|path| plain(path, MAX_PROJECT_PATH_BYTES, MAX_PROJECT_PATH_BYTES))
+            {
+                value["path"] = json!(path);
+            }
+            context["project"] = value;
+        }
         context
+    }
+
+    /// This device is itself the computer Coder runs on.
+    #[must_use]
+    pub fn here(&self) -> bool {
+        matches!(self.computer, Some(Computer::Here { .. }))
     }
 }
 
@@ -805,6 +1005,138 @@ mod tests {
             deck: "three-devdays-later".into(),
         };
         assert_eq!(Offer::parse(&deck.wire()), Some(deck));
+    }
+}
+
+#[cfg(test)]
+mod computer_context_tests {
+    use super::*;
+    use crate::coder_events::{Passed, PassedOver, Runner};
+
+    /// The desktop's context is exactly the worker's fixture
+    /// (`crates/coder/fixtures/nip-cj/router-request-computer.json`), which
+    /// `coder::router::wire` reads back: the surface, this computer with
+    /// its agents' readiness from the run's own prediction, and the
+    /// project folder with its path (#10077).
+    #[test]
+    fn a_computer_context_matches_the_worker_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../coder/fixtures/nip-cj/router-request-computer.json"
+        ))
+        .unwrap();
+        let runner = Runner::Runs {
+            provider: "claude".into(),
+            model: "opus".into(),
+            passed: vec![Passed {
+                provider: "codex".into(),
+                why: PassedOver::NearLimit { used_percent: 97 },
+            }],
+        };
+        let context = Context {
+            surface: Surface::Desktop,
+            computer_ready: true,
+            computer: Some(Computer::Here {
+                name: Some("Studio Mac".into()),
+                engines: Engine::from_runner(&runner),
+            }),
+            project: Project::at("/Users/someone/work/openagents"),
+            ..Context::default()
+        };
+        let request = crate::basic_coder::payload(
+            &[crate::basic_coder::Turn::user("whats your working dir")],
+            &context,
+        );
+        assert_eq!(request["context"], fixture["context"]);
+        assert_eq!(request["client"], fixture["client"]);
+        assert_eq!(
+            request["instructions"],
+            crate::basic_coder::INSTRUCTIONS_ON_COMPUTER
+        );
+        assert!(
+            !crate::basic_coder::INSTRUCTIONS_ON_COMPUTER.contains("a computer the user connects")
+        );
+    }
+
+    /// A phone names its paired computer and the project by name, never a
+    /// path; a name or path past its bound, or with a control character,
+    /// is left out rather than cut.
+    #[test]
+    fn a_phone_names_its_computer_and_never_a_path() {
+        let context = Context {
+            computer_ready: true,
+            computer: Some(Computer::Paired {
+                name: "Studio Mac".into(),
+            }),
+            project: Some(Project {
+                name: "openagents".into(),
+                path: Some("/Users/someone/work/openagents".into()),
+            }),
+            ..Context::default()
+        };
+        assert_eq!(
+            context.json(),
+            json!({"surface": "phone", "computer_ready": true,
+                   "computer": {"place": "paired", "name": "Studio Mac"},
+                   "project": {"name": "openagents"}})
+        );
+        assert_eq!(
+            crate::basic_coder::payload(&[crate::basic_coder::Turn::user("hi")], &context)["instructions"],
+            crate::basic_coder::INSTRUCTIONS
+        );
+        let odd = Context {
+            surface: Surface::Desktop,
+            computer: Some(Computer::Here {
+                name: Some("x".repeat(MAX_COMPUTER_NAME_CHARS + 1)),
+                engines: vec![
+                    Engine {
+                        engine: "Codex!".into(),
+                        state: EngineState::Ready,
+                    },
+                    Engine {
+                        engine: "codex".into(),
+                        state: EngineState::NotSignedIn,
+                    },
+                ],
+            }),
+            project: Some(Project {
+                name: "bad\u{7}".into(),
+                path: Some("/tmp/x".into()),
+            }),
+            ..Context::default()
+        };
+        assert_eq!(
+            odd.json(),
+            json!({"surface": "desktop", "computer_ready": false,
+                   "computer": {"place": "here",
+                                "engines": [{"engine": "codex", "state": "not_signed_in"}]}})
+        );
+        let long = Context {
+            computer: Some(Computer::Here {
+                name: None,
+                engines: vec![],
+            }),
+            project: Some(Project {
+                name: "deep".into(),
+                path: Some(format!("/{}", "a".repeat(MAX_PROJECT_PATH_BYTES))),
+            }),
+            ..Context::default()
+        };
+        assert_eq!(long.json()["project"], json!({"name": "deep"}));
+        assert_eq!(
+            Engine::from_runner(&Runner::NotSignedIn {
+                providers: vec!["codex".into(), "claude".into()]
+            }),
+            [
+                Engine {
+                    engine: "codex".into(),
+                    state: EngineState::NotSignedIn
+                },
+                Engine {
+                    engine: "claude".into(),
+                    state: EngineState::NotSignedIn
+                },
+            ]
+        );
     }
 }
 
