@@ -435,6 +435,9 @@ async fn openagents_in(cwd: &Path, home: &Path, relay: &str, worker: &str, args:
             .env_remove("OPENAGENTS_TASKS")
             .env_remove("CLAUDE_BIN")
             .env_remove("CODEX_HOME")
+            .env_remove("GROK_BIN")
+            .env_remove("DEVIN_BIN")
+            .env_remove("OPENCODE_BIN")
             // An engine to name; every run here is refused before it starts.
             .env("OPENAGENTS_CODER_CONTROLLER", "/bin/echo")
             .env_remove("XDG_RUNTIME_DIR")
@@ -539,11 +542,12 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     let context = payloads.lock().unwrap()[0]["context"].clone();
     assert_eq!(context["surface"], "terminal");
     assert_eq!(context["computer"]["place"], "here");
+    // Grok Build, allowed but not installed in this home, is left out
+    // (#10113).
     assert_eq!(
         context["computer"]["engines"],
         json!([{"engine": "codex", "state": "not_signed_in"},
-               {"engine": "claude", "state": "not_signed_in"},
-               {"engine": "grok", "state": "not_signed_in"}])
+               {"engine": "claude", "state": "not_signed_in"}])
     );
     assert_eq!(context["project"]["name"], "slugs");
     assert!(

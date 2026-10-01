@@ -71,3 +71,215 @@ fn a_bad_thread_is_a_usage_error() {
     let output = openagents(home.path(), &["terminal", "--colour"]);
     assert_eq!(output.status.code(), Some(64));
 }
+
+/// OpenAgents Terminal in a real pseudo-terminal, from a stand-in home
+/// where Codex, Claude Code, and Grok Build are signed in and Devin is
+/// signed in but not in the settings (#10113): the welcome card names
+/// every ready agent, not only the one a run would start on. The stand-in
+/// logins are fixtures; no real login, store, or host is touched, and the
+/// screen quits before it sends anything.
+#[cfg(unix)]
+#[test]
+fn the_welcome_card_names_every_ready_agent_here() {
+    use std::io::{Read, Write};
+    use std::os::fd::FromRawFd;
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::process::CommandExt;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    const ROWS: u16 = 30;
+    const COLS: u16 = 100;
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let bin = temp.path().join("bin");
+    let repo = temp.path().join("demo");
+    for dir in [
+        &home.join(".codex"),
+        &home.join(".grok"),
+        &home.join(".local/share/devin"),
+        &bin,
+        &repo,
+    ] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::write(
+        home.join(".codex/auth.json"),
+        r#"{"tokens":{"access_token":"stand-in","account_id":"stand-in"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        home.join(".claude.json"),
+        r#"{"oauthAccount":{"accountUuid":"stand-in"}}"#,
+    )
+    .unwrap();
+    std::fs::write(home.join(".grok/auth.json"), "{}").unwrap();
+    std::fs::write(home.join(".local/share/devin/credentials.toml"), "x").unwrap();
+    for agent in ["claude", "grok", "devin"] {
+        let path = bin.join(agent);
+        std::fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    for args in [
+        &["init", "-q", "-b", "main"][..],
+        &[
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=T",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "first",
+        ],
+    ] {
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+
+    // SAFETY: plain libc calls on a descriptor this test owns; the slave's
+    // name is copied before any other PTY call.
+    let (master, slave) = unsafe {
+        let master = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(master >= 0, "posix_openpt");
+        assert_eq!(libc::grantpt(master), 0, "grantpt");
+        assert_eq!(libc::unlockpt(master), 0, "unlockpt");
+        let name = libc::ptsname(master);
+        assert!(!name.is_null(), "ptsname");
+        let path = std::ffi::CStr::from_ptr(name)
+            .to_string_lossy()
+            .into_owned();
+        let size = libc::winsize {
+            ws_row: ROWS,
+            ws_col: COLS,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        libc::ioctl(master, libc::TIOCSWINSZ as _, &raw const size);
+        (std::fs::File::from_raw_fd(master), path)
+    };
+    let open = || {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&slave)
+            .unwrap()
+    };
+    // The size goes on the slave too: some systems keep it per side.
+    let sized = open();
+    let size = libc::winsize {
+        ws_row: ROWS,
+        ws_col: COLS,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: TIOCSWINSZ reads the winsize passed and nothing else.
+    unsafe {
+        libc::ioctl(
+            std::os::fd::AsRawFd::as_raw_fd(&sized),
+            libc::TIOCSWINSZ as _,
+            &raw const size,
+        )
+    };
+    let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
+    command
+        .args(["terminal", "--scratch"])
+        .current_dir(&repo)
+        .env_clear()
+        .env("HOME", &home)
+        .env("TMPDIR", temp.path())
+        .env("PATH", "/usr/bin:/bin")
+        .env("TERM", "xterm-256color")
+        .env("CLAUDE_BIN", bin.join("claude"))
+        .env("GROK_BIN", bin.join("grok"))
+        .env("DEVIN_BIN", bin.join("devin"))
+        .stdin(Stdio::from(open()))
+        .stdout(Stdio::from(open()))
+        .stderr(Stdio::from(open()));
+    // SAFETY: only async-signal-safe calls between fork and exec: a new
+    // session with the pseudo-terminal as its controlling terminal.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().unwrap();
+    let screen = Arc::new(Mutex::new(coder_vt::Terminal::new(
+        usize::from(ROWS),
+        usize::from(COLS),
+        0,
+    )));
+    let mut reader = master.try_clone().unwrap();
+    let feed = screen.clone();
+    std::thread::spawn(move || {
+        let mut buffer = [0; 8192];
+        while let Ok(read) = reader.read(&mut buffer) {
+            if read == 0 {
+                break;
+            }
+            feed.lock().unwrap().feed(&buffer[..read]);
+        }
+    });
+    let text = || {
+        screen
+            .lock()
+            .unwrap()
+            .text()
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let shown = loop {
+        let now = text();
+        if now.contains("│ Agents") && now.contains("Grok Build") {
+            break now;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("no welcome card with the agents; the screen:\n{now}");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    eprintln!("---- welcome ----\n{shown}\n");
+    let agents = shown
+        .lines()
+        .find(|line| line.contains("│ Agents"))
+        .unwrap_or_default();
+    assert!(
+        agents.contains("Codex · Claude Code · Grok Build"),
+        "{shown}"
+    );
+    // Devin is signed in but not enabled, so the card leaves it out.
+    assert!(!agents.contains("Devin"), "{shown}");
+    assert!(shown.contains("demo"), "{shown}");
+    let mut master = master;
+    for _ in 0..2 {
+        master.write_all(b"\x03").unwrap();
+        master.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("the screen did not quit; it shows:\n{}", text());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}

@@ -555,8 +555,9 @@ pub const MAX_BUILD_BYTES: usize = 64;
 /// The longest computer name `context.computer.name` may carry, in
 /// characters.
 pub const MAX_COMPUTER_NAME_CHARS: usize = 64;
-/// The most coding agents `context.computer.engines` names.
-pub const MAX_ENGINES: usize = 4;
+/// The most coding agents `context.computer.engines` names: every engine
+/// a local run can use, with room to grow (#10113).
+pub const MAX_ENGINES: usize = 8;
 /// The longest `context.project.name`, in bytes.
 pub const MAX_PROJECT_NAME_BYTES: usize = 128;
 /// The longest `context.project.path`, in bytes.
@@ -591,6 +592,9 @@ pub enum EngineState {
     Ready,
     NotSignedIn,
     Limited,
+    /// Installed or signed in, but not allowed by the person's settings
+    /// (#10113).
+    NotEnabled,
 }
 
 /// The chat's project folder, as `context.project` says.
@@ -657,6 +661,7 @@ impl Engine {
             "ready" => EngineState::Ready,
             "not_signed_in" => EngineState::NotSignedIn,
             "limited" => EngineState::Limited,
+            "not_enabled" => EngineState::NotEnabled,
             _ => return None,
         };
         Some(Engine {
@@ -685,6 +690,9 @@ impl Engine {
             EngineState::Ready => format!("{who} is ready"),
             EngineState::NotSignedIn => format!("{who} is not signed in"),
             EngineState::Limited => format!("{who} is at its usage limit"),
+            EngineState::NotEnabled => {
+                format!("{who} is installed but not enabled in Coder's settings")
+            }
         }
     }
 }
@@ -2001,6 +2009,39 @@ mod tests {
         let bare =
             Context::of(&json!({ "coder_run": { "ending": "failed", "summary": "No capacity." } }));
         assert!(bare.note().unwrap().contains("ended without finishing"));
+    }
+
+    /// Every coding agent on the computer reaches the model's note with
+    /// its own state, one the settings leave out as not enabled (#10113);
+    /// a state this worker does not know leaves only that engine out.
+    #[test]
+    fn every_engine_and_its_state_reaches_the_note() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../fixtures/nip-cj/router-request-engines.json"
+        ))
+        .unwrap();
+        let context = Context::of(&fixture["context"]);
+        let Some(Computer::Here { engines, .. }) = &context.computer else {
+            panic!("the computer is here");
+        };
+        assert_eq!(engines.len(), 5);
+        assert_eq!(engines[3].state, EngineState::NotEnabled);
+        let note = context.note().unwrap();
+        assert!(
+            note.contains(
+                "Coding agents on this computer: Codex is ready; Claude Code is at its usage \
+                 limit; Grok Build is ready; Devin is installed but not enabled in Coder's \
+                 settings; OpenCode is installed but not enabled in Coder's settings."
+            ),
+            "{note}"
+        );
+        let mut later = fixture["context"].clone();
+        later["computer"]["engines"][3]["state"] = json!("some_later_state");
+        let Some(Computer::Here { engines, .. }) = Context::of(&later).computer else {
+            panic!("the computer is here");
+        };
+        assert_eq!(engines.len(), 4);
+        assert!(engines.iter().all(|engine| engine.engine != "devin"));
     }
 
     #[test]

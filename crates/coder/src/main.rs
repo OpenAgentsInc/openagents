@@ -383,6 +383,7 @@ async fn start() -> ExitCode {
         // is signed in, with no registered project.
         coder_host::control::set_local_coder(coder::task::local::ready_here);
         coder_host::control::set_local_runner(coder::task::local::runner_here);
+        coder_host::control::set_local_engines(coder::task::local::engines_here);
         coder_host::control::set_local_result(coder::task::local::result_in);
         return ExitCode::from(coder_host::cli::run(&arguments[1..], open).await);
     }

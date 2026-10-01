@@ -1661,6 +1661,24 @@ pub const ACCOUNTS: [Provider; 2] = [Provider::Codex, Provider::Claude];
 /// Build, allowed by default for local runs (#10091).
 pub const OPTIONAL_ACCOUNTS: [Provider; 1] = [Provider::Grok];
 
+/// Whether `provider`'s coding agent is installed on this computer, from
+/// where it lives and never from a credential (#10113): Codex's home
+/// folder (`$CODEX_HOME`, else `~/.codex`), the `claude` binary, or the
+/// `grok`, `opencode`, or `devin` binary. A signed-in agent is found by
+/// [`capacity::probe`] instead; this says only that it is here at all.
+#[must_use]
+pub fn installed(provider: Provider) -> bool {
+    let variable = |name: &str| std::env::var_os(name);
+    match provider {
+        Provider::Codex => codex_transport::codex::Login::home().is_some_and(|home| home.is_dir()),
+        Provider::Claude => claude_binary().is_some(),
+        Provider::Grok => acp_client::grok::binary(&variable).is_some(),
+        Provider::OpenCode => acp_client::opencode::binary(&variable).is_some(),
+        Provider::Devin => acp_client::devin::binary(&variable).is_some(),
+        Provider::Vertex => false,
+    }
+}
+
 fn account_lines(
     signed_in: &dyn Fn(Provider) -> bool,
     installed: &dyn Fn(Provider) -> bool,

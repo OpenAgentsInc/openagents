@@ -159,8 +159,10 @@ impl Caller {
 
 /// The most characters of a computer's name the context carries.
 pub const MAX_COMPUTER_NAME_CHARS: usize = 64;
-/// The most coding agents the context names.
-pub const MAX_ENGINES: usize = 4;
+/// The most coding agents the context names: every engine a local run can
+/// use (Codex, Claude Code, Grok Build, OpenCode, Devin), with room to grow
+/// (#10113). A worker that reads fewer takes the first ones.
+pub const MAX_ENGINES: usize = 8;
 /// The most bytes of a project folder's name the context carries.
 pub const MAX_PROJECT_NAME_BYTES: usize = 128;
 /// The most bytes of a project folder's path the context carries.
@@ -196,6 +198,10 @@ pub enum EngineState {
     NotSignedIn,
     /// Signed in, but at or near a usage limit.
     Limited,
+    /// Installed or signed in here, but not one of the engines the
+    /// settings' `coder.providers` allow (#10113). A worker that does not
+    /// know the word leaves the engine out.
+    NotEnabled,
 }
 
 impl EngineState {
@@ -204,6 +210,7 @@ impl EngineState {
             Self::Ready => "ready",
             Self::NotSignedIn => "not_signed_in",
             Self::Limited => "limited",
+            Self::NotEnabled => "not_enabled",
         }
     }
 }
@@ -251,7 +258,9 @@ impl Engine {
         engines
     }
 
-    fn bounded(&self) -> bool {
+    /// Whether the engine's word is a bounded word the wire carries.
+    #[must_use]
+    pub fn bounded(&self) -> bool {
         (1..=16).contains(&self.engine.len())
             && self
                 .engine
@@ -1381,6 +1390,58 @@ mod computer_context_tests {
         );
         assert!(
             !crate::basic_coder::INSTRUCTIONS_ON_COMPUTER.contains("a computer the user connects")
+        );
+    }
+
+    /// Every coding agent on this computer goes on the wire with its own
+    /// state, a not-enabled one too, exactly as the worker's fixture reads
+    /// it (#10113); more than [`MAX_ENGINES`] are cut.
+    #[test]
+    fn every_engine_here_goes_on_the_wire() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../coder/fixtures/nip-cj/router-request-engines.json"
+        ))
+        .unwrap();
+        let engine = |engine: &str, state| Engine {
+            engine: engine.into(),
+            state,
+        };
+        let context = Context {
+            surface: Surface::Terminal,
+            client: Some(ClientWord::Terminal),
+            computer_ready: true,
+            computer: Some(Computer::Here {
+                name: None,
+                engines: vec![
+                    engine("codex", EngineState::Ready),
+                    engine("claude", EngineState::Limited),
+                    engine("grok", EngineState::Ready),
+                    engine("devin", EngineState::NotEnabled),
+                    engine("opencode", EngineState::NotEnabled),
+                ],
+            }),
+            ..Context::default()
+        };
+        let request = crate::basic_coder::payload(
+            &[crate::basic_coder::Turn::user(
+                "which coding agents can you use",
+            )],
+            &context,
+        );
+        assert_eq!(request["context"], fixture["context"]);
+        assert_eq!(request["client"], fixture["client"]);
+        let many = Context {
+            computer: Some(Computer::Here {
+                name: None,
+                engines: (0..MAX_ENGINES + 3)
+                    .map(|n| engine(&format!("agent{n}"), EngineState::Ready))
+                    .collect(),
+            }),
+            ..Context::default()
+        };
+        assert_eq!(
+            many.json()["computer"]["engines"].as_array().unwrap().len(),
+            MAX_ENGINES
         );
     }
 

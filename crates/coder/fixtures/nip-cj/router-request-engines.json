@@ -1,0 +1,23 @@
+{
+  "v": 2,
+  "requires": [],
+  "task": "which coding agents can you use",
+  "transcript": [{ "role": "user", "content": "which coding agents can you use" }],
+  "client": "openagents-terminal",
+  "opener": true,
+  "router": "chat-router-v2",
+  "context": {
+    "surface": "terminal",
+    "computer_ready": true,
+    "computer": {
+      "place": "here",
+      "engines": [
+        { "engine": "codex", "state": "ready" },
+        { "engine": "claude", "state": "limited" },
+        { "engine": "grok", "state": "ready" },
+        { "engine": "devin", "state": "not_enabled" },
+        { "engine": "opencode", "state": "not_enabled" }
+      ]
+    }
+  }
+}

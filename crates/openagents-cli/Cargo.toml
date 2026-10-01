@@ -76,6 +76,9 @@ nostr = { path = "../nostr", features = ["test-invoice"] }
 # `tests/ext_eval.rs` publishes to and checks against a local relay.
 nostr-relay = { path = "../nostr-relay" }
 tempfile = "3"
+# `tests/terminal.rs` reads OpenAgents Terminal's screen in a
+# pseudo-terminal with the emulator the phone's terminal uses.
+coder-vt = { path = "../coder-vt" }
 
 [lints]
 workspace = true

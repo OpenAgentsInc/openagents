@@ -7369,6 +7369,7 @@ dependencies = [
  "coder-reach",
  "coder-service",
  "coder-ssh",
+ "coder-vt",
  "discovery",
  "ext-eval",
  "futures-util",

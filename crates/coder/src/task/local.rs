@@ -314,6 +314,9 @@ pub struct Local {
     worktrees: PathBuf,
     launcher: Box<dyn Launch>,
     probe: fn(Provider) -> Connection,
+    /// Whether a provider's coding agent is installed here
+    /// ([`autostart::installed`]).
+    installed: fn(Provider) -> bool,
     now: fn() -> u64,
     controller: Option<PathBuf>,
     /// The person's settings, or why they could not be read: a run then
@@ -353,6 +356,7 @@ impl Local {
             worktrees,
             launcher: Box::new(autostart::Process),
             probe: capacity::probe,
+            installed: autostart::installed,
             now: autostart::unix_now,
             controller: None,
             settings: Ok(settings::Coder::default()),
@@ -444,6 +448,13 @@ impl Local {
     #[must_use]
     pub fn with_probe(mut self, probe: fn(Provider) -> Connection) -> Self {
         self.probe = probe;
+        self
+    }
+
+    /// Decide which coding agents are installed with `installed`.
+    #[must_use]
+    pub fn with_installed(mut self, installed: fn(Provider) -> bool) -> Self {
+        self.installed = installed;
         self
     }
 
@@ -587,6 +598,59 @@ impl Local {
         let policy = self.policy_with("project", controller).ok()?;
         let (policy, asked) = self.asking(policy, requested);
         Some(self.forecast(&policy, asked).0)
+    }
+
+    /// Every coding agent on this computer and its state, for the chat's
+    /// context and the welcome card (#10113): first the engines the
+    /// settings allow, in their order, then each other one installed or
+    /// signed in here, as not enabled. An allowed engine is ready, not
+    /// signed in, or at its usage limit, from the same login probe,
+    /// capacity book, and usage readings a start reads; an allowed one
+    /// that is neither installed nor signed in is left out, except Codex
+    /// and Claude Code, which the engine report always names. Reads only;
+    /// no credential is read.
+    #[must_use]
+    pub fn engines(&self) -> Vec<openagents_chat::router::Engine> {
+        use openagents_chat::router::{Engine, EngineState, MAX_ENGINES};
+        let Ok(settings) = self.settings() else {
+            return Vec::new();
+        };
+        let allowed = settings.provider_list();
+        let now = (self.now)();
+        let book = capacity::Book::load_with(&self.store, self.identify);
+        let readings = usage::Book::load_with(&self.store, self.identify);
+        let threshold = settings.usage_threshold_percent;
+        let others = settings::PROVIDERS
+            .into_iter()
+            .filter(|provider| !allowed.contains(provider));
+        let mut engines = Vec::new();
+        for provider in allowed.iter().copied().chain(others) {
+            let signed_in = (self.probe)(provider).is_connected();
+            let named =
+                signed_in || autostart::ACCOUNTS.contains(&provider) || (self.installed)(provider);
+            let state = if !allowed.contains(&provider) {
+                if !(signed_in || (self.installed)(provider)) {
+                    continue;
+                }
+                EngineState::NotEnabled
+            } else if !named {
+                continue;
+            } else if !signed_in {
+                EngineState::NotSignedIn
+            } else if book.blocking(provider, now).is_some()
+                || threshold.is_some_and(|t| readings.near_limit(provider, t, now))
+            {
+                EngineState::Limited
+            } else {
+                EngineState::Ready
+            };
+            engines.push(Engine {
+                engine: provider.as_str().to_owned(),
+                state,
+            });
+        }
+        engines.truncate(MAX_ENGINES);
+        engines
     }
 
     /// The prediction for `policy` now, and the routes to start on when one
@@ -1083,6 +1147,26 @@ fn here(requested: Option<Provider>) -> (bool, Option<Runner>) {
         run.policy("project").is_ok() && runner.as_ref().is_some_and(|r| r.provider().is_some());
     cache.push((requested, now, ready, runner.clone()));
     (ready, runner)
+}
+
+/// Every coding agent on this computer over [`default_store`]
+/// ([`Local::engines`]), read at most every [`READY_EVERY`] seconds. A
+/// host's chat puts it on each turn's context (#10113).
+#[must_use]
+pub fn engines_here() -> Vec<openagents_chat::router::Engine> {
+    use std::sync::Mutex;
+    type Cached = Option<(u64, Vec<openagents_chat::router::Engine>)>;
+    static CACHE: Mutex<Cached> = Mutex::new(None);
+    let now = autostart::unix_now();
+    let mut cache = CACHE.lock().unwrap_or_else(|poison| poison.into_inner());
+    if let Some((at, engines)) = cache.as_ref()
+        && now.saturating_sub(*at) < READY_EVERY
+    {
+        return engines.clone();
+    }
+    let engines = Local::here(default_store()).engines();
+    *cache = Some((now, engines.clone()));
+    engines
 }
 
 /// What the last turn of `task` did, once it has ended, for a follow-up's
@@ -1751,6 +1835,105 @@ mod tests {
             .with_probe(probe)
             .with_controller(std::env::current_exe().unwrap())
             .with_identify(|_| None)
+    }
+
+    /// The owner's Mac on 2026-10-01 (#10113): Codex, Claude Code, and
+    /// Grok Build signed in, Devin signed in but not in the settings, and
+    /// OpenCode installed. The context and the welcome card name every one
+    /// of them with its own state, in the settings' order, not only the
+    /// one a run would start on.
+    #[test]
+    fn every_coding_agent_here_is_listed_with_its_state() {
+        use openagents_chat::router::{Engine as Agent, EngineState as S};
+        fn all_but_opencode(provider: Provider) -> Connection {
+            match provider {
+                Provider::OpenCode => Connection::Missing("no opencode".into()),
+                _ => Connection::Connected,
+            }
+        }
+        fn opencode_and_devin(provider: Provider) -> Connection {
+            match provider {
+                Provider::OpenCode | Provider::Devin => Connection::Connected,
+                _ => Connection::Missing("not here".into()),
+            }
+        }
+        let listed = |run: &Local| -> Vec<(String, S)> {
+            run.engines()
+                .into_iter()
+                .map(|Agent { engine, state }| (engine, state))
+                .collect()
+        };
+        let word = |provider: Provider, state| (provider.as_str().to_owned(), state);
+        let dir = tempfile::tempdir().unwrap();
+        let run = local(dir.path(), all_but_opencode)
+            .with_installed(|provider| matches!(provider, Provider::OpenCode | Provider::Devin));
+        let now = autostart::unix_now();
+        capacity::record_with(
+            run.store(),
+            capacity::Refusal::new(
+                Provider::Claude,
+                capacity::Kind::UsageLimit,
+                now,
+                Some(now + 3600),
+            ),
+            |_| None,
+        )
+        .unwrap();
+        assert_eq!(
+            listed(&run),
+            vec![
+                word(Provider::Codex, S::Ready),
+                word(Provider::Claude, S::Limited),
+                word(Provider::Grok, S::Ready),
+                word(Provider::OpenCode, S::NotEnabled),
+                word(Provider::Devin, S::NotEnabled),
+            ]
+        );
+        // The settings' order, and an allowed engine that is installed but
+        // not signed in says so.
+        let mut settings = settings::Coder::default();
+        settings.providers = vec![
+            settings::Choice::new(Provider::Devin),
+            settings::Choice::new(Provider::Claude),
+        ];
+        let run = run.with_settings(settings);
+        assert_eq!(
+            listed(&run),
+            vec![
+                word(Provider::Devin, S::Ready),
+                word(Provider::Claude, S::Limited),
+                word(Provider::Codex, S::NotEnabled),
+                word(Provider::Grok, S::NotEnabled),
+                word(Provider::OpenCode, S::NotEnabled),
+            ]
+        );
+        let run = local(dir.path(), opencode_and_devin).with_installed(|_| false);
+        assert_eq!(
+            listed(&run),
+            vec![
+                word(Provider::Codex, S::NotSignedIn),
+                word(Provider::Claude, S::NotSignedIn),
+                word(Provider::OpenCode, S::NotEnabled),
+                word(Provider::Devin, S::NotEnabled),
+            ]
+        );
+        // Nothing installed or signed in: only the two the engine report
+        // always names, and no optional engine.
+        let bare = tempfile::tempdir().unwrap();
+        let run = local(bare.path(), nobody).with_installed(|_| false);
+        assert_eq!(
+            listed(&run),
+            vec![
+                word(Provider::Codex, S::NotSignedIn),
+                word(Provider::Claude, S::NotSignedIn),
+            ]
+        );
+        // Unreadable settings name nothing rather than guess.
+        let broken = Local::new(bare.path().join("tasks"))
+            .with_settings_result(Err("bad settings".into()))
+            .with_probe(both)
+            .with_installed(|_| true);
+        assert!(broken.engines().is_empty());
     }
 
     /// Starts nothing: the task stays queued, as a run whose engine has

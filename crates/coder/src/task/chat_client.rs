@@ -47,15 +47,13 @@ impl Coder for Here {
     /// What a turn tells the chat worker about this computer (#10077):
     /// whether a run could start (the folder is a checkout that counts as
     /// a project in the settings, and an allowed provider is signed in with
-    /// capacity), that this computer is where Coder runs with its coding
-    /// agents' readiness, and the project folder. Reads only.
+    /// capacity), that this computer is where Coder runs with every coding
+    /// agent installed or signed in here and its state ([`Local::engines`],
+    /// #10113), and the project folder. Reads only.
     fn context(&self, store: &Path, dir: Option<&Path>) -> Context {
-        use openagents_chat::router::{Computer, Engine, Project};
+        use openagents_chat::router::{Computer, Project};
         let run = Self::runner(store);
-        let engines = run
-            .predict(None)
-            .map(|runner| Engine::from_runner(&runner))
-            .unwrap_or_default();
+        let engines = run.engines();
         let ready = dir.is_some_and(|dir| run.project(dir).is_ok()) && run.ready();
         let project = dir
             .and_then(|dir| local::checkout(dir).ok())

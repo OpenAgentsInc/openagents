@@ -56,9 +56,14 @@ Coder runs for the chat, as `{place: "here", name?, engines}` when the
 sending device is itself that computer (the desktop app, or the terminal on
 a computer) or `{place: "paired", name}` when a phone is paired with one;
 `name` is the label the person gave the computer (at most 64 characters),
-and `engines` is at most 4 `{engine, state}` with `engine` a word of at most
-16 lowercase ASCII letters, digits, `-`, or `_` (such as `codex` or
-`claude`) and `state` `ready`, `not_signed_in`, or `limited`. Also
+and `engines` is at most 8 `{engine, state}` (at most 4 before 2026-10-01)
+with `engine` a word of at most 16 lowercase ASCII letters, digits, `-`, or
+`_` (such as `codex` or `claude`) and `state` `ready`, `not_signed_in`,
+`limited`, or (added 2026-10-01) `not_enabled`, an agent installed or signed
+in on the computer that the person's settings do not allow. `engines` names
+every coding agent installed or signed in on the computer, the allowed ones
+first. A worker leaves out an engine whose state it does not know and reads
+the first engines up to its own bound. Also
 `project`, the chat's project folder, as `{name, path?}`: `name` at most
 128 bytes, and `path`, the folder's absolute path of at most 1024 bytes,
 only beside `place: "here"` (a worker ignores a path from anywhere else).

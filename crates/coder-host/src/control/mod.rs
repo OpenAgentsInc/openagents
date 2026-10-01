@@ -1110,6 +1110,21 @@ pub fn set_local_runner(predict: LocalRunner) {
     let _ = LOCAL_RUNNER.set(predict);
 }
 
+/// Every coding agent on this computer and its state: set once by the
+/// program serving the host (`coder::task::local::engines_here`). The host
+/// puts it on each chat turn's context (#10113). Unset, the context names
+/// the agents the run's prediction weighs.
+static LOCAL_ENGINES: std::sync::OnceLock<LocalEngines> = std::sync::OnceLock::new();
+
+/// How the host lists the coding agents on this computer.
+pub type LocalEngines = fn() -> Vec<openagents_chat::router::Engine>;
+
+/// Tell the host's chats how to list the coding agents here
+/// ([`LOCAL_ENGINES`]). The first call wins.
+pub fn set_local_engines(engines: LocalEngines) {
+    let _ = LOCAL_ENGINES.set(engines);
+}
+
 /// What a chat's Coder task did in its last turn, once that turn ended:
 /// set once by the program serving the host
 /// (`coder::task::local::result_in`). The host puts it on a send in a
@@ -1148,11 +1163,14 @@ fn chat_context(
 ) -> openagents_chat::router::Context {
     let bound = spawned.and_then(|spawned| spawned.project.as_deref());
     use openagents_chat::router::{Computer, Context, Engine, Project as Folder};
-    let engines = LOCAL_RUNNER
-        .get()
-        .and_then(|predict| predict(None))
-        .map(|runner| Engine::from_runner(&runner))
-        .unwrap_or_default();
+    let engines = match LOCAL_ENGINES.get() {
+        Some(engines) => engines(),
+        None => LOCAL_RUNNER
+            .get()
+            .and_then(|predict| predict(None))
+            .map(|runner| Engine::from_runner(&runner))
+            .unwrap_or_default(),
+    };
     let name = (!shared.config.label.is_empty()).then(|| shared.config.label.clone());
     // The recorded projects, as the window lists them; else the ones this
     // host was started with.
