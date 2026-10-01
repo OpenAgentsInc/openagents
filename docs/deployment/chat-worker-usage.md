@@ -76,13 +76,29 @@ example with `jq`:
 
 ```sh
 # Website jobs that took longer than 10 seconds.
-sudo cat /var/lib/coder-worker-chat/usage/*.jsonl \
+# The directory is 0750 coder-worker, so the glob expands as root.
+sudo sh -c 'cat /var/lib/coder-worker-chat/usage/*.jsonl' \
   | jq -c 'select(.surface == "web" and .total_ms > 10000)'
 ```
 
 To query from a development machine, copy the directory down with
 `gcloud compute scp --recurse --tunnel-through-iap` and run
 `coder-worker usage --dir ./usage` from a checkout build.
+
+## First release
+
+Release `95d447a4b5` (2026-10-01) put the log live: the environment file
+gained `CODER_WORKER_OPEN=1` in place of the quota line (the quota file line
+is commented out), `CODER_WORKER_JOBS=64`, and
+`CODER_WORKER_USAGE_DIR=/var/lib/coder-worker-chat/usage`; the previous file
+is kept as `coder-worker-chat.env.bak-before-10120`. Four scratch turns from
+`openagents chat --scratch` then read back as:
+
+```text
+surface   jobs  answered  failed  refused  keys  tokens_in  tokens_out  first_p50_ms  total_p50_ms
+terminal     4         4       0        0     4       2403         238           763          1607
+all          4         4       0        0     4       2403         238           763          1607
+```
 
 ## Retention
 
