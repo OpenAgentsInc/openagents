@@ -59,6 +59,7 @@ the owner can answer.
 - [Rollout](#rollout)
 - [Gym and eval routes (2026-09-29)](#gym-and-eval-routes-2026-09-29)
 - [From the terminal: `openagents chat` (2026-09-30)](#from-the-terminal-openagents-chat-2026-09-30)
+- [Delegation requests (2026-09-30)](#delegation-requests-2026-09-30)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## What exists today
@@ -1067,7 +1068,7 @@ front of it; the dispatch itself uses the paths that exist.
 
 | Target | When offered | What the tap does | Status |
 | --- | --- | --- | --- |
-| Connected computer | `context.computer_ready` | NIP-HOST `task.create` with the conversation as the prompt, as **Run Coder** does | exists |
+| Connected computer | `context.computer_ready` | NIP-HOST `task.create` whose prompt leads with the message that asked for the work, then at most six earlier turns, as **Run Coder** does | exists |
 | No computer yet | not ready | opens Account > Computers; the conversation is kept for the task | exists |
 | OpenAgents cloud | no computer, and the task is repository exploration of a public repo | a cloud workroom task (Cloud crates, `docs/cloud/`) | future; [question 6](#open-questions-for-the-owner) |
 | GitHub | the user names a GitHub issue or PR and wants it worked | a task on the connected computer whose prompt carries the issue, then a PR | via the computer today; a GitHub-native path is future |
@@ -1543,6 +1544,29 @@ the reply's words to open anything. `openagents chat` prints the
 `surface: "terminal"` and gets that line from the worker. A message sent
 through a computer's host from another device reads as a desktop turn: it
 gets the offer, which that device does not act on.
+
+## Delegation requests (2026-09-30)
+
+Fixed in [#10073](https://github.com/OpenAgentsInc/openagents/issues/10073);
+measured in
+[the delegation route measurement](../measurements/2026-09-30-delegation-route.md).
+"do a test delegation now" was read as `eval.run` and answered with a Gym
+test card. An explicit request to delegate to Coder, hand it the
+conversation, or run or start it now, including a trial or test delegation
+that names no task, is `work.dispatch`: its rubric says so, `eval.run`'s
+`not_for` sends a delegation to Coder itself there, and `meta` keeps asking
+whom or how we delegate. No route changed, so the set stays
+`chat-router-v4` with a new digest. The labeled set adds 36 `delegation`
+rows and near misses.
+
+When one reply carries more than one thing, the shared chat
+(`openagents_chat::delegation::offered`) decides: an explicit `run_coder`
+offer offers Coder; else another typed action (a Gym card or
+`start_eval`, a deck, a screen, a command) is what the router chose, and
+the reply does not also offer Coder, whatever the `lane` reading; else a
+computer `lane` offers it. The Coder run starts with the message that asked
+for the work as its title and the start of its prompt, then bounded
+context (`openagents_chat::delegation::prompt`).
 
 ## Open questions for the owner
 

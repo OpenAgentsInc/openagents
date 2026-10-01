@@ -13,7 +13,8 @@
 //! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
 //! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
 //! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
-//! added), or `presentation` (the rows `routes-v4.json` added).
+//! added), `presentation` (the rows `routes-v4.json` added), or
+//! `delegation` (the delegation rows and near misses #10073 added).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
 //! phone context.
@@ -89,10 +90,11 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let gym = |row: &Row| row.tags.iter().any(|tag| tag == "gym");
     let capability = |row: &Row| row.tags.iter().any(|tag| tag == "capability");
     let presentation = |row: &Row| row.tags.iter().any(|tag| tag == "presentation");
+    let delegation = |row: &Row| row.tags.iter().any(|tag| tag == "delegation");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
-                .filter(|r| !gym(r) && !capability(r) && !presentation(r))
+                .filter(|r| !gym(r) && !capability(r) && !presentation(r) && !delegation(r))
                 .collect(),
             format!("{split}-v1-rows"),
         ),
@@ -107,6 +109,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "presentation" => (
             rows.into_iter().filter(|r| presentation(r)).collect(),
             format!("{split}-presentation-rows"),
+        ),
+        "delegation" => (
+            rows.into_iter().filter(|r| delegation(r)).collect(),
+            format!("{split}-delegation-rows"),
         ),
         _ => (rows, split.to_string()),
     }

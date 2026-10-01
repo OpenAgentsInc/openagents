@@ -1,95 +1,95 @@
 {
   "schema": "openagents.chat-router.calibration.v1",
-  "set": "chat-router-v4@12ea6aac036f",
+  "set": "chat-router-v4@ca74e9da5045",
   "bank": "chat-answers-v1@f1b498639ec6",
-  "created": "2026-09-30",
+  "created": "2026-10-01",
   "fitted_on": "calibration",
-  "fitted_rows": 281,
+  "fitted_rows": 295,
   "route": {
     "map": {
       "bins": [
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.9288256227758007,
+          "fitted": 0.9220338983050848,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.9288256227758007,
+          "fitted": 0.9220338983050848,
           "count": 0
         },
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.9288256227758007,
+          "fitted": 0.9220338983050848,
           "count": 0
         },
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.5,
-          "count": 2
+          "fitted": 0.25,
+          "count": 5
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.55,
-          "count": 9
+          "fitted": 0.6428571428571429,
+          "count": 6
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.5909090909090909,
-          "count": 10
+          "fitted": 0.65,
+          "count": 9
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.7083333333333334,
-          "count": 11
+          "fitted": 0.6071428571428571,
+          "count": 13
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.8846153846153846,
-          "count": 12
+          "fitted": 0.8055555555555556,
+          "count": 17
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.8913043478260869,
-          "count": 22
+          "fitted": 0.925,
+          "count": 19
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9745370370370371,
-          "count": 215
+          "fitted": 0.9757709251101322,
+          "count": 226
         }
       ],
-      "base_rate": 0.9288256227758007,
-      "fitted_on": 281
+      "base_rate": 0.9220338983050848,
+      "fitted_on": 295
     },
-    "held_out_items": 220,
+    "held_out_items": 230,
     "raw": {
-      "accuracy": 0.9045454545454545,
-      "ece": 0.04731818181818204,
-      "brier": 0.07344318181818185,
-      "nll": 0.2338865853287856,
-      "confident_errors": 2,
-      "items": 220
+      "accuracy": 0.8913043478260869,
+      "ece": 0.03395652173913059,
+      "brier": 0.07169347826086955,
+      "nll": 0.23032729746616087,
+      "confident_errors": 1,
+      "items": 230
     },
     "calibrated": {
-      "accuracy": 0.9045454545454545,
-      "ece": 0.023535300978807492,
-      "brier": 0.07432372310924933,
-      "nll": 0.24696811831238366,
+      "accuracy": 0.8913043478260869,
+      "ece": 0.02475289603352116,
+      "brier": 0.07032033119722525,
+      "nll": 0.22677145368867896,
       "confident_errors": 3,
-      "items": 220
+      "items": 230
     },
-    "verdict": "failed",
+    "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
   },
   "answer": {
@@ -98,38 +98,38 @@
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.5885416666666666,
+          "fitted": 0.5686274509803921,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.5885416666666666,
-          "count": 0
+          "fitted": 0.25,
+          "count": 1
         },
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.08333333333333333,
-          "count": 5
+          "fitted": 0.125,
+          "count": 3
         },
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.21428571428571427,
-          "count": 6
+          "fitted": 0.23333333333333334,
+          "count": 14
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.140625,
-          "count": 31
+          "fitted": 0.15,
+          "count": 29
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.14705882352941177,
-          "count": 16
+          "fitted": 0.1956521739130435,
+          "count": 22
         },
         {
           "lo": 0.6,
@@ -140,41 +140,41 @@
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.53125,
-          "count": 15
+          "fitted": 0.4642857142857143,
+          "count": 13
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.7105263157894737,
-          "count": 18
+          "fitted": 0.6428571428571429,
+          "count": 20
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9578313253012049,
-          "count": 82
+          "fitted": 0.9583333333333334,
+          "count": 83
         }
       ],
-      "base_rate": 0.5885416666666666,
-      "fitted_on": 192
+      "base_rate": 0.5686274509803921,
+      "fitted_on": 204
     },
-    "held_out_items": 163,
+    "held_out_items": 169,
     "raw": {
-      "accuracy": 0.6134969325153374,
-      "ece": 0.13325153374233145,
-      "brier": 0.1586981595092024,
-      "nll": 0.45966570677160157,
-      "confident_errors": 1,
-      "items": 163
+      "accuracy": 0.6094674556213018,
+      "ece": 0.13739644970414214,
+      "brier": 0.1619727810650888,
+      "nll": 0.4668012580609655,
+      "confident_errors": 0,
+      "items": 169
     },
     "calibrated": {
-      "accuracy": 0.6134969325153374,
-      "ece": 0.07008186741888067,
-      "brier": 0.13881694009328774,
-      "nll": 0.42678642256518373,
-      "confident_errors": 1,
-      "items": 163
+      "accuracy": 0.6094674556213018,
+      "ece": 0.08018241513224764,
+      "brier": 0.1448651416529073,
+      "nll": 0.4339161095803447,
+      "confident_errors": 0,
+      "items": 169
     },
     "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"

@@ -73,7 +73,8 @@ pub fn route(route: RouteId) -> Value {
              connected computers in general, including asking us to connect, sign in to, or \
              link GitHub, or asking whether we can do a kind of work for them",
             Some(
-                "Handing us a concrete task in the user's own repository (work.dispatch); how to \
+                "Handing us a concrete task in the user's own repository, or asking us to \
+                 delegate to Coder or run it now, even as a test (work.dispatch); how to \
                  use one app feature step by step (product.kb or account); asking us to do \
                  something now, such as book, send, or read their accounts, rather than whether \
                  we can (capability.missing)",
@@ -89,6 +90,7 @@ pub fn route(route: RouteId) -> Value {
                 "do you work with github?",
                 "are you able to help with terraform for our aws setup",
                 "can you help debug my flutter app's login screen?",
+                "who can you delegate to",
             ],
         ),
         RouteId::Smalltalk => option(
@@ -162,7 +164,9 @@ pub fn route(route: RouteId) -> Value {
         RouteId::WorkDispatch => option(
             "The user hands us a task on their own code, repository, files, or machine: \
              change, fix, build, test, deploy, refactor, review a pull request, look through \
-             their repository, find something in their code, or pick up a GitHub issue",
+             their repository, find something in their code, or pick up a GitHub issue; or \
+             asks us to delegate to Coder, hand the conversation to Coder, or run or start \
+             Coder now, including a trial or test delegation that names no task",
             Some(
                 "Asking whether or how we can help, or whether we can do a kind of work or \
                  work on GitHub for them, without handing us the task itself; asking us to \
@@ -183,6 +187,9 @@ pub fn route(route: RouteId) -> Value {
                 "migrate my sqlite db to postgres",
                 "write unit tests for the parser in my repo",
                 "run my project's test suite and fix what fails",
+                "do a test delegation now",
+                "delegate this conversation to coder",
+                "run coder now",
             ],
         ),
         RouteId::Cli => option(
@@ -288,9 +295,10 @@ pub fn route(route: RouteId) -> Value {
              without it), try a tool, or start a test, or asks which tool to test or what to \
              do next in the Gym",
             Some(
-                "Running their own project's tests or test suite (work.dispatch); writing a new \
-                 test set or making a tool (eval.author); checking another trainer's published \
-                 result (eval.check)",
+                "Running their own project's tests or test suite, or a test or trial \
+                 delegation to Coder itself, which names no Gym tool (work.dispatch); writing a \
+                 new test set or making a tool (eval.author); checking another trainer's \
+                 published result (eval.check)",
             ),
             &[
                 "Test Project map on Coder",

@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "0a9aaba2225006d6a1abeac0349c8f320b2477a666499c5607bc3c60be275b5d",
+  "digest": "7e525594e044cc709de766b9e349ae11c228f2b2fac9c0dee29c9a50362f0acb",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -13748,6 +13748,686 @@
       },
       "truth": "work.dispatch",
       "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do a test delegation now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "who are you"
+          },
+          {
+            "role": "assistant",
+            "text": "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to a computer you've connected."
+          },
+          {
+            "role": "user",
+            "text": "who can you delegate to"
+          },
+          {
+            "role": "assistant",
+            "text": "We delegate to Coder, our coding agent. When a task needs files, commands, or a repository, we dispatch Coder to a computer you connect."
+          },
+          {
+            "role": "user",
+            "text": "do a test delegation now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do a test delegation now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delegate something to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delegate something to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "try delegating a small task to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "try delegating a small task to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "send a quick test task to coder on my computer",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "send a quick test task to coder on my computer"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run coder now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run coder now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "start coder on my mac",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "start coder on my mac"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "hand this off to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "hand this off to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "kick off a coder run as a test",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "kick off a coder run as a test"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delegate to coder so I can see how it works",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delegate to coder so I can see how it works"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do a dry run delegation to my computer",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a dry run delegation to my computer"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can you delegate a test task right now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "can you delegate a test task right now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "spin up coder on this machine and have it check the repo status",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "spin up coder on this machine and have it check the repo status"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "test the delegation to my computer",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "test the delegation to my computer"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me a delegation",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me a delegation"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delegate this conversation to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delegate this conversation to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-017",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run a quick coder task to make sure it works",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run a quick coder task to make sure it works"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-018",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "have coder do something small in my project as a test",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "have coder do something small in my project as a test"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-019",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "ok make it do something",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's coder?"
+          },
+          {
+            "role": "assistant",
+            "text": "Coder is our coding agent. When a request needs a computer, we dispatch Coder to one you've connected, and it works in a copy of your repository."
+          },
+          {
+            "role": "user",
+            "text": "ok make it do something"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-020",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delega una tarea de prueba a Coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delega una tarea de prueba a Coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-021",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "fire off a test job to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fire off a test job to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-022",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "start a coder task",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "start a coder task"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-023",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "send coder a hello world task",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "send coder a hello world task"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-024",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "ok try it",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "who can you delegate to"
+          },
+          {
+            "role": "assistant",
+            "text": "We delegate to Coder, our coding agent. When a task needs files, commands, or a repository, we dispatch Coder to a computer you connect."
+          },
+          {
+            "role": "user",
+            "text": "ok try it"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-025",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "let's test delegating: have coder list the files in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "let's test delegating: have coder list the files in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/delegate-026",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "trigger a delegation to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "trigger a delegation to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/delegate-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "who can you delegate to",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "who can you delegate to"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/delegate-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can you delegate work to my computer?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "can you delegate work to my computer?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/delegate-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what happens when you delegate to coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what happens when you delegate to coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/delegate-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how does delegation to coder work",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how does delegation to coder work"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/delegate-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do you delegate to other agents?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do you delegate to other agents?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/delegate-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "test project map on coder now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "test project map on coder now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/delegate-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run a test of code finder with coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run a test of code finder with coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/delegate-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do a test run of the project map tool",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test run of the project map tool"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/delegate-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "test whether test reader helps coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "test whether test reader helps coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/codebase.kb/delegate-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "where is delegation to coder implemented in the openagents repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "where is delegation to coder implemented in the openagents repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "codebase.kb",
+      "partition": "calibration",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }
   ]
