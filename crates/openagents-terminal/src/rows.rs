@@ -119,18 +119,12 @@ fn call_row(shown: &Shown, expanded: bool) -> ToolRow {
 }
 
 /// The run row for one Coder event, or `None` for an event the transcript
-/// shows elsewhere: a reply step (the result carries it) and progress,
-/// which the screen keeps as one live line rather than a row per step.
+/// shows elsewhere: the start (one short note, #10115), a reply step (the
+/// result carries it), and progress, which the screen keeps as one live
+/// line rather than a row per step.
 pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
     Some(match event {
-        CoderEvent::CoderStarted(started) => RunRow::Start {
-            who: match &started.model {
-                model if model.is_empty() => provider(&started.provider),
-                model => format!("{} ({model})", provider(&started.provider)),
-            },
-            place: format!("worktree of {} at {}", started.project, started.worktree),
-            why: started.reason.clone(),
-        },
+        CoderEvent::CoderStarted(_) => return None,
         CoderEvent::Step(step) => {
             let mark = match step.kind {
                 StepKind::Thinking => '·',

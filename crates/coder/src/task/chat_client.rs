@@ -87,6 +87,15 @@ impl Coder for Here {
         local::checkout(dir).map(|_| ())
     }
 
+    /// The project's spare worktree, made in the background (#10115), so
+    /// the first start here takes it instead of waiting on Git.
+    fn warm(&self, store: &Path, dir: &Path) {
+        let (store, dir) = (store.to_path_buf(), dir.to_path_buf());
+        let _ = std::thread::Builder::new()
+            .name("coder-warm".into())
+            .spawn(move || Self::runner(&store).warm(&dir));
+    }
+
     fn start(
         &self,
         store: &Path,

@@ -102,9 +102,7 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
     let mut run = fed(whole, State::Ended);
     let text = text_of(&run.rows());
     for expected in [
-        "Coder started on Codex · gpt-6-luna",
-        "Codex is signed in and has capacity.",
-        "Falls back to Claude Code (claude-opus-5-5)",
+        "Codex is working.",
         "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until",
         "Thinking Write the output.",
         // A command is one line, as Grok Build draws it (#10117); its
@@ -373,6 +371,52 @@ fn the_handoff_prompt_is_not_shown_again_under_the_chat() {
     assert!(!text.contains("Continued from"), "{text}");
     assert!(!text.contains("do a test delegation to claude"), "{text}");
     assert!(text.contains("also cover empty input"), "{text}");
+}
+
+/// A start card is one line, "Codex is working.", with no worktree, no
+/// fallbacks, and no "signed in and has capacity"; why it runs shows only
+/// when another engine runs than the one asked for (#10115).
+#[test]
+fn the_start_card_is_one_line_unless_another_engine_runs() {
+    let mut whole = tasks(QUESTION_THEN_RESULT)[0].clone();
+    let mut run = fed(&whole[..1], State::Running);
+    let text = text_of(&run.rows());
+    assert!(text.starts_with("Codex is working."), "{text}");
+    for noise in [
+        "signed in",
+        "Falls back",
+        "worktree",
+        "/",
+        "Coder started on",
+    ] {
+        assert!(!text.contains(noise), "{noise}: {text}");
+    }
+    let CoderEvent::CoderStarted(started) = &mut whole[0].event else {
+        unreachable!()
+    };
+    started.reason =
+        "You asked for Claude Code; it is not signed in here, so Codex is running.".into();
+    started.runner = Some(openagents_chat::coder_events::Runner::Runs {
+        provider: "codex".into(),
+        model: "gpt-6-luna".into(),
+        passed: vec![openagents_chat::coder_events::Passed {
+            provider: "claude".into(),
+            why: openagents_chat::coder_events::PassedOver::NotSignedIn,
+        }],
+        requested: Some("claude".into()),
+    });
+    let mut other = fed(&whole[..1], State::Running);
+    let text = text_of(&other.rows());
+    assert!(
+        text.starts_with(
+            "Codex is working.\nYou asked for Claude Code; it is not signed in here, so Codex is running."
+        ),
+        "{text}"
+    );
+    // Before the start, the row names who is starting.
+    let mut starting = Run::start("a".repeat(32).as_str(), "t", "p", vec![], Instant::now())
+        .requesting(Some(nostr::cj_conversation::Engine::GrokBuild));
+    assert!(text_of(&starting.rows()).contains("Starting Grok Build…"));
 }
 
 /// The person's message comes before the "Coder continued" card that it

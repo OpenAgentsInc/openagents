@@ -903,7 +903,12 @@ impl Run {
                 key: "coder-starting".into(),
                 style: Style::default(),
                 element: Element::Working {
-                    label: "Starting Coder on this computer…".into(),
+                    // Who is starting, from the moment the start is asked
+                    // (#10115).
+                    label: self.engine.map_or_else(
+                        || "Starting Coder…".to_owned(),
+                        |engine| format!("Starting {}…", engine.name()),
+                    ),
                 },
             }),
             Phase::NeedsProject(why) => {
@@ -1133,29 +1138,24 @@ impl Rows {
         match &line.event {
             CoderEvent::CoderStarted(started) => {
                 self.close_turn();
-                let provider = coder_events::provider_name(&serde_json::json!(started.provider));
-                let mut lines = vec![(started.reason.clone(), false)];
-                lines.push((format!("{} · {}", started.project, started.worktree), true));
-                if !started.fallbacks.is_empty() {
-                    lines.push((
-                        format!(
-                            "Falls back to {}",
-                            started
-                                .fallbacks
-                                .iter()
-                                .map(|route| route_name(route))
-                                .collect::<Vec<_>>()
-                                .join(", then ")
-                        ),
-                        true,
-                    ));
-                }
+                // One short line (#10115): who works, and why only when
+                // that is news. The task and its worktree stay in the
+                // result and the export.
+                let lines: Vec<(String, bool)> = started
+                    .news()
+                    .map(|news| (news.to_owned(), false))
+                    .into_iter()
+                    .collect();
+                // A later turn's card keeps its turn, which follows the
+                // message that started it.
                 let title = if started.turn == 1 {
-                    format!("Coder started on {provider} · {}", started.model)
+                    started.line()
                 } else {
                     format!(
-                        "Coder continued on {provider} · {} (turn {})",
-                        started.model, started.turn
+                        "Coder continued on {} · {} (turn {})",
+                        coder_events::provider_name(&serde_json::json!(started.provider)),
+                        started.model,
+                        started.turn
                     )
                 };
                 self.flush_held();

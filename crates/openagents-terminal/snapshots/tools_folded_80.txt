@@ -1,5 +1,4 @@
-  Coder · Codex (gpt-5) · worktree of demo at /tmp/w/t1
-  Codex is signed in and has capacity.
+  Codex is working.
   ◈ Ran 3 commands
   ◆ Run cargo test -p part3
   ◆ Run cargo test -p part4

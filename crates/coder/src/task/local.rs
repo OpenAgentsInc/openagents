@@ -41,6 +41,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use openagents_chat::coder_events::{
     self, CoderEvent, FileChange, Line, Mapper, Passed, PassedOver, Runner, Started,
@@ -52,7 +53,7 @@ use super::autostart::{self, Choice, Engine, Launch, Policy, Route, UsageProbe};
 use super::capacity::{self, Connection, Provider};
 use super::{
     Action, COMMAND_SCHEMA, Command, RequestedConfiguration, Status, Store, TaskIntent, Workspace,
-    account, adapter, owner, settings, usage,
+    account, adapter, owner, settings, spare, usage,
 };
 
 /// The routes a local run admits by default, in preference order: Codex,
@@ -244,6 +245,29 @@ pub struct TurnStart {
     /// The prediction the turn started on, which names the same provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner: Option<Runner>,
+    /// How long each stage of the task's first start took (#10115).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timings: Option<Timings>,
+}
+
+/// How long each stage of a start took, in milliseconds (#10115). The
+/// worktree is made while the provider is chosen.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Timings {
+    /// The checkout and its project settings.
+    pub project_ms: u64,
+    /// The policy, any fresh usage reading, and the provider's choice.
+    pub choose_ms: u64,
+    /// The task's worktree.
+    pub worktree_ms: u64,
+    /// The worktree was the project's spare ([`super::spare`]).
+    pub spare: bool,
+    /// The task saved in the store.
+    pub submit_ms: u64,
+    /// The grant and the engine's launch.
+    pub launch_ms: u64,
+    /// From the call to the engine running.
+    pub total_ms: u64,
 }
 
 /// What a local run keeps beside its task, in `<store>/local/<task>.json`:
@@ -328,6 +352,9 @@ pub struct Local {
     /// (#10105). Only the host reads a probe's token; this process never
     /// does.
     fresh: Option<Fresh>,
+    /// Keep a spare worktree per project ([`super::spare`]): a start takes
+    /// it and a new one is made in the background (#10115).
+    spares: bool,
 }
 
 /// Asks the host on this computer to read some providers' usage now, and
@@ -362,6 +389,7 @@ impl Local {
             settings: Ok(settings::Coder::default()),
             identify: account::identify,
             fresh: None,
+            spares: false,
         }
     }
 
@@ -370,7 +398,57 @@ impl Local {
     /// run.
     #[must_use]
     pub fn here(store: PathBuf) -> Self {
-        Local::new(store).with_settings_result(settings::load().map(|s| s.coder))
+        Local::new(store)
+            .with_settings_result(settings::load().map(|s| s.coder))
+            .with_spares(true)
+    }
+
+    /// Keep a spare worktree per project, so a start does not wait on Git
+    /// ([`super::spare`], #10115). [`Local::here`] does.
+    #[must_use]
+    pub fn with_spares(mut self, spares: bool) -> Self {
+        self.spares = spares;
+        self
+    }
+
+    /// Make the spare worktree for the project `dir` is in, in the
+    /// background, unless one is ready or being made: what a terminal or
+    /// chat does when it opens in a project, so its first start is quick.
+    pub fn warm(&self, dir: &Path) {
+        if !self.spares {
+            return;
+        }
+        if let Ok(checkout) = self.project(dir) {
+            spare::prepare_in_background(
+                self.worktrees.clone(),
+                checkout.top,
+                checkout.name,
+                checkout.head,
+                Some(self.digests()),
+                Duration::ZERO,
+            );
+        }
+    }
+
+    /// The digest file the engine's workspace observations share.
+    fn digests(&self) -> PathBuf {
+        self.store.join(adapter::SNAPSHOT_DIGESTS)
+    }
+
+    /// [`Local::warm`], waiting until the spare is made.
+    ///
+    /// # Errors
+    /// Why the spare could not be made.
+    pub fn warm_now(&self, dir: &Path) -> Result<PathBuf, String> {
+        let checkout = self.project(dir)?;
+        spare::prepare(
+            &self.worktrees,
+            &checkout.top,
+            &checkout.name,
+            &checkout.head,
+            Some(&self.digests()),
+        )?;
+        Ok(spare::path(&self.worktrees, &checkout.top, &checkout.name))
     }
 
     /// Read the person's settings from [`settings::path`] again, so a
@@ -805,6 +883,7 @@ impl Local {
         images: &[super::media::wire::Upload],
         requested: Option<Provider>,
     ) -> Result<Record, String> {
+        let began = Instant::now();
         let references: Vec<_> = images.iter().map(|image| image.reference.clone()).collect();
         super::media::wire::validate_all(&references).map_err(|error| error.message)?;
         let mut checkout = self.project(dir)?;
@@ -816,17 +895,10 @@ impl Local {
             .map_err(|_| format!("{base} names no commit in {}", checkout.top.display()))?;
             checkout.head = commit.trim().to_owned();
         }
-        let (policy, asked) = self.asking(self.policy(&checkout.name)?, requested);
-        // Read again before passing an engine over, and always the one the
-        // person asked for (#10105): a reading or hold may be another
-        // login's, or old.
-        if let Some(fresh) = &self.fresh {
-            let providers = self.recheck(requested);
-            if !providers.is_empty() {
-                fresh(&providers);
-            }
-        }
-        let (order, runner) = self.choose_asking(&policy, asked)?;
+        let mut timings = Timings {
+            project_ms: millis(began),
+            ..Timings::default()
+        };
         let now = (self.now)();
         let task = identity(&format!(
             "task:{}:{}:{}:{}",
@@ -835,19 +907,88 @@ impl Local {
             now,
             nonce()
         ));
+        let target = self.worktree_path(&checkout, &task);
+        // The project's spare is taken while the provider is chosen; a
+        // fresh worktree, which can take seconds, only once one is.
+        let (chosen, taken) = std::thread::scope(|scope| {
+            let taking = self.spares.then(|| {
+                scope.spawn(|| {
+                    let at = Instant::now();
+                    let taken = spare::take(
+                        &self.worktrees,
+                        &checkout.top,
+                        &checkout.name,
+                        &checkout.head,
+                        &target,
+                    );
+                    (taken, millis(at))
+                })
+            });
+            let at = Instant::now();
+            let chosen = (|| {
+                let (policy, asked) = self.asking(self.policy(&checkout.name)?, requested);
+                // Read again before passing an engine over, and always the
+                // one the person asked for (#10105): a reading or hold may
+                // be another login's, or old.
+                if let Some(fresh) = &self.fresh {
+                    let providers = self.recheck(requested);
+                    if !providers.is_empty() {
+                        fresh(&providers);
+                    }
+                }
+                let (order, runner) = self.choose_asking(&policy, asked)?;
+                Ok::<_, String>((policy, order, runner))
+            })();
+            timings.choose_ms = millis(at);
+            let taken = taking.and_then(|taking| taking.join().ok());
+            (chosen, taken)
+        });
+        let (taken, take_ms) = taken.unwrap_or((None, 0));
+        let (policy, order, runner) = match chosen {
+            Ok(chosen) => chosen,
+            Err(why) => {
+                if let Some(worktree) = taken {
+                    spare::give_back(&self.worktrees, &checkout.top, &checkout.name, &worktree);
+                }
+                return Err(why);
+            }
+        };
+        // A start refused from here returns the spare it took.
+        let refuse = |why: String| {
+            if let Some(worktree) = &taken {
+                spare::give_back(&self.worktrees, &checkout.top, &checkout.name, worktree);
+            }
+            Err(why)
+        };
         // Codex and Claude Code take images natively; the whole-agent
         // routes do not, and a run never silently drops an attached image.
         if !images.is_empty() && !matches!(order[0].provider, Provider::Codex | Provider::Claude) {
-            return Err(format!(
+            return refuse(format!(
                 "{} can't take images. Use Codex or Claude Code for a task with images, or remove the images.",
                 settings::provider_name(order[0].provider)
             ));
         }
         for image in images {
-            super::media::save(&self.store, &task, &image.reference, &image.bytes)
-                .map_err(|error| format!("Coder could not keep the attached image: {error}"))?;
+            if let Err(error) =
+                super::media::save(&self.store, &task, &image.reference, &image.bytes)
+            {
+                return refuse(format!("Coder could not keep the attached image: {error}"));
+            }
         }
-        let worktree = self.worktree(&checkout, &task)?;
+        timings.spare = taken.is_some();
+        let worktree = match taken {
+            Some(worktree) => {
+                timings.worktree_ms = take_ms;
+                worktree
+            }
+            None => {
+                let at = Instant::now();
+                let worktree = self.worktree(&checkout, &target)?;
+                timings.worktree_ms = millis(at);
+                worktree
+            }
+        };
+        let submitting = Instant::now();
         let model = order[0].model.clone();
         let intent = TaskIntent {
             title: one_line(title, 200),
@@ -892,7 +1033,28 @@ impl Local {
             ends: BTreeMap::new(),
             requested: requested.map(|provider| provider.as_str().to_owned()),
         };
+        timings.submit_ms = millis(submitting);
+        let launching = Instant::now();
         self.launch(&policy, &order, runner, &submitted, &mut record)?;
+        timings.launch_ms = millis(launching);
+        timings.total_ms = millis(began);
+        // The timings with the turn, for `/export` and anyone measuring;
+        // the record was saved before the launch, and is again.
+        if let Some(turn) = record.turns.last_mut() {
+            turn.timings = Some(timings);
+        }
+        let _ = save(&self.store, &record);
+        // The next start's spare, once this run's engine is under way.
+        if self.spares {
+            spare::prepare_in_background(
+                self.worktrees.clone(),
+                checkout.top.clone(),
+                checkout.name.clone(),
+                checkout.head.clone(),
+                Some(self.digests()),
+                spare::AFTER_START,
+            );
+        }
         Ok(record)
     }
 
@@ -913,6 +1075,7 @@ impl Local {
             fallbacks: shown_fallbacks(&order[1..], &runner),
             at: (self.now)(),
             runner: Some(runner),
+            timings: None,
         });
         // The record first, so a follower always knows how the turn began.
         save(&self.store, record)?;
@@ -1005,13 +1168,16 @@ impl Local {
         store.apply(&bytes).map(|_| ()).map_err(|e| e.to_string())
     }
 
-    /// A detached worktree of the checkout's `HEAD` for `task`.
-    fn worktree(&self, checkout: &Checkout, task: &str) -> Result<PathBuf, String> {
+    /// Where `task`'s worktree goes.
+    fn worktree_path(&self, checkout: &Checkout, task: &str) -> PathBuf {
+        self.worktrees
+            .join(format!("{}-{}", checkout.name, &task[..12]))
+    }
+
+    /// A fresh detached worktree of the checkout's `HEAD` at `target`.
+    fn worktree(&self, checkout: &Checkout, target: &Path) -> Result<PathBuf, String> {
         crate::private::create_dir_all(&self.worktrees)
             .map_err(|_| format!("cannot create {}", self.worktrees.display()))?;
-        let target = self
-            .worktrees
-            .join(format!("{}-{}", checkout.name, &task[..12]));
         git_out(
             &checkout.top,
             &[
@@ -1019,7 +1185,7 @@ impl Local {
                 "add",
                 "--detach",
                 "--quiet",
-                &coder_boundary::plain_path(&target).display().to_string(),
+                &coder_boundary::plain_path(target).display().to_string(),
                 &checkout.head,
             ],
         )
@@ -1341,6 +1507,10 @@ fn identity(seed: &str) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn millis(since: Instant) -> u64 {
+    u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn nonce() -> String {
@@ -1948,6 +2118,180 @@ mod tests {
                 grant_digest: "sha256:held".into(),
             })
         }
+    }
+
+    /// A repository with one file, `a.txt`, holding `text` at its one
+    /// commit.
+    fn repo_with_file(dir: &Path, text: &str) -> PathBuf {
+        let top = repo(dir);
+        std::fs::create_dir_all(top.join("src/deep")).unwrap();
+        std::fs::write(top.join("src/deep/b.txt"), "b").unwrap();
+        assert!(
+            git()
+                .arg("-C")
+                .arg(&top)
+                .args(["add", "src"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        commit(&top, text);
+        top
+    }
+
+    /// Commit `a.txt` holding `text`; the new commit.
+    fn commit(top: &Path, text: &str) -> String {
+        std::fs::write(top.join("a.txt"), text).unwrap();
+        for args in [
+            vec!["add", "a.txt"],
+            vec![
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "-m",
+                text,
+            ],
+        ] {
+            assert!(
+                git()
+                    .arg("-C")
+                    .arg(top)
+                    .args(&args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        git_out(top, &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_owned()
+    }
+
+    /// A start takes the project's spare worktree (#10115): moved to the
+    /// exact commit the task needs, recorded by Git at the task's path,
+    /// and replaced by a new spare made in the background.
+    #[test]
+    fn a_start_takes_the_spare_at_its_commit_and_a_new_one_is_made() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo_with_file(dir.path(), "one");
+        let run = local(dir.path(), both)
+            .with_launcher(Box::new(Held))
+            .with_spares(true);
+        let spare = run.warm_now(&top).unwrap();
+        assert!(spare.join("a.txt").exists());
+        // The checkout moves on; the spare is a commit behind.
+        let head = commit(&top, "two");
+        let record = run.start(&top, "Fix it", "Fix it.", None).unwrap();
+        let worktree = PathBuf::from(&record.worktree);
+        assert_eq!(
+            std::fs::read_to_string(worktree.join("a.txt")).unwrap(),
+            "two"
+        );
+        assert_eq!(
+            git_out(&worktree, &["rev-parse", "HEAD"]).unwrap().trim(),
+            head
+        );
+        let timings = record.turns[0].timings.clone().unwrap();
+        assert!(timings.spare, "{timings:?}");
+        // Git knows the worktree at the task's path, not the spare's.
+        let listed = git_out(&top, &["worktree", "list", "--porcelain"]).unwrap();
+        assert!(listed.contains(&record.worktree), "{listed}");
+        // A new spare follows, at the commit the start used.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while !spare.join("a.txt").exists() {
+            assert!(Instant::now() < deadline, "no new spare");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(
+            git_out(&spare, &["rev-parse", "HEAD"]).unwrap().trim(),
+            head
+        );
+        // The next start takes it too.
+        let next = run.start(&top, "Again", "Again.", None).unwrap();
+        assert!(next.turns[0].timings.as_ref().unwrap().spare);
+        assert_ne!(next.worktree, record.worktree);
+    }
+
+    /// A spare with any change is never handed to a task: it is removed,
+    /// and the start makes a fresh worktree.
+    #[test]
+    fn a_dirty_spare_is_never_reused() {
+        for dirt in [
+            "untracked",
+            "nested",
+            "folder",
+            "ignored",
+            "modified",
+            "staged",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let top = repo_with_file(dir.path(), "one");
+            let run = local(dir.path(), both)
+                .with_launcher(Box::new(Held))
+                .with_spares(true);
+            let spare = run.warm_now(&top).unwrap();
+            match dirt {
+                "untracked" => std::fs::write(spare.join("left.txt"), "a run's leftover").unwrap(),
+                "nested" => std::fs::write(spare.join("src/deep/left.txt"), "leftover").unwrap(),
+                "folder" => std::fs::create_dir(spare.join("src/deep/target")).unwrap(),
+                "ignored" => {
+                    std::fs::write(top.join(".git/info/exclude"), "*.log\n").unwrap();
+                    std::fs::write(spare.join("src/run.log"), "x").unwrap();
+                }
+                "staged" => {
+                    std::fs::write(spare.join("src/deep/b.txt"), "staged").unwrap();
+                    assert!(git_out(&spare, &["add", "src"]).is_ok());
+                    std::fs::write(spare.join("src/deep/b.txt"), "b").unwrap();
+                }
+                _ => std::fs::write(spare.join("a.txt"), "changed").unwrap(),
+            }
+            let record = run.start(&top, "Fix it", "Fix it.", None).unwrap();
+            let worktree = PathBuf::from(&record.worktree);
+            assert!(!worktree.join("left.txt").exists(), "{dirt}");
+            assert!(!worktree.join("src/deep/left.txt").exists(), "{dirt}");
+            assert!(!worktree.join("src/deep/target").exists(), "{dirt}");
+            assert!(!worktree.join("src/run.log").exists(), "{dirt}");
+            assert_eq!(
+                std::fs::read_to_string(worktree.join("a.txt")).unwrap(),
+                "one"
+            );
+            assert_eq!(
+                git_out(&worktree, &["status", "--porcelain"]).unwrap(),
+                "",
+                "{dirt}"
+            );
+            assert!(!record.turns[0].timings.as_ref().unwrap().spare, "{dirt}");
+        }
+    }
+
+    /// With no spare, a start makes its worktree as before; a start that
+    /// is refused leaves the spare it took for the next one.
+    #[test]
+    fn without_a_spare_a_start_falls_back_and_a_refused_start_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo_with_file(dir.path(), "one");
+        let run = local(dir.path(), both)
+            .with_launcher(Box::new(Held))
+            .with_spares(true);
+        let record = run.start(&top, "Fix it", "Fix it.", None).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(Path::new(&record.worktree).join("a.txt")).unwrap(),
+            "one"
+        );
+        assert!(!record.turns[0].timings.as_ref().unwrap().spare);
+
+        let other = tempfile::tempdir().unwrap();
+        let top = repo_with_file(other.path(), "one");
+        let refused = local(other.path(), nobody).with_spares(true);
+        let spare = refused.warm_now(&top).unwrap();
+        assert!(refused.start(&top, "Fix it", "Fix it.", None).is_err());
+        assert!(spare.join("a.txt").exists(), "the spare is kept");
+        let listed = git_out(&top, &["worktree", "list", "--porcelain"]).unwrap();
+        assert!(listed.contains(&spare.canonicalize().unwrap().display().to_string()));
     }
 
     /// A follower whose store another process holds past the open's wait

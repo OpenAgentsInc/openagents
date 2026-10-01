@@ -3,10 +3,7 @@ message user
 message assistant
   markdown "We'll dispatch Coder to add a unit test for slugify."
 vertical stack [card]
-  body "Coder started on Grok Build · default"
-  body "You asked for Grok Build; it is signed in and has capacity."
-  status "grokdemo · /Users/me/.openagents/worktrees/grokdemo-4c5a8c0c5ea8"
-  status "Falls back to Codex (gpt-6.1-sol), then Claude Code (claude-opus-5-5)"
+  body "Grok Build is working."
 tool "Thinking" "Continuing the OpenAgents conversation." [done]
   code "Continuing the OpenAgents conversation."
 message assistant

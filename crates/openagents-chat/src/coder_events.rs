@@ -244,7 +244,62 @@ pub fn requested_reason(
     ))
 }
 
+impl Started {
+    /// The line every surface shows when the turn starts: "Grok Build is
+    /// working." (#10115). No task ID, no worktree path: those stay in
+    /// `--json` and an export.
+    #[must_use]
+    pub fn line(&self) -> String {
+        working(&self.provider)
+    }
+
+    /// Why this engine runs, only when that says something new: another
+    /// engine than the one asked for, or one passed over ([`Runner::plain`]).
+    #[must_use]
+    pub fn news(&self) -> Option<&str> {
+        self.runner
+            .as_ref()
+            .filter(|runner| !runner.plain())
+            .map(|_| self.reason.as_str())
+            .filter(|reason| !reason.is_empty())
+    }
+}
+
+/// "Grok Build is working.": a run on `provider` (its word) started.
+#[must_use]
+pub fn working(provider: &str) -> String {
+    format!(
+        "{} is working.",
+        provider_name(&Value::String(provider.to_owned()))
+    )
+}
+
+/// "Starting Grok Build…": a run on `provider` (its word) is starting.
+#[must_use]
+pub fn starting(provider: &str) -> String {
+    format!(
+        "Starting {}…",
+        provider_name(&Value::String(provider.to_owned()))
+    )
+}
+
 impl Runner {
+    /// Whether saying who runs would only repeat what the person knows:
+    /// the engine asked for (or the first one) runs and none was passed
+    /// over.
+    #[must_use]
+    pub fn plain(&self) -> bool {
+        match self {
+            Runner::Runs {
+                provider,
+                passed,
+                requested,
+                ..
+            } => passed.is_empty() && requested.as_ref().is_none_or(|asked| asked == provider),
+            _ => false,
+        }
+    }
+
     /// The provider that will run, when one will.
     #[must_use]
     pub fn provider(&self) -> Option<&str> {
@@ -1088,10 +1143,10 @@ pub fn text(event: &CoderEvent) -> Option<String> {
         bounded(line.trim(), 200).0
     };
     Some(match event {
-        CoderEvent::CoderStarted(s) => format!(
-            "Coder started turn {} in {} ({}) on {}:{}. {}",
-            s.turn, s.project, s.worktree, s.provider, s.model, s.reason
-        ),
+        CoderEvent::CoderStarted(s) => match s.news() {
+            Some(news) => format!("{}\n{news}", s.line()),
+            None => s.line(),
+        },
         CoderEvent::Step(step) => match step.kind {
             StepKind::Message => return None,
             StepKind::Thinking => format!("  · {}", first(&step.text)),
@@ -1912,6 +1967,62 @@ mod tests {
         )
         .unwrap();
         assert_eq!(old.text(), "Codex will do this.");
+    }
+
+    /// A start is one line, "Grok Build is working.", and why only when
+    /// that is news: another engine than asked, or one passed over
+    /// (#10115). Never the task or the worktree.
+    #[test]
+    fn a_start_line_says_who_works_and_only_news() {
+        let started = |runner: Option<Runner>, reason: &str| Started {
+            turn: 1,
+            project: "openagents".into(),
+            checkout: "/c".into(),
+            worktree: "/w/openagents-b9c1ffbaee82".into(),
+            base: "abc".into(),
+            provider: "grok".into(),
+            model: "default".into(),
+            reason: reason.into(),
+            fallbacks: vec!["codex:gpt".into()],
+            via: "local".into(),
+            runner,
+        };
+        let asked = started(
+            Some(Runner::Runs {
+                provider: "grok".into(),
+                model: "default".into(),
+                passed: vec![],
+                requested: Some("grok".into()),
+            }),
+            "You asked for Grok Build; it is signed in and has capacity.",
+        );
+        assert_eq!(asked.line(), "Grok Build is working.");
+        assert_eq!(asked.news(), None);
+        let event = CoderEvent::CoderStarted(asked);
+        assert_eq!(text(&event).unwrap(), "Grok Build is working.");
+        // An old record, without the prediction, says only who works.
+        assert_eq!(started(None, "ready").news(), None);
+        // Another engine than asked: the line, then why.
+        let other = started(
+            Some(Runner::Runs {
+                provider: "grok".into(),
+                model: "default".into(),
+                passed: vec![Passed {
+                    provider: "codex".into(),
+                    why: PassedOver::NotSignedIn,
+                }],
+                requested: Some("codex".into()),
+            }),
+            "You asked for Codex; it is not signed in here, so Grok Build is running.",
+        );
+        let shown = text(&CoderEvent::CoderStarted(other)).unwrap();
+        assert_eq!(
+            shown,
+            "Grok Build is working.\nYou asked for Codex; it is not signed in here, so Grok \
+             Build is running."
+        );
+        assert!(!shown.contains("b9c1ff") && !shown.contains("/w/"));
+        assert_eq!(starting("claude"), "Starting Claude Code…");
     }
 
     /// The three things an offer can say, from their typed fields, and

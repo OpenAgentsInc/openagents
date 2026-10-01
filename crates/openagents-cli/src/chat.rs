@@ -513,17 +513,29 @@ impl<'a> Printer<'a> {
                 );
                 eprintln!("openagents chat: {message}");
             }
+            Event::Starting { thread, engine } => {
+                let text = openagents_chat::coder_events::starting(&engine);
+                event(
+                    output,
+                    json!({"event": "starting", "thread": thread, "engine": engine, "text": text}),
+                );
+                if !output.json() {
+                    eprintln!("{text}");
+                }
+            }
             Event::Coder {
                 thread,
                 accepted,
                 message,
                 task,
+                quiet,
             } => {
                 event(
                     output,
                     json!({"event": "coder", "thread": thread, "accepted": accepted, "message": message, "task": task}),
                 );
-                if !output.json() {
+                // A start's own line (`coder_started`) says who works.
+                if !output.json() && !quiet {
                     eprintln!("{message}");
                 }
             }

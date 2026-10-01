@@ -505,6 +505,11 @@ impl CoderLane {
             if fake {
                 return local;
             }
+            // The last project's spare worktree, so the next start there
+            // does not wait on Git (#10115).
+            if let Ok(last) = std::fs::read_to_string(last_project(local.store())) {
+                local.warm(std::path::Path::new(last.trim()));
+            }
             // Before a start passes an engine over for capacity, or starts
             // the one the person asked for, the host on this computer reads
             // its usage now (#10105); only the host reads the probe's token.

@@ -14,7 +14,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use openagents_chat::basic_chats::Summary;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::client::{Event, Kind, Op, Start};
-use openagents_chat::coder_events::{CoderEvent, Line as CoderLine};
+use openagents_chat::coder_events::{self, CoderEvent, Line as CoderLine};
 use openagents_chat::router::{Context, EngineState, Meta, Offer};
 use openagents_chat::tool_groups::Stretch;
 use ratatui::text::Line;
@@ -110,6 +110,9 @@ pub struct App {
     pub offer: bool,
     /// Who runs Coder now, for the status line.
     pub engine: Option<String>,
+    /// A run is starting on this engine and has not said it works yet:
+    /// the rail says "Starting Grok Build…" (#10115).
+    pub starting: Option<String>,
     pub overlay: Option<Overlay>,
     /// A pairing code is on the screen.
     pub pairing: bool,
@@ -148,6 +151,7 @@ impl App {
             asked: false,
             offer: false,
             engine: None,
+            starting: None,
             overlay: None,
             pairing: false,
             scroll: 0,
@@ -185,6 +189,7 @@ impl App {
         self.asked = false;
         self.offer = false;
         self.engine = None;
+        self.starting = None;
         self.seen.clear();
         self.scroll = 0;
     }
@@ -433,6 +438,7 @@ impl App {
     /// The operation ended.
     pub fn ended(&mut self, failed: Option<String>) {
         self.phase = Phase::Idle;
+        self.starting = None;
         self.partial.clear();
         if !self.running {
             self.progress = None;
@@ -467,6 +473,14 @@ impl App {
                 self.notes(&meta, computer && !running, running);
                 if running {
                     self.phase = Phase::Following;
+                    // The rail says who is starting from the reply on: a
+                    // start never leaves the screen silent (#10115).
+                    self.starting = Some(
+                        meta.runner
+                            .as_ref()
+                            .and_then(|runner| runner.provider())
+                            .map_or_else(|| "Starting Coder…".to_owned(), coder_events::starting),
+                    );
                 }
             }
             Event::ReplyFailed {
@@ -479,14 +493,20 @@ impl App {
                 self.loud(message);
             }
             Event::Failure { message, .. } => self.loud(message),
+            Event::Starting { engine, .. } => {
+                self.starting = Some(coder_events::starting(&engine));
+            }
             Event::Coder {
                 accepted,
                 message,
                 task,
+                quiet,
                 ..
             } => {
                 if accepted {
-                    self.note(message);
+                    if !quiet {
+                        self.note(message);
+                    }
                     // The issue flow runs in this process (docs/terminal,
                     // decision 4): say so before the person quits.
                     if task.as_ref().and_then(|task| task.get("issue")).is_some() {
@@ -507,6 +527,7 @@ impl App {
                         self.running = true;
                     }
                 } else {
+                    self.starting = None;
                     self.loud(message);
                 }
             }
@@ -563,7 +584,14 @@ impl App {
             CoderEvent::CoderStarted(started) => {
                 self.running = true;
                 self.asked = false;
+                self.starting = None;
                 self.engine = Some(rows::provider(&started.provider));
+                // One short line (#10115), and who runs only when that is
+                // news: another engine than asked, or one passed over.
+                self.push(Row::Note(started.line(), Intensity::ThreeQuarters));
+                if let Some(news) = started.news() {
+                    self.note(news);
+                }
             }
             CoderEvent::Question(_) | CoderEvent::Approval(_) => self.asked = true,
             _ => {}
@@ -640,7 +668,7 @@ impl App {
         }
         // Who runs it, only when that says more than the reply did: another
         // engine than the one asked for, one passed over, or none ready.
-        if let Some(runner) = meta.runner.as_ref().filter(|runner| !plain(runner)) {
+        if let Some(runner) = meta.runner.as_ref().filter(|runner| !runner.plain()) {
             self.note(runner.text());
         }
     }
@@ -652,6 +680,7 @@ impl App {
             Phase::Replying => "replying · Esc stops".into(),
             Phase::Working => "working".into(),
             _ if self.asked => "Coder asks · type your answer".into(),
+            _ if self.starting.is_some() => self.starting.clone().unwrap_or_default(),
             _ if self.running => match &self.progress {
                 Some(RunRow::Progress {
                     step,
@@ -727,20 +756,6 @@ pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card
         body: Vec::new(),
         art: Vec::new(),
         keys: Vec::new(),
-    }
-}
-
-/// Whether a run's who-runs-it line would only repeat the reply: the
-/// engine asked for (or the first one) runs and nothing was passed over.
-fn plain(runner: &openagents_chat::coder_events::Runner) -> bool {
-    match runner {
-        openagents_chat::coder_events::Runner::Runs {
-            provider,
-            passed,
-            requested,
-            ..
-        } => passed.is_empty() && requested.as_ref().is_none_or(|asked| asked == provider),
-        _ => false,
     }
 }
 

@@ -3,10 +3,7 @@ message user
 message assistant
   markdown "We'll dispatch Coder to add a unit test for slugify."
 vertical stack [card]
-  body "Coder started on Codex · gpt-6-luna"
-  body "Codex is signed in and has capacity."
-  status "slugs · /tmp/scratch/worktrees/slugs-4e90697d9c5f"
-  status "Falls back to Claude Code (claude-opus-5-5)"
+  body "Codex is working."
 status "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until 2026-10-03 18:07 UTC."
 tool "Thinking" "Write the output." [done]
   code "Write the output."
@@ -24,8 +21,6 @@ message user
 vertical stack [card]
   body "Coder continued on Claude Code · claude-opus-5-5 (turn 2)"
   body "Codex reached its usage limit until 2026-10-03 18:07 UTC; using Claude Code."
-  status "slugs · /tmp/scratch/worktrees/slugs-4e90697d9c5f"
-  status "Falls back to Codex (gpt-6-luna)"
 tool "Thinking" "Write the output." [done]
   code "Write the output."
 tool "Run" "printf 'x = 1\\n' >> test_slugs.py" [done]

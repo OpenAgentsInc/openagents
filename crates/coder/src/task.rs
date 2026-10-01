@@ -42,6 +42,7 @@ pub mod publish;
 pub mod remote;
 pub mod review;
 pub mod settings;
+pub mod spare;
 pub mod usage;
 pub mod view;
 /// Per-engine steering semantics; see [`coder_delegate::steering`].

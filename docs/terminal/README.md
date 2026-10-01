@@ -93,8 +93,11 @@ The first thing it shows is the welcome card: the version and three rows.
   it, keeping their IDs. `scratch` for `--scratch`.
 
 Below the transcript sits the composer. Its top line says what is happening
-(`ready`, `replying`, `Coder · step 4 · ≈40% done · 12s`); its bottom line
-names the engine and the thread.
+(`ready`, `replying`, `Starting Grok Build…`, `Coder · step 4 · ≈40% done ·
+12s`); its bottom line names the engine and the thread. A Coder start shows
+one line in the transcript, "Grok Build is working.", and why only when
+another engine runs than the one you asked for; `/export` keeps the task and
+its worktree.
 
 Replies render as Markdown. Suggested follow-ups are not shown here; a card
 that opens in the app (a Gym result, a deck, the wallet) says where to open

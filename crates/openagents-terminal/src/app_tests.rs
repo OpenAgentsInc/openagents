@@ -515,3 +515,75 @@ fn check_snapshot(name: &str, actual: &str) {
         .unwrap_or_else(|_| panic!("no snapshot {name}; run with UPDATE_SNAPSHOTS=1:\n{actual}"));
     assert_eq!(expected, actual, "the {name} snapshot differs");
 }
+
+/// A start never leaves the screen silent and says little (#10115): the
+/// rail says who is starting from the dispatch reply on, and the run's
+/// start is one line, with no task ID, worktree path, or "signed in".
+#[test]
+fn a_start_shows_starting_then_one_line() {
+    use openagents_chat::coder_events::Runner;
+    let mut app = app();
+    app.began(&Op::Send {
+        thread: app.thread.clone(),
+        new: true,
+        text: "do a test delegation to grok".into(),
+        start: Start::Settings,
+        timeout: openagents_chat::client::DEFAULT_TIMEOUT,
+    });
+    let runner = Runner::Runs {
+        provider: "grok".into(),
+        model: "default".into(),
+        passed: Vec::new(),
+        requested: Some("grok".into()),
+    };
+    let Event::Reply { thread, reply, .. } = reply(
+        "We'll dispatch Grok Build to take this on.",
+        Meta {
+            offers: vec![Offer::RunCoder],
+            runner: Some(runner.clone()),
+            ..Meta::default()
+        },
+    ) else {
+        unreachable!()
+    };
+    app.event(Event::Reply {
+        thread,
+        reply,
+        computer: true,
+        running: true,
+    });
+    assert_eq!(app.status(), "Starting Grok Build…");
+    assert!(app.busy(), "the spinner turns while it starts");
+    app.event(Event::Starting {
+        thread: app.thread.clone(),
+        engine: "grok".into(),
+    });
+    app.event(Event::Coder {
+        thread: app.thread.clone(),
+        accepted: true,
+        message: "Coder started.".into(),
+        task: Some(serde_json::json!({"task": "t1", "worktree": "/tmp/w/t1"})),
+        quiet: true,
+    });
+    assert_eq!(app.status(), "Starting Grok Build…");
+    let CoderEvent::CoderStarted(mut grok) = started() else {
+        unreachable!()
+    };
+    grok.provider = "grok".into();
+    grok.reason = "You asked for Grok Build; it is signed in and has capacity.".into();
+    grok.runner = Some(runner);
+    app.event(line(1, CoderEvent::CoderStarted(grok)));
+    assert_eq!(app.status(), "Coder is working · Esc stops");
+    let shown = shown(&mut app);
+    let after: Vec<&str> = shown
+        .lines()
+        .skip_while(|line| !line.contains("We'll dispatch"))
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    assert_eq!(after.len(), 1, "{shown}");
+    assert!(after[0].contains("Grok Build is working."), "{shown}");
+    for noise in ["t1", "/tmp/w", "signed in", "Coder started"] {
+        assert!(!shown.contains(noise), "{noise}: {shown}");
+    }
+}

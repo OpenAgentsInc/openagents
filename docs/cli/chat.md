@@ -168,7 +168,13 @@ projects, and what the run's commands may reach.
 
 - **Project.** The Git checkout the command runs in. Coder works in its own
   detached worktree of the checkout's `HEAD`, never in the checkout, so the
-  result is in the worktree the `result` event names. Uncommitted changes
+  result is in the worktree the `result` event names. A start takes the
+  project's spare worktree when one is ready (made in the background when
+  `openagents chat` or OpenAgents Terminal opens in the project, and after
+  each start), moved to that exact commit, so it does not wait seconds on
+  Git in a large repository; a spare with any change is removed, never
+  used. Each turn's record (`<store>/local/<task>.json`) keeps how long
+  each stage of its start took (`timings`). Uncommitted changes
   in the checkout are not carried over. Outside a checkout, or in one with
   no commit, nothing runs and the command says so and exits 1. (With a host
   running and no checkout here, the host's own handoff still runs Coder in
@@ -180,7 +186,11 @@ projects, and what the run's commands may reach.
   still holds in the task store's capacity book is passed over, and so is
   one a fresh usage reading in the store shows near its limit. The
   `coder_started` event says which one and why, for example "Codex reached
-  its usage limit until 2026-10-03 18:07 UTC; using Claude Code." During the
+  its usage limit until 2026-10-03 18:07 UTC; using Claude Code." Without
+  `--json` a start prints two short lines, "Starting Grok Build…" at once
+  and "Grok Build is working." when the run starts, and the reason only
+  when another engine runs than the one asked for or one was passed over;
+  the task ID and worktree stay in `--json` (#10115). During the
   run, a provider that refuses is recorded and the run switches
   (`provider_switched`).
 - **The same run as the host's.** The task is started through the host
@@ -373,7 +383,8 @@ turn changed is computed once, when it ends, and kept in the run's record
 $ cd ~/code/slugs && openagents --json chat "add a unit test for slugify that covers an empty string"
 {"event":"accepted","thread":"1742…","backend":"in_process",…}
 {"event":"result","thread":"1742…","text":"We'll dispatch Coder to add a unit test for slugify that covers an empty string.",…}
-{"event":"coder","thread":"1742…","accepted":true,"message":"Coder started task 4d0d… in a worktree of slugs.","task":{"host":"local",…}}
+{"event":"starting","thread":"1742…","engine":"claude","text":"Starting Claude Code…"}
+{"event":"coder","thread":"1742…","accepted":true,"message":"Coder started.","task":{"host":"local","task":"4d0d…","project":"slugs","worktree":"…/worktrees/slugs-4d0d730cb9be"}}
 {"seq":1,"task":"4d0d…","thread":"1742…","event":"coder_started","turn":1,"project":"slugs",…,"provider":"claude","model":"claude-opus-5-5","reason":"Codex reached its usage limit until 2026-09-30 17:39 UTC; using Claude Code.","fallbacks":["codex:gpt-6-luna"],"via":"local"}
 {"seq":2,…,"event":"step","turn":1,"step_id":1,"kind":"message","source":"user","text":"add a unit test for slugify that covers an empty string…"}
 {"seq":3,…,"event":"progress","turn":1,"step":1,"seconds":6.65,"done":0.04,"complete":0.0}
@@ -404,6 +415,7 @@ With `--json`, `send` prints NDJSON, one event per line, in this order:
 | `route` | `thread`, `tier`, `route`, `bank`, `served_answer` (a knowledge entry `id@version`, when the reply is one), `judgment` (the router's typed judgment as it arrived), `computer` (the judgment placed it on a computer), `followups`, `cards` |
 | `offer` | `thread`, `offer` (the typed offer, such as `{"offer": "run_coder"}`), `accept` (the command that accepts it, when there is one) |
 | `result` | `thread`, `text`, `model` (the model the worker named), `served_answer` |
+| `starting` | `thread`, `engine` (the provider's word), `text` ("Starting Grok Build…"): a start on this computer began; its worktree and launch follow (#10115) |
 | `coder` | `thread`, `accepted`, `message`, `task` (`{host, task, project, worktree}` when Coder started) |
 | `stop` | `thread`, `task`, `requested`, `message` (from `chat stop`) |
 | `failure` | `thread`, `message`, `stopped`, `partial` |

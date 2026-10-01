@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use super::*;
 use crate::basic_chats::Spawned;
 use crate::basic_coder::{Door, Reply, lock};
-use crate::coder_events::Asked;
+use crate::coder_events::{self, Asked};
 use crate::router::{ClientWord, Meta, Offer, Surface};
 
 /// A worker that streams one partial, then answers; a coding message gets
@@ -62,6 +62,10 @@ impl Door for Silent {
 struct FakeCoder {
     asks_first: bool,
     started: Mutex<Vec<(String, Option<nostr::cj_conversation::Engine>)>>,
+    /// Who it says would run.
+    predicts: Option<Runner>,
+    /// The project folders it was asked to make ready.
+    warmed: Mutex<Vec<PathBuf>>,
 }
 
 impl Coder for FakeCoder {
@@ -75,13 +79,16 @@ impl Coder for FakeCoder {
         }
     }
     fn predict(&self, _: &Path, _: Option<nostr::cj_conversation::Engine>) -> Option<Runner> {
-        None
+        self.predicts.clone()
     }
     fn asks_first(&self) -> bool {
         self.asks_first
     }
     fn checkout(&self, _: &Path) -> Result<(), String> {
         Ok(())
+    }
+    fn warm(&self, _: &Path, dir: &Path) {
+        self.warmed.lock().unwrap().push(dir.to_path_buf());
     }
     fn start(
         &self,
@@ -267,6 +274,64 @@ async fn a_coding_reply_starts_coder_at_once_and_streams_its_events() {
         started[0].1,
         Some(nostr::cj_conversation::Engine::ClaudeCode)
     );
+}
+
+/// A start says who is starting before its own work, then lets the run's
+/// start line speak: the `coder` event carries the task for `--json` and
+/// is quiet (#10115). Opening the client made its project ready.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_start_says_who_is_starting_then_one_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let door = Arc::new(Worker {
+        contexts: Arc::default(),
+        coding: true,
+    });
+    let coder = Arc::new(FakeCoder {
+        predicts: Some(Runner::Runs {
+            provider: "grok".into(),
+            model: "default".into(),
+            passed: Vec::new(),
+            requested: Some("grok".into()),
+        }),
+        ..FakeCoder::default()
+    });
+    let client = in_process(door, options(dir.path()), coder.clone());
+    assert_eq!(*coder.warmed.lock().unwrap(), [dir.path().to_path_buf()]);
+    let thread = new_id();
+    let (events, _, ended) = drain(client.stream(send(
+        &thread,
+        "do a test delegation to grok",
+        Start::Settings,
+    )))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done));
+    let names: Vec<String> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Reply { running: true, .. } => Some("reply-running".into()),
+            Event::Starting { engine, .. } => Some(format!("starting {engine}")),
+            Event::Coder {
+                accepted: true,
+                quiet: true,
+                task: Some(task),
+                ..
+            } => Some(format!("coder {}", task["worktree"])),
+            Event::Coder { .. } => Some("loud coder".into()),
+            Event::Line(line) => Some(line.event.name().into()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "reply-running",
+            "starting grok",
+            "coder \"/tmp/demo-t1\"",
+            "question"
+        ],
+        "{events:?}"
+    );
+    assert_eq!(coder_events::starting("grok"), "Starting Grok Build…");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -69,11 +69,10 @@ fn admit(directory: &Path, bytes: &[u8]) -> Result<(String, PathBuf), Box<dyn st
         return Err("task and repository launch configuration differ".into());
     }
     let executable = std::env::current_exe()?.canonicalize()?;
-    let controller_digest = nostr::contracts::digest_bytes(&std::fs::read(&executable)?);
-    if configuration
-        .expected_controller_digest
-        .as_ref()
-        .is_some_and(|pin| pin != &controller_digest)
+    // Only a pinned executable is read and digested: reading the whole
+    // engine on every start costs a start time for nothing (#10115).
+    if let Some(pin) = &configuration.expected_controller_digest
+        && pin != &nostr::contracts::digest_bytes(&std::fs::read(&executable)?)
     {
         return Err("repository controller differs from the pinned executable".into());
     }

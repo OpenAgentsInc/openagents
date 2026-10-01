@@ -1,6 +1,4 @@
-  Coder · Grok Build (default) · worktree of grokdemo at
-  /Users/me/.openagents/worktrees/grokdemo-4c5a8c0c5ea8
-  You asked for Grok Build; it is signed in and has capacity.
+  Grok Build is working.
   ◈ Read 3 files, Listed 1 dir, Searched 2 patterns
   ◆ Run Build crate and show git history
   · I will summarize the crate's purpose in one sentence.

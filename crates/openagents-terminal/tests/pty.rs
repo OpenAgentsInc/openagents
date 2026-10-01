@@ -622,7 +622,7 @@ fn the_screen_end_to_end() {
         "the Coder run",
         &[
             "Coder can fix that on this computer.",
-            "Coder · Codex",
+            "Codex is working.",
             "◈ Read 1 file, Searched 1 pattern",
             "◆ Run cargo test · exit 101",
             "≈40% done",
@@ -654,6 +654,15 @@ fn the_screen_end_to_end() {
         assert!(!line.contains(" of "), "a budget in {line:?}");
     }
     assert!(!run.contains("could not record"), "{run}");
+    // One short start line: no task, no worktree path, no "signed in"
+    // (#10115).
+    for noise in [
+        "Coder started task",
+        "worktree of",
+        "signed in and has capacity",
+    ] {
+        assert!(!run.contains(noise), "{noise} in:\n{run}");
+    }
     assert!(
         dir.path().join("tasks/worktrees/t1/lib.rs").exists(),
         "the run works in a worktree of the scratch repository"

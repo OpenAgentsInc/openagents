@@ -70,6 +70,10 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 const POLL: Duration = Duration::from_millis(80);
 /// How often a running task's trajectory is read.
 const CODER_POLL: Duration = Duration::from_millis(300);
+/// How often it is read while a run starts, until its first step shows or
+/// [`STARTING_FOR`] passes, so the first step is not a poll late (#10115).
+const STARTING_POLL: Duration = Duration::from_millis(100);
+const STARTING_FOR: Duration = Duration::from_secs(10);
 /// The message the apps show when a person stops a reply.
 pub const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
 
@@ -290,6 +294,10 @@ pub trait Coder: Send + Sync {
     /// # Errors
     /// Why not, in words for the person.
     fn checkout(&self, dir: &Path) -> Result<(), String>;
+    /// Make ready, in the background, what a start in the project `dir` is
+    /// in will need (a spare worktree, #10115), so the first start does not
+    /// wait on it. Returns at once.
+    fn warm(&self, _store: &Path, _dir: &Path) {}
     /// Start a run in a worktree of the checkout `dir` is in.
     ///
     /// # Errors
@@ -424,12 +432,19 @@ pub enum Event {
     /// An operation failed before anything ran: the send was refused, the
     /// thread has no Coder task, or Coder refused the answer.
     Failure { thread: String, message: String },
+    /// A run is starting on `engine` (the provider's word): what a
+    /// surface shows at once, before the start's worktree and launch
+    /// (#10115).
+    Starting { thread: String, engine: String },
     /// Whether Coder took the thread's work, in words, and the task.
+    /// `quiet`: the run's own start line says it, so a surface shows no
+    /// line for this one; `--json` still carries it.
     Coder {
         thread: String,
         accepted: bool,
         message: String,
         task: Option<Value>,
+        quiet: bool,
     },
     /// Coder started, but the thread could not record its task.
     Unbound {
@@ -580,13 +595,16 @@ impl Client {
             interrupt,
             hint,
         } = options;
-        let finish = |backend| Self {
-            backend,
-            coder: coder.clone(),
-            caller,
-            dir: dir.clone(),
-            interrupt: interrupt.clone(),
-            hint,
+        let finish = |backend| {
+            Self {
+                backend,
+                coder: coder.clone(),
+                caller,
+                dir: dir.clone(),
+                interrupt: interrupt.clone(),
+                hint,
+            }
+            .warmed()
         };
         let named = match place {
             Place::Scratch => {
@@ -659,6 +677,7 @@ impl Client {
             interrupt: options.interrupt,
             hint: options.hint,
         }
+        .warmed()
     }
 
     /// A client over a host connection the caller made.
@@ -676,6 +695,19 @@ impl Client {
             interrupt: options.interrupt,
             hint: options.hint,
         }
+        .warmed()
+    }
+
+    /// This client, once it asked Coder to make its project's first start
+    /// quick ([`Coder::warm`]). A scratch thread's store is its own, and
+    /// is left alone.
+    fn warmed(self) -> Self {
+        if let Some(dir) = &self.dir
+            && !matches!(self.backend, Backend::Local { scratch: true, .. })
+        {
+            self.coder.warm(&self.coder.default_store(), dir);
+        }
+        self
     }
 
     /// Which backend holds the threads.
@@ -1157,6 +1189,19 @@ impl Client {
             coder_report(sink, id, false, NO_DIR, None);
             return Ended::Failed;
         };
+        // Say at once who is starting (#10115): the start's own work, its
+        // worktree and the engine's launch, comes after.
+        let (coder, store) = (self.coder.clone(), self.store(id));
+        let runner = tokio::task::spawn_blocking(move || coder.predict(&store, requested))
+            .await
+            .ok()
+            .flatten();
+        if let Some(Runner::Runs { provider, .. }) = runner {
+            sink(Event::Starting {
+                thread: id.to_owned(),
+                engine: provider,
+            });
+        }
         // The router judged this is coding work; Jev now judges whether it
         // asks to work a GitHub issue, choosing among the references the
         // messages name (a bounded field read only after routing).
@@ -1185,21 +1230,20 @@ impl Client {
             }
         };
         self.bind(id, &record, false, sink).await;
-        coder_report(
-            sink,
-            id,
-            true,
-            &format!(
-                "Coder started task {} in a worktree of {}.",
-                record.task, record.project
-            ),
-            Some(serde_json::json!({
+        // The task and its worktree, for `--json` and an export; the run's
+        // own start line says who works (#10115).
+        sink(Event::Coder {
+            thread: id.to_owned(),
+            accepted: true,
+            message: "Coder started.".into(),
+            task: Some(serde_json::json!({
                 "host": LOCAL_HOST,
                 "task": record.task,
                 "project": record.project,
                 "worktree": record.worktree,
             })),
-        );
+            quiet: true,
+        });
         self.follow_from(id, &record.task, 1, false, sink).await
     }
 
@@ -1276,10 +1320,7 @@ impl Client {
             sink,
             id,
             true,
-            &format!(
-                "Coder took issue #{number} ({url}) as task {} in a worktree of {}.",
-                record.task, record.project
-            ),
+            &format!("Coder took issue #{number} ({url})."),
             Some(serde_json::json!({
                 "host": LOCAL_HOST,
                 "task": record.task,
@@ -1394,6 +1435,8 @@ impl Client {
         let interrupt = (self.interrupt)();
         tokio::pin!(interrupt);
         let mut last: Option<CoderEvent> = None;
+        let following = tokio::time::Instant::now();
+        let mut stepped = false;
         loop {
             let polled = tokio::task::spawn_blocking(move || {
                 let result = follow.poll();
@@ -1423,13 +1466,19 @@ impl Client {
                 if line.event.ends_turn() {
                     last = Some(line.event.clone());
                 }
+                stepped |= !matches!(line.event, CoderEvent::CoderStarted(_));
                 sink(Event::Line(Box::new(line)));
             }
             if state != Progress::Running {
                 break;
             }
+            let pause = if stepped || following.elapsed() > STARTING_FOR {
+                CODER_POLL
+            } else {
+                STARTING_POLL
+            };
             tokio::select! {
-                () = tokio::time::sleep(CODER_POLL) => {}
+                () = tokio::time::sleep(pause) => {}
                 () = &mut interrupt, if !stopping => {
                     if flow {
                         stopping = true;
@@ -1465,6 +1514,7 @@ fn coder_report(sink: &mut Sink<'_>, id: &str, accepted: bool, message: &str, ta
         accepted,
         message: message.to_owned(),
         task,
+        quiet: false,
     });
 }
 
