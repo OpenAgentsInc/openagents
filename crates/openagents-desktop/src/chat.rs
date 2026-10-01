@@ -4233,6 +4233,11 @@ mod start_setting_tests {
     /// A coding reply to a message sent from this window, on a computer
     /// that can run Coder.
     fn replied(asks_first: fn() -> bool) -> Panel {
+        replied_on(asks_first, openagents_chat::delegation::DISPATCH_ROUTE)
+    }
+
+    /// A reply on the computer lane whose judgment named `route`.
+    fn replied_on(asks_first: fn() -> bool, route: &str) -> Panel {
         let mut panel = Panel::new(Instant::now());
         panel.set_coder_asks_first(asks_first);
         let chat = "c".repeat(32);
@@ -4243,7 +4248,16 @@ mod start_setting_tests {
             Snapshot {
                 chat: Some(chat.clone()),
                 computer: true,
-                turns: vec![user, Turn::assistant("We'll dispatch Coder.", None)],
+                turns: vec![
+                    user,
+                    Turn::assistant(
+                        "We'll dispatch Coder.",
+                        Some(openagents_chat::router::Meta {
+                            route: Some(route.into()),
+                            ..Default::default()
+                        }),
+                    ),
+                ],
                 ..Default::default()
             },
         );
@@ -4266,6 +4280,16 @@ mod start_setting_tests {
         assert!(asks.sent.is_empty(), "the reply was judged once");
         asks.start_run(&chat);
         assert!(asks.coder_run(&chat).is_some());
+    }
+
+    /// A reply that answered the question on the computer lane, such as
+    /// the working directory from the desktop's context (route `meta`),
+    /// starts nothing, even at once (#10079).
+    #[test]
+    fn a_reply_that_answered_starts_no_coder() {
+        let chat = "c".repeat(32);
+        let answered = replied_on(|| false, "meta");
+        assert!(answered.coder_run(&chat).is_none());
     }
 
     /// The window's settings file decides `coder.start` for the next coding

@@ -277,7 +277,13 @@ fn choose_folder_asks_when_the_chat_updates_between_press_and_release() {
         total: 2,
         turns: vec![
             Turn::user("fix the flaky test in openagents"),
-            Turn::assistant("Ready for Coder.", None),
+            Turn::assistant(
+                "Ready for Coder.",
+                Some(openagents_chat::router::Meta {
+                    route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
+                    ..Default::default()
+                }),
+            ),
         ],
         ..Default::default()
     };
@@ -321,7 +327,13 @@ fn choose_folder_asks_when_the_chat_updates_between_press_and_release() {
         total: 3,
         turns: vec![
             Turn::user("fix the flaky test in openagents"),
-            Turn::assistant("Ready for Coder.", None),
+            Turn::assistant(
+                "Ready for Coder.",
+                Some(openagents_chat::router::Meta {
+                    route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
+                    ..Default::default()
+                }),
+            ),
             Turn::assistant("Coder needs its project folder.", None),
         ],
         ..snapshot.clone()

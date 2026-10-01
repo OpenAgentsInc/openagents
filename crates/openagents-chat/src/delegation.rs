@@ -37,8 +37,11 @@ pub fn title(chat_title: &str, turns: &[Turn]) -> String {
 /// a screen other than Computers, a command) is what the router chose, and
 /// the reply does not
 /// also offer Coder, even when the worker judged the thread's lane a
-/// computer's; else the computer lane offers it. So one message never
-/// yields both a Gym offer and a Coder start.
+/// computer's; else the computer lane offers it, but only for a reply that
+/// defers to Coder ([`defers`]). So one message never yields both a Gym
+/// offer and a Coder start, and a reply that answered the question (the
+/// working directory from the surface's context, #10079) never starts
+/// Coder.
 pub fn offered(meta: Option<&crate::router::Meta>, computer_lane: bool) -> bool {
     use crate::router::{Offer, Screen};
     if meta.is_some_and(|meta| meta.offers.contains(&Offer::RunCoder)) {
@@ -57,12 +60,28 @@ pub fn offered(meta: Option<&crate::router::Meta>, computer_lane: bool) -> bool 
                 )
             })
     });
-    computer_lane && !other
+    computer_lane && !other && defers(meta)
+}
+
+/// The router's typed route for work a computer does (`work.dispatch`).
+pub const DISPATCH_ROUTE: &str = "work.dispatch";
+
+/// Whether a reply on the computer lane hands the message to Coder rather
+/// than answering it (#10079), read only from the worker's typed judgment,
+/// never from text: its route is [`DISPATCH_ROUTE`]. A reply on another
+/// route (a `meta` answer from the surface's context, such as the working
+/// directory; a knowledge, CLI, or account answer; smalltalk) answered the
+/// question, whatever the thread's lane, and a reply with no judgment has
+/// no reading that it defers. The worker's own dispatches off that route
+/// carry a `run_coder` offer, which [`offered`] reads first.
+#[must_use]
+pub fn defers(meta: Option<&crate::router::Meta>) -> bool {
+    meta.is_some_and(|meta| meta.route.as_deref() == Some(DISPATCH_ROUTE))
 }
 
 /// Put this computer's prediction of who runs Coder on the reply that
-/// offers it: the last turn, when it is a reply that offers Coder, or any
-/// reply when the thread's computer lane holds it. `predict` is asked only
+/// offers it: the last turn, when it is a reply that offers Coder
+/// ([`offered`]). `predict` is asked only
 /// then, so a thread without the offer reads no login state. An earlier
 /// prediction is replaced; with none, it is cleared.
 ///
@@ -130,11 +149,19 @@ mod tests {
         let mut plain = vec![Turn::user("hi"), Turn::assistant("Hello.", None)];
         attach_runner(&mut plain, false, |_| panic!("no offer, no prediction"));
         assert!(plain[1].meta.is_none());
-        // The computer lane makes any reply an offer.
-        attach_runner(&mut plain, true, |_| {
+        // A reply with no judgment does not defer to Coder, even on the
+        // computer lane (#10079).
+        attach_runner(&mut plain, true, |_| panic!("an answer, no prediction"));
+        assert!(plain[1].meta.is_none());
+        // The computer lane makes a dispatch-routed reply an offer.
+        let mut routed = vec![
+            Turn::user("run the tests"),
+            Turn::assistant("On it.", Some(dispatch_route())),
+        ];
+        attach_runner(&mut routed, true, |_| {
             Some(Runner::NotSignedIn { providers: vec![] })
         });
-        assert!(plain[1].meta.as_ref().unwrap().runner.is_some());
+        assert!(routed[1].meta.as_ref().unwrap().runner.is_some());
     }
 
     /// The prediction is asked for the engine the reply's offer names,
@@ -215,12 +242,68 @@ mod tests {
             offers: vec![Offer::OpenScreen {
                 screen: crate::router::Screen::Computers,
             }],
-            ..Meta::default()
+            ..dispatch_route()
         };
         assert!(offered(Some(&connect), true));
-        assert!(offered(Some(&Meta::default()), true));
-        assert!(offered(None, true));
+        assert!(offered(Some(&dispatch_route()), true));
+        assert!(!offered(Some(&dispatch_route()), false));
         assert!(!offered(None, false));
+    }
+
+    fn dispatch_route() -> crate::router::Meta {
+        crate::router::Meta {
+            route: Some(DISPATCH_ROUTE.into()),
+            ..crate::router::Meta::default()
+        }
+    }
+
+    /// A reply that answered the question never starts Coder, even when
+    /// the worker judged the thread's lane a computer's (#10079): the
+    /// working directory answered from the desktop's context (route
+    /// `meta`, a canned answer), an account answer with its Connect a
+    /// computer screen, a model answer on a knowledge route, and a reply
+    /// with no judgment. A dispatch-routed reply on the computer lane, or
+    /// any `run_coder` offer, still does.
+    #[test]
+    fn a_reply_that_answered_does_not_start_coder() {
+        use crate::router::{Meta, Offer, Screen};
+        let working_directory = Meta {
+            tier: Some("canned".into()),
+            answer: Some("meta.limits_chat.here@1".into()),
+            route: Some("meta".into()),
+            ..Meta::default()
+        };
+        assert!(!defers(Some(&working_directory)));
+        assert!(!offered(Some(&working_directory), true));
+        let account = Meta {
+            route: Some("account".into()),
+            offers: vec![Offer::OpenScreen {
+                screen: Screen::Computers,
+            }],
+            ..Meta::default()
+        };
+        assert!(!offered(Some(&account), true));
+        let knowledge = Meta {
+            tier: Some("model".into()),
+            route: Some("codebase.kb".into()),
+            ..Meta::default()
+        };
+        assert!(!offered(Some(&knowledge), true));
+        assert!(!offered(Some(&Meta::default()), true));
+        assert!(!offered(None, true));
+        // Work: the dispatch route on the computer lane, or the offer.
+        let work = Meta {
+            tier: Some("model".into()),
+            ..dispatch_route()
+        };
+        assert!(defers(Some(&work)));
+        assert!(offered(Some(&work), true));
+        let offer = Meta {
+            route: Some("general".into()),
+            offers: vec![Offer::RunCoder],
+            ..Meta::default()
+        };
+        assert!(offered(Some(&offer), false));
     }
 
     #[test]

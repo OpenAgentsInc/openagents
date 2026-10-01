@@ -132,7 +132,9 @@ folder's name and path go only to our chat worker and its chat model.
 ## Coder on this computer
 
 The router may judge that a message is work for a computer: a Coder offer
-(`run_coder`) or the computer lane. The command then runs Coder right here,
+(`run_coder`) or the computer lane on the `work.dispatch` route; a reply
+that answered the message on another route starts nothing
+([#10079](https://github.com/OpenAgentsInc/openagents/issues/10079)). The command then runs Coder right here,
 with no host to attach, nothing to pair, no project to register, and no
 separate accept step. `--no-run` keeps the old behavior: the offer is
 printed, with `openagents chat run-coder --thread ID` to accept it later,

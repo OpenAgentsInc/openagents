@@ -1066,7 +1066,13 @@ impl Hand {
     fn judge(&self, lane: crate::basic_coder::Lane) {
         let replies = self.replies.lock().unwrap();
         let (_, reply) = replies.last().expect("a question");
-        reply.lock().unwrap().lane = Some(lane);
+        let mut reply = reply.lock().unwrap();
+        reply.lane = Some(lane);
+        // The worker's judgment names a route with its lane; a computer
+        // reading that offers Coder is a dispatch (#10079).
+        if lane == crate::basic_coder::Lane::Computer {
+            reply.meta.route = Some(openagents_chat::delegation::DISPATCH_ROUTE.into());
+        }
     }
 
     fn asked(&self) -> Vec<Vec<String>> {

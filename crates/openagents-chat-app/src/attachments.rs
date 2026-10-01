@@ -370,7 +370,18 @@ mod tests {
             Some(Settled::Kept)
         );
         assert_eq!(drafts.get("talk:a").len(), 1);
-        // The computer lane is a coding route too.
+        // The computer lane alone is not a coding route: that reply
+        // answered (#10079).
+        assert!(drafts.bind("talk:a", "r2"));
+        assert_eq!(
+            drafts.settle("talk:a", &turns, false, true),
+            Some(Settled::Kept)
+        );
+        // A dispatch-routed reply on the computer lane is.
+        turns.last_mut().unwrap().meta = Some(openagents_chat::router::Meta {
+            route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
+            ..Default::default()
+        });
         assert!(drafts.bind("talk:a", "r2"));
         assert_eq!(
             drafts.settle("talk:a", &turns, false, true),

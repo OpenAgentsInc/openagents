@@ -1622,7 +1622,15 @@ When one reply carries more than one thing, the shared chat
 offer offers Coder; else another typed action (a Gym card or
 `start_eval`, a deck, a screen other than Computers, a command) is what the router chose, and
 the reply does not also offer Coder, whatever the `lane` reading; else a
-computer `lane` offers it. The Coder run starts with the message that asked
+computer `lane` offers it, only on a reply whose `route` is `work.dispatch`
+(`openagents_chat::delegation::defers`,
+[#10079](https://github.com/OpenAgentsInc/openagents/issues/10079)). A
+reply on any other route answered the message: on the desktop, "What's the
+working directory right now?" read `route: cli`, `lane: computer` and was
+answered from the surface's context, and must not also start Coder. The
+worker's own dispatches off that route (a close call, a missing capability,
+the lane rule) carry a `run_coder` offer, which comes first, so the route
+question and its calibration are unchanged. The Coder run starts with the message that asked
 for the work as its title and the start of its prompt, then bounded
 context (`openagents_chat::delegation::prompt`).
 
