@@ -7488,6 +7488,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder-terminal",
+ "coder-vt",
  "crossterm",
  "futures-util",
  "libc",

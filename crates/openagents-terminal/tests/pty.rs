@@ -3,7 +3,8 @@
 //! The test re-runs its own binary as the screen's process (the
 //! `screen_process` test, which does nothing unless the parent set
 //! `OA_TERMINAL_E2E`), on the slave side of a pseudo-terminal, and reads
-//! the master side through a small terminal emulator. The screen runs the
+//! the master side through `coder-vt`, the terminal emulator the phone's
+//! terminal screen uses. The screen runs the
 //! real input loop, guard, and drawing over the shared chat client with
 //! the in-process backend; behind it are a scripted chat worker and a fake
 //! Coder engine that works in a worktree of a scratch Git repository and
@@ -45,8 +46,35 @@ use openagents_chat::router::{
 use openagents_terminal::{Interrupter, Launch, NoExtras, Resume};
 use serde_json::Value;
 
-#[path = "support/vt.rs"]
-mod vt;
+/// The screen as a terminal shows it (`coder-vt`, the emulator the
+/// phone's terminal uses), and every byte the program wrote.
+struct Grid {
+    terminal: coder_vt::Terminal,
+    raw: Vec<u8>,
+}
+
+impl Grid {
+    fn new(rows: usize, cols: usize) -> Self {
+        Self {
+            terminal: coder_vt::Terminal::new(rows, cols, 0),
+            raw: Vec::new(),
+        }
+    }
+
+    fn feed(&mut self, bytes: &[u8]) {
+        self.raw.extend_from_slice(bytes);
+        self.terminal.feed(bytes);
+    }
+
+    fn text(&self) -> String {
+        self.terminal
+            .text()
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
 
 const ROWS: u16 = 40;
 const COLS: u16 = 100;
@@ -386,7 +414,7 @@ fn pty() -> (File, PathBuf) {
 
 struct Session {
     master: File,
-    grid: Arc<Mutex<vt::Grid>>,
+    grid: Arc<Mutex<Grid>>,
     child: std::process::Child,
 }
 
@@ -417,7 +445,11 @@ impl Session {
 
     /// Wait until the screen shows every one of `texts`.
     fn wait(&mut self, what: &str, texts: &[&str]) -> String {
-        let deadline = Instant::now() + Duration::from_secs(30);
+        self.wait_for(what, texts, 30)
+    }
+
+    fn wait_for(&mut self, what: &str, texts: &[&str], seconds: u64) -> String {
+        let deadline = Instant::now() + Duration::from_secs(seconds);
         loop {
             let screen = self.screen();
             if texts.iter().all(|text| screen.contains(text)) {
@@ -433,22 +465,9 @@ impl Session {
     }
 }
 
-#[test]
-fn the_screen_end_to_end() {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = dir.path().join("demo");
-    std::fs::create_dir_all(&repo).unwrap();
-    for args in [
-        &["init", "-q", "-b", "main"][..],
-        &["config", "user.email", "test@example.com"],
-        &["config", "user.name", "Test"],
-    ] {
-        git(&repo, args).unwrap();
-    }
-    std::fs::write(repo.join("lib.rs"), "pub fn adds() -> u8 { 1 + 1 }\n").unwrap();
-    git(&repo, &["add", "."]).unwrap();
-    git(&repo, &["commit", "-q", "-m", "first"]).unwrap();
-
+/// Run `command` on the slave side of a fresh pseudo-terminal, as its
+/// session's controlling terminal, reading the screen through `coder-vt`.
+fn spawn(mut command: Command) -> Session {
     let (master, slave) = pty();
     let open = || {
         std::fs::OpenOptions::new()
@@ -457,16 +476,7 @@ fn the_screen_end_to_end() {
             .open(&slave)
             .unwrap()
     };
-    let mut command = Command::new(std::env::current_exe().unwrap());
     command
-        .args([
-            "screen_process",
-            "--exact",
-            "--nocapture",
-            "--test-threads=1",
-        ])
-        .env(ENV, dir.path())
-        .env("HOME", dir.path().join("home"))
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor")
         .env_remove("NO_COLOR")
@@ -506,10 +516,7 @@ fn the_screen_end_to_end() {
         };
     }
     let child = command.spawn().unwrap();
-    let grid = Arc::new(Mutex::new(vt::Grid::new(
-        usize::from(ROWS),
-        usize::from(COLS),
-    )));
+    let grid = Arc::new(Mutex::new(Grid::new(usize::from(ROWS), usize::from(COLS))));
     let mut reader = master.try_clone().unwrap();
     let feed = grid.clone();
     std::thread::spawn(move || {
@@ -521,11 +528,40 @@ fn the_screen_end_to_end() {
             feed.lock().unwrap().feed(&buffer[..read]);
         }
     });
-    let mut session = Session {
+    Session {
         master,
         grid,
         child,
-    };
+    }
+}
+
+#[test]
+fn the_screen_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("demo");
+    std::fs::create_dir_all(&repo).unwrap();
+    for args in [
+        &["init", "-q", "-b", "main"][..],
+        &["config", "user.email", "test@example.com"],
+        &["config", "user.name", "Test"],
+    ] {
+        git(&repo, args).unwrap();
+    }
+    std::fs::write(repo.join("lib.rs"), "pub fn adds() -> u8 { 1 + 1 }\n").unwrap();
+    git(&repo, &["add", "."]).unwrap();
+    git(&repo, &["commit", "-q", "-m", "first"]).unwrap();
+
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "screen_process",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(ENV, dir.path())
+        .env("HOME", dir.path().join("home"));
+    let mut session = spawn(command);
 
     // The welcome card: the backend, the project, and the engine.
     session.wait(
@@ -642,4 +678,66 @@ fn the_screen_end_to_end() {
     assert!(raw.contains("48;2;10;10;10"), "the near-black field");
     assert!(raw.contains("38;2;255;255;255"), "full white text");
     assert!(raw.contains("\x1b[?1049l"), "the alternate screen is left");
+}
+
+/// The real program against the live chat worker, by hand:
+///
+/// ```sh
+/// OA_TERMINAL_LIVE='cargo run -q -p openagents-cli --bin openagents -- terminal --scratch' \
+///   cargo test -p openagents-terminal --test pty -- --ignored --nocapture live
+/// ```
+///
+/// It runs the command with `sh -c` in this checkout, with a throwaway
+/// HOME (so no identity, settings, or coding agent login of the person's
+/// is read; Cargo and rustup keep their own homes), asks one plain
+/// question, prints the screen, and quits.
+#[test]
+#[ignore = "talks to the live chat worker"]
+fn live() {
+    let Ok(line) = std::env::var("OA_TERMINAL_LIVE") else {
+        return;
+    };
+    let question = std::env::var("OA_TERMINAL_LIVE_ASK")
+        .unwrap_or_else(|_| "In two sentences, what is OpenAgents?".into());
+    let home = tempfile::tempdir().unwrap();
+    let real = PathBuf::from(std::env::var("HOME").unwrap());
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg(&line)
+        .current_dir(&checkout)
+        .env("HOME", home.path())
+        .env(
+            "CARGO_HOME",
+            std::env::var_os("CARGO_HOME").unwrap_or_else(|| real.join(".cargo").into()),
+        )
+        .env(
+            "RUSTUP_HOME",
+            std::env::var_os("RUSTUP_HOME").unwrap_or_else(|| real.join(".rustup").into()),
+        );
+    let mut session = spawn(command);
+    session.wait_for("the welcome card", &["OpenAgents Terminal", "scratch"], 600);
+    session.typed(&question);
+    session.wait_for("the reply streaming", &["replying"], 60);
+    let deadline = Instant::now() + Duration::from_secs(180);
+    loop {
+        let screen = session.screen();
+        let replied = screen.lines().any(|line| line.trim() == "openagents");
+        if replied && !screen.contains("replying") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "no reply:\n{screen}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_secs(1));
+    eprintln!("==== live screen ====\n{}\n", session.screen());
+    session.send(b"\x03");
+    session.send(b"\x03");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while session.child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    eprintln!("==== after quitting ====\n{}\n", session.screen());
 }

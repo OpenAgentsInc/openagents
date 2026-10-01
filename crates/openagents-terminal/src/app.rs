@@ -476,6 +476,17 @@ impl App {
             } => {
                 if accepted {
                     self.note(message);
+                    // The issue flow runs in this process (docs/terminal,
+                    // decision 4): say so before the person quits.
+                    if task.as_ref().and_then(|task| task.get("issue")).is_some() {
+                        self.push(Row::Note(
+                            "This issue flow runs inside this screen: keep it open until the flow \
+                             lands; quitting first leaves the issue claimed without its closing \
+                             comment."
+                                .into(),
+                            Intensity::ThreeQuarters,
+                        ));
+                    }
                     if let Some(id) = task
                         .as_ref()
                         .and_then(|task| task.get("task"))
@@ -558,9 +569,6 @@ impl App {
     /// What the router said beside a reply: offers, who would run Coder,
     /// and follow-ups.
     fn notes(&mut self, meta: &Meta, offered: bool, running: bool) {
-        if let Some(answer) = &meta.answer {
-            self.note(format!("Answered from product knowledge ({answer})."));
-        }
         let mut coder = offered;
         for offer in &meta.offers {
             match offer {

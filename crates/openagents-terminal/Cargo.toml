@@ -26,6 +26,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 libc = "0.2"
 
 [dev-dependencies]
+# The end-to-end test reads the screen with the terminal emulator the
+# phone's terminal uses.
+coder-vt = { path = "../coder-vt" }
 tempfile = "3"
 
 [lints]
