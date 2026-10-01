@@ -193,6 +193,17 @@ fn closed_loop(project: &str, remote: &str, ship: &Path, evidence: &Path) -> Out
         }
         Err(why) => problems.push(format!("the ship: {why}")),
     }
+    // Build output stays out of the host's workspace, or the next task
+    // there is refused at admission (#10118).
+    let projects = crate::home().join(".openagents/host/projects");
+    for entry in std::fs::read_dir(&projects).into_iter().flatten().flatten() {
+        if entry.path().join("target").exists() {
+            problems.push(format!(
+                "a Cargo target directory was left in the host's workspace {}",
+                entry.path().display()
+            ));
+        }
+    }
     if problems.is_empty() {
         Ok(format!(
             "from the phone, Coder pushed {} to main with no question, then archived and validated a TestFlight build with nothing uploaded; the phone showed {:?} then {:?} (timeline.jsonl)",
@@ -228,9 +239,9 @@ fn check_shown(seen: &Seen, what: &str, problems: &mut Vec<String>) {
             problems.push(format!("{what}: the phone showed {ended:?}"))
         }
         // The card says how it ended, in a line of Coder's reply.
-        Some(ended) if !ended.contains(" · ") => problems.push(format!(
-            "{what}: the phone's card showed no outcome line ({ended:?})"
-        )),
+        Some(ended) if !ended.contains(" · ") || ended.trim_end().ends_with(':') => problems.push(
+            format!("{what}: the phone's card showed no outcome line ({ended:?})"),
+        ),
         Some(_) => {}
     }
     if seen.reply.trim().is_empty() {
