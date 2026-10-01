@@ -1341,3 +1341,22 @@ the fallback with a slug OpenRouter does not serve: OpenRouter answered 400
 Flash answered "The capital of France is Paris." with first words at 2.4 s,
 named as the writer; the same test with Space Bunny Alpha answered in
 0.57 s.
+
+TestFlight build 43 (1.0.0, archived from `9a340cef5b`, 2026-10-01 UTC)
+changes no worker release. Its **Coder starts at once** entry covers
+#10101 (a coding reply starts Coder at once on a computer that allows it,
+no Run Coder tap), #10104 (Coder approves its own steps by default), #10113
+(an agent's tool call reads as a short line), and the essay answers
+(#10099, #10102). The mobile tests (161 passed) pass. The release gate's
+phone scenarios passed with debug builds (`--bin-dir`) of `2599dcb859` plus
+the changelog entry: `phone-claude` (the computer's run started on Claude
+Code) and `phone-start-at-once` (a coding reply started exactly one Coder
+task with no tap, the chat showing the start with Stop). The gate's
+`engine-logins` check failed only on the Grok Build login's remaining time,
+which neither phone scenario uses. The one commit between that base and the
+archive (`0a596e5520`, #10116) is desktop-only. The gate exercises the
+phone's shared Rust Coder tab, not the iOS app itself; nothing was run on a
+simulator or a device. Build 43 was uploaded with `build.sh upload` at
+2026-10-01T12:43:38-07:00 and is `VALID`, `IN_BETA_TESTING` in Internal
+Testers (which has access to every build), with test notes set from the
+entry's What to test line.
