@@ -336,6 +336,44 @@ Live checks the same day, with no key, in a temporary `HOME`:
   `decision-worker@5710e1311c`, 677 to 912 ms, usage, and `cost_usd`, beside
   the chat router's call; no "no Jev key" line.
 
-The backup door is on once `OPENROUTER_API_KEY` is in
-`/etc/decision-worker/decision-worker.env` and the worker restarts; the
-owner step is in the workspace's `NEEDS_OWNER.md`.
+Release `5ed35bf130` (2026-10-01 UTC,
+[#10064](https://github.com/OpenAgentsInc/openagents/issues/10064), "Jev
+fallback doors") replaced it: built with `cargo zigbuild` as above,
+installed as `/opt/decision-worker/releases/5ed35bf130` beside
+`5710e1311c` and `04113fec9d` (rollback: move `current` back and restart),
+with the `backups` config (the Vercel AI Gateway, then OpenRouter). The
+owner's new OpenRouter key was added to the environment file with
+`scripts/decision-worker-install-door-keys.sh`, which restarted the worker;
+there is no AI Gateway key yet, so that door is off. `coder-worker.service`
+and `/opt/coder-worker/current` were not touched. The journal:
+
+```text
+decision-worker: pubkey ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc
+decision-worker: upstream https://api.typesafe.ai
+decision-worker: relay wss://relay.openagents.com
+decision-worker: open lane under $TYPESAFE_API_KEY, models jev-1.13.0,jev-latest, quota 2000/key/day 60/key/min 20000/day total
+decision-worker: backup door https://ai-gateway.vercel.sh/typesafe/v1/systemone off: $AI_GATEWAY_API_KEY is not set
+decision-worker: backup door https://openrouter.ai/api/alpha/decisions under $OPENROUTER_API_KEY
+```
+
+Live checks the same night, with no key, in a temporary `HOME`:
+`live_hosted_decision_answers` answered `jev-1.13.0 passed=0.990
+service={"door":"https://api.typesafe.ai","version":"decision-worker@5ed35bf130"}`
+in 590 ms and `live_hosted_structured_decision_answers` `queue=billing
+confidence=1.000 refund=0.990` in 657 ms: TypeSafe answers again (the
+owner added credits), so the backup doors were not asked. The OpenRouter
+door was checked live without breaking TypeSafe, from the development Mac
+with the same key: `live_worker_backup_door_answers_through_openrouter`
+(`crates/gateway/tests/relay_worker.rs`; the deployed config with a closed
+loopback port as the upstream) logged `upstream unavailable (unavailable);
+backup door https://openrouter.ai answered answered` and the answer
+`typesafe/jev-1.13-20260917`, `refund=0.99`, `department=billing`, 341
+input tokens, `cost` 0.000014322 USD, in 332 ms; `jev`'s
+`live_openrouter_door_answers_when_typesafe_cannot` (the client-side
+failover the chat worker uses) answered the same in 374 ms with
+`service.door` `https://openrouter.ai`.
+
+The gateway door turns on once `AI_GATEWAY_API_KEY` is in
+`~/work/.secrets/ai-gateway.env` and an agent runs
+`scripts/decision-worker-install-door-keys.sh`; the owner step is in the
+workspace's `NEEDS_OWNER.md`.

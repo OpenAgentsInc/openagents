@@ -731,3 +731,31 @@ Capabilities deck" got a model reply with no judgment. Every turn is the
 model's alone until credit is added (`NEEDS_OWNER.md`); the router's
 readings on the new rows are in the measurement, from the hosted Jev eval
 run before the credits ran out.
+
+Release `5ed35bf130` (2026-10-01 UTC,
+[#10064](https://github.com/OpenAgentsInc/openagents/issues/10064)) gives
+the router judge Jev's fallback doors (the Vercel AI Gateway, then
+OpenRouter) and names the answering door in each judgment. It was built
+with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/5ed35bf130` with `knowledge/` and
+`codebase-kb.gz` copied from `110e98d76b`, checked with `--check` under the
+chat environment ("the configuration is safe to deploy"), and put live by
+moving the `chat` symlink; the owner's new OpenRouter key replaced the old
+one in the environment file through
+`scripts/decision-worker-install-door-keys.sh`, which restarted
+`coder-worker-chat` (the same key serves personalization). The unit did not
+change, `coder-worker.service` and `/opt/coder-worker/current` were not
+touched, and `110e98d76b` stays in `releases/` for rollback. The log names
+`router chat-router-v4@12ea6aac036f (Live)`, the same question set as
+before, and:
+
+```text
+judge   https://api.typesafe.ai (jev-latest): first response and suggestions
+judge   fallback door https://ai-gateway.vercel.sh off: $AI_GATEWAY_API_KEY is not set
+judge   fallback door https://openrouter.ai under $OPENROUTER_API_KEY
+```
+
+`openagents chat --scratch --json "How do I connect a phone"` answered
+"Open OpenAgents for Mac and it shows a QR code. …" (route `product.kb` at
+0.98) with the judgment naming `door` `https://api.typesafe.ai` and `model`
+`jev-1.13.0`: TypeSafe answers again, and no fallback door was asked.
