@@ -123,7 +123,15 @@ impl Judge for NativeJudge<'_> {
                         ..Judgment::default()
                     };
                 }
-                if response.model != self.host.configuration().decision_model {
+                let door = response.service().and_then(|service| {
+                    service
+                        .get("door")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                });
+                if response.model
+                    != served_name(&self.host.configuration().decision_model, door.as_deref())
+                {
                     self.host.fail(
                         "decision provider returned a model different from the admitted model",
                     );
@@ -265,6 +273,19 @@ impl<T: codex_transport::Transport> Lane for Native<'_, T> {
     }
 }
 
+/// The admitted decision model as the door that answered names it
+/// (#10107): the hosted decision service fails over from TypeSafe to the
+/// Vercel AI Gateway and OpenRouter (`jev::doors`), and each names Jev its
+/// own way. An answer naming anything else is still refused.
+fn served_name(admitted: &str, door: Option<&str>) -> String {
+    use jev::doors::{GATEWAY_DOOR, Naming, OPENROUTER_DOOR};
+    match door {
+        Some(GATEWAY_DOOR) => Naming::Gateway.model(admitted),
+        Some(OPENROUTER_DOOR) => Naming::OpenRouter.model(admitted),
+        _ => admitted.to_owned(),
+    }
+}
+
 /// Run the loop over one stage of admitted model routes, failing over
 /// among them, and return its state and outcome for the caller to finish.
 pub(super) async fn run_stage<T: codex_transport::Transport>(
@@ -388,6 +409,30 @@ mod tests {
             "Coder runs without Jev's judgments for the rest of this task: Jev is unreachable"
         ));
         assert!(!trace.contains("no Jev key"));
+    }
+
+    /// An answer from a backup door names the admitted Jev its own way and
+    /// is accepted; any other name, or the gateway's name from another
+    /// door, is not (#10107).
+    #[test]
+    fn a_backup_doors_name_for_the_admitted_jev_is_the_admitted_jev() {
+        use jev::doors::{GATEWAY_DOOR, OPENROUTER_DOOR, TYPESAFE_DOOR};
+        let admitted = "jev-1.13.0";
+        assert_eq!(served_name(admitted, None), admitted);
+        assert_eq!(served_name(admitted, Some(TYPESAFE_DOOR)), admitted);
+        assert_eq!(served_name(admitted, Some(GATEWAY_DOOR)), "typesafe-ai/jev");
+        assert_eq!(
+            served_name(admitted, Some(OPENROUTER_DOOR)),
+            "typesafe/jev-1.13"
+        );
+        assert_ne!(
+            served_name(admitted, Some(TYPESAFE_DOOR)),
+            "typesafe-ai/jev"
+        );
+        assert_ne!(
+            served_name(admitted, Some("https://elsewhere.example")),
+            "typesafe-ai/jev"
+        );
     }
 
     #[tokio::test]
