@@ -263,19 +263,13 @@ microphone_delivers() {
     [ "$size" -gt 4096 ]
 }
 
-# Say something is wrong with the microphone, on stderr and out of the
-# speaker. The session has no notification daemon, so the chime is what
-# reaches a person who is looking at the screen rather than a terminal, and
-# the recording HUD shows the same condition in red for as long as it holds.
-# Neither half may take the recording down with it: the supervisor warns from
-# a background process whose terminal may already be gone.
+# Say something is wrong with the microphone, on stderr; the recording HUD
+# shows the same condition in red for as long as it holds. It never makes a
+# sound: a chime during a take ends up in the recording (owner, 2026-10-01).
+# It may not take the recording down: the supervisor warns from a background
+# process whose terminal may already be gone.
 warn_microphone() {
     echo "$1" >&2 || true
-    if command -v beep-sound > /dev/null 2>&1; then
-        beep-sound 300 0.15 || true
-        beep-sound 300 0.15 || true
-        beep-sound 300 0.15 || true
-    fi
 }
 
 # What a person or the HUD asks about the microphone: while a recording with
