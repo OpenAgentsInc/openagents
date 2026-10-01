@@ -1,12 +1,16 @@
 # Recorded gateway streams
 
-Two real `POST /v1/responses` streams from `https://ai-gateway.vercel.sh`,
-one per lane, recorded on 2026-09-19 with the same request:
+Real `POST /v1/responses` streams, one per lane: two from
+`https://ai-gateway.vercel.sh` recorded on 2026-09-19, and Space Bunny
+Alpha's from OpenRouter (`https://openrouter.ai/api/v1/responses`) recorded
+on 2026-10-01 with `reasoning: {"effort": "low"}` added, as the chat
+worker's primary door sends it (#10109). Each had the same request:
 
 | File | Model | Lane |
 | --- | --- | --- |
 | `google-gemini-3.8-flash.sse` | `google/gemini-3.8-flash` | `gemini` |
 | `zai-glm-5.3-flash.sse` | `zai/glm-5.3-flash` | `glm` |
+| `stealth-space-bunny-alpha.sse` | `stealth/space-bunny-alpha` | `space-bunny` |
 
 Both answered `Count from one to five, one word per line.` under the
 instructions `You are terse. Answer with the words asked for and nothing
@@ -24,12 +28,14 @@ The gateway serves one event shape for every model in its catalog, which
 is what makes a second model a configuration change rather than a second
 client. `Reader` in `crates/coder/src/generate.rs` is the one place that
 claim is relied on, and `crates/coder/tests/gateway_stream.rs` checks it
-against both files: without them, a change in the gateway's event shape
+against every file: without them, a change in the gateway's event shape
 reaches a person as a broken turn rather than a failing test.
 
-The two lanes differ where it matters. The `glm` stream carries 34
+The lanes differ where it matters. The `glm` stream carries 34
 `response.reasoning.delta` events that are not the answer, and the test
-asserts none of them reaches the answer text.
+asserts none of them reaches the answer text. The `space-bunny` stream
+carries three `response.reasoning_text.delta` events, which the reader
+skips the same way.
 
 ## Re-recording
 

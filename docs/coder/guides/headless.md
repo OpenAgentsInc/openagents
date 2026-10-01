@@ -66,6 +66,7 @@ takes either a lane's short name or a gateway model id:
 | --- | --- |
 | `gemini` | `google/gemini-3.8-flash`, the default |
 | `glm` | `zai/glm-5.3-flash` |
+| `space-bunny` | `stealth/space-bunny-alpha`, served only by OpenRouter until 2026-10-05: the chat worker's primary (`CODER_WORKER_PRIMARY`), not a gateway lane |
 
 ```bash
 CODER_MODEL=glm cargo run -p coder -- -p "count the crates"

@@ -406,9 +406,26 @@ impl<G: Generate> Author<G> {
         need: &Need,
         input: &[Message],
     ) -> Result<Option<Proposal>, AuthorError> {
+        Ok(self
+            .propose_by(interview, need, input)
+            .await?
+            .map(|(proposal, _)| proposal))
+    }
+
+    /// [`Author::propose`], with the model that wrote the proposal: the
+    /// one the door names ([`crate::generate::Meta::Model`]) when it names
+    /// one, as a door with a fallback does, and this driver's model
+    /// otherwise.
+    async fn propose_by(
+        &self,
+        interview: &Interview,
+        need: &Need,
+        input: &[Message],
+    ) -> Result<Option<(Proposal, String)>, AuthorError> {
         if *need == Need::Nothing {
             return Ok(None);
         }
+        let mut wrote = self.model_name.clone();
         let base = prompt::instructions(interview, need, &self.person);
         let mut note = String::new();
         let mut last_error = String::new();
@@ -419,11 +436,19 @@ impl<G: Generate> Author<G> {
             } else {
                 format!("{base}\n\n## Note\n\n{note}")
             };
+            let mut named = None;
             let (answer, _) = self
                 .model
-                .generate(&instructions, input, &mut |_| {}, &mut |_| {})
+                .generate(&instructions, input, &mut |_| {}, &mut |meta| {
+                    if let crate::generate::Meta::Model(model) = meta {
+                        named = Some(model);
+                    }
+                })
                 .await
                 .map_err(|e| AuthorError::Model(e.to_string()))?;
+            if let Some(named) = named {
+                wrote = named;
+            }
             let parsed: Result<Proposal, String> = match need {
                 Need::Tool { .. } => proposal::parse::<ToolProposal>(&answer).map(Proposal::Tool),
                 Need::Tests { .. } => {
@@ -439,7 +464,9 @@ impl<G: Generate> Author<G> {
                 Need::Nothing => return Ok(None),
             };
             match parsed {
-                Ok(proposal) if !singular(say_of(&proposal)) => return Ok(Some(proposal)),
+                Ok(proposal) if !singular(say_of(&proposal)) => {
+                    return Ok(Some((proposal, wrote)));
+                }
                 Ok(proposal) => {
                     note = "Your last answer spoke as \"I\". Write `say` as OpenAgents: \"we\" and \"you\", never \"I\", \"me\", or \"my\".".into();
                     voiced = Some(proposal);
@@ -456,7 +483,7 @@ impl<G: Generate> Author<G> {
             // Keep the proposal, and say it in our own fixed words.
             Some(mut proposal) => {
                 set_say(&mut proposal, Self::fallback_say(interview, need));
-                Ok(Some(proposal))
+                Ok(Some((proposal, wrote)))
             }
             None => Err(AuthorError::Model(last_error)),
         }
@@ -473,15 +500,15 @@ impl<G: Generate> Author<G> {
         interview: &mut Interview,
         event: Event,
         input: &[Message],
-    ) -> Result<(Turn, bool), AuthorError> {
+    ) -> Result<(Turn, Option<String>), AuthorError> {
         let Ok(need) = interview.accept(event) else {
-            return Ok((interview.again(), false));
+            return Ok((interview.again(), None));
         };
         self.fulfil(interview, &need, input).await
     }
 
-    /// Asks the model for `need` and applies it; the flag says whether the
-    /// model wrote the words.
+    /// Asks the model for `need` and applies it, with the model that wrote
+    /// the words, or `None` when no model did.
     ///
     /// # Errors
     ///
@@ -491,12 +518,14 @@ impl<G: Generate> Author<G> {
         interview: &mut Interview,
         need: &Need,
         input: &[Message],
-    ) -> Result<(Turn, bool), AuthorError> {
-        let proposal = self.propose(interview, need, input).await?;
-        let wrote = proposal.is_some();
+    ) -> Result<(Turn, Option<String>), AuthorError> {
+        let (proposal, wrote) = match self.propose_by(interview, need, input).await? {
+            Some((proposal, wrote)) => (Some(proposal), Some(wrote)),
+            None => (None, None),
+        };
         match interview.apply(need, proposal) {
             Ok(turn) => Ok((turn, wrote)),
-            Err(_) => Ok((interview.again(), false)),
+            Err(_) => Ok((interview.again(), None)),
         }
     }
 
@@ -534,7 +563,7 @@ impl<G: Generate> Author<G> {
         let (turn, wrote) = if interview.stage == Stage::Start {
             match interview.start(self.pick(&ask.message, &ask.transcript).await?) {
                 Ok(need) => self.fulfil(&mut interview, &need, &input).await?,
-                Err(turn) => (turn, false),
+                Err(turn) => (turn, None),
             }
         } else {
             let result = ask.tried.clone().filter(|tried| {
@@ -563,7 +592,7 @@ impl<G: Generate> Author<G> {
     }
 
     /// A turn as the chat returns it.
-    fn shape(&self, interview: &Interview, turn: &Turn, wrote: bool) -> Step {
+    fn shape(&self, interview: &Interview, turn: &Turn, wrote: Option<String>) -> Step {
         let draft = interview.draft();
         let value = draft.as_ref().and_then(|d| draft_value(d).ok());
         let cards = draft.into_iter().map(Card::Draft).collect();
@@ -579,11 +608,7 @@ impl<G: Generate> Author<G> {
             cards,
             offers,
             stage: turn.stage,
-            model: if wrote {
-                self.model_name.clone()
-            } else {
-                "none".into()
-            },
+            model: wrote.unwrap_or_else(|| "none".into()),
         }
     }
 }
@@ -690,6 +715,17 @@ pub fn seam(
             let model = live.model.clone();
             Arc::new(Author::new(
                 self::door(live.clone()),
+                model,
+                Some(judge),
+                Catalog::starter(),
+            ))
+        }
+        // The worker's primary first, its fallback after, both asking for
+        // [`REASONING`] (#10109); each step names the one that wrote it.
+        (crate::generate::Door::Fallback(ordered), Some(judge)) => {
+            let model = ordered.primary.model.clone();
+            Arc::new(Author::new(
+                ordered.before(self::door(ordered.fallback.clone())),
                 model,
                 Some(judge),
                 Catalog::starter(),

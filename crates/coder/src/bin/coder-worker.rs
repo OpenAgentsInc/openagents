@@ -34,6 +34,13 @@
 //! automatically the model a local user would pick, and one constant
 //! cannot be both.
 //!
+//! A gateway door gets a primary in front of it
+//! ([`coder::generate::WORKER_PRIMARY_VAR`], #10109): every turn asks
+//! OpenRouter's primary first — Space Bunny Alpha at low reasoning unless
+//! the variable names another, or `off` — and a turn the primary has not
+//! started answering goes to the gateway door. Each result names the model
+//! that wrote it.
+//!
 //! | Flag | Effect |
 //! | --- | --- |
 //! | `--once` | Answer one job, then exit. |
@@ -101,8 +108,8 @@ use std::time::{Duration, Instant};
 
 use coder::first;
 use coder::generate::{
-    Door, Generate, GenerateError, Lane, Message, Role, Usage, WORKER_MODEL_VAR, model_from_env,
-    model_named,
+    Door, FallbackDoor, Generate, GenerateError, Lane, Message, Meta, OPENROUTER_KEY_VAR, Role,
+    Usage, WORKER_MODEL_VAR, WORKER_PRIMARY_VAR, model_from_env, model_named,
 };
 use coder::relay::liveness::{
     self, DRAIN, Liveness, PROBE_PREFIX, Renewal, Successor, next_draining, notify_watchdog,
@@ -238,7 +245,11 @@ first response alone would, and =off ignores the router. CODER_PERSONALIZE
 the rest of a router stem. The door the worker
 answers through comes from the environment exactly as it does for the
 agent, except for the lane: CODER_WORKER_MODEL names the model or lane
-this worker runs, and outranks CODER_MODEL. The worker proves its relay
+this worker runs, and outranks CODER_MODEL. CODER_WORKER_PRIMARY names a
+model every turn asks OpenRouter (OPENROUTER_API_KEY) for first, at low
+reasoning, in front of that door, which takes any turn the primary has not
+started answering in four seconds; unset, it is Space Bunny Alpha whenever
+OPENROUTER_API_KEY is set, and off answers on that door alone. The worker proves its relay
 subscription live with a probe every 30 seconds and renews it on an
 overlapping connection every 45 minutes; CODER_WORKER_PROBE_MS and
 CODER_WORKER_RENEW_MS change those periods. Under a systemd unit with
@@ -440,7 +451,15 @@ async fn serve(options: &Options) -> Result<(), String> {
             .serving(&model)
             .map_err(|why| format!("{WORKER_MODEL_VAR}: {why}"))?;
     }
-    let door = Arc::new(door);
+    // The primary goes in front of that door (#10109): every turn asks
+    // OpenRouter's primary first, and one it does not start answering
+    // goes to the door above. Unset, the primary is Space Bunny Alpha
+    // whenever OpenRouter's key is here.
+    let door = Arc::new(ordered(
+        door,
+        env::var(WORKER_PRIMARY_VAR).ok().as_deref(),
+        env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
+    )?);
     let jobs = jobs_bound(&door)?;
     // The judge that answers first: one System One call per admitted
     // conversation turn, run beside the model call (see `coder::first`).
@@ -467,14 +486,27 @@ async fn serve(options: &Options) -> Result<(), String> {
     // The lane is named beside the model, and the model is always there:
     // a run whose evidence cannot say which model answered cannot be
     // compared against one that used another.
-    match Lane::read(door.model()) {
-        Some(lane) => eprintln!(
-            "door    {} ({}, lane {})",
+    match &*door {
+        Door::Fallback(ordered) => eprintln!(
+            "door    {} ({} at {} with reasoning {}, then {} at {} for any turn it has not \
+             started answering in {} ms)",
             door.name(),
-            door.model(),
-            lane.name()
+            ordered.primary.model,
+            ordered.primary.url,
+            coder::generate::PRIMARY_EFFORT,
+            ordered.fallback.model,
+            ordered.fallback.url,
+            coder::generate::PRIMARY_FIRST_WORD.as_millis()
         ),
-        None => eprintln!("door    {} ({})", door.name(), door.model()),
+        _ => match Lane::read(door.model()) {
+            Some(lane) => eprintln!(
+                "door    {} ({}, lane {})",
+                door.name(),
+                door.model(),
+                lane.name()
+            ),
+            None => eprintln!("door    {} ({})", door.name(), door.model()),
+        },
     }
     match &judge {
         Some(judge) => eprintln!(
@@ -624,7 +656,11 @@ async fn serve(options: &Options) -> Result<(), String> {
         ),
         None => eprintln!("calibration off: raw probabilities"),
     }
-    match &routing.news {
+    match routing.news.as_deref() {
+        Some(Door::Fallback(news)) => eprintln!(
+            "gym news {} first, then {} with its reasoning off",
+            news.primary.model, news.fallback.model
+        ),
         Some(news) => eprintln!("gym news {} with its reasoning off", news.model()),
         None => eprintln!("gym news on the chat door"),
     }
@@ -1004,6 +1040,7 @@ impl Worker<'_> {
         let permit = self.running.clone().try_acquire_owned().ok();
         let job = Job {
             identity: self.identity.clone(),
+            answered: Default::default(),
             door: self.door.clone(),
             judge: self.judge.clone(),
             decline: self.options.decline.clone(),
@@ -1125,6 +1162,35 @@ fn addressed(request: &Event, worker: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `door` with the primary [`WORKER_PRIMARY_VAR`] asks for (`asked`) in
+/// front of it, reached with OpenRouter's `key` (#10109): the door itself
+/// when no primary is asked for or there is no key to reach one.
+///
+/// # Errors
+///
+/// When a primary is named with no key to reach it, or named in front of
+/// a door that is not a gateway door: a relay or an executor picks its own
+/// model, and a fallback in front of it would be a second way to answer.
+/// Unnamed, the default primary goes in front of a gateway door only.
+fn ordered(door: Door, asked: Option<&str>, key: Option<&str>) -> Result<Door, String> {
+    let Some((model, key)) = coder::generate::worker_primary(asked, key)? else {
+        return Ok(door);
+    };
+    match door {
+        Door::Live(fallback) => Ok(Door::Fallback(Box::new(FallbackDoor::openrouter(
+            &model, &key, fallback,
+        )))),
+        // Unasked, a door that picks its own model (a relay, an executor)
+        // or the stub keeps answering alone.
+        door if asked.is_none_or(|asked| asked.trim().is_empty()) => Ok(door),
+        other => Err(format!(
+            "{WORKER_PRIMARY_VAR} puts {model} in front of the {} door, which picks its own \
+             model; set {WORKER_PRIMARY_VAR}=off",
+            other.name()
+        )),
+    }
+}
+
 /// How many jobs run at once.
 ///
 /// `CODER_WORKER_JOBS` states it. Unset, an executor door runs as many as
@@ -1148,6 +1214,9 @@ fn jobs_bound(door: &Door) -> Result<usize, String> {
 struct Job {
     identity: Arc<Identity>,
     door: Arc<Door>,
+    /// The model the door named as having written this job's reply, when
+    /// it named one ([`start_model`]).
+    answered: std::sync::Mutex<Option<String>>,
     /// The System One client for the first response and rankings.
     judge: Option<Arc<jev::Client>>,
     decline: Option<String>,
@@ -1174,6 +1243,10 @@ struct RouterConfig {
     seams: Seams,
     /// The bank's slot values, from this worker's configuration.
     facts: router::Facts,
+    /// The same values naming the fallback as our model, for the turns
+    /// after the primary's last one failed before its first words
+    /// ([`Job::facts`]); `None` for a door with no fallback.
+    fell_back: Option<router::Facts>,
     /// The door a grounded `gym.news` reply runs on: the chat door's
     /// gateway and key with [`router::gym::NEWS_MODEL`] and its reasoning
     /// off (#9950), or `None` for the chat door itself.
@@ -1222,37 +1295,70 @@ impl RouterConfig {
         jev_fallbacks: &[&str],
     ) -> Self {
         let quota = quota.map(|quota| (quota.per_key_minute, quota.per_key_day));
-        let news = match (door, news) {
-            (Door::Live(live), Some(model)) if seams.gym.available() && model != live.model => {
-                Some(Door::Live(
-                    live.clone()
-                        .serving(model)
-                        .with_options(router::gym::news_options()),
-                ))
+        // The news lane is the gateway door's, with its reasoning off; a
+        // worker with a primary asks the primary first there too (#10109).
+        let news = match (door.gateway(), news) {
+            (Some(live), Some(model)) if seams.gym.available() && model != live.model => {
+                let gateway = live
+                    .clone()
+                    .serving(model)
+                    .with_options(router::gym::news_options());
+                Some(match door {
+                    Door::Fallback(ordered) => Door::Fallback(Box::new(ordered.before(gateway))),
+                    _ => Door::Live(gateway),
+                })
             }
             _ => None,
         };
+        let news_name = news.as_ref().and_then(Door::gateway).map(|news| {
+            if news.model == router::gym::NEWS_MODEL {
+                router::gym::NEWS_MODEL_NAME
+            } else {
+                news.model.as_str()
+            }
+        });
         let facts = match door {
+            Door::Fallback(ordered) => router::worker_facts_ordered(
+                Some((&ordered.primary.model, &ordered.primary.url)),
+                &ordered.fallback.model,
+                Some(&ordered.fallback.url),
+                quota,
+                &seams,
+                news_name,
+                jev_fallbacks,
+            ),
             Door::Live(live) => router::worker_facts_with_jev(
                 &live.model,
                 Some(&live.url),
                 quota,
                 &seams,
-                news.as_ref().map(|news| {
-                    if news.model() == router::gym::NEWS_MODEL {
-                        router::gym::NEWS_MODEL_NAME
-                    } else {
-                        news.model()
-                    }
-                }),
+                news_name,
                 jev_fallbacks,
             ),
             door => router::worker_facts(door.model(), None, quota, &seams),
+        };
+        // While the primary is missing its turns, our model is the
+        // fallback, and a reply that names our model names it.
+        let fell_back = match door {
+            Door::Fallback(ordered) => {
+                let named = first::Facts::of(&ordered.fallback.model, Some(&ordered.fallback.url));
+                match (named.chat_model, named.chat_model_host) {
+                    (Some(model), Some(host)) => Some(
+                        facts
+                            .clone()
+                            .set("worker.lane.display", model)
+                            .set("worker.door.display", host),
+                    ),
+                    _ => None,
+                }
+            }
+            _ => None,
         };
         Self {
             setting,
             seams,
             facts,
+            fell_back,
             news: news.map(Arc::new),
             calibration: None,
         }
@@ -1378,6 +1484,25 @@ struct Turn {
 }
 
 impl Job {
+    /// The model to name on this job's result: the one the door named as
+    /// the writer, or the door's own.
+    fn answered_model(&self) -> String {
+        self.answered
+            .lock()
+            .ok()
+            .and_then(|answered| answered.clone())
+            .unwrap_or_else(|| self.door.model().to_string())
+    }
+
+    /// The bank's slot values now: the fallback's model while the primary
+    /// is missing its turns, the configured one otherwise.
+    fn facts(&self) -> &router::Facts {
+        match (&*self.door, &self.routing.fell_back) {
+            (Door::Fallback(ordered), Some(fell_back)) if ordered.primary_down() => fell_back,
+            _ => &self.routing.facts,
+        }
+    }
+
     /// Answers one job request: decrypt, generate, publish.
     ///
     /// The request arrives signed by the customer and addressed to this
@@ -1726,16 +1851,17 @@ impl Job {
                         "input": usage.input_tokens,
                         "output": usage.output_tokens,
                     })),
-                    "model": self.door.model(),
+                    "model": self.answered_model(),
                 });
                 // A routed turn names its tier, route, and bank; one whose
                 // text no model wrote names the bank as its `model`.
                 if let Some(served) = &served {
                     router::wire::annotate(&mut result, served, Bank::builtin());
                 }
+                let by = result["model"].as_str().unwrap_or("?").to_string();
                 publish(RESULT_KIND, result)?;
                 eprintln!(
-                    "job {label} answered in {} ms, {} chars",
+                    "job {label} answered in {} ms, {} chars, by {by}",
                     started.elapsed().as_millis(),
                     text.len()
                 );
@@ -1784,7 +1910,7 @@ impl Job {
             };
         // The bank's facts for this turn: placed on a computer when the
         // turn is, with the computer's name and project folder (#10077).
-        let facts = turn.context.facts(&routing.facts);
+        let facts = turn.context.facts(self.facts());
         // Jev reads only that the chat's Coder run ended, never what it
         // reported (#10094).
         let judged = turn.context.judged(input);
@@ -1957,10 +2083,10 @@ impl Job {
         turn: &Turn,
     ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
         let bank = Bank::builtin();
-        let placed = turn.context.facts(&self.routing.facts);
+        let placed = turn.context.facts(self.facts());
         let facts = &placed;
         let seams = &self.routing.seams;
-        let (mut generating, mut incoming) =
+        let (mut generating, mut incoming, mut said) =
             start_model(self.door.clone(), instructions.to_string(), input.to_vec());
         let mut judging = triage.is_some();
         let mut triage: Judging =
@@ -2145,7 +2271,7 @@ impl Job {
                         }
                         Tier::Model { lead: shown, note } => {
                             if let Some(note) = note {
-                                (generating, incoming) = start_model(
+                                (generating, incoming, said) = start_model(
                                     self.door.clone(),
                                     format!("{instructions}\n\n{note}"),
                                     input.to_vec(),
@@ -2273,7 +2399,7 @@ impl Job {
                                     }
                                     card(&shown_card)?;
                                     let door = self.routing.news.clone().unwrap_or_else(|| self.door.clone());
-                                    (generating, incoming) = start_model(
+                                    (generating, incoming, said) = start_model(
                                         door.clone(),
                                         format!(
                                             "{instructions}\n\n{}",
@@ -2290,7 +2416,7 @@ impl Job {
                                     tidy = Some((router::gym::Tidy::default(), Cites::Gym(items)));
                                 }
                                 router::gym::Reply::Model => {
-                                    (generating, incoming) = start_model(
+                                    (generating, incoming, said) = start_model(
                                         self.door.clone(),
                                         format!("{instructions}\n\n{}", router::gym::NO_RECORDS_NOTE),
                                         input.to_vec(),
@@ -2341,7 +2467,7 @@ impl Job {
                                         ),
                                         _ => (router::NO_DOCS_NOTE.to_string(), Vec::new()),
                                     };
-                                    (generating, incoming) = start_model(
+                                    (generating, incoming, said) = start_model(
                                         self.door.clone(),
                                         format!("{instructions}\n\n{note}"),
                                         input.to_vec(),
@@ -2489,6 +2615,19 @@ impl Job {
                     None => draining = false,
                 },
                 answered = &mut generating => {
+                    // The model that wrote the reply, when the door named
+                    // one: the result names it rather than the door's
+                    // first choice (#10109).
+                    if let Some(model) = said.lock().ok().and_then(|mut named| named.take()) {
+                        if let Some(record) = &mut served
+                            && record.model.is_some()
+                        {
+                            record.model = Some(model.clone());
+                        }
+                        if let Ok(mut answered) = self.answered.lock() {
+                            *answered = Some(model);
+                        }
+                    }
                     return answered.map(|(text, usage)| {
                         let text = match &tidy {
                             Some((_, Cites::Product(grounding))) => {
@@ -2570,12 +2709,7 @@ impl Job {
         if let Some(shown) = shown {
             offer(shown)?;
         }
-        let mut record = served_of(
-            routing,
-            tier,
-            bank,
-            &turn.context.facts(&self.routing.facts),
-        );
+        let mut record = served_of(routing, tier, bank, &turn.context.facts(self.facts()));
         if let Some(model) = model {
             record.model = Some(model);
         }
@@ -2604,23 +2738,38 @@ type Generation =
 
 /// Starts a model call whose deltas arrive on the returned receiver.
 /// Dropping the future cancels the call.
+///
+/// The third value is the model the door names as having written the
+/// answer, once it does: a door with a fallback names the one that
+/// answered ([`Meta::Model`]), and every other door names none.
 fn start_model(
     door: Arc<Door>,
     instructions: String,
     input: Vec<Message>,
-) -> (Generation, mpsc::UnboundedReceiver<String>) {
+) -> (Generation, mpsc::UnboundedReceiver<String>, Said) {
     let (deltas, incoming) = mpsc::unbounded_channel::<String>();
+    let said = Said::default();
+    let naming = said.clone();
     let generating = async move {
         // The sink owns the sender, so the channel closes when the call
         // ends and the drain stops.
         let mut sink = move |delta: &str| {
             let _ = deltas.send(delta.to_string());
         };
-        door.generate(&instructions, &input, &mut sink, &mut |_| {})
-            .await
+        door.generate(&instructions, &input, &mut sink, &mut |meta| {
+            if let Meta::Model(model) = meta
+                && let Ok(mut named) = naming.lock()
+            {
+                *named = Some(model);
+            }
+        })
+        .await
     };
-    (Box::pin(generating), incoming)
+    (Box::pin(generating), incoming, said)
 }
+
+/// The model a running generation's door named as its writer.
+type Said = Arc<std::sync::Mutex<Option<String>>>;
 
 /// What a tidied grounded reply's citations are checked against.
 enum Cites {
@@ -2928,6 +3077,7 @@ mod tests {
             ));
             let job = Job {
                 routing,
+                answered: Default::default(),
                 identity: Arc::new(worker),
                 door: Arc::new(door),
                 judge: None,
@@ -3569,6 +3719,7 @@ mod tests {
             identity: Arc::new(worker),
             door: Arc::new(door),
             judge,
+            answered: Default::default(),
             decline: None,
             allow: None,
             ledger: None,
@@ -4751,6 +4902,143 @@ mod tests {
         assert_eq!(news[0]["reasoning"]["effort"], "none");
         assert_eq!(news[0]["max_output_tokens"], router::gym::NEWS_MAX_TOKENS);
         assert!(news[0]["instructions"].as_str().unwrap().contains(&lead));
+    }
+
+    /// A Space Bunny Alpha primary on loopback in front of `fallback`:
+    /// answering from the recorded OpenRouter stream when `answers`, and
+    /// refusing every connection otherwise, as a model that is gone does.
+    fn primary_before(answers: bool, fallback: Door) -> Door {
+        let url = if answers {
+            let stream = include_str!("../../fixtures/gateway/stealth-space-bunny-alpha.sse");
+            serve_once(Duration::ZERO, "text/event-stream", stream.to_string())
+        } else {
+            // A port that was bound and let go: nothing listens there.
+            let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}", closed.local_addr().unwrap());
+            drop(closed);
+            url
+        };
+        let Door::Live(fallback) = fallback else {
+            panic!("a gateway door");
+        };
+        Door::Fallback(Box::new(
+            coder::generate::FallbackDoor::new(
+                coder::generate::ResponsesDoor::new(url, Lane::SpaceBunny.model(), "test"),
+                fallback,
+            )
+            .first_word(Duration::from_secs(2)),
+        ))
+    }
+
+    /// The result names the model that wrote the reply: the primary when
+    /// it answered, the fallback when the primary missed the turn
+    /// (#10109).
+    #[tokio::test]
+    async fn the_result_names_the_door_that_answered() {
+        let mut payload = turn("How do Nostr relays work?");
+        payload.as_object_mut().unwrap().remove("opener");
+        for (answers, model, text) in [
+            (
+                true,
+                Lane::SpaceBunny.model(),
+                "one\ntwo\nthree\nfour\nfive",
+            ),
+            (false, GEMINI, "One\nTwo\nThree\nFour\nFive"),
+        ] {
+            let door = primary_before(answers, slow_door(Duration::ZERO));
+            let frames = frames_through(door, None, payload.clone()).await;
+            let result = &frames.last().unwrap().1;
+            assert_eq!(result["type"], "result", "{frames:?}");
+            assert_eq!(result["model"], model);
+            assert_eq!(result["text"], text);
+        }
+    }
+
+    /// The worker puts the primary in front of a gateway door by default
+    /// when OpenRouter's key is here, never in front of a door that picks
+    /// its own model, and refuses a primary named with no way to reach it.
+    #[test]
+    fn the_primary_goes_in_front_of_a_gateway_door() {
+        let gateway = || {
+            Door::Live(coder::generate::ResponsesDoor::new(
+                coder::generate::DEFAULT_DOOR_URL,
+                GEMINI,
+                "test",
+            ))
+        };
+        let ordered_door = ordered(gateway(), None, Some("key")).unwrap();
+        let Door::Fallback(both) = &ordered_door else {
+            panic!("the primary is in front");
+        };
+        assert_eq!(both.primary.model, Lane::SpaceBunny.model());
+        assert_eq!(both.primary.url, coder::generate::OPENROUTER_DOOR_URL);
+        assert_eq!(both.fallback.model, GEMINI);
+        assert!(matches!(
+            ordered(gateway(), Some("off"), Some("key")).unwrap(),
+            Door::Live(_)
+        ));
+        assert!(matches!(
+            ordered(gateway(), None, None).unwrap(),
+            Door::Live(_)
+        ));
+        let stub = || Door::Stub(StubGenerate::default());
+        assert!(matches!(
+            ordered(stub(), None, Some("key")).unwrap(),
+            Door::Stub(_)
+        ));
+        assert!(ordered(stub(), Some("space-bunny"), Some("key")).is_err());
+        assert!(ordered(gateway(), Some("space-bunny"), None).is_err());
+    }
+
+    /// "What model is this?" names the model answering now: the primary
+    /// and OpenRouter, or the fallback and the gateway while the primary
+    /// misses its turns. The privacy answer names both doors and what the
+    /// primary's provider may keep, whichever is answering (#10109).
+    #[test]
+    fn the_model_answer_names_the_model_answering_now() {
+        let door = Door::Fallback(Box::new(coder::generate::FallbackDoor::openrouter(
+            Lane::SpaceBunny.model(),
+            "test",
+            coder::generate::ResponsesDoor::new(coder::generate::DEFAULT_DOOR_URL, GEMINI, "test"),
+        )));
+        let config = RouterConfig::new(RouterSetting::Live, Seams::default(), &door, None);
+        let render = |facts: &router::Facts, id: &str| {
+            Bank::builtin()
+                .entry(id)
+                .and_then(|entry| entry.render(facts))
+                .unwrap_or_else(|| panic!("{id} renders"))
+        };
+        let model = render(&config.facts, "meta.model");
+        assert!(
+            model.starts_with(
+                "Our chat runs on Space Bunny Alpha (an anonymous preview model) through OpenRouter."
+            ),
+            "{model}"
+        );
+        let fell_back = config.fell_back.as_ref().expect("a fallback's facts");
+        let model = render(fell_back, "meta.model");
+        assert!(
+            model.starts_with(
+                "Our chat runs on Google's Gemini 3.8 Flash through the Vercel AI Gateway."
+            ),
+            "{model}"
+        );
+        for facts in [&config.facts, fell_back] {
+            for id in ["meta.privacy", "meta.data_retention"] {
+                let said = render(facts, id);
+                assert!(
+                    said.contains(
+                        "OpenRouter for Space Bunny Alpha (an anonymous preview model), the Vercel AI \
+                         Gateway for Google's Gemini 3.8 Flash when Space Bunny Alpha can't answer"
+                    ),
+                    "{said}"
+                );
+                assert!(
+                    said.contains("may keep the messages it is sent and its replies, though not to train on them."),
+                    "{said}"
+                );
+            }
+        }
     }
 
     /// Jev's fallback doors are named in the privacy answer only when

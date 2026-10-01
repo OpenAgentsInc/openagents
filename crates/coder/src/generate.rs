@@ -32,6 +32,15 @@ use serde_json::{Value, json};
 /// overrides it for a deployment's own endpoint.
 pub const DEFAULT_DOOR_URL: &str = "https://ai-gateway.vercel.sh";
 
+/// The OpenRouter door: its Open Responses route is
+/// `https://openrouter.ai/api/v1/responses`. The chat worker's primary
+/// model, [`Lane::SpaceBunny`], is served only here.
+pub const OPENROUTER_DOOR_URL: &str = "https://openrouter.ai/api";
+
+/// The variable holding the OpenRouter key the chat worker's primary door
+/// is reached with.
+pub const OPENROUTER_KEY_VAR: &str = "OPENROUTER_API_KEY";
+
 /// A lane: a model the gateway serves, under a short name.
 ///
 /// The gateway answers one Open Responses shape for every model in its
@@ -51,11 +60,17 @@ pub enum Lane {
     Gemini,
     /// Z.ai's GLM Flash.
     Glm,
+    /// Space Bunny Alpha, an anonymous preview model served only through
+    /// OpenRouter ([`OPENROUTER_DOOR_URL`], not the gateway), until
+    /// 2026-10-05. The chat worker's primary door runs it, with the
+    /// gateway's [`Lane::Gemini`] taking any turn it does not answer
+    /// ([`FallbackDoor`], #10109).
+    SpaceBunny,
 }
 
 impl Lane {
     /// Every lane, in the order the crate documents them.
-    pub const ALL: [Lane; 2] = [Lane::Gemini, Lane::Glm];
+    pub const ALL: [Lane; 3] = [Lane::Gemini, Lane::Glm, Lane::SpaceBunny];
 
     /// The lane's short name, which configuration may use in place of the
     /// model id.
@@ -64,6 +79,7 @@ impl Lane {
         match self {
             Lane::Gemini => "gemini",
             Lane::Glm => "glm",
+            Lane::SpaceBunny => "space-bunny",
         }
     }
 
@@ -73,6 +89,17 @@ impl Lane {
         match self {
             Lane::Gemini => "google/gemini-3.8-flash",
             Lane::Glm => "zai/glm-5.3-flash",
+            Lane::SpaceBunny => "stealth/space-bunny-alpha",
+        }
+    }
+
+    /// The door that serves the lane: the gateway for every lane but
+    /// [`Lane::SpaceBunny`], which only OpenRouter serves.
+    #[must_use]
+    pub const fn door_url(self) -> &'static str {
+        match self {
+            Lane::Gemini | Lane::Glm => DEFAULT_DOOR_URL,
+            Lane::SpaceBunny => OPENROUTER_DOOR_URL,
         }
     }
 
@@ -104,6 +131,59 @@ pub const MODEL_VAR: &str = "CODER_MODEL";
 /// service pays for is not automatically the model someone would pick at
 /// their own terminal, and one constant cannot be both.
 pub const WORKER_MODEL_VAR: &str = "CODER_WORKER_MODEL";
+
+/// The variable that names the chat worker's primary model: the model it
+/// asks OpenRouter for first, with the door [`WORKER_MODEL_VAR`] names as
+/// its fallback ([`FallbackDoor`]).
+///
+/// Unset, the primary is [`Lane::SpaceBunny`] whenever
+/// [`OPENROUTER_KEY_VAR`] is set, so the worker needs no new variable; a
+/// lane name or an OpenRouter model id names another, and `off` answers on
+/// the fallback door alone. Read it with [`worker_primary`].
+pub const WORKER_PRIMARY_VAR: &str = "CODER_WORKER_PRIMARY";
+
+/// The reasoning effort the primary door asks for. Measured 2026-10-01
+/// through OpenRouter's Open Responses route, Space Bunny Alpha's first
+/// token came at 0.96 s at `low`, against 1.8 to 2.9 s at its default
+/// (#10109).
+pub const PRIMARY_EFFORT: &str = "low";
+
+/// How long the primary door has to send the first words of its answer
+/// before the turn goes to the fallback door instead.
+///
+/// The primary's first token comes in about a second; the fallback's in
+/// about five and a half. Four seconds lets a slow primary answer and
+/// still leaves a turn that falls back short of ten.
+pub const PRIMARY_FIRST_WORD: Duration = Duration::from_secs(4);
+
+/// The model and key the chat worker's primary door runs, from what
+/// [`WORKER_PRIMARY_VAR`] asks (`asked`) and the OpenRouter key (`key`).
+/// `None` answers on the fallback door alone.
+///
+/// # Errors
+///
+/// A sentence when a primary is named and no OpenRouter key is set: a
+/// named primary that quietly ran nothing would be a measurement of the
+/// fallback under the primary's name.
+pub fn worker_primary(
+    asked: Option<&str>,
+    key: Option<&str>,
+) -> Result<Option<(String, String)>, String> {
+    let key = key.map(str::trim).filter(|key| !key.is_empty());
+    let asked = asked.map(str::trim).filter(|asked| !asked.is_empty());
+    match (asked, key) {
+        (Some("off"), _) | (None, None) => Ok(None),
+        (None, Some(key)) => Ok(Some((
+            Lane::SpaceBunny.model().to_string(),
+            key.to_string(),
+        ))),
+        (Some(asked), Some(key)) => Ok(Some((model_named(asked).to_string(), key.to_string()))),
+        (Some(asked), None) => Err(format!(
+            "{WORKER_PRIMARY_VAR} names {asked} and {OPENROUTER_KEY_VAR} is not set; \
+             set the key, or set {WORKER_PRIMARY_VAR}=off to answer on the fallback alone"
+        )),
+    }
+}
 
 /// The model `asked` names: the lane's model when it names a lane, and
 /// `asked` itself otherwise.
@@ -962,6 +1042,208 @@ impl Generate for ResponsesDoor {
     }
 }
 
+/// Two Open Responses doors in order: a primary that answers fast while
+/// it is there, and a fallback that answers whenever it is not.
+///
+/// The fallback is per turn. Every turn goes to the primary first, and a
+/// primary that fails before the first words of its answer — an HTTP
+/// error such as an unknown model's 404 or a 429, a failure event, a
+/// stream that ends empty, or no answer text within
+/// [`PRIMARY_FIRST_WORD`] — hands the same turn to the fallback, which
+/// runs with its own retries and bounds as it always has. Nothing has
+/// reached the caller by then, so the turn is not repeated where anyone
+/// can see it. A primary that fails after its first words has shown the
+/// caller part of an answer, and its failure is the turn's, as it is for a
+/// single door.
+///
+/// So a primary that goes away for good costs each turn one failed
+/// request, not a deploy: Space Bunny Alpha, the chat worker's primary,
+/// leaves OpenRouter on 2026-10-05 (#10109).
+///
+/// Every answer says which door wrote it with [`Meta::Model`], and the
+/// door keeps whether the primary's last turn failed before its first
+/// words ([`FallbackDoor::answering`]), so a reply that names our model
+/// can name the one answering now.
+pub struct FallbackDoor {
+    /// The door every turn tries first.
+    pub primary: ResponsesDoor,
+    /// The door a turn the primary did not answer goes to.
+    pub fallback: ResponsesDoor,
+    first_word: Duration,
+    /// Whether the primary's last turn failed before its first words.
+    down: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl FallbackDoor {
+    /// `primary` first, `fallback` for any turn it does not start
+    /// answering within [`PRIMARY_FIRST_WORD`].
+    #[must_use]
+    pub fn new(primary: ResponsesDoor, fallback: ResponsesDoor) -> Self {
+        Self {
+            primary,
+            fallback,
+            first_word: PRIMARY_FIRST_WORD,
+            down: std::sync::Arc::default(),
+        }
+    }
+
+    /// `model` on OpenRouter behind `key`, asking for [`PRIMARY_EFFORT`],
+    /// in front of `fallback`.
+    #[must_use]
+    pub fn openrouter(model: &str, key: &str, fallback: ResponsesDoor) -> Self {
+        let primary = ResponsesDoor::new(OPENROUTER_DOOR_URL, model_named(model), key)
+            .with_options(serde_json::Map::from_iter([(
+                "reasoning".to_string(),
+                json!({ "effort": PRIMARY_EFFORT }),
+            )]));
+        Self::new(primary, fallback)
+    }
+
+    /// The same order with a different wait for the primary's first
+    /// words, so a test can exercise it without spending the real one.
+    #[must_use]
+    pub fn first_word(mut self, wait: Duration) -> Self {
+        self.first_word = wait;
+        self
+    }
+
+    /// The same primary, in front of `fallback`, sharing this door's
+    /// record of whether the primary is answering.
+    #[must_use]
+    pub fn before(&self, fallback: ResponsesDoor) -> Self {
+        Self {
+            primary: self.primary.clone(),
+            fallback,
+            first_word: self.first_word,
+            down: self.down.clone(),
+        }
+    }
+
+    /// The same order with both doors' request fields replaced by
+    /// `options` (see [`ResponsesDoor::with_options`]).
+    #[must_use]
+    pub fn with_options(mut self, options: serde_json::Map<String, Value>) -> Self {
+        self.primary = self.primary.with_options(options.clone());
+        self.fallback = self.fallback.with_options(options);
+        self
+    }
+
+    /// The door answering now: the primary, unless its last turn failed
+    /// before its first words. The next turn tries the primary again
+    /// either way.
+    #[must_use]
+    pub fn answering(&self) -> &ResponsesDoor {
+        if self.primary_down() {
+            &self.fallback
+        } else {
+            &self.primary
+        }
+    }
+
+    /// Whether the primary's last turn failed before its first words.
+    #[must_use]
+    pub fn primary_down(&self) -> bool {
+        self.down.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The primary's one attempt, with the caller's sink behind it.
+    async fn first(
+        &self,
+        instructions: &str,
+        input: &[Message],
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> First {
+        let spoke = std::sync::atomic::AtomicBool::new(false);
+        let mut forward = |delta: &str| {
+            spoke.store(true, std::sync::atomic::Ordering::Relaxed);
+            sink(delta);
+        };
+        let attempt = self.primary.once(instructions, input, &mut forward);
+        tokio::pin!(attempt);
+        let deadline = tokio::time::sleep(self.first_word);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                done = &mut attempt => {
+                    return match done {
+                        Ok(done) => First::Answered(done),
+                        Err((partial, error))
+                            if spoke.load(std::sync::atomic::Ordering::Relaxed)
+                                || !partial.is_empty() =>
+                        {
+                            First::Failed(error)
+                        }
+                        Err((_, error)) => First::Missed(error),
+                    };
+                }
+                // The condition is read when the wait begins, and the
+                // first words may come while it runs: they win.
+                () = &mut deadline, if !spoke.load(std::sync::atomic::Ordering::Relaxed) => {
+                    if spoke.load(std::sync::atomic::Ordering::Relaxed) {
+                        continue;
+                    }
+                    return First::Missed(GenerateError::Quiet {
+                        heard: false,
+                        reason: format!("no answer text in {} ms", self.first_word.as_millis()),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// How the primary's one attempt went.
+enum First {
+    /// It answered.
+    Answered((String, Option<Usage>)),
+    /// It failed after its first words reached the caller: the turn's
+    /// failure, since a second door would repeat what was shown.
+    Failed(GenerateError),
+    /// It failed before its first words: the fallback takes the turn.
+    Missed(GenerateError),
+}
+
+impl Generate for FallbackDoor {
+    async fn generate<'a>(
+        &'a self,
+        instructions: &'a str,
+        input: &'a [Message],
+        sink: &'a mut (dyn FnMut(&str) + Send),
+        meta: &'a mut (dyn FnMut(Meta) + Send),
+    ) -> Result<(String, Option<Usage>), GenerateError> {
+        let ordering = std::sync::atomic::Ordering::Relaxed;
+        let started = Instant::now();
+        let missed = match self.first(instructions, input, sink).await {
+            First::Answered(done) => {
+                self.down.store(false, ordering);
+                meta(Meta::Model(self.primary.model.clone()));
+                return Ok(done);
+            }
+            First::Failed(error) => {
+                self.down.store(false, ordering);
+                return Err(error);
+            }
+            First::Missed(error) => error,
+        };
+        self.down.store(true, ordering);
+        // Door, model, cause, and the door's own words: never the turn's.
+        eprintln!(
+            "door {} missed its first words after {} ms ({}: {}); {} takes the turn",
+            self.primary.model,
+            started.elapsed().as_millis(),
+            missed.cause(),
+            clip(&missed.to_string(), 200),
+            self.fallback.model
+        );
+        let answered = self
+            .fallback
+            .generate(instructions, input, sink, meta)
+            .await?;
+        meta(Meta::Model(self.fallback.model.clone()));
+        Ok(answered)
+    }
+}
+
 /// A door that is not there: it answers with a fixed line. The shell and
 /// the tests use it so neither needs credentials.
 ///
@@ -1044,6 +1326,10 @@ impl Generate for StubGenerate {
 pub enum Door {
     /// A live Open Responses endpoint.
     Live(ResponsesDoor),
+    /// Two live endpoints in order: the chat worker's primary and the
+    /// fallback that takes any turn the primary does not start answering
+    /// ([`FallbackDoor`]). Only `coder-worker` builds it.
+    Fallback(Box<FallbackDoor>),
     /// A Nostr relay running the NIP-CJ job protocol.
     Relay(Box<crate::relay::RelayDoor>),
     /// An approved local executor, such as the Devin CLI, run through
@@ -1121,6 +1407,11 @@ impl Door {
         let model = model_named(model);
         match self {
             Door::Live(door) => Ok(Door::Live(door.serving(model))),
+            Door::Fallback(door) => Err(format!(
+                "{model} is named for a door whose primary is {}: name the \
+                 fallback before the primary is put in front of it.",
+                door.primary.model
+            )),
             Door::Relay(_) => Err(format!(
                 "{model} is named for a door that does not pick its model: \
                  the relay carries the turn to a worker and the worker picks."
@@ -1148,8 +1439,12 @@ impl Door {
     /// connection now (see [`ResponsesDoor::warm`]); every other door has
     /// nothing to warm.
     pub async fn warm(&self) {
-        if let Door::Live(door) = self {
-            door.warm().await;
+        match self {
+            Door::Live(door) => door.warm().await,
+            Door::Fallback(door) => {
+                tokio::join!(door.primary.warm(), door.fallback.warm());
+            }
+            _ => {}
         }
     }
 
@@ -1160,9 +1455,14 @@ impl Door {
     /// and names it in the NIP-CJ result, so the session header cannot
     /// know it and each answer step carries what answered. Recording the
     /// word `relay` there instead claimed a model by that name.
+    ///
+    /// A fallback door answers its primary's model: the one every turn
+    /// asks first. Each answer names the model that wrote it
+    /// ([`Meta::Model`]).
     pub fn model(&self) -> &str {
         match self {
             Door::Live(door) => &door.model,
+            Door::Fallback(door) => &door.primary.model,
             Door::Relay(_) => UNKNOWN_MODEL,
             Door::Executor(door) => door.slug(),
             Door::Delegate(door) => door.label(),
@@ -1179,12 +1479,24 @@ impl Door {
         }
     }
 
+    /// The gateway door behind this one: a live door itself, or a fallback
+    /// door's fallback. Lanes the worker runs beside the chat (the Gym's
+    /// news model) clone it.
+    #[must_use]
+    pub fn gateway(&self) -> Option<&ResponsesDoor> {
+        match self {
+            Door::Live(door) => Some(door),
+            Door::Fallback(door) => Some(&door.fallback),
+            _ => None,
+        }
+    }
+
     /// Which kind of door this is, which a trace records beside the model:
     /// the same model answered through a relay and through an own-key
     /// endpoint is two different paths.
     pub fn name(&self) -> &'static str {
         match self {
-            Door::Live(_) => "live",
+            Door::Live(_) | Door::Fallback(_) => "live",
             Door::Relay(_) => "relay",
             Door::Executor(_) => "executor",
             Door::Delegate(_) => crate::delegate_door::NAME,
@@ -1203,6 +1515,7 @@ impl Generate for Door {
     ) -> Result<(String, Option<Usage>), GenerateError> {
         match self {
             Door::Live(door) => door.generate(instructions, input, sink, meta).await,
+            Door::Fallback(door) => door.generate(instructions, input, sink, meta).await,
             Door::Relay(door) => door.generate(instructions, input, sink, meta).await,
             Door::Executor(door) => door.generate(instructions, input, sink, meta).await,
             Door::Delegate(door) => door.generate(instructions, input, sink, meta).await,
@@ -1399,13 +1712,14 @@ mod tests {
         assert_eq!(UNKNOWN_MODEL, "unknown");
     }
 
-    /// Two lanes, two models, one client. A lane is readable by short
+    /// Three lanes, three models, one client. A lane is readable by short
     /// name and by model id, so a shell that says `glm` and one that says
     /// `zai/glm-5.3-flash` ask for the same door.
     #[test]
     fn a_lane_is_a_model_under_a_short_name() {
         assert_eq!(Lane::Gemini.model(), "google/gemini-3.8-flash");
         assert_eq!(Lane::Glm.model(), "zai/glm-5.3-flash");
+        assert_eq!(Lane::SpaceBunny.model(), "stealth/space-bunny-alpha");
         assert_eq!(DEFAULT_MODEL, Lane::Gemini.model());
 
         assert_eq!(Lane::read("glm"), Some(Lane::Glm));
@@ -1480,6 +1794,68 @@ mod tests {
             "the model endpoint stopped sending partway through its answer: 120 seconds of silence after 12 events \
              and 400 characters"
         );
+    }
+
+    /// The worker's primary: Space Bunny Alpha whenever OpenRouter's key
+    /// is here and nothing names another, a named one when it is, nothing
+    /// when it is `off` or there is no key, and a refusal when one is
+    /// named with no key to reach it.
+    #[test]
+    fn the_primary_is_space_bunny_whenever_openrouter_is_reachable() {
+        assert_eq!(
+            worker_primary(None, Some("k")),
+            Ok(Some((
+                Lane::SpaceBunny.model().to_string(),
+                "k".to_string()
+            )))
+        );
+        assert_eq!(worker_primary(Some(" "), None), Ok(None));
+        assert_eq!(worker_primary(None, None), Ok(None));
+        assert_eq!(worker_primary(Some("off"), Some("k")), Ok(None));
+        assert_eq!(
+            worker_primary(Some("space-bunny"), Some("k")),
+            Ok(Some((
+                Lane::SpaceBunny.model().to_string(),
+                "k".to_string()
+            )))
+        );
+        assert_eq!(
+            worker_primary(Some("stealth/gone"), Some(" k ")),
+            Ok(Some(("stealth/gone".to_string(), "k".to_string())))
+        );
+        let refused = worker_primary(Some("space-bunny"), Some("")).expect_err("no key");
+        assert!(refused.contains(OPENROUTER_KEY_VAR), "{refused}");
+        assert_eq!(Lane::SpaceBunny.door_url(), OPENROUTER_DOOR_URL);
+        assert_eq!(Lane::Gemini.door_url(), DEFAULT_DOOR_URL);
+    }
+
+    /// The primary asks OpenRouter at low reasoning; the door names the
+    /// primary's model, is a live door, and hands lanes beside the chat
+    /// its gateway door.
+    #[test]
+    fn a_fallback_door_asks_the_primary_at_low_reasoning() {
+        let gateway = ResponsesDoor::new(DEFAULT_DOOR_URL, DEFAULT_MODEL, "g");
+        let ordered = FallbackDoor::openrouter("space-bunny", "o", gateway);
+        assert_eq!(ordered.primary.url, OPENROUTER_DOOR_URL);
+        assert_eq!(ordered.primary.model, Lane::SpaceBunny.model());
+        let body = ordered.primary.body("sys", &[]);
+        assert_eq!(body["reasoning"], json!({ "effort": PRIMARY_EFFORT }));
+        assert_eq!(body["tool_choice"], "none");
+        assert_eq!(ordered.fallback.body("sys", &[]).get("reasoning"), None);
+        assert!(!ordered.primary_down());
+        assert_eq!(ordered.answering().model, Lane::SpaceBunny.model());
+
+        let door = Door::Fallback(Box::new(ordered));
+        assert_eq!(door.model(), Lane::SpaceBunny.model());
+        assert_eq!(door.name(), "live");
+        assert_eq!(
+            door.gateway().map(|g| g.model.as_str()),
+            Some(DEFAULT_MODEL)
+        );
+        let Err(refused) = door.serving("glm") else {
+            panic!("a fallback door's lane is set before the primary goes in front");
+        };
+        assert!(refused.contains(Lane::Glm.model()), "{refused}");
     }
 
     #[test]

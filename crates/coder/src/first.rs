@@ -23,7 +23,7 @@ use indexmap::IndexMap;
 use jev::{Answer, Choice, ChoiceAnswer, Entry, Questions, RetryPolicy, SystemOneResponse};
 use serde_json::Value;
 
-use crate::generate::{DEFAULT_DOOR_URL, Lane as ModelLane, Message};
+use crate::generate::{DEFAULT_DOOR_URL, Lane as ModelLane, Message, OPENROUTER_DOOR_URL};
 
 /// The ranking's question set identity, as a `rank` result names it.
 pub const SET: &str = "coder-first-response-v2";
@@ -49,6 +49,11 @@ pub struct Facts {
     pub chat_model: Option<String>,
     /// Where the model is reached: "the Vercel AI Gateway".
     pub chat_model_host: Option<String>,
+    /// What the model's provider may keep of what we send it, as a
+    /// sentence without its full stop, when it is more than the door's
+    /// own terms: Space Bunny Alpha's anonymous provider may keep prompts
+    /// and replies (OpenRouter's notice for the model, 2026-10-01).
+    pub chat_model_keeps: Option<String>,
 }
 
 impl Facts {
@@ -57,19 +62,30 @@ impl Facts {
     /// how to name is left out, and the answers that need it with it.
     #[must_use]
     pub fn of(model: &str, url: Option<&str>) -> Self {
-        let chat_model = ModelLane::ALL
+        let lane = ModelLane::ALL
             .into_iter()
-            .find(|lane| lane.model() == model)
-            .map(|lane| match lane {
-                ModelLane::Gemini => "Google's Gemini 3.8 Flash".to_string(),
-                ModelLane::Glm => "Z.ai's GLM 5.3 Flash".to_string(),
-            });
+            .find(|lane| lane.model() == model);
+        let chat_model = lane.map(|lane| match lane {
+            ModelLane::Gemini => "Google's Gemini 3.8 Flash".to_string(),
+            ModelLane::Glm => "Z.ai's GLM 5.3 Flash".to_string(),
+            ModelLane::SpaceBunny => "Space Bunny Alpha (an anonymous preview model)".to_string(),
+        });
+        let chat_model_keeps = lane.filter(|lane| *lane == ModelLane::SpaceBunny).map(|_| {
+            "Space Bunny Alpha's anonymous provider may keep the messages it is sent and its \
+                 replies, though not to train on them"
+                .to_string()
+        });
         let chat_model_host = url
-            .filter(|url| url.trim_end_matches('/') == DEFAULT_DOOR_URL)
-            .map(|_| "the Vercel AI Gateway".to_string());
+            .map(|url| url.trim_end_matches('/'))
+            .and_then(|url| match url {
+                DEFAULT_DOOR_URL => Some("the Vercel AI Gateway".to_string()),
+                OPENROUTER_DOOR_URL => Some("OpenRouter".to_string()),
+                _ => None,
+            });
         Self {
             chat_model,
             chat_model_host,
+            chat_model_keeps,
         }
     }
 }
@@ -265,6 +281,22 @@ mod tests {
         let elsewhere = Facts::of(ModelLane::Gemini.model(), Some("http://127.0.0.1:9"));
         assert_eq!(elsewhere.chat_model_host, None);
         assert_eq!(Facts::of("some/other-model", None), Facts::default());
+        assert_eq!(gateway.chat_model_keeps, None);
+
+        // The primary names itself, its door, and what its provider keeps.
+        let primary = Facts::of(ModelLane::SpaceBunny.model(), Some(OPENROUTER_DOOR_URL));
+        assert_eq!(
+            primary.chat_model.as_deref(),
+            Some("Space Bunny Alpha (an anonymous preview model)")
+        );
+        assert_eq!(primary.chat_model_host.as_deref(), Some("OpenRouter"));
+        assert!(
+            primary
+                .chat_model_keeps
+                .as_deref()
+                .is_some_and(|keeps| keeps.contains("not to train")),
+            "{primary:?}"
+        );
     }
 
     #[test]

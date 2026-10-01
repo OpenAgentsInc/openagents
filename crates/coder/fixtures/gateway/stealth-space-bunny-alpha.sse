@@ -1,0 +1,38 @@
+data: {"type":"response.created","response":{"id":"gen-1790871287-NmpIO92u6jcvCVCKDGKa","object":"response","created_at":1790871287,"model":"stealth/space-bunny-alpha","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_output_tokens":null,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"You are terse. Answer with the words asked for and nothing else.","text":{"format":{"type":"text"}},"reasoning":{"effort":"low"},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1790871287-NmpIO92u6jcvCVCKDGKa","object":"response","created_at":1790871287,"model":"stealth/space-bunny-alpha","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_output_tokens":null,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"You are terse. Answer with the words asked for and nothing else.","text":{"format":{"type":"text"}},"reasoning":{"effort":"low"},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_tmp_l7ljzrnisf","type":"reasoning","status":"in_progress","summary":[]},"sequence_number":2}
+
+data: {"type":"response.content_part.added","output_index":0,"item_id":"rs_tmp_l7ljzrnisf","content_index":0,"part":{"type":"reasoning_text","text":""},"sequence_number":3}
+
+data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_tmp_l7ljzrnisf","content_index":0,"delta":"We need answer","sequence_number":4}
+
+: 
+
+data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_tmp_l7ljzrnisf","content_index":0,"delta":" one two three four five each line, but \"words asked for\" likely numerals? Count","sequence_number":5}
+
+data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_tmp_l7ljzrnisf","content_index":0,"delta":" from one to five, one word per line. Use one, two, three, four, five.","sequence_number":6}
+
+data: {"type":"response.reasoning_text.done","output_index":0,"item_id":"rs_tmp_l7ljzrnisf","content_index":0,"text":"We need answer one two three four five each line, but \"words asked for\" likely numerals? Count from one to five, one word per line. Use one, two, three, four, five.","sequence_number":7}
+
+data: {"type":"response.content_part.done","output_index":0,"item_id":"rs_tmp_l7ljzrnisf","content_index":0,"part":{"type":"reasoning_text","text":"We need answer one two three four five each line, but \"words asked for\" likely numerals? Count from one to five, one word per line. Use one, two, three, four, five."},"sequence_number":8}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"rs_tmp_l7ljzrnisf","type":"reasoning","status":"completed","content":[{"type":"reasoning_text","text":"We need answer one two three four five each line, but \"words asked for\" likely numerals? Count from one to five, one word per line. Use one, two, three, four, five."}],"summary":[],"format":"unknown"},"sequence_number":9}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"msg_tmp_bykt36ww4yd","type":"message","status":"in_progress","role":"assistant","content":[]},"sequence_number":10}
+
+data: {"type":"response.content_part.added","output_index":1,"item_id":"msg_tmp_bykt36ww4yd","content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]},"sequence_number":11}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_bykt36ww4yd","content_index":0,"delta":"one\ntwo\nthree\nfour\nfive","logprobs":[],"sequence_number":12}
+
+data: {"type":"response.output_text.done","output_index":1,"item_id":"msg_tmp_bykt36ww4yd","content_index":0,"text":"one\ntwo\nthree\nfour\nfive","logprobs":[],"sequence_number":13}
+
+data: {"type":"response.content_part.done","output_index":1,"item_id":"msg_tmp_bykt36ww4yd","content_index":0,"part":{"type":"output_text","text":"one\ntwo\nthree\nfour\nfive","annotations":[],"logprobs":[]},"sequence_number":14}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"msg_tmp_bykt36ww4yd","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"one\ntwo\nthree\nfour\nfive","annotations":[],"logprobs":[]}]},"sequence_number":15}
+
+data: {"type":"response.completed","response":{"id":"gen-1790871287-NmpIO92u6jcvCVCKDGKa","object":"response","created_at":1790871287,"model":"stealth/space-bunny-alpha","status":"completed","completed_at":1790871289,"output":[{"id":"rs_tmp_l7ljzrnisf","type":"reasoning","status":"completed","content":[{"type":"reasoning_text","text":"We need answer one two three four five each line, but \"words asked for\" likely numerals? Count from one to five, one word per line. Use one, two, three, four, five."}],"summary":[],"format":"unknown"},{"id":"msg_tmp_bykt36ww4yd","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"one\ntwo\nthree\nfour\nfive","annotations":[],"logprobs":[]}]}],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_output_tokens":null,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"You are terse. Answer with the words asked for and nothing else.","text":{"format":{"type":"text"}},"reasoning":{"effort":"low"},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":{"input_tokens":176,"input_tokens_details":{"cached_tokens":140},"output_tokens":53,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":229,"cost":0,"is_byok":false,"cost_details":{"upstream_inference_cost":0,"upstream_inference_input_cost":0,"upstream_inference_output_cost":0}}},"sequence_number":16}
+
+data: [DONE]
+

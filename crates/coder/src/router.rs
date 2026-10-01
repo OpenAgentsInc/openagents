@@ -1613,19 +1613,66 @@ pub fn worker_facts_with_jev(
     news: Option<&str>,
     jev_fallbacks: &[&str],
 ) -> Facts {
+    worker_facts_ordered(None, model, url, quota, seams, news, jev_fallbacks)
+}
+
+/// [`worker_facts_with_jev`] for a worker whose chat door asks `primary`
+/// (`(model, url)`) first and falls back to `model` at `url`
+/// (`coder::generate::FallbackDoor`, #10109). The lane and door the bank
+/// names are the primary's; the recipients are both doors, the fallback
+/// named for the turns the primary does not answer, followed by what the
+/// primary's provider may keep when that is more than its door's terms.
+/// A primary this cannot name is left out, and the facts are the
+/// fallback's alone.
+#[must_use]
+pub fn worker_facts_ordered(
+    primary: Option<(&str, &str)>,
+    model: &str,
+    url: Option<&str>,
+    quota: Option<(u32, u32)>,
+    seams: &Seams,
+    news: Option<&str>,
+    jev_fallbacks: &[&str],
+) -> Facts {
     let door = crate::first::Facts::of(model, url);
+    // The primary as (model, host, what its provider keeps), when this
+    // can name both its model and its door.
+    let first = primary.and_then(|(model, url)| {
+        let first = crate::first::Facts::of(model, Some(url));
+        Some((
+            first.chat_model?,
+            first.chat_model_host?,
+            first.chat_model_keeps,
+        ))
+    });
     let mut facts = Facts::default();
-    if let Some(model) = &door.chat_model {
+    let (shown_model, shown_host) = match &first {
+        Some((model, host, _)) => (Some(model), Some(host)),
+        None => (door.chat_model.as_ref(), door.chat_model_host.as_ref()),
+    };
+    if let Some(model) = shown_model {
         facts = facts.set("worker.lane.display", model.clone());
     }
-    if let Some(host) = &door.chat_model_host {
+    if let Some(host) = shown_host {
         facts = facts.set("worker.door.display", host.clone());
     }
     if let (Some(model), Some(host)) = (&door.chat_model, &door.chat_model_host) {
-        let mut recipients = vec![match news {
-            Some(news) => format!("{host} for {model} (and {news}, for Gym news)"),
-            None => format!("{host} for {model}"),
-        }];
+        let news = news
+            .map(|news| format!(" (and {news}, for Gym news)"))
+            .unwrap_or_default();
+        let mut recipients = Vec::new();
+        let mut keeps = None;
+        match &first {
+            Some((first_model, first_host, first_keeps)) => {
+                recipients.push(format!("{first_host} for {first_model}"));
+                let short = first_model.split(" (").next().unwrap_or(first_model);
+                recipients.push(format!(
+                    "{host} for {model}{news} when {short} can't answer"
+                ));
+                keeps.clone_from(first_keeps);
+            }
+            None => recipients.push(format!("{host} for {model}{news}")),
+        }
         recipients.extend(seams.recipients());
         recipients.push(if jev_fallbacks.is_empty() {
             "TypeSafe for Jev, which chooses how we reply".to_string()
@@ -1636,7 +1683,11 @@ pub fn worker_facts_with_jev(
                 or_series(jev_fallbacks)
             )
         });
-        facts = facts.set("worker.recipients", series(&recipients));
+        let mut said = series(&recipients);
+        if let Some(keeps) = keeps {
+            said = format!("{said}. {keeps}");
+        }
+        facts = facts.set("worker.recipients", said);
     }
     if let Some((minute, day)) = quota {
         facts = facts

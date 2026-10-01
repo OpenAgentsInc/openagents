@@ -3,14 +3,15 @@
 A new OpenAgents app user can chat with OpenAgents before connecting a
 computer; work for a computer is dispatched to Coder there. That chat,
 *OpenAgents chat*, is served by one `coder-worker` running in
-quota mode on the gateway door's Gemini Flash lane. This page is the serving
-decision, its limits, and the runbook.
+quota mode, answering on Space Bunny Alpha through OpenRouter first and the
+gateway door's Gemini Flash lane after. This page is the serving decision,
+its limits, and the runbook.
 
 ## The serving path
 
 ```text
 phone (device key) --NIP-CJ 25900, NIP-44--> relay.openagents.com --> chat worker
-phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worker --> AI gateway
+phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worker --> OpenRouter, then AI gateway
 ```
 
 - **Wire.** Each turn is a NIP-CJ conversation job
@@ -26,10 +27,31 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
 - **Authentication.** The identity the user already has: the device key that
   the app creates on first launch signs the request and authenticates to the
   relay (NIP-42). There is no account, sign-in, or key to paste.
-- **Model.** `google/gemini-3.8-flash` through the Vercel AI Gateway, the
-  lane the Coder terminal's chat used (`crates/coder/src/generate.rs`). The
-  gateway key is in the worker's environment file on its host and nowhere
-  else. No model API key ships in the app.
+- **Model.** Since #10109, every turn asks a primary first:
+  `stealth/space-bunny-alpha` (Space Bunny Alpha, an anonymous preview
+  model) through OpenRouter's Open Responses route
+  (`https://openrouter.ai/api/v1/responses`) with `reasoning: {"effort":
+  "low"}`, under `OPENROUTER_API_KEY`. Its first token comes in about a
+  second, against about five and a half for Gemini 3.8 Flash at any effort.
+  A turn the primary fails before its first words (an HTTP error, such as
+  the 404 once OpenRouter retires the model on 2026-10-05, a 429, a failure
+  event, an empty stream, or no answer text within four seconds) goes, the
+  same turn, to `google/gemini-3.8-flash` through the Vercel AI Gateway, the
+  lane the Coder terminal's chat used (`crates/coder/src/generate.rs`,
+  `FallbackDoor`), so the model going away needs no deploy. The journal logs
+  each fallback (`door stealth/space-bunny-alpha missed its first words
+  after … ms (door: …); google/gemini-3.8-flash takes the turn`) and every
+  answer (`job … answered in … ms, … chars, by <model>`), and each result's
+  `model` names the model that wrote it. `CODER_WORKER_PRIMARY` names
+  another OpenRouter model or `off`; unset, the primary is Space Bunny Alpha
+  whenever `OPENROUTER_API_KEY` is set, so the deployed environment file
+  needed no change. OpenRouter's notice for the model says its anonymous
+  provider may keep prompts and completions but does not train on them;
+  the privacy answer (`meta.privacy`, `meta.data_retention`) says so, and
+  "What model is this?" (`meta.model`) names the model answering now,
+  Gemini while the primary's last turn failed before its first words. The
+  keys are in the worker's environment file on its host and nowhere else.
+  No model API key ships in the app.
 - **First response and the chat router.** The worker acknowledges every
   admitted turn with `status: processing` at once. With `TYPESAFE_API_KEY`
   set, a turn that asks gets one Jev (System One) judgment run beside the
@@ -151,14 +173,16 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   post-check's banned words and raw-id count (#9944), and when the
   records, the model's first words, and the end arrived. A grounded news
   reply opens with the bank's `gym.news.lead` line, sent with the news
-  card as soon as the records are judged, and runs on Gemini 2.5 Flash
-  with its reasoning off through the same gateway and key (#9950);
+  card as soon as the records are judged, and runs on the primary first
+  and then on Gemini 2.5 Flash with its reasoning off through the same
+  gateway and key (#9950, #10109);
   `CODER_GYM_NEWS_MODEL` names another model, and `off` keeps news on the
   chat model. The log says `gym news google/gemini-2.5-flash with its
-  reasoning off`. A request may name
+  reasoning off`, or with a primary `gym news stealth/space-bunny-alpha
+  first, then google/gemini-2.5-flash with its reasoning off`. A request may name
   `chat-router-v1` (build 20) or `chat-router-v2`; both are routed with
   v2. The authoring interview (`eval.author`, `coder::eval_author`) runs
-  on the worker's door and judge; without them it answers with the
+  on the worker's door (the primary first) and judge; without them it answers with the
   bank's `eval.author.soon`.
 - **CLI route.** With a judge, the worker holds `coder::cli_route`'s
   `CommandRoute` as its CLI seam, filling free text through its own door;

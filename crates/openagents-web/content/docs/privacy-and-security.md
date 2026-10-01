@@ -19,7 +19,11 @@
   OpenAgents relay that carries them sees only the encrypted form and
   keeps nothing.
 - To answer, our chat service sends the conversation to the AI models it
-  uses.
+  uses: first Space Bunny Alpha, an anonymous preview model reached through
+  OpenRouter, whose provider may keep what it is sent and its replies,
+  though not to train on them; and Google's Gemini 3.8 Flash through the
+  Vercel AI Gateway when Space Bunny Alpha can't answer. Our chat service
+  itself stores no message text.
 
 The full details are in the [Privacy Policy](/privacy) and the
 [Terms of Service](/terms).

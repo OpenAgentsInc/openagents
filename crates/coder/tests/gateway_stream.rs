@@ -19,7 +19,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use coder::generate::{Generate, GenerateError, Lane, Message, Patience, ResponsesDoor, Role};
+use coder::generate::{
+    FallbackDoor, Generate, GenerateError, Lane, Message, Meta, Patience, ResponsesDoor, Role,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -28,6 +30,9 @@ const GEMINI: &str = include_str!("../fixtures/gateway/google-gemini-3.8-flash.s
 
 /// The `glm` lane's recorded stream.
 const GLM: &str = include_str!("../fixtures/gateway/zai-glm-5.3-flash.sse");
+
+/// The `space-bunny` lane's recorded stream, from OpenRouter.
+const SPACE_BUNNY: &str = include_str!("../fixtures/gateway/stealth-space-bunny-alpha.sse");
 
 /// Waits short enough to spend in a test, in the proportions the real ones
 /// hold: the headers wait is the short one, the silence between events is
@@ -56,6 +61,10 @@ enum Stub {
     Truncated,
     /// Send keepalive events forever, never completing.
     Endless,
+    /// Answer with this HTTP error status and a short JSON body, as
+    /// OpenRouter does for a model it no longer serves (404) or a rate
+    /// limit (429).
+    Status(u16),
 }
 
 /// A stub door on loopback. Dropping it stops the server.
@@ -125,6 +134,17 @@ async fn answer(mut socket: TcpStream, stub: Stub) {
         .unwrap_or(0);
     let mut body = vec![0u8; length];
     let _ = socket.read_exact(&mut body).await;
+    if let Stub::Status(status) = stub {
+        let body = format!("{{\"error\":{{\"code\":{status},\"message\":\"stub\"}}}}");
+        let answer = format!(
+            "HTTP/1.1 {status} Stub\r\ncontent-type: application/json\r\n\
+             content-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = socket.write_all(answer.as_bytes()).await;
+        let _ = socket.shutdown().await;
+        return;
+    }
     if matches!(stub, Stub::Deaf) {
         // Hold the connection open and say nothing. This is the failure
         // that used to have no bound at all.
@@ -173,6 +193,7 @@ async fn answer(mut socket: TcpStream, stub: Stub) {
             }
         }
         Stub::Mute | Stub::Deaf => forever(socket).await,
+        Stub::Status(_) => {}
     }
 }
 
@@ -216,6 +237,12 @@ async fn both_lanes_read_through_one_reader() {
     for (lane, recording, answer, output_tokens) in [
         (Lane::Gemini, GEMINI, "One\nTwo\nThree\nFour\nFive", 130),
         (Lane::Glm, GLM, "one\ntwo\nthree\nfour\nfive", 45),
+        (
+            Lane::SpaceBunny,
+            SPACE_BUNNY,
+            "one\ntwo\nthree\nfour\nfive",
+            53,
+        ),
     ] {
         let server = Server::start(Stub::Whole(recording)).await;
         let (seen, outcome) = ask(&server.door(lane.model())).await;
@@ -411,4 +438,135 @@ fn the_bounds_are_thirty_seconds_two_minutes_and_a_second() {
     assert_eq!(patience.whole, Duration::from_secs(600));
     assert_eq!(patience.retry_wait, Duration::from_secs(1));
     assert_eq!(coder::generate::CONNECT_TIMEOUT, Duration::from_secs(10));
+}
+
+/// A primary on `primary` in front of a fallback on `fallback`, with a
+/// first-word wait short enough to spend in a test.
+fn ordered(primary: &Server, fallback: &Server) -> FallbackDoor {
+    FallbackDoor::new(
+        primary.door(Lane::SpaceBunny.model()),
+        fallback.door(Lane::Gemini.model()),
+    )
+    .first_word(Duration::from_millis(300))
+}
+
+/// Runs a turn through a fallback door: the deltas, the outcome, and the
+/// model the door named as the writer.
+async fn ask_ordered(
+    door: &FallbackDoor,
+) -> (
+    String,
+    Result<(String, Option<u64>), GenerateError>,
+    Option<String>,
+) {
+    let mut seen = String::new();
+    let mut named = None;
+    let answered = door
+        .generate(
+            "you are terse",
+            &turn(),
+            &mut |delta| seen.push_str(delta),
+            &mut |meta| {
+                if let Meta::Model(model) = meta {
+                    named = Some(model);
+                }
+            },
+        )
+        .await;
+    let outcome = answered.map(|(text, usage)| (text, usage.map(|usage| usage.output_tokens)));
+    (seen, outcome, named)
+}
+
+/// The primary answers, names itself, and the fallback is never asked.
+#[tokio::test]
+async fn a_primary_that_answers_names_itself() {
+    let primary = Server::start(Stub::Whole(SPACE_BUNNY)).await;
+    let fallback = Server::start(Stub::Whole(GEMINI)).await;
+    let door = ordered(&primary, &fallback);
+    let (seen, outcome, named) = ask_ordered(&door).await;
+    let (text, _) = outcome.expect("the primary answers");
+    assert_eq!(text, "one\ntwo\nthree\nfour\nfive");
+    assert_eq!(seen, text);
+    assert_eq!(named.as_deref(), Some(Lane::SpaceBunny.model()));
+    assert_eq!(fallback.asked(), 0);
+    assert!(!door.primary_down());
+    assert_eq!(door.answering().model, Lane::SpaceBunny.model());
+}
+
+/// A model OpenRouter no longer serves (404, as Space Bunny Alpha will be
+/// after 2026-10-05) and a rate limit (429) both hand the same turn to the
+/// fallback, which names itself; the next turn asks the primary again.
+#[tokio::test]
+async fn an_error_status_before_the_first_word_falls_back() {
+    for status in [404, 429, 500] {
+        let primary = Server::start(Stub::Status(status)).await;
+        let fallback = Server::start(Stub::Whole(GEMINI)).await;
+        let door = ordered(&primary, &fallback);
+        let (seen, outcome, named) = ask_ordered(&door).await;
+        let (text, _) = outcome.unwrap_or_else(|error| panic!("{status}: {error}"));
+        assert_eq!(text, "One\nTwo\nThree\nFour\nFive", "{status}");
+        assert_eq!(seen, text, "{status}: only the fallback's words were shown");
+        assert_eq!(named.as_deref(), Some(Lane::Gemini.model()), "{status}");
+        assert_eq!((primary.asked(), fallback.asked()), (1, 1), "{status}");
+        assert!(door.primary_down(), "{status}");
+        assert_eq!(door.answering().model, Lane::Gemini.model());
+
+        // Per turn: the next one asks the primary first again.
+        let _ = ask_ordered(&door).await;
+        assert_eq!(primary.asked(), 2, "{status}");
+    }
+}
+
+/// A primary that takes the request and sends no answer text within the
+/// first-word wait loses the turn to the fallback, whether it sent no
+/// headers at all or headers and then nothing.
+#[tokio::test]
+async fn a_primary_silent_past_the_first_word_wait_falls_back() {
+    for stub in [Stub::Deaf, Stub::Mute] {
+        let primary = Server::start(stub).await;
+        let fallback = Server::start(Stub::Whole(GEMINI)).await;
+        let door = ordered(&primary, &fallback);
+        let started = Instant::now();
+        let (_, outcome, named) = ask_ordered(&door).await;
+        outcome.expect("the fallback answers");
+        assert_eq!(named.as_deref(), Some(Lane::Gemini.model()));
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "the fallback took over after the first-word wait, not the door's own bounds: {:?}",
+            started.elapsed()
+        );
+        assert!(door.primary_down());
+    }
+}
+
+/// A primary that fails after its first words reached the caller has
+/// shown part of an answer: the failure is the turn's, and the fallback is
+/// not asked to repeat it.
+#[tokio::test]
+async fn a_primary_that_fails_after_its_first_words_is_not_redone() {
+    let primary = Server::start(Stub::Halfway).await;
+    let fallback = Server::start(Stub::Whole(GEMINI)).await;
+    let door = ordered(&primary, &fallback);
+    let (seen, outcome, named) = ask_ordered(&door).await;
+    let error = outcome.expect_err("a primary that stopped mid-answer fails the turn");
+    assert!(!seen.is_empty(), "the caller saw the primary's first words");
+    assert!(
+        matches!(error, GenerateError::Quiet { heard: true, .. }),
+        "{error}"
+    );
+    assert_eq!(named, None);
+    assert_eq!(fallback.asked(), 0);
+    assert!(!door.primary_down());
+}
+
+/// Both doors failing is the fallback's failure, as a single door's would
+/// be.
+#[tokio::test]
+async fn both_doors_failing_is_the_fallbacks_failure() {
+    let primary = Server::start(Stub::Status(404)).await;
+    let fallback = Server::start(Stub::Status(503)).await;
+    let (_, outcome, named) = ask_ordered(&ordered(&primary, &fallback)).await;
+    let error = outcome.expect_err("nothing answered");
+    assert!(matches!(error, GenerateError::Status(503, _)), "{error}");
+    assert_eq!(named, None);
 }
