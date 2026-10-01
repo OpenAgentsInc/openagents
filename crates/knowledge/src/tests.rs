@@ -516,3 +516,62 @@ async fn the_cli_adds_admits_measures_and_withdraws_an_entry() {
     assert_eq!(kb(&args(&["review", "--dir", d, "--runs", r])).await, 0);
     assert_eq!(kb(&args(&["publish", "--dir", d])).await, 2);
 }
+
+/// The desktop's route map carries a snapshot of this repository's
+/// knowledge (`crates/openagents-chat-app/src/route_map/sources.json`,
+/// written by `crates/coder/tests/route_map_sources.rs`). A change here
+/// that leaves the snapshot behind fails this crate's own tests, not only
+/// Coder's, so a new or edited entry can't land with a stale map (#10090:
+/// #10086 added three entries and the map's check failed on main).
+#[test]
+fn the_route_map_snapshot_lists_this_knowledge() {
+    use serde_json::{Value, json};
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let snapshot: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            root.join("crates/openagents-chat-app/src/route_map/sources.json"),
+        )
+        .expect("the route map snapshot is committed"),
+    )
+    .expect("the route map snapshot is JSON");
+    let status = |status: Status| match status {
+        Status::Candidate => "candidate",
+        Status::Admitted => "admitted",
+        Status::Withdrawn => "withdrawn",
+    };
+    let (mut product, problems) = Base::read(&root.join("knowledge").join(crate::product::DIR));
+    assert!(problems.is_empty(), "{problems:?}");
+    product.sort_by(|a, b| a.id.cmp(&b.id));
+    let product: Vec<Value> = product
+        .iter()
+        .map(|entry| {
+            json!({
+                "id": entry.id,
+                "title": entry.title,
+                "path": format!("knowledge/{}/{}.md", crate::product::DIR, entry.id),
+                "status": status(entry.status),
+                "tags": entry.tags,
+                "answer": entry.answer.is_some(),
+            })
+        })
+        .collect();
+    let (coding, problems) = Base::read(&root.join("knowledge"));
+    assert!(problems.is_empty(), "{problems:?}");
+    let count = |wanted: Status| coding.iter().filter(|e| e.status == wanted).count();
+    let stale = "crates/openagents-chat-app/src/route_map/sources.json is stale for this \
+                 knowledge; rewrite it with ROUTE_MAP_WRITE=1 cargo test -p coder --test \
+                 route_map_sources";
+    assert_eq!(snapshot["knowledge"]["product"], json!(product), "{stale}");
+    let committed = &snapshot["knowledge"]["coding"];
+    assert_eq!(committed["entries"], json!(coding.len()), "{stale}");
+    assert_eq!(
+        committed["admitted"],
+        json!(count(Status::Admitted)),
+        "{stale}"
+    );
+    assert_eq!(
+        committed["candidates"],
+        json!(count(Status::Candidate)),
+        "{stale}"
+    );
+}

@@ -173,6 +173,35 @@ pub const TOOL_TAG: &str = "tool";
 /// The catalog's default tool (`CHK-07`): first in [`Records::tools`].
 pub const DEFAULT_TOOL: &str = "openagents.tool-project-map";
 
+/// The hosted runner's catalog, compiled in: the plugin directories the
+/// Gym tests, in the order the Gym lists them (#10090). The same file
+/// `deploy/eval-runner/install.sh` turns into the runner's catalog, so the
+/// chat's plugin list is the runner's.
+pub const CATALOG_SOURCE: &str = include_str!("../../../deploy/eval-runner/catalog");
+
+/// The catalog file's repository path.
+pub const CATALOG_PATH: &str = "deploy/eval-runner/catalog";
+
+/// The plugin directories [`CATALOG_SOURCE`] lists, in its order
+/// (`crates/plugin-repo-map`, …): its lines that are neither blank nor
+/// comments.
+#[must_use]
+pub fn catalog_dirs() -> Vec<&'static str> {
+    CATALOG_SOURCE
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect()
+}
+
+/// A catalog directory's component slug, the tag its tool note carries:
+/// `crates/plugin-repo-map` is `repo-map`.
+#[must_use]
+pub fn catalog_slug(dir: &str) -> &str {
+    let name = dir.rsplit('/').next().unwrap_or(dir);
+    name.strip_prefix("plugin-").unwrap_or(name)
+}
+
 /// The changelog's path, which a build item cites.
 pub const CHANGELOG_PATH: &str = "crates/openagents-mobile/src/account.rs";
 
@@ -258,8 +287,10 @@ fn path_of(entry: &knowledge::Entry) -> String {
     format!("knowledge/{}/{}.md", knowledge::product::DIR, entry.id)
 }
 
-/// The tool catalog: the corpus's entries tagged `tool`, the default tool
-/// first, then by id.
+/// The tool catalog: the corpus's entries tagged `tool`, in the order of
+/// the hosted runner's catalog ([`catalog_dirs`], whose first is the
+/// default tool), each matched by its component slug among the note's
+/// tags; a note the catalog doesn't list comes after, by id.
 #[must_use]
 pub fn tools(corpus: &Corpus) -> Vec<Tool> {
     let mut tools: Vec<Tool> = corpus
@@ -280,11 +311,15 @@ pub fn tools(corpus: &Corpus) -> Vec<Tool> {
                 .collect(),
         })
         .collect();
-    tools.sort_by(|a, b| {
-        (a.id != DEFAULT_TOOL)
-            .cmp(&(b.id != DEFAULT_TOOL))
-            .then(a.id.cmp(&b.id))
-    });
+    let dirs = catalog_dirs();
+    let place = |tool: &Tool| {
+        let listed = dirs.iter().position(|dir| {
+            let slug = catalog_slug(dir);
+            tool.slugs.iter().any(|tag| tag == slug)
+        });
+        (tool.id != DEFAULT_TOOL, listed.unwrap_or(usize::MAX))
+    };
+    tools.sort_by(|a, b| place(a).cmp(&place(b)).then(a.id.cmp(&b.id)));
     tools
 }
 

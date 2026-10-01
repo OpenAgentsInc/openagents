@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "06f04cc50bea5f7b606d36970c81d8850b7a0c83012b43dd6a1c8c39fbed7093",
+  "digest": "8bceafd9a733b85f63fcc8075407e82d07736747466bb47ed1f01cd2d3b57d47",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -15576,6 +15576,312 @@
       },
       "truth": "general",
       "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can you open the map for me",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "can you open the map for me"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "pull up the map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "pull up the map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-019",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "take me to the map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "take me to the map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/map-near-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "test the project map plugin",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "test the project map plugin"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/map-near-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "test project map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "test project map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/map-near-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what does the project map plugin do",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what does the project map plugin do"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/plugins-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "Which plugins are in the Gym?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "Which plugins are in the Gym?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/plugins-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "list the plugins in the gym",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "list the plugins in the gym"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/plugins-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "What plugins can I test?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "What plugins can I test?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/plugins-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "which plugin should I test first",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "which plugin should I test first"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/plugins-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "What does the Dependency check plugin do?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "What does the Dependency check plugin do?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/plugins-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's dependency check",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's dependency check"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/plugins-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what does explain this error do",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what does explain this error do"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/plugins-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is the release notes plugin",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is the release notes plugin"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/plugins-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "test dependency check on coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "test dependency check on coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/plugins-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run the tests for explain this error",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run the tests for explain this error"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/plugins-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is OWASP dependency-check and how do I run it in maven",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is OWASP dependency-check and how do I run it in maven"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }
   ]

@@ -485,8 +485,24 @@ pub fn tool_glyph(name: &str) -> &'static str {
     }
 }
 
+/// The hosted runner's catalog, compiled in: the plugin directories the
+/// Gym tests, one per line, in [`CATALOG`]'s order (`crates/coder/tests/plugin_catalog.rs`
+/// holds the two together, #10090).
+const CATALOG_SOURCE: &str = include_str!("../../../deploy/eval-runner/catalog");
+
+/// Each catalog plugin's directory in this repository, in [`CATALOG`]'s
+/// order: [`CATALOG_SOURCE`]'s lines that are neither blank nor comments.
+#[must_use]
+pub fn catalog_dirs() -> Vec<&'static str> {
+    CATALOG_SOURCE
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect()
+}
+
 /// The catalog's tools, as chips name them: the three evidence guests,
-/// then the example plugins.
+/// then the example plugins, in the hosted runner's order.
 pub const CATALOG: &[&str] = &[
     "Project map",
     "Code finder",

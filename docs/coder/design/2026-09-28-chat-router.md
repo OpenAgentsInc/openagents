@@ -1249,8 +1249,8 @@ judgment recorded under v1 still reads) and six more, each with a
 | `eval.credit` | What their work earned, how XP from tests works (`CHAT-14`) | A bank answer (`eval.credit.how`, `eval.credit.mine`); the phone draws `CARD-07` from its own ledger |
 
 One more question joins the request when the Gym seam lists a tool
-catalog: `tool`, a Choice over the tool notes (`knowledge/openagents/openagents.tool-*.md`:
-Project map, Code finder, Test reader) plus `none`, each option the tool's
+catalog: `tool`, a Choice over the tool notes (`knowledge/openagents/openagents.tool-*.md`,
+one per plugin in `deploy/eval-runner/catalog`, in its order, #10090) plus `none`, each option the tool's
 name and plain line. A request may name `chat-router-v1` (build 20) or
 `chat-router-v2`; both are routed with v2, and the judgment says
 `chat-router-v2`.
@@ -1405,7 +1405,7 @@ code from three lists and deduplicated by id:
 | Source | Entries | Reach |
 | --- | --- | --- |
 | Built-ins (`capability::builtin`) | `chat.knowledge` (the product and codebase knowledge bases), `chat.coder` (Coder dispatch), `chat.cli` (command offers), `chat.wallet`, `chat.account`, `chat.gym` (test, make, check, credit), each with the route that serves it | Chat |
-| The catalog (`capability::of_tool`) | The Gym seam's tool notes (`knowledge/openagents/openagents.tool-*.md`): Project map, Code finder, Test reader; the kind from the note's tags, else a plugin | Coder run |
+| The catalog (`capability::of_tool`) | The Gym seam's tool notes (`knowledge/openagents/openagents.tool-*.md`), one per plugin in `deploy/eval-runner/catalog`; the kind from the note's tags, else a plugin | Coder run |
 | Adoptions (`capability::of_adoption`) | What the newest `coder-defaults` release admitted: `gym_kb::adoption_records` reads the `3184` the package root signed (`packages/coder-defaults/package.json`), its manifest, and each `openagents.eval-admission.v1` admission the manifest's provenance cites, fetched from `packages/coder-defaults/documents/` by digest and checked against it and its issuer; one record per `admit`, matched to a catalog tool by slug. The worker asks the relay for the root's releases beside the results and starter test sets (`gym_kb::defaults_filter`), and `CODER_DEFAULTS_DOCUMENTS=off` reads none | Coder run |
 
 Each entry has an id, a kind (`program`, `plugin`, `skill`, `knowledge`),
@@ -1741,3 +1741,38 @@ Implemented in [#10085](https://github.com/OpenAgentsInc/openagents/issues/10085
 - **The labeled set** adds 22 rows tagged `map` (14 asking to see the map,
   8 near misses), and calibration is refit for the moved bank. Numbers:
   [the route map measurement](../measurements/2026-10-01-route-map-route.md).
+
+## The plugin catalog in the chat, and "the map" (2026-10-01)
+
+Implemented in [#10090](https://github.com/OpenAgentsInc/openagents/issues/10090).
+After the example plugins landed (#10086), "Which plugins are in the
+Gym?" got three of six, "What plugins can I test?" offered Project map
+alone, and "open the map" on the desktop was read as the Project map
+plugin. What changed:
+
+- **One catalog.** The hosted runner's `deploy/eval-runner/catalog` is
+  compiled into the worker (`gym_kb::CATALOG_SOURCE`), and the tool
+  catalog (`gym_kb::tools`) is ordered by it. `crates/coder/tests/plugin_catalog.rs`
+  holds every other list to it: one product note per plugin, titled and
+  summarized as its `package.json`; the app's Gym chips; the authoring
+  interview's starter catalog; and the table in `docs/plugins/README.md`.
+  `knowledge/openagents/openagents.plugin-list.md`, which answers "which
+  plugins are there", is generated from the catalog
+  (`PLUGIN_LIST_WRITE=1`). No answer or note hand-lists the plugins:
+  `gym.what_tool` (v3) and `openagents.tools` (v4) name Project map as one
+  and point to the list.
+- **`eval.run` with no plugin named** answers with the bank's
+  `eval.run.choose`, whose `{plugins}` slot (`gym.plugins`) is every
+  catalog plugin's name from the verified records, and still offers the
+  default plugin's test set and card.
+- **The route rubric** (the set's digest moves): `product.kb` covers which
+  plugins the Gym has and what one of ours does, even when its name sounds
+  like another product's (`general` names it in `not_for`); `eval.run`
+  covers which plugins can be tested; `work.dispatch` sends testing a
+  plugin whose name reads like a task to `eval.run`; `meta` covers "the
+  map" and sends testing a plugin to `eval.run`. Outside the digest, the
+  `tool` question says the map names no plugin, the `capability` question
+  reads asking to see the map as no capability request, and
+  `needs_specifics` says asking to open one of our screens names no
+  particulars. Stale hand lists of three plugins in the rubric are gone.
+- **The labeled set** adds 17 rows tagged `plugins` (`ROUTER_EVAL_ROWS=plugins`).

@@ -1,10 +1,10 @@
 ---
 id: openagents.tool-release-notes
-version: 1
+version: 2
 kind: product
 title: "Release notes"
 summary: >-
-  Turns a list of commits into grouped, user-facing release notes, each line citing its commit.
+  Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit.
 tags: [gym, tool, release-notes, plugin, extension]
 applies_when: >-
   The user asks what Release notes is or does, or whether it helps Coder.
@@ -19,6 +19,7 @@ provenance:
     - docs/plugins/examples/release-notes.md
 evidence:
   - "2026-10-01: written from the cited plugin and its example page (#10086)."
+  - "2026-10-01: version 2 (#10090) takes its summary, its one line in the chat and on its Gym card, from the plugin's `package.json`; a test keeps the two equal."
 ---
 
 ## Answer

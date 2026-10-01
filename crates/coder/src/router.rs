@@ -1402,7 +1402,7 @@ fn or_series(items: &[&str]) -> String {
 }
 
 /// `a`, `a and b`, or `a, b, and c`.
-fn series(items: &[String]) -> String {
+pub(crate) fn series(items: &[String]) -> String {
     match items {
         [] => String::new(),
         [one] => one.clone(),

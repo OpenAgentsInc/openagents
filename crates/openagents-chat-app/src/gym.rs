@@ -2971,14 +2971,19 @@ fn computer_prompt(run: &str, tool: &str, subject: &SubjectSource, runs: u64) ->
         SubjectSource::Definition(definition) => definition.id.clone(),
         SubjectSource::Draft => String::new(),
     };
+    // Each catalog plugin and its directory, from the hosted runner's
+    // catalog (#10090).
+    let where_they_are = crate::eval_cards::CATALOG
+        .iter()
+        .zip(crate::eval_cards::catalog_dirs())
+        .map(|(name, dir)| format!("{name} is {dir}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "Run the test set for the plugin {tool} ({id}) with the OpenAgents command line, and tell \
          us how it went. The person started this test from the OpenAgents app on their phone.\n\n\
-         Find the plugin's directory (Project map, Code finder, Test reader, Explain this \
-         error, Release notes, and Dependency check are crates/plugin-repo-map, \
-         crates/plugin-code-search, crates/plugin-test-report, crates/plugin-explain-error, \
-         crates/plugin-release-notes, and crates/plugin-dependency-check in the OpenAgents \
-         repository), then run:\n\n\
+         Find the plugin's directory ({where_they_are} in the OpenAgents repository), then \
+         run:\n\n\
          openagents ext eval run DIR --trust --grant write --runs {runs} --output-dir {path} \
          --json {path}/result.json\n\n\
          Don't publish anything: the person adds the result to the Gym from their phone. When it \

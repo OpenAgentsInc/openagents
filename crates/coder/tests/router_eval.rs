@@ -16,7 +16,9 @@
 //! added), `presentation` (the rows `routes-v4.json` added), or
 //! `delegation` (the delegation rows and near misses #10073 added), or
 //! `engine` (the engine requests and near misses #10076 added), or `map`
-//! (asking to see the route map, and its near misses, #10085). Every run
+//! (asking to see the route map, and its near misses, #10085), or
+//! `plugins` (which plugins there are, what one does, testing one, and
+//! "the map" against Project map, #10090). Every run
 //! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
@@ -96,6 +98,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let delegation = |row: &Row| row.tags.iter().any(|tag| tag == "delegation");
     let engine = |row: &Row| row.tags.iter().any(|tag| tag == "engine");
     let map = |row: &Row| row.tags.iter().any(|tag| tag == "map");
+    let plugins = |row: &Row| row.tags.iter().any(|tag| tag == "plugins");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
@@ -106,6 +109,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
                         && !delegation(r)
                         && !engine(r)
                         && !map(r)
+                        && !plugins(r)
                 })
                 .collect(),
             format!("{split}-v1-rows"),
@@ -117,6 +121,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "map" => (
             rows.into_iter().filter(|r| map(r)).collect(),
             format!("{split}-map-rows"),
+        ),
+        "plugins" => (
+            rows.into_iter().filter(|r| plugins(r)).collect(),
+            format!("{split}-plugins-rows"),
         ),
         "gym" => (
             rows.into_iter().filter(|r| gym(r)).collect(),

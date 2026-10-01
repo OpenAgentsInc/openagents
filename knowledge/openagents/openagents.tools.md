@@ -1,6 +1,6 @@
 ---
 id: openagents.tools
-version: 3
+version: 4
 kind: product
 title: "Plugins"
 summary: >-
@@ -10,14 +10,14 @@ summary: >-
 tags: [gym, tools, extensions, plugins]
 applies_when: >-
   The user asks what a plugin is (or a tool, capability, or extension), what
-  a plugin contains, which plugins there are, or how plugins relate to Coder
+  a plugin contains, or how plugins relate to Coder
   and the Gym.
 answer: >-
   A plugin is anything you add to OpenAgents. It can contain skills
   (instructions Coder reads), workflows (typed step-by-step programs),
   knowledge (cited reference entries), Wasm (small sandboxed code), and the
-  tests that show whether it helps. Project map, Code finder, and Test reader
-  are plugins. In the Gym we test a plugin by running the same tests with it
+  tests that show whether it helps. Project map is
+  one; ask us which plugins the Gym has to see them all. In the Gym we test a plugin by running the same tests with it
   and without it, so you can see whether Coder does better with it.
 status: admitted
 author: openagents
@@ -28,15 +28,17 @@ provenance:
     - docs/extensions/evaluation.md
     - docs/product/2026-09-28-app-wireframe.md
     - docs/extensions/plugins.md
+    - knowledge/openagents/openagents.plugin-list.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
   - "2026-09-29: version 2 (#9958) says capability, the on-screen word decided in #9957; the note's id and tags stay."
   - "2026-10-01: version 3 (#10087) says plugin, the owner's one word for anything a person adds, and names its parts from docs/plugins/README.md; the note's id and tags stay."
+  - "2026-10-01: version 4 (#10090) names no hand-kept list of plugins: `openagents.plugin-list`, generated from the hosted runner's catalog, lists them all."
 ---
 
 ## Answer
 
-A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map, Code finder, and Test reader are plugins. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether Coder does better with it.
+A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map is one; ask us which plugins the Gym has to see them all. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether Coder does better with it.
 
 ## Details
 
@@ -51,3 +53,4 @@ A plugin is anything you add to OpenAgents. It can contain skills (instructions 
 - `docs/extensions/evaluation.md`
 - `docs/product/2026-09-28-app-wireframe.md`
 - `docs/extensions/plugins.md`
+- `knowledge/openagents/openagents.plugin-list.md`

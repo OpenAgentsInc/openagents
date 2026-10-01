@@ -27,7 +27,9 @@
 #      presses Run Coder as the phone does.
 #   4. The gate's own scenarios, run with the build's binaries outside the
 #      window: explain-error runs the Explain this error plugin on a planted
-#      failure through `openagents plugin run`.
+#      failure through `openagents plugin run`; plugins-chat asks the live
+#      chat "which plugins can I test?" through `openagents chat --scratch`
+#      and checks the reply names every plugin in deploy/eval-runner/catalog.
 #   5. A PASS/FAIL line per scenario, a summary table, and the evidence
 #      directory. Exit status 1 when any scenario fails, 2 on a setup error.
 #
@@ -91,7 +93,7 @@ say() { echo "==> $*" >&2; }
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
 desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
-gate_scenarios="explain-error"
+gate_scenarios="explain-error plugins-chat"
 scenarios="$desktop_scenarios $gate_scenarios"
 
 while [ $# -gt 0 ]; do
@@ -448,9 +450,51 @@ PY
     record explain-error FAIL "$verdict (run.json)"
   fi
 }
+# plugins-chat: the chat knows every plugin in the Gym (#10090). The
+# build's `openagents chat --scratch` (a throwaway identity) asks the live
+# chat worker "which plugins can I test?", and the reply must name every
+# plugin deploy/eval-runner/catalog lists, by its package.json name, the
+# catalog the hosted runner and the Gym's chips use.
+plugins_chat() {
+  local dir="$evidence/plugins-chat"
+  mkdir -p "$dir"
+  "$openagents" chat --scratch --no-run --json "which plugins can I test?" \
+    > "$dir/chat.ndjson" 2> "$dir/chat.err" || {
+    record plugins-chat FAIL "openagents chat failed: $(tail -1 "$dir/chat.err")"
+    return
+  }
+  local verdict
+  verdict="$(python3 - "$dir/chat.ndjson" "$root" <<'PY'
+import json, os, sys
+events = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+root = sys.argv[2]
+names = []
+for line in open(os.path.join(root, "deploy/eval-runner/catalog")):
+    line = line.strip()
+    if line and not line.startswith("#"):
+        names.append(json.load(open(os.path.join(root, line, "package.json")))["name"])
+result = next((e for e in events if e.get("event") == "result"), None)
+if result is None:
+    print("no result (chat.ndjson)")
+    sys.exit()
+text = result.get("text", "")
+route = next((e.get("route") for e in events if e.get("event") == "route"), None)
+missing = [name for name in names if name.lower() not in text.lower()]
+if missing:
+    print(f"route {route}: the reply leaves out {', '.join(missing)}: {text!r}")
+else:
+    print(f"ok route {route}, all {len(names)} named")
+PY
+)"
+  case "$verdict" in
+    ok*) record plugins-chat PASS "${verdict#ok } (chat.ndjson)" ;;
+    *) record plugins-chat FAIL "$verdict" ;;
+  esac
+}
 for name in $gate_names; do
   case "$name" in
     explain-error) explain_error ;;
+    plugins-chat) plugins_chat ;;
   esac
 done
 

@@ -51,6 +51,7 @@ pub const FACT_KEYS: &[&str] = &[
     "worker.recipients",
     "gym.tool",
     "gym.tests",
+    "gym.plugins",
     "capability.name",
     "capability.line",
     "deck.title",

@@ -578,12 +578,12 @@ followups = ["gym.what_tool", "eval.credit.how"]
 
 [[answer]]
 id = "gym.what_tool"
-version = 2
+version = 3
 routes = ["product.kb", "general"]
 when = "The user asks what a plugin is (or a tool, capability, or extension), what a plugin contains, or which kinds of plugins there are; not what one named plugin does"
 not_for = "What one named plugin such as Project map does, which our notes answer"
 examples = ["what is a plugin", "What's a plugin?", "what is a tool in the gym"]
-text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map, Code finder, and Test reader are plugins. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
+text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map is one; ask us which plugins the Gym has to see them all. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
 chip = "What's a plugin?"
 sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md", "docs/plugins/README.md"]
 followups = ["gym.what_test"]
@@ -630,6 +630,16 @@ when = "Picked from the Gym's records: the user wants to test a plugin that has 
 text = "We'd test {tool} with its published test set: {tests} tests, each run with {tool} and without it, so you can see whether Coder does better. Nothing runs until you start it."
 facts = { tool = "gym.tool", tests = "gym.tests" }
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+
+[[answer]]
+id = "eval.run.choose"
+version = 1
+routes = ["eval.run"]
+records = true
+when = "Picked from the Gym's records: the user wants to test a plugin, or asks which plugins they can test, without naming one, and the default plugin has a published test set"
+text = "You can test {plugins} here. Each plugin's tests run with it and without it, so you can see whether Coder does better. We'd start with {tool}: {tests} tests. Nothing runs until you start it, or name another plugin to test it instead."
+facts = { plugins = "gym.plugins", tool = "gym.tool", tests = "gym.tests" }
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs", "deploy/eval-runner/catalog"]
 
 [[answer]]
 id = "eval.run.no_tests"

@@ -72,14 +72,16 @@ pub fn route(route: RouteId) -> Value {
              we are open source, what Coder or Jev is, and how we work with GitHub or \
              connected computers in general, including asking us to connect, sign in to, or \
              link GitHub, or asking whether we can do a kind of work for them; and asking to \
-             see how we route or handle messages or how we are put together: our route map, \
-             our routes, what serves each, our plugins and engines, or where we are weak",
+             see how we route or handle messages or how we are put together: our route map \
+             (also just \"the map\"), our routes, what serves each, our plugins and engines, \
+             or where we are weak",
             Some(
                 "Handing us a concrete task in the user's own repository, or asking us to \
                  delegate to Coder or run it now, even as a test (work.dispatch); how to \
                  use one app feature step by step (product.kb or account); asking us to do \
                  something now, such as book, send, or read their accounts, rather than whether \
-                 we can (capability.missing)",
+                 we can (capability.missing); testing or trying one of our plugins, such as \
+                 Project map (eval.run)",
             ),
             &[
                 "who r u",
@@ -109,7 +111,8 @@ pub fn route(route: RouteId) -> Value {
              without the user's own files or repositories",
             Some(
                 "Facts about OpenAgents or us (product.kb, meta), including what a test, a test \
-                 set, or a tool is in the Gym (product.kb); work on the user's own code \
+                 set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
+                 plugins does even when its name sounds like another product's (product.kb); work on the user's own code \
                  (work.dispatch); asking us to do, fetch, or reach something now, such as a \
                  booking, their email, a site, a device, or live data (capability.missing)",
             ),
@@ -125,14 +128,17 @@ pub fn route(route: RouteId) -> Value {
             "How to do something in the OpenAgents app or with OpenAgents services, or what an \
              OpenAgents feature is: connecting a phone or a computer and what connecting \
              needs, such as whether Tailscale or another tool is required, the Gym, the Grid, \
-             the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP",
+             the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which \
+             plugins the Gym has or what one of our plugins does, even when its name sounds \
+             like another product's",
             Some(
                 "The wallet (wallet); account settings (account); questions about us as an \
                  assistant (meta); how the OpenAgents code implements something (codebase.kb); \
                  a concept not specific to OpenAgents, or what another company's product is or \
                  costs (general); what's new in the Gym \
-                 (gym.news); testing, making, or checking a tool, a result, or credit \
-                 (eval.run, eval.author, eval.check, eval.result, eval.credit)",
+                 (gym.news); which plugins they can test or should test first (eval.run); \
+                 testing, making, or checking a plugin, a result, or credit (eval.run, \
+                 eval.author, eval.check, eval.result, eval.credit)",
             ),
             &[
                 "how do I connect my Mac",
@@ -147,6 +153,8 @@ pub fn route(route: RouteId) -> Value {
                 "What's a tool?",
                 "what is a tool in the gym",
                 "what's code finder",
+                "what's dependency check",
+                "what does explain this error do",
             ],
         ),
         RouteId::CodebaseKb => option(
@@ -177,10 +185,11 @@ pub fn route(route: RouteId) -> Value {
                  work on GitHub for them, without handing us the task itself; asking us to \
                  connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking \
                  their computers, sessions, XP, or other things an `openagents` command reads \
-                 (cli); testing a Gym tool on Coder (eval.run); making a tool or writing a \
-                 test set for a tool with us (eval.author), including tests for a Gym tool \
-                 such as Project map, Code finder, or Test reader, which are Coder's tools, \
-                 not the user's code; reaching a service, site, account, or device outside \
+                 (cli); testing one of our Gym plugins on Coder or running its tests, even \
+                 when the plugin's name reads like a task, such as Explain this error or \
+                 Dependency check (eval.run); making a plugin or writing a test set for a \
+                 plugin with us (eval.author), including tests for one of our Gym plugins, \
+                 which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside \
                  their code and computer, such as email, a calendar, or a booking \
                  (capability.missing)",
             ),
@@ -297,19 +306,22 @@ pub fn route(route: RouteId) -> Value {
             ],
         ),
         RouteId::EvalRun => option(
-            "The user wants to test a tool on Coder (run a tool's test set with the tool and \
-             without it), try a tool, or start a test, or asks which tool to test or what to \
-             do next in the Gym",
+            "The user wants to test one of our plugins on Coder (run a plugin's test set with \
+             the plugin and without it), try one, or start a test, or asks which plugin to \
+             test, which plugins they can test, or what to do next in the Gym",
             Some(
                 "Running their own project's tests or test suite, or a test or trial \
                  delegation to Coder itself, which names no Gym tool (work.dispatch); writing a \
                  new test set or making a tool (eval.author); checking another trainer's \
-                 published result (eval.check)",
+                 published result (eval.check); asking to open or see the map, our route map \
+                 (meta), which names no plugin",
             ),
             &[
                 "Test Project map on Coder",
                 "Which tool should I try?",
+                "which plugin should I test first",
                 "run the tests for code finder",
+                "test dependency check on coder",
                 "start the test",
                 "what should I do next in the gym?",
                 "measure whether code finder helps coder",
@@ -317,8 +329,8 @@ pub fn route(route: RouteId) -> Value {
         ),
         RouteId::EvalAuthor => option(
             "The user wants to make a new tool for Coder, or write tests or a test set for a \
-             tool with us, including a Gym tool such as Project map, Code finder, or Test \
-             reader (tools Coder uses, not the user's repository); or answers our questions in that interview: what the tool is for, \
+             tool with us, including one of our Gym plugins (plugins Coder uses, not the user's \
+             repository); or answers our questions in that interview: what the tool is for, \
              what a good run looks like, approving or changing a draft, or trying it once",
             Some(
                 "Unit tests or other code in their own repository (work.dispatch); running an \
@@ -536,7 +548,9 @@ pub fn capability_instructions() -> Value {
          usable from. Pick `none` when the message asks us to do or reach something now that \
          none of them covers. Pick `not-a-capability-request` when the message asks for no \
          capability at all: a question we can answer from what we know, an explanation, \
-         writing help, small talk, a goodbye, or a question about what we can do.",
+         writing help, small talk, a goodbye, or a question about what we can do, or asking \
+         to open or see the map of how we route messages (our route map, which is not \
+         Project map).",
     )
 }
 
@@ -602,6 +616,7 @@ pub fn capability_not_a_request() -> Value {
             "hey",
             "could you book flights if I asked you to?",
             "what's a good way to find cheap flights",
+            "open the route map",
         ],
     )
 }
@@ -614,7 +629,9 @@ pub fn tool_instructions() -> Value {
         "A tool is something Coder can use, such as Project map. Pick one when the message, or \
          what it refers to earlier in the conversation, names or clearly means it. A name counts \
          however it is written: in lower case, or inside a request to test, run, or try the \
-         tool. Pick none only when no tool is named or clearly meant.",
+         tool. Pick none only when no tool is named or clearly meant. \
+         The map, or the route map, is our screen of how we route messages, not a tool: \
+         asking to open or see the map names no tool unless it says Project map.",
     )
 }
 
@@ -751,7 +768,8 @@ pub fn specifics_instructions() -> Value {
         "Would a good reply to the user's latest message need to refer to specific things the \
          user named, beyond a fixed prepared answer?",
         "Particulars are the user's own file, repository, error, product, feature, or goal; a \
-         general question about us or a feature is not one.",
+         general question about us or a feature is not one, and neither is asking to open or \
+         see one of our screens, such as the map.",
     )
 }
 
@@ -776,6 +794,7 @@ pub fn specifics(yes: bool) -> Value {
                 "is this free",
                 "connect github",
                 "do you store my chats",
+                "open the route map",
             ],
         })
     }

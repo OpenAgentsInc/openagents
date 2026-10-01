@@ -1,15 +1,15 @@
 {
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
-  "set": "chat-router-v4@398b034caf30",
-  "bank": "chat-answers-v1@8b7c39100770",
+  "set": "chat-router-v4@4438ef518b3d",
+  "bank": "chat-answers-v1@73f988d8ec5a",
   "routes": [
     {
       "id": "meta",
       "family": "answers",
       "description": "Questions about us, the assistant itself: what model or AI this is, who we are or who built us, what we can and cannot do, what it costs, message limits, privacy, whether we remember things, whether we are open source, or what Coder or Jev is",
-      "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them; and asking to see how we route or handle messages or how we are put together: our route map, our routes, what serves each, our plugins and engines, or where we are weak",
-      "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing)",
+      "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them; and asking to see how we route or handle messages or how we are put together: our route map (also just \"the map\"), our routes, what serves each, our plugins and engines, or where we are weak",
+      "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing); testing or trying one of our plugins, such as Project map (eval.run)",
       "examples": 13
     },
     {
@@ -25,16 +25,16 @@
       "family": "answers",
       "description": "A question about the world or programming concepts, an explanation, writing help, or advice: anything answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
       "what": "A question about the world or programming concepts, an explanation, writing help, or advice: answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
-      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym (product.kb); work on the user's own code (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
+      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's (product.kb); work on the user's own code (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
       "examples": 5
     },
     {
       "id": "product.kb",
       "family": "answers",
       "description": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is (connecting a computer, the Grid, the Verse, XP, protocols such as NIP-CJ); not the wallet, and not account settings",
-      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP",
-      "not_for": "The wallet (wallet); account settings (account); questions about us as an assistant (meta); how the OpenAgents code implements something (codebase.kb); a concept not specific to OpenAgents, or what another company's product is or costs (general); what's new in the Gym (gym.news); testing, making, or checking a tool, a result, or credit (eval.run, eval.author, eval.check, eval.result, eval.credit)",
-      "examples": 12
+      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which plugins the Gym has or what one of our plugins does, even when its name sounds like another product's",
+      "not_for": "The wallet (wallet); account settings (account); questions about us as an assistant (meta); how the OpenAgents code implements something (codebase.kb); a concept not specific to OpenAgents, or what another company's product is or costs (general); what's new in the Gym (gym.news); which plugins they can test or should test first (eval.run); testing, making, or checking a plugin, a result, or credit (eval.run, eval.author, eval.check, eval.result, eval.credit)",
+      "examples": 14
     },
     {
       "id": "codebase.kb",
@@ -49,7 +49,7 @@
       "family": "work",
       "description": "The user wants work done on code, a repository, files, or a machine: change, fix, build, test, refactor, review a pull request, look through a repository, find where something is in their code, run a command, or pick up a GitHub issue",
       "what": "The user hands us a task on their own code, repository, files, or machine: change, fix, build, test, deploy, refactor, review a pull request, look through their repository, find something in their code, or pick up a GitHub issue; or asks us to delegate to Coder, hand the conversation to Coder, or run or start Coder now, including a trial or test delegation that names no task",
-      "not_for": "Asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing a Gym tool on Coder (eval.run); making a tool or writing a test set for a tool with us (eval.author), including tests for a Gym tool such as Project map, Code finder, or Test reader, which are Coder's tools, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing)",
+      "not_for": "Asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing one of our Gym plugins on Coder or running its tests, even when the plugin's name reads like a task, such as Explain this error or Dependency check (eval.run); making a plugin or writing a test set for a plugin with us (eval.author), including tests for one of our Gym plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing)",
       "examples": 10
     },
     {
@@ -112,15 +112,15 @@
       "id": "eval.run",
       "family": "gym",
       "description": "The user wants to test a tool on Coder, run a tool's test set, try a tool, or asks which tool to test or what to do next in the Gym",
-      "what": "The user wants to test a tool on Coder (run a tool's test set with the tool and without it), try a tool, or start a test, or asks which tool to test or what to do next in the Gym",
-      "not_for": "Running their own project's tests or test suite, or a test or trial delegation to Coder itself, which names no Gym tool (work.dispatch); writing a new test set or making a tool (eval.author); checking another trainer's published result (eval.check)",
-      "examples": 6
+      "what": "The user wants to test one of our plugins on Coder (run a plugin's test set with the plugin and without it), try one, or start a test, or asks which plugin to test, which plugins they can test, or what to do next in the Gym",
+      "not_for": "Running their own project's tests or test suite, or a test or trial delegation to Coder itself, which names no Gym tool (work.dispatch); writing a new test set or making a tool (eval.author); checking another trainer's published result (eval.check); asking to open or see the map, our route map (meta), which names no plugin",
+      "examples": 8
     },
     {
       "id": "eval.author",
       "family": "gym",
       "description": "The user wants to make a tool, or write tests or a test set for a tool, with us, or is answering our questions while we make one together",
-      "what": "The user wants to make a new tool for Coder, or write tests or a test set for a tool with us, including a Gym tool such as Project map, Code finder, or Test reader (tools Coder uses, not the user's repository); or answers our questions in that interview: what the tool is for, what a good run looks like, approving or changing a draft, or trying it once",
+      "what": "The user wants to make a new tool for Coder, or write tests or a test set for a tool with us, including one of our Gym plugins (plugins Coder uses, not the user's repository); or answers our questions in that interview: what the tool is for, what a good run looks like, approving or changing a draft, or trying it once",
       "not_for": "Unit tests or other code in their own repository (work.dispatch); running an existing tool's test set (eval.run)",
       "examples": 6
     },
@@ -929,7 +929,7 @@
     },
     {
       "id": "gym.what_tool",
-      "version": 2,
+      "version": 3,
       "routes": [
         "product.kb",
         "general"
@@ -1002,6 +1002,22 @@
       "sources": [
         "docs/extensions/evaluation.md",
         "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "eval.run.choose",
+      "version": 1,
+      "routes": [
+        "eval.run"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/router/gym.rs",
+        "deploy/eval-runner/catalog"
       ]
     },
     {
@@ -1309,16 +1325,16 @@
         "near_misses": 0
       },
       "eval.run": {
-        "rows": 35,
-        "held_out": 8,
-        "tune": 27,
-        "near_misses": 6
+        "rows": 41,
+        "held_out": 9,
+        "tune": 32,
+        "near_misses": 8
       },
       "general": {
-        "rows": 62,
+        "rows": 63,
         "held_out": 15,
-        "tune": 47,
-        "near_misses": 25
+        "tune": 48,
+        "near_misses": 26
       },
       "gym.news": {
         "rows": 27,
@@ -1327,9 +1343,9 @@
         "near_misses": 1
       },
       "meta": {
-        "rows": 125,
+        "rows": 128,
         "held_out": 42,
-        "tune": 83,
+        "tune": 86,
         "near_misses": 20
       },
       "presentation.open": {
@@ -1339,10 +1355,10 @@
         "near_misses": 1
       },
       "product.kb": {
-        "rows": 51,
-        "held_out": 22,
-        "tune": 29,
-        "near_misses": 20
+        "rows": 58,
+        "held_out": 23,
+        "tune": 35,
+        "near_misses": 22
       },
       "refuse": {
         "rows": 30,
@@ -1371,12 +1387,12 @@
     }
   },
   "measurement": {
-    "record": "docs/coder/measurements/2026-10-01-route-map-claims/report.json",
-    "page": "docs/coder/measurements/2026-10-01-route-map-route.md",
-    "set": "chat-router-v4@398b034caf30",
-    "rows": 254,
-    "route_accuracy": 0.905511811023622,
-    "ended_at": 1790836577,
+    "record": "docs/coder/measurements/2026-10-01-plugin-catalog-claims/report.json",
+    "page": "docs/coder/measurements/2026-10-01-plugin-catalog-route.md",
+    "set": "chat-router-v4@4438ef518b3d",
+    "rows": 256,
+    "route_accuracy": 0.90625,
+    "ended_at": 1790839594,
     "routes": {
       "account": {
         "precision": 0.7777777777777778,
@@ -1398,8 +1414,8 @@
       },
       "cli": {
         "precision": 1.0,
-        "predicted": 8,
-        "recall": 0.8888888888888888,
+        "predicted": 9,
+        "recall": 1.0,
         "labeled": 9
       },
       "codebase.kb": {
@@ -1427,22 +1443,22 @@
         "labeled": 6
       },
       "eval.credit": {
-        "precision": 0.8888888888888888,
-        "predicted": 9,
-        "recall": 0.8888888888888888,
+        "precision": 0.875,
+        "predicted": 8,
+        "recall": 0.7777777777777778,
         "labeled": 9
       },
       "eval.result": {
-        "precision": 0.875,
-        "predicted": 8,
+        "precision": 0.7777777777777778,
+        "predicted": 9,
         "recall": 1.0,
         "labeled": 7
       },
       "eval.run": {
         "precision": 1.0,
-        "predicted": 8,
+        "predicted": 9,
         "recall": 1.0,
-        "labeled": 8
+        "labeled": 9
       },
       "general": {
         "precision": 0.6521739130434783,
@@ -1469,10 +1485,10 @@
         "labeled": 9
       },
       "product.kb": {
-        "precision": 0.8095238095238095,
+        "precision": 0.8571428571428571,
         "predicted": 21,
-        "recall": 0.7727272727272727,
-        "labeled": 22
+        "recall": 0.782608695652174,
+        "labeled": 23
       },
       "refuse": {
         "precision": 1.0,
@@ -2010,6 +2026,19 @@
         "answer": true
       },
       {
+        "id": "openagents.plugin-list",
+        "title": "Which plugins there are",
+        "path": "knowledge/openagents/openagents.plugin-list.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "plugins",
+          "catalog",
+          "extension"
+        ],
+        "answer": true
+      },
+      {
         "id": "openagents.previous-chats",
         "title": "Finding earlier chats",
         "path": "knowledge/openagents/openagents.previous-chats.md",
@@ -2493,7 +2522,7 @@
       "reach": "coder",
       "route": null,
       "source": "knowledge/openagents/openagents.tool-project-map.md",
-      "line": "Shows Coder how a project is laid out before it starts: its files, languages, build files, and tests."
+      "line": "Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests."
     },
     {
       "id": "openagents.tool-code-finder",
@@ -2502,34 +2531,7 @@
       "reach": "coder",
       "route": null,
       "source": "knowledge/openagents/openagents.tool-code-finder.md",
-      "line": "Finds the lines in a project that match what Coder is looking for, grouped by file."
-    },
-    {
-      "id": "openagents.tool-dependency-check",
-      "name": "Dependency check",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-dependency-check.md",
-      "line": "Reads manifests and lockfiles offline and flags duplicate versions, loose version ranges, and licenses a declared policy doesn't allow."
-    },
-    {
-      "id": "openagents.tool-explain-error",
-      "name": "Explain this error",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-explain-error.md",
-      "line": "Reads a failing command's output, finds the file and line in the project it points at, and explains the likely cause and fix."
-    },
-    {
-      "id": "openagents.tool-release-notes",
-      "name": "Release notes",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-release-notes.md",
-      "line": "Turns a list of commits into grouped, user-facing release notes, each line citing its commit."
+      "line": "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file."
     },
     {
       "id": "openagents.tool-test-reader",
@@ -2538,7 +2540,34 @@
       "reach": "coder",
       "route": null,
       "source": "knowledge/openagents/openagents.tool-test-reader.md",
-      "line": "Reads test reports and shows Coder each failing test with its file, line, and message."
+      "line": "Reads the test reports in a project for Coder: which tests failed, where, and why."
+    },
+    {
+      "id": "openagents.tool-explain-error",
+      "name": "Explain this error",
+      "kind": "plugin",
+      "reach": "coder",
+      "route": null,
+      "source": "knowledge/openagents/openagents.tool-explain-error.md",
+      "line": "Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix."
+    },
+    {
+      "id": "openagents.tool-release-notes",
+      "name": "Release notes",
+      "kind": "plugin",
+      "reach": "coder",
+      "route": null,
+      "source": "knowledge/openagents/openagents.tool-release-notes.md",
+      "line": "Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit."
+    },
+    {
+      "id": "openagents.tool-dependency-check",
+      "name": "Dependency check",
+      "kind": "plugin",
+      "reach": "coder",
+      "route": null,
+      "source": "knowledge/openagents/openagents.tool-dependency-check.md",
+      "line": "Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow."
     }
   ],
   "engines": [
@@ -2601,6 +2630,7 @@
       ],
       "skills": [],
       "knowledge": [
+        "openagents.plugin-list",
         "openagents.tool-code-finder"
       ],
       "tests": [
@@ -2626,6 +2656,7 @@
       ],
       "skills": [],
       "knowledge": [
+        "openagents.plugin-list",
         "openagents.tool-dependency-check"
       ],
       "tests": [
@@ -2651,6 +2682,7 @@
       ],
       "skills": [],
       "knowledge": [
+        "openagents.plugin-list",
         "openagents.tool-explain-error"
       ],
       "tests": [
@@ -2691,6 +2723,7 @@
       ],
       "skills": [],
       "knowledge": [
+        "openagents.plugin-list",
         "openagents.tool-release-notes"
       ],
       "tests": [
@@ -2716,6 +2749,7 @@
       ],
       "skills": [],
       "knowledge": [
+        "openagents.plugin-list",
         "openagents.tool-project-map"
       ],
       "tests": [
@@ -2746,6 +2780,7 @@
       ],
       "skills": [],
       "knowledge": [
+        "openagents.plugin-list",
         "openagents.tool-test-reader"
       ],
       "tests": [

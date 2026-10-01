@@ -598,6 +598,14 @@ fn bank_reply(
     })
 }
 
+/// Every catalog plugin's name, in the catalog's order, as a series:
+/// "Project map, Code finder, and Test reader".
+#[must_use]
+pub fn plugins(records: &Records) -> String {
+    let names: Vec<String> = records.tools.iter().map(|tool| tool.name.clone()).collect();
+    super::series(&names)
+}
+
 /// The tool a turn is about: the `tool` reading when it names a tool in
 /// the catalog, else, for `eval.run` only, the catalog's default (the
 /// first, Project map).
@@ -650,7 +658,19 @@ pub fn reply(
                 latest,
                 subject: suite.as_ref().map(|suite| suite.subject.clone()),
             };
+            // No plugin named: every plugin in the catalog, by name, then
+            // the default's offer as before (#10090).
+            let named_one = tool.and_then(|id| records.tool(id)).is_some();
             match &suite {
+                Some(suite) if !named_one => bank_reply(
+                    bank,
+                    &named(chosen)
+                        .set("gym.tests", suite.cases.to_string())
+                        .set("gym.plugins", plugins(records)),
+                    "eval.run.choose",
+                    Some(card),
+                    Some(start(suite, "Start the test")),
+                ),
                 Some(suite) => bank_reply(
                     bank,
                     &named(chosen).set("gym.tests", suite.cases.to_string()),
@@ -1445,6 +1465,37 @@ mod tests {
             ),
             Reply::Model
         );
+    }
+
+    /// No plugin named ("What plugins can I test?"): the reply names every
+    /// plugin in the catalog, in its order, and still offers the default's
+    /// test set (#10090).
+    #[test]
+    fn no_plugin_named_lists_every_plugin_and_offers_the_default() {
+        let reply = reply(
+            RouteId::EvalRun,
+            None,
+            &grounded(records()),
+            Bank::builtin(),
+            &facts(),
+        );
+        let Reply::Bank {
+            answer,
+            text,
+            card: Some(Card::Tool { tool, .. }),
+            offer: Some(Offer::StartEval { .. }),
+        } = &reply
+        else {
+            panic!("{reply:?}");
+        };
+        assert_eq!(answer.id, "eval.run.choose");
+        assert_eq!(tool.name, "Project map");
+        assert!(
+            text.starts_with("You can test Project map and Code finder here.")
+                && text.contains("We'd start with Project map: 8 tests."),
+            "{text}"
+        );
+        assert_eq!(plugins(&records()), "Project map and Code finder");
     }
 
     /// `eval.check`: the newest result with fewer than three confirming
