@@ -1099,3 +1099,34 @@ the simulator or a device. Build 42 was uploaded with `build.sh upload` at
 2026-10-01T07:37:31-07:00 and is `VALID`; it shows `IN_BETA_TESTING` for
 Internal Testers, which receives builds without a manual assignment (the
 API refuses to add an internal group by hand).
+
+Release `c59ec00d1a` (2026-10-01 UTC,
+[#10099](https://github.com/OpenAgentsInc/openagents/issues/10099)) makes
+our two essays, [Test-Time Capabilities](../essays/2026-09-29-test-time-capabilities.md)
+and [The Return of the General Agent](../essays/2026-10-01-the-return-of-the-general-agent.md),
+part of what the chat answers from: 42 entries in `knowledge/openagents/`
+(an overview and an entry per section of each essay), and the route rubric
+now has `product.kb` cover what the essays say, so "what's a capability
+claim?" and "what's your thesis about general agents?" no longer read
+`general`. The set is `chat-router-v4@ef02faf055e7`, the bank is unchanged
+(`chat-answers-v1@43063f287db6`), `calibration-v2.json` was refit
+([measurement](../coder/measurements/2026-10-01-essays-route.md)), and
+serving keeps calibration off. It was built with `cargo zigbuild` as above,
+installed as `/opt/coder-worker/releases/c59ec00d1a` with the current
+`knowledge/openagents/` (107 files, no `._*` files; the worker logs 106
+entries) and `codebase-kb.gz` copied from `9afc94bd92`, checked with
+`--check` under the chat environment ("the configuration is safe to
+deploy"), and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file and unit did not change,
+`coder-worker.service` and `/opt/coder-worker/current` (`0757355c1d`) were
+not touched, and `9afc94bd92` stays in `releases/` for rollback (`2002526d7f`,
+the same binary with the knowledge alone, was live for a quarter of an hour
+before it). The log names `router chat-router-v4@ef02faf055e7 (Live)` and
+`product kb openagents-product@904767b561cf (106 entries)`. From a fresh key
+with `openagents chat --scratch --no-run --json`, "what is a test-time
+capability?", "what's a capability claim?", "what is a capability delta?"
+(each from its entry), "what's your thesis about general agents?", "why do
+typed decision models make routing feasible?", "what have you shown and not
+shown?", and "why did general agents stall?" all took `product.kb` and
+answered from the essays' entries; the release gate's `essays-chat`
+scenario passes against it.
