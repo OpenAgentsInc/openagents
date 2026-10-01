@@ -86,12 +86,18 @@ pub fn groups(usage: &str) -> Vec<Group> {
 }
 
 /// The groups a tool call may run: everything in the table except the
-/// resident `host`, which is a long-running server, and `mcp` itself,
-/// narrowed to `only` when that names any group.
+/// resident `host`, which is a long-running server, the full-screen
+/// `terminal`, and `mcp` itself, narrowed to `only` when that names any
+/// group.
 fn callable(usage: &str, only: &[String]) -> Vec<Group> {
     groups(usage)
         .into_iter()
-        .filter(|group| !matches!(group.name.as_str(), "host" | "mcp" | "completions"))
+        .filter(|group| {
+            !matches!(
+                group.name.as_str(),
+                "host" | "terminal" | "mcp" | "completions"
+            )
+        })
         .filter(|group| only.is_empty() || only.contains(&group.name))
         .collect()
 }

@@ -22,6 +22,8 @@ coder-connect = { path = "../coder-connect" }
 openagents-connect = { path = "../openagents-connect" }
 # `openagents chat`: the shared chat service, threads, and their ATIF export.
 openagents-chat = { path = "../openagents-chat" }
+# `openagents terminal`: OpenAgents Terminal, the full-screen chat.
+openagents-terminal = { path = "../openagents-terminal" }
 atif = { path = "../atif" }
 coder-host = { path = "../coder-host" }
 coder-labor = { path = "../coder-labor" }

@@ -1,0 +1,683 @@
+//! `openagents terminal`: OpenAgents Terminal, a full-screen chat with
+//! OpenAgents (`docs/terminal/README.md`). Bare `openagents` on a terminal
+//! opens it too.
+//!
+//! The screen itself is `openagents_terminal`; this module opens the shared
+//! chat client the way `openagents chat` does (this computer's host when
+//! one answers, else this command's own store, or a scratch store) and
+//! hands the screen what only this program can do through
+//! [`ProgramExtras`]: pairing a phone over the host's control socket,
+//! installing the host as a user service, listing plugins, and reading the
+//! Coder settings.
+
+use std::collections::HashMap;
+use std::io::Read;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
+use coder::task::chat_client::{Control, Here};
+use openagents_chat::client::{self, Client, Event, Kind, Place};
+use openagents_chat::router::Caller;
+use openagents_connect::control::{self, Op, Reply, Request};
+use openagents_terminal::{Extras, Interrupter, Invite, Launch, Resume, Settings};
+use serde_json::Value;
+
+use crate::{Args, Output, runtime};
+
+pub(crate) const USAGE: &str =
+    "usage: openagents terminal [--thread ID] [--new] [--scratch] [--local] [--socket PATH]
+OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
+Type a message and press Enter. It opens on the last thread you had open in
+this folder; --thread ID opens that thread and --new starts a new one. When
+this computer's host runs, the threads are the desktop app's threads;
+--socket names another control socket and --local skips the host. --scratch
+uses a throwaway identity and thread store; reopen that thread with
+--scratch --thread ID. Bare `openagents` with no command opens this screen
+when it runs on a terminal.";
+
+/// What the command does and where the phone runs it, for the chat
+/// router's command tree (`coder::cli_route::tree`). It holds the
+/// terminal until the person quits.
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::LongRunning)];
+
+const OPTIONS: &[&str] = &["thread", "socket"];
+const SWITCHES: &[&str] = &["scratch", "local", "new"];
+
+/// How a Coder question is answered in the screen.
+const ANSWER_HINT: &str = "Type your answer and press Enter.";
+
+/// How long `/plugins` waits for the catalog.
+const PLUGINS_WAIT: Duration = Duration::from_secs(15);
+
+pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words
+        .first()
+        .is_some_and(|word| matches!(word.as_str(), "help" | "-h" | "--help"))
+    {
+        println!("{USAGE}");
+        return 0;
+    }
+    let args = match Args::parse(words, SWITCHES) {
+        Ok(args) => args,
+        Err(message) => return output.usage("terminal", &message, USAGE),
+    };
+    if let Some(name) = args
+        .option_names()
+        .into_iter()
+        .find(|name| !OPTIONS.contains(name))
+    {
+        return output.usage("terminal", &format!("unknown option `--{name}`"), USAGE);
+    }
+    if let Some(word) = args.positional().first() {
+        return output.usage("terminal", &format!("unexpected argument `{word}`"), USAGE);
+    }
+    let thread = args.option("thread").map(str::to_owned);
+    if let Some(id) = &thread
+        && !client::thread_id(id)
+    {
+        return output.usage(
+            "terminal",
+            "a thread ID is 32 lowercase hex characters",
+            USAGE,
+        );
+    }
+    if thread.is_some() && args.switch("new") {
+        return output.usage("terminal", "--thread and --new do not go together", USAGE);
+    }
+    let scratch = args.switch("scratch");
+    // A scratch store holds one thread: a fresh one, or the one named.
+    let (store_thread, new, resume) = match (scratch, thread) {
+        (true, None) => {
+            let id = client::new_id();
+            (Some(id.clone()), true, Resume::New(Some(id)))
+        }
+        (true, Some(id)) => (Some(id.clone()), false, Resume::Thread(id)),
+        (false, Some(id)) => (Some(id.clone()), false, Resume::Thread(id)),
+        (false, None) if args.switch("new") => (None, false, Resume::New(None)),
+        (false, None) => (None, false, Resume::LastForFolder),
+    };
+    let place = if scratch {
+        Place::Scratch
+    } else if args.switch("local") {
+        Place::Local
+    } else {
+        Place::Auto {
+            socket: args.option("socket").map(PathBuf::from),
+        }
+    };
+    let home = match (&place, &store_thread) {
+        (Place::Scratch, Some(id)) => client::scratch_dir(id),
+        _ => client::home(),
+    };
+    let interrupter = Interrupter::new();
+    let mut options = client::Options::new(Caller::TERMINAL);
+    options.place = place;
+    options.interrupt = interrupter.interrupt();
+    options.hint = Some(answer_hint);
+    let socket = args
+        .option("socket")
+        .map(PathBuf::from)
+        .or_else(control::socket_path);
+    let result = runtime().block_on(async move {
+        let mut notices = Vec::new();
+        let client = Client::open(
+            options,
+            &Control,
+            Arc::new(Here),
+            store_thread.as_deref(),
+            new,
+            &mut |event| {
+                if let Some(notice) = notice(event) {
+                    notices.push(notice);
+                }
+            },
+        )
+        .await
+        .map_err(Failure::Client)?;
+        let kind = client.kind();
+        let launch = Launch {
+            client,
+            coder: Arc::new(Here),
+            interrupter,
+            extras: Arc::new(ProgramExtras::new(socket)),
+            resume,
+            folder: std::env::current_dir().ok(),
+            home,
+            notices,
+            version: crate::version_line(),
+        };
+        let exit = openagents_terminal::run(launch)
+            .await
+            .map_err(Failure::Io)?;
+        Ok::<_, Failure>((kind, exit))
+    });
+    match result {
+        Ok((kind, exit)) => {
+            // The screen has given the terminal back by now.
+            if let Some(id) = exit.thread {
+                for line in closing(kind, &id, exit.running) {
+                    eprintln!("{line}");
+                }
+            }
+            0
+        }
+        Err(Failure::Client(client::Error::Usage(message))) => {
+            output.usage("terminal", &message, USAGE)
+        }
+        Err(Failure::Client(client::Error::Failed(message))) => output.fail("terminal", &message),
+        Err(Failure::Io(error)) => output.fail("terminal", &error.to_string()),
+    }
+}
+
+enum Failure {
+    Client(client::Error),
+    Io(std::io::Error),
+}
+
+fn answer_hint(_: Kind, _: &str) -> String {
+    ANSWER_HINT.to_owned()
+}
+
+/// What opening the client said that the screen shows first, in the words
+/// `openagents chat` prints.
+fn notice(event: Event) -> Option<String> {
+    match event {
+        Event::Migrated { moved } => Some(format!(
+            "moved {moved} thread{} kept without a host into this computer's host",
+            if moved == 1 { "" } else { "s" }
+        )),
+        Event::Kept { home, message } => Some(format!(
+            "threads in {} stay there for now: {message}",
+            home.display()
+        )),
+        _ => None,
+    }
+}
+
+/// The switch that reaches the thread's store again, as `openagents chat`
+/// names it.
+fn flag(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Scratch => " --scratch",
+        Kind::InProcess => " --local",
+        Kind::Host => "",
+    }
+}
+
+/// What the program prints once the screen closes.
+fn closing(kind: Kind, thread: &str, running: bool) -> Vec<String> {
+    let mut lines = vec![
+        format!("thread {thread}"),
+        format!(
+            "Resume with: openagents terminal --thread {thread}{}",
+            flag(kind)
+        ),
+    ];
+    if running {
+        lines
+            .push("Coder keeps working on it; the screen follows it again when you resume.".into());
+    }
+    lines
+}
+
+/// What the screen needs from this computer: the host's control socket for
+/// pairing, the service installer, the plugin catalog, and the settings.
+pub(crate) struct ProgramExtras {
+    socket: Option<PathBuf>,
+    /// The devices each open invitation's host already knew, so `paired`
+    /// reports only the phone that redeemed it.
+    known: Mutex<HashMap<String, Vec<String>>>,
+}
+
+impl ProgramExtras {
+    fn new(socket: Option<PathBuf>) -> Self {
+        Self {
+            socket,
+            known: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// One call to the host's control socket, blocking.
+    fn call(&self, op: Op) -> Result<Reply, String> {
+        let socket = self.socket.clone().ok_or_else(no_host)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "Cannot start the runtime to reach the host.".to_owned())?;
+        runtime.block_on(async move {
+            let mut stream = tokio::net::UnixStream::connect(&socket)
+                .await
+                .map_err(|_| no_host())?;
+            match control::call(&mut stream, &Request::new(1, op)).await {
+                Ok(Reply::Refused { message, .. }) => Err(format!("The host refused: {message}.")),
+                Ok(reply) => Ok(reply),
+                Err(error) => Err(format!("The host did not answer: {error}.")),
+            }
+        })
+    }
+
+    fn devices(&self) -> Result<Vec<control::Device>, String> {
+        match self.call(Op::DeviceList {})? {
+            Reply::Devices { devices } => Ok(devices),
+            _ => Err(other_answer()),
+        }
+    }
+
+    fn host_answers(&self) -> bool {
+        self.socket
+            .as_ref()
+            .is_some_and(|socket| std::os::unix::net::UnixStream::connect(socket).is_ok())
+    }
+
+    /// What `sync` needs to know, read without changing anything. Past a
+    /// host that answers, nothing more is read.
+    fn observe(&self) -> Facts {
+        if self.host_answers() {
+            return Facts {
+                host_answers: true,
+                ..Facts::default()
+            };
+        }
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|home| home.is_absolute());
+        let bundle_selected = home.as_ref().is_some_and(|home| {
+            matches!(
+                coder_service::bundle::selected(&home.join(".openagents/host-bundle")),
+                Ok(Some(_))
+            )
+        });
+        let program = std::env::current_exe().ok();
+        let launcher_present = program
+            .as_ref()
+            .and_then(|program| program.parent())
+            .is_some_and(|dir| dir.join("coder-service").is_file());
+        // The host's public key, from the program's own read-only command.
+        let host_key = program.as_ref().and_then(|program| {
+            let output = Command::new(program)
+                .args(["host", "public-key"])
+                .stdin(Stdio::null())
+                .output()
+                .ok()?;
+            let key = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            (output.status.success() && coder_service::descriptor::validate_host_key(&key).is_ok())
+                .then_some(key)
+        });
+        Facts {
+            host_answers: false,
+            service_manager: coder_service::service::Platform::current().is_some(),
+            bundle_selected,
+            launcher_present,
+            host_key,
+        }
+    }
+}
+
+fn no_host() -> String {
+    "Pairing needs this computer's host. Open the OpenAgents app, or run `openagents host serve --control`.".into()
+}
+
+fn other_answer() -> String {
+    "The host answered another question.".into()
+}
+
+impl Extras for ProgramExtras {
+    fn invite(&self) -> Result<Invite, String> {
+        let before = self.devices()?;
+        let Reply::Invite {
+            invitation,
+            code,
+            expires_at,
+            ..
+        } = self.call(Op::InviteCreate {})?
+        else {
+            return Err(other_answer());
+        };
+        // The QR carries the link form, so a phone's own camera opens the app.
+        let qr = openagents_connect::code::link(&code)
+            .and_then(|link| {
+                coder_connect::pairing::text_qr_rows_prefixed(
+                    openagents_connect::code::LINK_PREFIX,
+                    &link,
+                )
+                .ok()
+            })
+            .ok_or_else(|| "The pairing code cannot be drawn as a QR code.".to_owned())?;
+        if let Ok(mut known) = self.known.lock() {
+            known.insert(
+                invitation.clone(),
+                before.into_iter().map(|device| device.device).collect(),
+            );
+        }
+        Ok(Invite {
+            invitation,
+            code,
+            qr,
+            expires_at,
+        })
+    }
+
+    fn paired(&self, invite: &Invite) -> Result<Option<String>, String> {
+        let known = self
+            .known
+            .lock()
+            .ok()
+            .and_then(|known| known.get(&invite.invitation).cloned())
+            .unwrap_or_default();
+        Ok(self
+            .devices()?
+            .into_iter()
+            .find(|device| !device.revoked && !known.contains(&device.device))
+            .map(|device| {
+                if device.label.trim().is_empty() {
+                    device.device
+                } else {
+                    device.label
+                }
+            }))
+    }
+
+    fn cancel(&self, invite: &Invite) {
+        let _ = self.call(Op::InviteCancel {
+            invitation: invite.invitation.clone(),
+        });
+        if let Ok(mut known) = self.known.lock() {
+            known.remove(&invite.invitation);
+        }
+    }
+
+    fn sync(&self) -> Result<String, String> {
+        match decide(&self.observe()) {
+            Sync::AlreadyRuns => Ok(ALREADY_RUNS.into()),
+            Sync::Missing(why) => Err(why),
+            Sync::Install { host_key } => install(&host_key),
+        }
+    }
+
+    fn plugins(&self) -> Result<Vec<(String, String)>, String> {
+        let program = std::env::current_exe()
+            .map_err(|_| "Cannot find this openagents program to list plugins.".to_owned())?;
+        let text = captured(
+            Command::new(program).args(["--json", "plugin", "list", "--limit", "30"]),
+            PLUGINS_WAIT,
+        )
+        .map_err(|why| format!("The plugin catalog could not be read: {why}"))?;
+        plugin_rows(&text)
+    }
+
+    fn settings(&self) -> Settings {
+        let path = coder::task::settings::path();
+        let lines = match coder::task::settings::Settings::load(&path) {
+            Ok(loaded) => {
+                let mut lines: Vec<String> = loaded
+                    .values()
+                    .iter()
+                    .map(|(key, value)| format!("{key:<30} {}", crate::settings::render(value)))
+                    .collect();
+                if !path.exists() {
+                    lines.push("No settings file yet; these are the defaults.".into());
+                }
+                lines
+            }
+            Err(message) => vec![format!("The settings file is not valid: {message}")],
+        };
+        Settings { path, lines }
+    }
+}
+
+const ALREADY_RUNS: &str = "This computer's host already runs; chats sync with your phone.";
+
+/// What `sync` found on this computer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Facts {
+    /// A host answers on the control socket.
+    host_answers: bool,
+    /// This platform has a service manager the host installs into.
+    service_manager: bool,
+    /// A host bundle is staged and selected under `~/.openagents/host-bundle`.
+    bundle_selected: bool,
+    /// The `coder-service` launcher sits beside this program.
+    launcher_present: bool,
+    /// The host's public key, when this computer has a host identity.
+    host_key: Option<String>,
+}
+
+/// What `sync` does with them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Sync {
+    AlreadyRuns,
+    Install {
+        host_key: String,
+    },
+    /// Something is missing: the sentence that names it and what to do.
+    Missing(String),
+}
+
+fn decide(facts: &Facts) -> Sync {
+    const OPEN_APP: &str = "Open the OpenAgents app, which runs the host.";
+    if facts.host_answers {
+        return Sync::AlreadyRuns;
+    }
+    if !facts.service_manager {
+        return Sync::Missing(
+            "This computer has no service manager to run the host. Run `openagents host serve --control` in another terminal."
+                .into(),
+        );
+    }
+    if !facts.bundle_selected {
+        return Sync::Missing(format!(
+            "No host bundle is staged on this computer. {OPEN_APP}"
+        ));
+    }
+    if !facts.launcher_present {
+        return Sync::Missing(format!(
+            "The coder-service launcher is not beside this openagents program. {OPEN_APP}"
+        ));
+    }
+    match &facts.host_key {
+        Some(host_key) => Sync::Install {
+            host_key: host_key.clone(),
+        },
+        None => Sync::Missing(format!(
+            "This computer has no host identity yet. {OPEN_APP}"
+        )),
+    }
+}
+
+/// `openagents service install --host-key KEY`, as its own process.
+fn install(host_key: &str) -> Result<String, String> {
+    let program = std::env::current_exe()
+        .map_err(|_| "Cannot find this openagents program to install the host.".to_owned())?;
+    let output = Command::new(program)
+        .args(["service", "install", "--host-key", host_key])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("The host service did not install: {error}."))?;
+    if output.status.success() {
+        Ok("Installed this computer's host as a user service; chats sync with your phone once it starts.".into())
+    } else {
+        let said = String::from_utf8_lossy(&output.stderr);
+        let why = said
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(|line| line.trim_start_matches("openagents service: "))
+            .unwrap_or("it gave no reason");
+        Err(format!("The host service did not install: {why}"))
+    }
+}
+
+/// A command's stdout, waiting at most `wait`.
+fn captured(command: &mut Command, wait: Duration) -> Result<String, String> {
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("{error}."))?;
+    let mut stdout = child.stdout.take().ok_or("no output.")?;
+    let reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.read_to_string(&mut text);
+        text
+    });
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < wait => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("the relay did not answer in time.".into());
+            }
+        }
+    }
+    reader.join().map_err(|_| "no output.".to_owned())
+}
+
+/// The `(name, what it does)` rows of `openagents --json plugin list`.
+fn plugin_rows(text: &str) -> Result<Vec<(String, String)>, String> {
+    let value: Value = serde_json::from_str(text.trim()).map_err(|_| {
+        "The plugin catalog could not be read: it answered something else.".to_owned()
+    })?;
+    if let Some(error) = value["error"].as_str() {
+        return Err(format!("The plugin catalog could not be read: {error}"));
+    }
+    let items = value["items"].as_array().ok_or_else(|| {
+        "The plugin catalog could not be read: it answered something else.".to_owned()
+    })?;
+    Ok(items
+        .iter()
+        .filter(|item| item["valid"].as_bool().unwrap_or(false))
+        .filter_map(|item| {
+            let name = [&item["package"], &item["d"]]
+                .into_iter()
+                .filter_map(Value::as_str)
+                .find(|name| !name.is_empty())?;
+            let summary = [&item["title"], &item["reason"]]
+                .into_iter()
+                .filter_map(Value::as_str)
+                .find(|text| !text.is_empty())
+                .unwrap_or("");
+            Some((name.to_owned(), summary.to_owned()))
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ready() -> Facts {
+        Facts {
+            host_answers: false,
+            service_manager: true,
+            bundle_selected: true,
+            launcher_present: true,
+            host_key: Some("ab".repeat(32)),
+        }
+    }
+
+    #[test]
+    fn sync_leaves_a_running_host_alone() {
+        let facts = Facts {
+            host_answers: true,
+            ..Facts::default()
+        };
+        assert_eq!(decide(&facts), Sync::AlreadyRuns);
+    }
+
+    #[test]
+    fn sync_installs_when_everything_is_here() {
+        assert_eq!(
+            decide(&ready()),
+            Sync::Install {
+                host_key: "ab".repeat(32)
+            }
+        );
+    }
+
+    #[test]
+    fn sync_names_what_is_missing() {
+        let missing = |facts: Facts| match decide(&facts) {
+            Sync::Missing(why) => why,
+            other => panic!("expected missing, got {other:?}"),
+        };
+        let why = missing(Facts {
+            service_manager: false,
+            ..ready()
+        });
+        assert!(why.contains("openagents host serve --control"), "{why}");
+        let why = missing(Facts {
+            bundle_selected: false,
+            ..ready()
+        });
+        assert!(why.contains("host bundle") && why.contains("OpenAgents app"));
+        let why = missing(Facts {
+            launcher_present: false,
+            ..ready()
+        });
+        assert!(why.contains("coder-service") && why.contains("OpenAgents app"));
+        let why = missing(Facts {
+            host_key: None,
+            ..ready()
+        });
+        assert!(why.contains("host identity") && why.contains("OpenAgents app"));
+    }
+
+    #[test]
+    fn plugin_rows_keep_valid_listings() {
+        let text = r#"{"relay":"wss://r","kind":1,"count":3,"items":[
+            {"package":"lint-fixer","title":"Fixes lint","valid":true},
+            {"d":"slug-only","reason":"Why","valid":true},
+            {"package":"broken","title":"Bad","valid":false}
+        ]}"#;
+        assert_eq!(
+            plugin_rows(text).unwrap(),
+            vec![
+                ("lint-fixer".to_owned(), "Fixes lint".to_owned()),
+                ("slug-only".to_owned(), "Why".to_owned()),
+            ]
+        );
+        assert!(
+            plugin_rows(r#"{"error":"no relay"}"#)
+                .unwrap_err()
+                .contains("no relay")
+        );
+        assert!(plugin_rows("not json").is_err());
+    }
+
+    #[test]
+    fn closing_says_how_to_resume() {
+        let id = "0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            closing(Kind::Scratch, id, false),
+            vec![
+                format!("thread {id}"),
+                format!("Resume with: openagents terminal --thread {id} --scratch"),
+            ]
+        );
+        let lines = closing(Kind::Host, id, true);
+        assert_eq!(
+            lines[1],
+            format!("Resume with: openagents terminal --thread {id}")
+        );
+        assert!(lines[2].contains("Coder keeps working"));
+    }
+
+    #[test]
+    fn opening_notices_use_chat_words() {
+        assert_eq!(
+            notice(Event::Migrated { moved: 2 }).as_deref(),
+            Some("moved 2 threads kept without a host into this computer's host")
+        );
+    }
+}

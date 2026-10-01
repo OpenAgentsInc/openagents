@@ -7383,6 +7383,7 @@ dependencies = [
  "nostr-relay",
  "openagents-chat",
  "openagents-connect",
+ "openagents-terminal",
  "openagents-wallet",
  "openagents-x402",
  "playtest",

@@ -10,6 +10,7 @@
 //! Exit codes: 0 success, 1 the operation was refused or failed,
 //! 64 invalid usage.
 
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -34,6 +35,7 @@ mod playtest;
 mod quest;
 mod reach;
 mod relay;
+mod screen;
 mod service;
 mod session;
 mod settings;
@@ -68,6 +70,8 @@ Pairing and computers (NIP-HOST, NIP-REACH):
 Chat:
   chat         Talk to OpenAgents, the chat router: send a message, continue a
                thread, list, read, and export threads as ATIF.
+  terminal     OpenAgents Terminal: a full-screen chat with OpenAgents; bare
+               `openagents` on a terminal opens it.
 
 Coder:
   task         Durable local task requests and explicit execution.
@@ -125,6 +129,10 @@ fn main() -> ExitCode {
     arguments.retain(|argument| argument != "--json");
     let output = Output::new(json);
     let Some((command, rest)) = arguments.split_first() else {
+        // On a terminal, bare `openagents` is OpenAgents Terminal.
+        if !json && std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+            return ExitCode::from(screen::run(&output, &[]));
+        }
         eprintln!("{USAGE}");
         return ExitCode::from(EXIT_USAGE);
     };
@@ -145,6 +153,7 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run(&rest)),
         "chat" => chat::run(&output, &rest),
+        "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),
         "connect" => connect::run(&output, &rest),
         "verse" => world::run(&output, &rest),

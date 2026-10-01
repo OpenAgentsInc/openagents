@@ -37,7 +37,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("unset", Effect::LocalWrite),
 ];
 
-fn render(value: &Value) -> String {
+pub(crate) fn render(value: &Value) -> String {
     match value {
         Value::Array(items) => items
             .iter()

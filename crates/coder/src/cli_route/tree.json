@@ -3453,6 +3453,90 @@
       ]
     },
     {
+      "name": "terminal",
+      "summary": "OpenAgents Terminal: a full-screen chat with OpenAgents; bare `openagents` on a terminal opens it.",
+      "leaf": {
+        "path": [
+          "terminal"
+        ],
+        "usage": [
+          "openagents terminal [--thread ID] [--new] [--scratch] [--local] [--socket PATH]"
+        ],
+        "forms": [
+          {
+            "tokens": [
+              {
+                "kind": "option",
+                "name": "thread",
+                "value": "ID",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "new",
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "scratch",
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "local",
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "socket",
+                "value": "PATH",
+                "open": true,
+                "optional": true
+              }
+            ]
+          }
+        ],
+        "summary": "OpenAgents Terminal: a full-screen chat with OpenAgents; bare `openagents` on a terminal opens it.",
+        "effect": "long_running",
+        "runs_on": "connected_computer"
+      },
+      "options": [
+        {
+          "kind": "option",
+          "name": "thread",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "new",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "socket",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "local",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "scratch",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "task",
       "summary": "Durable local task requests and explicit execution.",
       "children": [
