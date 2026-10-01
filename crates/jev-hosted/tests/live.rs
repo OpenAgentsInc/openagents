@@ -153,7 +153,9 @@ async fn live_hosted_structured_decision_answers() {
 fn assert_served_jev(response: &jev::SystemOneResponse) {
     use jev::doors::{GATEWAY_DOOR, Naming, OPENROUTER_DOOR};
     let service = response.service().expect("the answer names its service");
-    let door = service["door"].as_str().expect("the service names its door");
+    let door = service["door"]
+        .as_str()
+        .expect("the service names its door");
     let named = match door {
         GATEWAY_DOOR => Naming::Gateway.model("jev-1.13.0"),
         OPENROUTER_DOOR => Naming::OpenRouter.model("jev-1.13.0"),
