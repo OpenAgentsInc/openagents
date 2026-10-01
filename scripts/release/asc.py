@@ -18,9 +18,11 @@ the app has older builds with the same numbers under other versions.
 """
 
 import argparse
+import base64
 import datetime
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -31,23 +33,53 @@ APP_ID = "6748620735"
 API = "https://api.appstoreconnect.apple.com"
 
 
+def b64(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
 def token():
-    try:
-        import jwt  # PyJWT, with cryptography for ES256
-    except ImportError:
-        sys.exit("asc: python3 needs PyJWT and cryptography (pip3 install pyjwt cryptography)")
+    """An ES256 App Store Connect token, signed with openssl so nothing
+    beyond the standard library and the system's openssl is needed (a
+    host's commands may run with another HOME, without the owner's Python
+    packages)."""
     for name in ("ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_PRIVATE_KEY_PATH"):
         if not os.environ.get(name):
             sys.exit(f"asc: {name} is not set")
-    with open(os.environ["ASC_API_PRIVATE_KEY_PATH"]) as key_file:
-        key = key_file.read()
     now = int(time.time())
-    return jwt.encode(
-        {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"},
-        key,
-        algorithm="ES256",
-        headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+    header = {"alg": "ES256", "kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"}
+    claims = {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}
+    signing = (b64(json.dumps(header).encode()) + "." + b64(json.dumps(claims).encode())).encode()
+    signed = subprocess.run(
+        ["/usr/bin/openssl", "dgst", "-sha256", "-sign", os.environ["ASC_API_PRIVATE_KEY_PATH"]],
+        input=signing,
+        capture_output=True,
     )
+    if signed.returncode != 0:
+        sys.exit("asc: openssl could not sign with the App Store Connect key")
+    return signing.decode() + "." + b64(raw_signature(signed.stdout))
+
+
+def raw_signature(der):
+    """A DER ECDSA signature (SEQUENCE of two INTEGERs) as JWS wants it:
+    r and s, 32 bytes each."""
+    def length(data, at):
+        first = data[at]
+        if first < 0x80:
+            return first, at + 1
+        count = first & 0x7F
+        return int.from_bytes(data[at + 1:at + 1 + count], "big"), at + 1 + count
+
+    if der[0] != 0x30:
+        sys.exit("asc: openssl returned no ECDSA signature")
+    _, at = length(der, 1)
+    parts = []
+    for _ in range(2):
+        if der[at] != 0x02:
+            sys.exit("asc: openssl returned no ECDSA signature")
+        size, at = length(der, at + 1)
+        parts.append(int.from_bytes(der[at:at + size], "big").to_bytes(32, "big"))
+        at += size
+    return parts[0] + parts[1]
 
 
 def get(path, params=None):

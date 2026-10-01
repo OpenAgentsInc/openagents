@@ -152,7 +152,7 @@ release() {
     tail -1 "$state/processing.log" > "$state/result.json"
     say "Done: build $build is on TestFlight for Internal Testers."
   fi
-  echo done > "$state/status"
+  echo "done" > "$state/status"
 }
 
 # Where a running release is, in a few words, from its newest log.
