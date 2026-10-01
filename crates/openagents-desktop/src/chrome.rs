@@ -76,6 +76,8 @@ pub enum Action {
     NewChat,
     Saved,
     Grid,
+    /// The Map page (#10085): how OpenAgents routes requests.
+    Map,
     Computers,
     Settings,
     /// Settings' update button: restart into a waiting build, or open a
@@ -91,6 +93,7 @@ pub enum Page {
     Chat(u64),
     Saved,
     Grid,
+    Map,
     Computers,
     Settings,
 }
@@ -303,6 +306,7 @@ impl State {
             }
             Action::Saved => self.page = Page::Saved,
             Action::Grid => self.page = Page::Grid,
+            Action::Map => self.page = Page::Map,
             Action::Computers => self.page = Page::Computers,
             Action::Settings => {
                 if self.page == Page::Settings {
@@ -717,6 +721,16 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         verse.style.background = Some(SELECTED);
         verse.style.foreground = Some(TEXT);
     }
+    // The Map page (#10085), beside Verse.
+    let mut map = icon_button("sidebar-map", "Map", Action::Map, Glyph::Map);
+    map.style.radius = Some(8);
+    map.style.glyph_size = Some(15);
+    map.style.hover_background = Some(SELECTED);
+    map.style.hover_foreground = Some(TEXT);
+    if state.page == Page::Map {
+        map.style.background = Some(SELECTED);
+        map.style.foreground = Some(TEXT);
+    }
     let mut spacer = stack(
         "sidebar-footer-spacer",
         Axis::Horizontal,
@@ -728,7 +742,7 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         "sidebar-footer",
         Axis::Horizontal,
         Space::None,
-        vec![profile, spacer, verse, settings],
+        vec![profile, spacer, map, verse, settings],
     );
     footer.style.gap_points = Some(4);
     let mut bottom = vec![];
@@ -1014,6 +1028,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 .into(),
             Page::Saved => "Saved sessions".into(),
             Page::Grid => "Verse".into(),
+            Page::Map => "Map".into(),
             Page::Computers => "Phones and computers".into(),
             Page::Settings => "Settings".into(),
         }
@@ -1182,6 +1197,8 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 body.style.align = Some(TextAlign::Center);
                 body
             }
+            // The shell puts the Map page's views here ([`crate::route_map`]).
+            Page::Map => stack("shell-map", Axis::Vertical, Space::None, vec![]),
             Page::Computers => crate::screens::root(model, now),
             Page::Settings => crate::settings::view(
                 &state.settings,
@@ -1354,7 +1371,7 @@ mod tests {
     }
 
     #[test]
-    fn the_verse_opens_from_the_footer_beside_settings() {
+    fn the_map_and_the_verse_open_from_the_footer_beside_settings() {
         use crate::model::{Agent, Screen};
         let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
         let mut state = State::empty();
@@ -1369,11 +1386,23 @@ mod tests {
             [
                 "sidebar-profile",
                 "sidebar-footer-spacer",
+                "sidebar-map",
                 "sidebar-verse",
                 "sidebar-settings"
             ]
         );
+        // The Map page (#10085) sits beside Verse.
         let Element::Button { label, intent, .. } = &children[2].element else {
+            panic!("a button")
+        };
+        assert_eq!(label, "Map");
+        assert_eq!(
+            *intent,
+            Intent::Navigate {
+                action: Action::Map
+            }
+        );
+        let Element::Button { label, intent, .. } = &children[3].element else {
             panic!("a button")
         };
         assert_eq!(label, "Verse");
@@ -1395,6 +1424,18 @@ mod tests {
             panic!("a title")
         };
         assert_eq!(value, "Verse");
+        state.activate(Action::Map);
+        let view = root(&state, &model, 0);
+        let map = find(&view, "sidebar-map").unwrap();
+        assert_eq!(map.style.background, Some(SELECTED));
+        let Some(Node {
+            element: Element::Text { value, .. },
+            ..
+        }) = find(&view, "shell-page-title")
+        else {
+            panic!("a title")
+        };
+        assert_eq!(value, "Map");
     }
 
     fn contains(node: &Node<Intent>, key: &str) -> bool {

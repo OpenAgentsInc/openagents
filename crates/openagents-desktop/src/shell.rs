@@ -56,6 +56,10 @@ pub struct DesktopApp {
     normal_wake: Option<Instant>,
     /// The slide viewer over the page, while it shows (#10057).
     slides: Option<openagents_desktop::slides::Slides>,
+    /// The Map page, only while it shows (#10085).
+    map: Option<openagents_desktop::route_map::MapPage>,
+    /// The window's size in points and its scale.
+    viewport: (f32, f32, f32),
 }
 
 pub fn unix_now() -> u64 {
@@ -226,6 +230,8 @@ impl DesktopApp {
             #[cfg(not(windows))]
             normal_wake: None,
             slides: None,
+            map: None,
+            viewport: (1200.0, 840.0, 1.0),
         };
         app.present();
         app
@@ -330,7 +336,131 @@ impl DesktopApp {
                 .is_some_and(|chat| chat.modal() || chat.aux_focused())
     }
 
+    /// Whether "Reduce motion" is on: the system's or the person's.
+    fn motion_reduced(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        #[cfg(not(windows))]
+        let system = self.live && crate::platform::reduce_motion();
+        #[cfg(windows)]
+        let system = false;
+        system || self.reduce_motion().load(Ordering::Relaxed)
+    }
+
+    /// What only this computer knows for the map: this person's route
+    /// counts (from the host's answer to `Command::Routes`) and the
+    /// engines' readiness. Neither is sent anywhere.
+    fn map_local(&self) -> openagents_chat_app::route_map::Local {
+        openagents_chat_app::route_map::Local {
+            routes: self
+                .chat
+                .as_ref()
+                .and_then(|chat| chat.route_counts().cloned())
+                .unwrap_or_default(),
+            engines: self.model.engine.clone(),
+        }
+    }
+
+    /// Builds the Map page when it opens and drops it when it's left
+    /// (#10085), so nothing of it runs on any other page.
+    fn sync_map(&mut self) {
+        let open = self
+            .navigation
+            .as_ref()
+            .is_some_and(|state| state.page == Page::Map)
+            && self.model.nearby().is_none();
+        if !open {
+            self.map = None;
+            return;
+        }
+        let reduce = self.motion_reduced();
+        let local = self.map_local();
+        let key = format!("{:?}|{:?}", local.routes, local.engines);
+        if self.map.is_none() {
+            let mut page = openagents_desktop::route_map::MapPage::new(
+                openagents_desktop::route_map::build(local),
+                reduce,
+            );
+            page.set_unit(self.viewport.2);
+            page.set_window_height(self.viewport.1);
+            page.set_local_key(key);
+            self.map = Some(page);
+            if let Some(request) = self.chat.as_mut().map(|chat| chat.request_routes()) {
+                self.send(vec![request], Instant::now());
+            }
+        } else if let Some(page) = &mut self.map {
+            page.set_reduce_motion(reduce);
+            if page.local_key() != key {
+                page.refresh(openagents_desktop::route_map::build(local));
+                page.set_local_key(key);
+            }
+        }
+    }
+
+    /// Carries out the steps the Map page asked for, after the tap.
+    fn map_effects(&mut self, now: Instant) {
+        let effects = self
+            .map
+            .as_mut()
+            .map_or_else(Vec::new, |page| page.take_effects());
+        for effect in effects {
+            use openagents_desktop::route_map::Effect;
+            match effect {
+                Effect::Chat(message) => {
+                    self.activate(
+                        Intent::Navigate {
+                            action: chrome::Action::NewChat,
+                        },
+                        now,
+                    );
+                    if let Some(chat) = &mut self.chat {
+                        chat.prefill(&message);
+                    }
+                }
+                Effect::Copy(command) => {
+                    if self.live {
+                        rust_native_desktop::input::copy(&command);
+                    }
+                }
+                Effect::Open(url) => {
+                    if self.live {
+                        openagents_desktop::chat::open_link(&url);
+                    }
+                }
+                Effect::Settings => {
+                    self.activate(
+                        Intent::Navigate {
+                            action: chrome::Action::Settings,
+                        },
+                        now,
+                    );
+                    self.activate(
+                        Intent::Settings {
+                            action: openagents_desktop::settings::Action::Pane {
+                                pane: openagents_desktop::settings::Pane::Coder,
+                            },
+                        },
+                        now,
+                    );
+                }
+            }
+        }
+    }
+
+    /// The Map page's graph, while it shows.
+    pub fn map_view(&self) -> Option<&openagents_chat_app::route_map::Map> {
+        self.map.as_ref().map(|page| page.map())
+    }
+
+    /// Ends the Map page's camera move at once, as a capture needs.
+    pub fn settle_map(&mut self) {
+        if let Some(page) = &mut self.map {
+            page.tick(Instant::now() + openagents_desktop::route_map::EASE * 4);
+        }
+        self.present();
+    }
+
     fn present(&mut self) {
+        self.sync_map();
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             grid.borrow_mut().suspend(!self.grid_active());
@@ -400,6 +530,16 @@ impl DesktopApp {
         {
             children[1] = chat.body();
             children[2] = chat.footer();
+        }
+        if self.model.nearby().is_none()
+            && let Some(page) = &self.map
+            && let rust_native::Element::Stack { children, .. } = &mut root.element
+            && let Some(panes) = children.get_mut(1)
+            && let rust_native::Element::Stack { children, .. } = &mut panes.element
+            && let Some(content) = children.get_mut(1)
+            && let rust_native::Element::Stack { children, .. } = &mut content.element
+        {
+            children[1] = page.view();
         }
         let strip = self.strip_shows();
         if self.model.nearby().is_none()
@@ -630,7 +770,8 @@ impl App for DesktopApp {
                     max_leading_width: chrome::SIDEBAR_MAX,
                     min_content_width: 360.0,
                     collapsed: state.collapsed,
-                    center_content: true,
+                    // The Map page takes the whole pane (#10085).
+                    center_content: state.page != Page::Map,
                     center_footer: matches!(state.page, Page::Chat(_))
                         && self.model.nearby().is_none()
                         && self
@@ -697,6 +838,17 @@ impl App for DesktopApp {
 
     fn tick(&mut self, now: Instant) -> Option<Instant> {
         let slides = self.tick_slides(now);
+        let slides = match self.map.as_mut() {
+            Some(page) => {
+                page.tick(now);
+                let frame = page.next_wake(now);
+                match (slides, frame) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (a, b) => a.or(b),
+                }
+            }
+            None => slides,
+        };
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             let changed = grid.borrow_mut().poll();
@@ -767,11 +919,13 @@ impl App for DesktopApp {
         // an inline `send`), not on input: open the deck its typed
         // `open_presentation` offer holds now, not on the next key (#10082).
         self.chat_presentation(now);
-        let slides = slides.or_else(|| {
-            self.slides
-                .as_ref()
-                .and_then(|viewer| viewer.next_wake(now))
-        });
+        let slides = slides
+            .or_else(|| {
+                self.slides
+                    .as_ref()
+                    .and_then(|viewer| viewer.next_wake(now))
+            })
+            .or_else(|| self.map.as_ref().and_then(|page| page.next_wake(now)));
         self.notify();
         self.present();
         let wake = self.model.next_wake().min(
@@ -868,6 +1022,14 @@ impl App for DesktopApp {
             self.settings_action(action, now);
             return;
         }
+        if let Intent::Map { action } = intent {
+            if let Some(page) = &mut self.map {
+                page.act(action, now);
+            }
+            self.map_effects(now);
+            self.present();
+            return;
+        }
         if let Intent::Navigate { action } = intent {
             if matches!(action, chrome::Action::Back | chrome::Action::Forward) {
                 let page = self
@@ -878,6 +1040,7 @@ impl App for DesktopApp {
                     Some(Page::Chat(id)) => Some(chrome::Action::SelectChat { id }),
                     Some(Page::Saved) => Some(chrome::Action::Saved),
                     Some(Page::Grid) => Some(chrome::Action::Grid),
+                    Some(Page::Map) => Some(chrome::Action::Map),
                     Some(Page::Computers) => Some(chrome::Action::Computers),
                     Some(Page::Settings) => Some(chrome::Action::Settings),
                     None => None,
@@ -913,7 +1076,10 @@ impl App for DesktopApp {
 
             if matches!(
                 action,
-                chrome::Action::Grid | chrome::Action::Computers | chrome::Action::Settings
+                chrome::Action::Grid
+                    | chrome::Action::Map
+                    | chrome::Action::Computers
+                    | chrome::Action::Settings
             ) && let Some(chat) = &mut self.chat
             {
                 chat.input(rust_native_desktop::input::TextInput::FocusLost, now);
@@ -987,6 +1153,14 @@ impl App for DesktopApp {
     ) -> bool {
         if let rust_native_desktop::input::NativeInput::Focus(focused) = event {
             self.focused = focused;
+        }
+        // A wheel over the Map page's side panel scrolls it (#10085).
+        if let rust_native_desktop::input::NativeInput::Wheel { x, lines, .. } = event
+            && let Some(page) = &mut self.map
+            && page.wheel_side(x, lines)
+        {
+            self.present();
+            return true;
         }
         // An open command overlay owns the wheel, as Zeron's scrim does: the
         // palette's results scroll, and the conversation beneath never does.
@@ -1068,6 +1242,23 @@ impl App for DesktopApp {
             .is_some_and(|chat| chat.shortcut(&event, self.presenter.view(), now))
         {
             self.chat_effects(now);
+            return true;
+        }
+        // The Map page's keys, unless a chat overlay or field has them.
+        if let rust_native_desktop::input::TextInput::Key {
+            key,
+            command,
+            shift,
+            ..
+        } = event
+            && !self
+                .chat
+                .as_ref()
+                .is_some_and(|chat| chat.modal() || chat.aux_focused())
+            && let Some(page) = &mut self.map
+            && page.key(key, command, shift, now)
+        {
+            self.present();
             return true;
         }
         if !self
@@ -1192,6 +1383,9 @@ impl App for DesktopApp {
         self.chat.as_ref()?.access_focus()
     }
     fn access_content(&self, resource: &str) -> Option<rust_native_desktop::access::Content> {
+        if resource == openagents_desktop::route_map::RESOURCE {
+            return self.map.as_ref().map(|page| page.access_content());
+        }
         self.chat.as_ref()?.access_content(resource)
     }
 
@@ -1214,6 +1408,9 @@ impl App for DesktopApp {
     fn surface_version(&self, resource: &str) -> Option<u64> {
         if resource == openagents_desktop::slides::RESOURCE {
             return self.slides.as_ref().map(|slides| slides.version());
+        }
+        if resource == openagents_desktop::route_map::RESOURCE {
+            return self.map.as_ref().map(|page| page.version());
         }
         if let Some(percent) = parse_ring(resource).or_else(|| parse_meter(resource)) {
             return Some(u64::from(percent));
@@ -1239,6 +1436,11 @@ impl App for DesktopApp {
                 .slides
                 .as_mut()
                 .is_some_and(|slides| slides.input(event, now));
+            self.present();
+            return handled;
+        }
+        if resource == openagents_desktop::route_map::RESOURCE {
+            let handled = self.map.as_mut().is_some_and(|page| page.input(event, now));
             self.present();
             return handled;
         }
@@ -1277,6 +1479,16 @@ impl App for DesktopApp {
         if let Some(slides) = &mut self.slides {
             slides.set_unit(scale);
         }
+        if let Some(page) = &mut self.map {
+            page.set_unit(scale);
+            page.set_window_height(height);
+        }
+        if self.viewport != (width, height, scale) {
+            self.viewport = (width, height, scale);
+            if self.map.is_some() {
+                self.present();
+            }
+        }
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             grid.borrow_mut().viewport = (width, height, scale);
@@ -1304,6 +1516,9 @@ impl App for DesktopApp {
     fn surface_size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
         if resource == openagents_desktop::slides::RESOURCE {
             return Some((available, 1.0));
+        }
+        if resource == openagents_desktop::route_map::RESOURCE {
+            return self.map.as_ref().map(|page| page.surface_size(available));
         }
         #[cfg(not(windows))]
         if resource == openagents_desktop::grid::WORLD
@@ -1337,6 +1552,12 @@ impl App for DesktopApp {
         if resource == openagents_desktop::slides::RESOURCE {
             if let Some(slides) = &mut self.slides {
                 slides.paint(frame, rect);
+            }
+            return;
+        }
+        if resource == openagents_desktop::route_map::RESOURCE {
+            if let Some(page) = &mut self.map {
+                page.paint(frame, rect);
             }
             return;
         }
@@ -5050,6 +5271,11 @@ mod slides_shell_tests;
 #[cfg(test)]
 #[path = "access_tests.rs"]
 mod access_tests;
+
+/// The Map page in the window (#10085).
+#[cfg(test)]
+#[path = "route_map_shell_tests.rs"]
+mod route_map_shell_tests;
 
 #[cfg(test)]
 mod coder_events {

@@ -1,5 +1,6 @@
 //! The Mac's menu bar for the window (#10023): **OpenAgents**, **File**,
-//! **Chat**, and **Window**, built from the shared command registry
+//! **Chat**, and **Window** (which opens the Map page, #10085), built from
+//! the shared command registry
 //! (`openagents_chat_app::commands::registry`), so every chat item runs
 //! the same command the palette runs, by the same key.
 //!
@@ -105,9 +106,21 @@ pub fn menus(registry: &[Entry]) -> Vec<Menu> {
     let placed = |entry: &Entry| {
         matches!(
             entry.action,
-            Action::Settings | Action::NewChat | Action::Search | Action::Switch(_)
+            Action::Settings | Action::NewChat | Action::Search | Action::Map | Action::Switch(_)
         )
     };
+    // The Map page (#10085) opens from the Window menu, above the
+    // system's window rows.
+    let mut window: Vec<Row> = find(Action::Map).map(command).collect();
+    if !window.is_empty() {
+        window.push(Row::Separator);
+    }
+    window.extend([
+        system("Minimize", System::Minimize, "m"),
+        system("Zoom", System::Zoom, ""),
+        Row::Separator,
+        system("Bring All to Front", System::BringAllToFront, ""),
+    ]);
     let mut chat: Vec<Row> = find(Action::Stop).map(command).collect();
     let edits: Vec<Row> = registry
         .iter()
@@ -147,12 +160,7 @@ pub fn menus(registry: &[Entry]) -> Vec<Menu> {
         },
         Menu {
             title: "Window",
-            rows: vec![
-                system("Minimize", System::Minimize, "m"),
-                system("Zoom", System::Zoom, ""),
-                Row::Separator,
-                system("Bring All to Front", System::BringAllToFront, ""),
-            ],
+            rows: window,
         },
     ]
 }
@@ -453,6 +461,8 @@ mod tests {
                 (
                     "Window".into(),
                     vec![
+                        "Open the map".into(),
+                        "---".into(),
                         "Minimize".into(),
                         "Zoom".into(),
                         "---".into(),

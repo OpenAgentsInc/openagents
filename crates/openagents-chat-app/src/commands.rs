@@ -8,6 +8,8 @@ pub enum Action {
     Settings,
     Computers,
     Grid,
+    /// The desktop's Map page (#10085).
+    Map,
     Saved,
     Stop,
     Palette,
@@ -138,6 +140,13 @@ pub fn registry(chats: &[Summary], selected: Option<&str>, busy: bool) -> Vec<En
         entry("search", "Search chats", "Cmd/Ctrl+F", Action::Search, true),
         entry("settings", "Settings", "Cmd/Ctrl+,", Action::Settings, true),
         entry(
+            "map",
+            "Open the map",
+            "How OpenAgents routes requests, and its gaps",
+            Action::Map,
+            true,
+        ),
+        entry(
             "stop",
             "Stop receiving reply",
             "Cmd/Ctrl+.",
@@ -200,6 +209,7 @@ pub fn profile_registry() -> Vec<Entry> {
             true,
         ),
         entry("grid", "Verse", "", Action::Grid, true),
+        entry("map", "Map", "", Action::Map, true),
         entry("saved", "Saved sessions", "", Action::Saved, true),
         entry("commands", "Commands", "Cmd/Ctrl+K", Action::Palette, true),
     ]

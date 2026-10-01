@@ -529,7 +529,83 @@ fn capture_shell(directory: &std::path::Path) -> Result<usize, String> {
     let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
     std::fs::write(directory.join("shell-settings.png"), frame.png()?)
         .map_err(|error| error.to_string())?;
-    Ok(6)
+    Ok(6 + capture_map(directory)?)
+}
+
+/// The Map page (#10085): default and minimum sizes at 1x and 2x, zoomed
+/// out and in, the inspector open on Coder, and the Gaps panel filtered.
+fn capture_map(directory: &std::path::Path) -> Result<usize, String> {
+    use openagents_desktop::chrome::Action;
+    use openagents_desktop::route_map::{Action as Map, Panel};
+    let fake = FakeHost::new("Studio Mac", shell::unix_now());
+    let context = Context::new(
+        Box::new(fake.clone()),
+        Some(fake),
+        None,
+        None,
+        directory.join("fixture-home"),
+    );
+    let now = Instant::now();
+    let mut app = DesktopApp::inline_shell(Model::new(now, Screen::Home, Agent::Enabled), context);
+    app.tick(now);
+    app.click(
+        Intent::Navigate {
+            action: Action::Map,
+        },
+        now,
+    );
+    let mut count = 0;
+    let mut write = |app: &mut DesktopApp, name: &str, width: f32, height: f32, scale: f32| {
+        // Lay out once so the surface knows its size, then capture.
+        let _ = rust_native_desktop::capture(app, width, height, scale);
+        let (frame, scene) = rust_native_desktop::capture(app, width, height, scale);
+        if !scene.unsupported.is_empty() {
+            return Err(format!("unsupported map elements: {:?}", scene.unsupported));
+        }
+        std::fs::write(directory.join(format!("{name}.png")), frame.png()?)
+            .map_err(|error| error.to_string())?;
+        count += 1;
+        Ok::<(), String>(())
+    };
+    write(&mut app, "map-default", 1200.0, 840.0, 1.0)?;
+    write(&mut app, "map-default-2x", 1200.0, 840.0, 2.0)?;
+    write(&mut app, "map-minimum", 760.0, 540.0, 1.0)?;
+    write(&mut app, "map-minimum-2x", 760.0, 540.0, 2.0)?;
+    let page = |app: &mut DesktopApp, action: Map| {
+        app.click(Intent::Map { action }, now);
+    };
+    let node = |app: &mut DesktopApp, id: &str| -> Result<usize, String> {
+        app.map_view()
+            .and_then(|map| map.find(id))
+            .ok_or_else(|| format!("no {id} on the map"))
+    };
+    let dispatch = node(&mut app, "route:work.dispatch")?;
+    page(&mut app, Map::Select { node: dispatch });
+    app.settle_map();
+    write(&mut app, "map-zoomed-in-work-dispatch", 1200.0, 840.0, 1.0)?;
+    let coder = node(&mut app, "coder")?;
+    page(&mut app, Map::Select { node: coder });
+    app.settle_map();
+    write(&mut app, "map-inspector-coder", 1200.0, 840.0, 1.0)?;
+    write(&mut app, "map-inspector-coder-2x", 1200.0, 840.0, 2.0)?;
+    page(&mut app, Map::Fit);
+    app.settle_map();
+    page(&mut app, Map::GapsOnly);
+    page(&mut app, Map::Panel { panel: Panel::Gaps });
+    write(&mut app, "map-gaps-filtered", 1200.0, 840.0, 1.0)?;
+    page(&mut app, Map::GapsOnly);
+    page(&mut app, Map::ZoomOut);
+    page(&mut app, Map::ZoomOut);
+    app.settle_map();
+    write(&mut app, "map-zoomed-out", 1200.0, 840.0, 1.0)?;
+    page(
+        &mut app,
+        Map::Panel {
+            panel: Panel::Outline,
+        },
+    );
+    write(&mut app, "map-outline", 1200.0, 840.0, 1.0)?;
+    Ok(count)
 }
 
 #[cfg(test)]
@@ -719,6 +795,7 @@ mod tests {
     fn a_capture_walks_every_screen() {
         let directory = tempfile::tempdir().expect("a directory");
         let count = capture(&directory.path().to_path_buf()).expect("the capture");
-        assert_eq!(count, 12);
+        // Six pairing screens, six shell pages, and ten of the Map page.
+        assert_eq!(count, 22);
     }
 }

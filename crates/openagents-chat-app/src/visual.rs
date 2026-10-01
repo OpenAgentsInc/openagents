@@ -315,3 +315,31 @@ mod tests {
         assert!(layout.set_metrics(invalid).is_err());
     }
 }
+
+/// The route map's kind colors (#10085): one hue per node kind on the dark
+/// canvas, named by the map's legend. Health is the ring, never the fill.
+pub mod map {
+    use rust_native::style::Color;
+
+    pub const FRONT: Color = super::TEXT;
+    pub const FAMILY: Color = Color::rgb(128, 128, 136);
+    pub const ROUTE: Color = super::ACCENT;
+    pub const ANSWER: Color = Color::rgb(77, 196, 180);
+    pub const KNOWLEDGE: Color = Color::rgb(132, 196, 98);
+    pub const MODEL: Color = Color::rgb(150, 164, 186);
+    pub const CODER: Color = Color::rgb(186, 140, 255);
+    pub const ENGINE: Color = Color::rgb(230, 121, 180);
+    pub const PLUGIN: Color = Color::rgb(242, 162, 72);
+    pub const SCREEN: Color = Color::rgb(224, 204, 96);
+    /// A gap's marker.
+    pub const GAP: Color = Color::rgb(244, 86, 86);
+    /// The ring of a node measured and weak.
+    pub const WEAK: Color = Color::rgb(255, 120, 120);
+    /// An edge.
+    pub const EDGE: Color = Color {
+        red: 255,
+        green: 255,
+        blue: 255,
+        alpha: 38,
+    };
+}

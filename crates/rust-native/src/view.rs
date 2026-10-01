@@ -251,6 +251,8 @@ pub enum Glyph {
     /// A checkbox that is on. Activating the button asks the application
     /// to turn it off.
     Checked,
+    /// A map of how things connect: a node linked to three others.
+    Map,
 }
 
 /// The control that loads older rows at a transcript's top.

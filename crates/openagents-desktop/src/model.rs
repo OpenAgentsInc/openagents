@@ -104,6 +104,8 @@ pub enum Intent {
     Navigate { action: crate::chrome::Action },
     /// A choice on Settings ([`crate::settings`]).
     Settings { action: crate::settings::Action },
+    /// A control on the Map page ([`crate::map_action`]).
+    Map { action: crate::map_action::Action },
     /// "Can't scan? Copy a code instead".
     CopyCode,
     /// Bring the code back after it was hidden.
@@ -637,7 +639,7 @@ impl Model {
         self.codes.input(now);
         match intent {
             Intent::Grid { .. } | Intent::Chat { .. } => Vec::new(),
-            Intent::Navigate { .. } | Intent::Settings { .. } => Vec::new(),
+            Intent::Navigate { .. } | Intent::Settings { .. } | Intent::Map { .. } => Vec::new(),
             Intent::CopyCode => match self.codes.shown() {
                 Some(shown) => {
                     let code = shown.text.clone();

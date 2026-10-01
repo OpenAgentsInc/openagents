@@ -54,10 +54,32 @@ pub enum TextInput<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum SurfaceInput {
-    Down { x: f32, y: f32, shift: bool },
-    Move { x: f32, y: f32 },
-    Up { x: f32, y: f32 },
-    Wheel { x: f32, y: f32, dx: f32, dy: f32 },
+    Down {
+        x: f32,
+        y: f32,
+        shift: bool,
+    },
+    Move {
+        x: f32,
+        y: f32,
+    },
+    Up {
+        x: f32,
+        y: f32,
+    },
+    Wheel {
+        x: f32,
+        y: f32,
+        dx: f32,
+        dy: f32,
+    },
+    /// Zoom about `x`, `y` by `factor` (above 1 zooms in): a pinch on a
+    /// trackpad, or the wheel with Cmd or Ctrl held.
+    Zoom {
+        x: f32,
+        y: f32,
+        factor: f32,
+    },
 }
 
 /// The most text a paste reads.

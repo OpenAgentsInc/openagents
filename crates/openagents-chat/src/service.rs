@@ -65,6 +65,10 @@ pub enum Command {
     Restore {
         chat: String,
     },
+    /// How many replies of the saved conversations took each route, from
+    /// the worker's typed judgments the turns keep: the Map page's local
+    /// counts (#10085). Read-only; the counts stay on this computer.
+    Routes {},
 }
 
 /// A bounded page of a conversation and its current reply.
@@ -97,6 +101,9 @@ pub struct Snapshot {
     pub partial: String,
     pub failure: Option<String>,
     pub storage_error: Option<String>,
+    /// For [`Command::Routes`]: replies per route word, counted here.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub routes: std::collections::BTreeMap<String, u64>,
 }
 
 fn identity(id: &str) -> bool {
@@ -149,6 +156,11 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
             (Some(chat), None)
         }
         Command::List {} => (None, None),
+        Command::Routes {} => {
+            let mut page = snapshot(chats, None, None)?;
+            page.routes = chats.route_counts();
+            return Ok(page);
+        }
         Command::ListMore { after, version } => {
             let mut page = snapshot(chats, None, None)?;
             if page.list_version != version || after > chats.list().len() {

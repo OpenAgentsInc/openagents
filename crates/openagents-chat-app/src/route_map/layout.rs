@@ -11,7 +11,7 @@
 use super::{Kind, Map};
 
 /// The ring radius at each depth, in world units.
-pub const RINGS: [f32; 6] = [0.0, 190.0, 420.0, 700.0, 980.0, 1220.0];
+pub const RINGS: [f32; 6] = [0.0, 240.0, 500.0, 790.0, 1080.0, 1320.0];
 /// Empty leaves between families, so they read as groups.
 const FAMILY_PAD: f32 = 2.0;
 /// The least and most zoom.

@@ -30,6 +30,7 @@ verification record; owner-only checks are in the workspace `NEEDS_OWNER.md`.
 | **Update ready** strip with **Restart to update** | macOS, Linux, Windows | A development build never checks | [menus, notifications, update](../../docs/desktop/verification/2026-09-30-menus-notify-update/verification.md) |
 | Slide viewer: a deck opened from chat (`presentation.open`) or `--open-deck ID`, animated open and close, full screen | macOS, Linux, Windows | Decks open only in the desktop app; the phone and terminal say so | [captures](../../docs/desktop/verification/2026-09-30-slide-viewer/slides-viewer.png), [route](../../docs/coder/measurements/2026-09-30-presentation-route.md) |
 | The Verse page (sidebar footer): the Grid's Watch and Play, loaded only while the page shows | macOS, Linux | Verse does not build on Windows | [playable Grid](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md) |
+| The Map page (sidebar footer, palette, Window menu): OpenAgents' routes, members, plugins, and gaps as one zoomable graph colored by kind, with details, a Gaps panel, and an outline | macOS, Linux, Windows | Built only while it shows; the plugin records are a committed snapshot | [design](../../docs/desktop/route-map.md) |
 
 Packages: the signed, notarized macOS `.dmg`; the Linux 1.0.0 AppImage and
 `.deb` ([record](../../docs/desktop/verification/2026-09-30-linux-release/README.md));
@@ -56,6 +57,8 @@ Rust Native elements; desktop layout stays in the adapter.
   Enter or Space activates it.
 - **New chat**, or Ctrl+N (Cmd+N on macOS), opens a new chat at the top of
   Recent.
+- **Map**, beside Verse in the footer, opens the route map
+  ([design](../../docs/desktop/route-map.md)).
 - **The Grid** opens the world view. **Phones and computers** opens the
   computer controls, and **Settings** its six pages. Opening a chat cancels any
   displayed pairing code.

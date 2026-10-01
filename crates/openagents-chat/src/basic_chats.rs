@@ -119,6 +119,9 @@ pub struct BasicChats {
     used: Vec<String>,
 }
 
+/// The most conversations [`BasicChats::route_counts`] reads.
+pub const MAX_ROUTE_CHATS: usize = 1_000;
+
 /// The most used-suggestion marks kept; the oldest go first.
 const MAX_USED: usize = 512;
 /// A message longer than this is never a suggestion's words, so its words
@@ -334,6 +337,34 @@ impl BasicChats {
             self.turns.insert(id.to_owned(), saved.turns);
         }
         self.turns.get(id).map_or(&[], Vec::as_slice)
+    }
+
+    /// How many replies of the saved conversations took each route, from
+    /// the typed judgments their turns keep (`meta.route`), for the Map
+    /// page (#10085). Reads the store without keeping the turns, and at
+    /// most [`MAX_ROUTE_CHATS`] conversations, newest first. The counts
+    /// are this device's; nothing here sends them anywhere.
+    pub fn route_counts(&self) -> BTreeMap<String, u64> {
+        let mut counts = BTreeMap::new();
+        let mut count = |turns: &[Turn]| {
+            for turn in turns {
+                if turn.role == crate::basic_coder::Role::Assistant
+                    && let Some(route) = turn.meta.as_ref().and_then(|meta| meta.route.as_deref())
+                {
+                    *counts.entry(route.to_owned()).or_insert(0) += 1;
+                }
+            }
+        };
+        for summary in self.index.iter().take(MAX_ROUTE_CHATS) {
+            if let Some(turns) = self.turns.get(&summary.id) {
+                count(turns);
+            } else if let Some(store) = &self.store
+                && let Ok(Some(saved)) = store.read::<Saved>(&item(&summary.id))
+            {
+                count(&saved.turns);
+            }
+        }
+        counts
     }
 
     /// Whether a reply is streaming into any conversation, or the worker is
@@ -1285,6 +1316,52 @@ mod tests {
             texts,
             ["hello\nsecond line", "enil dnoces\nolleh", "abc", "cba"]
         );
+    }
+
+    #[test]
+    fn route_counts_read_every_saved_chat_without_keeping_its_turns() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+        let store = || Cache::open(dir.path(), &secret).ok();
+        let mut chats = BasicChats::new(None, None, store());
+        for (n, routes) in [("a", vec!["meta", "meta"]), ("b", vec!["work.dispatch"])] {
+            let id = n.repeat(32);
+            chats.create(&id, 1);
+            let mut turns = vec![];
+            for route in routes {
+                turns.push(Turn::user("q"));
+                turns.push(Turn::assistant(
+                    "a",
+                    Some(crate::router::Meta {
+                        route: Some(route.into()),
+                        ..Default::default()
+                    }),
+                ));
+            }
+            // A user turn never counts, even with a route on it.
+            turns.push(Turn {
+                meta: Some(crate::router::Meta {
+                    route: Some("end".into()),
+                    ..Default::default()
+                }),
+                ..Turn::user("bye")
+            });
+            chats.turns.insert(id.clone(), turns);
+            chats.dirty.insert(id);
+        }
+        chats.flush_pending();
+        drop(chats);
+        let mut chats = BasicChats::new(None, None, store());
+        let counts = chats.route_counts();
+        assert_eq!(
+            counts,
+            BTreeMap::from([("meta".to_string(), 2), ("work.dispatch".to_string(), 1)])
+        );
+        assert!(chats.turns.is_empty(), "the turns are read, not kept");
+        let snapshot =
+            crate::service::apply(&mut chats, crate::service::Command::Routes {}, 2).unwrap();
+        assert_eq!(snapshot.routes, counts);
+        assert!(snapshot.chat.is_none(), "no conversation opens");
     }
 
     #[test]

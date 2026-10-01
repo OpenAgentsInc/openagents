@@ -111,6 +111,25 @@ impl Kind {
         }
     }
 
+    /// The kind's color on the dark canvas
+    /// ([`crate::visual::map`]).
+    #[must_use]
+    pub fn color(self) -> rust_native::style::Color {
+        use crate::visual::map;
+        match self {
+            Kind::Front => map::FRONT,
+            Kind::Family => map::FAMILY,
+            Kind::Route => map::ROUTE,
+            Kind::Answer => map::ANSWER,
+            Kind::Knowledge => map::KNOWLEDGE,
+            Kind::Model => map::MODEL,
+            Kind::Coder => map::CODER,
+            Kind::Engine => map::ENGINE,
+            Kind::Plugin => map::PLUGIN,
+            Kind::Screen => map::SCREEN,
+        }
+    }
+
     /// The word a filter and a test name it by.
     #[must_use]
     pub fn word(self) -> &'static str {
@@ -1002,6 +1021,48 @@ impl Map {
             count => name.push_str(&format!(", {count} gaps")),
         }
         name
+    }
+
+    /// The short line a zoomed-in label adds under a node's name: a
+    /// route's held-out numbers and rows, a plugin's stage, an engine's
+    /// reading, or Coder's members.
+    #[must_use]
+    pub fn evidence(&self, node: usize) -> Option<String> {
+        let n = &self.nodes[node];
+        match n.kind {
+            Kind::Route => {
+                let rows = self
+                    .sources
+                    .labeled
+                    .routes
+                    .get(&n.label)
+                    .map_or(0, |rows| rows.rows);
+                Some(match self.sources.measurement.routes.get(&n.label) {
+                    Some(score) => format!(
+                        "P {} · R {} · {rows} rows",
+                        percent(score.precision),
+                        percent(score.recall)
+                    ),
+                    None => format!("Not measured · {rows} rows"),
+                })
+            }
+            Kind::Plugin => n.stage.map(|stage| stage.words().to_string()),
+            Kind::Engine => Some(
+                match engine_reading(&self.local, &n.label) {
+                    EngineReading::Ready => "Ready",
+                    EngineReading::SignedOut => "Not signed in",
+                    EngineReading::AtLimit => "At its limit",
+                    EngineReading::Unknown => "No reading",
+                }
+                .to_string(),
+            ),
+            Kind::Coder => Some(format!(
+                "{} engines · {} plugins",
+                self.sources.engines.len(),
+                self.nodes.iter().filter(|x| x.kind == Kind::Plugin).count()
+            )),
+            _ => None,
+        }
     }
 
     /// What the inspector shows for `node`.

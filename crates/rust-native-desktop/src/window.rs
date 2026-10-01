@@ -1591,14 +1591,27 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     MouseScrollDelta::PixelDelta(position) => position.y as f32 / self.scale(),
                 };
                 let scale = self.scale();
-                if self.surface(|x, y| SurfaceInput::Wheel {
-                    x,
-                    y,
-                    dx: match delta {
-                        MouseScrollDelta::LineDelta(x, _) => x * 40.0,
-                        MouseScrollDelta::PixelDelta(p) => p.x as f32 / scale,
-                    },
-                    dy: lines,
+                // With Cmd or Ctrl held, a surface that zooms reads the
+                // wheel as zoom: a notch (40 points) is a quarter again.
+                let zoom = self.modifiers.super_key() || self.modifiers.control_key();
+                if self.surface(|x, y| {
+                    if zoom {
+                        SurfaceInput::Zoom {
+                            x,
+                            y,
+                            factor: 1.25_f32.powf(lines / 40.0),
+                        }
+                    } else {
+                        SurfaceInput::Wheel {
+                            x,
+                            y,
+                            dx: match delta {
+                                MouseScrollDelta::LineDelta(x, _) => x * 40.0,
+                                MouseScrollDelta::PixelDelta(p) => p.x as f32 / scale,
+                            },
+                            dy: lines,
+                        }
+                    }
                 }) {
                     self.tick();
                     self.redraw();
@@ -1621,6 +1634,14 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 }
                 self.hover(false);
                 self.redraw();
+            }
+            WindowEvent::PinchGesture { delta, .. } => {
+                self.app.input(Instant::now());
+                let factor = (1.0 + delta as f32).clamp(0.5, 2.0);
+                if self.surface(|x, y| SurfaceInput::Zoom { x, y, factor }) {
+                    self.tick();
+                    self.redraw();
+                }
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,

@@ -48,10 +48,13 @@ pub mod fake;
 pub mod folder;
 #[cfg(all(feature = "app", not(windows)))]
 pub mod grid;
+pub mod map_action;
 pub mod migrate;
 pub mod model;
 pub mod notices;
 pub mod qr;
+#[cfg(feature = "app")]
+pub mod route_map;
 pub mod screens;
 pub mod settings;
 #[cfg(feature = "app")]

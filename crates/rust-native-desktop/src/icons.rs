@@ -210,6 +210,29 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
             );
         }
         Glyph::Unchecked => frame.stroke(rect, rect.w * 0.15, width, color),
+        Glyph::Map => {
+            // A hub linked to three nodes, as the Map page draws one.
+            let hub = (0.42, 0.55);
+            for node in [(0.18, 0.22), (0.82, 0.3), (0.76, 0.82)] {
+                line(hub, node);
+            }
+            let dot = |frame: &mut Frame, (x, y): (f32, f32), r: f32| {
+                frame.fill(
+                    PxRect {
+                        x: rect.x + rect.w * (x - r),
+                        y: rect.y + rect.h * (y - r),
+                        w: rect.w * 2.0 * r,
+                        h: rect.h * 2.0 * r,
+                    },
+                    rect.w * r,
+                    color,
+                );
+            };
+            dot(frame, hub, 0.16);
+            for node in [(0.18, 0.22), (0.82, 0.3), (0.76, 0.82)] {
+                dot(frame, node, 0.1);
+            }
+        }
     }
 }
 

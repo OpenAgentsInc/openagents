@@ -482,6 +482,8 @@ impl Transcript {
                 self.scroll(dy);
                 self.scroll_horizontal(x, y, dx);
             }
+            // A transcript doesn't zoom.
+            SurfaceInput::Zoom { .. } => {}
         }
         if previous != self.selection.endpoints(&self.frame) || hovered != self.hovered_link {
             self.version = self.version.wrapping_add(1);

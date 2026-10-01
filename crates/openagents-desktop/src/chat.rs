@@ -1089,6 +1089,28 @@ impl Panel {
         let id = self.session.selected.as_ref()?;
         self.fields.get_mut(id)
     }
+    /// Asks the host how many of this person's replies took each route
+    /// (`Command::Routes`), for the Map page (#10085). The counts come
+    /// back to [`Panel::route_counts`] and never leave this computer.
+    pub fn request_routes(&mut self) -> Request {
+        self.request(Command::Routes {})
+    }
+
+    /// The last route counts the host answered.
+    pub fn route_counts(&self) -> Option<&std::collections::BTreeMap<String, u64>> {
+        self.session.routes.as_ref()
+    }
+
+    /// Puts `text` in the selected chat's composer, unsent: a Map page
+    /// step's message (#10085). The person reads it, edits it, and sends
+    /// it, or doesn't.
+    pub fn prefill(&mut self, text: &str) {
+        if let Some(field) = self.field() {
+            field.focused = true;
+            field.input(TextInput::Commit(text), 0);
+        }
+    }
+
     pub fn new_chat(&mut self) -> Request {
         let previous = self.session.selected.clone();
         let result = request(self.session.new_chat());
@@ -2146,6 +2168,10 @@ impl Panel {
             }
             C::Saved => {
                 self.desktop_navigation = Some(crate::chrome::Action::Saved);
+                None
+            }
+            C::Map => {
+                self.desktop_navigation = Some(crate::chrome::Action::Map);
                 None
             }
             C::Settings => {
@@ -3207,6 +3233,7 @@ impl Panel {
                             C::Settings => Glyph::Settings,
                             C::Computers => Glyph::Computer,
                             C::Grid => Glyph::Cloud,
+                            C::Map => Glyph::Map,
                             C::Saved => Glyph::History,
                             C::Palette => Glyph::Terminal,
                             C::Stop => Glyph::Stop,
@@ -3998,7 +4025,7 @@ impl Panel {
 }
 /// Open an `http(s)` link in the person's browser. Anything else is
 /// ignored.
-fn open_link(destination: &str) {
+pub fn open_link(destination: &str) {
     if !destination.starts_with("https://") && !destination.starts_with("http://") {
         return;
     }

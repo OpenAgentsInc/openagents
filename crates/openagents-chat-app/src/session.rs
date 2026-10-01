@@ -23,6 +23,9 @@ pub struct Session {
     pub error: Option<String>,
     pub revision: u64,
     pub reading: bool,
+    /// The last route counts the host answered a [`Command::Routes`] with:
+    /// this person's replies per route, counted on their computer (#10085).
+    pub routes: Option<BTreeMap<String, u64>>,
     pending: BTreeMap<u64, Command>,
     handoff_errors: BTreeMap<String, String>,
     next_ticket: u64,
@@ -44,6 +47,7 @@ impl Session {
             summaries: vec![],
             send: BTreeMap::new(),
             error: None,
+            routes: None,
             revision: 0,
             reading: false,
             pending: BTreeMap::new(),
@@ -212,7 +216,7 @@ impl Session {
                     self.list_more = None;
                 }
                 let target = match &command {
-                    Command::List {} | Command::ListMore { .. } => None,
+                    Command::List {} | Command::ListMore { .. } | Command::Routes {} => None,
                     Command::UseSuggestion { chat, .. }
                     | Command::RunCoder { chat }
                     | Command::BindCoder { chat, .. }
@@ -236,6 +240,10 @@ impl Session {
                 if target.is_none() || target == self.selected.as_ref() {
                     self.error = Some(error);
                 }
+            }
+            Ok(snapshot) if matches!(command, Command::Routes {}) => {
+                // The Map page's counts: nothing about the open chat changes.
+                self.routes = Some(snapshot.routes);
             }
             Ok(mut snapshot) => {
                 self.listed = true;
