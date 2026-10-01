@@ -18,8 +18,9 @@
 //! - [`CoderEvent::Output`]: a command's output, bounded.
 //! - [`CoderEvent::ProviderSwitched`]: a provider refused for a usage or
 //!   rate limit and the run moved on.
-//! - [`CoderEvent::Progress`]: the loop's step, its bound, and Jev's
-//!   judgment of whether the task is done.
+//! - [`CoderEvent::Progress`]: the loop's step, the time so far, and
+//!   Jev's estimate of how much of the task is complete. A run has no step
+//!   or time budget, so there is no bound to show.
 //! - A turn ends with exactly one of [`CoderEvent::Result`],
 //!   [`CoderEvent::Question`], [`CoderEvent::Approval`],
 //!   [`CoderEvent::Failure`], or [`CoderEvent::Stopped`].
@@ -385,17 +386,40 @@ pub struct Asked {
     pub answer: Option<String>,
 }
 
-/// Where the loop is.
+/// Where the loop is. A run has no step or time budget (#10103); an
+/// older line's `max_steps` is ignored when read.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Progress {
     pub turn: usize,
     /// The loop's step, from one.
     pub step: usize,
-    pub max_steps: Option<usize>,
     /// Seconds since the turn started.
     pub seconds: f64,
     /// Jev's probability that the task is done, when Jev judged.
     pub done: Option<f64>,
+    /// Jev's estimate of how much of the task is complete, from 0 to 1
+    /// (its `complete` score), when Jev judged. Absent from lines written
+    /// before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complete: Option<f64>,
+}
+
+impl Progress {
+    /// The running line every surface shows: "Coder is working · step 5
+    /// · ≈40% done · 9s". The share is Jev's estimate of how much of the
+    /// task is complete, left out until Jev has given one; there is never
+    /// a step budget ("of N").
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!(
+            "Coder is working · step {}{} · {:.0}s",
+            self.step,
+            self.complete
+                .map(|complete| format!(" · ≈{:.0}% done", complete.clamp(0.0, 1.0) * 100.0))
+                .unwrap_or_default(),
+            self.seconds
+        )
+    }
 }
 
 /// One file the turn changed in the worktree.
@@ -517,7 +541,6 @@ pub struct Mapper {
     turn: usize,
     /// How to answer a question from the terminal, when there is a way.
     answer: Option<String>,
-    max_steps: Option<usize>,
     /// The reply as streamed so far this step.
     streamed: String,
     /// The last whole reply Coder wrote this turn.
@@ -602,13 +625,10 @@ impl Mapper {
             })
         };
         let mut events = Vec::new();
-        if let Some(configuration) = extra
+        if extra
             .pointer("/admission/grant/adapter_configuration")
-            .filter(|value| value.is_object())
+            .is_some_and(Value::is_object)
         {
-            self.max_steps = configuration["max_steps"]
-                .as_u64()
-                .and_then(|n| usize::try_from(n).ok());
             return events;
         }
         if let Some(summary) = extra.get("adapter_summary").and_then(Value::as_object) {
@@ -669,21 +689,23 @@ impl Mapper {
             let at_seconds = record["seconds"].as_f64();
             match event["event"].as_str() {
                 Some("judged") => {
-                    let done = event["judgment"]["answers"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .find(|pair| pair[0] == "done")
-                        .and_then(|pair| pair[1].as_f64());
+                    let answer = |list: &str, id: &str| {
+                        event["judgment"][list]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .find(|pair| pair[0] == id)
+                            .and_then(|pair| pair[1].as_f64())
+                    };
                     events.push(CoderEvent::Progress(Progress {
                         turn: self.turn,
                         step: event["step"]
                             .as_u64()
                             .and_then(|n| usize::try_from(n).ok())
                             .unwrap_or(0),
-                        max_steps: self.max_steps,
                         seconds: seconds(at_seconds),
-                        done,
+                        done: answer("answers", "done"),
+                        complete: answer("scores", "complete"),
                     }));
                 }
                 Some("replying") => {
@@ -867,11 +889,11 @@ impl Mapper {
             }),
             "cancelled_or_host_refusal" | "cancelled" => CoderEvent::Stopped(Stopped {
                 turn,
-                message: "Coder stopped: the task was cancelled or reached its time limit.".into(),
+                message: "Coder stopped: the task was stopped, or its host refused to go on.".into(),
             }),
             // The agent ended the turn itself: after the host refused a
             // tool it asked for, or reporting `cancelled` with no stop from
-            // the host. Neither is a cancel or a time limit (#10092).
+            // the host. Neither is a stop by the person (#10092).
             "engine_stopped_after_refusal" | "engine_cancelled" => CoderEvent::Stopped(Stopped {
                 turn,
                 message: format!(
@@ -879,7 +901,7 @@ impl Mapper {
                     self.stopped.clone().unwrap_or_else(|| if ending
                         == "engine_cancelled"
                     {
-                        "the coding agent ended the turn as cancelled on its own; nobody stopped the task and it did not reach its time limit.".to_owned()
+                        "the coding agent ended the turn as cancelled on its own; nobody stopped the task.".to_owned()
                     } else {
                         "the coding agent stopped after the host refused a tool it asked to run.".to_owned()
                     })
@@ -1035,11 +1057,10 @@ pub fn text(event: &CoderEvent) -> Option<String> {
             None => format!("  ~ {}; no other provider has capacity", s.reason),
         },
         CoderEvent::Progress(p) => format!(
-            "  [step {}{}{}, {:.0}s]",
+            "  [step {}{}, {:.0}s]",
             p.step,
-            p.max_steps.map(|m| format!("/{m}")).unwrap_or_default(),
-            p.done
-                .map(|d| format!(", done {:.0}%", d * 100.0))
+            p.complete
+                .map(|c| format!(", ≈{:.0}% done", c.clamp(0.0, 1.0) * 100.0))
                 .unwrap_or_default(),
             p.seconds
         ),
@@ -1191,7 +1212,8 @@ mod tests {
                 "system",
                 "judged",
                 mc(json!({"event": "judged", "step": 1,
-                "judgment": {"answers": [["done", 0.02], ["progress", 0.5]]}})),
+                "judgment": {"answers": [["done", 0.02], ["progress", 0.5]],
+                    "scores": [["complete", 0.4]]}})),
             ),
             step(
                 4,
@@ -1271,7 +1293,21 @@ mod tests {
         let CoderEvent::Progress(progress) = &events[1] else {
             panic!()
         };
-        assert_eq!((progress.step, progress.max_steps), (1, Some(24)));
+        // An older grant's step limit is never shown (#10103); Jev's
+        // estimate of how much is complete is.
+        assert_eq!(
+            (progress.step, progress.done, progress.complete),
+            (1, Some(0.02), Some(0.4))
+        );
+        assert_eq!(
+            progress.line(),
+            "Coder is working · step 1 · ≈40% done · 2s"
+        );
+        let line = serde_json::to_string(&CoderEvent::Progress(progress.clone())).unwrap();
+        assert!(
+            !line.contains("max_steps") && line.contains("\"complete\":0.4"),
+            "{line}"
+        );
         // The streamed start of the reply is not repeated.
         let replies: Vec<&str> = events
             .iter()
@@ -1299,6 +1335,30 @@ mod tests {
         assert_eq!(result.summary, "I added test_slug.py; it passes.");
         assert_eq!((result.insertions, result.deletions), (9, 0));
         assert!(end.ends_turn());
+    }
+
+    /// #10103: the running line never names a budget. An older line
+    /// with `max_steps` still reads; the share is Jev's estimate of how
+    /// much of the task is complete, shown once Jev gave one.
+    #[test]
+    fn the_running_line_names_no_budget() {
+        let old: CoderEvent = serde_json::from_str(
+            r#"{"event":"progress","turn":1,"step":5,"max_steps":24,"seconds":9.2,"done":0.04}"#,
+        )
+        .unwrap();
+        let CoderEvent::Progress(mut progress) = old else {
+            panic!()
+        };
+        assert_eq!(progress.complete, None);
+        assert_eq!(progress.line(), "Coder is working · step 5 · 9s");
+        progress.complete = Some(0.4);
+        assert_eq!(
+            progress.line(),
+            "Coder is working · step 5 · ≈40% done · 9s"
+        );
+        assert!(!progress.line().contains(" of "));
+        let text = text(&CoderEvent::Progress(progress)).unwrap();
+        assert_eq!(text, "  [step 5, ≈40% done, 9s]");
     }
 
     #[test]

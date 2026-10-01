@@ -986,7 +986,7 @@ fn coder_loop_events_project_as_replies_commands_and_endings() {
             "message".into(),
             s("system"),
             None,
-            "Coder stopped: the task was cancelled or reached its time limit.".into(),
+            "Coder stopped: the task was stopped, or its host refused to go on.".into(),
             false
         )
     );

@@ -180,6 +180,24 @@ projects, and what the run's commands may reach.
   run is under an execution grant, in the filesystem boundary, with the
   same failover and the same ATIF trajectory per turn. The shared code is
   [`coder::task::local`](../../crates/coder/src/task/local.rs).
+- **No step or time budget.** A run ends only when Coder finishes (or asks
+  a question), when the person stops it, or when the loop's **stuck guard**
+  ends it: Jev, in the judgment it makes before every step, judged eight
+  steps in a row (`microcoder_loop::run::STUCK_STEPS`; a smaller window is
+  raised to four) repeating an approach that already failed (`repeating`
+  at least 0.5) without moving the work forward (`progress` under 0.5).
+  Without Jev's answers the rule decides: every command of the last step
+  had already run with the same exit and output. The run then fails with
+  "Coder stopped before finishing: stuck (it repeated an approach that
+  already failed, without progress, for 8 steps in a row)." The loop's
+  other guards stay: replies it cannot use and replies that run nothing,
+  three in a row each, and, for a whole coding agent (Devin, OpenCode,
+  Grok Build), twenty minutes with no output. Settings and policies written
+  before #10103 may carry `max_steps` or `wall_seconds` (the host's
+  `autostart.json`, an execution grant, `.openagents/coder-issues.json`);
+  they still read without error and are ignored, and nothing writes them
+  now. `coder host autostart on` still accepts `--max-steps` and
+  `--wall-seconds` so older scripts work; they do nothing.
 - **Where tasks live.** `~/.openagents/tasks`, the store `coder task` and a
   host on this computer use by default, so the host's devices see these
   tasks in their history. `OPENAGENTS_TASKS` names another store; worktrees
@@ -226,28 +244,19 @@ the desktop's chat runs the same flow.
    links, and posts a claim comment (`Claimed: Coder is working on this…`).
 2. **Work.** It fetches the default branch and starts a local run, as
    above, in Coder's own worktree of `origin/main` (not the checkout's
-   `HEAD`), with the issue as the prompt and up to the policy's
-   `max_steps` steps a turn.
+   `HEAD`), with the issue as the prompt. A turn has no step or time limit
+   ([above](#coder-on-this-computer)).
 3. **Check.** It runs the repository's checks for what the change touched:
    each touched Rust package's tests inside a write boundary with
    credentials withheld, the issue flow's diff checks (style, figures with
    no source, broken links, code that depends on what changed, plain
    wording), and, when the policy asks, `cargo fmt --check` and Clippy with
    warnings denied. When they find problems, a fix turn continues the same
-   task with the problems and the diff, up to `fix_rounds` times.
-   **Continue.** A turn that ends on its own budget (`loop_incomplete` with
-   the loop's `step_limit` or `time_limit`) is not the end of the flow when
-   the loop's own judgments say it was progressing: over the turn's last
-   five judged steps, Jev's mean `progress` is at least 0.5 and its mean
-   `repeating` below 0.5. The flow then continues Coder in the same
-   worktree with a continuation turn that says where the work stands (the
-   diff stat, and the checks' last findings when a fix turn ran out), up to
-   `continue_turns` times across the flow
-   ([#10063](https://github.com/OpenAgentsInc/openagents/issues/10063)).
-   A turn judged repeating or not progressing, one with no judgments (no
-   Jev), any other failure ending, and a turn past the bound fail as
-   before. With the fix turns, a flow runs at most
-   `1 + fix_rounds + continue_turns` turns.
+   task with the problems and the diff, up to `fix_rounds` times. A flow
+   runs at most `1 + fix_rounds` turns. (#10063's continuation turns,
+   which continued a turn that ran out of its step or time limit while
+   progressing, are gone with the limits,
+   [#10103](https://github.com/OpenAgentsInc/openagents/issues/10103).)
 4. **Land.** It commits (the issue's title, Coder's summary, and the issue
    link) and lands as the repository's policy says. `main`: fetch, rebase
    onto the newer `main` when it moved and run the checks again, then push;
@@ -258,28 +267,25 @@ the desktop's chat runs the same flow.
    the run (task, turns, provider and model) on the issue, and closes it.
 
 It never pushes a red change. When the checks still fail after the fix
-turns, a rebase conflicts, the run doesn't converge within its bounds (a
-failure ending), Coder asks a question instead of finishing, nothing
+turns, a rebase conflicts, the run fails (such as the stuck guard ending
+it), Coder asks a question instead of finishing, nothing
 changed, or the person stops it, the flow comments what it tried and the
 failing output, releases its claim, and leaves the issue open with the
 change in Coder's worktree. The comment says how far the run got (`git diff
 --stat` of the worktree against the branch it started on) and the run's
-turns, fix turns, and continuation turns, so a person can pick up there.
+turns and fix turns, so a person can pick up there.
 
 The repository's policy is `.openagents/coder-issues.json` at its top
 level; without one a flow opens a pull request and runs only the tests and
 diff checks. This repository's:
 
 ```json
-{ "land": "main", "claim_hours": 6, "fix_rounds": 3, "fmt": true, "clippy": true, "max_steps": 100, "continue_turns": 2 }
+{ "land": "main", "claim_hours": 6, "fix_rounds": 3, "fmt": true, "clippy": true }
 ```
 
-The defaults are `max_steps` 60 and `continue_turns` 2. This repository
-raises `max_steps` to 100: dogfooding at 60, two UI issues (#10057, #10058)
-ran out of steps with a large, correct partial change and a smaller one
-(#10056) landed in one turn. A continuation turn spends steps finding its
-place again, so a larger turn wastes fewer; the continuation turns cover
-what 100 still does not. Each turn keeps its 30-minute wall limit.
+An older policy's `max_steps` and `continue_turns` still read and are
+ignored: turns have no step or time limit, so there is nothing to continue
+from.
 
 `branch` names another branch than `origin/HEAD`'s, and `trailer` adds a
 line to each commit message.
@@ -336,7 +342,7 @@ the envelope has `turn` (from 1; an answer starts the next turn).
 | `step` | `step_id` (the ATIF step in the turn's trajectory), `kind`, `source` (`user`, `agent`, `system`), `text` (at most 2 KiB). `kind` is `message` (the person's request), `thinking`, `command`, `tool_call` (an agent's tool, for Devin, OpenCode, and Grok Build routes), `observation` (a command's exit and time), `reply` (Coder's reply as it is written, in pieces), or `note` (such as running without Jev) |
 | `output` | `step_id`, `command`, `exit` (null when a signal or the deadline ended it), `timed_out`, `seconds`, `text` (at most 4 KiB), `truncated` |
 | `provider_switched` | `step_id`, `from`, `to` (null when no admitted route had capacity), `reason`, `resets_at` (Unix seconds) |
-| `progress` | `step`, `max_steps`, `seconds`, `done` (Jev's probability that the task is done, or null) |
+| `progress` | `step`, `seconds`, `done` (Jev's probability that the task is done, or null), `complete` (Jev's estimate, 0 to 1, of how much of the task is complete; left out until Jev gave one). No step budget: an older line's `max_steps` is ignored. The desktop and the phone show it as "Coder is working · step 5 · ≈40% done · 9s", never "of N" |
 | `question` | `text`, `answer` (the command that answers it) |
 | `approval` | `text`, `answer` |
 | `result` | `summary` (Coder's reply), `files_changed` (`path`, `status`, `added`, `removed`), `insertions`, `deletions`, `worktree`, `trajectory` (the turn's ATIF file), and, for the issue flow, `issue` ([above](#working-a-github-issue)) |
@@ -355,7 +361,7 @@ $ cd ~/code/slugs && openagents --json chat "add a unit test for slugify that co
 {"event":"coder","thread":"1742…","accepted":true,"message":"Coder started task 4d0d… in a worktree of slugs.","task":{"host":"local",…}}
 {"seq":1,"task":"4d0d…","thread":"1742…","event":"coder_started","turn":1,"project":"slugs",…,"provider":"claude","model":"claude-opus-5-5","reason":"Codex reached its usage limit until 2026-09-30 17:39 UTC; using Claude Code.","fallbacks":["codex:gpt-6-luna"],"via":"local"}
 {"seq":2,…,"event":"step","turn":1,"step_id":1,"kind":"message","source":"user","text":"add a unit test for slugify that covers an empty string…"}
-{"seq":3,…,"event":"progress","turn":1,"step":1,"max_steps":24,"seconds":6.65,"done":0.04}
+{"seq":3,…,"event":"progress","turn":1,"step":1,"seconds":6.65,"done":0.04,"complete":0.0}
 {"seq":5,…,"event":"step","turn":1,"step_id":12,"kind":"command","source":"agent","text":"git status --short | head; ls -la; …"}
 {"seq":9,…,"event":"output","turn":1,"step_id":17,"command":"git status --short | head; …","exit":0,"timed_out":false,"seconds":0.1,"text":"…","truncated":false}
 {"seq":36,…,"event":"result","turn":1,"summary":"I added `test_slugs.py` …","files_changed":[{"path":"test_slugs.py","status":"added","added":13,"removed":0}],"insertions":13,"deletions":0,"worktree":"…/worktrees/slugs-4d0d730cb9be","trajectory":"…/tasks/4d0d….1.atif.jsonl"}

@@ -109,8 +109,18 @@ pub struct Engine {
     /// The model recorded in each eligible task and admitted by its grant.
     pub model: String,
     pub effort: Option<String>,
-    pub max_steps: usize,
-    pub wall_seconds: u64,
+    /// A step limit older policies carried. Coder runs have no step or
+    /// time limit: a run ends when Coder finishes or asks, when the person
+    /// stops it, or when the loop's stuck guard finds it repeating a failed
+    /// approach without progress. An older policy's `max_steps` and
+    /// `wall_seconds` are read without error and ignored, and a policy
+    /// written now leaves them out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<usize>,
+    /// A time limit older policies carried; read and ignored, as
+    /// [`Engine::max_steps`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall_seconds: Option<u64>,
     pub memory_bytes: u64,
     /// Let the engine write the workspace. The workspace must then be an
     /// isolated Git worktree, as the task owner requires.
@@ -333,9 +343,6 @@ impl Policy {
         self.configuration(&self.routes())
             .validate()
             .map_err(|e| e.to_string())?;
-        if !(1..=3600).contains(&engine.wall_seconds) {
-            return Err("wall_seconds is 1 to 3600".into());
-        }
         if !(64 * 1024 * 1024..=8 * 1024 * 1024 * 1024).contains(&engine.memory_bytes) {
             return Err("memory_bytes is 64 MiB to 8 GiB".into());
         }
@@ -381,7 +388,8 @@ impl Policy {
             program,
             arguments: Vec::new(),
             write_workspace: self.engine.write_workspace,
-            wall_seconds: self.engine.wall_seconds,
+            // A Coder run has no time limit.
+            wall_seconds: 0,
             stream_bytes: 64 * 1024,
             memory_bytes: self.engine.memory_bytes,
             requirements: None,
@@ -420,7 +428,7 @@ impl Policy {
             generation_endpoint: primary.generation_endpoint,
             decision_endpoint: engine.decision_endpoint.clone(),
             decision_model: engine.decision_model.clone(),
-            max_steps: engine.max_steps,
+            max_steps: None,
             acceptance: false,
             route: "never".into(),
             knowledge: "off".into(),
@@ -1237,7 +1245,7 @@ impl Autostart {
                     entry.grant_digest = Some(launched.grant_digest);
                     entry.owner_process = Some(launched.owner_process);
                     entry.detail = Some(format!(
-                        "{} {} fallbacks [{}] max_steps {} wall_seconds {} write_workspace {} access {}",
+                        "{} {} fallbacks [{}] write_workspace {} access {}",
                         policy.engine.adapter,
                         order[0],
                         order[1..]
@@ -1245,8 +1253,6 @@ impl Autostart {
                             .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join(","),
-                        policy.engine.max_steps,
-                        policy.engine.wall_seconds,
                         policy.engine.write_workspace,
                         policy.engine.access.as_str()
                     ));
@@ -1712,7 +1718,7 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        ~/.openagents/tasks).
   on --workspace LABEL [--workspace LABEL]... [--max-running N]
      [--model ID | --route PROVIDER:MODEL [--route PROVIDER:MODEL]...]
-     [--effort low|medium|high|xhigh] [--max-steps N] [--wall-seconds N]
+     [--effort low|medium|high|xhigh]
      [--memory-mib N] [--read-only] [--controller PATH]
      [--decision-endpoint URL] [--decision-model ID]
      [--probe-usage] [--usage-threshold PERCENT] [--full-access]
@@ -1916,12 +1922,11 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 }
                 engine
             } else {
-                let max_steps = number(take_one(&mut values, "--max-steps")?, "--max-steps", 24)?;
-                let wall_seconds = number(
-                    take_one(&mut values, "--wall-seconds")?,
-                    "--wall-seconds",
-                    1800,
-                )?;
+                // Runs have no step or time limit. The old options are
+                // still accepted, so an older script keeps working, and do
+                // nothing.
+                take_one(&mut values, "--max-steps")?;
+                take_one(&mut values, "--wall-seconds")?;
                 let memory_mib =
                     number(take_one(&mut values, "--memory-mib")?, "--memory-mib", 4096)?;
                 let controller = match take_one(&mut values, "--controller")? {
@@ -1955,9 +1960,8 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     effort: Some(
                         take_one(&mut values, "--effort")?.unwrap_or_else(|| "medium".into()),
                     ),
-                    max_steps: usize::try_from(max_steps)
-                        .map_err(|_| "--max-steps is too large")?,
-                    wall_seconds,
+                    max_steps: None,
+                    wall_seconds: None,
                     memory_bytes: memory_mib.saturating_mul(1024 * 1024),
                     write_workspace: !read_only,
                     decision_endpoint: take_one(&mut values, "--decision-endpoint")?
@@ -2363,8 +2367,8 @@ mod tests {
                 controller: PathBuf::from(CONTROLLER),
                 model: "gpt-6-luna".into(),
                 effort: Some("medium".into()),
-                max_steps: 24,
-                wall_seconds: 1800,
+                max_steps: None,
+                wall_seconds: None,
                 memory_bytes: 4 * 1024 * 1024 * 1024,
                 write_workspace: true,
                 decision_endpoint: "https://api.typesafe.ai".into(),
@@ -2756,9 +2760,12 @@ mod tests {
         let mut bad = policy(1);
         bad.engine.decision_endpoint = "http://api.typesafe.ai".into();
         assert!(bad.validate().is_err());
-        let mut bad = policy(1);
-        bad.engine.wall_seconds = 0;
-        assert!(bad.validate().is_err());
+        // An older policy's step and time limits are no longer bounds:
+        // any value reads, validates, and is ignored.
+        let mut legacy = policy(1);
+        legacy.engine.max_steps = Some(0);
+        legacy.engine.wall_seconds = Some(0);
+        assert!(legacy.validate().is_ok());
         // A malformed file is off.
         std::fs::write(dir.path().join(POLICY_FILE), b"{").unwrap();
         assert!(Policy::load(dir.path()).is_err());
@@ -3017,8 +3024,9 @@ mod tests {
                 effort: None,
             }]
         );
-        // It saves without a routes field, and its grant configuration is
-        // the one every earlier grant carried.
+        // It saves without a routes field, keeping its old step and time
+        // limits as they were, and its grant configuration is the one
+        // earlier grants carried without the step limit: runs have none.
         policy.save(dir.path()).unwrap();
         let saved: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.path().join(POLICY_FILE)).unwrap()).unwrap();
@@ -3031,7 +3039,7 @@ mod tests {
             configuration,
             serde_json::json!({"schema":adapter::CONFIG_SCHEMA,"provider":"codex","model":"gpt-6-luna",
                 "effort":"medium","generation_endpoint":"https://chatgpt.com/backend-api/codex",
-                "decision_endpoint":"https://api.typesafe.ai","decision_model":"jev-1.13.0","max_steps":24,
+                "decision_endpoint":"https://api.typesafe.ai","decision_model":"jev-1.13.0",
                 "acceptance":false,"route":"never","knowledge":"off","dollar_limit_micros":null,
                 "expected_controller_digest":null})
         );
@@ -3062,7 +3070,17 @@ mod tests {
             stored.intent.configuration.model.as_deref(),
             Some("gpt-6-luna")
         );
-        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        let grant = launched_grant(&s, 0);
+        // The run has no step or time limit (#10103): the grant carries
+        // neither.
+        assert_eq!(grant.wall_seconds, 0);
+        let bytes = std::fs::read_to_string(&s.launched.lock().unwrap()[0]).unwrap();
+        assert!(
+            !bytes.contains("wall_seconds") && !bytes.contains("max_steps"),
+            "{bytes}"
+        );
+        let configuration = grant.adapter_configuration.unwrap();
+        assert_eq!(configuration.max_steps, None);
         assert_eq!(
             (
                 configuration.provider.as_str(),

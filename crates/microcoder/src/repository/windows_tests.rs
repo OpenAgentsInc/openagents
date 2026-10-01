@@ -113,7 +113,7 @@ fn fixture(access: Access) -> Option<(tempfile::TempDir, PathBuf, Vec<u8>)> {
             generation_endpoint: "in-process".into(),
             decision_endpoint: "in-process".into(),
             decision_model: "fixture-judge".into(),
-            max_steps: 4,
+            max_steps: Some(4),
             acceptance: false,
             route: "never".into(),
             knowledge: "off".into(),

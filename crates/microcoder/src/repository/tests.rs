@@ -127,7 +127,7 @@ pub(super) fn fixture_images(
             generation_endpoint: "in-process".into(),
             decision_endpoint: "in-process".into(),
             decision_model: "fixture-judge".into(),
-            max_steps: 4,
+            max_steps: Some(4),
             acceptance: false,
             route: "never".into(),
             knowledge: "off".into(),
@@ -384,7 +384,7 @@ fn assert_one_clean_stop(store: &Path, task: &task::Task) {
         .collect();
     assert_eq!(
         stops,
-        ["Coder stopped: the task was cancelled or reached its time limit."],
+        ["Coder stopped: the task was stopped, or its host refused to go on."],
         "{history:?}"
     );
     // The loop's own record of the end says it was stopped from outside.
@@ -2623,26 +2623,22 @@ mod local_run {
                 .len()
         }
 
-        /// #10063: a turn that reaches its step limit while the loop
-        /// judges it progressing is continued in the same worktree, which
-        /// then finishes, passes the checks, and lands.
+        /// #10103: a turn has no step limit. One that keeps making
+        /// progress goes past every limit Coder used to set (24 steps for a
+        /// chat run, 40 and 80 at the delegate door, 100 in this flow's
+        /// policy), in one turn, then finishes, passes the checks, and
+        /// lands. An older policy's `max_steps` and `continue_turns` are
+        /// read and ignored.
         #[test]
-        fn a_progressing_run_past_its_step_limit_continues_and_lands() {
+        fn a_run_past_the_old_step_limits_keeps_going_and_lands() {
             let root = tempfile::tempdir().unwrap();
             let (top, origin) = published(
                 root.path(),
                 r#"{"land": "main", "max_steps": 3, "continue_turns": 2}"#,
             );
-            let script = VecDeque::from([
-                (working(3, 1), vec![]),
-                (
-                    vec![
-                        Ok(write("printf 'done\\n' >> helper.py")),
-                        Ok(finished("I finished helper.py.")),
-                    ],
-                    vec![],
-                ),
-            ]);
+            let mut steps = working(105, 1);
+            steps.push(Ok(finished("I finished helper.py.")));
+            let script = VecDeque::from([(steps, vec![])]);
             let github = Arc::new(FakeGitHub::default());
             let runner = judged_runner(
                 root.path(),
@@ -2657,61 +2653,51 @@ mod local_run {
             };
             let started = runner.begin(&top, &reference, None).unwrap();
             let task = started.record.task.clone();
-            let worktree = started.record.worktree.clone();
             let flow = started.finish();
             assert_eq!(flow.link.outcome, "landed", "{flow:#?}");
             assert!(flow.link.closed);
-            let record = coder::task::local::record(runner.local.store(), &task).unwrap();
-            assert_eq!(record.turns.len(), 2, "one continuation turn");
-            assert_eq!(record.worktree, worktree, "the same worktree");
+            assert_eq!(turns(&runner, &task), 1, "one turn, never continued");
             let landed = main_of(&top, &origin);
             let landed = landed.split_whitespace().next().unwrap();
-            assert_eq!(
-                git(
-                    &top,
-                    &[
-                        "--git-dir",
-                        origin.to_str().unwrap(),
-                        "show",
-                        &format!("{landed}:helper.py")
-                    ]
-                ),
-                "1\n2\n3\ndone",
-                "the continuation built on the first turn's work"
+            let file = git(
+                &top,
+                &[
+                    "--git-dir",
+                    origin.to_str().unwrap(),
+                    "show",
+                    &format!("{landed}:helper.py"),
+                ],
             );
-            assert!(
-                flow.notes
-                    .iter()
-                    .any(|n| n.text.contains("continuation turn 1 of 2")),
-                "{:#?}",
-                flow.notes
-            );
+            assert_eq!(file.lines().count(), 105, "every step ran");
+            for limit in [24, 40, 80, 100] {
+                assert!(file.lines().any(|line| line == limit.to_string()));
+            }
             let comments = github.comments.lock().unwrap().clone();
-            assert!(
-                comments[1].contains("1 continuation turn(s)"),
-                "{}",
-                comments[1]
-            );
+            assert!(!comments[1].contains("continuation"), "{}", comments[1]);
             let (lines, state) = drain(&runner.local, &task);
             assert_eq!(state, State::Ended);
             let CoderEvent::Result(last) = &lines.last().unwrap().event else {
                 panic!("{:?}", lines.last())
             };
             assert_eq!(last.issue.as_ref().unwrap().outcome, "landed");
+            // The running line never names a budget.
+            for line in &lines {
+                if let CoderEvent::Progress(progress) = &line.event {
+                    let shown = serde_json::to_string(progress).unwrap();
+                    assert!(!shown.contains("max_steps"), "{shown}");
+                }
+            }
         }
 
-        /// A run that reaches its step limit while the loop judges it
-        /// repeating itself fails as before, with no continuation, and
-        /// the comment says how far it got.
+        /// A run the loop judges repeating a failed approach without
+        /// progress is ended by the stuck guard alone, fails without being
+        /// continued, pushes nothing, and says why and how far it got.
         #[test]
-        fn a_repeating_run_past_its_step_limit_fails_without_continuing() {
+        fn a_repeating_run_is_ended_by_the_stuck_guard() {
             let root = tempfile::tempdir().unwrap();
-            let (top, origin) = published(
-                root.path(),
-                r#"{"land": "main", "max_steps": 3, "continue_turns": 2}"#,
-            );
+            let (top, origin) = published(root.path(), r#"{"land": "main"}"#);
             let before = main_of(&top, &origin);
-            let script = VecDeque::from([(working(3, 1), vec![])]);
+            let script = VecDeque::from([(working(40, 1), vec![])]);
             let github = Arc::new(FakeGitHub::default());
             let runner = judged_runner(
                 root.path(),
@@ -2726,69 +2712,30 @@ mod local_run {
             };
             let started = runner.begin(&top, &reference, None).unwrap();
             let task = started.record.task.clone();
+            let worktree = std::path::PathBuf::from(&started.record.worktree);
             let flow = started.finish();
             assert_eq!(flow.link.outcome, "failed", "{flow:#?}");
             assert_eq!(turns(&runner, &task), 1, "no continuation");
             assert_eq!(main_of(&top, &origin), before, "nothing pushed");
+            // Steps 2 to 9 were judged stuck; step 9 never ran.
+            assert_eq!(
+                std::fs::read_to_string(worktree.join("helper.py"))
+                    .unwrap()
+                    .lines()
+                    .count(),
+                crate::run::STUCK_STEPS
+            );
             let comments = github.comments.lock().unwrap().clone();
             assert_eq!(comments.len(), 2);
             let failure = &comments[1];
-            assert!(failure.contains("step limit"), "{failure}");
-            assert!(failure.contains("not progressing"), "{failure}");
+            assert!(failure.contains("stuck"), "{failure}");
+            assert!(failure.contains("without progress"), "{failure}");
             assert!(
                 failure.contains("**How far it got**") && failure.contains("helper.py"),
                 "{failure}"
             );
             assert!(failure.contains(RELEASE_MARK));
             assert!(github.closed.lock().unwrap().is_empty());
-        }
-
-        /// Continuation turns stop at the policy's bound: a run still
-        /// short of finished after them fails, pushes nothing, and says
-        /// how far it got.
-        #[test]
-        fn continuation_turns_stop_at_the_policys_bound() {
-            let root = tempfile::tempdir().unwrap();
-            let (top, origin) = published(
-                root.path(),
-                r#"{"land": "main", "max_steps": 2, "continue_turns": 1}"#,
-            );
-            let before = main_of(&top, &origin);
-            let script = VecDeque::from([(working(2, 1), vec![]), (working(2, 3), vec![])]);
-            let github = Arc::new(FakeGitHub::default());
-            let runner = judged_runner(
-                root.path(),
-                script,
-                Answers(Mutex::new(VecDeque::new())),
-                github.clone(),
-                Some((0.9, 0.0)),
-            );
-            let reference = Reference {
-                repository: None,
-                number: 13,
-            };
-            let started = runner.begin(&top, &reference, None).unwrap();
-            let task = started.record.task.clone();
-            let worktree = std::path::PathBuf::from(&started.record.worktree);
-            let flow = started.finish();
-            assert_eq!(flow.link.outcome, "failed", "{flow:#?}");
-            assert_eq!(turns(&runner, &task), 2, "one continuation, then the bound");
-            assert_eq!(main_of(&top, &origin), before, "nothing pushed");
-            assert_eq!(
-                std::fs::read_to_string(worktree.join("helper.py")).unwrap(),
-                "1\n2\n3\n4\n"
-            );
-            let comments = github.comments.lock().unwrap().clone();
-            let failure = &comments[1];
-            assert!(failure.contains("`continue_turns`"), "{failure}");
-            assert!(failure.contains("helper.py"), "{failure}");
-            assert!(failure.contains("1 continuation turn(s)"), "{failure}");
-            let (lines, state) = drain(&runner.local, &task);
-            assert_eq!(state, State::Ended);
-            let CoderEvent::Failure(last) = &lines.last().unwrap().event else {
-                panic!("{:?}", lines.last())
-            };
-            assert_eq!(last.issue.as_ref().unwrap().outcome, "failed");
         }
     }
 }

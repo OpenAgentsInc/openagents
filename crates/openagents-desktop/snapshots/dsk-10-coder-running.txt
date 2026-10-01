@@ -12,6 +12,6 @@ tool "Thinking" "Write the output." [done]
   code "Write the output."
 tool "Command" "printf 'import unittest\\n' > test_slugs.py · exit 0 in 0.0s" [running]
   code "$ printf 'import unittest\\n' > test_slugs.py"
-working "Coder is working · step 1 of 24 · 0s"
+working "Coder is working · step 1 · 0s"
 horizontal stack
   button "Stop Coder"

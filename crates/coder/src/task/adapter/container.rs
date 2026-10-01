@@ -127,13 +127,7 @@ async fn control(
     if !cleanup {
         intent?;
     }
-    let remaining = host
-        .wall_seconds()
-        .saturating_sub(host.started.elapsed().as_secs());
-    let seconds = if cleanup { 5 } else { remaining.min(10) };
-    if seconds == 0 {
-        return Err(Error::LimitExceeded);
-    }
+    let seconds = if cleanup { 5 } else { 10 };
     let observed = Job::from_command(profile.process(host.scratch()?, &args))
         .bounded(
             Limits::within(Duration::from_secs(seconds))
@@ -360,10 +354,6 @@ async fn run_started(
     if host.cancelled() {
         return Err(Error::InvalidTransition);
     }
-    let remaining = Duration::from_secs(host.wall_seconds()).saturating_sub(host.started.elapsed());
-    if remaining.is_zero() {
-        return Err(Error::LimitExceeded);
-    }
     host.append(
         &Step::said(Source::System, "Container start intent retained.")
             .noting("container_start", json!({"effect":sequence,"container":id})),
@@ -375,7 +365,7 @@ async fn run_started(
         }
         Job::from_command(profile.process(host.scratch()?, &strings(&["start", "--attach", id])))
             .bounded(
-                Limits::within(deadline.min(remaining))
+                Limits::within(deadline)
                     .keeping(host.admission.grant.stream_bytes)
                     .memory(Some(host.admission.grant.memory_bytes)),
             )

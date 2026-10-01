@@ -1047,8 +1047,6 @@ impl DelegateDoor {
             providers,
             script: self.script.clone(),
             cloud: self.cloud.clone(),
-            max_seconds: deadline().as_secs(),
-            max_steps: microcoder::MAX_STEPS,
             max_usd: microcoder::MAX_USD,
             ask: true,
             // The issue flow works in a checkout of its own and opens a
@@ -2236,8 +2234,6 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
                     })
                     .collect(),
             ),
-            max_seconds: 60,
-            max_steps: microcoder::ISSUE_MAX_STEPS,
             max_usd: microcoder::ISSUE_MAX_USD,
             ask: false,
             issues: true,

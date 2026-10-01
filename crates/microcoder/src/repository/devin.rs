@@ -45,7 +45,8 @@ use serde_json::{Value, json};
 pub const SESSION_NOTE: &str = "devin_session";
 /// The engine a Devin turn records.
 pub const ENGINE: &str = "devin-acp";
-/// The longest Devin may write nothing during a prompt.
+/// The longest Devin may write nothing during a prompt. A turn has no
+/// time limit; this is the whole agent's stuck guard.
 pub(super) const SILENCE: Duration = Duration::from_secs(20 * 60);
 /// How long a cancelled prompt may take to answer `cancelled`.
 pub(super) const CANCEL_GRACE: Duration = Duration::from_secs(10);
@@ -122,7 +123,7 @@ impl Ended {
                 self.refused.as_deref().unwrap_or("no detail")
             )),
             "engine_cancelled" => Some(format!(
-                "{agent} ended the turn as cancelled on its own; nobody stopped the task and it did not reach its time limit."
+                "{agent} ended the turn as cancelled on its own; nobody stopped the task."
             )),
             "engine_incomplete" => Some(match &self.error {
                 Some(error) => format!("{agent} could not finish the turn: {error}"),
@@ -696,7 +697,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         }
     };
     let mut recorder = Recorder::new(host, "Devin", "devin", model, access);
-    let silence = SILENCE.min(Duration::from_secs(host.wall_seconds().max(1)));
+    let silence = SILENCE;
     let result = session
         .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
         .await;

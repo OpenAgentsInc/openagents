@@ -81,7 +81,6 @@ argument without interpolating it into another command string.
   "program": "/bin/bash",
   "arguments": [],
   "write_workspace": true,
-  "wall_seconds": 600,
   "stream_bytes": 65536,
   "memory_bytes": 536870912,
   "requirements": null,
@@ -93,7 +92,6 @@ argument without interpolating it into another command string.
     "generation_endpoint": "https://chatgpt.com/backend-api/codex",
     "decision_endpoint": "https://REPLACE_WITH_CONFIGURED_DECISION_ORIGIN",
     "decision_model": "REPLACE_WITH_CONFIGURED_DECISION_MODEL",
-    "max_steps": 16,
     "acceptance": false,
     "route": "never",
     "knowledge": "off",
@@ -367,8 +365,14 @@ retaining the response. Synthetic fixture calls can explicitly cost zero.
 The final task result reports billing as unknown. Individual calls can carry
 list-price estimates, measured tokens, known subtotals, and unknown reasons;
 these are not a hard dollar budget or a provider invoice. A non-null
-`dollar_limit_micros` is refused. Wall time and step limits remain enforceable
-host controls.
+`dollar_limit_micros` is refused. A repository run has no step, time, or
+spend limit ([#10103](https://github.com/OpenAgentsInc/openagents/issues/10103)):
+it ends when the model finishes or asks, when the task is stopped, or when the
+loop's stuck guard (`microcoder_loop::run::Limits::stuck_steps`) ends it after
+eight steps in a row judged repeating a failed approach without progress. A
+grant written before that may carry `wall_seconds` and `max_steps`; the owner
+reads them and ignores them, and grants written now leave both out. Each
+command keeps its own 300-second limit.
 
 Ordinary evidence is limited to 48 MiB with at most 8 MiB per serialized step.
 The final disposition has reserved space so a retention refusal can still be

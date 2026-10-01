@@ -89,9 +89,9 @@
 #   Only the Codex and Grok Build login files are copied, and nothing is
 #   printed.
 #
-# Spend: each Coder run is a tiny task in the scratch repository, capped by
-# the local run's step limit; the chat router answers a fixed handful of
-# messages. A full run costs a few cents of engine usage.
+# Spend: each Coder run is a tiny task in the scratch repository that Coder
+# finishes in a few steps (runs have no step limit, #10103); the chat router
+# answers a fixed handful of messages. A full run costs a few cents of engine usage.
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

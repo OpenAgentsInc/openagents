@@ -73,6 +73,10 @@ struct Jev {
     uncovered: f64,
     /// The answer to `progress` each step, when set.
     progress: Option<f64>,
+    /// The answer to `repeating` each step, when set.
+    repeating: Option<f64>,
+    /// The `complete` score each step, as a fraction, when set.
+    complete: Option<f64>,
     /// Every requirements answer.
     unchecked: f64,
     /// Every credibility answer.
@@ -91,6 +95,8 @@ fn jev(hard: f64) -> Jev {
         contradicts: 0.1,
         uncovered: 0.1,
         progress: None,
+        repeating: None,
+        complete: None,
         unchecked: 0.1,
         doubt: 0.1,
         target: (0.1, 0.9),
@@ -146,10 +152,21 @@ impl Judge for Jev {
             if let Some(p) = self.progress {
                 answers.push(("progress".to_string(), p));
             }
+            if let Some(p) = self.repeating {
+                answers.push(("repeating".to_string(), p));
+            }
             answers
+        };
+        let scores = if set.id == question_set().id {
+            self.complete
+                .map(|c| vec![(crate::models::COMPLETE.to_string(), c)])
+                .unwrap_or_default()
+        } else {
+            Vec::new()
         };
         Judgment {
             answers,
+            scores,
             usd: Some(0.001),
             cost_unknown: None,
             usd_upper: Some(0.001),
@@ -561,6 +578,117 @@ async fn the_step_limit_stops_the_loop() {
     let (_, outcome, ran, _) = go(&script, &limits).await;
     assert_eq!(outcome.ending, Ending::StepLimit);
     assert_eq!(ran.len(), 3);
+}
+
+/// A Coder run for a person has no step or time budget: one that keeps
+/// making progress goes on past every limit Coder used to set (24 steps
+/// for a chat run, 40 and 80 at the delegate door, 100 in the issue
+/// flow's policy) until the model finishes.
+#[tokio::test]
+async fn a_run_with_no_budget_goes_past_the_old_limits() {
+    for judged in [true, false] {
+        let mut replies: Vec<Result<NextAction, String>> = (1..=130)
+            .map(|n| {
+                let command = format!("echo part {n}");
+                Ok(act("next part", &[command.as_str()], false))
+            })
+            .collect();
+        replies.push(Ok(act("done", &[], true)));
+        let script = Script::new(replies);
+        let limits = Limits {
+            acceptance: false,
+            ..Limits::unbounded()
+        };
+        assert_eq!((limits.max_steps, limits.max_seconds), (None, None));
+        // With Jev judging every step progressing, and without Jev (the
+        // rule sees each command new).
+        let mut judge = jev(0.1);
+        if judged {
+            judge.progress = Some(0.8);
+            judge.repeating = Some(0.1);
+        }
+        let (_, outcome, ran, _) = go_with(&script, &limits, &judge, None).await;
+        assert_eq!(outcome.ending, Ending::Finished, "judged {judged}");
+        assert_eq!(outcome.steps, 131);
+        assert_eq!(ran.len(), 130);
+    }
+}
+
+/// The stuck guard alone ends a run that repeats a failed approach
+/// without progress: after its window of judged steps in a row, before
+/// the next model call.
+#[tokio::test]
+async fn a_repeating_run_without_progress_still_ends() {
+    let script = Script::new(Vec::new());
+    let limits = Limits {
+        acceptance: false,
+        ..Limits::unbounded()
+    };
+    let mut judge = jev(0.1);
+    judge.progress = Some(0.2);
+    judge.repeating = Some(0.9);
+    let (_, outcome, ran, _) = go_with(&script, &limits, &judge, None).await;
+    assert!(
+        matches!(&outcome.ending, Ending::Stuck(why) if why.contains("8 steps in a row")),
+        "{:?}",
+        outcome.ending
+    );
+    // Step 1's judgment has nothing to judge; steps 2 to 9 are judged
+    // stuck, and step 9 never reaches the model.
+    assert_eq!(ran.len(), crate::run::STUCK_STEPS);
+    assert_eq!(script.prompts.borrow().len(), crate::run::STUCK_STEPS);
+}
+
+/// Without Jev's answers, the rule decides: the same command with the
+/// same output, step after step, is stuck too. A window under the minimum
+/// is raised to it, so the guard is never trigger-happy.
+#[tokio::test]
+async fn the_stuck_guard_falls_back_to_the_rule_and_has_a_minimum_window() {
+    let script = Script::new(Vec::new());
+    let limits = Limits {
+        acceptance: false,
+        stuck_steps: Some(1),
+        ..Limits::unbounded()
+    };
+    let (_, outcome, ran, _) = go(&script, &limits).await;
+    assert!(matches!(outcome.ending, Ending::Stuck(_)));
+    assert_eq!(ran.len(), crate::run::MIN_STUCK_STEPS + 1);
+    // Progress in between resets the count: Jev judges each step moving
+    // forward, so the same command never ends the run.
+    let mut replies: Vec<Result<NextAction, String>> = (0..20)
+        .map(|_| Ok(act("again", &["true"], false)))
+        .collect();
+    replies.push(Ok(act("done", &[], true)));
+    let script = Script::new(replies);
+    let mut judge = jev(0.1);
+    judge.progress = Some(0.7);
+    judge.repeating = Some(0.9);
+    let (_, outcome, _, _) = go_with(&script, &limits, &judge, None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+}
+
+/// Each step's judgment carries Jev's estimate of how much of the task is
+/// complete, asked in the same request as its Nouls.
+#[tokio::test]
+async fn each_judgment_carries_the_completion_estimate() {
+    let script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let mut judge = jev(0.1);
+    judge.complete = Some(0.4);
+    let (_, _, _, log) = go_with(&script, &plain(), &judge, None).await;
+    let estimates: Vec<Option<f64>> = log
+        .0
+        .iter()
+        .filter_map(|event| match event {
+            Event::Judged { judgment, .. } => Some(judgment.complete()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(estimates, [Some(0.4), Some(0.4)]);
+    let recorded = serde_json::to_value(&log.0[0]).unwrap();
+    assert_eq!(recorded["judgment"]["scores"][0][0], "complete");
 }
 
 #[tokio::test]

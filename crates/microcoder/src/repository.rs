@@ -329,7 +329,7 @@ struct RecordedJudge<'a, J> {
 impl<J: Judge> Judge for RecordedJudge<'_, J> {
     async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
         let config = self.host.configuration();
-        let request = json!({"questions":set.questions.iter().map(|question|json!({"id":question.id,"text":question.text})).collect::<Vec<_>>(),
+        let request = json!({"questions":set.questions.iter().map(|question|if question.is_score() {json!({"id":question.id,"text":question.text,"levels":question.levels})} else {json!({"id":question.id,"text":question.text})}).collect::<Vec<_>>(),
             "question_set":set.id,"state":state,"model":config.decision_model,"endpoint":config.decision_endpoint,"max_retries":0});
         let sequence = match self.host.effect("decision", request) {
             Ok(sequence) => sequence,
@@ -422,14 +422,14 @@ pub async fn run_routes<L: Lane, J: Judge>(
     finish(host, state, outcome)
 }
 
-/// The loop's limits for a repository turn of at most `max_steps` steps
-/// and `wall_seconds` seconds.
-fn limits(max_steps: usize, wall_seconds: u64) -> Limits {
+/// The loop's limits for a repository turn: no step, time, or spend
+/// limit ([`Limits::unbounded`]). A turn ends when Coder finishes or asks,
+/// when the person stops the task, or when the loop's stuck guard finds it
+/// repeating a failed approach without progress. A grant's legacy
+/// `max_steps` and `wall_seconds` are read and ignored.
+fn limits() -> Limits {
     Limits {
-        max_steps: Some(max_steps),
-        max_seconds: wall_seconds,
-        max_usd: f64::MAX,
-        command_seconds: wall_seconds.min(300),
+        command_seconds: 300,
         acceptance: false,
         route: Route::Never,
         gates: crate::gate::Gates::default(),
@@ -438,7 +438,7 @@ fn limits(max_steps: usize, wall_seconds: u64) -> Limits {
         ask: true,
         // A person is waiting for the first words.
         first_judgment_beside: true,
-        ..Limits::default()
+        ..Limits::unbounded()
     }
 }
 
@@ -452,7 +452,7 @@ async fn run_loop<G: Generate, J: Judge>(
     let judge = RecordedJudge { host, inner: judge };
     let env = Repository { host };
     let mut observer = RecordedEvents { host, replies };
-    let limits = limits(configuration.max_steps, host.wall_seconds());
+    let limits = limits();
     // A later turn carries the conversation's earlier turns.
     let prompt = host.engine_prompt();
     let state = State {

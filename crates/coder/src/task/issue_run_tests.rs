@@ -117,8 +117,20 @@ fn a_policy_file_is_read_and_its_absence_is_the_safe_default() {
     );
     assert_eq!(
         (policy.max_steps, policy.continue_turns),
-        (60, 2),
-        "the defaults"
+        (None, None),
+        "no step limit and nothing to continue (#10103)"
+    );
+    // An older policy that set a step limit and continuation turns still
+    // reads; both are ignored.
+    std::fs::write(
+        dir.path().join(POLICY_FILE),
+        r#"{"land": "main", "max_steps": 100, "continue_turns": 2}"#,
+    )
+    .unwrap();
+    let policy = Policy::load(dir.path()).unwrap();
+    assert_eq!(
+        (policy.max_steps, policy.continue_turns),
+        (Some(100), Some(2))
     );
     std::fs::write(dir.path().join(POLICY_FILE), r#"{"land": "sideways"}"#).unwrap();
     assert!(Policy::load(dir.path()).is_err());
@@ -133,8 +145,8 @@ fn this_repository_lands_on_main_with_its_checks() {
     let policy = Policy::load(&top).unwrap();
     assert_eq!(policy.land, Land::Main);
     assert!(policy.fmt && policy.clippy);
-    // #10063: 100 steps a turn and two continuation turns (docs/cli/chat.md).
-    assert_eq!((policy.max_steps, policy.continue_turns), (100, 2));
+    // #10103: no step limit and no continuation turns.
+    assert_eq!((policy.max_steps, policy.continue_turns), (None, None));
 }
 
 fn flow(outcome: &str) -> Flow {
@@ -235,85 +247,4 @@ fn iso_times_read_as_unix_seconds() {
     assert_eq!(iso_seconds("1970-01-01T00:00:00Z"), Some(0));
     assert_eq!(iso_seconds("2026-09-30T12:00:00Z"), Some(1_790_769_600));
     assert_eq!(iso_seconds("nope"), None);
-}
-
-fn judged(progress: f64, repeating: f64) -> Value {
-    serde_json::json!({"extra": {"microcoder": {"event": {"event": "judged", "step": 1,
-        "judgment": {"answers": [["done", 0.1], ["progress", progress], ["repeating", repeating]]}}}}})
-}
-
-fn ended(reason: &str) -> Value {
-    serde_json::json!({"extra": {"microcoder": {"event": {"event": "ended",
-        "outcome": {"ending": {"reason": reason}}}}}})
-}
-
-/// #10063: the loop's own judgments of its last steps decide whether a
-/// turn that ran out of budget was progressing.
-#[test]
-fn momentum_reads_the_last_judged_steps_and_the_ending() {
-    // Early repetition no longer counts once the last steps progress.
-    let mut steps: Vec<Value> = (0..4).map(|_| judged(0.1, 0.9)).collect();
-    steps.extend((0..MOMENTUM_STEPS).map(|_| judged(0.8, 0.1)));
-    steps.push(serde_json::json!({"message": "no judgment"}));
-    steps.push(ended("step_limit"));
-    let (reason, found) = momentum(&steps);
-    assert_eq!(reason.as_deref(), Some("step_limit"));
-    let found = found.unwrap();
-    assert_eq!(found.judged, MOMENTUM_STEPS);
-    assert!(found.progressing(), "{found:?}");
-
-    let (_, stuck) = momentum(&[judged(0.7, 0.2), judged(0.2, 0.9), judged(0.1, 0.8)]);
-    assert!(!stuck.unwrap().progressing());
-    // A judgment without answers (no Jev) is no signal.
-    let bare = serde_json::json!({"extra": {"microcoder": {"event": {"event": "judged",
-        "judgment": {"answers": []}}}}});
-    assert_eq!(momentum(&[bare, ended("step_limit")]).1, None);
-}
-
-/// Only a budget ending that was progressing continues, and only within
-/// the policy's bound; any other ending fails as before, with no extra
-/// sentence.
-#[test]
-fn only_a_progressing_run_out_of_budget_continues_within_the_bound() {
-    let going = Some(Momentum {
-        judged: 5,
-        progress: 0.8,
-        repeating: 0.1,
-    });
-    let stuck = Some(Momentum {
-        judged: 5,
-        progress: 0.3,
-        repeating: 0.7,
-    });
-    assert_eq!(continuable(Some("step_limit"), going, 0, 2), Ok(()));
-    assert_eq!(continuable(Some("time_limit"), going, 1, 2), Ok(()));
-    let bound = continuable(Some("step_limit"), going, 2, 2).unwrap_err();
-    assert!(bound.contains("`continue_turns`"), "{bound}");
-    let repeating = continuable(Some("step_limit"), stuck, 0, 2).unwrap_err();
-    assert!(repeating.contains("not progressing"), "{repeating}");
-    let unjudged = continuable(Some("step_limit"), None, 0, 2).unwrap_err();
-    assert!(unjudged.contains("no judgment"), "{unjudged}");
-    for other in [Some("idle"), Some("bad_replies"), Some("tests_held"), None] {
-        assert_eq!(continuable(other, going, 0, 2), Err(String::new()));
-    }
-    assert_eq!(
-        continuable(Some("step_limit"), going, 0, 0).map_err(|_| ()),
-        Err(())
-    );
-}
-
-#[test]
-fn a_continuation_says_where_the_work_stands() {
-    let text = continue_request(42, "step_limit", " a.rs | 3 ++-\n 1 file changed", &[]);
-    assert!(
-        text.starts_with("# Continue the work on issue #42"),
-        "{text}"
-    );
-    assert!(text.contains("reached its step limit"));
-    assert!(text.contains("a.rs | 3 ++-"));
-    assert!(text.contains("have not run on this change yet"));
-    let text = continue_request(42, "time_limit", "", &["lint: x".into()]);
-    assert!(text.contains("reached its time limit"));
-    assert!(text.contains("Nothing in the worktree changed yet."));
-    assert!(text.contains("- lint: x"));
 }

@@ -3,7 +3,5 @@
   "claim_hours": 6,
   "fix_rounds": 3,
   "fmt": true,
-  "clippy": true,
-  "max_steps": 100,
-  "continue_turns": 2
+  "clippy": true
 }

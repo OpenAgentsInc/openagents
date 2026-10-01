@@ -141,17 +141,10 @@ impl Judge for NativeJudge<'_> {
                         ..Judgment::default()
                     };
                 }
+                let (answers, scores) = set.answers_from(&response);
                 Judgment {
-                    answers: set
-                        .questions
-                        .iter()
-                        .filter_map(|question| {
-                            response
-                                .noul(&question.id)
-                                .ok()
-                                .map(|answer| (question.id.clone(), answer.noul))
-                        })
-                        .collect(),
+                    answers,
+                    scores,
                     usd: response.usage.input_tokens.map(|tokens| {
                         tokens as f64 * crate::models::JEV_USD_PER_MILLION / 1_000_000.0
                     }),

@@ -57,7 +57,10 @@ pub struct Configuration {
     pub generation_endpoint: String,
     pub decision_endpoint: String,
     pub decision_model: String,
-    pub max_steps: usize,
+    /// A step limit older grants carried (1 to 128). Coder runs have no
+    /// step limit: it is read and ignored, and new grants leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<usize>,
     pub acceptance: bool,
     pub route: String,
     pub knowledge: String,
@@ -183,7 +186,6 @@ impl Configuration {
                 .effort
                 .as_deref()
                 .is_some_and(|effort| !matches!(effort, "low" | "medium" | "high" | "xhigh"))
-            || !(1..=128).contains(&self.max_steps)
             || self.acceptance
             || self.route != "never"
             || !matches!(self.knowledge.as_str(), "off" | "frozen-context")
@@ -986,10 +988,6 @@ impl Host {
         })
     }
 
-    pub fn wall_seconds(&self) -> u64 {
-        self.admission.grant.wall_seconds
-    }
-
     pub fn fail(&self, reason: impl Into<String>) {
         if self.fault.borrow().is_none() {
             *self.fault.borrow_mut() = Some(reason.into());
@@ -1002,10 +1000,6 @@ impl Host {
         if self.stopped.get() || self.fault.borrow().is_some() {
             return true;
         }
-        if self.started.elapsed() >= Duration::from_secs(self.wall_seconds()) {
-            self.stopped.set(true);
-            return true;
-        }
         match Store::open(&self.owner.dir).and_then(|store| store.show(&self.task.task_id)) {
             Ok(task) if task.status == Status::Running => false,
             Ok(_) => {
@@ -1014,7 +1008,7 @@ impl Host {
             }
             // Another process held the store past the lock wait, as a slow
             // disk sync can. That says nothing about a stop; the next check
-            // reads the store again, and the wall deadline still applies.
+            // reads the store again.
             Err(Error::Busy) => false,
             Err(error) => {
                 self.fail(error.to_string());
@@ -1050,10 +1044,6 @@ impl Host {
     pub fn effect(&self, kind: &str, arguments: Value) -> Result<usize, Error> {
         if self.cancelled() {
             return Err(Error::InvalidTransition);
-        }
-        if self.sequence.get() >= self.configuration().max_steps * 32 {
-            self.fail("repository effect bound reached");
-            return Err(Error::LimitExceeded);
         }
         let sequence = self.sequence.get() + 1;
         self.append(
@@ -1265,14 +1255,9 @@ impl Host {
             self.group_clear.set(false);
             Job::from_command(command)
                 .bounded(
-                    Limits::within(
-                        deadline.min(
-                            Duration::from_secs(self.wall_seconds())
-                                .saturating_sub(self.started.elapsed()),
-                        ),
-                    )
-                    .keeping(self.admission.grant.stream_bytes)
-                    .memory(Some(self.admission.grant.memory_bytes)),
+                    Limits::within(deadline)
+                        .keeping(self.admission.grant.stream_bytes)
+                        .memory(Some(self.admission.grant.memory_bytes)),
                 )
                 .start(Input::Null)
                 .map_err(|error| {

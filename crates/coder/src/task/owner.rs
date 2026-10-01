@@ -134,6 +134,11 @@ pub struct Grant {
     pub program: PathBuf,
     pub arguments: Vec<String>,
     pub write_workspace: bool,
+    /// How long a granted command may run, 1 to 3,600 seconds. A Coder run
+    /// (a grant with an [`Grant::adapter_configuration`]) has no time
+    /// limit: new ones leave this out (0), and an older grant's value is
+    /// read and ignored.
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub wall_seconds: u64,
     pub stream_bytes: usize,
     pub memory_bytes: u64,
@@ -165,7 +170,7 @@ impl Grant {
             || !self.program.is_absolute()
             || self.arguments.len() > 128
             || self.arguments.iter().any(|arg| arg.contains('\0'))
-            || !(1..=3600).contains(&self.wall_seconds)
+            || (self.adapter_configuration.is_none() && !(1..=3600).contains(&self.wall_seconds))
             || !(1024..=1024 * 1024).contains(&self.stream_bytes)
             || !(64 * 1024 * 1024..=8 * 1024 * 1024 * 1024).contains(&self.memory_bytes)
         {
@@ -191,6 +196,11 @@ pub(super) fn network_policy() -> &'static str {
     } else {
         "network_namespace_isolated"
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 fn hex_digest(value: &str) -> bool {

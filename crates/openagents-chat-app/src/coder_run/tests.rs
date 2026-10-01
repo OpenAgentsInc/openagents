@@ -179,7 +179,10 @@ fn a_running_turn_shows_its_progress_and_open_command() {
     });
     assert!(running, "the command runs until its output comes");
     let text = text_of(&rows);
-    assert!(text.contains("Coder is working · step 1 of 24"), "{text}");
+    // No budget on the running line (#10103): the step and the time, and
+    // Jev's estimate of how much is done once it has one.
+    assert!(text.contains("Coder is working · step 1 · 0s"), "{text}");
+    assert!(!text.contains(" of 24"), "{text}");
     assert!(text.contains("Stop Coder"));
     assert_eq!(run.mode(), Mode::Queue);
     assert_eq!(run.steer_choice(), Some(Choice::StopAndSend));

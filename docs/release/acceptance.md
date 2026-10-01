@@ -43,8 +43,8 @@ any scenario fails and 2 when it cannot set up.
 
 A full run takes 15 to 30 minutes, mostly Coder runs. It sends about fifteen
 chat messages and starts five or six tiny Coder runs (one line in
-`NOTES.md`), each capped by the local run's step limit, so it costs a few
-cents of engine usage.
+`NOTES.md`), each finished in a few steps (runs have no step limit), so it
+costs a few cents of engine usage.
 
 ## What it runs
 

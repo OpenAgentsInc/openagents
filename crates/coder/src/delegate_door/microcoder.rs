@@ -76,20 +76,16 @@ pub const CLOUD_MODEL: &str = crate::cloud::MODEL;
 /// The reasoning effort a Codex step asks for, as `microcoder` defaults.
 pub const CODEX_EFFORT: &str = "medium";
 
-/// Steps one turn may take.
-pub const MAX_STEPS: usize = 40;
+// A turn has no step or time limit (#10103): it ends when the loop
+// finishes or asks, when the person stops it, or when the loop's stuck
+// guard finds it repeating a failed approach without progress. Its spend
+// stays capped, below.
 
 /// Dollars of model and Jev spend one turn may reach.
 pub const MAX_USD: f64 = 2.0;
 
-/// Steps one session of the issue flow may take.
-pub const ISSUE_MAX_STEPS: usize = 80;
-
 /// Dollars one session of the issue flow may reach.
 pub const ISSUE_MAX_USD: f64 = 5.0;
-
-/// Seconds one session of the issue flow may run.
-pub const ISSUE_SECONDS: u64 = 1800;
 
 /// One provider the loop may generate through, and where it stands.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -503,11 +499,8 @@ pub struct Turn {
     /// The door the cloud lane talks to in place of the OpenAgents relay,
     /// for a test.
     pub cloud: Option<std::sync::Arc<crate::generate::Door>>,
-    /// The loop's wall-clock bound, in seconds.
-    pub max_seconds: u64,
-    /// The loop's step bound.
-    pub max_steps: usize,
-    /// The loop's spend bound, in dollars.
+    /// The loop's spend bound, in dollars. The loop has no step or time
+    /// bound.
     pub max_usd: f64,
     /// Whether a step may end the turn by asking the user.
     pub ask: bool,
@@ -613,13 +606,11 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
     let set = microcoder_loop::models::question_set();
     let routing = microcoder_loop::models::route_set();
     let limits = Limits {
-        max_steps: Some(turn.max_steps),
-        max_seconds: turn.max_seconds,
         max_usd: turn.max_usd,
         acceptance: false,
         route: Routing::Never,
         ask: turn.ask,
-        ..Limits::default()
+        ..Limits::unbounded()
     };
     let state = State {
         task: task(&turn.request, &turn.earlier),
@@ -906,8 +897,6 @@ impl coder_delegate::issue::Worker<()> for IssueWorker {
             earlier: request.earlier.clone(),
             read_only: request.read_only,
             workdir: request.workdir.clone(),
-            max_seconds: ISSUE_SECONDS,
-            max_steps: ISSUE_MAX_STEPS,
             max_usd: ISSUE_MAX_USD,
             ask: false,
             issues: false,

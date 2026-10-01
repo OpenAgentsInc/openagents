@@ -33,7 +33,11 @@ while the reply isn't finished:
 This is the loop `microcoder repository` runs for the task owner
 ([Microcoder repository execution](microcoder-repository.md)), with the
 same limits off: no acceptance tests, no knowledge base, and no stronger
-model. A turn is bounded at 40 steps, $2.00, and the 600-second deadline.
+model. A turn has no step or time limit
+([#10103](https://github.com/OpenAgentsInc/openagents/issues/10103)): it
+ends when the loop finishes or asks, when it is stopped, or when the loop's
+stuck guard finds eight judged steps in a row repeating a failed approach
+without progress. Its spend stays capped at $2.00.
 The reply the user reads is the finishing step's `reply`. A step that
 asks the user a question ends the turn, and the answer starts the next
 one.
@@ -198,8 +202,8 @@ Microluna:
    branch, or clones the repository, under `~/.openagents/coder/issues/`.
 2. A Microcoder turn works the issue in that checkout, told to make the
    change, add and run the tests, and not commit. It can write only the
-   checkout. Each session of the flow is bounded at 80 steps, $5.00, and
-   1,800 seconds, and never asks the user a question.
+   checkout. A session has no step or time limit, ends as a turn does,
+   is capped at $5.00 of spend, and never asks the user a question.
 3. When the work finished and it changed Rust code with callers, a review
    session checks the callers, then the host's gate runs: the changed
    packages' tests inside a boundary with credentials withheld, and the

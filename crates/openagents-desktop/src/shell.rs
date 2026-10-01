@@ -6145,7 +6145,7 @@ mod coder_events {
         let text = outline(app.chat.as_ref().unwrap().transcript_rows());
         assert!(text.contains("tool \"Command\" \"printf 'import unittest\\\\n' > test_slugs.py · exit 0 in 0.0s\" [done]"), "{text}");
         assert!(
-            text.contains("working \"Coder is working · step 1 of 24 · 0s\""),
+            text.contains("working \"Coder is working · step 1 · 0s\""),
             "{text}"
         );
     }

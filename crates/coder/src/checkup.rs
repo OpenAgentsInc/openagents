@@ -126,11 +126,9 @@ fn report() -> (Vec<String>, bool) {
                 (state.provider.as_str(), state.model.as_str())
             });
             lines.push(format!(
-                "{:<10} microcoder runs {model} on {provider} in this process · up to {} steps and ${:.2} a turn · stops after {}s",
+                "{:<10} microcoder runs {model} on {provider} in this process · no step or time limit · up to ${:.2} a turn · ends when stuck repeating without progress",
                 "executor",
-                delegate_door::microcoder::MAX_STEPS,
                 delegate_door::microcoder::MAX_USD,
-                delegate_door::deadline().as_secs(),
             ));
         }
         _ => {

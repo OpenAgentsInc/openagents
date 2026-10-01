@@ -165,11 +165,13 @@ A loop event is `extensions.microcoder.event`, the `run::Event` that
 `crates/microcoder` reports. Admission, effect, decision, summary, and fault
 evidence, and the loop's other events, such as `judged` and `gated`, are
 `adapter` records: readers can skip them, and their raw bytes stay available.
-A stop reason other than `bad_replies` and `stopped` is its name in words,
-such as `step limit`; `bad_replies` shows the first line of its detail, and
-`stopped` (the task was stopped from outside the loop) reads `Coder stopped:
-the task was cancelled or reached its time limit.`, the words the event
-stream's `stopped` uses.
+A stop reason other than `bad_replies`, `stuck`, and `stopped` is its name in
+words, such as `idle`; `bad_replies` and `stuck` (the loop's stuck guard) show
+the first line of their detail, and `stopped` (the task was stopped from
+outside the loop) reads `Coder stopped: the task was stopped, or its host
+refused to go on.`, the words the event stream's `stopped` uses. Runs have no
+step or time limit, so an older record's `step limit` or `time limit` reads
+as those words.
 
 `tool_name` and `call_id` name a step's first call. The argument summary is a
 shell command's text or compact JSON, at most 240 bytes. The reader accepts both

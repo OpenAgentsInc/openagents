@@ -1273,19 +1273,9 @@ impl Rows {
             }
             CoderEvent::Progress(progress) => {
                 self.seconds = progress.seconds;
-                self.progress = Some(format!(
-                    "Coder is working · step {}{}{} · {:.0}s",
-                    progress.step,
-                    progress
-                        .max_steps
-                        .map(|max| format!(" of {max}"))
-                        .unwrap_or_default(),
-                    progress
-                        .done
-                        .map(|done| format!(" · {:.0}% done", done * 100.0))
-                        .unwrap_or_default(),
-                    progress.seconds
-                ));
+                // "Coder is working · step 5 · ≈40% done · 9s": Jev's
+                // estimate of how much is complete, never a budget.
+                self.progress = Some(progress.line());
             }
             CoderEvent::Question(asked) => {
                 self.flush_reply();

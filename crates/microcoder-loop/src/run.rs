@@ -105,12 +105,30 @@ pub const VIEW_CHARS: usize = 120_000;
 /// The default user prompt.
 pub const USER_PROMPT: &str = "Solve this task.";
 
+/// Steps in a row Jev must judge repeating without progress before the
+/// stuck guard ends a run ([`Limits::stuck_steps`]), by default.
+pub const STUCK_STEPS: usize = 8;
+
+/// The shortest window the stuck guard accepts: a smaller
+/// [`Limits::stuck_steps`] is raised to it, so one or two unlucky
+/// judgments never end a run.
+pub const MIN_STUCK_STEPS: usize = 4;
+
+/// Seconds the oracle's session may run when the loop itself has no time
+/// limit: a year, far past any run.
+const UNBOUNDED_SECONDS: u64 = 365 * 24 * 3600;
+
 /// When the loop stops, besides a finished action.
 #[derive(Clone, Debug, Serialize)]
 pub struct Limits {
-    /// Steps, at most; `None` means no step limit.
+    /// Steps, at most; `None` means no step limit. Coder's runs for a
+    /// person set none: they end when Coder finishes, the person stops
+    /// them, or the stuck guard ([`Limits::stuck_steps`]) fires. A
+    /// benchmark may still set one.
     pub max_steps: Option<usize>,
-    pub max_seconds: u64,
+    /// Seconds, at most; `None` means no time limit, as in Coder's runs
+    /// for a person.
+    pub max_seconds: Option<u64>,
     /// Dollars of model and Jev spend.
     pub max_usd: f64,
     /// Seconds one command may run.
@@ -155,6 +173,32 @@ pub struct Limits {
     /// their prompts; a repository turn, which a person watches, turns it
     /// on.
     pub first_judgment_beside: bool,
+    /// The stuck guard: end the run ([`Ending::Stuck`]) once this many
+    /// steps in a row are judged repeating an approach that already failed
+    /// without making progress: Jev's `repeating` at least one half and its
+    /// `progress` under one half, or, on a step Jev did not answer, every
+    /// command the last step ran having already run with the same exit and
+    /// output. A window under [`MIN_STUCK_STEPS`] counts as that minimum.
+    /// `None` turns the guard off; benchmarks, which have a time limit,
+    /// leave it off by default, and Coder's runs for a person turn it on
+    /// with [`STUCK_STEPS`].
+    pub stuck_steps: Option<usize>,
+}
+
+impl Limits {
+    /// The limits of a Coder run a person watches: no step, time, or spend
+    /// limit, and the stuck guard on ([`STUCK_STEPS`]). It ends when Coder
+    /// finishes, asks, or is stopped, or when the guard finds it stuck.
+    #[must_use]
+    pub fn unbounded() -> Self {
+        Limits {
+            max_steps: None,
+            max_seconds: None,
+            max_usd: f64::MAX,
+            stuck_steps: Some(STUCK_STEPS),
+            ..Limits::default()
+        }
+    }
 }
 
 /// What the first step's prompt says in place of Jev's judgments when they
@@ -179,7 +223,7 @@ impl Default for Limits {
     fn default() -> Self {
         Limits {
             max_steps: None,
-            max_seconds: 3_600,
+            max_seconds: Some(3_600),
             max_usd: 1.0,
             command_seconds: 300,
             test_seconds: 60,
@@ -195,6 +239,7 @@ impl Default for Limits {
             gates: Gates::default(),
             ask: false,
             first_judgment_beside: false,
+            stuck_steps: None,
         }
     }
 }
@@ -227,6 +272,10 @@ pub enum Ending {
     Asked {
         ask: Ask,
     },
+    /// The stuck guard ([`Limits::stuck_steps`]): the run repeated an
+    /// approach that already failed, without progress, for the window's
+    /// steps in a row. The detail says so in a sentence.
+    Stuck(String),
     /// The run was stopped from outside the loop ([`Env::stopped`]): its
     /// task was cancelled, reached its host's deadline, or its host
     /// refused to go on. The loop makes no model call after it sees the
@@ -1118,7 +1167,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     if limits.acceptance && limits.gates.oracle {
         let oracle_limits = OracleLimits {
             steps: limits.gates.oracle_steps,
-            deadline: started + Duration::from_secs(limits.max_seconds),
+            deadline: started
+                + Duration::from_secs(limits.max_seconds.unwrap_or(UNBOUNDED_SECONDS)),
             usd_left: limits.max_usd - jev.known,
             command_seconds: limits.command_seconds,
             test_seconds: limits.test_seconds,
@@ -1155,6 +1205,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut checked_stuck: Vec<String> = Vec::new();
     // Knowledge entries the finished code was already checked against.
     let mut checked: Vec<String> = Vec::new();
+    // Steps in a row judged repeating without progress (the stuck guard).
+    let mut stuck_for = 0usize;
     let mut step = 0usize;
     let ending = loop {
         if env.stopped() {
@@ -1163,7 +1215,10 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         if limits.max_steps.is_some_and(|max| step >= max) {
             break Ending::StepLimit;
         }
-        if started.elapsed() >= Duration::from_secs(limits.max_seconds) {
+        if limits
+            .max_seconds
+            .is_some_and(|max| started.elapsed() >= Duration::from_secs(max))
+        {
             break Ending::TimeLimit;
         }
         if model.known + jev.known + embedding.known >= limits.max_usd {
@@ -1248,16 +1303,28 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         };
         jev.judged(&judgment, step);
         // Jev's answer to whether the last step made progress.
-        let last_progress = judgment
-            .answers
-            .iter()
-            .find(|(id, _)| id == "progress")
-            .map(|(_, p)| *p);
+        let last_progress = judgment.noul("progress");
         let jev_text = judgment.render(models.set);
+        if !state.actions.is_empty() {
+            stuck_for = if stuck_step(&judgment, &state) {
+                stuck_for + 1
+            } else {
+                0
+            };
+        }
         observer.event(
             started.elapsed().as_secs_f64(),
             &Event::Judged { step, judgment },
         );
+        if let Some(window) = limits.stuck_steps.map(|n| n.max(MIN_STUCK_STEPS))
+            && stuck_for >= window
+        {
+            // The step's own generation is never asked for.
+            break Ending::Stuck(format!(
+                "it repeated an approach that already failed, without progress, for {window} \
+                 steps in a row"
+            ));
+        }
         let (text, generator, generated) = match early {
             Some((text, generated)) => (text, models.generator, generated),
             None => {
@@ -1780,7 +1847,9 @@ async fn gate<J: Judge, O: Observer>(
         return None;
     }
     let used = crate::gate::Used {
-        time: started.elapsed().as_secs_f64() / limits.max_seconds.max(1) as f64,
+        time: limits.max_seconds.map_or(0.0, |max| {
+            started.elapsed().as_secs_f64() / max.max(1) as f64
+        }),
         spend: if limits.max_usd > 0.0 {
             spent / limits.max_usd
         } else {
@@ -1799,6 +1868,41 @@ async fn gate<J: Judge, O: Observer>(
         );
     }
     note
+}
+
+/// Whether the state the loop just judged counts toward the stuck guard
+/// ([`Limits::stuck_steps`]): Jev judged the recent steps repeating an
+/// approach that already failed (`repeating` at least one half) and the
+/// last one not moving the work forward (`progress` under one half). When
+/// Jev answered neither, as when it is unavailable, the rule decides: the
+/// last step ran commands, and each had already run earlier in the run
+/// with the same exit and output.
+#[must_use]
+pub fn stuck_step(judgment: &Judgment, state: &State) -> bool {
+    match (judgment.noul("repeating"), judgment.noul("progress")) {
+        (Some(repeating), Some(progress)) => repeating >= 0.5 && progress < 0.5,
+        (Some(repeating), None) => repeating >= 0.5 && repeated_by_rule(state),
+        (None, Some(progress)) => progress < 0.5 && repeated_by_rule(state),
+        (None, None) => repeated_by_rule(state),
+    }
+}
+
+/// Whether every command the last step ran had already run earlier with
+/// the same exit and output. A step that ran nothing is not counted here;
+/// the idle guard ([`Limits::max_idle_replies`]) ends those.
+fn repeated_by_rule(state: &State) -> bool {
+    let Some((last, earlier)) = state.actions.split_last() else {
+        return false;
+    };
+    !last.results.is_empty()
+        && last.results.iter().all(|result| {
+            earlier.iter().flat_map(|a| &a.results).any(|before| {
+                before.command == result.command
+                    && before.exit == result.exit
+                    && before.timed_out == result.timed_out
+                    && before.output == result.output
+            })
+        })
 }
 
 /// Counts one step's use of an entry.

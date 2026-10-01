@@ -210,7 +210,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 options.effort = (effort != "default").then_some(effort);
             }
             "--max-steps" => options.limits.max_steps = Some(number(value()?)? as usize),
-            "--max-minutes" => options.limits.max_seconds = (number(value()?)? * 60.0) as u64,
+            "--max-minutes" => {
+                options.limits.max_seconds = Some((number(value()?)? * 60.0) as u64);
+            }
             "--max-usd" => options.limits.max_usd = number(value()?)?,
             "--command-seconds" => options.limits.command_seconds = number(value()?)? as u64,
             "--test-seconds" => options.limits.test_seconds = number(value()?)? as u64,
@@ -487,7 +489,7 @@ async fn go(options: Options) -> Result<u8, String> {
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
-        "microcoder · {} · {} (effort {}){} · {}, {} min, ${:.2} · network {network}",
+        "microcoder · {} · {} (effort {}){} · {}, {}, ${:.2} · network {network}",
         task.name,
         options.model,
         options.effort.as_deref().unwrap_or("default"),
@@ -500,7 +502,10 @@ async fn go(options: Options) -> Result<u8, String> {
             .limits
             .max_steps
             .map_or("no step limit".to_string(), |n| format!("up to {n} steps")),
-        options.limits.max_seconds / 60,
+        options
+            .limits
+            .max_seconds
+            .map_or("no time limit".to_string(), |s| format!("{} min", s / 60)),
         options.limits.max_usd
     );
     if let Some(retriever) = &retriever {

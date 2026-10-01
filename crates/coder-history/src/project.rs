@@ -387,7 +387,8 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
 /// - `ended`: a `system` record, `Coder finished in N steps.` as a
 ///   `task_complete` status record, or a `Coder stopped: ` message with the
 ///   reason (for a stop from outside, the loop's `stopped` ending, that the
-///   task was cancelled or reached its time limit).
+///   task was stopped or its host refused to go on; for the loop's stuck
+///   guard, its `stuck` ending, the sentence it gives).
 ///
 /// Returns None for every other event, which the caller projects as an
 /// `adapter` record.
@@ -550,10 +551,22 @@ fn microcoder(
                         300
                     )
                 ),
-                // Stopped from outside: cancelled, or the host's deadline.
+                // Stopped from outside: the person stopped it, or its host
+                // refused to go on. A run has no deadline (#10103).
                 "stopped" => {
-                    "Coder stopped: the task was cancelled or reached its time limit.".to_owned()
+                    "Coder stopped: the task was stopped, or its host refused to go on.".to_owned()
                 }
+                // The stuck guard: its detail is the sentence.
+                "stuck" => format!(
+                    "Coder stopped: {}.",
+                    first_line(
+                        ending
+                            .get("detail")
+                            .and_then(Value::as_str)
+                            .unwrap_or("it repeated itself without progress"),
+                        300
+                    )
+                ),
                 other => format!("Coder stopped: {}", trim(&other.replace('_', " "), 64).0),
             };
             Some(("message", Some("system"), None, text))

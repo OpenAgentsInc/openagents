@@ -113,7 +113,7 @@ pub fn admits(route_model: &str, reported: Option<&str>) -> bool {
 }
 
 /// The least a login copied into a bounded turn's private Grok home must
-/// have left beyond the turn's time limit. Grok Build refreshes its sign-in
+/// have left beyond the time the turn is expected to take. Grok Build refreshes its sign-in
 /// only near its expiry, and a refresh inside the copy could retire the
 /// refresh token the person's own login still holds.
 pub const LOGIN_MARGIN_SECONDS: i64 = 600;

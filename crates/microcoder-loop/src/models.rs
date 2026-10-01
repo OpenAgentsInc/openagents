@@ -36,7 +36,7 @@ pub fn jev_upper_bound(set: &QuestionSet, state: &Value) -> f64 {
         + set
             .questions
             .iter()
-            .map(|q| q.id.len() + q.text.len())
+            .map(|q| q.id.len() + q.text.len() + q.levels.iter().map(String::len).sum::<usize>())
             .sum::<usize>();
     let tokens =
         (bytes as u64).div_ceil(codex_transport::price::BYTES_PER_TOKEN) + JEV_OVERHEAD_TOKENS;
@@ -79,7 +79,8 @@ pub const CREDIBLE: &str = include_str!("../credible.json");
 pub const TARGET: &str = include_str!("../target.json");
 
 /// One question in the set: a Noul whose instructions are `text`, with
-/// optional NIP-DEC `criteria` describing what yes and no mean.
+/// optional NIP-DEC `criteria` describing what yes and no mean; or, when
+/// it names `levels`, a NIP-DEC Score over those levels, from the lowest.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
     pub id: String,
@@ -87,10 +88,13 @@ pub struct Question {
     /// What a yes and a no mean, as NIP-DEC's structured noul criteria.
     #[serde(default)]
     pub criteria: Option<jev::NoulCriteria>,
+    /// A Score's rubric, level zero first. Empty for a Noul.
+    #[serde(default)]
+    pub levels: Vec<String>,
 }
 
 impl Question {
-    /// The question in the shared decision model.
+    /// The question as a Noul in the shared decision model.
     #[must_use]
     pub fn noul(&self) -> jev::Noul {
         match &self.criteria {
@@ -98,7 +102,35 @@ impl Question {
             None => jev::Noul::new(self.text.clone()),
         }
     }
+
+    /// The question in the shared decision model: a Score when it names
+    /// levels, else a Noul.
+    #[must_use]
+    pub fn question(&self) -> jev::Question {
+        if self.levels.is_empty() {
+            self.noul().into()
+        } else {
+            jev::Score::new(
+                self.text.clone(),
+                self.levels
+                    .iter()
+                    .map(|level| Some(level.as_str().into()))
+                    .collect(),
+            )
+            .into()
+        }
+    }
+
+    /// Whether the question is a Score.
+    #[must_use]
+    pub fn is_score(&self) -> bool {
+        !self.levels.is_empty()
+    }
 }
+
+/// Answers by question id: a Noul's probability of yes, or a Score's
+/// fraction of its rubric.
+pub type Answers = Vec<(String, f64)>;
 
 /// The question set.
 #[derive(Clone, Debug, Deserialize)]
@@ -113,10 +145,53 @@ impl QuestionSet {
     pub fn questions(&self) -> jev::Questions {
         self.questions
             .iter()
-            .map(|question| (question.id.clone(), question.noul()))
+            .map(|question| (question.id.clone(), question.question()))
             .collect()
     }
+
+    /// A response's answers to the set: each Noul's probability of yes,
+    /// and each Score's place on its rubric as a fraction from 0 (its
+    /// first level) to 1 (its last), from the answer's probability-weighted
+    /// mean level. A question the response left unanswered, or answered in
+    /// another type, is left out.
+    #[must_use]
+    pub fn answers_from(
+        &self,
+        response: &jev::SystemOneResponse,
+    ) -> (Answers, Answers) {
+        let mut nouls = Vec::new();
+        let mut scores = Vec::new();
+        for question in &self.questions {
+            if question.is_score() {
+                if let Ok(answer) = response.score(&question.id) {
+                    scores.push((
+                        question.id.clone(),
+                        score_fraction(answer.score, question.levels.len()),
+                    ));
+                }
+            } else if let Ok(answer) = response.noul(&question.id) {
+                nouls.push((question.id.clone(), answer.noul));
+            }
+        }
+        (nouls, scores)
+    }
 }
+
+/// A Score's mean level as a fraction of the way up a rubric of `levels`
+/// levels, held to 0..=1.
+#[must_use]
+pub fn score_fraction(mean: f64, levels: usize) -> f64 {
+    let top = levels.saturating_sub(1).max(1) as f64;
+    if mean.is_finite() {
+        (mean / top).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// The Score in the step's question set that estimates how much of the
+/// task is complete; the surfaces show it as "≈40% done".
+pub const COMPLETE: &str = "complete";
 
 /// The embedded question set.
 ///
@@ -224,6 +299,7 @@ pub fn relevance_set(template: &QuestionSet, count: usize) -> QuestionSet {
                 id: format!("entry_{n}"),
                 text: text.replace("{entry}", &format!("entry_{n}")),
                 criteria: template.questions.first().and_then(|q| q.criteria.clone()),
+                levels: Vec::new(),
             })
             .collect(),
     }
@@ -232,8 +308,14 @@ pub fn relevance_set(template: &QuestionSet, count: usize) -> QuestionSet {
 /// Jev's answers for one step.
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Judgment {
-    /// Each question's id, its text, and the probability of yes.
+    /// Each Noul question's id and the probability of yes.
     pub answers: Vec<(String, f64)>,
+    /// Each Score question's id and where the answer placed the state, as
+    /// a fraction of the way up its rubric ([`score_fraction`]). Left out
+    /// of the record when the set asked no Score, so earlier records keep
+    /// their shape.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scores: Vec<(String, f64)>,
     /// Dollars at Jev's published rate, or `None` when unknown: the call
     /// failed, or reported no input tokens.
     pub usd: Option<f64>,
@@ -260,7 +342,27 @@ impl Judgment {
 }
 
 impl Judgment {
-    /// The judgment as the prompt shows it.
+    /// Jev's probability of yes to the Noul `id`, when it answered.
+    #[must_use]
+    pub fn noul(&self, id: &str) -> Option<f64> {
+        self.answers
+            .iter()
+            .find(|(asked, _)| asked == id)
+            .map(|(_, p)| *p)
+    }
+
+    /// Jev's estimate of how much of the task is complete, from 0 to 1
+    /// ([`COMPLETE`]), when it answered.
+    #[must_use]
+    pub fn complete(&self) -> Option<f64> {
+        self.scores
+            .iter()
+            .find(|(asked, _)| asked == COMPLETE)
+            .map(|(_, fraction)| *fraction)
+    }
+
+    /// The judgment as the prompt shows it: the Noul answers. A Score (how
+    /// much is complete) is for the person watching, not the model.
     #[must_use]
     pub fn render(&self, set: &QuestionSet) -> String {
         if let Some(error) = &self.error {
@@ -455,17 +557,10 @@ impl Judge for JevJudge {
                     .usage
                     .input_tokens
                     .map(|tokens| tokens as f64 * JEV_USD_PER_MILLION / 1_000_000.0);
+                let (answers, scores) = set.answers_from(&response);
                 Judgment {
-                    answers: set
-                        .questions
-                        .iter()
-                        .filter_map(|q| {
-                            response
-                                .noul(&q.id)
-                                .ok()
-                                .map(|answer| (q.id.clone(), answer.noul))
-                        })
-                        .collect(),
+                    answers,
+                    scores,
                     usd,
                     cost_unknown: usd
                         .is_none()
@@ -823,11 +918,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_question_set_parses_and_names_three_questions() {
+    fn the_question_set_parses_and_names_its_questions() {
         let set = question_set();
         assert_eq!(set.id, "openagents.microcoder.judge.v1");
         let ids: Vec<&str> = set.questions.iter().map(|q| q.id.as_str()).collect();
-        assert_eq!(ids, ["done", "progress", "repeating"]);
+        assert_eq!(ids, ["done", "progress", "repeating", COMPLETE]);
+        // One request: the three Nouls the loop decides with, and the
+        // Score of how much of the task is complete, as NIP-DEC types.
+        let asked = set.questions();
+        assert!(asked.validate().is_ok());
+        let kinds: Vec<Option<&str>> = asked.iter().map(|(_, q)| q.kind()).collect();
+        assert_eq!(
+            kinds,
+            [Some("noul"), Some("noul"), Some("noul"), Some("score")]
+        );
+    }
+
+    #[test]
+    fn a_score_reads_as_a_fraction_of_its_rubric() {
+        assert!((score_fraction(2.0, 5) - 0.5).abs() < 1e-9);
+        assert!((score_fraction(4.0, 5) - 1.0).abs() < 1e-9);
+        assert_eq!(score_fraction(9.0, 5), 1.0);
+        assert_eq!(score_fraction(-1.0, 5), 0.0);
+        assert_eq!(score_fraction(f64::NAN, 5), 0.0);
+        let judgment = Judgment {
+            answers: vec![("done".into(), 0.1)],
+            scores: vec![(COMPLETE.into(), 0.4)],
+            ..Judgment::default()
+        };
+        assert_eq!(judgment.complete(), Some(0.4));
+        assert_eq!(judgment.noul("done"), Some(0.1));
+        // The model's prompt carries the Nouls only.
+        assert!(
+            !judgment
+                .render(&question_set())
+                .contains("how much of the requested task")
+        );
+        assert_eq!(json!(judgment)["scores"], json!([[COMPLETE, 0.4]]));
+        assert!(json!(Judgment::free()).get("scores").is_none());
     }
 
     #[test]

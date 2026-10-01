@@ -99,7 +99,7 @@ The adapter summary's `stopped` field says in plain words how a turn the
 agent ended stopped, and the chat shows it, for example "Coder stopped:
 Grok Build stopped after the host refused a tool it asked to run (Write
 /etc/hosts: it would write /etc/hosts, outside the workspace)." Only the
-host's own stop reads "the task was cancelled or reached its time limit".
+host's own stop reads "the task was stopped, or its host refused to go on".
 This route records no usage probe and no rate-limit refusal.
 
 The task transcript is the chat. This slice keeps no separate copy of
@@ -132,8 +132,9 @@ held to the run's access the way Codex and Claude Code runs are
   scratch, with the copy, is removed when the turn ends. Grok Build
   refreshes its sign-in only near its expiry, and a refresh inside the
   copy could retire the refresh token the person's login still holds, so
-  a turn whose login expires within its time limit plus ten minutes is
-  refused before it starts and says to run `grok` once to refresh it.
+  a turn whose login expires within half an hour plus ten minutes is
+  refused before it starts (a turn has no time limit; half an hour is
+  what a long turn is expected to take) and says to run `grok` once to refresh it.
   The host answers each `session/request_permission` with the agent's
   allow-once option, because the boundary holds whatever the tool does,
   except a file-writing tool (`edit`, `delete`, `move`) that names a path

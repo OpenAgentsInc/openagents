@@ -40,6 +40,13 @@ use serde_json::{Value, json};
 
 use super::devin::{Answering, CANCEL_GRACE, Ended, Recorder, SILENCE, STOP_GRACE, Turn};
 
+/// How long the copied sign-in must still last, besides the margin, for a
+/// turn to start. A turn has no time limit; this is the half hour a long
+/// turn is expected to take (the time limit turns had before #10103), and
+/// a turn that runs past an expired copy fails its next request and says
+/// so.
+const TURN_LOGIN_SECONDS: i64 = 1800;
+
 /// The step extension that names the Grok Build session a turn used, which
 /// the next turn of the task reattaches.
 pub const SESSION_NOTE: &str = "grok_session";
@@ -131,14 +138,12 @@ fn contain(
         let bytes = std::fs::read(&source)
             .map_err(|error| format!("cannot read the Grok Build login: {error}"))?;
         let now = i64::try_from(coder::task::autostart::unix_now()).unwrap_or(i64::MAX);
-        let needed = i64::try_from(host.wall_seconds())
-            .unwrap_or(i64::MAX)
-            .saturating_add(acp_client::grok::LOGIN_MARGIN_SECONDS);
+        let needed = TURN_LOGIN_SECONDS.saturating_add(acp_client::grok::LOGIN_MARGIN_SECONDS);
         if let Some(left) = acp_client::grok::login_seconds_left(&bytes, now)
             && left < needed
         {
             return Err(format!(
-                "Grok Build's sign-in expires in {} minutes, sooner than this turn may run, and a \
+                "Grok Build's sign-in expires in {} minutes, within the half hour a turn may take, and a \
                  sandboxed turn uses a copy it must not refresh; run grok once to refresh the \
                  sign-in, then try again",
                 left.max(0) / 60
@@ -361,7 +366,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
             roots,
         });
     }
-    let silence = SILENCE.min(std::time::Duration::from_secs(host.wall_seconds().max(1)));
+    let silence = SILENCE;
     let result = session
         .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
         .await;
@@ -718,7 +723,7 @@ mod tests {
     }
 
     /// A Grok Build turn the agent ended itself after the host refused a
-    /// tool says so, never "cancelled or reached its time limit".
+    /// tool says so, never that the task was stopped.
     #[tokio::test]
     async fn a_turn_grok_ended_after_a_refusal_says_so() {
         let (root, store, grant) = fixture_with(acp_client::grok::DEFAULT_MODEL, |c| {

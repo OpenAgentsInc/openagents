@@ -427,6 +427,7 @@ impl Observer for Terminal {
                     Ending::StepLimit => "the step limit".to_string(),
                     Ending::TimeLimit => "the time limit".to_string(),
                     Ending::SpendLimit => "the spend limit".to_string(),
+                    Ending::Stuck(why) => format!("the stuck guard ({why})"),
                     Ending::BadReplies(error) => format!("unusable replies ({error})"),
                     Ending::NoCapacity {
                         resets_at: Some(at),

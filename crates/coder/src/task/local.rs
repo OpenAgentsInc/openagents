@@ -73,9 +73,9 @@ pub const CONTROLLER_VAR: &str = "OPENAGENTS_CODER_CONTROLLER";
 pub const RECORD_SCHEMA: &str = "openagents.coder.local-run.v1";
 /// The host name a thread's binding gives a local run.
 pub const LOCAL_HOST: &str = "local";
-/// How many steps a turn may take, and for how long.
-const MAX_STEPS: usize = 24;
-const WALL_SECONDS: u64 = 1800;
+// A turn has no step or time limit: it ends when Coder finishes or asks,
+// when the person stops it, or when the loop's stuck guard finds it
+// repeating a failed approach without progress (#10103).
 const MEMORY_BYTES: u64 = 4096 * 1024 * 1024;
 /// How long a started turn may wait for its owner before a missing
 /// admission counts as a failure, when the owner left no diagnostic.
@@ -319,7 +319,6 @@ pub struct Local {
     /// The person's settings, or why they could not be read: a run then
     /// refuses rather than falling back to the defaults.
     settings: Result<settings::Coder, String>,
-    max_steps: std::sync::atomic::AtomicUsize,
 }
 
 impl std::fmt::Debug for Local {
@@ -347,7 +346,6 @@ impl Local {
             now: autostart::unix_now,
             controller: None,
             settings: Ok(settings::Coder::default()),
-            max_steps: std::sync::atomic::AtomicUsize::new(MAX_STEPS),
         }
     }
 
@@ -421,19 +419,6 @@ impl Local {
                 .collect::<Vec<_>>()
                 .join(", ")
         ))
-    }
-
-    /// Let each turn take up to `steps` steps instead of the default.
-    #[must_use]
-    pub fn with_max_steps(self, steps: usize) -> Self {
-        self.set_max_steps(steps);
-        self
-    }
-
-    /// Let each turn started from now on take up to `steps` steps.
-    pub fn set_max_steps(&self, steps: usize) {
-        self.max_steps
-            .store(steps.max(1), std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Start turns with `launcher` instead of a detached engine process.
@@ -514,8 +499,8 @@ impl Local {
                 controller,
                 model: routes[0].model.clone(),
                 effort: Some("medium".into()),
-                max_steps: self.max_steps.load(std::sync::atomic::Ordering::Relaxed),
-                wall_seconds: WALL_SECONDS,
+                max_steps: None,
+                wall_seconds: None,
                 memory_bytes: MEMORY_BYTES,
                 write_workspace: true,
                 decision_endpoint: "https://api.typesafe.ai".into(),

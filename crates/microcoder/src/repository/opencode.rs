@@ -207,7 +207,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         }
     };
     let mut recorder = Recorder::new(host, "OpenCode", "opencode", route.model.clone(), access);
-    let silence = SILENCE.min(std::time::Duration::from_secs(host.wall_seconds().max(1)));
+    let silence = SILENCE;
     let result = session
         .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
         .await;
