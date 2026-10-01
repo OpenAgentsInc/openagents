@@ -191,6 +191,10 @@ build_universal() { # $1 package, $2 bin
   for t in "${triples[@]}"; do
     rustup target list --installed 2>/dev/null | grep -qx "$t" ||
       die "missing Rust target $t; run: rustup target add $t"
+    # OPENAGENTS_DESKTOP_RELEASE=1 marks the release build: only it uses
+    # the signed app's keychain items (com.openagents.desktop.*); any other
+    # build, `cargo build --release` included, keeps its own (#10096).
+    OPENAGENTS_DESKTOP_RELEASE=1 \
     MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}" \
       cargo build --release --locked --manifest-path "$root/Cargo.toml" \
       --target "$t" -p "$package" --bin "$bin" >&2

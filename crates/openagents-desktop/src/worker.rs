@@ -77,6 +77,9 @@ struct HostLane {
 /// whether the host is the in-process one.
 struct LocalLane {
     fake: bool,
+    /// Whether this is the packaged release, which may run `coder host
+    /// adopt` ([`openagents_desktop::RELEASE`]; a test may stand in).
+    release: bool,
     coder: Option<PathBuf>,
     home: PathBuf,
     saved_config: Option<coder_history::Config>,
@@ -131,6 +134,7 @@ impl Context {
             },
             local: LocalLane {
                 fake: fake.is_some(),
+                release: openagents_desktop::RELEASE,
                 coder,
                 home,
                 saved_config: None,
@@ -143,6 +147,14 @@ impl Context {
                 first_code: None,
             },
         }
+    }
+
+    /// Start Coder as the packaged release would, adopting an earlier
+    /// setup.
+    #[cfg(test)]
+    pub fn released(mut self) -> Self {
+        self.local.release = true;
+        self
     }
 
     /// Select explicit history roots for an isolated fixture or host adapter.
@@ -307,6 +319,12 @@ impl LocalLane {
                 agent: Agent::Enabled,
                 note: None,
             };
+        }
+        // A dev build never runs `coder host adopt` (#10096).
+        if !self.release {
+            return openagents_desktop::migrate::start_dev(&self.home, &mut |keys| {
+                platform::register_agent(keys)
+            });
         }
         openagents_desktop::migrate::start(self.coder.as_deref(), &self.home, &mut |keys| {
             platform::register_agent(keys)
@@ -959,7 +977,7 @@ mod tests {
         let home = dir.path().join("home");
         std::fs::create_dir(&home).unwrap();
         let fake = FakeHost::new("Studio Mac", 1_790_000_000);
-        let context = Context::new(Box::new(fake), None, None, Some(coder), home);
+        let context = Context::new(Box::new(fake), None, None, Some(coder), home).released();
         let (wakes, woke) = channel();
         let worker = Worker::start(
             context,

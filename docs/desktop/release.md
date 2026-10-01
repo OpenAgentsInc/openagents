@@ -81,7 +81,16 @@ What it does, in order:
    `coder`, `microcoder`, and `openagents` (the `openagents-cli` package) for
    `aarch64-apple-darwin` and `x86_64-apple-darwin`, with
    `MACOSX_DEPLOYMENT_TARGET=13.0` (the floor for `SMAppService`), joined
-   into universal binaries with `lipo`.
+   into universal binaries with `lipo`. The build sets
+   `OPENAGENTS_DESKTOP_RELEASE=1`, which marks it as the release: only a
+   build with that flag uses the signed app's keychain items
+   (`com.openagents.desktop.verse`) and runs `coder host adopt`. Any other
+   build, `cargo build --release` included, is a dev build that keeps its
+   own items under `com.openagents-dev.desktop.verse`, so testing a dev
+   build never prompts for or touches the real ones
+   ([#10096](https://github.com/OpenAgentsInc/openagents/issues/10096)).
+   Binaries passed with `--bin-dir` must be built with the flag too, or
+   the release would read a fresh dev world key instead of the person's.
 2. **Assemble** `OpenAgents.app`:
 
    ```text
@@ -236,7 +245,11 @@ Two steps, on two computers:
    It compiles the window, `coder`, and `microcoder` inside the pinned
    `rust:1.97.1-bullseye` image (glibc 2.31: Debian 11, Ubuntu 20.04, and
    newer) and packages them with `package-linux.sh` and the pinned AppImage
-   type-2 runtime. Paths are fixed and remapped, and every packaged file
+   type-2 runtime. `package-linux.sh` builds with
+   `OPENAGENTS_DESKTOP_RELEASE=1`, as the Mac's does, so only the release
+   uses the release Secret Service items
+   ([#10096](https://github.com/OpenAgentsInc/openagents/issues/10096));
+   with `--skip-build`, the binaries must have been built with it. Paths are fixed and remapped, and every packaged file
    carries the commit's time, so a second run of the same commit writes the
    same bytes. `BUILDINFO` records the commit, the image digest, and the
    runtime's SHA-256.

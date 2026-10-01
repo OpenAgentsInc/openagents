@@ -143,9 +143,10 @@ pub struct Panel {
     changes_open: bool,
     changes_scroll: f32,
     changes_highlighter: Option<rust_native::syntax::Highlighter>,
-    /// The Gym's trainer key, being read (`chat_gym`).
+    /// The Gym's trainer key, read when a hosted run first needs it
+    /// (`chat_gym`, #10096).
     #[cfg(not(windows))]
-    gym_loading: Option<crate::chat_gym::Loading>,
+    gym_trainer: Option<crate::chat_gym::Trainer>,
 }
 
 /// A transcript button's action and target when a press began on it.
@@ -237,7 +238,7 @@ impl Panel {
             changes_scroll: 0.0,
             changes_highlighter: None,
             #[cfg(not(windows))]
-            gym_loading: None,
+            gym_trainer: None,
         }
     }
     /// Whether the composer takes images: the shared
@@ -394,11 +395,14 @@ impl Panel {
         }
         let wake = waker.clone();
         self.transcript.start(Arc::new(move || wake.wake()));
-        // The Gym's trainer and hosted runner, in the real window only.
+        // The Gym's hosted runner, in the real window only. Its trainer key
+        // is read when a hosted run first needs it, never here (#10096).
         #[cfg(not(windows))]
         {
             let wake = waker.clone();
-            self.gym_loading = crate::chat_gym::load(Arc::new(move || wake.wake()));
+            if let Some((gym, trainer)) = crate::chat_gym::launch(Arc::new(move || wake.wake())) {
+                self.use_gym_trainer(gym, trainer);
+            }
         }
         self.waker = Some(waker);
     }
@@ -408,23 +412,28 @@ impl Panel {
         self.session.cards.gym = gym;
         self.rows_dirty = true;
     }
+    /// Use `gym` with `trainer` reading its key when a hosted run needs it.
+    #[cfg(not(windows))]
+    pub fn use_gym_trainer(
+        &mut self,
+        gym: openagents_chat_app::gym::Gym,
+        trainer: crate::chat_gym::Trainer,
+    ) {
+        self.use_gym(gym);
+        self.gym_trainer = Some(trainer);
+    }
     /// The chat's Gym.
     pub fn gym(&self) -> &openagents_chat_app::gym::Gym {
         &self.session.cards.gym
     }
-    /// Take the trainer once it's read, and what hosted runs saw since
-    /// the last tick.
+    /// Read the trainer key when a hosted run waits for it, and take what
+    /// hosted runs saw since the last tick.
     fn poll_gym(&mut self) {
         #[cfg(not(windows))]
-        if let Some(loaded) = self
-            .gym_loading
-            .as_ref()
-            .and_then(crate::chat_gym::Loading::poll)
+        if let Some(trainer) = self.gym_trainer.as_mut()
+            && trainer.tick(&mut self.session.cards.gym)
         {
-            self.gym_loading = None;
-            if let Ok(gym) = loaded {
-                self.use_gym(gym);
-            }
+            self.rows_dirty = true;
         }
         // A computer run's phase is its Coder run's, in this chat's own
         // transcript; only hosted runs report here.
@@ -2646,8 +2655,19 @@ impl Panel {
             || self.session.next_wake(now),
             |task| self.session.next_wake(now).min(task.next_wake(now)),
         );
-        // A hosted Gym run is read again each second, beside its wakes.
-        let wake = if self.session.cards.gym.active().is_some_and(|run| {
+        // A hosted Gym run is read again each second, beside its wakes; a
+        // run waiting for its trainer key starts the read on the next tick.
+        let gym = &self.session.cards.gym;
+        #[cfg(not(windows))]
+        let read_key = self
+            .gym_trainer
+            .as_ref()
+            .is_some_and(|trainer| trainer.to_start(gym));
+        #[cfg(windows)]
+        let read_key = false;
+        let wake = if read_key {
+            now
+        } else if gym.active().is_some_and(|run| {
             matches!(
                 run.place,
                 Some(openagents_chat_app::gym::Place::Hosted { .. })

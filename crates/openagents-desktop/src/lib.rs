@@ -37,6 +37,21 @@
 //! - [`notices`]: when Coder's work is worth a desktop notification.
 //! - `update`: the signed-manifest updater (the `app` feature).
 
+/// Whether this binary is the packaged release. The packaging scripts
+/// (`scripts/desktop/package-macos.sh`, `scripts/desktop/package-linux.sh`)
+/// build it with `OPENAGENTS_DESKTOP_RELEASE=1` in the environment; every
+/// other build, `cargo build --release` included, is a dev build. A dev
+/// build keeps its own keychain items (`grid::store::SERVICE`) and never
+/// asks `coder` to adopt the keychain, so it can't prompt for, read, or
+/// move the signed app's secrets (#10096).
+pub const RELEASE: bool = release_flag(option_env!("OPENAGENTS_DESKTOP_RELEASE"));
+
+/// Whether a build-time `OPENAGENTS_DESKTOP_RELEASE` marks the release:
+/// exactly `1`.
+pub const fn release_flag(value: Option<&str>) -> bool {
+    matches!(value, Some(value) if value.len() == 1 && value.as_bytes()[0] == b'1')
+}
+
 #[cfg(all(feature = "app", not(windows)))]
 pub mod backdrop;
 #[cfg(all(feature = "app", not(windows)))]

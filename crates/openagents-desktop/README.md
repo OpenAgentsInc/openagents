@@ -119,6 +119,29 @@ keys: service `com.openagents.desktop.verse`, accounts `world-key` and
 `gym-connection`, in the macOS login Keychain or Linux Secret Service. Key
 creation and reads happen off the UI thread, only after Play. An unreadable
 stored identity is never replaced; Play stays offline and explains why.
+
+### The keychain (#10096)
+
+- **Never at launch.** Opening the app, a chat, or the Verse page reads
+  nothing from the keychain. The world key is read only when you choose
+  **Play**, or when the chat's Gym starts its first hosted run (the chat Gym
+  signs hosted runs with it and opens its saved runs under it, so earlier
+  runs come back with that first hosted start).
+- **At most one prompt.** A read or write the keychain denies, cancels, or
+  can't answer is remembered until the app restarts: nothing asks again,
+  Play stays offline, and the Gym says in one line that hosted runs need the
+  key.
+- **Dev builds keep their own items.** Only the packaged release is built
+  with `OPENAGENTS_DESKTOP_RELEASE=1` (set by
+  [`scripts/desktop/package-macos.sh`](../../scripts/desktop/package-macos.sh)
+  and [`package-linux.sh`](../../scripts/desktop/package-linux.sh); see
+  [`docs/desktop/release.md`](../../docs/desktop/release.md)). Every other
+  build, `cargo build` and `cargo build --release` included, is a dev build
+  (`openagents_desktop::RELEASE` is false): it keeps its world key and Gym
+  connection under `com.openagents-dev.desktop.verse`, never reads or prompts
+  for the signed app's `com.openagents.desktop.*` items, and never runs
+  `coder host adopt`. A dev build outside an app bundle registers no login
+  agent on macOS either, so nothing it starts reads the host's keys.
 The public result cache and Compare notes preference live under
 `~/.openagents/desktop/grid/`; these files contain no secret key or Gym grant.
 

@@ -118,7 +118,10 @@ trap 'rm -rf "$work"' EXIT
 if ((build)); then
   args=()
   for bin in "${binaries[@]}"; do args+=(--bin "$bin"); done
-  cargo build --release --locked --manifest-path "$root/Cargo.toml" \
+  # OPENAGENTS_DESKTOP_RELEASE=1 marks the release build: only it uses the
+  # release app's Secret Service items; any other build keeps its own
+  # (#10096).
+  OPENAGENTS_DESKTOP_RELEASE=1 cargo build --release --locked --manifest-path "$root/Cargo.toml" \
     -p openagents-desktop -p coder -p microcoder "${args[@]}"
 fi
 

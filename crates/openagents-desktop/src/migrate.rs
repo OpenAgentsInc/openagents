@@ -200,6 +200,26 @@ pub fn start(
     }
 }
 
+/// Starts Coder under a dev build ([`crate::RELEASE`] is false): as
+/// [`start`], but it never runs `coder host adopt`, so a dev build never
+/// moves an earlier setup's keys into the keychain or prompts for the
+/// signed app's items (#10096). An earlier setup keeps running as it was.
+pub fn start_dev(home: &Path, register: &mut dyn FnMut(&Keys) -> Agent) -> Started {
+    if home.join(".openagents/coder-access/access.json").exists() {
+        eprintln!(
+            "openagents-desktop: a dev build never adopts; the earlier Coder setup keeps running"
+        );
+        return Started {
+            agent: Agent::NotRegistered,
+            note: Some(KEPT_RUNNING.into()),
+        };
+    }
+    Started {
+        agent: register(&Keys::Keychain),
+        note: None,
+    }
+}
+
 // The tests stand in for `coder` with shell scripts.
 #[cfg(all(test, unix))]
 mod tests {
@@ -289,6 +309,24 @@ esac
                 message: "no".into()
             }
         );
+    }
+
+    /// A dev build never adopts: an earlier setup keeps running and
+    /// nothing registers; without one it registers as the release does.
+    #[test]
+    fn a_dev_build_never_adopts() {
+        let home = tempfile::tempdir().unwrap();
+        let mut registered = Vec::new();
+        let started = start_dev(home.path(), &mut |keys| {
+            registered.push(keys.clone());
+            Agent::NotRegistered
+        });
+        assert_eq!(started.note, None);
+        assert_eq!(registered, [Keys::Keychain]);
+        earlier_setup(home.path());
+        let started = start_dev(home.path(), &mut |_| panic!("a dev build registered"));
+        assert_eq!(started.agent, Agent::NotRegistered);
+        assert_eq!(started.note.as_deref(), Some(KEPT_RUNNING));
     }
 
     #[test]

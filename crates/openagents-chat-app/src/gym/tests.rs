@@ -2234,3 +2234,83 @@ mod desktop {
         assert!(desktop.session.cards.gym.sheet.is_none());
     }
 }
+
+/// A Gym that reads its trainer key only when a hosted run needs it
+/// (#10096, the desktop): building it asks for nothing, a hosted start
+/// waits and asks once, the key starts the waiting run and opens the store
+/// with this session's run kept; a denied key refuses in one plain line
+/// and nothing asks again.
+#[test]
+fn a_lazy_trainer_key_is_asked_for_once_by_a_hosted_start() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let draft = Some(json!({"tests": []}));
+    let lazy = |runner: &Runner| {
+        let mut gym = Gym::new(
+            None,
+            Some(Arc::new(runner.clone()) as Arc<dyn Hosted>),
+            Some(runtime.handle().clone()),
+        );
+        gym.wait_for_world();
+        gym
+    };
+
+    // The key arrives: the waiting run starts on the runner and is kept.
+    let runner = Runner::default();
+    let mut gym = lazy(&runner);
+    assert!(!gym.wants_world(), "nothing asks at launch");
+    let effect = gym.start(
+        "t",
+        1,
+        &try_offer(),
+        "map",
+        Purpose::Try,
+        draft.clone(),
+        None,
+        None,
+    );
+    assert_eq!(effect, Effect::None);
+    assert!(gym.wants_world());
+    assert!(gym.runs()[0].running());
+    runtime.block_on(tokio::task::yield_now());
+    assert!(runner.runs().is_empty(), "nothing is sent without the key");
+    let dir = tempfile::tempdir().unwrap();
+    let world = SecretKey::from_byte_array([0x42; 32]).unwrap();
+    gym.attach_store(Cache::open(&dir.path().join("gym"), &world).unwrap());
+    gym.set_world(world);
+    assert!(!gym.wants_world());
+    runtime.block_on(tokio::task::yield_now());
+    assert_eq!(runner.runs().len(), 1);
+    assert_eq!(gym.runs().len(), 1);
+    let reopened = Gym::new(
+        Cache::open(&dir.path().join("gym"), &world).ok(),
+        None,
+        None,
+    );
+    assert_eq!(reopened.runs().len(), 1, "the session's run was saved");
+
+    // The key is denied: the run refuses plainly, and a second start
+    // refuses at once without asking.
+    let runner = Runner::default();
+    let mut gym = lazy(&runner);
+    gym.start(
+        "t",
+        1,
+        &try_offer(),
+        "map",
+        Purpose::Try,
+        draft.clone(),
+        None,
+        None,
+    );
+    gym.world_unavailable("No trainer key: the keychain said no.");
+    assert!(!gym.wants_world());
+    assert!(matches!(&gym.runs()[0].state,
+        RunState::Refused { why, .. } if why == "No trainer key: the keychain said no."));
+    gym.start("t", 2, &try_offer(), "map", Purpose::Try, draft, None, None);
+    assert!(!gym.wants_world(), "a denied key is never asked for again");
+    assert!(matches!(&gym.runs()[1].state, RunState::Refused { .. }));
+    assert!(runner.runs().is_empty());
+}

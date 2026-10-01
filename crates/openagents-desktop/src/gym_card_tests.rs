@@ -402,3 +402,108 @@ fn the_route_map_offer_opens_the_map_page() {
     assert!(app.map_view().is_some(), "the tap opens the Map page");
     assert_eq!(app.navigation.as_ref().unwrap().page, Page::Map);
 }
+
+/// The tool card with START THE TEST on a desktop whose chat Gym reads
+/// its trainer key lazily (#10096) through `read`, counting each read.
+#[cfg(not(windows))]
+fn lazy_chat(
+    home: &std::path::Path,
+    runner: Arc<StandIn>,
+    runtime: &tokio::runtime::Runtime,
+    read: openagents_desktop::chat_gym::ReadKey,
+) -> DesktopApp {
+    let mut meta = Meta::default();
+    meta.carded(&fixture("tool"));
+    meta.offers.extend(Offer::parse(&fixture("start")));
+    let mut app = chat_with("We'd try Project map.", meta);
+    let gym = openagents_desktop::chat_gym::lazy(runner, runtime.handle().clone());
+    let trainer =
+        openagents_desktop::chat_gym::Trainer::new(home.to_path_buf(), read, Arc::new(|| {}));
+    app.chat.as_mut().unwrap().use_gym_trainer(gym, trainer);
+    app.present();
+    app
+}
+
+/// Opening the app and its chat never reads the trainer key: the first
+/// hosted start reads it once, then runs (#10096).
+#[cfg(not(windows))]
+#[test]
+fn the_trainer_key_is_read_only_when_a_hosted_run_starts() {
+    let home = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runner = Arc::new(StandIn {
+        finish: true,
+        ..StandIn::default()
+    });
+    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = reads.clone();
+    let read: openagents_desktop::chat_gym::ReadKey = Arc::new(move || {
+        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(secp256k1::SecretKey::from_byte_array([0x42; 32]).unwrap())
+    });
+    let mut app = lazy_chat(home.path(), runner.clone(), &runtime, read);
+    for _ in 0..5 {
+        let _ = app.chat.as_mut().unwrap().tick(Instant::now());
+    }
+    app.present();
+    assert_eq!(
+        reads.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "launch reads no key"
+    );
+    assert!(click(&mut app, "START THE TEST").is_none());
+    until(&mut app, |gym| gym.latest_result().is_some());
+    assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(runner.started.lock().unwrap().len(), 1);
+    // The run was saved under the key, as a reopen finds it.
+    let reopened = hosted_chat(home.path(), Arc::new(StandIn::default()), &runtime);
+    assert!(
+        reopened
+            .chat
+            .as_ref()
+            .unwrap()
+            .gym()
+            .latest_result()
+            .is_some()
+    );
+}
+
+/// A denied or cancelled read is asked once: the run says so plainly, and
+/// starting again never asks again (#10096).
+#[cfg(not(windows))]
+#[test]
+fn a_denied_trainer_key_is_asked_for_once_and_said_plainly() {
+    let home = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runner = Arc::new(StandIn::default());
+    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = reads.clone();
+    let read: openagents_desktop::chat_gym::ReadKey = Arc::new(move || {
+        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err("denied".into())
+    });
+    let mut app = lazy_chat(home.path(), runner.clone(), &runtime, read);
+    assert!(click(&mut app, "START THE TEST").is_none());
+    let refused = |gym: &openagents_chat_app::gym::Gym| {
+        gym.runs().last().is_some_and(|run| {
+            matches!(&run.state, openagents_chat_app::gym::RunState::Refused { why, .. }
+                if why == openagents_desktop::chat_gym::NO_KEY)
+        })
+    };
+    until(&mut app, refused);
+    assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+    for _ in 0..5 {
+        let _ = app.chat.as_mut().unwrap().tick(Instant::now());
+    }
+    assert_eq!(
+        reads.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "never asked again"
+    );
+    assert!(runner.started.lock().unwrap().is_empty());
+    let shown = text(&app);
+    assert!(
+        shown.contains("Restart OpenAgents to be asked again"),
+        "{shown}"
+    );
+}

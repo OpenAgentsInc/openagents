@@ -539,6 +539,13 @@ pub struct Gym {
     seen: std::collections::BTreeSet<String>,
     /// Structural events for the playtest log, taken by the app.
     logged: Vec<playtest::session::Code>,
+    /// The trainer key is read only when a hosted run needs it
+    /// ([`Gym::wait_for_world`], the desktop): the runs waiting for it.
+    lazy_world: bool,
+    awaiting_world: Vec<String>,
+    /// Why the trainer key can't be had this session, once the app said
+    /// so ([`Gym::world_unavailable`]): hosted runs refuse with it at once.
+    world_denied: Option<String>,
 }
 
 fn unix_now() -> u64 {
@@ -579,7 +586,65 @@ impl Gym {
             on_menu: false,
             seen: std::collections::BTreeSet::new(),
             logged: Vec::new(),
+            lazy_world: false,
+            awaiting_world: Vec::new(),
+            world_denied: None,
         }
+    }
+
+    /// Read the trainer key only when a hosted run needs it: a hosted
+    /// start without it waits (the run shows Starting) and
+    /// [`Gym::wants_world`] asks the app for it. The desktop does this so
+    /// opening the app or a chat never asks the keychain (#10096).
+    pub fn wait_for_world(&mut self) {
+        self.lazy_world = true;
+    }
+
+    /// A hosted run is waiting for the trainer key: the app should read it
+    /// now, then call [`Gym::set_world`] or [`Gym::world_unavailable`].
+    pub fn wants_world(&self) -> bool {
+        self.world.is_none() && self.world_denied.is_none() && !self.awaiting_world.is_empty()
+    }
+
+    /// The trainer key couldn't be read this session (denied, cancelled,
+    /// or broken): the waiting runs, and every hosted start after, refuse
+    /// with `why`, a plain line. Nothing asks for it again.
+    pub fn world_unavailable(&mut self, why: &str) {
+        self.world_denied = Some(why.to_owned());
+        for id in std::mem::take(&mut self.awaiting_world) {
+            if let Some(run) = self.run_mut(&id) {
+                run.state = RunState::Refused {
+                    why: why.to_owned(),
+                    connect: false,
+                };
+            }
+        }
+        self.save();
+    }
+
+    /// Keep this Gym in `store` from now on, once its key is known: what
+    /// was saved there comes back, with this session's runs and steps on
+    /// top, and it's all saved.
+    pub fn attach_store(&mut self, store: Cache) {
+        let mut saved: Saved = store.read("gym").ok().flatten().unwrap_or_default();
+        let session = std::mem::take(&mut self.saved);
+        saved.gym |= session.gym;
+        saved.first_run = saved.first_run.max(session.first_run);
+        if session.first_talk.is_some() {
+            saved.first_talk = session.first_talk;
+        }
+        saved
+            .runs
+            .retain(|run| session.runs.iter().all(|new| new.id != run.id));
+        saved.runs.extend(session.runs);
+        while saved.runs.len() > MAX_RUNS_KEPT {
+            saved.runs.remove(0);
+        }
+        saved.level_seen = saved.level_seen.max(session.level_seen);
+        saved.eval_xp_seen = saved.eval_xp_seen.max(session.eval_xp_seen);
+        self.saved = saved;
+        self.store = Some(store);
+        self.save();
     }
 
     /// The playtest log's events since the last call.
@@ -685,10 +750,27 @@ impl Gym {
         }
         if first {
             self.resume();
+            // The hosted runs that waited for the key start now.
+            for id in std::mem::take(&mut self.awaiting_world) {
+                let Some(run) = self.run(&id).cloned() else {
+                    continue;
+                };
+                self.saved.runs.retain(|kept| kept.id != id);
+                let _ = self.start(
+                    &run.talk,
+                    run.turn,
+                    &run.offer,
+                    &run.tool,
+                    run.purpose,
+                    run.draft,
+                    None,
+                    Some(run.runs),
+                );
+            }
         }
     }
 
-    #[cfg(test)]
+    /// Every run kept, oldest first.
     pub fn runs(&self) -> &[Run] {
         &self.saved.runs
     }
@@ -1022,9 +1104,17 @@ impl Gym {
                     )));
                     Effect::None
                 }
+                (None, Some(_)) if self.lazy_world && self.world_denied.is_none() => {
+                    // The key is read now, not at launch; the run starts
+                    // once it is.
+                    self.awaiting_world.push(id.clone());
+                    Effect::None
+                }
                 _ => {
                     run.state = RunState::Refused {
-                        why: "We couldn't read your trainer name on this device. Try again in a moment.".into(),
+                        why: self.world_denied.clone().unwrap_or_else(|| {
+                            "We couldn't read your trainer name on this device. Try again in a moment.".into()
+                        }),
                         connect: false,
                     };
                     Effect::None
@@ -1080,7 +1170,9 @@ impl Gym {
                 }
             },
         };
-        if !matches!(run.state, RunState::Refused { .. }) {
+        // A run waiting for the trainer key is logged when it starts.
+        let waiting = self.awaiting_world.last() == Some(&id);
+        if !matches!(run.state, RunState::Refused { .. }) && !waiting {
             self.logged.push(playtest::session::Code::RunStarted);
         }
         self.saved.runs.push(run);
