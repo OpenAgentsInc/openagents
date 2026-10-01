@@ -268,6 +268,7 @@ mod classify;
 mod client;
 mod config;
 pub mod decision;
+pub mod doors;
 mod error;
 pub mod exchange;
 mod jobs;

@@ -138,6 +138,106 @@ pub fn resolve(
     hosted(env, dir, door, tune)
 }
 
+/// One fallback door as a process found it at start: the door, the
+/// variable its key is read from, and whether that variable held a key. A
+/// door with no key is off. It never carries the key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fallback {
+    /// The door named for a person, such as "the Vercel AI Gateway".
+    pub name: &'static str,
+    /// The door, such as `https://ai-gateway.vercel.sh`.
+    pub door: &'static str,
+    /// The variable its key is read from, such as `AI_GATEWAY_API_KEY`.
+    pub key_var: &'static str,
+    /// Whether the variable held a key.
+    pub on: bool,
+}
+
+impl std::fmt::Display for Fallback {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.on {
+            write!(f, "fallback door {} under ${}", self.door, self.key_var)
+        } else {
+            write!(
+                f,
+                "fallback door {} off: ${} is not set",
+                self.door, self.key_var
+            )
+        }
+    }
+}
+
+/// [`resolve`], with Jev's fallback doors behind a local key
+/// (`jev::doors`): TypeSafe first, then the Vercel AI Gateway
+/// (`AI_GATEWAY_API_KEY`), then OpenRouter (`OPENROUTER_API_KEY`), each
+/// asked only when the doors before it could not answer for their own
+/// reasons, never for a refusal of the question. A door whose variable is
+/// unset or blank is off. With no fallback on, the client is exactly
+/// [`resolve`]'s. `primary_timeout` caps TypeSafe's share of an attempt
+/// when a fallback is on, so a hung TypeSafe leaves the fallbacks time.
+///
+/// The fallback doors are for a server that holds the keys (the chat
+/// worker); without a local key the hosted service answers, its worker
+/// keeps its own backup doors, and the list is empty.
+///
+/// # Errors
+///
+/// As [`resolve`].
+pub fn resolve_with_fallbacks(
+    env: &dyn Fn(&str) -> Option<String>,
+    dir: &Path,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+    primary_timeout: Option<Duration>,
+) -> Result<(Resolved, Vec<Fallback>), String> {
+    let mut found = Vec::new();
+    let mut keyed = Vec::new();
+    for fallback in &jev::doors::FALLBACKS {
+        let key = present(env(fallback.key_var));
+        found.push(Fallback {
+            name: fallback.name,
+            door: fallback.door,
+            key_var: fallback.key_var,
+            on: key.is_some(),
+        });
+        if let Some(key) = key {
+            keyed.push(jev::doors::Door::fallback(fallback, jev::ApiKey::new(key)));
+        }
+    }
+    let Some((key, source)) = local_key(env, dir) else {
+        return resolve(env, dir, door, tune).map(|resolved| (resolved, Vec::new()));
+    };
+    if keyed.is_empty() {
+        return resolve(env, dir, door, tune).map(|resolved| (resolved, found));
+    }
+    let mut failover = jev::doors::Failover::new(
+        jev::doors::Door::new(
+            door.url.trim_end_matches('/'),
+            door.url,
+            jev::doors::Naming::Canonical,
+            jev::ApiKey::new(key),
+        ),
+        keyed,
+    );
+    if let Some(cap) = primary_timeout {
+        failover = failover.primary_timeout(cap);
+    }
+    let client = jev::Client::new(
+        tune(jev::Config::new())
+            .exchange(jev::doors::exchange(failover))
+            .base_url(door.url)
+            .default_model(door.model),
+    )
+    .map_err(|error| format!("Jev: {error}"))?;
+    Ok((
+        Resolved {
+            client,
+            via: Via::Direct { source },
+        },
+        found,
+    ))
+}
+
 /// The hosted decision service alone, whatever key this computer holds:
 /// [`resolve`]'s second door, for a caller configured to use it (the
 /// decision profile's `relay`). `RELAY_VAR` and `WORKER_VAR` name another
@@ -874,6 +974,62 @@ mod tests {
             seen += 1;
         }
         assert!(seen >= 6, "only {seen} examples");
+    }
+
+    #[test]
+    fn fallback_doors_are_on_only_with_their_keys_and_a_local_key() {
+        let dir = std::env::temp_dir().join("jev-hosted-no-such-dir-10064");
+        let door = Door {
+            url: DOOR,
+            model: "jev-1.13.0",
+        };
+        let tune = |config: jev::Config| config;
+        let keys = |names: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                names
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| (*value).to_string())
+            }
+        };
+
+        // A TypeSafe key and no fallback key: the client is resolve's own,
+        // and both doors are named off.
+        let env = keys(&[("TYPESAFE_API_KEY", "ts")]);
+        let (resolved, found) = resolve_with_fallbacks(&env, &dir, &door, &tune, None).unwrap();
+        assert_eq!(resolved.client.doors(), None);
+        assert_eq!(resolved.client.service(), None);
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().all(|fallback| !fallback.on));
+        assert_eq!(
+            found[0].to_string(),
+            "fallback door https://ai-gateway.vercel.sh off: $AI_GATEWAY_API_KEY is not set"
+        );
+        assert_eq!(
+            found[1].to_string(),
+            "fallback door https://openrouter.ai off: $OPENROUTER_API_KEY is not set"
+        );
+
+        // A gateway key: TypeSafe, then the gateway; still direct.
+        let env = keys(&[("TYPESAFE_API_KEY", "ts"), ("AI_GATEWAY_API_KEY", "vck")]);
+        let (resolved, found) = resolve_with_fallbacks(&env, &dir, &door, &tune, None).unwrap();
+        assert_eq!(
+            resolved.client.doors().as_deref(),
+            Some("doors https://api.typesafe.ai → https://ai-gateway.vercel.sh")
+        );
+        assert_eq!(resolved.client.service(), None);
+        assert_eq!(via(&resolved.client), "direct");
+        assert_eq!(resolved.client.base_url(), DOOR);
+        assert!(found[0].on && !found[1].on);
+        assert_eq!(
+            found[0].to_string(),
+            "fallback door https://ai-gateway.vercel.sh under $AI_GATEWAY_API_KEY"
+        );
+
+        // No TypeSafe key: the hosted service answers and holds its own
+        // backups; no fallback door here.
+        let env = keys(&[("AI_GATEWAY_API_KEY", "vck"), (HOSTED_VAR, "off")]);
+        assert!(resolve_with_fallbacks(&env, &dir, &door, &tune, None).is_err());
     }
 
     #[test]

@@ -1005,6 +1005,24 @@ pub fn worker_facts_with_news(
     seams: &Seams,
     news: Option<&str>,
 ) -> Facts {
+    worker_facts_with_jev(model, url, quota, seams, news, &[])
+}
+
+/// [`worker_facts_with_news`] for a worker whose Jev judge falls back to
+/// other doors serving Jev when TypeSafe cannot answer (`jev::doors`),
+/// each named for a person ("the Vercel AI Gateway", "OpenRouter"): the
+/// privacy answer names them beside TypeSafe. The facts gate which bank
+/// entries are selectable, never the question text, so the router's
+/// request is the same with or without them.
+#[must_use]
+pub fn worker_facts_with_jev(
+    model: &str,
+    url: Option<&str>,
+    quota: Option<(u32, u32)>,
+    seams: &Seams,
+    news: Option<&str>,
+    jev_fallbacks: &[&str],
+) -> Facts {
     let door = crate::first::Facts::of(model, url);
     let mut facts = Facts::default();
     if let Some(model) = &door.chat_model {
@@ -1019,7 +1037,15 @@ pub fn worker_facts_with_news(
             None => format!("{host} for {model}"),
         }];
         recipients.extend(seams.recipients());
-        recipients.push("TypeSafe for Jev, which chooses how we reply".to_string());
+        recipients.push(if jev_fallbacks.is_empty() {
+            "TypeSafe for Jev, which chooses how we reply".to_string()
+        } else {
+            format!(
+                "TypeSafe for Jev, which chooses how we reply (or, when TypeSafe cannot answer, \
+                 the same Jev through {})",
+                or_series(jev_fallbacks)
+            )
+        });
         facts = facts.set("worker.recipients", series(&recipients));
     }
     if let Some((minute, day)) = quota {
@@ -1028,6 +1054,16 @@ pub fn worker_facts_with_news(
             .set("worker.quota.day", day.to_string());
     }
     facts
+}
+
+/// `a`, `a or b`, or `a, b, or c`.
+fn or_series(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [one, two] => format!("{one} or {two}"),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+    }
 }
 
 /// `a`, `a and b`, or `a, b, and c`.

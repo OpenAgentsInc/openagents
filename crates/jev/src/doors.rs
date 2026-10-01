@@ -1,0 +1,591 @@
+//! Jev's doors other than TypeSafe's own, and the failover across them.
+//!
+//! Jev answers at three HTTP doors with the same request body and the same
+//! answer shape (NIP-DEC, "Doors and the backup door"):
+//!
+//! | Door | Route | Model | Key |
+//! | --- | --- | --- | --- |
+//! | TypeSafe | `POST https://api.typesafe.ai/v1/systemone` | `jev-1.13.0` | `TYPESAFE_API_KEY` |
+//! | Vercel AI Gateway | `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | `AI_GATEWAY_API_KEY` |
+//! | OpenRouter | `POST https://openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` | `OPENROUTER_API_KEY` |
+//!
+//! The gateway's route is its TypeSafe-compatible API, which "implements
+//! the TypeSafe request and response shapes" (Vercel, "TypeSafe API with
+//! AI Gateway"): `noul`/`choice`/`score` questions in, the same typed
+//! answers and `usage.input_tokens` out, plus `provider_metadata.gateway`
+//! with the routing and the cost as a decimal string. Its own errors are
+//! `{"message", "error_type"}`; a provider's errors pass through unchanged.
+//!
+//! [`Failover`] is an [`Exchange`] that asks TypeSafe first and, only when
+//! TypeSafe could not answer for a reason of its own ([`fails_over`]: 402,
+//! 408, 429, any 5xx, the door's own key, account, or quota refusals, a
+//! timeout, or no connection), asks each fallback door in order. A refusal
+//! of the question itself (a 400, a 413) never fails over: the next door
+//! would refuse the same question. An answer from a fallback door names it
+//! in `service.door`, so a decision record says which door answered; when
+//! no fallback answers, TypeSafe's own refusal stands. Each door's key is
+//! held here, sent only to its own door, and never logged.
+
+use std::fmt;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
+
+use crate::config::ApiKey;
+use crate::exchange::{Call, Exchange, Failure, Pending, Reply};
+use crate::nip_dec::{canonical_model, code_for_http_status, openrouter_model};
+
+/// TypeSafe's door, the primary.
+pub const TYPESAFE_DOOR: &str = "https://api.typesafe.ai";
+
+/// The Vercel AI Gateway's door, as an answer's `service.door` names it.
+pub const GATEWAY_DOOR: &str = "https://ai-gateway.vercel.sh";
+/// The gateway's TypeSafe-compatible System One route.
+pub const GATEWAY_URL: &str = "https://ai-gateway.vercel.sh/typesafe/v1/systemone";
+/// The variable holding the gateway key.
+pub const GATEWAY_KEY_VAR: &str = "AI_GATEWAY_API_KEY";
+/// The gateway's name for Jev. The gateway serves one Jev, its current
+/// one, and names no version.
+pub const GATEWAY_MODEL: &str = "typesafe-ai/jev";
+
+/// OpenRouter's door, as an answer's `service.door` names it.
+pub const OPENROUTER_DOOR: &str = "https://openrouter.ai";
+/// OpenRouter's Decisions API.
+pub const OPENROUTER_URL: &str = "https://openrouter.ai/api/alpha/decisions";
+/// The variable holding the OpenRouter key.
+pub const OPENROUTER_KEY_VAR: &str = "OPENROUTER_API_KEY";
+
+/// The route a decision takes at TypeSafe's door, relative to its base URL.
+pub const SYSTEM_ONE_PATH: &str = "/v1/systemone";
+
+/// How a door names Jev.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Naming {
+    /// The canonical name (`jev-1.13.0`): TypeSafe and OpenAgents gateways.
+    Canonical,
+    /// OpenRouter's name (`typesafe/jev-1.13`).
+    OpenRouter,
+    /// The Vercel AI Gateway's name (`typesafe-ai/jev`).
+    Gateway,
+}
+
+impl Naming {
+    /// Read a configuration word: `canonical`, `openrouter`, or `gateway`.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "canonical" => Some(Self::Canonical),
+            "openrouter" => Some(Self::OpenRouter),
+            "gateway" => Some(Self::Gateway),
+            _ => None,
+        }
+    }
+
+    /// The name this door knows `model` by. An alias resolves to its
+    /// canonical name first, so `typesafe/jev-1.13` asks the gateway for
+    /// `typesafe-ai/jev` and TypeSafe for `jev-1.13.0`.
+    #[must_use]
+    pub fn model(self, model: &str) -> String {
+        let canonical = canonical_model(model);
+        match self {
+            Self::Canonical => canonical.to_string(),
+            Self::OpenRouter => openrouter_model(canonical).into_owned(),
+            Self::Gateway if canonical.contains('/') => canonical.to_string(),
+            Self::Gateway => GATEWAY_MODEL.to_string(),
+        }
+    }
+}
+
+/// One fallback door as configuration names it: where it answers, the
+/// variable its key is in, and how it names Jev.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fallback {
+    /// The door named for a person, such as "the Vercel AI Gateway".
+    pub name: &'static str,
+    /// What an answer from this door names in `service.door`.
+    pub door: &'static str,
+    /// The full URL a decision posts to.
+    pub url: &'static str,
+    /// The environment variable holding the door's key.
+    pub key_var: &'static str,
+    /// How the door names Jev.
+    pub naming: Naming,
+}
+
+/// The fallback doors, in the order they are asked after TypeSafe: the
+/// Vercel AI Gateway, then OpenRouter.
+pub const FALLBACKS: [Fallback; 2] = [
+    Fallback {
+        name: "the Vercel AI Gateway",
+        door: GATEWAY_DOOR,
+        url: GATEWAY_URL,
+        key_var: GATEWAY_KEY_VAR,
+        naming: Naming::Gateway,
+    },
+    Fallback {
+        name: "OpenRouter",
+        door: OPENROUTER_DOOR,
+        url: OPENROUTER_URL,
+        key_var: OPENROUTER_KEY_VAR,
+        naming: Naming::OpenRouter,
+    },
+];
+
+/// Refusal codes that are a door's own reason, not the question's: its
+/// key, its account, its model list, its quota, or its capacity.
+const DOOR_OWN_CODES: &[&str] = &[
+    "unauthenticated",
+    "payment_required",
+    "not_admitted",
+    "rate_limited",
+    "quota_exhausted",
+    "internal",
+    "door_unavailable",
+    "identity_mismatch",
+    "busy",
+    "unavailable",
+    "timeout",
+    "overloaded",
+];
+
+/// Whether a door's refusal may be asked again at the next door: the door
+/// could not pay (402), timed out (408), was over a rate or quota (429),
+/// failed (any 5xx), or refused for a reason of its own (its key, its
+/// account, its model list: a [`DOOR_OWN_CODES`] code). A refusal of the
+/// question itself, such as `invalid_request` at 400 or `limit_exceeded`
+/// at 413, never fails over.
+#[must_use]
+pub fn fails_over(status: u16, code: Option<&str>) -> bool {
+    if matches!(status, 402 | 408 | 429 | 500..=599) {
+        return true;
+    }
+    let code = code.unwrap_or_else(|| code_for_http_status(status));
+    DOOR_OWN_CODES.contains(&code)
+}
+
+/// The refusal code an error body carries: `error.code` when it is a
+/// string (TypeSafe's and OpenAgents' shape), the gateway's top-level
+/// `error_type`, or `None` (a numeric `error.code` is OpenRouter's HTTP
+/// status; read the status instead).
+#[must_use]
+pub fn error_code(body: &Value) -> Option<&str> {
+    body.get("error")
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_str)
+        .or_else(|| body.get("error_type").and_then(Value::as_str))
+        .filter(|code| !code.is_empty())
+}
+
+/// An error body in the one shape every reader takes,
+/// `{"error": {"code", "message"}}`: the gateway's `{"message",
+/// "error_type"}` and OpenRouter's numeric `error.code` are rewritten, and
+/// a body already in that shape is kept.
+#[must_use]
+pub fn normalize_error(status: u16, body: &[u8]) -> Value {
+    let parsed: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
+    let code = error_code(&parsed)
+        .map(str::to_string)
+        .unwrap_or_else(|| code_for_http_status(status).to_string());
+    let message = parsed
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .or_else(|| parsed.get("message"))
+        .and_then(Value::as_str)
+        .map_or_else(
+            || format!("The door returned HTTP {status} without an error message."),
+            str::to_string,
+        );
+    json!({"error": {"code": code, "message": message}})
+}
+
+/// Bring a fallback door's answer to TypeSafe's shape where it differs:
+/// the gateway prices a call in `provider_metadata.gateway.cost` (a
+/// decimal string), which becomes `usage.cost` when the answer has none.
+/// Returns whether anything changed.
+pub fn normalize_answer(body: &mut Value) -> bool {
+    let cost = body
+        .pointer("/provider_metadata/gateway/cost")
+        .and_then(|cost| match cost {
+            Value::String(text) => text.parse::<f64>().ok(),
+            Value::Number(number) => number.as_f64(),
+            _ => None,
+        })
+        .filter(|cost| cost.is_finite() && *cost >= 0.0);
+    let Some(cost) = cost else {
+        return false;
+    };
+    let Some(map) = body.as_object_mut() else {
+        return false;
+    };
+    let usage = map.entry("usage").or_insert_with(|| json!({}));
+    match usage.as_object_mut() {
+        Some(usage) if !usage.contains_key("cost") => {
+            usage.insert("cost".to_string(), json!(cost));
+            true
+        }
+        _ => false,
+    }
+}
+
+/// A door [`Failover`] asks, with its key.
+#[derive(Clone)]
+pub struct Door {
+    /// What an answer from this door names in `service.door`.
+    pub door: String,
+    /// For the primary, its base URL (a call's path is appended); for a
+    /// fallback, the full decision URL.
+    pub url: String,
+    /// How the door names Jev.
+    pub naming: Naming,
+    key: ApiKey,
+}
+
+impl Door {
+    /// A door at `url` under `key`.
+    #[must_use]
+    pub fn new(
+        door: impl Into<String>,
+        url: impl Into<String>,
+        naming: Naming,
+        key: ApiKey,
+    ) -> Self {
+        Self {
+            door: door.into(),
+            url: url.into(),
+            naming,
+            key,
+        }
+    }
+
+    /// A fallback door from its configuration and its key.
+    #[must_use]
+    pub fn fallback(fallback: &Fallback, key: ApiKey) -> Self {
+        Self::new(fallback.door, fallback.url, fallback.naming, key)
+    }
+}
+
+impl fmt::Debug for Door {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Door")
+            .field("door", &self.door)
+            .field("url", &self.url)
+            .field("naming", &self.naming)
+            .field("key", &"***")
+            .finish()
+    }
+}
+
+/// TypeSafe first, then each fallback door in order (module docs).
+#[derive(Debug, Clone)]
+pub struct Failover {
+    http: reqwest::Client,
+    primary: Door,
+    fallbacks: Vec<Door>,
+    primary_timeout: Option<Duration>,
+}
+
+impl Failover {
+    /// Ask `primary` first and each of `fallbacks` after it. `primary` is a
+    /// base URL; every route goes there, and only a decision
+    /// (`POST /v1/systemone`) fails over.
+    #[must_use]
+    pub fn new(primary: Door, fallbacks: Vec<Door>) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            primary,
+            fallbacks,
+            primary_timeout: None,
+        }
+    }
+
+    /// Cap the primary's share of an attempt, so a primary that hangs
+    /// leaves the fallbacks the rest of the attempt's time. Unset, the
+    /// primary may take the whole attempt.
+    #[must_use]
+    pub fn primary_timeout(mut self, timeout: Duration) -> Self {
+        self.primary_timeout = Some(timeout);
+        self
+    }
+
+    /// The fallback doors, in order.
+    #[must_use]
+    pub fn fallbacks(&self) -> &[Door] {
+        &self.fallbacks
+    }
+
+    async fn send(
+        &self,
+        url: &str,
+        key: &ApiKey,
+        call: &Call,
+        body: Option<Vec<u8>>,
+        timeout: Duration,
+    ) -> Result<Reply, Failure> {
+        let method = reqwest::Method::from_bytes(call.method.as_bytes())
+            .map_err(|_| Failure::Unreachable(format!("{} is not an HTTP method", call.method)))?;
+        let mut request = self
+            .http
+            .request(method, url)
+            .bearer_auth(key.expose())
+            .header("accept", "application/json")
+            .header("x-attempt", call.attempt.to_string())
+            .timeout(timeout);
+        if let Some(idempotency) = &call.idempotency_key {
+            request = request.header("idempotency-key", idempotency);
+        }
+        if let Some(body) = body {
+            request = request
+                .header("content-type", "application/json")
+                .body(body);
+        }
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(error) if error.is_timeout() => return Err(Failure::Timeout),
+            Err(error) => {
+                return Err(Failure::Unreachable(format!(
+                    "the call to {url} failed: {}",
+                    without_url(&error)
+                )));
+            }
+        };
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                Some((name.as_str().to_string(), value.to_str().ok()?.to_string()))
+            })
+            .collect();
+        let body = match response.bytes().await {
+            Ok(bytes) => bytes.to_vec(),
+            Err(error) if error.is_timeout() => return Err(Failure::Timeout),
+            Err(error) => {
+                return Err(Failure::Unreachable(format!(
+                    "the answer from {url} did not arrive: {}",
+                    without_url(&error)
+                )));
+            }
+        };
+        Ok(Reply {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    async fn carry(&self, call: Call) -> Result<Reply, Failure> {
+        let began = Instant::now();
+        let decision = call.method.eq_ignore_ascii_case("POST") && call.path == SYSTEM_ONE_PATH;
+        let failing_over = decision && !self.fallbacks.is_empty();
+        let primary_timeout = match (failing_over, self.primary_timeout) {
+            (true, Some(cap)) => cap.min(call.timeout),
+            _ => call.timeout,
+        };
+        let url = format!("{}{}", self.primary.url.trim_end_matches('/'), call.path);
+        let first = self
+            .send(
+                &url,
+                &self.primary.key,
+                &call,
+                call.body.clone(),
+                primary_timeout,
+            )
+            .await;
+        if !failing_over {
+            return first;
+        }
+        let why = match &first {
+            Ok(reply) if (200..300).contains(&reply.status) => return first,
+            Ok(reply) => {
+                let body: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
+                if !fails_over(reply.status, error_code(&body)) {
+                    return first;
+                }
+                format!("HTTP {}", reply.status)
+            }
+            Err(Failure::Timeout) => "timeout".to_string(),
+            Err(Failure::Unreachable(_)) => "unreachable".to_string(),
+        };
+        let request: Option<Value> = call
+            .body
+            .as_deref()
+            .and_then(|body| serde_json::from_slice(body).ok());
+        for door in &self.fallbacks {
+            let left = call.timeout.saturating_sub(began.elapsed());
+            if left.is_zero() {
+                break;
+            }
+            let body = request.clone().map(|mut body| {
+                if let Some(model) = body.get("model").and_then(Value::as_str) {
+                    body["model"] = Value::String(door.naming.model(model));
+                }
+                serde_json::to_vec(&body).unwrap_or_default()
+            });
+            let answered = self.send(&door.url, &door.key, &call, body, left).await;
+            match answered {
+                Ok(mut reply) if (200..300).contains(&reply.status) => {
+                    if let Ok(mut value) = serde_json::from_slice::<Value>(&reply.body) {
+                        normalize_answer(&mut value);
+                        if let Some(map) = value.as_object_mut() {
+                            map.insert("service".to_string(), json!({"door": door.door}));
+                        }
+                        if let Ok(bytes) = serde_json::to_vec(&value) {
+                            reply.body = bytes;
+                        }
+                    }
+                    tracing::info!(
+                        target: "jev",
+                        primary = %self.primary.door,
+                        why = %why,
+                        door = %door.door,
+                        elapsed_ms = began.elapsed().as_millis(),
+                        "a fallback door answered"
+                    );
+                    return Ok(reply);
+                }
+                Ok(reply) => {
+                    let body: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
+                    let code = error_code(&body).map(str::to_string);
+                    tracing::info!(
+                        target: "jev",
+                        door = %door.door,
+                        status = reply.status,
+                        code = code.as_deref().unwrap_or("-"),
+                        "a fallback door refused"
+                    );
+                    if !fails_over(reply.status, code.as_deref()) {
+                        break;
+                    }
+                }
+                Err(failure) => {
+                    tracing::info!(
+                        target: "jev",
+                        door = %door.door,
+                        failure = ?failure,
+                        "a fallback door did not answer"
+                    );
+                }
+            }
+        }
+        first
+    }
+}
+
+/// A reqwest error's text without the URL it carries (a URL never holds a
+/// key here, but the door is already named beside it).
+fn without_url(error: &reqwest::Error) -> String {
+    let mut text = error.to_string();
+    if let Some(url) = error.url() {
+        text = text.replace(url.as_str(), "the door");
+    }
+    text
+}
+
+impl Exchange for Failover {
+    fn exchange(&self, call: Call) -> Pending<'_> {
+        Box::pin(self.carry(call))
+    }
+
+    fn service(&self) -> String {
+        let mut doors = vec![self.primary.door.as_str()];
+        doors.extend(self.fallbacks.iter().map(|door| door.door.as_str()));
+        format!("doors {}", doors.join(" → "))
+    }
+
+    fn relays(&self) -> bool {
+        false
+    }
+}
+
+/// [`Failover`] as the shared exchange a client is built with.
+#[must_use]
+pub fn exchange(failover: Failover) -> Arc<dyn Exchange> {
+    Arc::new(failover)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_door_names_jev_its_own_way() {
+        assert_eq!(Naming::Canonical.model("typesafe/jev-1.13"), "jev-1.13.0");
+        assert_eq!(Naming::OpenRouter.model("jev-1.13.0"), "typesafe/jev-1.13");
+        assert_eq!(Naming::Gateway.model("jev-1.13.0"), "typesafe-ai/jev");
+        assert_eq!(
+            Naming::Gateway.model("typesafe/jev-1.13"),
+            "typesafe-ai/jev"
+        );
+        assert_eq!(Naming::Gateway.model("jev-latest"), "typesafe-ai/jev");
+        assert_eq!(Naming::parse("gateway"), Some(Naming::Gateway));
+        assert_eq!(Naming::parse("nope"), None);
+    }
+
+    #[test]
+    fn only_a_doors_own_refusals_fail_over() {
+        for status in [402, 408, 429, 500, 502, 503, 524, 529] {
+            assert!(fails_over(status, None), "{status}");
+        }
+        // A typed 402 fails over whatever its code says.
+        assert!(fails_over(402, Some("insufficient_credits")));
+        assert!(fails_over(401, Some("unauthenticated")));
+        assert!(!fails_over(400, Some("invalid_request")));
+        assert!(!fails_over(400, None));
+        assert!(!fails_over(413, Some("limit_exceeded")));
+        assert!(!fails_over(422, Some("invalid_request")));
+    }
+
+    #[test]
+    fn error_bodies_read_in_one_shape() {
+        let gateway = br#"{"message": "questions.refund.type: expected one of 'noul'", "error_type": "invalid_request"}"#;
+        assert_eq!(
+            normalize_error(400, gateway),
+            json!({"error": {"code": "invalid_request", "message": "questions.refund.type: expected one of 'noul'"}})
+        );
+        let openrouter = br#"{"error": {"code": 402, "message": "Insufficient credits"}}"#;
+        assert_eq!(
+            normalize_error(402, openrouter)["error"]["code"],
+            "payment_required"
+        );
+        assert_eq!(normalize_error(503, b"")["error"]["code"], "unavailable");
+    }
+
+    #[test]
+    fn the_gateways_cost_becomes_usage_cost() {
+        let mut body = json!({
+            "model": "typesafe-ai/jev",
+            "answers": {"refund": {"type": "noul", "noul": 0.98}},
+            "usage": {"input_tokens": 275, "output_tokens": 20},
+            "provider_metadata": {"gateway": {"cost": "0.00001155"}}
+        });
+        assert!(normalize_answer(&mut body));
+        assert_eq!(body["usage"]["cost"], json!(0.000_011_55));
+        assert!(
+            !normalize_answer(&mut body),
+            "a priced answer keeps its price"
+        );
+        let mut typesafe = json!({"model": "jev-1.13.0", "answers": {}});
+        assert!(!normalize_answer(&mut typesafe));
+    }
+
+    #[test]
+    fn a_door_never_shows_its_key() {
+        let door = Door::fallback(&FALLBACKS[0], ApiKey::new("vck_secret_value"));
+        assert!(!format!("{door:?}").contains("secret"));
+        let failover = Failover::new(
+            Door::new(
+                TYPESAFE_DOOR,
+                TYPESAFE_DOOR,
+                Naming::Canonical,
+                ApiKey::new("ts_secret"),
+            ),
+            vec![door],
+        );
+        assert!(!format!("{failover:?}").contains("secret"));
+        assert_eq!(
+            failover.service(),
+            "doors https://api.typesafe.ai → https://ai-gateway.vercel.sh"
+        );
+    }
+}

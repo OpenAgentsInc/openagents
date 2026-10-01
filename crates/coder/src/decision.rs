@@ -54,6 +54,29 @@ pub fn from_env() -> Result<Option<jev::Client>, String> {
         .transpose()
 }
 
+/// [`from_env`] for a server that holds Jev's fallback door keys (the chat
+/// worker): a keyed TypeSafe door fails over to the Vercel AI Gateway
+/// (`AI_GATEWAY_API_KEY`) and then OpenRouter (`OPENROUTER_API_KEY`) when
+/// their keys are in the environment, and the fallback doors come back as
+/// found, on or off, for the startup log
+/// ([`crate::profiles::Profile::client_with_fallbacks`]).
+///
+/// # Errors
+///
+/// As [`from_env`].
+pub fn from_env_with_fallbacks(
+    primary_timeout: Option<std::time::Duration>,
+) -> Result<Option<(jev::Client, Vec<jev_hosted::Fallback>)>, String> {
+    let env = |name: &str| std::env::var(name).ok();
+    profile_from_env()?
+        .map(|profile| {
+            profile
+                .client_with_fallbacks(&env, primary_timeout)
+                .map_err(|refusal| refusal.to_string())
+        })
+        .transpose()
+}
+
 /// Resolve the active profile without building its door — the same
 /// environment check [`from_env`] runs, answered as the profile itself.
 /// A call site that binds behavior to the profile's identity — which

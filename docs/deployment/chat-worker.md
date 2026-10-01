@@ -56,6 +56,23 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   they are what a router eval report pins as the subject's configuration
   ([#9959](https://github.com/OpenAgentsInc/openagents/issues/9959),
   [`docs/coder/measurements/2026-09-29-chat-router-claims.md`](../coder/measurements/2026-09-29-chat-router-claims.md)).
+- **Jev's fallback doors.** When TypeSafe cannot answer the judgment for
+  its own reasons (402 no credits, 429, a 5xx, no connection, or no answer
+  within three fifths of the judgment's 2.5 s budget), the judge asks the
+  Vercel AI Gateway's TypeSafe-compatible API (`typesafe-ai/jev`, under
+  `AI_GATEWAY_API_KEY`) and then OpenRouter's Decisions API
+  (`typesafe/jev-1.13`, under `OPENROUTER_API_KEY`), the same doors and
+  order as the [decision worker](decision-worker.md#the-backup-doors)
+  (`jev::doors`, `jev_hosted::resolve_with_fallbacks`). A refusal of the
+  question never fails over. A door with no key is off, and the startup
+  log says which (`judge   fallback door https://ai-gateway.vercel.sh off:
+  $AI_GATEWAY_API_KEY is not set`). The judgment the phone gets names the
+  door that answered and the model it served (`door`, `model`), the
+  thread's `openagents.decision-call.v1` record keeps them
+  (`service.upstream`), the journal logs `judge answered by fallback door
+  …` when one did, and the privacy answer names the doors that are on.
+  The question set and its digest are unchanged, so the router's
+  calibration stands.
 - **Router calibration.** `CODER_WORKER_ROUTER_CALIBRATION=on` runs each
   judgment's `route` and `answer` probabilities through the calibration
   maps the last published eval fitted

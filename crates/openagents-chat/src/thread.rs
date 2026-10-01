@@ -293,9 +293,15 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
                         }),
                         route: meta.route.clone(),
                         // The chat worker asked its decision door and relayed
-                        // the judgment as NIP-CJ feedback.
+                        // the judgment as NIP-CJ feedback; a judgment that
+                        // names the Jev door that answered (TypeSafe, or a
+                        // fallback door when TypeSafe could not) records it
+                        // as `upstream`.
                         via: Some("hosted".into()),
-                        service: Some(json!({"door": door()})),
+                        service: Some(match answers["door"].as_str() {
+                            Some(upstream) => json!({"door": door(), "upstream": upstream}),
+                            None => json!({"door": door()}),
+                        }),
                         answers,
                         ..atif::Decision::default()
                     }
@@ -382,6 +388,29 @@ mod tests {
             busy: false,
             failure: None,
         }
+    }
+
+    #[test]
+    fn the_router_record_names_the_jev_door_that_answered() {
+        let mut thread = thread();
+        let meta = thread.turns[1].meta.as_mut().unwrap();
+        meta.judgment = Some(
+            json!({"v": 2, "type": "judgment", "route": "answer",
+                "door": "https://ai-gateway.vercel.sh", "model": "typesafe-ai/jev"})
+            .to_string(),
+        );
+        let document = trajectory(&thread, "test");
+        let call = &document["steps"][1]["tool_calls"][0];
+        assert_eq!(call["extra"]["model"], "typesafe-ai/jev");
+        assert_eq!(call["extra"]["service"]["door"], door());
+        assert_eq!(
+            call["extra"]["service"]["upstream"],
+            "https://ai-gateway.vercel.sh"
+        );
+        // A judgment from before the door was named records no upstream.
+        let document = trajectory(&self::thread(), "test");
+        let call = &document["steps"][1]["tool_calls"][0];
+        assert!(call["extra"]["service"].get("upstream").is_none());
     }
 
     #[test]

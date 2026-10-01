@@ -227,7 +227,10 @@ counts across a restart. CODER_WORKER_JOBS bounds
 how many jobs run at once; the rest are refused busy. The first-response
 judge answers a turn that asks for it (opener or judge in the request)
 through the decision profile the agent resolves (TYPESAFE_API_KEY or
-~/.openagents/jev.json); CODER_WORKER_JUDGE=off turns it off. A turn that
+~/.openagents/jev.json); when TypeSafe cannot answer for its own reasons
+(402, 429, 5xx, a timeout, no connection) it falls back to the Vercel AI
+Gateway (AI_GATEWAY_API_KEY) and then OpenRouter (OPENROUTER_API_KEY), each
+off without its key. CODER_WORKER_JUDGE=off turns it off. A turn that
 names the chat router (\"router\": \"chat-router-v2\", or v1) gets every tier;
 CODER_WORKER_ROUTER=shadow logs the router's decision but serves what the
 first response alone would, and =off ignores the router. CODER_PERSONALIZE
@@ -444,9 +447,18 @@ async fn serve(options: &Options) -> Result<(), String> {
     // The same decision profile the agent resolves; none configured means
     // no judgment, and a configuration that does not resolve stops the
     // worker rather than quietly running without one.
-    let judge = match env::var(JUDGE_VAR).as_deref() {
-        Ok("off") => None,
-        Ok("") | Err(_) => coder::decision::from_env()?.map(Arc::new),
+    // A keyed TypeSafe door fails over to the Vercel AI Gateway and then
+    // OpenRouter when their keys are in the environment (`jev::doors`);
+    // TypeSafe keeps three fifths of the judgment's budget, so a hung
+    // TypeSafe leaves a fallback the rest.
+    let (judge, fallbacks) = match env::var(JUDGE_VAR).as_deref() {
+        Ok("off") => (None, Vec::new()),
+        Ok("") | Err(_) => {
+            match coder::decision::from_env_with_fallbacks(Some(first::BUDGET * 3 / 5))? {
+                Some((judge, fallbacks)) => (Some(Arc::new(judge)), fallbacks),
+                None => (None, Vec::new()),
+            }
+        }
         Ok(other) => return Err(format!("{JUDGE_VAR} is `off` or unset, not `{other}`")),
     };
 
@@ -471,6 +483,9 @@ async fn serve(options: &Options) -> Result<(), String> {
             judge.default_model()
         ),
         None => eprintln!("judge   none: no first response before the model's"),
+    }
+    for fallback in &fallbacks {
+        eprintln!("judge   {fallback}");
     }
     // The chat router's bank ships inside the binary; a bank that breaks
     // its own rules stops the worker here, and `--check` with it.
@@ -572,13 +587,19 @@ async fn serve(options: &Options) -> Result<(), String> {
             .map(|j| j as Arc<dyn coder::product_kb::Judge>),
     );
     let news = gym_news_model_from_env();
+    let jev_fallbacks: Vec<&str> = fallbacks
+        .iter()
+        .filter(|fallback| fallback.on)
+        .map(|fallback| fallback.name)
+        .collect();
     let routing = Arc::new(
-        RouterConfig::with_news(
+        RouterConfig::with_news_and_jev(
             router_from_env()?,
             seams,
             &door,
             options.quota.as_ref(),
             news.as_deref(),
+            &jev_fallbacks,
         )
         .calibrated(router::calibration::Calibration::from_env(&bank.id())?),
     );
@@ -1178,12 +1199,27 @@ impl RouterConfig {
     /// The configuration with grounded `gym.news` replies on `news` (a
     /// model id), when the door is a live gateway door and the Gym's
     /// records are here; `None` keeps them on the chat door.
+    #[cfg(test)]
     fn with_news(
         setting: RouterSetting,
         seams: Seams,
         door: &Door,
         quota: Option<&Policy>,
         news: Option<&str>,
+    ) -> Self {
+        Self::with_news_and_jev(setting, seams, door, quota, news, &[])
+    }
+
+    /// [`RouterConfig::with_news`] for a judge that falls back to
+    /// `jev_fallbacks` (doors named for a person) when TypeSafe cannot
+    /// answer: the privacy answer names them.
+    fn with_news_and_jev(
+        setting: RouterSetting,
+        seams: Seams,
+        door: &Door,
+        quota: Option<&Policy>,
+        news: Option<&str>,
+        jev_fallbacks: &[&str],
     ) -> Self {
         let quota = quota.map(|quota| (quota.per_key_minute, quota.per_key_day));
         let news = match (door, news) {
@@ -1197,7 +1233,7 @@ impl RouterConfig {
             _ => None,
         };
         let facts = match door {
-            Door::Live(live) => router::worker_facts_with_news(
+            Door::Live(live) => router::worker_facts_with_jev(
                 &live.model,
                 Some(&live.url),
                 quota,
@@ -1209,6 +1245,7 @@ impl RouterConfig {
                         news.model()
                     }
                 }),
+                jev_fallbacks,
             ),
             door => router::worker_facts(door.model(), None, quota, &seams),
         };
@@ -1754,6 +1791,17 @@ impl Job {
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {
+                    // The door that answered: a fallback door names itself
+                    // in `service.door` (`jev::doors`); otherwise the
+                    // judge's own door.
+                    let door = response
+                        .service()
+                        .and_then(|service| service["door"].as_str().map(str::to_string))
+                        .unwrap_or_else(|| judge.base_url().to_string());
+                    if door != judge.base_url() {
+                        eprintln!("judge answered by fallback door {door} in {milliseconds} ms");
+                    }
+                    let answered_by = (door, response.model.clone());
                     let mut reading = router::reading(&response, bank, &routing.facts, &admitted);
                     if let Some(map) = &routing.calibration {
                         map.apply(&mut reading);
@@ -1794,6 +1842,7 @@ impl Job {
                         decided,
                         served,
                         shadow,
+                        answered_by,
                     })
                 }
                 Ok(Err(error)) => {
@@ -1946,17 +1995,18 @@ impl Job {
                 judged = &mut triage, if judging => {
                     judging = false;
                     let Some(judged) = judged else { continue };
-                    publish(
-                        FEEDBACK_KIND,
-                        router::wire::judgment(
-                            version,
-                            &judged.routing,
-                            &judged.served,
-                            bank,
-                            judged.shadow.then_some(&judged.decided),
-                        ),
-                    )
-                    .map_err(GenerateError::Stream)?;
+                    let mut judgment = router::wire::judgment(
+                        version,
+                        &judged.routing,
+                        &judged.served,
+                        bank,
+                        judged.shadow.then_some(&judged.decided),
+                    );
+                    // Which Jev door answered and the model it served, so
+                    // the thread's decision record names them (additive).
+                    judgment["door"] = Value::String(judged.answered_by.0.clone());
+                    judgment["model"] = Value::String(judged.answered_by.1.clone());
+                    publish(FEEDBACK_KIND, judgment).map_err(GenerateError::Stream)?;
                     let routing = judged.routing;
                     let tier = judged.served;
                     let mut record = served_of(&routing, &tier, bank, facts);
@@ -2520,6 +2570,8 @@ struct Judged {
     /// What the turn serves: `decided`, or in shadow mode the legacy tier.
     served: Tier,
     shadow: bool,
+    /// The Jev door that answered and the model it served.
+    answered_by: (String, String),
 }
 
 /// The router's judgment, running.
@@ -3872,6 +3924,61 @@ mod tests {
         );
     }
 
+    /// TypeSafe unreachable, the Vercel AI Gateway answers: the judgment
+    /// is served as any other and names the door that answered and the
+    /// model it served, so the thread's decision record can (#10064).
+    #[tokio::test]
+    async fn a_fallback_doors_judgment_names_that_door() {
+        let answers = routed("work.dispatch", "dispatch.stem", 0.9, "none");
+        let gateway = serve_once(
+            Duration::ZERO,
+            "application/json",
+            json!({ "model": "typesafe-ai/jev", "answers": answers }).to_string(),
+        );
+        // A port nothing listens on: TypeSafe does not answer.
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let typesafe = format!("http://{}", closed.local_addr().unwrap());
+        drop(closed);
+        let failover = jev::doors::Failover::new(
+            jev::doors::Door::new(
+                jev::doors::TYPESAFE_DOOR,
+                typesafe,
+                jev::doors::Naming::Canonical,
+                jev::ApiKey::new("ts-test"),
+            ),
+            vec![jev::doors::Door::new(
+                jev::doors::GATEWAY_DOOR,
+                format!("{gateway}/typesafe/v1/systemone"),
+                jev::doors::Naming::Gateway,
+                jev::ApiKey::new("vck-test"),
+            )],
+        );
+        let judge = Arc::new(
+            jev::Client::new(
+                jev::Config::new()
+                    .exchange(jev::doors::exchange(failover))
+                    .base_url(jev::doors::TYPESAFE_DOOR)
+                    .default_model("jev-1.13.0"),
+            )
+            .unwrap(),
+        );
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge),
+            routed_turn(
+                "fix the flaky relay test",
+                json!({ "surface": "phone", "computer_ready": true }),
+            ),
+            personalized(" fix the flaky relay test."),
+            RouterSetting::Live,
+        )
+        .await;
+        let judgment = of_type(&frames, "judgment")[0];
+        assert_eq!(judgment["route"], "work.dispatch");
+        assert_eq!(judgment["door"], jev::doors::GATEWAY_DOOR);
+        assert_eq!(judgment["model"], "typesafe-ai/jev");
+    }
+
     /// A request that calls for a capability none of the admitted ones
     /// covers (#9960): the bank's line naming the closest admitted
     /// capability from the typed set, the `capability` card with how to
@@ -4525,6 +4632,39 @@ mod tests {
         assert_eq!(news[0]["reasoning"]["effort"], "none");
         assert_eq!(news[0]["max_output_tokens"], router::gym::NEWS_MAX_TOKENS);
         assert!(news[0]["instructions"].as_str().unwrap().contains(&lead));
+    }
+
+    /// Jev's fallback doors are named in the privacy answer only when
+    /// they are on (#10064).
+    #[test]
+    fn the_privacy_answer_names_jevs_fallback_doors_when_they_are_on() {
+        let door = Door::Live(coder::generate::ResponsesDoor::new(
+            coder::generate::DEFAULT_DOOR_URL,
+            GEMINI,
+            "test",
+        ));
+        let privacy = |fallbacks: &[&str]| {
+            let config = RouterConfig::with_news_and_jev(
+                RouterSetting::Live,
+                Seams::default(),
+                &door,
+                None,
+                None,
+                fallbacks,
+            );
+            Bank::builtin()
+                .entry("meta.privacy")
+                .and_then(|entry| entry.render(&config.facts))
+                .unwrap()
+        };
+        let off = privacy(&[]);
+        assert!(off.contains("TypeSafe for Jev"), "{off}");
+        assert!(!off.contains("OpenRouter"), "{off}");
+        let on = privacy(&["the Vercel AI Gateway", "OpenRouter"]);
+        assert!(
+            on.contains("through the Vercel AI Gateway or OpenRouter"),
+            "{on}"
+        );
     }
 
     /// `CODER_GYM_NEWS_MODEL=off` keeps Gym news on the chat door; the

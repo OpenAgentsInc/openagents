@@ -285,6 +285,61 @@ impl Profile {
         )
     }
 
+    /// [`Profile::client`] for a server that holds Jev's fallback door keys
+    /// (the chat worker): a keyed TypeSafe door fails over to the Vercel AI
+    /// Gateway and then OpenRouter when their keys are in `env`
+    /// (`jev_hosted::resolve_with_fallbacks`); every other profile builds
+    /// exactly as [`Profile::client`] does and reports no fallback doors.
+    ///
+    /// # Errors
+    ///
+    /// As [`Profile::client`].
+    pub fn client_with_fallbacks(
+        &self,
+        env: &dyn Fn(&str) -> Option<String>,
+        primary_timeout: Option<std::time::Duration>,
+    ) -> Result<(jev::Client, Vec<jev_hosted::Fallback>), Refusal> {
+        let Self::HostedHttp {
+            url, model, key, ..
+        } = self
+        else {
+            return self.client().map(|client| (client, Vec::new()));
+        };
+        let dir = jev_hosted::openagents_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/nonexistent"));
+        let secret = key.value.expose().to_string();
+        let doors = |name: &str| {
+            if name == TYPESAFE_KEY_VAR {
+                Some(secret.clone())
+            } else if jev::doors::FALLBACKS
+                .iter()
+                .any(|fallback| fallback.key_var == name)
+            {
+                env(name)
+            } else {
+                None
+            }
+        };
+        jev_hosted::resolve_with_fallbacks(
+            &doors,
+            &dir,
+            &jev_hosted::Door {
+                url: url.value.as_str(),
+                model: model.value.as_str(),
+            },
+            &|config| config,
+            primary_timeout,
+        )
+        .map(|(resolved, found)| (resolved.client, found))
+        .map_err(|reason| Refusal::Malformed {
+            variable: match url.source {
+                Source::Env(name) => name,
+                Source::Flag | Source::Default => URL_VAR,
+            },
+            reason,
+        })
+    }
+
     /// [`Profile::client`] with the directory a relay profile keeps its
     /// decision key in (`~/.openagents` for [`Profile::client`]).
     ///

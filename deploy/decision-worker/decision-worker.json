@@ -21,9 +21,18 @@
     "door": "https://api.typesafe.ai",
     "version": "decision-worker@RELEASE"
   },
-  "backup": {
-    "url": "https://openrouter.ai/api/alpha/decisions",
-    "key_env": "OPENROUTER_API_KEY",
-    "door": "https://openrouter.ai"
-  }
+  "backups": [
+    {
+      "url": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "key_env": "AI_GATEWAY_API_KEY",
+      "door": "https://ai-gateway.vercel.sh",
+      "naming": "gateway"
+    },
+    {
+      "url": "https://openrouter.ai/api/alpha/decisions",
+      "key_env": "OPENROUTER_API_KEY",
+      "door": "https://openrouter.ai",
+      "naming": "openrouter"
+    }
+  ]
 }

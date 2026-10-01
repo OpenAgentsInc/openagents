@@ -223,20 +223,38 @@ The body is the same at every door; only the model's name differs:
 | --- | --- | --- |
 | TypeSafe | `POST https://api.typesafe.ai/v1/systemone` | `jev::DecisionRequest::to_value` |
 | An OpenAgents gateway | `POST /v1/systemone` | the same |
+| Vercel AI Gateway | `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone` | the same, the model as `typesafe-ai/jev` |
 | OpenRouter | `POST https://openrouter.ai/api/alpha/decisions` | `jev::DecisionRequest::openrouter_body` (the model as `typesafe/jev-1.13`) |
 | A decision job | kind `25910` | `jev_hosted::wire_body` |
 
-OpenRouter's answer adds `id`, `provider`, and `usage.cost`, and names the
-dated model it served (`typesafe/jev-1.13-20260917`); a reader ignores
-fields it does not use. A decision worker may keep a backup door
-(`decision-worker.json` `backup`): it is asked only when the primary door
-was unreachable, out of capacity, or refused for its own reasons (its key,
-its account, its quota: `unauthenticated`, `payment_required`,
-`not_admitted`, `rate_limited`, `quota_exhausted`, `internal`, and the
-`502`–`529` rows), never for a request the caller got wrong, and it is off
-unless its key is in the worker's environment. An answer from the backup
-names it in `service.door`; when the backup also fails, the primary's
-refusal stands.
+The Vercel AI Gateway's route is its TypeSafe-compatible API, which takes
+and answers TypeSafe's shapes under an AI Gateway key; it serves one Jev,
+`typesafe-ai/jev` (its current one, unversioned), and adds
+`provider_metadata.gateway` with the routing and the cost as a decimal
+string, which a reader takes as `usage.cost`. Its own errors are
+`{"message", "error_type"}`, read as `{"error": {"code": error_type,
+"message"}}`. OpenRouter's answer adds `id`, `provider`, and `usage.cost`,
+and names the dated model it served (`typesafe/jev-1.13-20260917`); a
+reader ignores fields it does not use.
+
+A server that holds door keys may keep backup doors, asked in the order
+TypeSafe → Vercel AI Gateway → OpenRouter (`jev::doors::FALLBACKS`): the
+decision worker (`decision-worker.json` `backups`) and the chat worker's
+judge (`jev::doors::Failover`, through
+`jev_hosted::resolve_with_fallbacks`). A door is asked only when every door
+before it could not answer for its own reasons
+(`jev::doors::fails_over`): it timed out or could not be reached, answered
+`402`, `408`, `429`, or any `5xx`, or refused with one of its own codes
+(its key, its account, its model list, its quota: `unauthenticated`,
+`payment_required`, `not_admitted`, `rate_limited`, `quota_exhausted`,
+`internal`, and the `502`–`529` rows). A refusal of the question itself
+(`invalid_request` and the other `400` and `413` rows) never fails over,
+and a backup door that refuses the question ends the chain. Each is off
+unless its key (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`) is in the
+server's environment, and the server says which at start. An answer from a
+backup door names it in `service.door`, so the decision record
+(`openagents.decision-call.v1`) says which door answered; when no backup
+answers, the primary's refusal stands.
 
 A client that turns a relay refusal back into an HTTP-shaped
 error (`jev_hosted` does, so every Jev caller sees one error shape) uses the
@@ -385,7 +403,10 @@ so the questions and answers read beside each other; a body over 32 KiB
 questions when they fit (else their digest and size), and its state as a
 digest, a size, and a 2 KiB excerpt, with `extra.request_bounded`. The
 digests always cover the whole body. `jev_hosted::decision_record` builds
-the record the same way for every caller. The final metrics count
+the record the same way for every caller. An answer from a backup door
+carries `service.door` naming it; the chat thread's router record, whose
+judgment the chat worker relays, names the Jev door that answered as
+`service.upstream` (the judgment's `door`) and the served model. The final metrics count
 decision calls by name.
 [NIP-ATIF](NIP-ATIF.md) carries the trajectory. A recorded decision call
 records a judgment, not proof that it was right.
@@ -443,5 +464,8 @@ documentation examples (the invoice `field`, the `billing`/`orders`/
 `account` rubric, the taxonomy walk, the PR-scope levels, and the
 credentials noul) to the gateway's HTTP API under `typesafe/jev-1.13` and
 checks each refusal's status;
-`the_backup_door_answers_only_when_the_upstream_cannot`
-(`tests/relay_worker.rs`) checks the backup door.
+`the_backup_door_answers_only_when_the_upstream_cannot` and
+`typesafe_then_the_gateway_then_openrouter` (`tests/relay_worker.rs`)
+check the backup doors and their order, and `crates/jev` (`tests/doors.rs`)
+checks the same order, the shared answer shape, and that a refusal of the
+question never fails over, with stand-in doors.

@@ -72,4 +72,13 @@ pub trait Exchange: Send + Sync + fmt::Debug {
     /// `hosted decision service <worker> on <relay>`. It never holds a
     /// secret.
     fn service(&self) -> String;
+
+    /// Whether another service carries the call (the hosted decision
+    /// service does), rather than this process choosing among doors it
+    /// holds keys for itself ([`crate::doors::Failover`] does not relay).
+    /// A client whose exchange does not relay reports no
+    /// [`crate::Client::service`]: its calls are direct.
+    fn relays(&self) -> bool {
+        true
+    }
 }

@@ -226,12 +226,27 @@ impl Client {
 
     /// What carries this client's calls when it is not HTTP straight to
     /// [`Client::base_url`]: the exchange's own description, such as the
-    /// hosted decision service. `None` means direct HTTP.
+    /// hosted decision service. `None` means direct HTTP, including a
+    /// [`crate::doors::Failover`] across doors this client holds keys for
+    /// ([`Client::doors`] describes those).
     #[must_use]
     pub fn service(&self) -> Option<String> {
         self.inner
             .exchange
             .as_ref()
+            .filter(|exchange| exchange.relays())
+            .map(|exchange| exchange.service())
+    }
+
+    /// The doors a direct client fails over across, such as
+    /// `doors https://api.typesafe.ai → https://ai-gateway.vercel.sh`, when
+    /// it was built with a [`crate::doors::Failover`]; `None` otherwise.
+    #[must_use]
+    pub fn doors(&self) -> Option<String> {
+        self.inner
+            .exchange
+            .as_ref()
+            .filter(|exchange| !exchange.relays())
             .map(|exchange| exchange.service())
     }
 

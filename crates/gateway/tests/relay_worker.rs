@@ -507,6 +507,7 @@ async fn rig(
         service: None,
         probe_secs: 0,
         backup: None,
+        backups: Vec::new(),
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();
@@ -1218,6 +1219,7 @@ async fn settled_record_survives_restart() {
         service: None,
         probe_secs: 0,
         backup: None,
+        backups: Vec::new(),
     })
     .unwrap();
     let serving = Arc::clone(&worker);
@@ -1555,6 +1557,14 @@ async fn scripted_upstream() -> (String, Arc<AtomicUsize>) {
                 let body: Value = serde_json::from_slice(&body).unwrap_or_default();
                 match body["state"].as_str().unwrap_or_default() {
                     "primary down" => (StatusCode::SERVICE_UNAVAILABLE, "").into_response(),
+                    // TypeSafe on 2026-09-30: a 402 for an organization
+                    // with no credits, its code one NIP-DEC does not name.
+                    state if state.starts_with("no credits") => (
+                        StatusCode::PAYMENT_REQUIRED,
+                        Json(json!({"error": {"code": "insufficient_credits",
+                            "message": "Your organization has no available TypeSafe API credits."}})),
+                    )
+                        .into_response(),
                     "caller error" => (
                         StatusCode::BAD_REQUEST,
                         Json(json!({"error": {"code": "invalid_request", "message": "bad"}})),
@@ -1743,4 +1753,305 @@ async fn the_backup_door_answers_only_when_the_upstream_cannot() {
     assert_eq!(response["service"]["door"], "https://api.typesafe.ai");
     assert_eq!(backup_bodies.lock().unwrap().len(), 2);
     assert_eq!(asked.load(Ordering::SeqCst), 4);
+}
+
+/// A Vercel AI Gateway-shaped TypeSafe-compatible API
+/// (`/typesafe/v1/systemone`): it answers only its own bearer, records every
+/// body, fails `"... gateway down"` with its own 503 shape, refuses
+/// `"... gateway refuses"` as a question error, and answers the rest in
+/// TypeSafe's shape with its routing and cost.
+async fn gateway_door(bearer: &'static str) -> (String, Arc<Mutex<Vec<Value>>>) {
+    let bodies = Arc::new(Mutex::new(Vec::new()));
+    let seen = bodies.clone();
+    let router = axum::Router::new().route(
+        "/typesafe/v1/systemone",
+        post(move |headers: axum::http::HeaderMap, body: Bytes| {
+            let seen = seen.clone();
+            async move {
+                let authorized = headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok())
+                    == Some(format!("Bearer {bearer}").as_str());
+                if !authorized {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"message": "Invalid API key", "error_type": "authentication_error"})),
+                    )
+                        .into_response();
+                }
+                let body: Value = serde_json::from_slice(&body).unwrap_or_default();
+                seen.lock().unwrap().push(body.clone());
+                let state = body["state"].as_str().unwrap_or_default();
+                if state.ends_with("gateway down") {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(json!({"message": "No provider is available", "error_type": "internal_server_error"})),
+                    )
+                        .into_response();
+                }
+                if state.ends_with("gateway refuses") {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"message": "questions.q1: bad", "error_type": "invalid_request"})),
+                    )
+                        .into_response();
+                }
+                Json(json!({
+                    "model": "typesafe-ai/jev",
+                    "answers": {"q1": {"type": "noul", "noul": 0.75}},
+                    "usage": {"input_tokens": 12, "output_tokens": 1},
+                    "provider_metadata": {"gateway": {
+                        "routing": {"originalModelId": "typesafe-ai/jev", "finalProvider": "typesafe-ai"},
+                        "cost": "0.0000006",
+                        "generationId": "gen_test"
+                    }},
+                }))
+                .into_response()
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (format!("http://{address}/typesafe/v1/systemone"), bodies)
+}
+
+/// The door order NIP-DEC names: TypeSafe, then the Vercel AI Gateway,
+/// then OpenRouter. TypeSafe's 402 (with a code NIP-DEC does not name)
+/// goes to the gateway, which answers as `typesafe-ai/jev` and is named in
+/// `service.door` with its price as `usage.cost`; a gateway that is down
+/// passes the job to OpenRouter; a gateway that refuses the question
+/// itself stops the chain and TypeSafe's refusal stands; the answers read
+/// the same from every door; and a door with no key is off.
+#[tokio::test]
+async fn typesafe_then_the_gateway_then_openrouter() {
+    const OPEN_ENV: &str = "DECISION_WORKER_TEST_ORDER_OPEN_KEY";
+    const GATEWAY_ENV: &str = "DECISION_WORKER_TEST_ORDER_GATEWAY_KEY";
+    const OPENROUTER_ENV: &str = "DECISION_WORKER_TEST_ORDER_OPENROUTER_KEY";
+    // SAFETY: this test binary reads these variables nowhere else, and no
+    // other test sets them.
+    unsafe {
+        std::env::set_var(OPEN_ENV, "ts-test-key");
+        std::env::set_var(GATEWAY_ENV, "vck-test-key");
+        std::env::set_var(OPENROUTER_ENV, "or-test-key");
+    }
+    let (relay_url, conns) = relay().await;
+    let (upstream, asked) = scripted_upstream().await;
+    let (gateway, gateway_bodies) = gateway_door("vck-test-key").await;
+    let (openrouter, openrouter_bodies) = openrouter_door("or-test-key").await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let config = |gateway_env: &str| {
+        serde_json::from_value::<WorkerConfig>(json!({
+            "relay": relay_url,
+            "worker_secret": hex_secret(WORKER_BYTE),
+            "upstream": upstream,
+            "jobs_dir": jobs_dir.path(),
+            "probe_secs": 0,
+            "open": {
+                "key_env": OPEN_ENV,
+                "models": ["jev-1.13.0"],
+                "quota": {"per_key_day": 20, "per_key_minute": 20, "total_day": 20},
+            },
+            "service": {"door": "https://api.typesafe.ai", "version": "decision-worker/test"},
+            "backups": [
+                {"url": gateway, "key_env": gateway_env, "door": "https://ai-gateway.vercel.sh", "naming": "gateway"},
+                {"url": openrouter, "key_env": OPENROUTER_ENV, "door": "https://openrouter.ai", "naming": "openrouter"},
+            ],
+        }))
+        .unwrap()
+    };
+    let without_gateway = Worker::open(config("DECISION_WORKER_TEST_ORDER_UNSET")).unwrap();
+    assert!(!without_gateway.backup_door_on(&gateway));
+    assert!(without_gateway.backup_door_on(&openrouter));
+    let mut unknown = config(GATEWAY_ENV);
+    unknown.backups[0].naming = "vercel".into();
+    assert!(
+        Worker::open(unknown).is_err(),
+        "an unknown naming stops the worker"
+    );
+
+    let worker = Worker::open(config(GATEWAY_ENV)).unwrap();
+    assert!(worker.backup_door_on(&gateway) && worker.backup_door_on(&openrouter));
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+    let questions = json!({"q1": {"type": "noul", "instructions": "Is it?"}});
+    let ask = |request: &str, state: &str| {
+        RequestBody::new(
+            request,
+            1,
+            "jev-1.13.0",
+            json!(state),
+            questions.as_object().unwrap().clone(),
+        )
+        .deadline(unix_now() + 20)
+    };
+
+    // TypeSafe cannot pay: the gateway answers, and OpenRouter is not asked.
+    let body = ask("order-1", "no credits");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let result = result.expect("the gateway never answered");
+    assert_eq!(result.outcome, decision::Outcome::Answered);
+    let response = result.response.unwrap();
+    assert_eq!(response["model"], "typesafe-ai/jev");
+    assert_eq!(response["service"]["door"], "https://ai-gateway.vercel.sh");
+    assert_eq!(response["usage"]["cost"], 0.0000006);
+    assert_eq!(response["answers"]["q1"]["type"], "noul");
+    let sent = gateway_bodies.lock().unwrap()[0].clone();
+    assert_eq!(sent["model"], "typesafe-ai/jev");
+    assert_eq!(sent["state"], "no credits");
+    assert_eq!(sent["questions"], questions);
+    assert!(openrouter_bodies.lock().unwrap().is_empty());
+
+    // The gateway is down too: OpenRouter answers.
+    let body = ask("order-2", "no credits, gateway down");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let response = result.expect("OpenRouter never answered").response.unwrap();
+    assert_eq!(response["service"]["door"], "https://openrouter.ai");
+    assert_eq!(response["answers"]["q1"]["type"], "noul");
+    assert_eq!(
+        openrouter_bodies.lock().unwrap()[0]["model"],
+        "typesafe/jev-1.13"
+    );
+
+    // The gateway refuses the question itself: the chain stops there and
+    // TypeSafe's refusal stands.
+    let body = ask("order-3", "no credits, gateway refuses");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (statuses, result) =
+        run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let code = result
+        .and_then(|result| result.refusal.map(|refusal| refusal.code))
+        .or_else(|| {
+            statuses
+                .last()
+                .and_then(|status| status.refusal.clone())
+                .map(|refusal| refusal.code)
+        });
+    assert_eq!(code.as_deref(), Some("insufficient_credits"));
+    assert_eq!(openrouter_bodies.lock().unwrap().len(), 1);
+
+    // A refusal of the question at TypeSafe asks no other door.
+    let body = ask("order-4", "caller error");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    assert_eq!(result.unwrap().refusal.unwrap().code, "invalid_request");
+    assert_eq!(gateway_bodies.lock().unwrap().len(), 3);
+    assert_eq!(openrouter_bodies.lock().unwrap().len(), 1);
+    assert_eq!(asked.load(Ordering::SeqCst), 4);
+}
+
+/// The deployed config asks the Vercel AI Gateway, then OpenRouter, after
+/// TypeSafe, each under its own key variable (`jev::doors::FALLBACKS`).
+#[test]
+fn the_deployed_config_names_the_fallback_doors_in_order() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/decision-worker/decision-worker.json"
+    ))
+    .unwrap();
+    let config: WorkerConfig = serde_json::from_str(&text).unwrap();
+    let doors = config.backup_doors();
+    assert_eq!(doors.len(), jev::doors::FALLBACKS.len());
+    for (door, fallback) in doors.iter().zip(jev::doors::FALLBACKS.iter()) {
+        assert_eq!(door.url, fallback.url);
+        assert_eq!(door.door, fallback.door);
+        assert_eq!(door.key_env, fallback.key_var);
+        assert_eq!(
+            jev::doors::Naming::parse(&door.naming),
+            Some(fallback.naming)
+        );
+    }
+}
+
+/// Live, opt-in: the worker's backup door against OpenRouter's real
+/// Decisions API, with TypeSafe made unreachable in the test (a closed
+/// loopback port is the upstream) and the relay a local stand-in.
+///
+/// ```sh
+/// OPENROUTER_API_KEY=… cargo test -p gateway --test relay_worker \
+///   live_worker_backup_door_answers_through_openrouter -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "live: asks OpenRouter's Decisions API under OPENROUTER_API_KEY"]
+async fn live_worker_backup_door_answers_through_openrouter() {
+    if std::env::var("OPENROUTER_API_KEY").map_or(true, |key| key.trim().is_empty()) {
+        eprintln!("OPENROUTER_API_KEY is not set: not checked");
+        return;
+    }
+    const OPEN_ENV: &str = "DECISION_WORKER_TEST_LIVE_OPEN_KEY";
+    // SAFETY: this test binary reads this variable nowhere else.
+    unsafe {
+        std::env::set_var(OPEN_ENV, "unused");
+    }
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let upstream = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let (relay_url, conns) = relay().await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let mut config: WorkerConfig = serde_json::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../deploy/decision-worker/decision-worker.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    config.relay = relay_url.clone();
+    config.worker_secret = Some(hex_secret(WORKER_BYTE));
+    config.upstream = upstream;
+    config.jobs_dir = jobs_dir.path().to_path_buf();
+    config.probe_secs = 0;
+    if let Some(open) = config.open.as_mut() {
+        open.key_env = OPEN_ENV.to_string();
+        open.quota.file = None;
+    }
+    let worker = Worker::open(config).unwrap();
+    assert!(worker.backup_door_on(jev::doors::OPENROUTER_URL));
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+    let questions = json!({
+        "refund": {"type": "noul", "instructions": "Is the customer asking for money back?"},
+        "department": {"type": "choice", "instructions": "Which team should handle this?",
+            "criteria": {"billing": "Charges and refunds", "technical": "Bugs and outages"}},
+    });
+    let body = RequestBody::new(
+        "live-openrouter-1",
+        1,
+        "jev-1.13.0",
+        json!("I was charged twice for my subscription. Please refund the duplicate."),
+        questions.as_object().unwrap().clone(),
+    )
+    .deadline(unix_now() + 30);
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let started = std::time::Instant::now();
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 30).await;
+    let result = result.expect("the backup door never answered");
+    assert_eq!(result.outcome, decision::Outcome::Answered);
+    let response = result.response.unwrap();
+    assert_eq!(response["service"]["door"], jev::doors::OPENROUTER_DOOR);
+    assert_eq!(response["answers"]["department"]["choice"], "billing");
+    eprintln!(
+        "worker backup door answered as {} in {} ms: refund={} department={} usage={}",
+        response["model"],
+        started.elapsed().as_millis(),
+        response["answers"]["refund"]["noul"],
+        response["answers"]["department"]["choice"],
+        response["usage"],
+    );
 }

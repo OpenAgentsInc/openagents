@@ -135,9 +135,28 @@ pub struct WorkerConfig {
     /// A backup door the worker asks only when the upstream is unreachable
     /// or refusing for its own reasons (NIP-DEC: OpenRouter's Decisions
     /// API, which serves Jev as `typesafe/jev-1.13`). It is off unless the
-    /// variable its `key_env` names holds a key when the worker starts.
+    /// variable its `key_env` names holds a key when the worker starts. The
+    /// single-door form of `backups`, asked after them.
     #[serde(default)]
     pub backup: Option<BackupDoor>,
+    /// Backup doors in the order they are asked after the upstream (NIP-DEC,
+    /// "Doors and the backup door": the Vercel AI Gateway, then
+    /// OpenRouter). Each is off unless its key variable is set at start.
+    #[serde(default)]
+    pub backups: Vec<BackupDoor>,
+}
+
+impl WorkerConfig {
+    /// Every backup door, in the order the worker asks them: `backups`,
+    /// then `backup`.
+    #[must_use]
+    pub fn backup_doors(&self) -> Vec<BackupDoor> {
+        self.backups
+            .iter()
+            .chain(self.backup.iter())
+            .cloned()
+            .collect()
+    }
 }
 
 /// A backup door: an HTTP Decisions API that answers the same NIP-DEC
@@ -155,19 +174,28 @@ pub struct BackupDoor {
     /// `https://openrouter.ai`.
     pub door: String,
     /// How the door names models: `openrouter` asks OpenRouter's name for
-    /// the canonical model (`jev-1.13.0` → `typesafe/jev-1.13`); `canonical`
-    /// asks the canonical name.
+    /// the canonical model (`jev-1.13.0` → `typesafe/jev-1.13`); `gateway`
+    /// asks the Vercel AI Gateway's (`typesafe-ai/jev`); `canonical` asks
+    /// the canonical name. Any other word stops the worker at start.
     #[serde(default = "default_backup_naming")]
     pub naming: String,
+}
+
+impl BackupDoor {
+    fn naming(&self) -> Option<jev::doors::Naming> {
+        jev::doors::Naming::parse(&self.naming)
+    }
 }
 
 fn default_backup_naming() -> String {
     "openrouter".to_string()
 }
 
-/// Whether a settled primary attempt is one the backup door may retry: the
-/// upstream was unreachable, out of capacity, or refused for a reason of its
-/// own (its key, its account, its quota), never for the caller's request.
+/// Whether a settled attempt is one the next backup door may retry: the
+/// door was unreachable or timed out, could not pay (402), was over a rate
+/// or quota (429), failed (5xx), or refused for a reason of its own (its
+/// key, its account, its model list), never for the caller's request
+/// (`jev::doors::fails_over`).
 fn falls_back(settled: &Settled) -> bool {
     if settled.outcome == "answered" {
         return false;
@@ -175,23 +203,7 @@ fn falls_back(settled: &Settled) -> bool {
     if settled.outcome == "unavailable" {
         return true;
     }
-    matches!(
-        settled.code.as_deref(),
-        Some(
-            "unauthenticated"
-                | "payment_required"
-                | "not_admitted"
-                | "rate_limited"
-                | "quota_exhausted"
-                | "internal"
-                | "door_unavailable"
-                | "identity_mismatch"
-                | "busy"
-                | "unavailable"
-                | "timeout"
-                | "overloaded"
-        )
-    )
+    jev::doors::fails_over(settled.http_status.unwrap_or(0), settled.code.as_deref())
 }
 
 fn default_probe_secs() -> u64 {
@@ -334,6 +346,10 @@ struct Settled {
     /// Digest of the response body, when one came back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     result_digest: Option<String>,
+    /// The door's HTTP status, when it answered one; read for failover
+    /// and never recorded.
+    #[serde(skip)]
+    http_status: Option<u16>,
 }
 
 /// A ledger line: one admission or settlement for a `(principal,
@@ -596,8 +612,9 @@ pub struct Worker {
     open_key: Option<String>,
     /// The open lane's counts.
     quota: Option<Mutex<crate::open_quota::Ledger>>,
-    /// The backup door and its key, when one is configured and keyed.
-    backup: Option<(BackupDoor, String)>,
+    /// The backup doors that are on, each with its key, in the order they
+    /// are asked.
+    backups: Vec<(BackupDoor, String)>,
 }
 
 impl Worker {
@@ -657,13 +674,22 @@ impl Worker {
             }
             None => (None, None),
         };
-        let backup = config.backup.clone().and_then(|backup| {
+        let mut backups = Vec::new();
+        for backup in config.backup_doors() {
+            if backup.naming().is_none() {
+                return Err(Trouble::Config(format!(
+                    "backup door {}: naming is `canonical`, `openrouter`, or `gateway`, not `{}`",
+                    backup.url, backup.naming
+                )));
+            }
             let key = std::env::var(&backup.key_env)
                 .ok()
                 .map(|key| key.trim().to_string())
-                .filter(|key| !key.is_empty())?;
-            Some((backup, key))
-        });
+                .filter(|key| !key.is_empty());
+            if let Some(key) = key {
+                backups.push((backup, key));
+            }
+        }
         let (outbox, inbox) = mpsc::unbounded_channel();
         let window = config
             .request_window
@@ -685,13 +711,18 @@ impl Worker {
             published: AtomicU64::new(0),
             open_key,
             quota,
-            backup,
+            backups,
         }))
     }
 
-    /// Whether the backup door is on: configured, and its key present.
+    /// Whether a backup door is on: configured, and its key present.
     pub fn backup_on(&self) -> bool {
-        self.backup.is_some()
+        !self.backups.is_empty()
+    }
+
+    /// Whether the backup door at `url` is on.
+    pub fn backup_door_on(&self, url: &str) -> bool {
+        self.backups.iter().any(|(backup, _)| backup.url == url)
     }
 
     /// The worker's public key, hex — the value callers `p`-tag and the
@@ -1149,6 +1180,7 @@ impl Worker {
             latency_ms: None,
             resolved_at: Some(now_utc()),
             result_digest: None,
+            http_status: None,
         };
         if let Some(record) = record
             && matches!(self.jobs.settle(&key, &scope, settled.clone()), Ok(true))
@@ -1375,36 +1407,41 @@ impl Worker {
     /// not a second spend on the HTTP lane either.
     async fn dispatch(&self, binding: &Binding, body: &RequestBody, started: Instant) -> Settled {
         let primary = self.primary(binding, body, started).await;
-        let Some((backup, key)) = &self.backup else {
-            return primary;
-        };
-        if !falls_back(&primary) {
+        if self.backups.is_empty() || !falls_back(&primary) {
             return primary;
         }
-        let remaining = body
-            .deadline
-            .map(|deadline| deadline.saturating_sub(unix_now()));
-        if remaining == Some(0) {
-            return primary;
+        // Each backup door in order, while the one before could not answer
+        // for its own reasons; the first answer stands, and when none
+        // answers the upstream's refusal stands.
+        for (backup, key) in &self.backups {
+            let remaining = body
+                .deadline
+                .map(|deadline| deadline.saturating_sub(unix_now()));
+            if remaining == Some(0) {
+                break;
+            }
+            let second = self.backup_call(backup, key, body, started).await;
+            eprintln!(
+                "decision-worker: upstream {} ({}); backup door {} answered {}",
+                primary.outcome,
+                primary.code.as_deref().unwrap_or("-"),
+                backup.door,
+                second.code.as_deref().unwrap_or(&second.outcome),
+            );
+            if second.outcome == "answered" {
+                return second;
+            }
+            if !falls_back(&second) {
+                break;
+            }
         }
-        let second = self.backup_call(backup, key, body, started).await;
-        eprintln!(
-            "decision-worker: upstream {} ({}); backup door {} answered {}",
-            primary.outcome,
-            primary.code.as_deref().unwrap_or("-"),
-            backup.door,
-            second.code.as_deref().unwrap_or(&second.outcome),
-        );
-        if second.outcome == "answered" {
-            second
-        } else {
-            primary
-        }
+        primary
     }
 
-    /// The backup door's call: OpenRouter's Decisions body (the same
-    /// `state` and `questions`, the model under the door's name) under the
-    /// backup key, in whatever time the job's deadline leaves.
+    /// A backup door's call: the same `state` and `questions`, the model
+    /// under the door's name (the gateway's `typesafe-ai/jev`, OpenRouter's
+    /// `typesafe/jev-1.13`), under the door's key, in whatever time the
+    /// job's deadline leaves.
     async fn backup_call(
         &self,
         backup: &BackupDoor,
@@ -1413,11 +1450,10 @@ impl Worker {
         started: Instant,
     ) -> Settled {
         let canonical = decision::canonical_model(&body.model);
-        let model = if backup.naming == "canonical" {
-            canonical.to_string()
-        } else {
-            jev::nip_dec::openrouter_model(canonical).into_owned()
-        };
+        let model = backup
+            .naming()
+            .unwrap_or(jev::doors::Naming::OpenRouter)
+            .model(canonical);
         let envelope = json!({
             "model": model,
             "state": body.state,
@@ -1507,6 +1543,7 @@ impl Worker {
                 latency_ms: Some(started.elapsed().as_millis() as u64),
                 resolved_at: Some(now_utc()),
                 result_digest: None,
+                http_status: None,
             },
             Err(_) => Settled {
                 outcome: "unavailable".to_string(),
@@ -1523,6 +1560,7 @@ impl Worker {
                 latency_ms: Some(started.elapsed().as_millis() as u64),
                 resolved_at: Some(now_utc()),
                 result_digest: None,
+                http_status: None,
             },
         }
     }
@@ -1560,6 +1598,10 @@ impl Worker {
         if status.is_success() {
             let mut response = parsed.unwrap_or(Value::Null);
             let mut raw = raw.to_vec();
+            // A gateway's price becomes `usage.cost` (`jev::doors`).
+            if jev::doors::normalize_answer(&mut response) {
+                raw = serde_json::to_vec(&response).unwrap_or(raw);
+            }
             if let (Some(service), Some(map)) = (service, response.as_object_mut()) {
                 map.insert(
                     "service".to_string(),
@@ -1591,8 +1633,19 @@ impl Worker {
                 latency_ms,
                 resolved_at,
                 result_digest: Some(digest_bytes(&raw)),
+                http_status: Some(status.as_u16()),
             };
         }
+        // The Vercel AI Gateway's own errors are `{"message",
+        // "error_type"}`; read them in the `{"error": {code, message}}`
+        // shape every other door uses.
+        let parsed = parsed.map(|value| {
+            if value.get("error").is_none() && value.get("error_type").is_some() {
+                jev::doors::normalize_error(status.as_u16(), &raw)
+            } else {
+                value
+            }
+        });
         let (code, message) = parsed
             .as_ref()
             .and_then(|value| value.get("error"))
@@ -1650,6 +1703,7 @@ impl Worker {
             latency_ms,
             resolved_at,
             result_digest: None,
+            http_status: Some(status.as_u16()),
         }
     }
 }
@@ -1669,6 +1723,7 @@ fn unavailable(cause: &str, message: String, started: Instant) -> Settled {
         latency_ms: Some(started.elapsed().as_millis() as u64),
         resolved_at: Some(now_utc()),
         result_digest: None,
+        http_status: None,
     }
 }
 
@@ -1736,16 +1791,22 @@ pub async fn run(config: WorkerConfig) -> Result<(), Trouble> {
         ),
         None => eprintln!("decision-worker: no open lane"),
     }
-    match &worker.config.backup {
-        Some(backup) if worker.backup_on() => eprintln!(
-            "decision-worker: backup door {} under ${}",
-            backup.url, backup.key_env
-        ),
-        Some(backup) => eprintln!(
-            "decision-worker: backup door {} off: ${} is not set",
-            backup.url, backup.key_env
-        ),
-        None => eprintln!("decision-worker: no backup door"),
+    let backups = worker.config.backup_doors();
+    if backups.is_empty() {
+        eprintln!("decision-worker: no backup door");
+    }
+    for backup in &backups {
+        if worker.backup_door_on(&backup.url) {
+            eprintln!(
+                "decision-worker: backup door {} under ${}",
+                backup.url, backup.key_env
+            );
+        } else {
+            eprintln!(
+                "decision-worker: backup door {} off: ${} is not set",
+                backup.url, backup.key_env
+            );
+        }
     }
     loop {
         match tokio_tungstenite::connect_async(&worker.config.relay).await {

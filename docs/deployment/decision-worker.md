@@ -37,26 +37,60 @@ Coder <--27010 status, 26910 result----------- relay.openagents.com <-- decision
   checks the worker's signature, the request's event id, its own key, and
   the receipt before it believes an answer.
 
-## The backup door
+## The backup doors
 
-When TypeSafe cannot answer, the worker can ask OpenRouter's Decisions API
-instead: `POST https://openrouter.ai/api/alpha/decisions` with the same
-`state` and `questions` and the model under OpenRouter's name
-(`jev-1.13.0` → `typesafe/jev-1.13`; NIP-DEC, "Doors and the backup door").
-It is the `backup` block of the config and is **off unless
-`OPENROUTER_API_KEY` is in the worker's environment file** when it starts;
-the journal says which at start (`backup door … under $OPENROUTER_API_KEY`,
-or `backup door … off: $OPENROUTER_API_KEY is not set`).
+When TypeSafe cannot answer, the worker asks the other doors that serve
+Jev, in order (NIP-DEC, "Doors and the backup door"; `jev::doors`):
 
-- It is asked only after TypeSafe was unreachable, timed out, answered a
-  5xx, or refused for its own reasons (its key, its account, its rate or
-  quota). A request the caller got wrong (`invalid_request`, …) is never
-  retried there.
-- Its answer names it: `service: {door: "https://openrouter.ai", …}`,
-  OpenRouter's dated model (`typesafe/jev-1.13-20260917`), and
-  `usage.cost`. If it fails too, the caller gets TypeSafe's refusal.
+1. The **Vercel AI Gateway**'s TypeSafe-compatible API,
+   `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone`, with the same
+   `state` and `questions` and the model as `typesafe-ai/jev` (the gateway's
+   one Jev, unversioned), under `AI_GATEWAY_API_KEY`.
+2. **OpenRouter**'s Decisions API,
+   `POST https://openrouter.ai/api/alpha/decisions`, the model as
+   `typesafe/jev-1.13`, under `OPENROUTER_API_KEY`.
+
+They are the `backups` list of the config, and **each is off unless its
+key is in the worker's environment file** when it starts; the journal names
+each at start (`backup door … under $AI_GATEWAY_API_KEY`, or
+`backup door … off: $AI_GATEWAY_API_KEY is not set`, and the same for
+OpenRouter).
+
+- A door is asked only after the doors before it timed out, could not be
+  reached, answered 402, 408, 429, or any 5xx, or refused for their own
+  reasons (their key, account, model list, rate, or quota;
+  `jev::doors::fails_over`). A request the caller got wrong
+  (`invalid_request`, …) is never retried at another door, and a backup
+  door that refuses the question ends the chain.
+- Its answer names it: `service: {door: "https://ai-gateway.vercel.sh", …}`
+  or `{door: "https://openrouter.ai", …}`, the model it served
+  (`typesafe-ai/jev`, `typesafe/jev-1.13-20260917`), and `usage.cost` (the
+  gateway's `provider_metadata.gateway.cost`, OpenRouter's own). A client's
+  decision record (`openagents.decision-call.v1`) keeps that `service`. If
+  no backup answers, the caller gets TypeSafe's refusal.
 - A backup answer counts against the open lane like any other; the lane's
-  daily total still bounds the day's spend on both doors together.
+  daily total still bounds the day's spend on all doors together.
+
+The chat worker's router judge fails over across the same doors, in the
+same order, with its own keys ([chat worker](chat-worker.md)).
+
+### Turning the backup doors on
+
+Put the keys in the worker's environment file and restart it. From a
+development Mac, with the keys in `~/work/.secrets/ai-gateway.env`
+(`AI_GATEWAY_API_KEY=…`) and `~/work/.secrets/openrouter.env`
+(`OPENROUTER_API_KEY=…`), an agent runs:
+
+```sh
+scripts/decision-worker-install-door-keys.sh
+```
+
+It copies only those two variables (never printing them) into
+`/etc/decision-worker/decision-worker.env` and
+`/etc/coder-worker/coder-worker-chat.env` on `oa-coder-worker-1` through
+IAP, keeps every other line, restarts `decision-worker` and
+`coder-worker-chat`, and prints the startup lines that name each door on
+or off. It never touches `coder-worker.service` or `/opt/coder-worker/current`.
 
 ## One resolver for every caller
 
@@ -139,7 +173,8 @@ key; `models`; `quota`), `service` is what each answer names, and
 and one still unanswered at the next ends the session, which reconnects.
 The environment file ([example](../../deploy/decision-worker/decision-worker.env.example))
 holds the two secrets, `DECISION_WORKER_SECRET` and `TYPESAFE_API_KEY`, and
-optionally a third, `OPENROUTER_API_KEY`, which turns the backup door on.
+optionally `AI_GATEWAY_API_KEY` and `OPENROUTER_API_KEY`, which turn the
+backup doors on.
 
 ## Deploying
 
