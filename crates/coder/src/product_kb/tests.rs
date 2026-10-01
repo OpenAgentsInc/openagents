@@ -347,7 +347,10 @@ fn product_citations_are_taken_out_as_the_reply_streams() {
             "Pair it [openagents.connect-computer] and go.",
             "Pair it and go.",
         ),
-        ("Arrays like [1, 2] stay [openagents.cli@3]", "Arrays like [1, 2] stay"),
+        (
+            "Arrays like [1, 2] stay [openagents.cli@3]",
+            "Arrays like [1, 2] stay",
+        ),
     ];
     for (reply, want) in cases {
         assert_eq!(tidy(reply), want, "{reply}");

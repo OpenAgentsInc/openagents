@@ -5644,14 +5644,21 @@ mod tests {
             r#"[{"name": "judge", "kind": "decide", "question": "openagents.missing.v1", "bounds": {}}]"#,
         );
 
-        for (choice, expected) in [
+        // The question offers `none` and the one admitted program. A
+        // door answering over exactly those is held to them; one whose
+        // distribution names a program the question never offered is
+        // off the question's contract, and the SDK refuses it before
+        // this host reads a choice out of it.
+        let offered = json!({"ask-only": 0.7, "none": 0.3});
+        let unoffered = json!({"ask-only": 0.5, "needs-wording": 0.3, "none": 0.2});
+        for (choice, probabilities, expected) in [
             // The registry resolved it, but admission never offered it:
             // naming it is not a selection.
-            ("needs-wording", None),
+            ("needs-wording", &unoffered, None),
             // The one admitted program selects.
-            ("ask-only", Some("ask-only")),
+            ("ask-only", &offered, Some("ask-only")),
             // And none is an answer, not an error.
-            ("none", None),
+            ("none", &offered, None),
         ] {
             let port = serve_answer(json!({
                 "model": "stub",
@@ -5660,7 +5667,7 @@ mod tests {
                         "type": "choice",
                         "choice": choice,
                         "confidence": 0.9,
-                        "probabilities": {"ask-only": 0.5, "needs-wording": 0.3, "none": 0.2}
+                        "probabilities": probabilities
                     }
                 }
             }))
@@ -5680,7 +5687,15 @@ mod tests {
             match (runtime.select("run it", None).await, expected) {
                 (Ok(Selected::Program(slug)), Some(wanted)) => assert_eq!(slug, wanted),
                 (Ok(Selected::None), None) if choice == "none" => {}
-                (Err(refused), None) => assert_eq!(refused.code, "no_program_chosen"),
+                (Err(refused), None) if choice == "needs-wording" => {
+                    assert_eq!(refused.code, "door_unavailable");
+                    assert!(
+                        refused
+                            .reason
+                            .contains("answers.program.probabilities.needs-wording"),
+                        "the refusal names the unoffered option: {refused:?}"
+                    );
+                }
                 (answered, _) => panic!("{choice} answered {answered:?}"),
             }
         }

@@ -35,6 +35,15 @@ const CREDENTIALS: [&str; 17] = [
     "CODER_RELAY",
 ];
 
+/// How long a test's stub door waits for the binary's first decision call.
+///
+/// The call is required either way; this only bounds the wait. The binary
+/// is a ~200 MB debug build and four of these tests start it at once. With
+/// a five-second bound, all four failed together now and then on a machine
+/// busy with other builds, each before its call arrived, while the same
+/// runs on a quiet machine make the call in under a second (#10069).
+const STARTUP: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// The binary with delegation off. An installed and signed-in Claude Code
 /// or Codex on the machine running these tests would otherwise answer the
 /// turn, and these tests measure the stub door.
@@ -313,7 +322,7 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
     let url = format!("http://{}", listener.local_addr().unwrap());
     listener.set_nonblocking(true).unwrap();
     let server = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + STARTUP;
         let mut socket = loop {
             match listener.accept() {
                 Ok((socket, _)) => break socket,
@@ -395,7 +404,7 @@ fn a_routed_turn_records_the_functions_provenance() {
     let url = format!("http://{}", listener.local_addr().unwrap());
     listener.set_nonblocking(true).unwrap();
     let server = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + STARTUP;
         let mut socket = loop {
             match listener.accept() {
                 Ok((socket, _)) => break socket,
@@ -470,7 +479,7 @@ fn hosted_profile_forwards_its_key_and_model() {
     let url = format!("http://{}", listener.local_addr().unwrap());
     listener.set_nonblocking(true).unwrap();
     let server = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + STARTUP;
         let mut socket = loop {
             match listener.accept() {
                 Ok((socket, _)) => break socket,
@@ -557,7 +566,7 @@ fn a_door_refusing_permission_degrades_visibly() {
     let url = format!("http://{}", listener.local_addr().unwrap());
     listener.set_nonblocking(true).unwrap();
     let server = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + STARTUP;
         let mut socket = loop {
             match listener.accept() {
                 Ok((socket, _)) => break socket,

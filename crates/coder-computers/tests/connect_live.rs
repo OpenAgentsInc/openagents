@@ -20,7 +20,7 @@ use coder_computers::connect::PairedOver;
 use coder_computers::live::{Live, Locality, MemoryStore, Settings};
 use coder_computers::model::Platform;
 use coder_host::access::host::Host;
-use coder_host::access::{RelayPolicy, Right, Rights};
+use coder_host::access::{RelayPolicy, Rights};
 use coder_host::client::Route;
 use coder_host::config::{Config, Iroh};
 use coder_host::{Code, TaskCreate, TaskRef, Tasks};
@@ -91,7 +91,9 @@ fn a_phone_pairs_over_loopback_iroh_then_creates_a_task_over_iroh() {
     let addr = running.iroh_addr().expect("the host serves iroh");
 
     // The code the desktop app would show.
-    let rights = Rights::new([Right::Observe, Right::Operate]).unwrap();
+    // A connect code carries the pairing rights, and a phone keeps a grant
+    // only when it holds exactly those.
+    let rights = Rights::pairing();
     let issued = store.invite(&relay, rights, now(), now() + 86_400).unwrap();
     let code = ConnectCode::from_invitation(
         CodeParts {
@@ -203,7 +205,9 @@ fn a_phone_paired_on_the_relay_asks_for_its_chats_on_its_link() {
         .block_on(coder_host::start(config, Arc::new(Recorder::default())))
         .unwrap();
     let addr = running.iroh_addr().expect("the host serves iroh");
-    let rights = Rights::new([Right::Observe, Right::Operate]).unwrap();
+    // A connect code carries the pairing rights, and a phone keeps a grant
+    // only when it holds exactly those.
+    let rights = Rights::pairing();
     let issued = store.invite(&relay, rights, now(), now() + 86_400).unwrap();
     let code = ConnectCode::from_invitation(
         CodeParts {

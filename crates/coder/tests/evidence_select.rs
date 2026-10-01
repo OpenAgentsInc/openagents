@@ -310,10 +310,14 @@ async fn an_abstention_keeps_the_deterministic_order_and_records_it() {
         logs.path(),
         vec![Pick {
             choice: "none",
+            // Over every option the question offered: a door that leaves
+            // one out is off the question's contract.
             probabilities: vec![
                 ("none", 0.9),
-                ("alpha.rs (the whole file)", 0.05),
-                ("beta.rs (the whole file)", 0.05),
+                ("alpha.rs (the whole file)", 0.03),
+                ("alpha.rs (lines 1-1)", 0.02),
+                ("beta.rs (the whole file)", 0.03),
+                ("beta.rs (lines 1-1)", 0.02),
             ],
         }],
         Arc::clone(&seen),

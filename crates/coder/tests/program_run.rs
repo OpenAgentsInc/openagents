@@ -250,12 +250,7 @@ fn answers(asked: &Value, program: &str) -> Value {
                 "type": "choice",
                 "choice": program,
                 "confidence": 0.83,
-                "probabilities": {
-                    "delegate-fan-out": 0.87,
-                    "review-changes": 0.0,
-                    "answer-question": 0.13,
-                    "run-suite": 0.0
-                }
+                "probabilities": over_offered(asked, program)
             }}
         });
     }
@@ -292,6 +287,30 @@ fn answers(asked: &Value, program: &str) -> Value {
         per_requirement.insert(id.clone(), json!({"type": "noul", "noul": 0.91}));
     }
     json!({"model": "kev-latest", "answers": per_requirement})
+}
+
+/// The selection's distribution over exactly the options the request
+/// offered, as a door that holds to the question answers it: most of the
+/// mass on `program`, the rest shared by every other option. Which
+/// programs are offered depends on what this host admits, so the stub
+/// reads them off the request rather than naming them.
+fn over_offered(asked: &Value, program: &str) -> Value {
+    let offered: Vec<&String> = asked
+        .pointer("/questions/program/criteria")
+        .and_then(Value::as_object)
+        .map(|criteria| criteria.keys().collect())
+        .unwrap_or_default();
+    let others = offered.iter().filter(|option| **option != program).count();
+    let mut probabilities = serde_json::Map::new();
+    for option in offered {
+        let share = if option == program {
+            if others == 0 { 1.0 } else { 0.87 }
+        } else {
+            0.13 / others as f64
+        };
+        probabilities.insert(option.clone(), json!(share));
+    }
+    Value::Object(probabilities)
 }
 
 /// A runtime over the scratch machine, asking the stub door.
@@ -1340,6 +1359,9 @@ async fn agent(root: &Path, program: &'static str) -> Agent {
         .with_repo(Repo::discover(root))
         .with_survey(Survey::read_with(Some(root), root, &Trust::everything()))
         .with_program_grant(Some("all"))
+        // Inside the scratch machine, where version control never looks,
+        // rather than the runstate store of whoever runs the tests.
+        .with_runstate(root.join(".git").join("runstate"))
 }
 
 /// The operator's sentence reaches the runtime, through the turn the
