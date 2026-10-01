@@ -38,11 +38,25 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "42",
         title: "Text only",
-        what_to_test: "On the Chat tab, in a new chat and in an open one, the message box should have no attach button above it. Copy a photo, then tap the message box twice: Paste should not be offered. Type a message and send it: it should send as before.",
-        items: &[Item {
-            title: "Text only",
-            detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app is text only too.",
-        }],
+        what_to_test: "On the Chat tab, in a new chat and in an open one, the message box should have no attach button above it, and tapping the box twice should not offer Paste for a copied photo. Open the previous chats: the chat you started last should be at the top, with its project shown as a label on the row. With a computer paired, after a Coder run finishes, open its chat and ask \"What did you change?\": the reply should answer in the chat. Then say \"Now add a test\": Coder should continue the same task.",
+        items: &[
+            Item {
+                title: "Text only",
+                detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app is text only too.",
+            },
+            Item {
+                title: "Follow-ups after a Coder run",
+                detail: "Once a Coder run has finished, a question about it, like what changed, is answered in the chat. Asking for more work continues the same Coder task on your computer.",
+            },
+            Item {
+                title: "Newest chat on top",
+                detail: "In the previous chats, the chat you started last is always at the top, whatever its project, with the project shown as a label on its row. Pinned chats stay above, and archived ones below.",
+            },
+            Item {
+                title: "Grok Build on your computer",
+                detail: "Coder on your computer can use Grok Build by default, after Codex and Claude Code, when it is installed and signed in.",
+            },
+        ],
     },
     Release {
         version: "1.0.0",
