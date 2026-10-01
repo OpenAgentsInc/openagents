@@ -1,0 +1,158 @@
+# Release acceptance gate
+
+The acceptance gate runs the owner's real flows end to end on the exact build
+that is about to ship. Unit tests, stand-ins, and `--no-run` checks missed
+every bug the owner found on 2026-09-30 (#10071 to #10079, #10081). The gate
+exists so that the owner never finds one of those first again
+([#10080](https://github.com/OpenAgentsInc/openagents/issues/10080)).
+
+Run the gate, and read its summary, before any owner handoff and before every
+TestFlight or desktop release. A FAIL blocks the handoff until it is fixed or
+the owner accepts it by name.
+
+## Run it
+
+On a Mac with Codex and Claude Code signed in:
+
+```sh
+# The .app scripts/desktop/package-macos.sh just packaged (the default):
+scripts/release/acceptance.sh
+
+# A specific .app:
+scripts/release/acceptance.sh --app /path/to/OpenAgents.app
+
+# Freshly built binaries:
+cargo build -p coder --bin coder -p microcoder --bin microcoder \
+  -p openagents-cli --bin openagents -p openagents-desktop --bin openagents-desktop
+scripts/release/acceptance.sh --bin-dir "$CARGO_TARGET_DIR/debug"
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--app PATH` | The `.app` under test: `Contents/MacOS/{OpenAgents,coder,microcoder}` and `Contents/Helpers/openagents`. |
+| `--bin-dir DIR` | Take `openagents-desktop`, `coder`, `microcoder`, and `openagents` from `DIR`. |
+| `--evidence DIR` | Where results and evidence go. The default is a new folder under `$TMPDIR`. |
+| `--only NAMES` | Run only these scenarios, comma-separated. `--list` prints the names. |
+| `--allow-missing-engine` | Skip, instead of fail, the scenarios that need an engine whose login is missing. |
+| `--keep` | Keep the temporary home folder for inspection. |
+
+Each scenario prints `PASS NAME: …`, `FAIL NAME: …`, or `SKIP NAME: …`. The
+script then prints a summary table and the evidence folder. It exits 1 when
+any scenario fails and 2 when it cannot set up.
+
+A full run takes 15 to 30 minutes, mostly Coder runs. It sends about fifteen
+chat messages and starts four or five tiny Coder runs (one line in
+`NOTES.md`), each capped by the local run's step limit, so it costs a few
+cents of engine usage.
+
+## What it runs
+
+The gate never touches the real home folder, its stores, the installed app,
+or the owner's host.
+
+1. **A temporary home.** `HOME` is a short folder under `/tmp`, so the control
+   socket path fits the 104-byte limit. Every process the gate starts sees only
+   that home.
+2. **Engine logins, read-only.** These follow the owner-local smoke approach:
+   - Codex: `CODEX_HOME` is the temporary home's `.codex`, holding a private
+     copy (mode `0600`) of `~/.codex/auth.json` that is deleted with the
+     temporary home. Coder's Codex transport reads the login and never
+     refreshes it, so the real login never changes. It is a copy, not a
+     symbolic link, because a reader that takes a login
+     (`codex_transport::Login::take`) removes the file it read, and a link's
+     target with it.
+   - Claude Code: the temporary home's `Library/Keychains` is a symbolic link
+     to the real one, so `claude` reads its `Claude Code-credentials` item the
+     way it always does. `~/.claude.json` in the temporary home holds only the
+     account metadata (`oauthAccount`, `userID`, and the onboarding flag), never
+     a credential.
+
+   Only that one Codex file is copied, and nothing is printed. A missing
+   login is a FAIL unless you pass `--allow-missing-engine`.
+3. **The owner's project shape.** The gate makes a scratch repository and a
+   linked worktree of it, `acceptance-repo-host-tasks`, like
+   `~/work/openagents-host-tasks`. The tree is big enough to matter: 400
+   directories and 3,200 files in the repository and 650 sibling folders beside
+   it, like `~/work`.
+4. **The build's own host, under the app's limits.** The gate runs
+   `coder host serve --keys … --iroh --control` the way the app starts it,
+   with file keys in the temporary home instead of the login keychain, and
+   with the open-file limit at launchd's 256 for a login agent or a
+   Finder-opened app (#10078). It registers the worktree with `project_add`, as
+   the app's folder picker does, and turns auto-start on with
+   `autostart_set`, as the app's switch does. `coder.start` is `at_once`.
+5. **The build's own desktop binary.** `openagents-desktop --acceptance DIR`
+   runs the window's real model: the chat panel, sidebar, settings file,
+   Coder lane, and Verse layer. It runs inline instead of in a window, against
+   the host's control socket and under the same open-file limit. Messages go
+   through the host to the live chat worker on `relay.openagents.com` exactly
+   as the window sends them, and the host adds the desktop surface context
+   (#10077). A coding reply starts Coder on this computer through the window's
+   own Coder lane, on real engines, in the scratch project. The driver checks
+   the view tree, the scene the window would paint, and captures.
+6. **A phone-shaped client.** The driver pairs a NIP-HOST client
+   (`coder_computers::Live` with `Platform::Phone`) using the host's pairing
+   invitation. It asks the hosted chat worker with the phone's context, as
+   `CoderTab::context` builds it, and presses Run Coder as
+   `CoderTab::run_coder` does.
+
+When the scenarios end, the gate gives Coder runs up to four minutes to
+finish, stops any that remain, stops the host, copies the task store's
+journals into the evidence, and deletes the temporary home.
+
+## Scenarios
+
+Every owner-reported bug adds a scenario. The chat scenarios that share a
+conversation run in the owner's order.
+
+| Scenario | Checks | Guards |
+| --- | --- | --- |
+| `ui-placeholder` | An empty chat's centered composer paints **Message OpenAgents…** (faint-ink pixels in the composer field of a 2x capture). | #10072 |
+| `who-are-you` | "who are you" gets an answer with suggestions, and Coder does not start. | #10073 |
+| `ui-chips` | The reply's suggestions are small chips in a row directly above the composer, none in the transcript. | #10075 |
+| `ui-engines-sidebar` | Each engine from the host's report is one condensed row in the sidebar, above the footer, and the transcript shows no engine block. | #10072 |
+| `delegate-who` | "who can you delegate to", in the same chat, gets an answer, and Coder does not start. | #10073 |
+| `delegate-now` | "do a test delegation now", in the same chat: Coder starts, runs, and finishes in the linked-worktree project; the prompt Coder received is that message; the reply carries no Gym card; and no decision-call row shows in the transcript. | #10073, #10078 |
+| `working-directory` | "What's the working directory right now?" names the project folder, never says to connect a computer, and starts no Coder. | #10077, #10079 |
+| `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code, the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073 |
+| `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. | #10066, #10070 |
+| `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |
+| `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |
+| `ui-no-verse` | The Verse world never loads while a chat page shows, loads on the Verse page, and is released after. | #10071 |
+| `phone-claude` | A paired phone-shaped client asks "do a test delegation to claude" and presses Run Coder; the computer's run starts on Claude Code. | #10081 |
+
+## Proof that it catches the owner's bugs
+
+On 2026-09-30, the same gate run against earlier builds failed where the owner
+did:
+
+- `846965af1c` (TestFlight build 39): `delegate-now` failed with "the granted
+  source snapshot is unavailable or changed" (#10078), and
+  `working-directory` started Coder for a question it answered (#10079).
+- `30b7a81602`: `phone-claude` started the phone's run on Codex (#10081).
+
+All three pass on `f6d0c4cb2a`, which carries the fixes.
+
+## Evidence
+
+The evidence folder holds:
+
+- `results.jsonl`: one `{"scenario", "status", "detail"}` line per scenario.
+- `summary.md`: the summary table.
+- `NAME/`: each scenario's chat `snapshot.json`, Coder's `coder-lines.jsonl`,
+  the transcript's words (`transcript.txt`), the host's `engine-report.json`,
+  captures (`*.png`), and, for Coder runs, the turn's ATIF trajectory.
+- `tasks/`: the task store's journals and records, including
+  `repository-launch-*.jsonl` launch diagnostics.
+- `host.log`, `desktop.log`, `autostart.jsonl`, and `build.txt` (the binaries'
+  SHA-256 digests).
+
+## Add a scenario
+
+1. Add a function to `crates/openagents-desktop/src/acceptance.rs` that drives
+   the window the way the person did (`new_chat`, `send`, `follow_run`,
+   `capture`) and returns `Ok(evidence)` or `Err(what was wrong)`.
+2. Add its name to `SCENARIOS` and to the `match` in `run`, and to
+   `scenarios` in `scripts/release/acceptance.sh`.
+3. Add a row to the table above that names the issue it guards.
+4. Run it against the build that had the bug, and check that it fails.

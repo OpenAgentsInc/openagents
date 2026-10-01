@@ -42,6 +42,11 @@ app = [
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+# The release acceptance gate's phone-shaped client (`--acceptance`,
+# #10080): the phone's NIP-HOST service, already in the graph through
+# `openagents-chat-app`, and TLS for its relay.
+coder-computers = { path = "../coder-computers" }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 openagents-chat = { path = "../openagents-chat" }
 openagents-chat-app = { path = "../openagents-chat-app" }
 coder-access = { path = "../coder-access", default-features = false }

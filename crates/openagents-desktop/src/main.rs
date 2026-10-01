@@ -68,6 +68,11 @@ Usage: openagents-desktop [options]
   --notify-test        show a test notification and say how it was delivered
   --open-deck ID       open the deck filed under ID in the slide viewer at launch,
                        for testing (for example three-devdays-later)
+  --acceptance DIR     run the release acceptance gate's scenarios against the
+                       host on this HOME's control socket, writing results and
+                       evidence to DIR (scripts/release/acceptance.sh runs it in
+                       a scratch HOME; docs/release/acceptance.md)
+  --only NAMES         with --acceptance, run only these comma-separated scenarios
   --help               this text";
 
 #[derive(Debug, Default)]
@@ -87,6 +92,8 @@ struct Options {
     update: bool,
     notify_test: bool,
     open_deck: Option<String>,
+    acceptance: Option<PathBuf>,
+    only: Option<String>,
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -140,6 +147,12 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
             "--open-deck" => {
                 options.open_deck = Some(args.next().ok_or("--open-deck takes a deck id")?)
             }
+            "--acceptance" => {
+                options.acceptance = Some(PathBuf::from(
+                    args.next().ok_or("--acceptance takes a directory")?,
+                ))
+            }
+            "--only" => options.only = Some(args.next().ok_or("--only takes scenario names")?),
             "--help" | "-h" => options.help = true,
             // macOS passes a process serial number to an app opened from
             // the Finder on some versions.
@@ -226,6 +239,17 @@ fn main() -> ExitCode {
             Err(error) => {
                 eprintln!("{error}");
                 ExitCode::FAILURE
+            }
+        };
+    }
+    #[cfg(not(windows))]
+    if let Some(directory) = &options.acceptance {
+        return match shell::acceptance::run(directory, options.only.as_deref()) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::from(1),
+            Err(complaint) => {
+                eprintln!("{complaint}");
+                ExitCode::from(2)
             }
         };
     }

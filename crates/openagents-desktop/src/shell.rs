@@ -16,6 +16,11 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 #[path = "settings_shell.rs"]
 mod settings_shell;
 
+/// The release acceptance gate's driver (#10080).
+#[cfg(not(windows))]
+#[path = "acceptance.rs"]
+pub mod acceptance;
+
 /// The largest the code draws, in points.
 pub const CODE_SIDE: f32 = 360.0;
 

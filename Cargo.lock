@@ -7436,6 +7436,7 @@ dependencies = [
  "block2 0.6.2",
  "coder",
  "coder-access",
+ "coder-computers",
  "coder-connect",
  "coder-history",
  "coder-mobile",
