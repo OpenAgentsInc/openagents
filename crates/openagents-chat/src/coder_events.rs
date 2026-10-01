@@ -696,7 +696,20 @@ impl Mapper {
         // A whole coding agent's turn (Devin, OpenCode): its tool calls,
         // their results, and its words.
         if source == "agent" {
+            // A decision-model call (a Jev judgment such as
+            // `openagents.microcoder.judge.v1`) is evidence for the
+            // trajectory, never a row of the person's transcript (#10073).
+            let decisions: Vec<&str> = step["tool_calls"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|call| is_decision_call(call))
+                .filter_map(|call| call["tool_call_id"].as_str())
+                .collect();
             for call in step["tool_calls"].as_array().into_iter().flatten() {
+                if is_decision_call(call) {
+                    continue;
+                }
                 let name = call["function_name"].as_str().unwrap_or("tool");
                 let arguments = match &call["arguments"] {
                     Value::Null => String::new(),
@@ -710,6 +723,11 @@ impl Mapper {
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
+                .filter(|result| {
+                    !result["source_call_id"]
+                        .as_str()
+                        .is_some_and(|id| decisions.contains(&id))
+                })
             {
                 let content = match &result["content"] {
                     Value::String(text) => text.clone(),
@@ -963,6 +981,13 @@ fn parse_iso(text: &str) -> Option<u64> {
     u64::try_from(ms).ok()
 }
 
+/// Whether an ATIF document's tool call is a decision-model call: its
+/// `extra` names [`atif::DECISION_CALL_SCHEMA`], as `atif::Call::is_decision`
+/// reads the log's record.
+fn is_decision_call(call: &Value) -> bool {
+    call.pointer("/extra/schema").and_then(Value::as_str) == Some(atif::DECISION_CALL_SCHEMA)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1136,6 +1161,42 @@ mod tests {
         assert!(text.contains("\"event\":\"stopped\""));
         let back: Line = serde_json::from_str(&text).unwrap();
         assert_eq!(back, line);
+    }
+
+    /// A decision call in the exported ATIF document (a Jev judgment the
+    /// loop asked) is not a transcript row; a real tool call still is
+    /// (#10073).
+    #[test]
+    fn a_decision_call_is_not_a_transcript_row() {
+        let mut mapper = Mapper::new(1, None);
+        let judged = json!({
+            "step_id": 2,
+            "source": "agent",
+            "message": "",
+            "tool_calls": [{
+                "tool_call_id": "decision-openagents.microcoder.judge.v1",
+                "function_name": "openagents.microcoder.judge.v1",
+                "arguments": {"model": "jev-1.13.0", "state": {"task": "t"}},
+                "extra": {"schema": atif::DECISION_CALL_SCHEMA, "model": "jev-1.13.0"}
+            }],
+            "observation": {"results": [{
+                "source_call_id": "decision-openagents.microcoder.judge.v1",
+                "content": "{\"done\":{\"noul\":0.21}}"
+            }]}
+        });
+        assert!(mapper.step(&judged).is_empty());
+        let tool = json!({
+            "step_id": 3,
+            "source": "agent",
+            "message": "",
+            "tool_calls": [{"tool_call_id": "c1", "function_name": "read", "arguments": "a.rs"}],
+            "observation": {"results": [{"source_call_id": "c1", "content": "fn main() {}"}]}
+        });
+        let events = mapper.step(&tool);
+        assert!(
+            matches!(&events[0], CoderEvent::Step(s) if s.kind == StepKind::ToolCall && s.text == "read a.rs")
+        );
+        assert_eq!(events.len(), 2);
     }
 
     #[test]

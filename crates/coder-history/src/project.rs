@@ -159,6 +159,10 @@ fn project(raw: &[u8], text_limit: usize) -> Option<Readable> {
 /// - `Agent` with no message text and a call: a `tool_call` named by the
 ///   call's function, whose text is the argument summary, then a blank line
 ///   and the call's result when the step recorded one.
+/// - `Agent` with no message text whose only calls are decision-model calls
+///   (`extra.schema` is `openagents.decision-call.v1`, such as a Jev
+///   judgment the loop asked): a `decision_call`, which conversation
+///   readers hide. A decision call never adds a `Tool:` line to a message.
 /// - A step with only an observation: a `tool_result` with role `tool`.
 /// - `Agent` with only reasoning: `reasoning`.
 fn atif(value: &Value, text_limit: usize) -> Option<Readable> {
@@ -209,6 +213,17 @@ struct AtifCall {
     name: Option<String>,
     arguments: Option<Value>,
     output: Option<String>,
+    /// A decision-model call (`openagents.decision-call.v1`), such as a
+    /// Jev judgment the loop asked: trajectory evidence, not work.
+    decision: bool,
+}
+
+/// The `extra.schema` a decision-model call records (`atif`'s
+/// `DECISION_CALL_SCHEMA`).
+const DECISION_CALL_SCHEMA: &str = "openagents.decision-call.v1";
+
+fn is_decision(call: &Value) -> bool {
+    call.pointer("/extra/schema").and_then(Value::as_str) == Some(DECISION_CALL_SCHEMA)
 }
 
 fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
@@ -237,6 +252,10 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
             None => results.push((id, pieces.join("\n"))),
         }
     }
+    // A step whose only calls are decision-model calls is a
+    // `decision_call` record: kept, but conversation readers do not show
+    // it as a tool row (#10073).
+    let decided = !calls.is_empty() && calls.iter().all(|c| c.decision);
     let first = calls.first();
     let mut readable = Readable {
         kind: "message".into(),
@@ -252,6 +271,7 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
     let summaries = || {
         calls
             .iter()
+            .filter(|c| !c.decision)
             .map(|c| {
                 let name = c.name.as_deref().unwrap_or("call");
                 format!("Tool: {name} {}", summary(c.arguments.as_ref()))
@@ -301,7 +321,12 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
                 .join("\n\n")
         }
         "Agent" | "agent" if !calls.is_empty() => {
-            readable.kind = "tool_call".into();
+            readable.kind = if decided {
+                "decision_call"
+            } else {
+                "tool_call"
+            }
+            .into();
             let call = &calls[0];
             let mut parts = vec![summary(call.arguments.as_ref())];
             parts.extend(summaries().into_iter().skip(1));
@@ -560,6 +585,7 @@ fn atif_calls(step: &Value) -> Vec<AtifCall> {
                 .get("output")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            decision: is_decision(call),
         });
     }
     for call in step
@@ -573,6 +599,7 @@ fn atif_calls(step: &Value) -> Vec<AtifCall> {
             name: field(call, "function_name"),
             arguments: call.get("arguments").cloned(),
             output: None,
+            decision: is_decision(call),
         });
     }
     calls
@@ -840,6 +867,35 @@ fn collect(value: &Value, out: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Jev judgment recorded as a first-class call, in the log's form and
+    /// the exported document's, reads as a `decision_call`, never a
+    /// `tool_call` a transcript shows (#10073).
+    #[test]
+    fn a_decision_call_reads_as_a_decision_record() {
+        let extra = serde_json::json!({"schema": DECISION_CALL_SCHEMA, "model": "jev-1.13.0"});
+        let log = serde_json::json!({"record": "step", "step": {
+            "at": 1, "source": "Agent", "message": "",
+            "call": {"id": "decision-j", "name": "openagents.microcoder.judge.v1",
+                "arguments": {"model": "jev-1.13.0"}, "output": "{}", "extra": extra}
+        }});
+        let read = atif(&log, 4096).unwrap();
+        assert_eq!(read.kind, "decision_call");
+        let document = serde_json::json!({"record": "step", "step": {
+            "step_id": 2, "source": "agent", "message": "Checking.",
+            "tool_calls": [{"tool_call_id": "decision-j",
+                "function_name": "openagents.microcoder.judge.v1",
+                "arguments": {"model": "jev-1.13.0"}, "extra": extra}]
+        }});
+        let read = atif(&document, 4096).unwrap();
+        assert_eq!(read.kind, "message");
+        assert!(!read.text.contains("Tool:"), "{}", read.text);
+        let tool = serde_json::json!({"record": "step", "step": {
+            "at": 1, "source": "Agent", "message": "",
+            "call": {"id": "c", "name": "shell", "arguments": {"cmd": "ls"}, "output": "a"}
+        }});
+        assert_eq!(atif(&tool, 4096).unwrap().kind, "tool_call");
+    }
 
     #[test]
     fn local_full_projection_preserves_unicode_and_tool_text_beyond_preview() {

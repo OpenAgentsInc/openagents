@@ -255,6 +255,28 @@ impl Book {
             .is_some_and(|reading| reading.near_limit(threshold_percent))
     }
 
+    /// Whether a probe reading taken after `refusal` shows the login back
+    /// under its allowance, so the refusal no longer holds (#10073): the
+    /// refusal is a usage limit, the reading was observed after it, the
+    /// provider did not say its limit is reached, and no window is at
+    /// [`AT_LIMIT`]. Codex resets a week's allowance on its own schedule,
+    /// sometimes before the reset its refusal named; the reading is the
+    /// newer evidence. A rate limit is per minute and no window shows it,
+    /// so a reading never lifts one.
+    #[must_use]
+    pub fn lifts(&self, refusal: &capacity::Refusal) -> bool {
+        refusal.kind == capacity::Kind::UsageLimit
+            && self
+                .entry(refusal.provider)
+                .and_then(|entry| entry.reading.as_ref())
+                .is_some_and(|reading| {
+                    reading.observed_at > refusal.observed_at
+                        && !reading.windows.is_empty()
+                        && !reading.limit_reached
+                        && reading.limiting_reset().is_none()
+                })
+    }
+
     /// Whether `provider` may be probed at `now`.
     #[must_use]
     pub fn due(&self, provider: Provider, now: u64) -> bool {

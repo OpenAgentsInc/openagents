@@ -1060,9 +1060,16 @@ pub fn handoff_summary(text: &str) -> Option<String> {
     Some(format!("Continued from the OpenAgents app: {title}"))
 }
 
+/// How many turns before the request a handoff carries as context.
+pub const HANDOFF_CONTEXT_TURNS: usize = 6;
+
 /// The context a computer's Coder starts with when the person runs Coder
-/// from a conversation: its title as the first line (the task's title), then
-/// the conversation so far, newest turns kept, within `limit` bytes.
+/// from a conversation (#10073): `title` as the first line (the task's
+/// title), then the message that asked for the work, the newest user turn,
+/// whole or as much of it as fits, then at most
+/// [`HANDOFF_CONTEXT_TURNS`] turns before it, newest kept, as context, all
+/// within `limit` bytes. Replies after the request, such as the offer that
+/// started Coder, are not carried: they are ours, not the person's ask.
 pub fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
     let title: String = title
         .lines()
@@ -1071,32 +1078,60 @@ pub fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
         .chars()
         .take(80)
         .collect();
-    let head = format!("{title}\n\n{HANDOFF_MARK} The conversation so far:\n\n");
+    let asked = turns.iter().rposition(|turn| turn.role == Role::User);
+    let head = format!("{title}\n\n{HANDOFF_MARK}");
+    let Some(asked) = asked else {
+        return clip(&head, limit);
+    };
+    let request = format!("{head} The request:\n\n{}", turns[asked].text.trim());
+    if request.len() >= limit {
+        return clip(&request, limit);
+    }
+    let lead = "\n\nEarlier in the conversation, for context:\n\n";
+    let mut bytes = request.len() + lead.len();
     let mut parts: Vec<String> = vec![];
-    let mut bytes = head.len();
-    for turn in turns.iter().rev() {
+    for turn in turns[..asked].iter().rev().take(HANDOFF_CONTEXT_TURNS) {
         let who = match turn.role {
             Role::User => "User",
             Role::Assistant => "Coder",
         };
         let part = format!("{who}: {}\n\n", turn.text.trim());
         if bytes + part.len() > limit {
-            if parts.is_empty() {
-                // The newest message alone is too long: keep its start.
-                let room = limit.saturating_sub(bytes);
-                let mut end = room.min(part.len());
-                while !part.is_char_boundary(end) {
-                    end -= 1;
-                }
-                parts.push(part[..end].to_owned());
-            }
             break;
         }
         bytes += part.len();
         parts.push(part);
     }
+    if parts.is_empty() {
+        return request;
+    }
     parts.reverse();
-    format!("{head}{}", parts.concat()).trim_end().to_owned()
+    format!("{request}{lead}{}", parts.concat())
+        .trim_end()
+        .to_owned()
+}
+
+/// The handoff's title: the first line of the message that asked for the
+/// work (the newest user turn), at most 80 characters, or `fallback`, the
+/// chat's title, when there is none (#10073).
+pub fn handoff_title(fallback: &str, turns: &[Turn]) -> String {
+    turns
+        .iter()
+        .rev()
+        .find(|turn| turn.role == Role::User)
+        .and_then(|turn| turn.text.lines().find(|line| !line.trim().is_empty()))
+        .map(|line| line.trim().chars().take(80).collect::<String>())
+        .filter(|line| !line.is_empty())
+        .unwrap_or_else(|| fallback.to_owned())
+}
+
+/// `text`'s first `limit` bytes, cut at a character boundary.
+fn clip(text: &str, limit: usize) -> String {
+    let mut end = limit.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_owned()
 }
 
 /// `job`, then a ring (`wake`), so its answer shows at once.
@@ -1282,15 +1317,64 @@ mod tests {
         ];
         let text = handoff("Tests", &turns, 300);
         assert!(
-            text.starts_with("Tests\n\nContinue this conversation"),
+            text.starts_with(
+                "Tests\n\nContinue this conversation from the OpenAgents app on this computer. \
+                 The request:\n\nRun the tests in my repo."
+            ),
             "{text}"
         );
-        assert!(text.contains("Coder: Sure."), "{text}");
-        assert!(text.ends_with("User: Run the tests in my repo."), "{text}");
+        assert!(text.ends_with("Coder: Sure."), "{text}");
         assert!(!text.contains("xxx"), "{text}");
         assert!(text.len() <= 300);
         let alone = handoff("Tests", &turns[..1], 200);
-        assert!(alone.len() <= 200 && alone.contains("User: xx"), "{alone}");
+        assert!(
+            alone.len() <= 200 && alone.contains("request:\n\nxx"),
+            "{alone}"
+        );
+    }
+
+    /// The owner's chat on 2026-09-30 (#10073): Coder must get the message
+    /// that asked for the work, titled by it, not the chat's first message,
+    /// and not the reply after it.
+    #[test]
+    fn the_handoff_leads_with_the_message_that_asked_for_the_work() {
+        let mut turns = vec![
+            Turn::user("who are you"),
+            Turn::assistant("We are OpenAgents.", None),
+            Turn::user("who can you delegate to"),
+            Turn::assistant("We delegate to Coder, our coding agent.", None),
+            Turn::user("do a test delegation now"),
+            Turn::assistant("We'd test Project map with its published test set.", None),
+        ];
+        let title = handoff_title("who are you", &turns);
+        assert_eq!(title, "do a test delegation now");
+        let text = handoff(&title, &turns, 16 * 1024);
+        assert!(
+            text.starts_with("do a test delegation now\n\n"),
+            "the request titles the task: {text}"
+        );
+        let request = text
+            .find("The request:\n\ndo a test delegation now")
+            .unwrap();
+        let context = text.find("User: who are you").unwrap();
+        assert!(request < context, "the request comes before the context");
+        assert!(
+            !text.contains("Project map"),
+            "the reply after it is not carried"
+        );
+        assert_eq!(
+            handoff_summary(&text).as_deref(),
+            Some("Continued from the OpenAgents app: do a test delegation now")
+        );
+        // Context is bounded to the turns just before the request.
+        turns.splice(0..0, (0..20).map(|n| Turn::user(format!("old {n}"))));
+        let text = handoff(&title, &turns, 16 * 1024);
+        assert!(
+            text.contains("old 18") && !text.contains("old 17"),
+            "{text}"
+        );
+        // No user turn: the chat's title.
+        assert_eq!(handoff_title("Chat", &[]), "Chat");
     }
 
     /// A handoff prompt shows as one line on the phone, wherever it

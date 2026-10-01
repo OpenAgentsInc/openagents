@@ -177,9 +177,15 @@ pub fn checkout(dir: &Path) -> Result<Checkout, String> {
             top.display()
         )
     })?;
-    let name: String = top
+    // A linked worktree (`git worktree add`, such as a host's task
+    // worktree) is named by the repository it belongs to, never by its own
+    // folder (#10073): the main checkout's folder, or a bare repository's
+    // name without `.git`.
+    let folder = repository_folder(&top).unwrap_or_else(|| top.clone());
+    let name: String = folder
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
+        .map(|name| name.strip_suffix(".git").map(str::to_owned).unwrap_or(name))
         .unwrap_or_else(|| "project".into())
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
@@ -195,6 +201,29 @@ pub fn checkout(dir: &Path) -> Result<Checkout, String> {
         name,
         head: head.trim().to_owned(),
     })
+}
+
+/// The folder of the repository a linked worktree at `top` belongs to:
+/// the parent of its common Git directory when that is a checkout's `.git`,
+/// or the common directory itself for a bare repository. `None` for a main
+/// checkout, or when Git does not say.
+fn repository_folder(top: &Path) -> Option<PathBuf> {
+    let common = git_out(
+        top,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .ok()?;
+    let common = PathBuf::from(common.trim());
+    let common = common.canonicalize().unwrap_or(common);
+    let own = top.join(".git");
+    if own.is_dir() && own.canonicalize().ok().as_deref() == Some(common.as_path()) {
+        return None;
+    }
+    if common.file_name().is_some_and(|name| name == ".git") {
+        common.parent().map(Path::to_path_buf)
+    } else {
+        Some(common)
+    }
 }
 
 /// How one turn started.
@@ -706,7 +735,7 @@ impl Local {
             provider: order[0].provider.as_str().into(),
             model: order[0].model.clone(),
             reason: started_reason(&runner),
-            fallbacks: order[1..].iter().map(ToString::to_string).collect(),
+            fallbacks: shown_fallbacks(&order[1..], &runner),
             at: (self.now)(),
             runner: Some(runner),
         });
@@ -1028,6 +1057,25 @@ fn started_reason(runner: &Runner) -> String {
         let why: Vec<String> = passed.iter().map(Passed::text).collect();
         format!("{}; using {name}.", why.join("; "))
     }
+}
+
+/// The fallbacks a start card names: the order after the first route,
+/// less each provider the start passed over because it is not signed in
+/// or refused for a limit, which the reason already says (#10073). A card
+/// never says "Falls back to Codex" beside "Codex reached its usage limit".
+fn shown_fallbacks(rest: &[Route], runner: &Runner) -> Vec<String> {
+    let held: Vec<&str> = match runner {
+        Runner::Runs { passed, .. } => passed
+            .iter()
+            .filter(|p| !matches!(p.why, PassedOver::NearLimit { .. }))
+            .map(|p| p.provider.as_str())
+            .collect(),
+        _ => Vec::new(),
+    };
+    rest.iter()
+        .filter(|route| !held.contains(&route.provider.as_str()))
+        .map(ToString::to_string)
+        .collect()
 }
 
 /// A 64-character hex identity for `seed`.
@@ -1487,6 +1535,30 @@ mod tests {
         assert_eq!(found.head.len(), 40);
     }
 
+    /// A project folder that is a linked worktree of a repository, such as
+    /// a host's `openagents-host-tasks` worktree, is named by the
+    /// repository, so no chat is grouped under the worktree's folder
+    /// (#10073).
+    #[test]
+    fn a_linked_worktree_is_named_by_its_repository() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let linked = dir.path().join("proj-host-tasks");
+        assert!(
+            git()
+                .arg("-C")
+                .arg(&top)
+                .args(["worktree", "add", "--detach", "-q"])
+                .arg(&linked)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let found = checkout(&linked).unwrap();
+        assert_eq!(found.top, linked.canonicalize().unwrap());
+        assert_eq!(found.name, "proj");
+    }
+
     fn both(_: Provider) -> Connection {
         Connection::Connected
     }
@@ -1698,6 +1770,32 @@ mod tests {
             "{why}"
         );
         assert!(why.ends_with("; using Claude Code."), "{why}");
+        // The card does not also say it falls back to Codex (#10073).
+        assert!(
+            shown_fallbacks(&order[1..], &runner).is_empty(),
+            "{:?}",
+            shown_fallbacks(&order[1..], &runner)
+        );
+        // A fresher probe reading under the limit lifts the refusal: Codex
+        // runs again, as the engine reading says.
+        let reading = serde_json::json!({
+            "schema": "openagents.coder.provider-usage.v1",
+            "entries": [{
+                "provider": "codex", "attempted_at": now + 1, "next_probe_at": now + 61,
+                "reading": {"provider": "codex", "observed_at": now + 1,
+                    "windows": [{"window": "primary", "used_fraction": 0.08}]}
+            }]
+        });
+        let usage_file = run.store().join("usage.json");
+        std::fs::write(&usage_file, reading.to_string()).unwrap();
+        let (order, runner) = run.choose(&policy).unwrap();
+        assert_eq!(order[0].provider, Provider::Codex);
+        assert_eq!(
+            started_reason(&runner),
+            "Codex is signed in and has capacity."
+        );
+        assert_eq!(shown_fallbacks(&order[1..], &runner).len(), 1);
+        std::fs::remove_file(&usage_file).unwrap();
 
         let run = local(dir.path(), only_claude);
         let fresh = tempfile::tempdir().unwrap();

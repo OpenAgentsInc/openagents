@@ -483,6 +483,36 @@ async fn a_project_change_is_recorded_and_asks_the_host_to_start_again() {
         panic!("projects")
     };
     assert_eq!(projects.len(), 1);
+    // A linked worktree of the checkout, such as a host's task worktree,
+    // is labelled by its repository, never by its own folder (#10073).
+    let linked = host.temp.path().join("site-host-tasks");
+    git(&[
+        "worktree",
+        "add",
+        "--detach",
+        "--quiet",
+        linked.to_str().unwrap(),
+    ]);
+    let Reply::Projects { projects } = call(
+        &host.socket,
+        Op::ProjectAdd {
+            path: linked.display().to_string(),
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("projects")
+    };
+    let labels: Vec<&str> = projects.iter().map(|p| p.label.as_str()).collect();
+    assert_eq!(labels.len(), 2, "{labels:?}");
+    assert!(
+        labels.contains(&"site") && labels.contains(&"site-2"),
+        "{labels:?}"
+    );
+    assert!(
+        !labels.iter().any(|label| label.contains("host-tasks")),
+        "{labels:?}"
+    );
     tokio::time::timeout(Duration::from_secs(2), host.running.restart_requested())
         .await
         .expect("the host asks to start again");

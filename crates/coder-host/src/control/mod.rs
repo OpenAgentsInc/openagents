@@ -660,16 +660,36 @@ fn picked_folder(host_root: &Path, path: &Path) -> Option<PathBuf> {
     if !under(&projects) && !std::fs::canonicalize(&projects).is_ok_and(|p| under(&p)) {
         return None;
     }
+    let common = common_dir(path)?;
+    (common.file_name()? == ".git")
+        .then(|| common.parent().map(Path::to_path_buf))
+        .flatten()
+}
+
+/// The common Git directory of the linked worktree at `path` (its `.git`
+/// is a `gitdir:` file), or `None` for any other folder.
+fn common_dir(path: &Path) -> Option<PathBuf> {
     let link = std::fs::read_to_string(path.join(".git")).ok()?;
     let gitdir = path.join(link.strip_prefix("gitdir:")?.trim());
     let common = match std::fs::read_to_string(gitdir.join("commondir")) {
         Ok(common) => gitdir.join(common.trim()),
         Err(_) => gitdir.parent()?.parent()?.to_path_buf(),
     };
-    let common = std::fs::canonicalize(common).ok()?;
-    (common.file_name()? == ".git")
-        .then(|| common.parent().map(Path::to_path_buf))
-        .flatten()
+    std::fs::canonicalize(common).ok()
+}
+
+/// The folder that names a project: for a linked worktree, the repository
+/// it belongs to (the main checkout's folder, or a bare repository's
+/// without `.git`), so a task worktree such as `openagents-host-tasks` is
+/// labelled `openagents` (#10073); any other folder is itself.
+fn naming_folder(path: &Path) -> PathBuf {
+    match common_dir(path) {
+        Some(common) if common.file_name().is_some_and(|name| name == ".git") => common
+            .parent()
+            .map_or_else(|| path.to_path_buf(), Path::to_path_buf),
+        Some(common) => common,
+        None => path.to_path_buf(),
+    }
 }
 
 /// Change the recorded projects, then ask the host to start again, since
@@ -726,8 +746,9 @@ fn git() -> std::process::Command {
     command
 }
 
-/// Admit a Git checkout as a project, labelled by its directory name.
-/// Adding one already admitted is a no-op.
+/// Admit a Git checkout as a project, labelled by its directory name, or,
+/// for a linked worktree, its repository's ([`naming_folder`]). Adding one
+/// already admitted is a no-op.
 ///
 /// Coder writes only in a worktree whose Git directory is outside it (the
 /// auto-start policy refuses any other), so a folder that holds its own
@@ -742,9 +763,10 @@ fn add_project(settings: &mut ServeSettings, host_root: &Path, path: &str) -> Re
     if !chosen.is_dir() || !chosen.join(".git").exists() {
         return Err(Error::Config("that folder is not a Git checkout".into()));
     }
-    let base: String = chosen
+    let base: String = naming_folder(&chosen)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
+        .map(|name| name.strip_suffix(".git").map(str::to_owned).unwrap_or(name))
         .unwrap_or_else(|| "project".into())
         .chars()
         .filter(|c| !c.is_control() && *c != '/')

@@ -2162,11 +2162,13 @@ impl CoderTab {
             self.notice = Some(format!("{label} lists no workspace for Coder yet."));
             return;
         };
-        let title = self
+        let chat_title = self
             .basic
             .get(&id)
             .map_or_else(|| "Chat".to_owned(), |summary| summary.title.clone());
-        let prompt = openagents_chat::delegation::prompt(&title, self.basic.turns(&id));
+        // Titled by the message that asked for the work (#10073).
+        let title = openagents_chat::delegation::title(&chat_title, self.basic.turns(&id));
+        let prompt = openagents_chat::delegation::prompt(&chat_title, self.basic.turns(&id));
         // The draft's images go to this computer with the task; the hosted
         // conversation never carries them. A refusal keeps the draft.
         let key = format!("talk:{id}");

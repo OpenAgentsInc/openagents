@@ -703,13 +703,16 @@ impl Panel {
         if snapshot.coder.is_some() {
             return;
         }
-        let title = self
+        let chat_title = self
             .session
             .summaries
             .iter()
             .find(|summary| summary.id == chat)
             .map_or_else(|| "Coder task".to_owned(), |summary| summary.title.clone());
-        let prompt = openagents_chat::delegation::prompt(&title, &snapshot.turns);
+        // The task is titled by the message that asked for the work, not
+        // the chat's first message (#10073).
+        let title = openagents_chat::delegation::title(&chat_title, &snapshot.turns);
+        let prompt = openagents_chat::delegation::prompt(&chat_title, &snapshot.turns);
         // The draft's images go to this computer's run, never to the
         // hosted conversation; a refusal keeps the draft.
         let images = match self.session.images.uploads(chat) {

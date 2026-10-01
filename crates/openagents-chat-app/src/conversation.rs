@@ -1100,6 +1100,9 @@ fn entries(readable: &coder_history::Readable) -> Vec<Entry> {
                 | "task_complete"
                 | "summary"
                 | "compacted"
+                // A decision-model call's record stays in the trajectory,
+                // never the transcript (#10073).
+                | "decision_call"
         )
     {
         return vec![];
@@ -1654,6 +1657,23 @@ mod tests {
             text_truncated: false,
             unknown: false,
         }
+    }
+
+    /// A decision-model call's record (a Jev judgment the loop asked)
+    /// shows no row on the phone or the desktop; a real tool call does
+    /// (#10073).
+    #[test]
+    fn a_decision_call_shows_no_row() {
+        let mut judged = readable(
+            "decision_call",
+            None,
+            "{\"model\":\"jev-1.13.0\",\"state\":{}}",
+        );
+        judged.tool_name = Some("openagents.microcoder.judge.v1".into());
+        assert!(entries(&judged).is_empty());
+        let mut tool = readable("tool_call", None, "ls");
+        tool.tool_name = Some("shell".into());
+        assert_eq!(entries(&tool).len(), 1);
     }
 
     /// A task transcript's delegate note becomes a row that opens to the

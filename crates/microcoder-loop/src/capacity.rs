@@ -551,7 +551,9 @@ impl Default for Book {
 }
 
 impl Book {
-    /// The book in `dir`. Missing, unreadable, or malformed is empty.
+    /// The book in `dir`, less each refusal a later usage reading in the
+    /// same directory lifts ([`Book::lifted_by`]). Missing, unreadable, or
+    /// malformed is empty.
     #[must_use]
     pub fn load(dir: &Path) -> Book {
         std::fs::read(dir.join(FILE))
@@ -559,6 +561,18 @@ impl Book {
             .and_then(|bytes| serde_json::from_slice::<Book>(&bytes).ok())
             .filter(|book| book.schema == SCHEMA)
             .unwrap_or_default()
+            .lifted_by(&crate::usage::Book::load(dir))
+    }
+
+    /// The book without the refusals `usage` lifts
+    /// ([`crate::usage::Book::lifts`]): a usage limit that a probe reading
+    /// taken after it shows is over. Every reader loads the book this way,
+    /// so routing, the start card's reason, and the fallback list agree
+    /// with the engine readings (#10073).
+    #[must_use]
+    pub fn lifted_by(mut self, usage: &crate::usage::Book) -> Book {
+        self.refusals.retain(|refusal| !usage.lifts(refusal));
+        self
     }
 
     /// The refusal that keeps `provider` from work at `now`, if one holds.
@@ -818,6 +832,73 @@ pub fn utc(seconds: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The owner's Mac on 2026-09-30 (#10073): Codex refused on 09-28 with
+    /// a week's limit until 10-03, and the host's probe two days later read
+    /// its window at 8% with a new reset. The later reading lifts the
+    /// refusal for every reader; a reading at the limit, one older than
+    /// the refusal, or a rate limit does not.
+    #[test]
+    fn a_later_reading_under_the_limit_lifts_a_usage_refusal() {
+        use crate::usage::{self, Entry, Reading, Window, WindowName};
+        let dir = tempfile::tempdir().unwrap();
+        let refused = Refusal::new(
+            Provider::Codex,
+            Kind::UsageLimit,
+            1_790_574_244,
+            Some(1_791_050_823),
+        );
+        record(dir.path(), refused.clone()).unwrap();
+        let now = 1_790_819_309;
+        assert!(!Book::load(dir.path()).has_capacity(Provider::Codex, now));
+        let reading = |at: u64, used: f64| usage::Book {
+            schema: usage::SCHEMA.into(),
+            entries: vec![Entry {
+                provider: Provider::Codex,
+                attempted_at: at,
+                next_probe_at: at + 60,
+                reading: Some(Reading {
+                    provider: Provider::Codex,
+                    observed_at: at,
+                    windows: vec![Window {
+                        window: WindowName::Primary,
+                        used_fraction: used,
+                        resets_at: Some(1_791_337_387),
+                        length_seconds: Some(604_800),
+                    }],
+                    limit_reached: false,
+                    plan: Some("pro".into()),
+                }),
+                failure: None,
+            }],
+        };
+        let write = |book: &usage::Book| {
+            std::fs::write(
+                dir.path().join(usage::FILE),
+                serde_json::to_vec(book).unwrap(),
+            )
+            .unwrap();
+        };
+        write(&reading(now, 0.08));
+        assert!(Book::load(dir.path()).has_capacity(Provider::Codex, now));
+        write(&reading(now, 0.97));
+        assert!(!Book::load(dir.path()).has_capacity(Provider::Codex, now));
+        write(&reading(1_790_574_000, 0.08));
+        assert!(!Book::load(dir.path()).has_capacity(Provider::Codex, now));
+        let mut rate = Book::default();
+        rate.refusals
+            .push(Refusal::new(Provider::Codex, Kind::RateLimit, 1_000, None));
+        let fresh = reading(2_000, 0.08);
+        assert!(!rate.lifted_by(&fresh).has_capacity(Provider::Codex, 1_500));
+        let mut usage_limit = Book::default();
+        usage_limit.refusals.push(refused);
+        assert!(
+            usage_limit
+                .lifted_by(&reading(now, 0.08))
+                .refusals
+                .is_empty()
+        );
+    }
 
     const BODY: &str = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1791050823,"eligible_promo":null,"limit_window_minutes":10080,"resets_in_seconds":478613}}"#;
 
