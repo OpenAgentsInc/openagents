@@ -258,6 +258,8 @@
             pkgs.gradle
             pkgs.cargo-ndk
             pkgs.watchexec
+            # `protoc`, for the wallet's Spark crates (prost-build).
+            pkgs.protobuf
           ];
 
           ANDROID_HOME = androidSdkRoot;
