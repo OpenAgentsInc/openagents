@@ -4483,7 +4483,14 @@ mod saved_fixtures {
         let words = openagents_desktop::screens::words(&app.view().view().root);
         assert!(words.iter().any(|word| word.contains("Scratch Codex")));
         assert!(words.iter().any(|word| word.contains("Claude Code")));
-        assert!(words.iter().any(|word| word.contains("2026-09-30")));
+        // Rows show the session's timestamp, which follows the fixture
+        // files' write time; the calendar date depends on when this runs.
+        assert!(
+            words
+                .iter()
+                .any(|word| word.starts_with("Codex · Scratch Codex\n20") && word.ends_with('Z')),
+            "{words:?}"
+        );
         let hits = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0)
             .1
             .hits;
