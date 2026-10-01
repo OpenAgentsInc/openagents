@@ -33,17 +33,30 @@ pub fn title(chat_title: &str, turns: &[Turn]) -> String {
 ///
 /// Precedence when one reply carries several things (#10073): an explicit
 /// [`Offer::RunCoder`](crate::router::Offer::RunCoder) offers Coder; else a
-/// typed offer or card for another action (a Gym test, a result, a deck, a
-/// screen, a command) is what the router chose, and the reply does not
+/// typed offer or card for another action (a Gym test, a result, a deck,
+/// a screen other than Computers, a command) is what the router chose, and
+/// the reply does not
 /// also offer Coder, even when the worker judged the thread's lane a
 /// computer's; else the computer lane offers it. So one message never
 /// yields both a Gym offer and a Coder start.
 pub fn offered(meta: Option<&crate::router::Meta>, computer_lane: bool) -> bool {
-    use crate::router::Offer;
+    use crate::router::{Offer, Screen};
     if meta.is_some_and(|meta| meta.offers.contains(&Offer::RunCoder)) {
         return true;
     }
-    let other = meta.is_some_and(|meta| !meta.offers.is_empty() || !meta.cards.is_empty());
+    // Opening Computers is the dispatch's own "Connect a computer" offer,
+    // part of offering Coder, not another action.
+    let other = meta.is_some_and(|meta| {
+        !meta.cards.is_empty()
+            || meta.offers.iter().any(|offer| {
+                !matches!(
+                    offer,
+                    Offer::OpenScreen {
+                        screen: Screen::Computers
+                    }
+                )
+            })
+    });
     computer_lane && !other
 }
 
@@ -140,6 +153,15 @@ mod tests {
             ..Meta::default()
         };
         assert!(offered(Some(&both), false));
+        // With no computer, the dispatch offers Connect a computer: still
+        // the Coder offer on a computer lane.
+        let connect = Meta {
+            offers: vec![Offer::OpenScreen {
+                screen: crate::router::Screen::Computers,
+            }],
+            ..Meta::default()
+        };
+        assert!(offered(Some(&connect), true));
         assert!(offered(Some(&Meta::default()), true));
         assert!(offered(None, true));
         assert!(!offered(None, false));

@@ -1562,7 +1562,7 @@ rows and near misses.
 When one reply carries more than one thing, the shared chat
 (`openagents_chat::delegation::offered`) decides: an explicit `run_coder`
 offer offers Coder; else another typed action (a Gym card or
-`start_eval`, a deck, a screen, a command) is what the router chose, and
+`start_eval`, a deck, a screen other than Computers, a command) is what the router chose, and
 the reply does not also offer Coder, whatever the `lane` reading; else a
 computer `lane` offers it. The Coder run starts with the message that asked
 for the work as its title and the start of its prompt, then bounded
