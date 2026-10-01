@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "44",
+        title: "Shipped from the phone",
+        what_to_test: "Open Account, then Changelog, and check build 44 is first. Start a Coder run from the phone: its card should show how long Coder has worked and, when it finishes, how the run ended. With a computer connected, ask which coding agents are connected: the reply should name your computer's agents. Use chat and run a plugin test without usage limits.",
+        items: &[
+            Item {
+                title: "Shipped from the phone",
+                detail: "Coder made and uploaded this build from the phone.",
+            },
+            Item {
+                title: "Coder's time and outcome",
+                detail: "The Coder card now shows how long Coder has worked and how the run ended.",
+            },
+            Item {
+                title: "Your computer's coding agents",
+                detail: "Asking what coding agents are connected names your computer's agents.",
+            },
+            Item {
+                title: "No usage limits",
+                detail: "There are no usage limits.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "43",
         title: "Coder starts at once",
         what_to_test: "With a computer paired and its desktop app set to start Coder at once (the default), ask the chat for a small coding change: Coder should start on the computer without a Run Coder tap, and the chat should show where it runs with a Stop button. Open that Coder chat while it works: each step should read as a short line, like \"Read README.md\", never as raw code. Ask \"What is a capability claim?\": the answer should come from our essays.",
