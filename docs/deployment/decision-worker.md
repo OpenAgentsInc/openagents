@@ -476,3 +476,35 @@ https://ai-gateway.vercel.sh answered` lines (192 to 484 ms at the worker)
 and no other door. The live tests now accept the admitted Jev as the
 answering door names it (`typesafe-ai/jev` at the gateway), as a
 repository run's judge does (#10107).
+
+Release `a3de5c8ff8` (2026-10-01,
+[#10121](https://github.com/OpenAgentsInc/openagents/issues/10121), "no
+usage limit; record every job") replaced it: built with `cargo zigbuild` as
+above, installed as `/opt/decision-worker/releases/a3de5c8ff8` beside the
+earlier releases (rollback: move `current` back to `aab51b62af` and
+restart), with the deployed config's `open.quota` holding only
+`max_request_bytes` and `file`. The environment file was not changed.
+`coder-worker.service`, `coder-worker-chat.service`, and
+`/opt/coder-worker` were not touched. The journal:
+
+```text
+decision-worker: open lane under $TYPESAFE_API_KEY, models jev-1.13.0,jev-latest, no usage limit
+decision-worker: open lane doors https://ai-gateway.vercel.sh → https://openrouter.ai → https://api.typesafe.ai
+decision-worker: usage log /var/lib/decision-worker/usage
+```
+
+Live proof at 21:37 UTC, from the development Mac with no TypeSafe key, in
+a temporary `HOME` (one decision key, five jobs at a time through
+`jev_hosted::resolve`): 75 of 75 jobs answered in 10.6 s, past the old 60
+per key per minute, and the journal logged 75 `door
+https://ai-gateway.vercel.sh answered` lines and no refusal.
+`decision-worker usage --by key` on the VM:
+
+```text
+key                                                               jobs  answered  refused  failed  keys  tokens_in  cost_usd  total_p50_ms
+401eca516ec6182fb7f3b8753df8e84bcc80468684de4bd6404693285cb0164d    75        75        0       0     1      21580  0.000906           202
+```
+
+Each line names the lane (`open`), the request and attempt, the model
+asked (`jev-1.13.0`) and served (`typesafe-ai/jev`), the door, the door's
+and the job's time, tokens, and cost (0.000012 USD a job).

@@ -322,3 +322,32 @@ journal list six catalog plugins, and the agent's digest is now
 hosted runner. `eval-runner release` then released the three new plugins
 and their test sets; the runs and results are in
 [the measurement](../extensions/measurements/2026-10-01-example-plugins.md).
+
+**`a3de5c8ff8` (2026-10-01): no usage limit, and the usage log**
+([#10121](https://github.com/OpenAgentsInc/openagents/issues/10121)). The
+environment file was backed up
+(`eval-runner.env.bak-10121-20261001T213105Z`) and its
+`EVAL_RUNNER_RUNS_PER_DAY=3` and `EVAL_RUNNER_TURNS_PER_DAY=2000` lines
+removed; `install.sh a3de5c8ff8` built and installed at 21:32 UTC.
+`eval-runner check` and the journal say `limits   no usage limit; 2 suites
+and 4 runs at once` and `usage   ~/.openagents/eval-runner/usage`. The
+agent's digest is now `sha256:c3213ec3…`, so results from before it can't
+be checked on the hosted runner.
+
+Live proof the same minute: one fresh trainer key
+(`e8fa9b8e…`, `crates/eval-runner/examples/trainer.rs` on the host) sent
+four runs of the Dependency check test set
+(`a6b800a6…`, `--runs 1`) between 21:33 and 21:35 UTC; all four ran and
+completed (journal: four `running … for e8fa9b8e6489` and four
+`finished` lines, no `refused`), where the old count refused the fourth.
+`eval-runner usage --by key` read them back:
+
+```text
+key                                                               jobs  completed  failed  refused  keys  turns  total_p50_ms
+e8fa9b8e6489241ded98ea5b4d71510435860dbeb222264c2268cf323b8ec83d     4          4       0        0     1     48         24084
+```
+
+Each run scored 2 of 6 with the plugin and 2 of 6 without
+(`inconclusive`), where the measurement at `1437ede584` scored 6 of 6 with
+it; the runs were the proof of admission and that difference was not
+investigated here.
