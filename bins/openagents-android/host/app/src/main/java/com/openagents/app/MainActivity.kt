@@ -85,7 +85,11 @@ class MainActivity : ComponentActivity() {
     /** Each attached image's card by resource, so a refresh keeps it. */
     private val imageViews = HashMap<String, View>()
 
-    /** **Attach image**: the system photo picker; Rust decodes the photo. */
+    /**
+     * **Attach image**: the system photo picker; Rust decodes the photo. It
+     * opens only while the chat takes images; the phone is text only since
+     * #10093 ([PhoneAttachments]).
+     */
     private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) Thread {
             val bytes = runCatching {
@@ -281,8 +285,9 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) {
             val taps = intent.getStringExtra("coder_tap")?.split(",").orEmpty().filter { it.isNotEmpty() }
             launchTaps(taps, intent.getStringExtra("coder_send"), 0)
-            // `--es attach_image NAME` attaches NAME from the app's external
-            // files directory, as the photo picker would.
+            // `--es attach_image NAME` hands NAME from the app's external
+            // files directory to the draft, as the photo picker would
+            // (dropped while the chat is text only, #10093).
             intent.getStringExtra("attach_image")?.let { name ->
                 main.postDelayed({
                     val file = java.io.File(getExternalFilesDir(null), name)
@@ -680,7 +685,7 @@ class MainActivity : ComponentActivity() {
         // The chat's attach control asked for a photo.
         if (bridge.imagePicks != imagePicksShown) {
             imagePicksShown = bridge.imagePicks
-            pickImage.launch(androidx.activity.result.PickVisualMediaRequest(
+            if (bridge.attachmentsEnabled) pickImage.launch(androidx.activity.result.PickVisualMediaRequest(
                 ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
         // An offer under a chat reply opened another screen.

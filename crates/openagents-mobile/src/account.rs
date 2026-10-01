@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "42",
+        title: "Text only",
+        what_to_test: "On the Chat tab, in a new chat and in an open one, the message box should have no attach button above it. Copy a photo, then tap the message box twice: Paste should not be offered. Type a message and send it: it should send as before.",
+        items: &[Item {
+            title: "Text only",
+            detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app still takes images.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "41",
         title: "Plugins",
         what_to_test: "On the Chat tab's menu, the first chip should say Test a plugin; tap it and the reply should offer plugins to test, with cards that say plugin. In a new chat, ask \"Which plugins can I test?\": the reply should name all six, Project map, Code finder, Test reader, Explain this error, Release notes, and Dependency check. Ask \"Can you book me a flight to Tokyo next week?\": the reply should say there's no plugin for that yet, under NO PLUGIN FOR THAT YET with ADD A PLUGIN. With a computer paired, ask \"List my plugins\": the reply should show a card with Run, and tapping it should list the plugins on your computer.",

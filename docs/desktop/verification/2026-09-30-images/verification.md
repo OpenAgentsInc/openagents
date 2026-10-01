@@ -35,6 +35,11 @@ that carry words only (a running Coder task's chat, a computer's own thread),
 with the line "This message can't carry images. Remove them to send it;
 images go to Coder when it starts."
 
+On 2026-10-01 [#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)
+turned attachments off on the phone: its chat is text only, with no attach
+control or photo picker, behind `coder_tab::ATTACHMENTS_ENABLED`. The desktop
+behavior on this page is unchanged.
+
 ## Checks
 
 On macOS 26.4, M5 Max, Rust 1.97.1:

@@ -133,7 +133,8 @@ pub unsafe extern "C" fn openagents_mobile_call(
 
 /// Attach an image to the open chat's draft: `name` is its file name and
 /// `bytes` its encoded PNG or JPEG. Answers with the app packet; an empty
-/// result means the request failed.
+/// result means the request failed. While phone attachments are off
+/// (#10093) the image is dropped and the draft stays words only.
 ///
 /// # Safety
 /// As `openagents_mobile_call`: a live handle with exclusive access, and

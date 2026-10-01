@@ -2629,14 +2629,16 @@ fn saved_chat_cards_offer_the_shared_chat_menu() {
     assert_eq!(items(&list), ["Unpin chat", "Archive chat"]);
 }
 
-/// The attach control asks the host for a photo; an attached image shows
-/// as an `image:` surface card with its alternative text, a text-only send
-/// keeps the words and the image, and removing the image lets it send.
+/// With phone attachments turned back on (they are off since #10093): the
+/// attach control asks the host for a photo; an attached image shows as an
+/// `image:` surface card with its alternative text, a text-only send keeps
+/// the words and the image, and removing the image lets it send.
 #[test]
 fn attached_images_show_as_shared_image_nodes_and_are_not_dropped() {
     let hand = Hand::default();
     let mut fixture =
         Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.coder.set_attachments(true);
     fixture.list();
     let screen = fixture.tap("coder-back");
     assert!(node(&screen, "coder-attach").is_some());
@@ -3018,6 +3020,7 @@ fn run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost() {
     let pixels: Vec<u8> = (0..64u32 * 48 * 4).map(|i| (i % 251) as u8).collect();
     let image = openagents_chat_app::attachments::Image::pixels(64, 48, pixels).unwrap();
     let bytes = image.bytes.as_ref().clone();
+    fixture.coder.set_attachments(true);
     fixture.coder.attach_image("Settings.png", bytes.clone());
     let chat = fixture.render();
     assert_eq!(image_surfaces(&chat), 1);
@@ -3083,6 +3086,7 @@ fn one_send_with_words_and_a_screenshot_runs_coder_with_its_bytes() {
     let pixels: Vec<u8> = (0..48u32 * 32 * 4).map(|i| (i % 241) as u8).collect();
     let image = openagents_chat_app::attachments::Image::pixels(48, 32, pixels).unwrap();
     let bytes = image.bytes.as_ref().clone();
+    fixture.coder.set_attachments(true);
     fixture.coder.attach_image("Layout.png", bytes.clone());
     let chat = fixture.say("fix this layout bug");
     assert_eq!(hand.asked(), vec![vec!["fix this layout bug".to_owned()]]);
@@ -3153,4 +3157,94 @@ fn unsupported_and_oversized_images_are_refused_before_send() {
     drafts.add("talk:b", image).unwrap();
     assert!(drafts.uploads("talk:b").unwrap_err().contains("8 MiB"));
     assert_eq!(drafts.get("talk:b").len(), 1);
+}
+
+/// The phone is text only (#10093): the chat, new or open, has no attach
+/// control, Attach is never asked of the host, and an image the host hands
+/// it anyway (a paste, a drop, a share) is dropped with no notice.
+#[test]
+fn the_phone_chat_is_text_only_with_no_attach_control() {
+    const { assert!(!crate::coder_tab::ATTACHMENTS_ENABLED) };
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    assert!(!fixture.coder.attachments_enabled());
+    fixture.list();
+    let screen = fixture.tap("coder-back");
+    for key in ["coder-attach", "coder-attachments"] {
+        assert!(node(&screen, key).is_none(), "{key} on a new chat");
+    }
+    assert!(composer_of(&screen)["token"].is_string());
+    let png = openagents_chat_app::attachments::Image::pixels(3, 2, vec![200; 24]).unwrap();
+    fixture
+        .coder
+        .attach_image("Photo.png", png.bytes.as_ref().clone());
+    fixture
+        .coder
+        .attach_image("bad.png", b"not an image".to_vec());
+    let screen = fixture.render();
+    assert_eq!(image_surfaces(&screen), 0);
+    assert!(fixture.coder.take_go().is_none());
+    assert!(
+        !texts(&screen)
+            .iter()
+            .any(|text| text.contains("PNG or JPEG")),
+        "{:?}",
+        texts(&screen)
+    );
+    // An open conversation has none either.
+    let screen = fixture.say("Hello");
+    for key in ["coder-attach", "coder-attachments"] {
+        assert!(node(&screen, key).is_none(), "{key} in a conversation");
+    }
+    assert_eq!(hand.asked(), vec![vec!["Hello".to_owned()]]);
+}
+
+/// A draft that holds images when attachments are off, as one restored
+/// from before #10093, shows none and sends its words only: no images go
+/// with the message or with Run Coder, and no line about them shows.
+#[test]
+fn a_restored_draft_with_images_sends_its_words_only() {
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery::default()));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.list();
+    fixture.tap("coder-back");
+    fixture.coder.set_attachments(true);
+    let image = openagents_chat_app::attachments::Image::pixels(8, 8, vec![90; 256]).unwrap();
+    fixture
+        .coder
+        .attach_image("Layout.png", image.bytes.as_ref().clone());
+    assert_eq!(image_surfaces(&fixture.render()), 1);
+    fixture.coder.set_attachments(false);
+    let chat = fixture.render();
+    assert_eq!(image_surfaces(&chat), 0);
+    assert!(node(&chat, "coder-attach").is_none());
+    let chat = fixture.say("fix this layout bug");
+    assert_eq!(hand.asked(), vec![vec!["fix this layout bug".to_owned()]]);
+    assert_eq!(image_surfaces(&chat), 0);
+    let lines = [
+        openagents_chat_app::attachments::HELD_FOR_CODER,
+        openagents_chat_app::attachments::ONLY_TO_CODER,
+        openagents_chat_app::attachments::TEXT_ONLY_ROUTE,
+    ];
+    assert!(
+        !texts(&chat)
+            .iter()
+            .any(|text| lines.contains(&text.as_str()))
+    );
+    hand.judge(crate::basic_coder::Lane::Computer);
+    hand.say("That needs a computer.", true);
+    fixture.tap("coder-run");
+    assert!(fixture.coder.open_task().is_some());
+    let delivery = delivery.lock().unwrap();
+    assert_eq!(delivery.chunks, 0);
+    let [images] = delivery.created.as_slice() else {
+        panic!("one task")
+    };
+    assert!(images.is_empty(), "the task carries no images");
 }

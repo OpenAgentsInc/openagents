@@ -1292,6 +1292,13 @@ final class NativeComposerTextView: UITextView {
         super.deleteBackward()
     }
 
+    /// The composer takes text only: Paste is offered only for text, so an
+    /// image alone on the pasteboard never reaches a draft (#10093).
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) && !UIPasteboard.general.hasStrings { return false }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
     @objc private func commandReturn() { onCommandReturn?() }
     @objc private func undoDraft() { undo.undo() }
     @objc private func redoDraft() { undo.redo() }

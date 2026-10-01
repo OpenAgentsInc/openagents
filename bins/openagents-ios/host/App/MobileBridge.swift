@@ -108,6 +108,9 @@ struct AppPacket: Decodable {
     let chat_streaming: Bool?
     /// Show another tab's screen once: `computers` is Account > Computers.
     let coder_go: String?
+    /// The chat takes images. Off since #10093: the phone is text only, so
+    /// the photo picker never mounts and nothing is sent to attach.
+    let attachments: Bool?
     /// Connect a computer, while it shows.
     let connect: ConnectScreen?
     let tailnet: NativeView?
@@ -343,8 +346,12 @@ final class MobileBridge: ObservableObject {
     /// The Coder tab's last request to open another screen (`wallet`,
     /// `keys`, `playtest`, or `report`), numbered so a repeat still shows.
     @Published private(set) var screenRequest = ScreenRequest(screen: "", serial: 0)
-    /// Counts the Chat tab's requests for the photo picker (`pick_image`).
+    /// Counts the Chat tab's requests for the photo picker (`pick_image`),
+    /// only while the packet says the chat takes images.
     @Published private(set) var imagePickRequested = 0
+    /// The chat takes images (`attachments` in the packet; off since
+    /// #10093, when the phone became text only).
+    var attachmentsEnabled: Bool { packet?.attachments == true }
     /// Decoded images for the chat's `image:` surfaces, by resource.
     private var images: [String: UIImage] = [:]
     private let queue = DispatchQueue(label: "com.openagents.app.rust")
@@ -746,7 +753,7 @@ final class MobileBridge: ObservableObject {
             if let share = packet.gymPacket?.share { self.gymShare = share }
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
-            case "pick_image": self.imagePickRequested += 1
+            case "pick_image" where packet.attachments == true: self.imagePickRequested += 1
             case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym", "chat"].contains(screen):
                 self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
             default: break
@@ -764,8 +771,9 @@ final class MobileBridge: ObservableObject {
 
     /// Attach a photo's encoded bytes to the open chat's draft. Rust decodes
     /// and bounds them; the packet that answers shows the image's card.
+    /// While the chat is text only (#10093) the image is dropped here.
     func attachImage(name: String, data: Data) {
-        guard let handle else { return }
+        guard let handle, attachmentsEnabled else { return }
         pending += 1
         queue.async {
             let name = Array(name.utf8)

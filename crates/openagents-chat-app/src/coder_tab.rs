@@ -445,12 +445,25 @@ pub struct CoderTab {
     /// The open computer thread's rendered turns.
     thread_projection: crate::projection::Projection,
     /// Images attached to each conversation's draft, bounded and decoded by
-    /// the shared attachments code the desktop uses.
+    /// the shared attachments code the desktop uses. Always empty while
+    /// [`CoderTab::attachments_enabled`] is off.
     images: crate::attachments::Drafts,
+    /// Whether the chat takes images ([`ATTACHMENTS_ENABLED`]).
+    attachments: bool,
 }
 
 /// The most turns an open basic conversation shows at first.
 const TALK_TURNS: usize = 200;
+
+/// Phone attachments (#10093): off as of 2026-10-01, so the phone is text
+/// only. The chat shows no attach control, never asks the host for a photo
+/// ([`Go::PickImage`]), drops an image the host hands it
+/// ([`CoderTab::attach_image`]) without a notice, and sends a draft's words
+/// only, dropping any images it still holds. Hosts mount their photo picker
+/// only while the packet says attachments are on. The shared image pipeline
+/// (`crate::attachments`, #10066/#10070) is unchanged and still serves the
+/// desktop; set this to `true` to turn phone attachments back on.
+pub const ATTACHMENTS_ENABLED: bool = false;
 
 impl CoderTab {
     pub fn new(instance: String) -> Self {
@@ -488,6 +501,32 @@ impl CoderTab {
             thread_link: None,
             thread_projection: crate::projection::Projection::default(),
             images: crate::attachments::Drafts::default(),
+            attachments: ATTACHMENTS_ENABLED,
+        }
+    }
+
+    /// Whether the chat takes images: [`ATTACHMENTS_ENABLED`] unless
+    /// [`CoderTab::set_attachments`] changed it. Hosts mount their photo
+    /// picker only while this is on.
+    pub fn attachments_enabled(&self) -> bool {
+        self.attachments
+    }
+
+    /// Turn image attachments on or off for this tab; the shared image
+    /// pipeline's phone tests turn them on. Turning them off hides any
+    /// images a draft holds, and its next send or Run Coder drops them.
+    pub fn set_attachments(&mut self, on: bool) {
+        self.attachments = on;
+    }
+
+    /// While attachments are off, drop any images a draft still holds, so
+    /// the draft is words only. Quiet: nothing to tell the person.
+    fn text_only(&mut self) {
+        if !self.attachments {
+            self.images = crate::attachments::Drafts::default();
+            if self.go == Some(Go::PickImage) {
+                self.go = None;
+            }
         }
     }
 
@@ -735,7 +774,13 @@ impl CoderTab {
 
     /// Attach an image the host's picker read. Decoding and its bounds are
     /// the shared attachments code's; a refusal shows as the tab's notice.
+    ///
+    /// While attachments are off ([`ATTACHMENTS_ENABLED`]) the image is
+    /// dropped quietly: no decode, no notice, and the draft stays words only.
     pub fn attach_image(&mut self, name: &str, bytes: Vec<u8>) {
+        if !self.attachments {
+            return;
+        }
         let key = self.draft_key();
         let result = crate::attachments::Image::decode(name, bytes)
             .and_then(|image| self.images.add(&key, image));
@@ -745,6 +790,9 @@ impl CoderTab {
     /// The attached image an `image:{id}` surface shows, from the open
     /// draft.
     pub fn image(&self, resource: &str) -> Option<&crate::attachments::Image> {
+        if !self.attachments {
+            return None;
+        }
         let id = resource.strip_prefix("image:")?;
         self.images
             .get(&self.draft_key())
@@ -754,8 +802,11 @@ impl CoderTab {
 
     /// The draft's attachments above the composer: an attach control and a
     /// card per image, whose surface shows the image and whose label is its
-    /// alternative text.
-    fn attachments(&self) -> Node<Intent> {
+    /// alternative text. Nothing while attachments are off.
+    fn attachments(&self) -> Option<Node<Intent>> {
+        if !self.attachments {
+            return None;
+        }
         let mut children = vec![icon_button(
             "coder-attach",
             "Attach image",
@@ -794,7 +845,7 @@ impl CoderTab {
                 },
             });
         }
-        Node {
+        Some(Node {
             key: "coder-attachments".into(),
             style: Style {
                 gap: Some(Space::Sm),
@@ -806,7 +857,7 @@ impl CoderTab {
                 axis: Axis::Wrap,
                 children,
             },
-        }
+        })
     }
 
     /// A basic reply is streaming: ask for packets quickly.
@@ -1316,7 +1367,11 @@ impl CoderTab {
                 };
                 self.notice = result.err();
             }
-            Intent::AttachImage => self.go = Some(Go::PickImage),
+            Intent::AttachImage => {
+                if self.attachments {
+                    self.go = Some(Go::PickImage);
+                }
+            }
             Intent::RemoveImage { id } => {
                 let key = self.draft_key();
                 self.images.remove(&key, &id);
@@ -2035,6 +2090,9 @@ impl CoderTab {
         if prompt.is_empty() {
             return;
         }
+        // Text only while attachments are off: a draft that still holds
+        // images sends its words alone.
+        self.text_only();
         // A computer's own thread and a Coder task's chat carry words
         // only: keep the images and the words rather than drop the images
         // silently. A message to OpenAgents sends its words and binds the
@@ -2155,6 +2213,8 @@ impl CoderTab {
     /// the person is sent to connect one.
     fn run_coder(&mut self, computers: &mut Computers, chats: &mut Chats) {
         let Some(id) = self.talk.clone() else { return };
+        // Text only while attachments are off: the task carries no images.
+        self.text_only();
         let host = match self.availability(Some(computers)) {
             Availability::Ready(host) => host.key.clone(),
             Availability::Connecting(host) => {
@@ -2718,7 +2778,7 @@ impl CoderTab {
                 },
             });
         }
-        children.push(self.attachments());
+        children.extend(self.attachments());
         // The tab exists to write a message: it opens ready to type.
         children.push(self.composer_with(
             "Message OpenAgents".to_owned(),
@@ -2908,7 +2968,7 @@ impl CoderTab {
         }
         let compose = self.compose.clone();
         let focus = compose.is_some();
-        children.push(self.attachments());
+        children.extend(self.attachments());
         children.push(self.composer_with(
             "Message OpenAgents".to_owned(),
             true,

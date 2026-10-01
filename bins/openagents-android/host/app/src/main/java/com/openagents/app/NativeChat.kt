@@ -437,9 +437,29 @@ class ComposerField(context: Context) : EditText(context) {
     }
 
     override fun onTextContextMenuItem(id: Int): Boolean {
+        // Text only (#10093): a clipboard holding only an image pastes nothing.
+        if ((id == android.R.id.paste || id == android.R.id.pasteAsPlainText) && !clipboardHasText()) return true
         if (id == android.R.id.undo && undoKey?.invoke(false) == true) return true
         if (id == android.R.id.redo && undoKey?.invoke(true) == true) return true
         return super.onTextContextMenuItem(id)
+    }
+
+    private fun clipboardHasText(): Boolean {
+        val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip ?: return true
+        return (0 until clip.itemCount).any { index ->
+            clip.getItemAt(index).let { PhoneAttachments.accepts(it.text, it.uri != null) }
+        }
+    }
+
+    /** Text only (#10093): a paste, drop, or keyboard insert keeps its text items and drops images and files. */
+    @androidx.annotation.RequiresApi(31)
+    override fun onReceiveContent(payload: android.view.ContentInfo): android.view.ContentInfo? {
+        val clip = payload.clip
+        val kept = (0 until clip.itemCount).map { clip.getItemAt(it) }
+            .filter { PhoneAttachments.accepts(it.text, it.uri != null) }
+        if (kept.isEmpty()) return null
+        val text = android.content.ClipData(clip.description, kept[0]).apply { kept.drop(1).forEach { addItem(it) } }
+        return super.onReceiveContent(android.view.ContentInfo.Builder(payload).setClip(text).build())
     }
 
     override fun onKeyShortcut(keyCode: Int, event: android.view.KeyEvent): Boolean {

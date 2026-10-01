@@ -324,8 +324,12 @@ struct CoderTab: View {
         }
         .toolbar(gym?.screen == "first_run" ? .hidden : .visible, for: .tabBar)
         // **Attach image**: the system photo picker; Rust decodes the photo.
-        .photosPicker(isPresented: $picking, selection: $picked, matching: .images)
-        .onChange(of: bridge.imagePickRequested) { _, _ in picking = true }
+        // Mounted only while the chat takes images; the phone is text only
+        // since #10093 (`coder_tab::ATTACHMENTS_ENABLED`).
+        .photosPicker(isPresented: Binding(get: { picking && bridge.attachmentsEnabled },
+                                           set: { picking = $0 }),
+                      selection: $picked, matching: .images)
+        .onChange(of: bridge.imagePickRequested) { _, _ in picking = bridge.attachmentsEnabled }
         .onChange(of: picked) { _, item in
             guard let item else { return }
             picked = nil
@@ -389,8 +393,9 @@ struct GymShareSheet: UIViewControllerRepresentable {
 /// `task-*` for the first chat in the menu. A step `send:TEXT` sends TEXT
 /// from the screen's composer, `sleep:N` waits N seconds, and `try:KEY`
 /// taps KEY only if the screen shows it now (a tap the screen may have
-/// replaced before it arrived, tried again), and `attach:PATH` attaches the
-/// image file at PATH to the draft as the photo picker would. Then
+/// replaced before it arrived, tried again), and `attach:PATH` hands the
+/// image file at PATH to the draft as the photo picker would (dropped while
+/// the chat is text only, #10093). Then
 /// `--coder-send TEXT` sends TEXT from the screen's composer.
 enum CoderLaunchTaps {
     @MainActor static func run(_ bridge: MobileBridge) async {

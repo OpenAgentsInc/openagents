@@ -142,7 +142,7 @@ conversation run in the owner's order.
 | `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |
 | `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091, #10092 (Grok Build runs inside Coder's toolchains boundary) |
 | `ui-stop-coder` | While Coder runs, the transcript's **Stop Coder** is as wide as its words (under 160 points and a third of the transcript), as the phone draws it. Measured during the first run an earlier scenario followed; run alone, it starts one. | #10091, #10075 |
-| `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. | #10066, #10070 |
+| `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. Desktop only: the phone is text only as of 2026-10-01. | #10066, #10070, #10093 |
 | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |
 | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |
 | `ui-no-verse` | The Verse world never loads while a chat page shows, loads on the Verse page, and is released after. | #10071 |

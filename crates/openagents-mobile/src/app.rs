@@ -637,6 +637,10 @@ pub struct Packet {
     /// Show this screen of another tab, once: `computers` is Account >
     /// Computers.
     pub coder_go: Option<crate::coder_tab::Go>,
+    /// The chat takes images (`coder_tab::ATTACHMENTS_ENABLED`, off as of
+    /// #10093): the host mounts its photo picker and sends picked images
+    /// only while this is set.
+    pub attachments: bool,
     /// **Connect a computer** (`SCR-22`) or **Connected** (`SCR-23`), while
     /// it shows. The host draws the camera and the paste field.
     pub connect: Option<crate::connect::View>,
@@ -1047,7 +1051,9 @@ impl App {
     /// Attach an image the host's photo picker read to the open draft, and
     /// answer with the app packet. The shared attachments code decodes and
     /// bounds it (PNG or JPEG, 8 MiB, 4096 pixels a side, four per draft);
-    /// a refusal shows as the chat's notice.
+    /// a refusal shows as the chat's notice. While phone attachments are
+    /// off (#10093) the image is dropped quietly and the packet is
+    /// unchanged.
     pub fn attach_image(&mut self, name: &str, bytes: Vec<u8>) -> Vec<u8> {
         self.coder.attach_image(name, bytes);
         serde_json::to_vec(&self.call(Request::Snapshot)).unwrap_or_default()
@@ -1919,6 +1925,7 @@ impl App {
             // A payment request on the sheet keeps packets coming too.
             coder_live,
             chat_streaming: self.coder.streaming(),
+            attachments: self.coder.attachments_enabled(),
             coder_go: match self.coder.take_go() {
                 // The scanner is this app's own screen.
                 Some(crate::coder_tab::Go::Connect) => {

@@ -1,8 +1,10 @@
-// The phone composer edits through Rust Native's shared editor, saved chat
-// cards offer the shared chat menu as a native menu, and an attached image
-// shows as its `image:` card (#10028). Runs offline on the chat fixture.
-// `OPENAGENTS_UITEST_SHOTS` names a directory for the screenshots, and
-// `OPENAGENTS_UITEST_IMAGE` a PNG to attach.
+// The phone composer edits through Rust Native's shared editor, and saved
+// chat cards offer the shared chat menu as a native menu (#10028). The chat
+// is text only (#10093): no attach control, and an image handed to it or
+// on the pasteboard never reaches the draft. Runs offline on the chat
+// fixture. `OPENAGENTS_UITEST_SHOTS` names a directory for the screenshots,
+// and `OPENAGENTS_UITEST_IMAGE` a PNG the launch tries to attach.
+import UIKit
 import XCTest
 
 final class SharedContractsUITests: XCTestCase {
@@ -58,7 +60,7 @@ final class SharedContractsUITests: XCTestCase {
         shot("10028-composer-undone")
     }
 
-    func testSavedChatCardsOfferTheSharedMenuAndImagesAttach() throws {
+    func testSavedChatCardsOfferTheSharedMenuAndTheChatIsTextOnly() throws {
         continueAfterFailure = false
         var arguments: [String] = []
         if let image = ProcessInfo.processInfo.environment["OPENAGENTS_UITEST_IMAGE"] {
@@ -66,12 +68,27 @@ final class SharedContractsUITests: XCTestCase {
         }
         let app = launch(arguments)
         let field = field(app)
-        if !arguments.isEmpty {
-            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'image:'"))
-                .firstMatch.waitForExistence(timeout: 20))
-            shot("10028-image-attached")
-            app.buttons["Remove"].firstMatch.tap()
+        // No attach control, and an image the launch handed the draft was
+        // dropped: no `image:` card, no notice.
+        let images = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'image:'"))
+        sleep(arguments.isEmpty ? 2 : 6)
+        XCTAssertFalse(app.descendants(matching: .any)["coder-attach"].exists)
+        XCTAssertFalse(app.buttons["Attach image"].exists)
+        XCTAssertFalse(images.firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'PNG or JPEG'")).firstMatch.exists)
+        shot("10093-composer-text-only")
+        // An image alone on the pasteboard offers no Paste in the composer.
+        UIPasteboard.general.image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
+        field.tap()
+        sleep(1)
+        field.tap()
+        sleep(2)
+        XCTAssertFalse(app.menuItems["Paste"].exists)
+        XCTAssertFalse(images.firstMatch.exists)
+        UIPasteboard.general.items = []
         field.tap()
         field.typeText("Keep this chat")
         app.buttons["Send"].firstMatch.tap()

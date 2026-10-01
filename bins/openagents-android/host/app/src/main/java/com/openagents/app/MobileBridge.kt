@@ -47,7 +47,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     /** The Coder tab's last request to open another screen (wallet, keys, playtest, report), and how many so far. */
     var screenRequested: String? = null; private set
     var screenRequests = 0; private set
-    /** Counts the Chat tab's requests for the photo picker (`pick_image`). */
+    /** Counts the Chat tab's requests for the photo picker (`pick_image`), only while the chat takes images. */
     var imagePicks = 0; private set
     /** Decoded images for the chat's `image:` surfaces, by resource. */
     private val images = HashMap<String, android.graphics.Bitmap>()
@@ -360,9 +360,15 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
     }
 
-    /** Attaches a photo's encoded bytes to the open chat's draft; Rust decodes and bounds them. */
+    /** Whether the chat takes images; off since #10093, when the phone became text only. */
+    val attachmentsEnabled get() = PhoneAttachments.enabled(packet)
+
+    /**
+     * Attaches a photo's encoded bytes to the open chat's draft; Rust decodes
+     * and bounds them. Dropped here while the chat is text only (#10093).
+     */
     fun attachImage(name: String, bytes: ByteArray) {
-        if (disposed) return
+        if (disposed || !attachmentsEnabled) return
         pending += 1
         worker.execute {
             val result = runCatching {
@@ -421,7 +427,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
         when (val go = next.textOrNull("coder_go")) {
             "computers" -> computersRequested += 1
-            "pick_image" -> imagePicks += 1
+            "pick_image" -> if (PhoneAttachments.pickRequested(next)) imagePicks += 1
             "wallet", "keys", "playtest", "report", "verse_gym", "chat" -> { screenRequested = go; screenRequests += 1 }
         }
         if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
