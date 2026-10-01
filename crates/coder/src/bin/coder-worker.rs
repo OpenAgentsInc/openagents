@@ -3961,11 +3961,17 @@ mod tests {
             partials[0]["delta"],
             "We'll dispatch Coder, asking for Claude Code, to"
         );
+        let result = &frames.last().unwrap().1;
         assert!(
-            frames.last().unwrap().1["answer"]
+            result["answer"]
                 .as_str()
                 .unwrap()
                 .starts_with("dispatch.engine_stem@")
+        );
+        assert_eq!(
+            result["text"],
+            "We'll dispatch Coder, asking for Claude Code, to take this on, with this \
+             conversation as its task."
         );
         let plain = frames_routed(
             slow_door(Duration::from_millis(1_500)),

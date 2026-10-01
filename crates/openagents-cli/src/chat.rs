@@ -367,7 +367,7 @@ impl Backend {
                     home.display()
                 )));
             }
-            let context = coder_run::context(home.join("tasks"), args.switch("no-run"));
+            let context = coder_run::context(home.join("tasks"));
             return Self::local(home, true, context);
         }
         let named = args.option("socket").map(PathBuf::from);
@@ -394,8 +394,7 @@ impl Backend {
                 Err(_) => {}
             }
         }
-        let context =
-            coder_run::context(coder::task::local::default_store(), args.switch("no-run"));
+        let context = coder_run::context(coder::task::local::default_store());
         Self::local(home(), false, context)
     }
 

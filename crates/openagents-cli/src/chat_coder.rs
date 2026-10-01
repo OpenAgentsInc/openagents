@@ -89,25 +89,22 @@ pub(super) fn ready(store: PathBuf) -> bool {
 /// (#10077): the terminal surface, whether a Coder run could start
 /// ([`ready`]), that this computer is where Coder runs with its coding
 /// agents' readiness, and the project folder: the checkout this command
-/// runs in. `no_run` (`--no-run`) reads no agent and says Coder can't
-/// start. Reads only.
-pub(super) fn context(store: PathBuf, no_run: bool) -> openagents_chat::router::Context {
+/// runs in. `--no-run` says the same: it only keeps this command from
+/// starting the run, so the offer it prints, with the engine the person
+/// asked for, is the one a run would take (#10076). Reads only.
+pub(super) fn context(store: PathBuf) -> openagents_chat::router::Context {
     use openagents_chat::router::{Computer, Context, Engine, Project, Surface};
-    let engines = if no_run {
-        Vec::new()
-    } else {
-        Local::here(store.clone())
-            .predict(None)
-            .map(|runner| Engine::from_runner(&runner))
-            .unwrap_or_default()
-    };
+    let engines = Local::here(store.clone())
+        .predict(None)
+        .map(|runner| Engine::from_runner(&runner))
+        .unwrap_or_default();
     let project = std::env::current_dir()
         .ok()
         .and_then(|dir| local::checkout(&dir).ok())
         .and_then(|checkout| Project::at(&checkout.top.display().to_string()));
     Context {
         surface: Surface::Terminal,
-        computer_ready: !no_run && ready(store),
+        computer_ready: ready(store),
         computer: Some(Computer::Here {
             name: None,
             engines,

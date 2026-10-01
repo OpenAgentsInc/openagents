@@ -120,8 +120,8 @@ relay and worker (the fixture tests use a local relay). The request says
 says what the host says (`desktop`). No model key is needed.
 
 Each turn also tells the worker that this computer is where Coder runs
-(`context.computer`, with Codex's and Claude Code's readiness; none is read
-under `--no-run`) and names the project folder: the Git checkout the command
+(`context.computer`, with its coding agents' readiness, under `--no-run`
+too, so the printed offer is the one a run would take) and names the project folder: the Git checkout the command
 runs in, by name and path (`context.project`). Through the host, the project
 is the one the thread's Coder task used, else the host's first project. So
 "what's your working dir" is answered with that folder, and the chat never
@@ -135,7 +135,13 @@ The router may judge that a message is work for a computer: a Coder offer
 (`run_coder`) or the computer lane. The command then runs Coder right here,
 with no host to attach, nothing to pair, no project to register, and no
 separate accept step. `--no-run` keeps the old behavior: the offer is
-printed, with `openagents chat run-coder --thread ID` to accept it later.
+printed, with `openagents chat run-coder --thread ID` to accept it later,
+and, when the person named a coding engine ("do a test delegation to
+claude"), the engine it asks for (`engine` on the offer and route events;
+`asked for: Claude Code` on stderr). The run puts that engine first and
+falls back only when it is not signed in, at its limit, or not allowed by
+the settings, and its start card says why
+([#10076](https://github.com/OpenAgentsInc/openagents/issues/10076)).
 Nothing matches keywords; only the router's judgment decides.
 
 Everything below is the default. The local capability settings

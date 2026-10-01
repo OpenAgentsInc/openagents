@@ -527,12 +527,14 @@ fn dispatch_stem(
     {
         return Some(tier);
     }
+    // The engine stem closes with its generic end: a continuation would
+    // echo the engine's name back as the task ("to claude to do ...").
     if let Some(engine) = engine
         && let Some(entry) = bank.entry("dispatch.engine_stem")
         && let Some(tier) = stem_of(
             entry,
             &facts.clone().set("engine.name", engine.name()),
-            situation.personalize,
+            false,
         )
     {
         return Some(tier);
@@ -1404,6 +1406,14 @@ mod tests {
         };
         assert_eq!(answer.id, "dispatch.engine_stem");
         assert_eq!(stem, "We'll dispatch Coder, asking for Claude Code, to");
+        // Closed by its generic end, never a continuation.
+        assert!(matches!(
+            tier,
+            Tier::CannedStem {
+                personalize: false,
+                ..
+            }
+        ));
         assert_eq!(
             offer,
             &Some(Offer::RunCoder {
