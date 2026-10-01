@@ -109,7 +109,11 @@ or the owner's host.
    (`coder_computers::Live` with `Platform::Phone`) using the host's pairing
    invitation. It asks the hosted chat worker with the phone's context, as
    `CoderTab::context` builds it, and presses Run Coder as
-   `CoderTab::run_coder` does.
+   `CoderTab::run_coder` does. `phone-sim-start` goes further and drives
+   the actual iOS app in an iOS simulator the gate creates for the run: the
+   app pairs with the host's invitation and asks from its Chat tab. The
+   simulator and Xcode run under the real home; the app reaches the host
+   over the relay and iroh as a phone does.
 
 7. **The gate's own scenarios.** Some scenarios need no window: the script
    runs them itself with the build's binaries. `explain-error` plants a
@@ -163,6 +167,7 @@ conversation run in the owner's order.
 | `route-map-chat` | "show me how you route things" on the desktop gets the router's typed `routes.map` offer, and the Map page opens when the reply arrives, with no click. | #10085, #10102 |
 | `phone-claude` | A paired phone-shaped client asks "do a test delegation to claude" and presses Run Coder; the computer's run starts on Claude Code. | #10081 |
 | `phone-start-at-once` | The phone's own Coder tab (the shared Rust the iOS and Android apps run), paired with the host, asks a coding question through the live chat; the computer's presence says it starts Coder at once (`coder.start: at_once`, auto-start on), and the reply starts exactly one Coder task there with no **Run Coder** tap, the chat showing the start with Stop and no Run Coder. | #10101 |
+| `phone-sim-start` | A gate scenario with the actual iOS app: the gate creates its own simulator (`oa-loop-gate`, deleted after; never the owner's), installs the app (`OPENAGENTS_ACCEPTANCE_IOS_APP` names a built simulator `OpenAgents.app`; otherwise `bins/openagents-ios/build.sh sim` builds one), and opens it with the host's invitation (`--connect-link`, as the camera opens the QR code) until the host lists the phone. Opened again, still paired, it sends "Can you look through the code in my project and summarize what it implements?" from its Chat tab's composer; the live chat routes it, and the reply must start exactly one Coder task on the host (`autostart.jsonl`, event `started`) within six minutes, with no tap. Screenshots `1-paired.png`, `2-before-send.png`, `3-after-reply.png`, and `4-after-start.png`. SKIP where Xcode or an iOS simulator runtime is missing. | #10118 |
 | `explain-error` | A gate scenario, outside the window: a Python file with a wrong dictionary key is planted in a scratch project and run, and the build's `openagents plugin run` runs the [Explain this error](../plugins/examples/explain-this-error.md) plugin's workflow on its output with reads only. The plugin names `billing.py:5`, shows the line, and suggests the key the dictionary has. | #10086 |
 | `plugins-chat` | A gate scenario, outside the window: "which plugins can I test?" through the build's `openagents chat --scratch`; the live chat's reply names every plugin in `deploy/eval-runner/catalog`, the catalog the hosted runner and the Gym's chips use. | #10090 |
 | `essays-chat` | A gate scenario, outside the window: "what is a capability claim?", "what is your thesis about general agents?", and "summarize both of the essays, please" through `openagents chat --scratch`; each reply carries its essay's idea (Test-Time Capabilities, The Return of the General Agent) and is not the no-documented-answer reply, and the summary names both essays and is not dispatched to Coder. | #10099, #10102 |

@@ -36,7 +36,10 @@
 #      and checks the reply names every plugin in deploy/eval-runner/catalog;
 #      essays-chat asks the live chat two questions about our essays and to
 #      summarize both, and checks each reply is grounded in them (the
-#      summary names both essays and is not a dispatch).
+#      summary names both essays and is not a dispatch); phone-sim-start
+#      pairs the actual iOS app, in a simulator the gate creates, with the
+#      host and checks a coding question from its Chat tab starts Coder
+#      with no tap (OPENAGENTS_ACCEPTANCE_IOS_APP: a built simulator app).
 #   5. A PASS/FAIL line per scenario, a summary table, and the evidence
 #      directory. Exit status 1 when any scenario fails, 2 on a setup error.
 #
@@ -112,7 +115,7 @@ say() { echo "==> $*" >&2; }
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
 desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok push-main ui-stop-coder ui-no-attach open-deck phone-claude phone-start-at-once ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
-gate_scenarios="explain-error plugins-chat essays-chat"
+gate_scenarios="explain-error plugins-chat essays-chat phone-sim-start"
 scenarios="$desktop_scenarios $gate_scenarios"
 
 while [ $# -gt 0 ]; do
@@ -623,11 +626,203 @@ PY
     record essays-chat FAIL "$failed"
   fi
 }
+# phone-sim-start: the actual iOS app in an iOS simulator (#10118). The
+# gate makes its own simulator (never the owner's), installs the app
+# (OPENAGENTS_ACCEPTANCE_IOS_APP names a built OpenAgents.app for the
+# simulator; otherwise bins/openagents-ios/build.sh sim builds one), and
+# opens it with the host's invitation (`--connect-link`) as the phone's
+# camera would. Once the host lists the phone, the app is opened again,
+# paired, and sends a coding question from its Chat tab's composer
+# (`--coder-tap send:`). The live chat worker routes it; the reply must
+# start exactly one Coder task on the host with no tap. Screenshots before
+# the send, after the reply, and after the start. Skipped where Xcode or
+# an iOS simulator runtime is missing.
+phone_sim_start() {
+  local dir="$evidence/phone-sim-start" udid=""
+  mkdir -p "$dir"
+  # The simulator and Xcode live in the real home, never the gate's.
+  local real_tmp
+  real_tmp="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || echo /tmp)"
+  sim() { HOME="$real_home" TMPDIR="$real_tmp" xcrun simctl "$@"; }
+  if [ "$codex_ok" != 1 ]; then
+    if [ "$allow_missing" = 1 ]; then
+      record phone-sim-start SKIP "no Codex login for the computer's Coder run"
+    else
+      record phone-sim-start FAIL "no Codex login for the computer's Coder run"
+    fi
+    return
+  fi
+  local picked
+  picked="$(sim list -j 2>/dev/null | python3 -c '
+import json, sys
+listed = json.load(sys.stdin)
+runtimes = [r for r in listed.get("runtimes", [])
+            if r.get("isAvailable") and r.get("platform") == "iOS"]
+types = [t["identifier"] for t in listed.get("devicetypes", [])
+         if t.get("productFamily") == "iPhone"]
+if runtimes and types:
+    pro = [t for t in types if t.endswith("iPhone-17-Pro")]
+    print(runtimes[-1]["identifier"], (pro or types)[-1])
+' 2>/dev/null)"
+  if [ -z "$picked" ] || ! HOME="$real_home" xcodebuild -version >/dev/null 2>&1; then
+    record phone-sim-start SKIP "no Xcode or iOS simulator runtime on this Mac"
+    return
+  fi
+  udid="$(sim create oa-loop-gate "${picked#* }" "${picked%% *}" 2>"$dir/simctl.err")" || {
+    record phone-sim-start SKIP "cannot create a simulator: $(tail -1 "$dir/simctl.err")"
+    return
+  }
+  echo "$udid $picked" > "$dir/simulator.txt"
+  phone_sim_start_run "$dir" "$udid"
+  sim shutdown "$udid" >/dev/null 2>&1
+  sim delete "$udid" >/dev/null 2>&1
+}
+phone_sim_start_run() { # dir udid
+  local dir="$1" udid="$2" bundle=com.openagents.app
+  local ask="Can you look through the code in my project and summarize what it implements?"
+  sim boot "$udid" 2>>"$dir/simctl.err"
+  sim bootstatus "$udid" -b >/dev/null 2>>"$dir/simctl.err" || {
+    record phone-sim-start FAIL "the simulator did not boot (simctl.err)"
+    return
+  }
+  local built="${OPENAGENTS_ACCEPTANCE_IOS_APP:-}"
+  if [ -z "$built" ]; then
+    say "phone-sim-start: building the iOS app for the simulator (ios-build.log)"
+    local output="${OPENAGENTS_IOS_OUTPUT:-$target/openagents-ios}"
+    HOME="$real_home" TMPDIR="$real_tmp" CARGO_TARGET_DIR="$target" OPENAGENTS_IOS_OUTPUT="$output" \
+      OPENAGENTS_IOS_DEVICE="$udid" "$root/bins/openagents-ios/build.sh" sim \
+      > "$dir/ios-build.log" 2>&1 || {
+      record phone-sim-start FAIL "the iOS app did not build (ios-build.log: $(tail -1 "$dir/ios-build.log"))"
+      return
+    }
+    built="$output/DerivedData/Build/Products/Release-iphonesimulator/OpenAgents.app"
+  fi
+  [ -d "$built" ] || { record phone-sim-start FAIL "no iOS app at $built"; return; }
+  shasum -a 256 "$built/OpenAgents" > "$dir/app.txt" 2>/dev/null
+  sim terminate "$udid" "$bundle" >/dev/null 2>&1
+  sim install "$udid" "$built" 2>>"$dir/simctl.err" || {
+    record phone-sim-start FAIL "the app did not install (simctl.err)"
+    return
+  }
+  # The host's invitation, as the desktop app shows it.
+  local code
+  code="$(control '{"kind":"invite_create"}' | python3 -c '
+import json, sys
+def walk(value):
+    if isinstance(value, dict):
+        for v in value.values():
+            yield from walk(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from walk(v)
+    elif isinstance(value, str) and value.startswith("openagents-connect:"):
+        yield value
+print(next(walk(json.load(sys.stdin)), ""))')"
+  [ -n "$code" ] || { record phone-sim-start FAIL "the host made no invitation"; return; }
+  local devices_before
+  devices_before="$(control '{"kind":"device_list"}' | python3 -c 'import sys; print(sys.stdin.read().count("\"device\""))')"
+  # Pairing: the app opened with the code, as the camera opens it.
+  sim launch --terminate-running-process "$udid" "$bundle" --connect-link "$code" --tab coder \
+    > "$dir/launch-pair.txt" 2>&1 || {
+    record phone-sim-start FAIL "the app did not launch ($(tail -1 "$dir/launch-pair.txt"))"
+    return
+  }
+  local paired=0
+  for _ in $(seq 1 90); do
+    sleep 2
+    if [ "$(control '{"kind":"device_list"}' | python3 -c 'import sys; print(sys.stdin.read().count("\"device\""))')" -gt "$devices_before" ]; then
+      paired=1; break
+    fi
+  done
+  control '{"kind":"device_list"}' > "$dir/device_list.json" 2>&1
+  sleep 3
+  sim io "$udid" screenshot "$dir/1-paired.png" >/dev/null 2>&1
+  [ "$paired" = 1 ] || { record phone-sim-start FAIL "the host lists no new device after the app opened its invitation (1-paired.png)"; return; }
+  # The question, from the Chat tab's composer, on a fresh launch: the
+  # pairing must hold, as on a phone opened again later.
+  local journal="$H/.openagents/host/autostart.jsonl"
+  local before
+  before="$(python3 - "$journal" <<'PY'
+import json, sys
+try:
+    lines = open(sys.argv[1]).read().splitlines()
+except OSError:
+    lines = []
+print(len(lines))
+PY
+)"
+  sim launch --terminate-running-process "$udid" "$bundle" --tab coder \
+    --coder-tap "sleep:20,send:$ask" > "$dir/launch-send.txt" 2>&1 || {
+    record phone-sim-start FAIL "the app did not launch again ($(tail -1 "$dir/launch-send.txt"))"
+    return
+  }
+  sleep 15
+  sim io "$udid" screenshot "$dir/2-before-send.png" >/dev/null 2>&1
+  local sent_at verdict="" shot_reply=0 started_at=0 n=0
+  sent_at=$(date +%s)
+  while :; do
+    sleep 2; n=$((n + 1))
+    verdict="$(python3 - "$journal" "$before" <<'PY'
+import json, sys
+try:
+    lines = open(sys.argv[1]).read().splitlines()[int(sys.argv[2]):]
+except OSError:
+    lines = []
+entries = []
+for line in lines:
+    try:
+        entries.append(json.loads(line))
+    except ValueError:
+        pass
+tasks = {e["task"] for e in entries if e.get("task")}
+started = [e for e in entries if e.get("event") == "started"]
+bad = [e for e in entries if e.get("event") in ("refused", "no_capacity", "not_started", "skipped", "unadmitted")]
+if bad:
+    print(f"bad {bad[0].get('event')} {bad[0].get('detail', '')}")
+elif started:
+    print(f"started {len(started)} {len(tasks)} {started[0].get('task')}")
+elif tasks:
+    print("task")
+else:
+    print("none")
+PY
+)"
+    case "$verdict" in
+      task|started*)
+        if [ "$shot_reply" = 0 ]; then
+          sim io "$udid" screenshot "$dir/3-after-reply.png" >/dev/null 2>&1
+          shot_reply=1
+        fi ;;
+    esac
+    case "$verdict" in
+      bad*) break ;;
+      started*)
+        [ "$started_at" = 0 ] && started_at=$(date +%s)
+        # A while longer, so a second start for the same reply shows.
+        if [ $(( $(date +%s) - started_at )) -ge 20 ]; then break; fi ;;
+    esac
+    [ $(( $(date +%s) - sent_at )) -ge 360 ] && break
+  done
+  sim io "$udid" screenshot "$dir/4-after-start.png" >/dev/null 2>&1
+  [ -f "$journal" ] && tail -n "+$((before + 1))" "$journal" > "$dir/autostart.jsonl"
+  case "$verdict" in
+    "started 1 1 "*)
+      [ "$shot_reply" = 1 ] || sim io "$udid" screenshot "$dir/3-after-reply.png" >/dev/null 2>&1
+      record phone-sim-start PASS "the iOS app in a simulator paired by its invitation and asked from its Chat tab; the reply started task ${verdict##* } on the host with no tap, $(( started_at - sent_at ))s after the send (autostart.jsonl, 1-paired.png to 4-after-start.png)" ;;
+    started*)
+      set -- $verdict
+      record phone-sim-start FAIL "one question started $2 runs over $3 tasks (autostart.jsonl)" ;;
+    bad*) record phone-sim-start FAIL "the computer did not start the task: ${verdict#bad } (autostart.jsonl)" ;;
+    task) record phone-sim-start FAIL "a task was created but Coder never started within 6 minutes (autostart.jsonl, 4-after-start.png)" ;;
+    *) record phone-sim-start FAIL "no Coder task on the host within 6 minutes of the send (3-after-reply.png absent, 4-after-start.png)" ;;
+  esac
+}
 for name in $gate_names; do
   case "$name" in
     explain-error) explain_error ;;
     plugins-chat) plugins_chat ;;
     essays-chat) essays_chat ;;
+    phone-sim-start) phone_sim_start ;;
   esac
 done
 
