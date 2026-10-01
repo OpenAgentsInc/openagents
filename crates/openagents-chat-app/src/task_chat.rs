@@ -959,11 +959,17 @@ impl Session {
         }
         rows
     }
+    /// A task's control (Stop Coder, Approve, Deny, Retry, the steps'
+    /// paging): as wide as its words in the transcript, as the phone draws
+    /// its Coder controls (#10075, #10091).
     fn button(&mut self, key: &str, label: &str, action: Action) -> Node<()> {
         self.actions.insert(key.into(), action);
         Node {
             key: key.into(),
-            style: Style::default(),
+            style: Style {
+                intrinsic_width: Some(true),
+                ..Style::default()
+            },
             element: Element::Button {
                 shortcut: None,
                 label: label.into(),

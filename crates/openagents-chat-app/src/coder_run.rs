@@ -862,13 +862,19 @@ impl Run {
         rows
     }
 
+    /// A run's controls (Stop Coder, Approve and Deny, Retry, a queued
+    /// message's Send now and Remove): each as wide as its words in the
+    /// transcript, as the phone draws its Coder controls (#10075, #10091),
+    /// never spanning the reading band.
     fn buttons(&mut self, key: &str, buttons: &[(&str, &str, Action)]) -> Node<()> {
         let enabled = !self.busy();
         let children = buttons
             .iter()
             .map(|(key, label, action)| {
                 self.actions.insert((*key).into(), action.clone());
-                button(key, label, enabled)
+                let mut node = button(key, label, enabled);
+                node.style.intrinsic_width = Some(true);
+                node
             })
             .collect();
         Node {
