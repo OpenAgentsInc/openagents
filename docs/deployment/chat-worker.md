@@ -780,3 +780,28 @@ screenshot and the review/publish card need a paired computer and were
 covered by the mobile and chat-app tests, not on the simulator. Build 37
 was uploaded with `build.sh upload` at 2026-09-30T18:42:06-07:00 and is
 `VALID`, in Internal Testers (`IN_BETA_TESTING`).
+
+Release `92aef353b7` (2026-10-01 UTC,
+[#10073](https://github.com/OpenAgentsInc/openagents/issues/10073)) routes
+an explicit request to delegate to Coder, such as "do a test delegation
+now", to `work.dispatch` instead of a Gym test: the rubric moves the
+question set to `chat-router-v4@ca74e9da5045` with a refit
+`calibration-v2.json`
+([the measurement](../coder/measurements/2026-09-30-delegation-route.md)).
+It was built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/92aef353b7` with `knowledge/` and
+`codebase-kb.gz` copied from `5ed35bf130` (`knowledge/openagents/` is
+unchanged since; no `._*` files), checked with `--check` under the chat
+environment ("the configuration is safe to deploy"), and put live by moving
+the `chat` symlink and restarting `coder-worker-chat`; the environment file
+and unit did not change, `coder-worker.service` and
+`/opt/coder-worker/current` were not touched, and `5ed35bf130` stays in
+`releases/` for rollback. The log names `router
+chat-router-v4@ca74e9da5045 (Live), bank chat-answers-v1@f1b498639ec6 with
+61 answers` and `calibration off`. With `openagents chat --scratch
+--no-run --json`, the owner's three turns ("who are you", "who can you
+delegate to", "do a test delegation now") routed the last to
+`work.dispatch` at 1.0 with lane `computer`; "Test Project map on Coder"
+still answered with the Project map card and `start_eval`; and "who can you
+delegate to" stayed `meta` at 0.99. Use `--no-run` for these checks: without
+it, a dispatch reply starts Coder in this checkout.
