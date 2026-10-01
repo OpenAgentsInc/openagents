@@ -908,12 +908,17 @@ impl MapPage {
                     TextAlign::Center,
                 )
             };
+            let left = match align {
+                TextAlign::Start => x,
+                TextAlign::End => x + width - name.width,
+                TextAlign::Center => x + (width - name.width) / 2.0,
+            };
+            // Keep the label inside the surface: slide it in from an edge.
+            let shift = (rect.x + 4.0 * unit - left).max(0.0)
+                - (left + name.width - (rect.x + rect.w - 4.0 * unit)).max(0.0);
+            let x = x + shift;
             let taken = PxRect {
-                x: match align {
-                    TextAlign::Start => x,
-                    TextAlign::End => x + width - name.width,
-                    TextAlign::Center => x + (width - name.width) / 2.0,
-                },
+                x: left + shift,
                 y,
                 w: name.width,
                 h: block,

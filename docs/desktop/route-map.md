@@ -144,3 +144,5 @@ issue step opens the browser.
 - The 60 fps target is measured only as a debug-build headless paint; a
   person's pass at default and minimum sizes is in the verification
   record's owner checks.
+
+Verification: [captures, tests, the release gate, and timing](verification/2026-10-01-route-map/verification.md).

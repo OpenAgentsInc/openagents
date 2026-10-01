@@ -453,8 +453,7 @@ fn paint_timing() {
                     w: sw * scale,
                     h: sh * scale,
                 };
-                let mut frame =
-                    Frame::new(rect.w as usize, rect.h as usize, Color::rgb(0, 0, 0));
+                let mut frame = Frame::new(rect.w as usize, rect.h as usize, Color::rgb(0, 0, 0));
                 page.paint(&mut frame, rect);
                 if let Some(zoom) = zoom {
                     let coder = node(&page, "coder");

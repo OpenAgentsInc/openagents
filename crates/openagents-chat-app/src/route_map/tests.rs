@@ -681,6 +681,12 @@ fn camera_transform_math() {
         assert!(s.x + r * fit.zoom >= 23.0 && s.x - r * fit.zoom <= w - 23.0);
         assert!(s.y + r * fit.zoom >= 23.0 && s.y - r * fit.zoom <= h - 23.0);
     }
+    // The minimum window's map (about 300 by 400 points) still fits it all.
+    let small = Camera::fit(layout.bounds(), 300.0, 400.0, 12.0);
+    for (p, r) in layout.positions.iter().zip(&layout.radii) {
+        let s = small.to_screen(*p, 300.0, 400.0);
+        assert!(s.x + r * small.zoom >= 11.0 && s.x - r * small.zoom <= 289.0);
+    }
     let to = Camera {
         center: Point::new(10.0, 10.0),
         zoom: 3.0,

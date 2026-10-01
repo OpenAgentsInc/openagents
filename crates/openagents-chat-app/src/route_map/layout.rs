@@ -15,7 +15,7 @@ pub const RINGS: [f32; 6] = [0.0, 240.0, 500.0, 790.0, 1080.0, 1320.0];
 /// Empty leaves between families, so they read as groups.
 const FAMILY_PAD: f32 = 2.0;
 /// The least and most zoom.
-pub const MIN_ZOOM: f32 = 0.12;
+pub const MIN_ZOOM: f32 = 0.05;
 pub const MAX_ZOOM: f32 = 4.0;
 /// How much one zoom step (Cmd + or −, a wheel notch) multiplies by.
 pub const ZOOM_STEP: f32 = 1.25;
