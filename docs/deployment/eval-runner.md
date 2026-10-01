@@ -363,3 +363,27 @@ Each run scored 2 of 6 with the plugin and 2 of 6 without
 (`inconclusive`), where the measurement at `1437ede584` scored 6 of 6 with
 it; the runs were the proof of admission and that difference was not
 investigated here.
+
+**`584d1958e3` (2026-10-01): Jev's doors lead the decision door**
+([#10122](https://github.com/OpenAgentsInc/openagents/issues/10122)). The
+four runs at `a3de5c8ff8` scored 2 of 6 with Dependency check and without
+it because TypeSafe's account was out of credits: every run's
+`stdout.jsonl` opened with `the classifier failed (POST …/v1/systemone:
+402 Your organization has no available TypeSafe API credits …)`, so no
+subject run picked the plugin's program and both arms answered plainly.
+The 6-of-6 run at `1437ede584` (job `1329fdc2…`, 06:48 UTC) opened four
+subject runs with `program dependency-check`. Nothing in Coder or the
+plugin changed between them; the decision proxy simply had TypeSafe as
+its only door. TypeSafe still answered 402 at 21:45 UTC, and the gateway
+answered Jev under the chat door's key.
+
+Installed with `install.sh 584d1958e3` at 21:52 UTC; the environment file
+was not changed (the chat door is the gateway, so its key serves Jev's
+gateway door). `eval-runner check` and the journal say `decision
+https://ai-gateway.vercel.sh → https://api.typesafe.ai`. The agent's
+digest is now `sha256:8ad8bcd2…`, so results from before it can't be
+checked on the hosted runner. Live proof: a fresh trainer key
+(`1c6d01a0…`) ran the Dependency check test set (`a6b800a6…`, 3 runs per
+arm) at 21:52 UTC: **6 of 6 with the plugin, 2 of 6 without, pass**
+(job `7edb75fb…`, sealed `f8ae64b8…`), with four subject runs opening
+`program dependency-check` as at `1437ede584`.
