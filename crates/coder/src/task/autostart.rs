@@ -641,6 +641,15 @@ impl Launch for Process {
         if let Some(claude) = claude_binary() {
             command.env(microcoder_loop::claude::BIN_VAR, claude);
         }
+        // Grok Build the same way (#10091): the `grok` the readiness check
+        // found, and its home when the person relocated it.
+        let variable = |name: &str| std::env::var_os(name);
+        if let Some(grok) = acp_client::grok::binary(&variable) {
+            command.env(acp_client::grok::BIN_VAR, grok);
+        }
+        if let Some(home) = variable(acp_client::grok::HOME_VAR).filter(|v| !v.is_empty()) {
+            command.env(acp_client::grok::HOME_VAR, home);
+        }
         // How the engine reaches Jev (`jev_hosted::resolve`): this
         // computer's TypeSafe key when one is set here, as the detached
         // owner forwards it (`microcoder::repository::launch`), else the
@@ -1485,12 +1494,28 @@ pub fn usage_book(
 ///
 /// `signed_in` says whether each provider's local login is present. The
 /// report carries provider names, model ids, percents, and reset times. It
-/// carries no credential, account identifier, or controller path.
+/// carries no credential, account identifier, or controller path. Its
+/// accounts are Codex and Claude Code, then Grok Build when it is signed
+/// in here ([`engine_report_with`] also shows it when only installed).
 #[must_use]
 pub fn engine_report(
     policy: Option<&Policy>,
     now: u64,
     signed_in: &dyn Fn(Provider) -> bool,
+    usage: &usage::Book,
+) -> EngineReport {
+    engine_report_with(policy, now, signed_in, &|_| false, usage)
+}
+
+/// [`engine_report`], with `installed` saying which of the engines a
+/// computer may not have ([`OPTIONAL_ACCOUNTS`], Grok Build) are installed
+/// here: each gets an account line when installed or signed in (#10091).
+#[must_use]
+pub fn engine_report_with(
+    policy: Option<&Policy>,
+    now: u64,
+    signed_in: &dyn Fn(Provider) -> bool,
+    installed: &dyn Fn(Provider) -> bool,
     usage: &usage::Book,
 ) -> EngineReport {
     let Some(policy) = policy else {
@@ -1499,7 +1524,7 @@ pub fn engine_report(
             adapter: String::new(),
             model: String::new(),
             routes: Vec::new(),
-            accounts: account_lines(signed_in),
+            accounts: account_lines(signed_in, installed),
             usage_probe: None,
             refresh_due: false,
         };
@@ -1524,7 +1549,7 @@ pub fn engine_report(
                 usage: route_usage(probes, route.provider, usage, now),
             })
             .collect(),
-        accounts: account_lines(signed_in),
+        accounts: account_lines(signed_in, installed),
         usage_probe: policy
             .engine
             .usage_probe
@@ -1534,9 +1559,23 @@ pub fn engine_report(
     }
 }
 
-fn account_lines(signed_in: &dyn Fn(Provider) -> bool) -> Vec<EngineAccount> {
-    [Provider::Codex, Provider::Claude]
+/// The engines an engine report names whether or not they are set up here.
+pub const ACCOUNTS: [Provider; 2] = [Provider::Codex, Provider::Claude];
+/// The engines a report names only when installed or signed in here: Grok
+/// Build, allowed by default for local runs (#10091).
+pub const OPTIONAL_ACCOUNTS: [Provider; 1] = [Provider::Grok];
+
+fn account_lines(
+    signed_in: &dyn Fn(Provider) -> bool,
+    installed: &dyn Fn(Provider) -> bool,
+) -> Vec<EngineAccount> {
+    ACCOUNTS
         .into_iter()
+        .chain(
+            OPTIONAL_ACCOUNTS
+                .into_iter()
+                .filter(|provider| installed(*provider) || signed_in(*provider)),
+        )
         .map(|provider| EngineAccount {
             provider: provider.as_str().into(),
             name: provider_name(provider).into(),
@@ -1639,7 +1678,7 @@ fn bound(text: &str, max: usize) -> String {
 }
 
 fn providers_of(policy: Option<&Policy>) -> Vec<Provider> {
-    let mut providers = vec![Provider::Codex, Provider::Claude];
+    let mut providers: Vec<Provider> = ACCOUNTS.into_iter().chain(OPTIONAL_ACCOUNTS).collect();
     if let Some(policy) = policy {
         for route in policy.routes() {
             if !providers.contains(&route.provider) {
@@ -1664,7 +1703,8 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        when the policy probes it or --probe-usage is given.
   status [--store DIR] [--refresh]
                        Print one JSON report: the engine routes in order,
-                       whether Codex and Claude Code are signed in, and
+                       whether Codex and Claude Code (and Grok Build, when
+                       installed) are signed in, and
                        each probed usage window as percents and reset
                        times. The report has no credential. --refresh asks
                        a provider only when this policy's usage probe is
@@ -1824,10 +1864,14 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 signed_in.insert(provider, connected);
             }
             let book = usage_book(policy.as_ref(), &store, now, refresh, usage::fetch);
-            let report = engine_report(
+            let variable = |name: &str| std::env::var_os(name);
+            let report = engine_report_with(
                 policy.as_ref(),
                 now,
                 &|provider| signed_in.get(&provider).copied().unwrap_or(false),
+                &|provider| {
+                    provider == Provider::Grok && acp_client::grok::binary(&variable).is_some()
+                },
                 &book,
             );
             println!(
@@ -3824,6 +3868,50 @@ mod tests {
         assert_eq!(report.accounts[0].name, "Codex");
         assert!(!report.accounts[0].signed_in);
         assert!(report.accounts[1].signed_in);
+        assert_eq!(report.accounts.len(), 2, "Grok Build is not set up here");
+    }
+
+    /// Grok Build is allowed by default, so a report names it when it is
+    /// installed here, signed in or not (#10091), and only then.
+    #[test]
+    fn grok_build_gets_an_account_line_when_installed_or_signed_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let book = usage_book(None, dir.path(), 1, true, explode);
+        let grok = |provider: Provider| provider == Provider::Grok;
+        let names = |report: &EngineReport| {
+            report
+                .accounts
+                .iter()
+                .map(|a| (a.name.clone(), a.signed_in))
+                .collect::<Vec<_>>()
+        };
+        let installed = engine_report_with(None, 1, &|_| false, &grok, &book);
+        assert_eq!(
+            names(&installed),
+            [
+                ("Codex".into(), false),
+                ("Claude Code".into(), false),
+                ("Grok Build".into(), false)
+            ]
+        );
+        let signed_in = engine_report(None, 1, &grok, &book);
+        assert_eq!(names(&signed_in)[2], ("Grok Build".into(), true));
+        assert_eq!(engine_report(None, 1, &|_| false, &book).accounts.len(), 2);
+        // A Grok Build route reports no usage: no meter, never hidden.
+        let mut policy = policy(1);
+        policy.engine.routes.push(Route {
+            provider: Provider::Grok,
+            model: "default".into(),
+            effort: None,
+        });
+        policy.engine.usage_probe = Some(UsageProbe {
+            threshold_percent: 90,
+        });
+        let report = engine_report(Some(&policy), 1, &|_| true, &book);
+        let route = report.routes.iter().find(|r| r.provider == "grok").unwrap();
+        assert_eq!(route.name, "Grok Build");
+        assert!(route.signed_in);
+        assert_eq!(route.usage, RouteUsage::Unsupported);
     }
 
     #[test]

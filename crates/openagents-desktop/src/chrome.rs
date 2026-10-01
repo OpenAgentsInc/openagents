@@ -789,11 +789,7 @@ fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
                     sidebar_width,
                     index,
                     &account.name,
-                    if account.signed_in {
-                        "Signed in"
-                    } else {
-                        "Not signed in"
-                    },
+                    sign_in(account.signed_in),
                     None,
                 ));
             }
@@ -805,6 +801,22 @@ fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
                     &route.name,
                     &route.model,
                     tightest(&route.usage).map(|percent| (route.provider.as_str(), percent)),
+                ));
+            }
+            // An engine a person's own runs can use that no route names,
+            // such as Grok Build (#10091): signed in or not, with no meter.
+            let shown = report.routes.len().min(4);
+            for (offset, account) in openagents_chat_app::engine::extra_accounts(report)
+                .into_iter()
+                .take(4)
+                .enumerate()
+            {
+                rows.push(engine_row(
+                    sidebar_width,
+                    shown + offset,
+                    &account.name,
+                    sign_in(account.signed_in),
+                    None,
                 ));
             }
         }
@@ -819,6 +831,14 @@ fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
     let mut section = stack("sidebar-engines", Axis::Vertical, Space::None, rows);
     section.style.gap_points = Some(2);
     Some(section)
+}
+
+fn sign_in(signed_in: bool) -> &'static str {
+    if signed_in {
+        "Signed in"
+    } else {
+        "Not signed in"
+    }
 }
 
 /// The used share of a route's tightest window, from 0 to 100, when its
@@ -933,15 +953,12 @@ pub fn engine_tooltip(model: &Model, key: &str) -> Option<String> {
     let report = model.engine.as_ref()?;
     if report.routes.is_empty() {
         let account = report.accounts.get(index)?;
-        return Some(format!(
-            "{} · {}",
-            account.name,
-            if account.signed_in {
-                "Signed in"
-            } else {
-                "Not signed in"
-            }
-        ));
+        return Some(format!("{} · {}", account.name, sign_in(account.signed_in)));
+    }
+    let shown = report.routes.len().min(4);
+    if index >= shown {
+        let account = *openagents_chat_app::engine::extra_accounts(report).get(index - shown)?;
+        return Some(format!("{} · {}", account.name, sign_in(account.signed_in)));
     }
     let route = report.routes.get(index)?;
     Some(format!(
@@ -1559,5 +1576,61 @@ mod tests {
                 .iter()
                 .any(|word| word.contains("UTC"))
         );
+    }
+
+    /// Grok Build, installed here and allowed by default, shows beside the
+    /// host's routes as signed in with no meter, rather than hidden: it
+    /// reports no usage (#10091).
+    #[test]
+    fn grok_build_shows_as_an_engine_row_with_no_meter() {
+        use crate::control::{EngineAccount, EngineReport, EngineRoute, RouteUsage};
+        use crate::model::{Agent, Screen};
+        let mut model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let account = |provider: &str, name: &str, signed_in: bool| EngineAccount {
+            provider: provider.into(),
+            name: name.into(),
+            signed_in,
+        };
+        model.engine = Some(EngineReport {
+            enabled: true,
+            adapter: "microcoder-repository".into(),
+            model: "gpt-6-luna".into(),
+            routes: vec![EngineRoute {
+                provider: "codex".into(),
+                name: "Codex".into(),
+                model: "gpt-6-luna".into(),
+                signed_in: true,
+                usage: RouteUsage::Off,
+            }],
+            accounts: vec![
+                account("codex", "Codex", true),
+                account("claude", "Claude Code", false),
+                account("grok", "Grok Build", true),
+            ],
+            usage_probe: None,
+            refresh_due: false,
+        });
+        let root = root(&State::empty(), &model, 0);
+        let Some(Node {
+            element: Element::Button { label, .. },
+            ..
+        }) = find(&root, "sidebar-engine-1")
+        else {
+            panic!("no Grok Build row")
+        };
+        assert_eq!(label, "Grok Build  Signed in");
+        assert!(!contains(&root, "sidebar-engine-1-meter"));
+        // Claude Code, not signed in and named by no route, is left out.
+        assert!(!contains(&root, "sidebar-engine-2"));
+        assert_eq!(
+            engine_tooltip(&model, "sidebar-engine-1").as_deref(),
+            Some("Grok Build · Signed in")
+        );
+        let mut state = State::empty();
+        state.page = Page::Settings;
+        state.settings.pane = crate::settings::Pane::Coder;
+        let settings = super::root(&state, &model, 0);
+        assert!(contains(&settings, "engine-account-grok"));
+        assert!(!contains(&settings, "engine-account-claude"));
     }
 }

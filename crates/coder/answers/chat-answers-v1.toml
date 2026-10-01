@@ -409,7 +409,7 @@ version = 1
 routes = ["work.dispatch"]
 place = "here"
 when = "The user wants work done on code or a repository on this computer, and no coding agent can take it here yet"
-text = "That needs Coder, and no coding agent can take it on this computer right now. Once Codex or Claude Code is signed in here with room to work, we'll dispatch Coder with this conversation."
+text = "That needs Coder, and no coding agent can take it on this computer right now. Once Codex, Claude Code, or Grok Build is signed in here with room to work, we'll dispatch Coder with this conversation."
 sources = ["crates/openagents-chat/src/coder_events.rs", "crates/coder/src/task/local.rs"]
 
 # ---------------------------------------------------------------------------

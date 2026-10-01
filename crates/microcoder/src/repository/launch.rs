@@ -37,8 +37,17 @@ fn admit(directory: &Path, bytes: &[u8]) -> Result<(String, PathBuf), Box<dyn st
         .adapter_configuration
         .as_ref()
         .ok_or("repository launch requires an adapter configuration")?;
-    if !matches!(configuration.provider.as_str(), "codex" | "claude") {
-        return Err("the detached repository CLI requires the codex or claude provider".into());
+    // Every provider the repository engine runs a turn on: Codex and
+    // Claude Code through Microcoder, Grok Build, OpenCode, and Devin as
+    // whole agents over ACP. Grok Build is a local run's default (#10091).
+    if !matches!(
+        configuration.provider.as_str(),
+        "codex" | "claude" | "grok" | "opencode" | "devin"
+    ) {
+        return Err(
+            "the detached repository CLI requires the codex, claude, grok, opencode, or devin provider"
+                .into(),
+        );
     }
     // The launcher, like the owner it starts, waits out a busy store.
     let store = Store::open_for_owner(directory)?;
@@ -116,6 +125,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             "LOCALAPPDATA",
             "ProgramData",
             crate::claude::BIN_VAR,
+            // Where the whole-agent engines are, when the launcher was told:
+            // never a credential.
+            acp_client::grok::BIN_VAR,
+            acp_client::grok::HOME_VAR,
+            acp_client::opencode::BIN_VAR,
+            acp_client::devin::BIN_VAR,
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
             "TYPESAFE_DEFAULT_MODEL",
@@ -208,6 +223,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             "HOME",
             "SHELL",
             crate::claude::BIN_VAR,
+            // Where the whole-agent engines are, when the launcher was told:
+            // never a credential.
+            acp_client::grok::BIN_VAR,
+            acp_client::grok::HOME_VAR,
+            acp_client::opencode::BIN_VAR,
+            acp_client::devin::BIN_VAR,
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
             "TYPESAFE_DEFAULT_MODEL",

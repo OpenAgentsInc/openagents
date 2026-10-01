@@ -159,7 +159,8 @@ projects, and what the run's commands may reach.
   no commit, nothing runs and the command says so and exits 1. (With a host
   running and no checkout here, the host's own handoff still runs Coder in
   the host's project, as before.)
-- **Providers.** Codex, then Claude Code, each only when it is signed in on
+- **Providers.** Codex, then Claude Code, then Grok Build (#10091), each
+  only when it is signed in on
   this computer (the same local check the host uses, reading no credential
   and asking no network). A provider with a usage or rate-limit refusal that
   still holds in the task store's capacity book is passed over, and so is

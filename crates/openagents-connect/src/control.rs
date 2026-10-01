@@ -290,7 +290,9 @@ pub struct EngineReport {
     /// The policy's model, truncated.
     pub model: String,
     pub routes: Vec<EngineRoute>,
-    /// Codex, then Claude Code, whether or not a route names them.
+    /// Codex, then Claude Code, whether or not a route names them, then
+    /// Grok Build when it is installed or signed in on the computer
+    /// (#10091).
     pub accounts: Vec<EngineAccount>,
     /// The usage-probe threshold, in percent, when the owner turned probes on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -304,9 +306,9 @@ pub struct EngineReport {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineAccount {
-    /// `codex` or `claude`.
+    /// `codex`, `claude`, or `grok`.
     pub provider: String,
-    /// The name on screen, such as `Codex` or `Claude Code`.
+    /// The name on screen, such as `Codex`, `Claude Code`, or `Grok Build`.
     pub name: String,
     pub signed_in: bool,
 }

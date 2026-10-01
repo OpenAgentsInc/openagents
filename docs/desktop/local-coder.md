@@ -73,8 +73,8 @@ pairing, no registered project, and no accept step: the same local run
 the chat router's reply to a message sent from this window judges it coding
 work, or the person picks **Run Coder**, the window's Coder lane
 (`src/worker.rs`) calls `coder::task::local::Local::start` with the chat's
-handoff prompt. Codex, then Claude Code, each only when signed in here with
-capacity; Coder's own worktree of the project's `HEAD`; the same engine,
+handoff prompt. Codex, then Claude Code, then Grok Build (#10091), each only
+when signed in here with capacity; Coder's own worktree of the project's `HEAD`; the same engine,
 failover, and ATIF recording as a host's auto-start. Reopening a chat never
 starts a run.
 
@@ -168,8 +168,11 @@ card menus, images, and code colors, not these surfaces.
 
 ## Engine and usage
 
-The chat header shows the engine, the model, whether Codex and Claude Code
-are signed in, and each usage window. Those values come from this computer's
+The sidebar's engine rows and Settings → Coder show the engine, the model,
+whether Codex and Claude Code are signed in, and each usage window. Grok
+Build, a default provider for this computer's own runs, shows there whenever
+it is installed, as signed in or not; it reports no usage, so its row has no
+meter ([#10091](https://github.com/OpenAgentsInc/openagents/issues/10091)). Those values come from this computer's
 `autostart.json` routes and the usage book. The window sends `engine_status`
 and receives percents and reset times. It cannot change the engine, the
 model, or a credential, and it does not read a provider token.

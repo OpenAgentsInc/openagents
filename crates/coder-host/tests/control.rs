@@ -698,6 +698,8 @@ async fn auto_start_changes_run_the_hosts_own_command() {
             "codex:gpt-6-luna",
             "--route",
             "claude:claude-opus-5-5",
+            "--route",
+            "grok:default",
             "--root",
             root.as_str()
         ]

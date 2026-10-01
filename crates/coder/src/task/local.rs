@@ -16,7 +16,8 @@
 //!   `worktrees/` beside the store; the checkout changes only by Git's
 //!   record of the worktree. Uncommitted changes in the checkout are not
 //!   carried over.
-//! - **Providers detected here.** Codex, then Claude Code, each only when
+//! - **Providers detected here.** Codex, then Claude Code, then Grok
+//!   Build (#10091), each only when
 //!   [`capacity::probe`] finds its login on this computer (no network, no
 //!   credential read), skipping one with a refusal that still holds in the
 //!   store's capacity book and, when the store holds a fresh usage
@@ -55,11 +56,13 @@ use super::{
 };
 
 /// The routes a local run admits by default, in preference order: Codex,
-/// then Claude Code, with the models the desktop's auto-start switch
-/// admits. The settings' `coder.providers` replaces them.
-pub const ROUTES: [(Provider, &str); 2] = [
+/// then Claude Code, then Grok Build (#10091), with the models the
+/// desktop's auto-start switch admits. The settings' `coder.providers`
+/// replaces them.
+pub const ROUTES: [(Provider, &str); 3] = [
     (Provider::Codex, "gpt-6-luna"),
     (Provider::Claude, "claude-opus-5-5"),
+    (Provider::Grok, acp_client::grok::DEFAULT_MODEL),
 ];
 /// Names another task store than [`default_store`].
 pub const STORE_VAR: &str = "OPENAGENTS_TASKS";
@@ -992,11 +995,12 @@ fn unconnected(providers: &[Provider]) -> String {
         ),
         many => format!(
             "None of the coding agents your settings allow ({}) is signed in on this computer. \
-             Sign in to one and try again.",
+             Sign in to one ({}) and try again.",
             many.iter()
                 .map(|p| settings::provider_name(*p))
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join(", "),
+            many.iter().map(|p| how(*p)).collect::<Vec<_>>().join("; ")
         ),
     }
 }
@@ -1870,11 +1874,11 @@ mod tests {
             "{why}"
         );
         assert!(why.ends_with("; using Claude Code."), "{why}");
-        // The card does not also say it falls back to Codex (#10073).
-        assert!(
-            shown_fallbacks(&order[1..], &runner).is_empty(),
-            "{:?}",
-            shown_fallbacks(&order[1..], &runner)
+        // The card does not also say it falls back to Codex (#10073); Grok
+        // Build, signed in here, is the fallback after Claude Code (#10091).
+        assert_eq!(
+            shown_fallbacks(&order[1..], &runner),
+            vec!["grok:default".to_owned()]
         );
         // A fresher probe reading under the limit lifts the refusal: Codex
         // runs again, as the engine reading says.
@@ -1894,7 +1898,13 @@ mod tests {
             started_reason(&runner),
             "Codex is signed in and has capacity."
         );
-        assert_eq!(shown_fallbacks(&order[1..], &runner).len(), 1);
+        assert_eq!(
+            shown_fallbacks(&order[1..], &runner),
+            vec![
+                "claude:claude-opus-5-5".to_owned(),
+                "grok:default".to_owned()
+            ]
+        );
         std::fs::remove_file(&usage_file).unwrap();
 
         let run = local(dir.path(), only_claude);
@@ -1909,10 +1919,17 @@ mod tests {
         assert!(run.choose(&policy).is_ok());
 
         let none = local(fresh.path(), nobody);
+        let why = none.choose(&policy).unwrap_err();
         assert!(
-            none.choose(&policy)
-                .unwrap_err()
-                .contains("Neither Codex nor Claude Code is signed in")
+            why.contains(
+                "None of the coding agents your settings allow (Codex, Claude Code, Grok Build) \
+                 is signed in"
+            ),
+            "{why}"
+        );
+        assert!(
+            why.contains("`codex login`") && why.contains("run `grok`"),
+            "{why}"
         );
     }
 
@@ -2256,13 +2273,13 @@ mod tests {
         assert_eq!(
             none.predict(None).unwrap(),
             Runner::NotSignedIn {
-                providers: vec!["codex".into(), "claude".into()]
+                providers: vec!["codex".into(), "claude".into(), "grok".into()]
             },
             "no login, whatever the books say"
         );
         assert_eq!(
             none.predict(None).unwrap().text(),
-            "Neither Codex nor Claude Code is signed in on this computer. \
+            "None of Codex, Claude Code, Grok Build is signed in on this computer. \
              Sign in to one to run Coder here."
         );
     }
@@ -2339,7 +2356,7 @@ mod tests {
         let top = repo(dir.path());
         type Probe = fn(Provider) -> Connection;
         // (probe, Claude refused, asked for, runs on, reason)
-        let cases: [(Probe, bool, Provider, &str, &str); 5] = [
+        let cases: [(Probe, bool, Provider, &str, &str); 7] = [
             (
                 both,
                 false,
@@ -2368,12 +2385,30 @@ mod tests {
                 "codex",
                 "You asked for Claude Code; it is not signed in here, so Codex is running.",
             ),
+            // Grok Build is allowed by default (#10091): asked for, it runs
+            // when signed in, and is passed over with a plain reason when
+            // not.
             (
                 both,
                 false,
                 Provider::Grok,
+                "grok",
+                "You asked for Grok Build; it is signed in and has capacity.",
+            ),
+            (
+                only_codex,
+                false,
+                Provider::Grok,
                 "codex",
-                "You asked for Grok Build; it is not one of the engines your Coder settings \
+                "You asked for Grok Build; it is not signed in here, so Codex is running.",
+            ),
+            // Devin, a paid API, runs only when the settings name it.
+            (
+                both,
+                false,
+                Provider::Devin,
+                "codex",
+                "You asked for Devin; it is not one of the engines your Coder settings \
                  allow, so Codex is running.",
             ),
         ];

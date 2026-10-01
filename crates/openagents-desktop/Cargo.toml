@@ -58,6 +58,9 @@ nostr = { path = "../nostr" }
 # Coder on this computer for a chat: the runner `openagents chat` uses
 # (`coder::task::local`), in the window's Coder lane (`src/worker.rs`).
 coder = { path = "../coder", optional = true }
+# Whether Grok Build is installed and signed in here (`model::grok`,
+# #10091); already in the graph through `coder`.
+acp-client = { path = "../acp-client" }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 # The control protocol's messages.

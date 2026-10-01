@@ -1,11 +1,12 @@
 ---
 id: openagents.install-coder
-version: 2
+version: 3
 kind: product
 title: "Getting Coder on a computer"
 summary: >-
   Coder comes with OpenAgents for Mac; after pairing, pick a project and let
-  the phone start Coder there, with Codex or Claude Code signed in on the Mac.
+  the phone start Coder there, with Codex, Claude Code, or Grok Build signed in
+  on the Mac.
 tags: [install, coder, computer, setup, mac]
 applies_when: >-
   The user asks how to install or set up Coder, the coder command, or the
@@ -14,9 +15,9 @@ applies_when: >-
 answer: >-
   Coder comes with OpenAgents for Mac, so there's nothing else to install.
   Open the app, connect your phone by scanning its QR code, then pick a
-  project folder and turn on **Let my phone start Coder here**. Sign in to Codex
-  or Claude Code on the Mac, and Run Coder in a chat on your phone starts
-  Coder there.
+  project folder and turn on **Let my phone start Coder here**. Sign in to
+  Codex, Claude Code, or Grok Build on the Mac, and Run Coder in a chat on
+  your phone starts Coder there.
 status: admitted
 author: openagents
 provenance:
@@ -28,11 +29,12 @@ provenance:
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
+  - "2026-10-01: version 3 (#10091): Grok Build is allowed by default beside Codex and Claude Code, on the Mac's own runs and its phone switch, so any of the three signed in there runs Coder; checked against INVARIANTS.md and docs/cli/settings.md."
 ---
 
 ## Answer
 
-Coder comes with OpenAgents for Mac, so there's nothing else to install. Open the app, connect your phone by scanning its QR code, then pick a project folder and turn on **Let my phone start Coder here**. Sign in to Codex or Claude Code on the Mac, and Run Coder in a chat on your phone starts Coder there.
+Coder comes with OpenAgents for Mac, so there's nothing else to install. Open the app, connect your phone by scanning its QR code, then pick a project folder and turn on **Let my phone start Coder here**. Sign in to Codex, Claude Code, or Grok Build on the Mac, and Run Coder in a chat on your phone starts Coder there.
 
 ## Details
 

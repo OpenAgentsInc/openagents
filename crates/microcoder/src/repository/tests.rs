@@ -1935,7 +1935,11 @@ mod local_run {
         };
         assert_eq!(started.provider, "codex");
         assert_eq!(started.reason, "Codex is signed in and has capacity.");
-        assert_eq!(started.fallbacks, ["claude:claude-opus-5-5"]);
+        // Grok Build follows Claude Code by default (#10091).
+        assert_eq!(
+            started.fallbacks,
+            ["claude:claude-opus-5-5", "grok:default"]
+        );
         let switched = turn_one
             .iter()
             .find_map(|line| match &line.event {

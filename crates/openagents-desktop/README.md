@@ -74,7 +74,7 @@ second, so dragging does not start a subprocess on the UI thread.
 | Screen | What it shows |
 | --- | --- |
 | `DSK-01` Connect a phone | The QR code, **Scan with the OpenAgents app on your phone.**, and **Can't scan? Copy a code instead**. No checkbox: every phone that pairs gets full permission (every NIP-HOST right, a terminal included). |
-| `DSK-02` Connected | **Kai's iPhone is connected.**, **Pick a project for Coder** with **Choose folder…**, whether Codex and Claude Code are signed in, and **Let my phone start Coder here**. |
+| `DSK-02` Connected | **Kai's iPhone is connected.**, **Pick a project for Coder** with **Choose folder…**, whether Codex and Claude Code (and Grok Build, when installed) are signed in, and **Let my phone start Coder here**. |
 | `DSK-03` Home | **Online. Your phone can reach this Mac.** or **Offline.**, the phones with **Remove**, Coder's recent tasks, and **Connect another phone**. |
 
 The screens are Rust Native views ([`src/screens.rs`](src/screens.rs)),

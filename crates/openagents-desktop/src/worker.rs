@@ -281,6 +281,7 @@ impl LocalLane {
                     Agents {
                         codex: true,
                         claude: false,
+                        grok: None,
                     }
                 } else {
                     platform::signed_in(&self.home)

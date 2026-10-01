@@ -153,8 +153,26 @@ fn states() -> Vec<(&'static str, Model)> {
     connected.agents = Agents {
         codex: true,
         claude: false,
+        grok: None,
     };
     states.push(("dsk-02-connected", connected));
+
+    // Grok Build installed here: allowed by default, so it is listed
+    // (#10091), and it alone is enough for Coder to work.
+    let (mut grok, _) = model(Screen::Connected {
+        device: device.clone(),
+    });
+    grok.host = Some(host(
+        vec![phone('d', "Kai's iPhone", false, 5)],
+        false,
+        false,
+    ));
+    grok.agents = Agents {
+        codex: false,
+        claude: false,
+        grok: Some(true),
+    };
+    states.push(("dsk-02-connected-grok", grok));
 
     // A phone that paired by scanning gives the host no name.
     let (mut scanned, _) = model(Screen::Connected {
@@ -164,6 +182,7 @@ fn states() -> Vec<(&'static str, Model)> {
     scanned.agents = Agents {
         codex: true,
         claude: false,
+        grok: None,
     };
     states.push(("dsk-02-connected-unnamed", scanned));
 

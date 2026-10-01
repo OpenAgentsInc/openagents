@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 15] = [
+pub const SCENARIOS: [&str; 17] = [
     "ui-placeholder",
     "who-are-you",
     "ui-chips",
@@ -48,6 +48,8 @@ pub const SCENARIOS: [&str; 15] = [
     "delegate-now",
     "working-directory",
     "delegate-claude",
+    "delegate-grok",
+    "ui-stop-coder",
     "image-to-coder",
     "open-deck",
     "ui-filter-sessions",
@@ -90,6 +92,10 @@ struct Gate {
     filter_shown: Vec<usize>,
     filter_wrong: Option<String>,
     engines: Engines,
+    /// What the first capture of a running Coder saw of the transcript's
+    /// **Stop Coder** (#10091): its width against the transcript's, or why
+    /// it could not be measured.
+    stop_seen: Option<Outcome>,
     /// Chat ids, and their sidebar numbers, by the scenario that made them.
     chats: std::collections::BTreeMap<&'static str, (String, u64)>,
 }
@@ -98,6 +104,7 @@ struct Gate {
 struct Engines {
     codex: bool,
     claude: bool,
+    grok: bool,
     allow_missing: bool,
 }
 
@@ -108,6 +115,7 @@ impl Engines {
         Engines {
             codex: on("codex"),
             claude: on("claude"),
+            grok: on("grok"),
             allow_missing: on("allow_missing"),
         }
     }
@@ -155,6 +163,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
         filter_shown: Vec::new(),
         filter_wrong: None,
         engines: Engines::from_env(),
+        stop_seen: None,
         chats: Default::default(),
     };
     // Let the first refresh and engine report arrive, as a window's first
@@ -173,6 +182,8 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "delegate-now" => delegate_now(&mut gate),
             "working-directory" => working_directory(&mut gate),
             "delegate-claude" => delegate_claude(&mut gate),
+            "delegate-grok" => delegate_grok(&mut gate),
+            "ui-stop-coder" => ui_stop_coder(&mut gate),
             "image-to-coder" => image_to_coder(&mut gate),
             "open-deck" => open_deck(&mut gate),
             "ui-filter-sessions" => ui_filter(&mut gate),
@@ -329,6 +340,49 @@ impl Gate {
                 words.join(" ")
             })
             .collect()
+    }
+
+    /// Grok Build's login, for the scenario that runs on it (#10091).
+    fn need_grok(&self) -> Option<Outcome> {
+        (!self.engines.grok).then(|| {
+            if self.engines.allow_missing {
+                Ok("SKIP no Grok Build login (--allow-missing-engine)".into())
+            } else {
+                Err("no Grok Build login to run this scenario".into())
+            }
+        })
+    }
+
+    /// Measures the transcript's **Stop Coder** once, the first time a run
+    /// shows it (#10091): it must be as wide as its words, as the phone
+    /// draws it, never the reading band's width.
+    fn measure_stop(&mut self, chat: &str) {
+        if self.stop_seen.is_some()
+            || !self
+                .panel()
+                .coder_run(chat)
+                .is_some_and(|run| run.active() && run.task.is_some())
+        {
+            return;
+        }
+        let (_, scene) = self.capture("ui-stop-coder", "running-1200x840-1x", 1200.0, 840.0, 1.0);
+        let Some(band) = scene.surface_rect(openagents_desktop::chat::TRANSCRIPT) else {
+            return;
+        };
+        let Some(stop) = self.panel().transcript.control_bounds("coder-stop") else {
+            return;
+        };
+        self.stop_seen = Some(if stop.w < 160.0 && stop.w < band.w / 3.0 {
+            Ok(format!(
+                "Stop Coder is {:.0}pt wide in a {:.0}pt transcript while Coder runs; capture running-1200x840-1x.png",
+                stop.w, band.w
+            ))
+        } else {
+            Err(format!(
+                "Stop Coder spans {:.0}pt of a {:.0}pt transcript while Coder runs (running-1200x840-1x.png)",
+                stop.w, band.w
+            ))
+        });
     }
 
     fn need(&self, codex_or_claude: bool, claude: bool) -> Option<Outcome> {
@@ -558,6 +612,7 @@ fn follow_run(gate: &mut Gate, chat: &str, finish: bool) -> RunSeen {
     }
     let wait = if finish { RUN_WAIT } else { START_WAIT };
     pump(gate, wait, |gate| {
+        gate.measure_stop(chat);
         let Some(run) = gate.panel().coder_run(chat) else {
             return false;
         };
@@ -758,12 +813,19 @@ fn ui_engines(gate: &mut Gate) -> Outcome {
     pump(gate, Duration::from_secs(20), |gate| {
         gate.app.model.engine.is_some()
     });
+    // Each route, then each engine beside them a person's own runs can
+    // use, such as Grok Build when installed (#10091).
     let routes = gate
         .app
         .model
         .engine
         .as_ref()
-        .map(|engine| engine.routes.len())
+        .map(|engine| {
+            engine.routes.len().min(4)
+                + openagents_chat_app::engine::extra_accounts(engine)
+                    .len()
+                    .min(4)
+        })
         .ok_or("the host sent no engine report")?;
     let (_, scene) = gate.capture(
         "ui-engines-sidebar",
@@ -805,7 +867,18 @@ fn ui_engines(gate: &mut Gate) -> Outcome {
         .model
         .engine
         .as_ref()
-        .map(|engine| engine.routes.iter().map(|r| r.name.clone()).collect())
+        .map(|engine| {
+            engine
+                .routes
+                .iter()
+                .map(|r| r.name.clone())
+                .chain(
+                    openagents_chat_app::engine::extra_accounts(engine)
+                        .into_iter()
+                        .map(|a| a.name.clone()),
+                )
+                .collect()
+        })
         .unwrap_or_default();
     if gate.transcript().iter().any(|row| {
         names
@@ -1006,6 +1079,117 @@ fn delegate_claude(gate: &mut Gate) -> Outcome {
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// "do a test delegation to grok" → with no settings file, Grok Build is
+/// allowed by default: the offer names Grok Build, and real Grok Build
+/// starts and finishes in the scratch project (#10091).
+fn delegate_grok(gate: &mut Gate) -> Outcome {
+    if let Some(skip) = gate.need_grok() {
+        return skip;
+    }
+    const ASK: &str = "do a test delegation to grok";
+    let chat = new_chat(gate, "delegate-grok")?;
+    let reply = send(gate, ASK)?;
+    let engine = reply.meta.as_ref().and_then(|meta| meta.engine);
+    let seen = follow_run(gate, &chat, true);
+    gate.save_chat("delegate-grok");
+    let _ = gate.capture("delegate-grok", "chat-1200x840-1x", 1200.0, 840.0, 1.0);
+    let mut problems = Vec::new();
+    if engine != Some(nostr::cj_conversation::Engine::GrokBuild) {
+        problems.push(format!(
+            "the reply's offer asked for {engine:?}, not Grok Build"
+        ));
+    }
+    match &seen.started {
+        Some(started) if started.provider == "grok" => {}
+        Some(started) => problems.push(format!(
+            "Coder started on {} ({}): {:?}",
+            started.provider, started.model, started.reason
+        )),
+        None => problems.push(format!(
+            "Coder did not start: {}",
+            seen.failure.clone().unwrap_or_default()
+        )),
+    }
+    if gate
+        .transcript()
+        .iter()
+        .any(|row| row.contains("not one of the engines your Coder settings allow"))
+    {
+        problems.push("the chat says Grok Build is not allowed".into());
+    }
+    if let Some(failure) = &seen.failure
+        && seen.started.is_some()
+    {
+        problems.push(format!("Coder: {failure}"));
+    }
+    if seen.started.is_some() && seen.finished.is_none() && seen.failure.is_none() {
+        problems.push("Coder did not finish".into());
+    }
+    let project = std::env::var("OPENAGENTS_ACCEPTANCE_PROJECT").unwrap_or_default();
+    if let Some(started) = &seen.started {
+        let checkout = std::fs::canonicalize(&started.checkout).unwrap_or_default();
+        let wanted = std::fs::canonicalize(&project).unwrap_or_default();
+        if checkout != wanted {
+            problems.push(format!(
+                "Coder ran in {} instead of the project {project}",
+                started.checkout
+            ));
+        }
+    }
+    if let Some(done) = &seen.finished {
+        let _ = std::fs::copy(
+            &done.trajectory,
+            gate.evidence("delegate-grok").join("turn.atif.jsonl"),
+        );
+    }
+    if problems.is_empty() {
+        let started = seen.started.as_ref();
+        Ok(format!(
+            "Coder {} started on Grok Build ({}, {:?}) and finished: {:?}",
+            seen.task.unwrap_or_default(),
+            started.map_or("?", |s| s.model.as_str()),
+            started.map(|s| s.reason.clone()).unwrap_or_default(),
+            excerpt(&seen.finished.map(|f| f.summary).unwrap_or_default())
+        ))
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
+/// While Coder runs, the transcript's **Stop Coder** is as wide as its
+/// words, as on the phone, not the transcript's width (#10091). Measured
+/// during the first run an earlier scenario followed; alone, it starts one.
+fn ui_stop_coder(gate: &mut Gate) -> Outcome {
+    if gate.stop_seen.is_none() {
+        if let Some(skip) = gate.need(true, false) {
+            return skip;
+        }
+        let chat = new_chat(gate, "ui-stop-coder")?;
+        send(gate, "do a test delegation now")?;
+        let seen = follow_run(gate, &chat, false);
+        if gate.stop_seen.is_none() {
+            pump(gate, START_WAIT, |gate| {
+                gate.measure_stop(&chat);
+                gate.stop_seen.is_some()
+                    || gate
+                        .panel()
+                        .coder_run(&chat)
+                        .is_some_and(|run| !run.active())
+            });
+        }
+        gate.save_chat("ui-stop-coder");
+        if gate.stop_seen.is_none() {
+            return Err(format!(
+                "no running Coder showed Stop Coder to measure{}",
+                seen.failure.map(|f| format!(": {f}")).unwrap_or_default()
+            ));
+        }
+    }
+    gate.stop_seen
+        .clone()
+        .unwrap_or_else(|| Err("not measured".into()))
 }
 
 /// A start reason that calls a provider out of capacity when the host's

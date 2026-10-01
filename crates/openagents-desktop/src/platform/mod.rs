@@ -1,8 +1,8 @@
 //! The computer around the window, one module a system: the login agent
 //! that runs `coder host serve`, where the host's control channel is, the
 //! screen lock, the clipboard, the folder chooser, notifications, and
-//! whether Codex and Claude Code are signed in. macOS is [`crate::mac`]; Linux and Windows
-//! are here. Each exposes the same functions, and the rest of the binary
+//! whether Codex, Claude Code, and Grok Build are signed in. macOS is
+//! [`crate::mac`]; Linux and Windows are here. Each exposes the same functions, and the rest of the binary
 //! calls them through this module.
 
 #[cfg(target_os = "linux")]

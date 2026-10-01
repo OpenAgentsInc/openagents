@@ -659,6 +659,9 @@ impl Engine {
         let who = match self.engine.as_str() {
             "codex" => "Codex",
             "claude" => "Claude Code",
+            "grok" => "Grok Build",
+            "opencode" => "OpenCode",
+            "devin" => "Devin",
             other => other,
         };
         match self.state {

@@ -84,7 +84,8 @@ when the task store is not `~/.openagents/tasks`. It probes usage when the
 policy does, or once when you pass `--probe-usage`.
 
 `coder host autostart status` prints one JSON report of those same routes,
-whether Codex and Claude Code are signed in, and each probed usage window as
+whether Codex and Claude Code (and Grok Build, when installed) are signed in,
+and each probed usage window as
 percents and reset times. The report has no credential. `--refresh` asks a
 provider only when this policy's usage probe is on. `--store DIR` names the
 task store (default `~/.openagents/tasks`). The desktop reads that report.

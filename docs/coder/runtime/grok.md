@@ -47,9 +47,15 @@ is not empty, or a non-empty `XAI_API_KEY`. The host checks the file's size
 and whether the variable is set. It never reads the file and never logs
 the variable.
 
-The default local provider list stays Codex, then Claude Code. Grok Build
-is available when you name it, after Claude Code and before OpenCode in
-the allowed order.
+A person's own local runs allow Grok Build by default: the default provider
+list is Codex, then Claude Code, then Grok Build
+([#10091](https://github.com/OpenAgentsInc/openagents/issues/10091)), so
+"do a test delegation to grok" runs Grok Build when it is signed in here, and
+says so plainly when it is not. The desktop's auto-start switch admits the
+same three routes for a first policy. The desktop's sidebar and Settings →
+Coder show Grok Build when it is installed; it has no usage endpoint, so its
+row shows no meter. OpenCode (no default model) and Devin (a paid API) stay
+off until named.
 
 ## What a turn does
 
@@ -99,6 +105,13 @@ not wrap that process.
   `--always-approve`. The host answers every `session/request_permission`
   with the agent's reject option, so the turn runs no tool the agent has
   to ask for.
+
+Grok Build 1.0.44 ends the whole prompt as `cancelled` once the host
+rejects a tool ask, so at a person's default local access (`toolchains`) a
+Grok Build turn that wants a shell command ends cancelled; the release gate's
+`delegate-grok` scenario fails on it until
+[#10092](https://github.com/OpenAgentsInc/openagents/issues/10092) decides
+how Grok Build runs commands outside full access.
 
 Either way the process runs in its own process group, which the host stops
 when the turn ends or is cancelled. A container grant refuses a Grok Build

@@ -9,7 +9,8 @@
 #
 # What it runs, never touching the real home or its stores:
 #   1. A temporary HOME (short, under /tmp, for the control socket's path
-#      limit), the owner's Codex and Claude Code logins made readable there
+#      limit), the owner's Codex, Claude Code, and Grok Build logins made
+#      readable there
 #      without copying or changing them (see "Engine logins" below), and a
 #      scratch Git repository with a linked worktree of it, the shape of the
 #      owner's ~/work/openagents-host-tasks.
@@ -48,8 +49,9 @@
 #   --only NAMES       Run only these scenarios (comma-separated); --list
 #                      prints them.
 #   --allow-missing-engine
-#                      A missing Codex or Claude Code login skips the
-#                      scenarios that need it instead of failing them.
+#                      A missing Codex, Claude Code, or Grok Build login
+#                      skips the scenarios that need it instead of failing
+#                      them.
 #   --no-engines       Read no engine login at all (no Codex copy, no
 #                      Keychain link) and skip the scenarios that need one:
 #                      for the UI and chat scenarios alone.
@@ -69,7 +71,18 @@
 #               item as it always does, and ~/.claude.json gets only the
 #               account metadata (oauthAccount, userID, onboarding), never a
 #               credential.
-#   Only that one Codex file is copied, and nothing is printed.
+#   Grok Build  GROK_BIN names the owner's installed `grok`, and the
+#               temporary HOME's .grok holds a private copy (mode 0600) of
+#               ~/.grok/auth.json (or $GROK_HOME/auth.json), deleted with the
+#               temporary HOME; XAI_API_KEY, when set, is used as it is
+#               instead. Grok Build refreshes its sign-in only near its
+#               expiry, and a refresh could retire the owner's refresh
+#               token, so the copy is made only while the login has more
+#               than an hour left (the gate takes under half that); with
+#               less, run `grok` once to refresh it, then the gate. Only
+#               that file is copied; the real one is never changed.
+#   Only the Codex and Grok Build login files are copied, and nothing is
+#   printed.
 #
 # Spend: each Coder run is a tiny task in the scratch repository, capped by
 # the local run's step limit; the chat router answers a fixed handful of
@@ -92,7 +105,7 @@ say() { echo "==> $*" >&2; }
 
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
-desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude delegate-grok ui-stop-coder image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
 gate_scenarios="explain-error plugins-chat"
 scenarios="$desktop_scenarios $gate_scenarios"
 
@@ -187,8 +200,8 @@ cleanup() {
   fi
   [ -f "$scratch/.openagents/host/autostart.jsonl" ] && cp "$scratch/.openagents/host/autostart.jsonl" "$evidence/" 2>/dev/null
   if [ "$keep" = 1 ]; then
-    rm -f "$scratch/.codex/auth.json"
-    echo "acceptance: kept the temporary HOME at $scratch (without the Codex login copy)" >&2
+    rm -f "$scratch/.codex/auth.json" "$scratch/.grok/auth.json"
+    echo "acceptance: kept the temporary HOME at $scratch (without the Codex and Grok Build login copies)" >&2
   else
     rm -rf "$scratch"
   fi
@@ -261,9 +274,61 @@ PY
     claude_ok=1
   fi
 fi
+# Grok Build (#10091): the owner's installed binary, and a private copy of
+# its login while that login has more than an hour left, so nothing the
+# gate's runs do refreshes it (a refresh could retire the owner's refresh
+# token). The real file is only read.
+grok_ok=0
+grok_why="not installed"
+grok_bin="${GROK_BIN:-}"
+if [ -z "$grok_bin" ]; then
+  for candidate in "$(command -v grok || true)" "$real_home/.local/bin/grok" "$real_home/.grok/bin/grok"; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then grok_bin="$candidate"; break; fi
+  done
+fi
+grok_auth="${GROK_HOME:-$real_home/.grok}/auth.json"
+if [ "${no_engines:-0}" = 1 ]; then
+  grok_why="--no-engines"
+elif [ -n "$grok_bin" ] && [ -x "$grok_bin" ]; then
+  if [ -n "${XAI_API_KEY:-}" ]; then
+    grok_ok=1
+  elif [ -s "$grok_auth" ]; then
+    # The seconds the login has left: the earliest expires_at it holds.
+    grok_left="$(python3 - "$grok_auth" <<'PYGROK'
+import datetime, json, sys
+try:
+    logins = json.load(open(sys.argv[1]))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    left = []
+    for login in logins.values():
+        at = login.get("expires_at")
+        if at:
+            left.append((datetime.datetime.fromisoformat(at.replace("Z", "+00:00")) - now).total_seconds())
+    print(int(min(left)) if left else 0)
+except Exception:
+    print(0)
+PYGROK
+)"
+    if [ "${grok_left:-0}" -gt 3600 ]; then
+      mkdir -p "$H/.grok"
+      chmod 700 "$H/.grok"
+      (umask 077 && cp "$grok_auth" "$H/.grok/auth.json") || die "cannot copy the Grok Build login"
+      grok_ok=1
+    else
+      grok_why="its login has $(( ${grok_left:-0} / 60 )) minutes left; run grok once to refresh it, then the gate"
+    fi
+  else
+    grok_why="not signed in"
+  fi
+fi
+if [ "$grok_ok" = 1 ]; then
+  export GROK_BIN="$grok_bin"
+  unset GROK_HOME
+fi
 engines_missing=""
 [ "$codex_ok" = 1 ] || engines_missing="$engines_missing codex"
 [ "$claude_ok" = 1 ] || engines_missing="$engines_missing claude"
+[ "$grok_ok" = 1 ] || engines_missing="$engines_missing grok ($grok_why)"
 if [ -n "$engines_missing" ]; then
   if [ "$allow_missing" = 1 ]; then
     echo "acceptance: no login for:$engines_missing; scenarios needing it are skipped (--allow-missing-engine)" >&2
@@ -271,7 +336,7 @@ if [ -n "$engines_missing" ]; then
     record engine-logins FAIL "no usable login for:$engines_missing (pass --allow-missing-engine to skip those scenarios)"
   fi
 fi
-export OPENAGENTS_ACCEPTANCE_ENGINES="codex=$codex_ok,claude=$claude_ok,allow_missing=$allow_missing"
+export OPENAGENTS_ACCEPTANCE_ENGINES="codex=$codex_ok,claude=$claude_ok,grok=$grok_ok,allow_missing=$allow_missing"
 
 export_env
 git config --global user.name "OpenAgents Acceptance" >/dev/null

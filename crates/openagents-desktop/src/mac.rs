@@ -1,6 +1,6 @@
 //! The Mac around the window: the login agent, the screen lock, the
-//! clipboard, the folder chooser, and whether Codex and Claude Code are
-//! signed in. Each is a stub that reports "nothing" on other systems.
+//! clipboard, the folder chooser, and whether Codex, Claude Code, and Grok
+//! Build are signed in. Each is a stub that reports "nothing" on other systems.
 //!
 //! None of this reads a secret. The sign-in check asks only whether the
 //! credential exists (a file's presence, or a keychain item's attributes
@@ -190,7 +190,8 @@ pub fn choose_folder() -> openagents_desktop::folder::Chosen {
     }
 }
 
-/// Whether Codex and Claude Code are signed in for this user.
+/// Whether Codex and Claude Code are signed in for this user, and whether
+/// Grok Build is installed and signed in.
 pub fn signed_in(home: &Path) -> Agents {
     let claude_item = Command::new("security")
         .args(["find-generic-password", "-s", "Claude Code-credentials"])
@@ -201,5 +202,6 @@ pub fn signed_in(home: &Path) -> Agents {
     Agents {
         codex: openagents_desktop::model::codex_login(home).exists(),
         claude: claude_item || home.join(".claude/.credentials.json").exists(),
+        grok: openagents_desktop::model::grok(home),
     }
 }

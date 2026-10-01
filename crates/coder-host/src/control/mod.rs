@@ -867,8 +867,10 @@ fn autostart_get(shared: &Shared) -> std::result::Result<Autostart, Box<Reply>> 
 }
 
 /// The routes the switch admits, in preference order: Codex, then Claude
-/// Code, with the models `coder host autostart` documents.
-const ROUTES: [&str; 2] = ["codex:gpt-6-luna", "claude:claude-opus-5-5"];
+/// Code, then Grok Build (#10091), with the models `coder host autostart`
+/// documents, as a person's own local runs default to
+/// (`coder::task::settings`).
+const ROUTES: [&str; 3] = ["codex:gpt-6-luna", "claude:claude-opus-5-5", "grok:default"];
 
 /// Change the policy through the host's own `coder host autostart`
 /// command, which checks every bound and records the change; a request on
@@ -907,7 +909,7 @@ fn autostart_set(
             command.args(["--workspace", project]);
         }
         command.args(["--max-running", &policy.max_running.to_string()]);
-        // Both local coding agents, in this order: each start takes the
+        // The local coding agents, in this order: each start takes the
         // first one signed in on this computer with capacity, so a Mac with
         // only Claude Code, or a Codex account at its limit, still runs.
         for route in ROUTES {

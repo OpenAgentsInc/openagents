@@ -5,7 +5,8 @@
 //! computer: `$OPENAGENTS_SETTINGS`, else `~/.openagents/settings.json`
 //! ([`path`]). A missing file, or a missing field, means the default, and
 //! the defaults are exactly what a computer does with no file at all
-//! (#10032, #10045): Codex then Claude Code, a coding request runs at once,
+//! (#10032, #10045, #10091): Codex, then Claude Code, then Grok Build (each
+//! only when signed in here), a coding request runs at once,
 //! a fresh usage reading at or above 90% passes a provider over, any Git
 //! checkout is a project, and commands run in the filesystem boundary with
 //! this computer's toolchains.
@@ -14,7 +15,7 @@
 //! {
 //!   "schema": "openagents.settings.v1",
 //!   "coder": {
-//!     "providers": ["codex", "claude"],
+//!     "providers": ["codex", "claude", "grok"],
 //!     "start": "at_once",
 //!     "usage_threshold_percent": 90,
 //!     "projects": [],
@@ -22,6 +23,10 @@
 //!   }
 //! }
 //! ```
+//!
+//! OpenCode and Devin are never on by default: OpenCode has no default
+//! model (it names its own `provider/model`), and Devin bills a paid API
+//! per run, so each runs only when the person names it.
 //!
 //! A file that does not parse, or names a value outside its closed set, is
 //! never read as the defaults: a local run then refuses and names the file,
@@ -264,8 +269,17 @@ impl Start {
     }
 }
 
+/// Codex, then Claude Code, then Grok Build (#10091): the engines that
+/// need no model named and no paid API of their own. A provider that is not
+/// signed in here is passed over with that reason, so allowing it costs
+/// nothing. OpenCode needs a model and Devin is a paid API, so neither is a
+/// default.
 fn default_providers() -> Vec<Choice> {
-    vec![Choice::new(Provider::Codex), Choice::new(Provider::Claude)]
+    vec![
+        Choice::new(Provider::Codex),
+        Choice::new(Provider::Claude),
+        Choice::new(Provider::Grok),
+    ]
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -652,6 +666,11 @@ mod tests {
     #[test]
     fn a_toggle_allows_and_removes_a_provider_and_keeps_the_settings_valid() {
         let mut settings = Settings::default();
+        settings.allow(Provider::Grok, false).unwrap();
+        assert_eq!(
+            settings.coder.provider_list(),
+            vec![Provider::Codex, Provider::Claude]
+        );
         settings.allow(Provider::Grok, true).unwrap();
         assert_eq!(
             settings.coder.provider_list(),
@@ -659,6 +678,9 @@ mod tests {
         );
         settings.allow(Provider::Grok, true).unwrap();
         assert_eq!(settings.coder.providers.len(), 3);
+        settings.allow(Provider::Devin, true).unwrap();
+        assert_eq!(settings.coder.providers.len(), 4);
+        settings.allow(Provider::Devin, false).unwrap();
         settings
             .set(
                 "coder.providers",
@@ -694,7 +716,20 @@ mod tests {
                     model: "claude-opus-5-5".into(),
                     effort: None
                 },
+                Route {
+                    provider: Provider::Grok,
+                    model: acp_client::grok::DEFAULT_MODEL.into(),
+                    effort: None
+                },
             ]
+        );
+        // OpenCode needs a model and Devin is a paid API: neither is on
+        // unless the person names it (#10091).
+        assert!(!coder.provider_list().contains(&Provider::OpenCode));
+        assert!(!coder.provider_list().contains(&Provider::Devin));
+        assert_eq!(
+            settings.get("coder.providers").unwrap(),
+            json!(["codex", "claude", "grok"])
         );
         assert_eq!(coder.start, Start::AtOnce);
         assert_eq!(

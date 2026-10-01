@@ -3073,7 +3073,7 @@
                 ]
               }
             ],
-            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex or Claude Code, whichever is signed in here and has capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
+            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex, Claude Code, or Grok Build, the first signed in here with capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }

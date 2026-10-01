@@ -456,7 +456,8 @@ async fn openagents_in(cwd: &Path, home: &Path, relay: &str, worker: &str, args:
 /// `openagents settings` edits the one settings file (#10036), and each
 /// setting a terminal can observe changes `openagents chat`'s local run:
 /// in a checkout on a computer with no coding agent signed in, the
-/// default run tries Codex and Claude Code, a Claude-only setting names
+/// default run tries Codex, Claude Code, and Grok Build (#10091), a
+/// Claude-only setting names
 /// Claude Code alone, a project-folder setting refuses a checkout outside
 /// it, and `ask_first` keeps only the offer. (What each setting does to a
 /// run that starts is in `crates/coder/src/task/local.rs`.)
@@ -507,7 +508,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(
         shown["settings"],
         json!({
-            "coder.providers": ["codex", "claude"],
+            "coder.providers": ["codex", "claude", "grok"],
             "coder.start": "at_once",
             "coder.usage_threshold_percent": 90,
             "coder.projects": [],
@@ -521,11 +522,15 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             .to_owned()
     };
 
-    // The defaults: Coder runs at once, on Codex or Claude Code.
+    // The defaults: Coder runs at once, on Codex, Claude Code, or Grok
+    // Build (#10091).
     let plain = run!("--json", "chat", "--local", "fix the flaky test");
     assert_eq!(plain.code, 1, "{}\n{}", plain.stdout, plain.stderr);
     assert!(
-        coder_message(&plain).contains("Neither Codex nor Claude Code is signed in"),
+        coder_message(&plain).contains(
+            "None of the coding agents your settings allow (Codex, Claude Code, Grok Build) \
+             is signed in"
+        ),
         "{}",
         plain.stdout
     );
@@ -537,7 +542,8 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(
         context["computer"]["engines"],
         json!([{"engine": "codex", "state": "not_signed_in"},
-               {"engine": "claude", "state": "not_signed_in"}])
+               {"engine": "claude", "state": "not_signed_in"},
+               {"engine": "grok", "state": "not_signed_in"}])
     );
     assert_eq!(context["project"]["name"], "slugs");
     assert!(

@@ -12,7 +12,7 @@ the owner accepts it by name.
 
 ## Run it
 
-On a Mac with Codex and Claude Code signed in:
+On a Mac with Codex, Claude Code, and Grok Build signed in:
 
 ```sh
 # The .app scripts/desktop/package-macos.sh just packaged (the default):
@@ -42,7 +42,7 @@ script then prints a summary table and the evidence folder. It exits 1 when
 any scenario fails and 2 when it cannot set up.
 
 A full run takes 15 to 30 minutes, mostly Coder runs. It sends about fifteen
-chat messages and starts four or five tiny Coder runs (one line in
+chat messages and starts five or six tiny Coder runs (one line in
 `NOTES.md`), each capped by the local run's step limit, so it costs a few
 cents of engine usage.
 
@@ -67,9 +67,19 @@ or the owner's host.
      way it always does. `~/.claude.json` in the temporary home holds only the
      account metadata (`oauthAccount`, `userID`, and the onboarding flag), never
      a credential.
+   - Grok Build: `GROK_BIN` names the owner's installed `grok`, and the
+     temporary home's `.grok` holds a private copy (mode `0600`) of
+     `~/.grok/auth.json` (or `$GROK_HOME/auth.json`), deleted with the
+     temporary home; a set `XAI_API_KEY` is used as it is instead. Grok Build
+     refreshes its sign-in only near its expiry, and a refresh could retire
+     the owner's refresh token, so the gate copies the login only while it
+     has more than an hour left (a full run takes under half that). With
+     less, run `grok` once to refresh it, then run the gate. The real file is
+     only read.
 
-   Only that one Codex file is copied, and nothing is printed. A missing
-   login is a FAIL unless you pass `--allow-missing-engine`.
+   Only the Codex and Grok Build login files are copied, and nothing is
+   printed. A missing login is a FAIL unless you pass
+   `--allow-missing-engine`.
 3. **The owner's project shape.** The gate makes a scratch repository and a
    linked worktree of it, `acceptance-repo-host-tasks`, like
    `~/work/openagents-host-tasks`. The tree is big enough to matter: 400
@@ -123,11 +133,13 @@ conversation run in the owner's order.
 | `ui-placeholder` | An empty chat's centered composer paints **Message OpenAgents…** (faint-ink pixels in the composer field of a 2x capture). | #10072 |
 | `who-are-you` | "who are you" gets an answer with suggestions, and Coder does not start. | #10073 |
 | `ui-chips` | The reply's suggestions are small chips in a row directly above the composer, none in the transcript. | #10075 |
-| `ui-engines-sidebar` | Each engine from the host's report is one condensed row in the sidebar, above the footer, and the transcript shows no engine block. | #10072 |
+| `ui-engines-sidebar` | Each engine from the host's report is one condensed row in the sidebar, above the footer (its routes, then an engine beside them such as Grok Build when installed), and the transcript shows no engine block. | #10072, #10091 |
 | `delegate-who` | "who can you delegate to", in the same chat, gets an answer, and Coder does not start. | #10073 |
 | `delegate-now` | "do a test delegation now", in the same chat: Coder starts, runs, and finishes in the linked-worktree project; the prompt Coder received is that message; the reply carries no Gym card; and no decision-call row shows in the transcript. | #10073, #10078 |
 | `working-directory` | "What's the working directory right now?" names the project folder, never says to connect a computer, and starts no Coder. | #10077, #10079 |
 | `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |
+| `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091 (fails on #10092 until it is fixed) |
+| `ui-stop-coder` | While Coder runs, the transcript's **Stop Coder** is as wide as its words (under 160 points and a third of the transcript), as the phone draws it. Measured during the first run an earlier scenario followed; run alone, it starts one. | #10091, #10075 |
 | `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. | #10066, #10070 |
 | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |
 | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |

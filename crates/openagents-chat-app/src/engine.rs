@@ -4,15 +4,41 @@
 //! a read-only ring per route. The computer owns the settings; this strip
 //! cannot change them or read a credential.
 
-use openagents_connect::control::{EngineReport, RouteUsage};
+use openagents_connect::control::{EngineAccount, EngineReport, RouteUsage};
 use rust_native::style::{Color, Space, Style};
 use rust_native::view::{Axis, Element, Node, TextRole};
 
 const TEXT: Color = crate::visual::TEXT;
 const MUTED: Color = crate::visual::MUTED;
 
-/// The header strip for `report`. Route cards when the computer has routes;
-/// otherwise the Codex and Claude Code sign-in lines and no rings.
+/// The engines a report names beside its routes (#10091): when it has
+/// routes, each account no route names that is signed in, and Grok Build
+/// whenever the report names it (it does only when Grok Build is installed
+/// on the computer). A person's own runs can use those too, so they show
+/// as signed in or not, with no meter. With no routes, every account is
+/// shown already, so none is extra.
+#[must_use]
+pub fn extra_accounts(report: &EngineReport) -> Vec<&EngineAccount> {
+    if report.routes.is_empty() {
+        return Vec::new();
+    }
+    report
+        .accounts
+        .iter()
+        .filter(|account| {
+            !report
+                .routes
+                .iter()
+                .any(|route| route.provider == account.provider)
+                && (account.signed_in || account.provider == "grok")
+        })
+        .collect()
+}
+
+/// The header strip for `report`. Route cards when the computer has routes,
+/// then a sign-in line for each [`extra_accounts`] engine; otherwise the
+/// sign-in lines of the engines the report names (Codex and Claude Code,
+/// and Grok Build when installed) and no rings.
 #[must_use]
 pub fn strip<I>(report: &EngineReport) -> Node<I> {
     let mut children = Vec::new();
@@ -24,35 +50,43 @@ pub fn strip<I>(report: &EngineReport) -> Node<I> {
             MUTED,
         ));
         for account in report.accounts.iter().take(4) {
-            let provider = id_piece(&account.provider);
-            children.push(stack(
-                &format!("engine-account-{provider}"),
-                Axis::Vertical,
-                Space::None,
-                vec![
-                    line(
-                        &format!("engine-account-{provider}-name"),
-                        &account.name,
-                        TextRole::Body,
-                        TEXT,
-                    ),
-                    line(
-                        &format!("engine-account-{provider}-signin"),
-                        sign_in(account.signed_in),
-                        TextRole::Status,
-                        MUTED,
-                    ),
-                ],
-            ));
+            children.push(account_line(account));
         }
     } else {
         let mut cards = Vec::new();
         for (index, route) in report.routes.iter().take(8).enumerate() {
             cards.push(route_card(index, route));
         }
+        for account in extra_accounts(report).into_iter().take(4) {
+            cards.push(account_line(account));
+        }
         children.push(stack("engine-routes", Axis::Wrap, Space::Md, cards));
     }
     stack("engine-strip", Axis::Vertical, Space::Sm, children)
+}
+
+/// One engine's name and whether it is signed in, with no meter.
+fn account_line<I>(account: &EngineAccount) -> Node<I> {
+    let provider = id_piece(&account.provider);
+    stack(
+        &format!("engine-account-{provider}"),
+        Axis::Vertical,
+        Space::None,
+        vec![
+            line(
+                &format!("engine-account-{provider}-name"),
+                &account.name,
+                TextRole::Body,
+                TEXT,
+            ),
+            line(
+                &format!("engine-account-{provider}-signin"),
+                sign_in(account.signed_in),
+                TextRole::Status,
+                MUTED,
+            ),
+        ],
+    )
 }
 
 fn route_card<I>(index: usize, route: &openagents_connect::control::EngineRoute) -> Node<I> {
@@ -337,6 +371,36 @@ mod tests {
         rust_native::View::new("engine", 1, view)
             .validate()
             .expect("valid");
+    }
+
+    /// Grok Build, which no route names and which reports no usage, shows
+    /// as a sign-in line after the route cards, never a ring (#10091).
+    #[test]
+    fn an_engine_beside_the_routes_shows_signed_in_with_no_ring() {
+        let mut report = report();
+        report.accounts.push(EngineAccount {
+            provider: "grok".into(),
+            name: "Grok Build".into(),
+            signed_in: true,
+        });
+        let extra: Vec<&str> = extra_accounts(&report)
+            .iter()
+            .map(|a| a.provider.as_str())
+            .collect();
+        assert_eq!(extra, ["grok"]);
+        let view = strip::<()>(&report);
+        let words = texts(&view).join("\n");
+        assert!(words.contains("Grok Build"));
+        assert_eq!(
+            resources(&view),
+            ["engine-ring:codex:100", "engine-ring:claude:66"]
+        );
+        // Not installed: the report names no Grok Build, and nothing shows.
+        report.accounts.pop();
+        assert!(extra_accounts(&report).is_empty());
+        // With no routes every account is already a line.
+        report.routes.clear();
+        assert!(extra_accounts(&report).is_empty());
     }
 
     #[test]

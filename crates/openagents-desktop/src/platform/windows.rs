@@ -235,12 +235,14 @@ pub fn choose_folder() -> openagents_desktop::folder::Chosen {
     }
 }
 
-/// Whether Codex and Claude Code are signed in for this user. On Windows
-/// both keep their sign-in in a file under the profile.
+/// Whether Codex and Claude Code are signed in for this user, and Grok
+/// Build when it is installed. On Windows Codex and Claude Code
+/// keep their sign-in in a file under the profile.
 pub fn signed_in(home: &Path) -> Agents {
     Agents {
         codex: openagents_desktop::model::codex_login(home).exists(),
         claude: home.join(".claude").join(".credentials.json").exists(),
+        grok: openagents_desktop::model::grok(home),
     }
 }
 

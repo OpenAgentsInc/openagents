@@ -184,7 +184,8 @@ pub enum Request {
         code: String,
     },
     ChooseFolder,
-    /// Whether Codex and Claude Code are signed in, and the recent tasks.
+    /// Whether Codex, Claude Code, and Grok Build are signed in, and the
+    /// recent tasks.
     Coder,
     /// Coder's engine, model, sign-in, and usage. Read-only.
     Engine,
@@ -252,6 +253,26 @@ pub struct Task {
 pub struct Agents {
     pub codex: bool,
     pub claude: bool,
+    /// Grok Build, allowed by default (#10091): `None` when it is not
+    /// installed here, else whether it is signed in.
+    pub grok: Option<bool>,
+}
+
+/// Grok Build for the person whose home is `home` ([`Agents::grok`]): `None`
+/// when no `grok` is installed, else whether it has a login. The same check
+/// Coder's readiness makes (`acp_client::grok`): the auth file's size and
+/// whether `XAI_API_KEY` is set, never their contents.
+#[must_use]
+pub fn grok(home: &std::path::Path) -> Option<bool> {
+    let variable = |name: &str| {
+        if name == "HOME" {
+            Some(home.as_os_str().to_owned())
+        } else {
+            std::env::var_os(name)
+        }
+    };
+    acp_client::grok::binary(&variable)?;
+    Some(acp_client::grok::signed_in(&variable))
 }
 
 /// Codex's login for the person whose home is `home`: `$CODEX_HOME/auth.json`
@@ -1029,6 +1050,7 @@ mod tests {
                         agents: Agents {
                             codex: true,
                             claude: false,
+                            grok: None,
                         },
                         tasks: vec![Task {
                             title: "Fix the login test".into(),

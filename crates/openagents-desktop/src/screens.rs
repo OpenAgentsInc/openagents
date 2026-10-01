@@ -371,19 +371,28 @@ fn signed_in(key: &str, name: &str, on: bool) -> Node<Intent> {
 fn connected(model: &Model, device: &str) -> Node<Intent> {
     let mut project = vec![bold("project-title", "Pick a project for Coder")];
     project.extend(project_row(model));
+    // Grok Build, allowed by default (#10091), shows when it is installed.
+    let engines = if model.agents.grok.is_some() {
+        "Codex, Claude Code, or Grok Build"
+    } else {
+        "Codex or Claude Code"
+    };
     let mut agents = vec![
         bold(
             "agents-title",
-            format!("Coder uses Codex or Claude Code on this {}", model.computer),
+            format!("Coder uses {engines} on this {}", model.computer),
         ),
         signed_in("codex", "Codex", model.agents.codex),
         signed_in("claude", "Claude Code", model.agents.claude),
     ];
-    if !model.agents.codex && !model.agents.claude {
+    if let Some(grok) = model.agents.grok {
+        agents.push(signed_in("grok", "Grok Build", grok));
+    }
+    if !model.agents.codex && !model.agents.claude && model.agents.grok != Some(true) {
         agents.push(text(
             "agents-help",
             format!(
-                "Sign in to Codex or Claude Code on this {} so Coder can work here.",
+                "Sign in to {engines} on this {} so Coder can work here.",
                 model.computer
             ),
             TextRole::Status,
