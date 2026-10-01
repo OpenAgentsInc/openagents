@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "43",
+        title: "Coder starts at once",
+        what_to_test: "With a computer paired and its desktop app set to start Coder at once (the default), ask the chat for a small coding change: Coder should start on the computer without a Run Coder tap, and the chat should show where it runs with a Stop button. Open that Coder chat while it works: each step should read as a short line, like \"Read README.md\", never as raw code. Ask \"What is a capability claim?\": the answer should come from our essays.",
+        items: &[
+            Item {
+                title: "Coder starts at once",
+                detail: "When a reply offers Coder and your computer starts Coder at once, it starts there with no Run Coder tap. The chat shows where it runs, with Stop. A computer set to ask first still shows Run Coder.",
+            },
+            Item {
+                title: "No approval questions",
+                detail: "Coder on your computer approves its own steps by default, including a push, so a run no longer stops to ask you.",
+            },
+            Item {
+                title: "Readable steps",
+                detail: "Steps from Grok Build, Devin, and OpenCode show as short lines, like \"Read README.md\" or \"Ran cargo test\", instead of raw tool arguments.",
+            },
+            Item {
+                title: "Answers from our essays",
+                detail: "Questions about Test-Time Capabilities and The Return of the General Agent are answered from the essays, with their links.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "42",
         title: "Text only",
         what_to_test: "On the Chat tab, in a new chat and in an open one, the message box should have no attach button above it, and tapping the box twice should not offer Paste for a copied photo. Open the previous chats: the chat you started last should be at the top, with its project shown as a label on the row. With a computer paired, after a Coder run finishes, open its chat and ask \"What did you change?\": the reply should answer in the chat. Then say \"Now add a test\": Coder should continue the same task.",
