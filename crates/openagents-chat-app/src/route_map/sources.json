@@ -1,7 +1,7 @@
 {
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
-  "set": "chat-router-v4@1d266532e7d0",
+  "set": "chat-router-v4@ef02faf055e7",
   "bank": "chat-answers-v1@43063f287db6",
   "routes": [
     {
@@ -25,16 +25,16 @@
       "family": "answers",
       "description": "A question about the world or programming concepts, an explanation, writing help, or advice: anything answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
       "what": "A question about the world or programming concepts, an explanation, writing help, or advice: answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories; and, only when the conversation has the line in parentheses saying Coder's run in this chat ended, a question about that run: what happened, what it changed, found, or ran, whether it passed, which engine it used and why, or a summary or explanation of it, which we answer from its result",
-      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's (product.kb); work on the user's own code (work.dispatch), including more work on Coder's run in this chat, such as another change, a fix, a test, or the same for another place (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
+      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's, and what our own essays and thesis say about general agents, test-time capabilities, capability claims, or typed decision models (product.kb); work on the user's own code (work.dispatch), including more work on Coder's run in this chat, such as another change, a fix, a test, or the same for another place (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
       "examples": 7
     },
     {
       "id": "product.kb",
       "family": "answers",
       "description": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is (connecting a computer, the Grid, the Verse, XP, protocols such as NIP-CJ); not the wallet, and not account settings",
-      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which plugins the Gym has or what one of our plugins does, even when its name sounds like another product's",
+      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which plugins the Gym has or what one of our plugins does, even when its name sounds like another product's; and what our own essays, Test-Time Capabilities and The Return of the General Agent, say: our thesis on general agents, test-time capabilities, capability claims and deltas, admission and adoption, reach and restraint, the judgment budget, the capability flywheel, why general agents stalled, extending an agent at machine speed, what we have and have not shown, and why typed decision models make routing feasible",
       "not_for": "The wallet (wallet); account settings (account); questions about us as an assistant (meta); how the OpenAgents code implements something (codebase.kb); a concept not specific to OpenAgents, or what another company's product is or costs (general); what's new in the Gym (gym.news); which plugins they can test or should test first (eval.run); testing, making, or checking a plugin, a result, or credit (eval.run, eval.author, eval.check, eval.result, eval.credit)",
-      "examples": 14
+      "examples": 16
     },
     {
       "id": "codebase.kb",
@@ -1289,9 +1289,9 @@
         "near_misses": 8
       },
       "codebase.kb": {
-        "rows": 40,
+        "rows": 42,
         "held_out": 11,
-        "tune": 29,
+        "tune": 31,
         "near_misses": 13
       },
       "end": {
@@ -1331,9 +1331,9 @@
         "near_misses": 8
       },
       "general": {
-        "rows": 84,
+        "rows": 90,
         "held_out": 20,
-        "tune": 64,
+        "tune": 70,
         "near_misses": 27
       },
       "gym.news": {
@@ -1355,9 +1355,9 @@
         "near_misses": 1
       },
       "product.kb": {
-        "rows": 58,
+        "rows": 78,
         "held_out": 23,
-        "tune": 35,
+        "tune": 55,
         "near_misses": 22
       },
       "refuse": {
@@ -1387,12 +1387,12 @@
     }
   },
   "measurement": {
-    "record": "docs/coder/measurements/2026-10-01-coder-followup-claims/report.json",
-    "page": "docs/coder/measurements/2026-10-01-coder-followup-route.md",
-    "set": "chat-router-v4@1d266532e7d0",
+    "record": "docs/coder/measurements/2026-10-01-essays-claims/report.json",
+    "page": "docs/coder/measurements/2026-10-01-essays-route.md",
+    "set": "chat-router-v4@ef02faf055e7",
     "rows": 256,
     "route_accuracy": 0.90234375,
-    "ended_at": 1790860224,
+    "ended_at": 1790865993,
     "routes": {
       "account": {
         "precision": 0.7777777777777778,
@@ -1443,14 +1443,14 @@
         "labeled": 6
       },
       "eval.credit": {
-        "precision": 0.8888888888888888,
-        "predicted": 9,
-        "recall": 0.8888888888888888,
+        "precision": 0.875,
+        "predicted": 8,
+        "recall": 0.7777777777777778,
         "labeled": 9
       },
       "eval.result": {
-        "precision": 0.875,
-        "predicted": 8,
+        "precision": 0.7777777777777778,
+        "predicted": 9,
         "recall": 1.0,
         "labeled": 7
       },
@@ -1473,9 +1473,9 @@
         "labeled": 7
       },
       "meta": {
-        "precision": 0.9714285714285714,
+        "precision": 1.0,
         "predicted": 35,
-        "recall": 0.8095238095238095,
+        "recall": 0.8333333333333334,
         "labeled": 42
       },
       "presentation.open": {
@@ -1485,8 +1485,8 @@
         "labeled": 9
       },
       "product.kb": {
-        "precision": 0.8947368421052632,
-        "predicted": 19,
+        "precision": 0.85,
+        "predicted": 20,
         "recall": 0.7391304347826086,
         "labeled": 23
       },
@@ -1509,8 +1509,8 @@
         "labeled": 8
       },
       "work.dispatch": {
-        "precision": 0.9333333333333333,
-        "predicted": 45,
+        "precision": 0.9545454545454546,
+        "predicted": 44,
         "recall": 1.0,
         "labeled": 42
       }

@@ -118,7 +118,9 @@ pub fn route(route: RouteId) -> Value {
             Some(
                 "Facts about OpenAgents or us (product.kb, meta), including what a test, a test \
                  set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
-                 plugins does even when its name sounds like another product's (product.kb); work on the user's own code \
+                 plugins does even when its name sounds like another product's, and what our \
+                 own essays and thesis say about general agents, test-time capabilities, \
+                 capability claims, or typed decision models (product.kb); work on the user's own code \
                  (work.dispatch), including more work on Coder's run in this chat, such as \
                  another change, a fix, a test, or the same for another place (work.dispatch); \
                  asking us to do, fetch, or reach something now, such as a \
@@ -140,7 +142,12 @@ pub fn route(route: RouteId) -> Value {
              needs, such as whether Tailscale or another tool is required, the Gym, the Grid, \
              the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which \
              plugins the Gym has or what one of our plugins does, even when its name sounds \
-             like another product's",
+             like another product's; and what our own essays, Test-Time Capabilities and The \
+             Return of the General Agent, say: our thesis on general agents, test-time \
+             capabilities, capability claims and deltas, admission and adoption, reach and \
+             restraint, the judgment budget, the capability flywheel, why general agents \
+             stalled, extending an agent at machine speed, what we have and have not shown, \
+             and why typed decision models make routing feasible",
             Some(
                 "The wallet (wallet); account settings (account); questions about us as an \
                  assistant (meta); how the OpenAgents code implements something (codebase.kb); \
@@ -159,6 +166,8 @@ pub fn route(route: RouteId) -> Value {
                 "how do i steer a running coder task from my phone",
                 "what is the gym for",
                 "what counts as a test in the gym",
+                "what's a capability claim?",
+                "what's your thesis about general agents?",
                 "what does a test check?",
                 "What's a tool?",
                 "what is a tool in the gym",

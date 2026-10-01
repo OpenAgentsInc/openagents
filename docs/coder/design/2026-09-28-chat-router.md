@@ -1826,3 +1826,23 @@ plugin. What changed:
   `needs_specifics` says asking to open one of our screens names no
   particulars. Stale hand lists of three plugins in the rubric are gone.
 - **The labeled set** adds 17 rows tagged `plugins` (`ROUTER_EVAL_ROWS=plugins`).
+
+## Our essays in the chat (2026-10-01)
+
+Implemented in [#10099](https://github.com/OpenAgentsInc/openagents/issues/10099).
+The chat answered "what's a capability claim?" and "what's your thesis about
+general agents?" from the model alone: no product note covered our essays,
+[Test-Time Capabilities](../../essays/2026-09-29-test-time-capabilities.md)
+and [The Return of the General Agent](../../essays/2026-10-01-the-return-of-the-general-agent.md),
+and the router read the questions as `general`. What changed:
+
+- **Knowledge.** 42 entries in `knowledge/openagents/` (`openagents.ttc-*`
+  and `openagents.gen-*`): an overview of each essay and an entry per
+  section, written from the essay, naming it and linking it on GitHub, in the
+  glossary's words (plugin; skills, workflows, knowledge, Wasm, tests).
+- **The route rubric** (the set's digest moves): `product.kb` covers what our
+  own essays say, by name and by idea; `general` names it in `not_for`.
+- **The labeled set** adds 28 rows tagged `essays` (`ROUTER_EVAL_ROWS=essays`),
+  all in the tune split. See [the measurement](../measurements/2026-10-01-essays-route.md).
+- **The release gate** gains `essays-chat`.
+

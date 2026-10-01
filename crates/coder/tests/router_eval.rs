@@ -21,7 +21,8 @@
 //! "the map" against Project map, #10090), or `coder_followup` (a
 //! follow-up after Coder's run in the chat ended: a question about the run
 //! for the chat, or more work for Coder's next turn, and near misses,
-//! #10094). Every run
+//! #10094), or `essays` (our essays and the ideas in them, and near
+//! misses, #10099). Every run
 //! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
@@ -104,6 +105,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let map = |row: &Row| row.tags.iter().any(|tag| tag == "map");
     let plugins = |row: &Row| row.tags.iter().any(|tag| tag == "plugins");
     let followup = |row: &Row| row.tags.iter().any(|tag| tag == "coder_followup");
+    let essays = |row: &Row| row.tags.iter().any(|tag| tag == "essays");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
@@ -116,6 +118,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
                         && !map(r)
                         && !plugins(r)
                         && !followup(r)
+                        && !essays(r)
                 })
                 .collect(),
             format!("{split}-v1-rows"),
@@ -131,6 +134,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "plugins" => (
             rows.into_iter().filter(|r| plugins(r)).collect(),
             format!("{split}-plugins-rows"),
+        ),
+        "essays" => (
+            rows.into_iter().filter(|r| essays(r)).collect(),
+            format!("{split}-essays-rows"),
         ),
         "coder_followup" => (
             rows.into_iter().filter(|r| followup(r)).collect(),

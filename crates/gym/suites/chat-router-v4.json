@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "84e16e2799dfce105aa04a7840e328ee009a9d56eab8d643a9d506bdd2ed9fa2",
+  "digest": "a68291a2cda1bbdc3d52656f66650034e061592bf05b21c63bf37538fa5ff1d4",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -17261,6 +17261,510 @@
         "repo_members": []
       },
       "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is a test-time capability?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is a test-time capability?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's a capability claim?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's a capability claim?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's your thesis about general agents?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's your thesis about general agents?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why do typed decision models make routing feasible?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "why do typed decision models make routing feasible?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what does your Test-Time Capabilities essay argue?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what does your Test-Time Capabilities essay argue?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize your essay The Return of the General Agent",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize your essay The Return of the General Agent"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's the capability flywheel?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's the capability flywheel?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is a capability delta?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is a capability delta?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what makes a capability claim externally validated?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what makes a capability claim externally validated?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why did general agents stall?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "why did general agents stall?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what does it mean that a general agent is a composition?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what does it mean that a general agent is a composition?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what do reach and restraint mean for capabilities?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what do reach and restraint mean for capabilities?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's a judgment budget?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's a judgment budget?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what would show your general agent thesis is wrong?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what would show your general agent thesis is wrong?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why does extending an agent at machine speed need a brake?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "why does extending an agent at machine speed need a brake?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-017",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what have you shown and not shown about the general agent?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what have you shown and not shown about the general agent?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-018",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's capability admission?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's capability admission?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-020",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "tell me about your essays",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "tell me about your essays"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-021",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's the difference between a capability claim and adoption in your essay?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's the difference between a capability claim and adoption in your essay?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-022",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how does the protocol carry test-time capabilities?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how does the protocol carry test-time capabilities?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-nm-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "explain chain-of-thought prompting",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "explain chain-of-thought prompting"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-nm-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's the difference between RLHF and DPO",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's the difference between RLHF and DPO"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-nm-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is an AI agent",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is an AI agent"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-nm-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how do vertical SaaS companies find product market fit",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how do vertical SaaS companies find product market fit"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-nm-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's a classifier in machine learning",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's a classifier in machine learning"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-nm-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "explain how model routing works in kubernetes ingress",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "explain how model routing works in kubernetes ingress"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/codebase.kb/essay-nm-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "where is the chat router's rubric implemented",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "where is the chat router's rubric implemented"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "codebase.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/codebase.kb/essay-nm-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "where is the ext-eval-v2 gate implemented",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "where is the ext-eval-v2 gate implemented"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "codebase.kb",
       "partition": "calibration",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }

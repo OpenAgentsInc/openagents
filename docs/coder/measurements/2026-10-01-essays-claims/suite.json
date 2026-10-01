@@ -1,0 +1,51 @@
+{
+  "v": "openagents.eval-suite.v1",
+  "requires": [],
+  "id": "cf370f5fbdfc3a03ee1b8c59882473675cbf591810709db89900cc0d16523d28:chat-router/chat-router-v4",
+  "purpose": "routing",
+  "workload": {
+    "digest": "sha256:08b9245631eb4cf496d5ee6740f928f175eeba1085f5f64d1d1c349f0bec6cf1",
+    "size": 1082,
+    "media_type": "application/json",
+    "schema": "openagents.chat-router.workload.v1"
+  },
+  "cases": {
+    "digest": "sha256:f83d26e27bb53d3232eb46c81d4ec2309b794d6d71095d4503efb3646c2d8c28",
+    "size": 355760,
+    "media_type": "application/json",
+    "schema": "openagents.gym.suite.v1"
+  },
+  "partition": {
+    "digest": "sha256:5b1b5201d3da0f2be5757b512ad59592826f4c6c2d5c79e3663d5042cd45bc3b",
+    "size": 22328,
+    "media_type": "application/json",
+    "schema": "openagents.eval-partition.v1"
+  },
+  "labels": {
+    "digest": "sha256:8ec005f0c3a99bf1ea1e181ddc852aa1509bf12d433e90d7aaadc02f3d776578",
+    "size": 497,
+    "media_type": "application/json",
+    "schema": "openagents.chat-router.labels.v1"
+  },
+  "metrics": {
+    "digest": "sha256:346934196cfb6228761384c28ddadb7b2e498ebcf4a1f9b207ad1f2f14ada5d5",
+    "size": 5333,
+    "media_type": "application/json",
+    "schema": "openagents.chat-router.metrics.v1"
+  },
+  "acceptance": {
+    "id": "cf370f5fbdfc3a03ee1b8c59882473675cbf591810709db89900cc0d16523d28:gym-gates/router-v1",
+    "artifact": {
+      "digest": "sha256:610e11c3616f0b614aadacd860e85d6878a2a4c68bb5bb5f238980df05c4c9e1",
+      "size": 5328,
+      "media_type": "application/json",
+      "schema": "openagents.gym.gate.v2"
+    }
+  },
+  "environment": {
+    "digest": "sha256:c6ad183761e41ce6e8d1d33127610c23731b031198fe45d4d095fe9da2f3e8b8",
+    "size": 337,
+    "media_type": "application/json",
+    "schema": "openagents.chat-router.environment.v1"
+  }
+}
