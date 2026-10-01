@@ -1783,6 +1783,210 @@
         "answer": true
       },
       {
+        "id": "openagents.gen-composition",
+        "title": "What the composition is made of in OpenAgents 1.0.0",
+        "path": "knowledge/openagents/openagents.gen-composition.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "composition",
+          "layers",
+          "coder",
+          "plugin"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-decision-models",
+        "title": "Why typed decision models make the front feasible",
+        "path": "knowledge/openagents/openagents.gen-decision-models.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "decision-models",
+          "jev",
+          "router",
+          "typed"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-extensible",
+        "title": "Extensible by people and by their agents",
+        "path": "knowledge/openagents/openagents.gen-extensible.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "extensible",
+          "plugin",
+          "agents",
+          "coder"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-launch",
+        "title": "The launch claim for OpenAgents 1.0.0",
+        "path": "knowledge/openagents/openagents.gen-launch.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "launch",
+          "claim",
+          "1.0.0"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-machine-speed",
+        "title": "Extensible at machine speed, and why speed needs a brake",
+        "path": "knowledge/openagents/openagents.gen-machine-speed.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "machine-speed",
+          "brake",
+          "adoption",
+          "skillsbench"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-overview",
+        "title": "Our essay The Return of the General Agent",
+        "path": "knowledge/openagents/openagents.gen-overview.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "overview",
+          "thesis",
+          "composition"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-pressures",
+        "title": "The six pressures answered by composition",
+        "path": "knowledge/openagents/openagents.gen-pressures.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "pressures",
+          "execution",
+          "evaluation",
+          "authority"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-protocol",
+        "title": "The protocol is the agent",
+        "path": "knowledge/openagents/openagents.gen-protocol.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "protocol",
+          "nips",
+          "signed-records"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-shown",
+        "title": "What we have shown and what we have not",
+        "path": "knowledge/openagents/openagents.gen-shown.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "shown",
+          "not-shown",
+          "honesty",
+          "limits"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-thesis",
+        "title": "The thesis: a general agent is a composition",
+        "path": "knowledge/openagents/openagents.gen-thesis.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "thesis",
+          "composition",
+          "front",
+          "members"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-vs-efforts",
+        "title": "How our composition differs from other composition efforts",
+        "path": "knowledge/openagents/openagents.gen-vs-efforts.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "magentic-one",
+          "mcp",
+          "agent2agent",
+          "agent-skills"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-why-before",
+        "title": "Why the old composition idea did not work before",
+        "path": "knowledge/openagents/openagents.gen-why-before.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "history",
+          "open-agent-architecture",
+          "composition"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-why-stalled",
+        "title": "Why general agents stalled",
+        "path": "knowledge/openagents/openagents.gen-why-stalled.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "history",
+          "vertical-agents",
+          "pressures"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gen-wrong",
+        "title": "What would show the thesis is wrong",
+        "path": "knowledge/openagents/openagents.gen-wrong.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "general-agent",
+          "falsifiable",
+          "wrong",
+          "limits"
+        ],
+        "answer": true
+      },
+      {
         "id": "openagents.get-the-app",
         "title": "Getting the apps",
         "path": "knowledge/openagents/openagents.get-the-app.md",
@@ -2210,6 +2414,398 @@
           "xp",
           "level",
           "account"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-assistance-automation",
+        "title": "Assistance and automation set different bars",
+        "path": "knowledge/openagents/openagents.ttc-assistance-automation.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "assistance",
+          "automation",
+          "typed-judgment"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-cheap-judgments",
+        "title": "Cheap judgments before expensive thinking",
+        "path": "knowledge/openagents/openagents.ttc-cheap-judgments.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "cheap-judgments",
+          "routing",
+          "answer-ladder"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-claim-key",
+        "title": "Capability claims: key, evidence record, and policy",
+        "path": "knowledge/openagents/openagents.ttc-claim-key.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "capability-claim",
+          "claim-key",
+          "policy"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-collective",
+        "title": "Our collective: Coder, the Gym, and Verse",
+        "path": "knowledge/openagents/openagents.ttc-collective.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "collective",
+          "coder",
+          "verse"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-evals-in-practice",
+        "title": "Lessons from running our evals",
+        "path": "knowledge/openagents/openagents.ttc-evals-in-practice.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "evals",
+          "lessons",
+          "gate",
+          "grader"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-implementation",
+        "title": "How OpenAgents implements test-time capabilities",
+        "path": "knowledge/openagents/openagents.ttc-implementation.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "implementation",
+          "adoption",
+          "project-map"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-lifecycle",
+        "title": "The lifecycle of a capability",
+        "path": "knowledge/openagents/openagents.ttc-lifecycle.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "lifecycle",
+          "admission",
+          "revalidation"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-meaning-of-capability",
+        "title": "What the word capability means in the essay",
+        "path": "knowledge/openagents/openagents.ttc-meaning-of-capability.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "capability",
+          "object-capability",
+          "grant"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-measure-next",
+        "title": "What we will measure next",
+        "path": "knowledge/openagents/openagents.ttc-measure-next.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "open-problems",
+          "roadmap"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-network",
+        "title": "How capabilities compound across a network",
+        "path": "knowledge/openagents/openagents.ttc-network.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "network",
+          "compounding",
+          "goodhart"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-numbers",
+        "title": "Our numbers: judgments before thinking",
+        "path": "knowledge/openagents/openagents.ttc-numbers.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "numbers",
+          "latency",
+          "router",
+          "jev"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-open-questions",
+        "title": "Open questions for the field",
+        "path": "knowledge/openagents/openagents.ttc-open-questions.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "open-questions",
+          "research"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-overview",
+        "title": "Our essay Test-Time Capabilities",
+        "path": "knowledge/openagents/openagents.ttc-overview.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "overview",
+          "thesis"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-protocol",
+        "title": "How the protocol carries test-time capabilities",
+        "path": "knowledge/openagents/openagents.ttc-protocol.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "protocol",
+          "nips",
+          "nostr"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-admission",
+        "title": "Lexicon term 2: capability admission",
+        "path": "knowledge/openagents/openagents.ttc-term-admission.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "admission",
+          "lexicon",
+          "grant",
+          "safety"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-adoption",
+        "title": "Lexicon term 9: capability adoption",
+        "path": "knowledge/openagents/openagents.ttc-term-adoption.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "adoption",
+          "marginal",
+          "lexicon",
+          "defaults"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-capability",
+        "title": "Lexicon term 1: test-time capability (TTCap)",
+        "path": "knowledge/openagents/openagents.ttc-term-capability.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "ttcap",
+          "lexicon",
+          "capability-claim"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-credit",
+        "title": "Lexicon term 10: capability credit",
+        "path": "knowledge/openagents/openagents.ttc-term-credit.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "credit",
+          "verification",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-delegation",
+        "title": "Lexicon term 6: test-time delegation",
+        "path": "knowledge/openagents/openagents.ttc-term-delegation.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "delegation",
+          "authority",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-delta",
+        "title": "Lexicon term 3: capability delta",
+        "path": "knowledge/openagents/openagents.ttc-term-delta.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "delta",
+          "with-and-without",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-flywheel",
+        "title": "Lexicon term 11: the capability flywheel",
+        "path": "knowledge/openagents/openagents.ttc-term-flywheel.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "flywheel",
+          "network",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-judgment-budget",
+        "title": "Lexicon term 5: judgment budget",
+        "path": "knowledge/openagents/openagents.ttc-term-judgment-budget.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "judgment-budget",
+          "calibration",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-reach",
+        "title": "Lexicon term 4: reach and restraint",
+        "path": "knowledge/openagents/openagents.ttc-term-reach.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "reach",
+          "restraint",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-reproduced",
+        "title": "Lexicon term 7: reproduced capability claim",
+        "path": "knowledge/openagents/openagents.ttc-term-reproduced.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "reproduction",
+          "reliance-set",
+          "lexicon"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-term-validated",
+        "title": "Lexicon term 8: externally validated capability claim",
+        "path": "knowledge/openagents/openagents.ttc-term-validated.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "external-validation",
+          "lexicon",
+          "test-set"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-test-time-compute",
+        "title": "Test-time compute and why it matters",
+        "path": "knowledge/openagents/openagents.ttc-test-time-compute.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "test-time-compute",
+          "verifier"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-thesis",
+        "title": "The thesis: capability is something you can acquire at test time",
+        "path": "knowledge/openagents/openagents.ttc-thesis.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "thesis",
+          "candidate",
+          "claim"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.ttc-unit-of-account",
+        "title": "Capability claims as the unit of account",
+        "path": "knowledge/openagents/openagents.ttc-unit-of-account.md",
+        "status": "admitted",
+        "tags": [
+          "essay",
+          "test-time-capabilities",
+          "unit-of-account",
+          "evals",
+          "leaderboard"
         ],
         "answer": true
       },

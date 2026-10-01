@@ -120,6 +120,10 @@ or the owner's host.
    identity) and checks that the reply names every plugin
    `deploy/eval-runner/catalog` lists, by its `package.json` name: one
    router judgment and no model call when the bank answers.
+   `essays-chat` asks the live chat worker two questions about our essays
+   ("what is a capability claim?" and "what is your thesis about general
+   agents?") the same way and checks each reply carries that essay's idea
+   and is not the no-documented-answer reply.
 
 When the scenarios end, the gate gives Coder runs up to four minutes to
 finish, stops any that remain, stops the host, copies the task store's
@@ -155,6 +159,7 @@ conversation run in the owner's order.
 | `phone-claude` | A paired phone-shaped client asks "do a test delegation to claude" and presses Run Coder; the computer's run starts on Claude Code. | #10081 |
 | `explain-error` | A gate scenario, outside the window: a Python file with a wrong dictionary key is planted in a scratch project and run, and the build's `openagents plugin run` runs the [Explain this error](../plugins/examples/explain-this-error.md) plugin's workflow on its output with reads only. The plugin names `billing.py:5`, shows the line, and suggests the key the dictionary has. | #10086 |
 | `plugins-chat` | A gate scenario, outside the window: "which plugins can I test?" through the build's `openagents chat --scratch`; the live chat's reply names every plugin in `deploy/eval-runner/catalog`, the catalog the hosted runner and the Gym's chips use. | #10090 |
+| `essays-chat` | A gate scenario, outside the window: "what is a capability claim?" and "what is your thesis about general agents?" through `openagents chat --scratch`; each reply carries its essay's idea (Test-Time Capabilities, The Return of the General Agent) and is not the no-documented-answer reply. | #10099 |
 
 ## Proof that it catches the owner's bugs
 

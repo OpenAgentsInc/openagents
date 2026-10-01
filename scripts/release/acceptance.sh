@@ -30,7 +30,9 @@
 #      window: explain-error runs the Explain this error plugin on a planted
 #      failure through `openagents plugin run`; plugins-chat asks the live
 #      chat "which plugins can I test?" through `openagents chat --scratch`
-#      and checks the reply names every plugin in deploy/eval-runner/catalog.
+#      and checks the reply names every plugin in deploy/eval-runner/catalog;
+#      essays-chat asks the live chat two questions about our essays and
+#      checks each reply is grounded in them.
 #   5. A PASS/FAIL line per scenario, a summary table, and the evidence
 #      directory. Exit status 1 when any scenario fails, 2 on a setup error.
 #
@@ -106,7 +108,7 @@ say() { echo "==> $*" >&2; }
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
 desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
-gate_scenarios="explain-error plugins-chat"
+gate_scenarios="explain-error plugins-chat essays-chat"
 scenarios="$desktop_scenarios $gate_scenarios"
 
 while [ $# -gt 0 ]; do
@@ -556,10 +558,61 @@ PY
     *) record plugins-chat FAIL "$verdict" ;;
   esac
 }
+# essays-chat: the chat answers from our two essays (#10099). The build's
+# `openagents chat --scratch` (a throwaway identity) asks the live chat
+# worker one question about each essay, and each reply must carry that
+# essay's own idea and not the "no documented answer" reply.
+essays_chat() {
+  local dir="$evidence/essays-chat" n=0 failed=""
+  mkdir -p "$dir"
+  local questions=(
+    "what is a capability claim?|with-and-without,marginal effect,claim key,evidence"
+    "what is your thesis about general agents?|composition"
+  )
+  local entry question words
+  for entry in "${questions[@]}"; do
+    n=$((n + 1))
+    question="${entry%%|*}"
+    words="${entry#*|}"
+    "$openagents" chat --scratch --no-run --json "$question" \
+      > "$dir/chat$n.ndjson" 2> "$dir/chat$n.err" || {
+      failed="$failed [$question: openagents chat failed: $(tail -1 "$dir/chat$n.err")]"
+      continue
+    }
+    local verdict
+    verdict="$(python3 - "$dir/chat$n.ndjson" "$words" <<'PY'
+import json, sys
+events = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+result = next((e for e in events if e.get("event") == "result"), None)
+if result is None:
+    print("no result")
+    sys.exit()
+text = result.get("text", "")
+route = next((e.get("route") for e in events if e.get("event") == "route"), None)
+if "no documented answer" in text.lower() or "don't have that documented" in text.lower():
+    print(f"route {route}: the chat has no documented answer: {text!r}")
+elif not any(w.lower() in text.lower() for w in sys.argv[2].split(",")):
+    print(f"route {route}: the reply names none of {sys.argv[2]}: {text!r}")
+else:
+    print(f"ok route {route}")
+PY
+)"
+    case "$verdict" in
+      ok*) ;;
+      *) failed="$failed [$question: $verdict]" ;;
+    esac
+  done
+  if [ -z "$failed" ]; then
+    record essays-chat PASS "both essay questions answered from our essays (chat1.ndjson, chat2.ndjson)"
+  else
+    record essays-chat FAIL "$failed"
+  fi
+}
 for name in $gate_names; do
   case "$name" in
     explain-error) explain_error ;;
     plugins-chat) plugins_chat ;;
+    essays-chat) essays_chat ;;
   esac
 done
 
