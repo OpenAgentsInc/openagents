@@ -940,3 +940,26 @@ paired computer, the start card's reason, the delegation prompt, and the
 wide-checkout start were covered by the tests, not on the simulator.
 Build 40 was uploaded with `build.sh upload` at 2026-09-30T22:57:26-07:00
 and is `VALID`, in Internal Testers (`IN_BETA_TESTING`).
+
+Release `4bde215a83` (2026-10-01 UTC,
+[#10087](https://github.com/OpenAgentsInc/openagents/issues/10087)) says
+*plugin*: the answer bank's Gym and missing-plugin entries and the
+product knowledge entries the chat serves call anything a person adds a
+plugin, and a request no plugin covers gets "There's no plugin for that
+yet. Want to make one?". The question set is unchanged
+(`chat-router-v4@ca74e9da5045`), so no recalibration was needed; the bank
+is `chat-answers-v1@9b39e6796962` with 68 answers, and serving keeps
+calibration off. It was built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/4bde215a83` with the current
+`knowledge/openagents/` (60 entries, no `._*` files) and `codebase-kb.gz`
+copied from `fac6e46861`, checked with `--check` under the chat
+environment ("the configuration is safe to deploy"), and put live by
+moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, `coder-worker.service` and
+`/opt/coder-worker/current` (`0757355c1d`) were not touched, and
+`fac6e46861` stays in `releases/` for rollback. With `openagents chat
+--scratch --no-run --json`, "What's a plugin?" was answered from the bank
+(`gym.what_tool@2`, "A plugin is anything you add to OpenAgents. …"), and
+"Can you book me a flight to Tokyo next week?" took `capability.missing`
+and answered "There's no plugin for that yet. Want to make one? …"
+(`capability.missing@2`).
