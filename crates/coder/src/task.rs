@@ -24,6 +24,10 @@ pub mod adapter;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;
+/// Which login each engine is signed in as, as a salted fingerprint
+/// (#10105): `microcoder_loop::account`, so readings and holds follow the
+/// login they were about.
+pub use microcoder_loop::account;
 pub mod capacity;
 pub mod checks;
 pub mod cli;

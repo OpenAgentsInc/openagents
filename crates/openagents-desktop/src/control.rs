@@ -139,6 +139,12 @@ pub trait HostControl: Send {
     fn engine_status(&mut self) -> ControlResult<EngineReport> {
         Err(ControlError::Unreachable)
     }
+    /// [`HostControl::engine_status`] after the host reads `providers`'
+    /// usage now (#10105). The default reads nothing new.
+    fn engine_refresh(&mut self, providers: &[String]) -> ControlResult<EngineReport> {
+        let _ = providers;
+        self.engine_status()
+    }
 }
 
 /// Why [`pick_project`] stopped.
@@ -524,6 +530,16 @@ impl HostControl for SocketControl {
 
     fn engine_status(&mut self) -> ControlResult<EngineReport> {
         match self.call(Op::EngineStatus {})? {
+            Reply::EngineStatus { report } => Ok(report),
+            _ => unexpected(),
+        }
+    }
+
+    fn engine_refresh(&mut self, providers: &[String]) -> ControlResult<EngineReport> {
+        let op = Op::EngineRefresh {
+            providers: providers.to_vec(),
+        };
+        match self.call(op)? {
             Reply::EngineStatus { report } => Ok(report),
             _ => unexpected(),
         }

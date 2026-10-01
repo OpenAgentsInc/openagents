@@ -901,6 +901,77 @@ cat "$root/report.json"
     host.running.shutdown().await;
 }
 
+/// A start on this computer asks the host to read an engine's usage now
+/// before passing it over (#10105): the host runs `status --refresh` with
+/// `--fresh` for each engine with a usage endpoint it was asked for, waits
+/// for it, and answers the report. Other names are ignored, and a request
+/// naming none reads the cached report without a refresh.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn engine_refresh_reads_the_asked_engines_now_then_reports() {
+    let bin = tempfile::tempdir().unwrap();
+    let program = bin.path().join("coder");
+    std::fs::write(
+        &program,
+        r#"#!/bin/sh
+root=
+refresh=0
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--root" ]; then root=$arg; fi
+  if [ "$arg" = "--refresh" ]; then refresh=1; fi
+  prev=$arg
+done
+printf '%s\n' "$@" >> "$root/calls"
+printf '\n' >> "$root/calls"
+if [ "$refresh" = 1 ]; then cp "$root/fresh.json" "$root/report.json"; exit 0; fi
+cat "$root/report.json"
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let host = host_with(Options {
+        autostart: Some(program),
+        ..Options::default()
+    })
+    .await;
+    std::fs::create_dir_all(&host.root).unwrap();
+    std::fs::write(host.root.join("report.json"), engine_report_json(true)).unwrap();
+    std::fs::write(host.root.join("fresh.json"), engine_report_json(false)).unwrap();
+    let op = Op::EngineRefresh {
+        providers: vec!["claude".into(), "devin".into(), "claude".into()],
+    };
+    let Reply::EngineStatus { report } = call(&host.socket, op).await.unwrap() else {
+        panic!("engine");
+    };
+    assert!(!report.refresh_due, "the answer follows the fresh reading");
+    let calls = call_records(&host.root);
+    let refresh = calls
+        .iter()
+        .find(|args| args.iter().any(|arg| arg == "--refresh"))
+        .expect("a refresh ran");
+    let fresh: Vec<&String> = refresh
+        .windows(2)
+        .filter(|pair| pair[0] == "--fresh")
+        .map(|pair| &pair[1])
+        .collect();
+    assert_eq!(fresh, ["claude"]);
+    // Nothing with a usage endpoint asked: the cached report, no refresh.
+    std::fs::remove_file(host.root.join("calls")).unwrap();
+    let op = Op::EngineRefresh {
+        providers: vec!["grok".into()],
+    };
+    let Reply::EngineStatus { .. } = call(&host.socket, op).await.unwrap() else {
+        panic!("engine");
+    };
+    assert!(
+        call_records(&host.root)
+            .iter()
+            .all(|args| !args.iter().any(|arg| arg == "--fresh"))
+    );
+    host.running.shutdown().await;
+}
+
 /// On Windows the control channel is a pipe only this user opens: the host
 /// serves this user's requests over it, and while it runs no second host
 /// can bind the name. Wine does not enforce the first-instance flag, so the

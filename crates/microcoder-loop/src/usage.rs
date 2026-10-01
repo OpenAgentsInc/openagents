@@ -47,6 +47,12 @@ pub const AT_LIMIT: f64 = 0.95;
 /// The utilization, in percent, at or above which routing prefers another
 /// route when the policy names no threshold.
 pub const DEFAULT_THRESHOLD_PERCENT: u8 = 90;
+/// A start does not pass a provider over for capacity on a reading older
+/// than this many seconds: the host probes it again first (#10105).
+pub const RECHECK_AFTER: u64 = 60;
+/// A provider asked for a fresh reading is not asked again within this
+/// many seconds, so a burst of starts asks once.
+pub const FRESH_WITHIN: u64 = 5;
 
 /// A usage window a provider reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -103,6 +109,11 @@ pub struct Reading {
     /// The plan the provider named, such as `pro`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
+    /// The fingerprint of the login the probe read ([`crate::account`]),
+    /// when it has one. A reader drops the reading once a different login
+    /// is signed in (#10105).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
 }
 
 impl Reading {
@@ -218,13 +229,37 @@ impl Default for Book {
 }
 
 impl Book {
-    /// The book in `dir`. Missing, unreadable, or malformed is empty.
+    /// The book in `dir`, less each entry whose reading was taken on
+    /// another login than the one signed in now ([`crate::account`],
+    /// #10105): that provider is then due for a probe. Missing,
+    /// unreadable, or malformed is empty.
     #[must_use]
     pub fn load(dir: &Path) -> Book {
-        std::fs::read(dir.join(FILE))
+        Book::load_with(dir, crate::account::identify)
+    }
+
+    /// [`Book::load`] with `identify` naming each provider's login now.
+    #[must_use]
+    pub fn load_with(dir: &Path, identify: crate::account::Identify) -> Book {
+        let mut book = std::fs::read(dir.join(FILE))
             .ok()
             .and_then(|bytes| Book::parse(&bytes))
-            .unwrap_or_default()
+            .unwrap_or_default();
+        book.forget_other_logins(dir, identify);
+        book
+    }
+
+    /// Drop each entry whose reading belongs to another login than the
+    /// one signed in now.
+    fn forget_other_logins(&mut self, dir: &Path, identify: crate::account::Identify) {
+        self.entries.retain(|entry| {
+            entry.reading.as_ref().is_none_or(|reading| {
+                crate::account::applies(
+                    reading.account.as_deref(),
+                    crate::account::current(dir, entry.provider, identify).as_deref(),
+                )
+            })
+        });
     }
 
     fn parse(bytes: &[u8]) -> Option<Book> {
@@ -284,6 +319,29 @@ impl Book {
             .is_none_or(|entry| now >= entry.next_probe_at)
     }
 
+    /// Whether `provider` may be probed at `now` for a fresh reading: when
+    /// [`Book::due`], or when its latest probe ran [`FRESH_WITHIN`] or more
+    /// ago, unless the provider rate-limited the probe (its `Retry-After`
+    /// is honored).
+    #[must_use]
+    pub fn due_fresh(&self, provider: Provider, now: u64) -> bool {
+        self.due(provider, now)
+            || self.entry(provider).is_some_and(|entry| {
+                entry.failure != Some(Failure::RateLimited)
+                    && now >= entry.attempted_at.saturating_add(FRESH_WITHIN)
+            })
+    }
+
+    /// Whether a start must read `provider` again before passing it over
+    /// for capacity at `now` (#10105): it has no reading, or its reading is
+    /// [`RECHECK_AFTER`] seconds old or older.
+    #[must_use]
+    pub fn needs_recheck(&self, provider: Provider, now: u64) -> bool {
+        self.entry(provider)
+            .and_then(|entry| entry.reading.as_ref())
+            .is_none_or(|reading| now >= reading.observed_at.saturating_add(RECHECK_AFTER))
+    }
+
     /// One provider's windows as text, for host output and the journal:
     /// `codex 100% primary until 2026-10-03 18:07 UTC (limit reached)`.
     #[must_use]
@@ -328,14 +386,21 @@ impl Book {
         }
     }
 
-    fn apply(&mut self, provider: Provider, now: u64, outcome: Outcome) {
-        let kept = self.entry(provider).and_then(|entry| entry.reading.clone());
+    fn apply(&mut self, provider: Provider, now: u64, outcome: Outcome, account: Option<String>) {
+        // A reading kept across a failure must be the same login's.
+        let kept = self
+            .entry(provider)
+            .and_then(|entry| entry.reading.clone())
+            .filter(|kept| crate::account::applies(kept.account.as_deref(), account.as_deref()));
         let entry = match outcome.result {
-            Ok(reading) => Entry {
+            Ok(mut reading) => Entry {
                 provider,
                 attempted_at: now,
                 next_probe_at: outcome.next_probe_at,
-                reading: Some(reading),
+                reading: Some({
+                    reading.account = account;
+                    reading
+                }),
                 failure: None,
             },
             Err(failure) => Entry {
@@ -422,34 +487,69 @@ pub fn outcome(provider: Provider, fetched: Result<Response, Failure>, now: u64)
 /// without the book's lock; the write merges under an exclusive lock.
 /// A failed write still returns what was learned.
 pub fn refresh(dir: &Path, providers: &[Provider], now: u64, fetch: Fetch) -> Book {
-    let before = Book::load(dir);
-    let mut learned: Vec<(Provider, Outcome)> = Vec::new();
+    refresh_with(dir, providers, &[], now, fetch, crate::account::identify)
+}
+
+/// [`refresh`], where each of `providers` also in `fresh` is probed when
+/// [`Book::due_fresh`] rather than only when [`Book::due`]: a start about
+/// to pass it over for capacity, or one the person asked for, reads it
+/// now (#10105). `identify` names each provider's login now; each reading
+/// keeps that login's fingerprint.
+pub fn refresh_with(
+    dir: &Path,
+    providers: &[Provider],
+    fresh: &[Provider],
+    now: u64,
+    fetch: Fetch,
+    identify: crate::account::Identify,
+) -> Book {
+    let before = Book::load_with(dir, identify);
+    let mut learned: Vec<(Provider, Outcome, Option<String>)> = Vec::new();
     for provider in providers {
-        if learned.iter().any(|(p, _)| p == provider)
-            || !before.due(*provider, now)
+        let due = if fresh.contains(provider) {
+            before.due_fresh(*provider, now)
+        } else {
+            before.due(*provider, now)
+        };
+        if learned.iter().any(|(p, _, _)| p == provider)
+            || !due
             || !Provider::PROBED.contains(provider)
         {
             continue;
         }
-        learned.push((*provider, outcome(*provider, fetch(*provider), now)));
+        // The store holds the salt each reading's fingerprint is made with.
+        if learned.is_empty() {
+            let _ = crate::capacity::open_private(dir, &dir.join(FILE));
+        }
+        let account = crate::account::current(dir, *provider, identify);
+        learned.push((
+            *provider,
+            outcome(*provider, fetch(*provider), now),
+            account,
+        ));
     }
     if learned.is_empty() {
         return before;
     }
-    match write(dir, &learned, now) {
+    match write(dir, &learned, now, identify) {
         Ok(book) => book,
         Err(error) => {
             eprintln!("coder host: usage probe: {error}");
             let mut book = before;
-            for (provider, outcome) in learned {
-                book.apply(provider, now, outcome);
+            for (provider, outcome, account) in learned {
+                book.apply(provider, now, outcome, account);
             }
             book
         }
     }
 }
 
-fn write(dir: &Path, learned: &[(Provider, Outcome)], now: u64) -> Result<Book, String> {
+fn write(
+    dir: &Path,
+    learned: &[(Provider, Outcome, Option<String>)],
+    now: u64,
+    identify: crate::account::Identify,
+) -> Result<Book, String> {
     let path = dir.join(FILE);
     let mut file = crate::capacity::open_private(dir, &path)?;
     file.lock()
@@ -458,8 +558,8 @@ fn write(dir: &Path, learned: &[(Provider, Outcome)], now: u64) -> Result<Book, 
     file.read_to_end(&mut bytes)
         .map_err(|_| format!("cannot read {}", path.display()))?;
     let mut book = Book::parse(&bytes).unwrap_or_default();
-    for (provider, outcome) in learned {
-        book.apply(*provider, now, outcome.clone());
+    for (provider, outcome, account) in learned {
+        book.apply(*provider, now, outcome.clone(), account.clone());
     }
     let bytes = serde_json::to_vec_pretty(&book).map_err(|e| e.to_string())?;
     file.set_len(0)
@@ -467,6 +567,7 @@ fn write(dir: &Path, learned: &[(Provider, Outcome)], now: u64) -> Result<Book, 
         .and_then(|()| file.write_all(&bytes))
         .and_then(|()| file.sync_all())
         .map_err(|_| format!("cannot write {}", path.display()))?;
+    book.forget_other_logins(dir, identify);
     Ok(book)
 }
 
@@ -535,6 +636,7 @@ pub fn parse_claude(body: &[u8], now: u64) -> Result<Reading, Failure> {
         windows,
         limit_reached: false,
         plan: None,
+        account: None,
     })
 }
 
@@ -583,6 +685,7 @@ pub fn parse_codex(body: &[u8], now: u64) -> Result<Reading, Failure> {
         plan: usage
             .plan_type
             .filter(|plan| !plan.is_empty() && plan.len() <= 32),
+        account: None,
     };
     let Some(limit) = usage.rate_limit else {
         return Ok(reading);
@@ -831,6 +934,102 @@ mod tests {
         let fine = outcome(Provider::Codex, ok(CODEX), NOW);
         assert!(fine.result.is_ok());
         assert_eq!(fine.next_probe_at, NOW + MIN_INTERVAL);
+    }
+
+    fn login_a(_: Provider) -> Option<String> {
+        Some("acct-a".into())
+    }
+    fn login_b(_: Provider) -> Option<String> {
+        Some("acct-b".into())
+    }
+
+    /// A reading keeps its login's fingerprint; once another login is
+    /// signed in, readers drop it and the provider is due for a probe at
+    /// once, which reads the new login (#10105).
+    #[test]
+    fn a_reading_from_another_login_is_dropped_and_probed_again() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn full(_: Provider) -> Result<Response, Failure> {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            ok(
+                r#"{"five_hour":{"utilization":100.0,"resets_at":"2026-09-28T15:49:59Z"},"seven_day":{"utilization":100.0,"resets_at":null}}"#,
+            )
+        }
+        fn calm(_: Provider) -> Result<Response, Failure> {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            ok(
+                r#"{"five_hour":{"utilization":6.0,"resets_at":null},"seven_day":{"utilization":2.0,"resets_at":null}}"#,
+            )
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let claude = [Provider::Claude];
+        let book = refresh_with(dir.path(), &claude, &[], NOW, full, login_a);
+        assert!(book.near_limit(Provider::Claude, 90, NOW));
+        assert!(!book.due(Provider::Claude, NOW + 10));
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("acct-a"));
+        // The same login: cached. Another login: the old reading is gone
+        // and the provider is due now.
+        let same = refresh_with(dir.path(), &claude, &[], NOW + 10, calm, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+        assert!(same.near_limit(Provider::Claude, 90, NOW + 10));
+        let switched = Book::load_with(dir.path(), login_b);
+        assert!(switched.entry(Provider::Claude).is_none());
+        assert!(switched.due(Provider::Claude, NOW + 10));
+        let fresh = refresh_with(dir.path(), &claude, &[], NOW + 10, calm, login_b);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 2);
+        assert!(!fresh.near_limit(Provider::Claude, 90, NOW + 10));
+        assert!(fresh.reading(Provider::Claude, NOW + 10).is_some());
+        // A reading kept across a failure is never another login's.
+        let mut book = fresh.clone();
+        book.apply(
+            Provider::Claude,
+            NOW + 80,
+            outcome(Provider::Claude, Err(Failure::Network), NOW + 80),
+            Some("other".into()),
+        );
+        assert!(book.entry(Provider::Claude).unwrap().reading.is_none());
+    }
+
+    /// A start about to pass a provider over, or one the person asked for,
+    /// reads it now: within [`MIN_INTERVAL`], and past a failure's backoff,
+    /// but never against a provider's own `Retry-After`.
+    #[test]
+    fn a_fresh_probe_skips_the_cache_but_not_a_retry_after() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        static LIMITED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        fn fake(_: Provider) -> Result<Response, Failure> {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            if LIMITED.load(Ordering::SeqCst) {
+                return Ok(Response {
+                    status: 429,
+                    retry_after: Some(600),
+                    body: Vec::new(),
+                });
+            }
+            ok(CLAUDE)
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let claude = [Provider::Claude];
+        refresh_with(dir.path(), &claude, &claude, NOW, fake, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+        // Within FRESH_WITHIN a burst asks once.
+        refresh_with(dir.path(), &claude, &claude, NOW + 2, fake, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+        // Not due by the cache, but asked fresh.
+        let book = refresh_with(dir.path(), &claude, &[], NOW + 20, fake, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+        assert!(!book.needs_recheck(Provider::Claude, NOW + 20));
+        assert!(book.needs_recheck(Provider::Claude, NOW + RECHECK_AFTER));
+        refresh_with(dir.path(), &claude, &claude, NOW + 20, fake, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 2);
+        LIMITED.store(true, Ordering::SeqCst);
+        refresh_with(dir.path(), &claude, &claude, NOW + 40, fake, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+        refresh_with(dir.path(), &claude, &claude, NOW + 100, fake, login_a);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 3);
     }
 
     #[test]

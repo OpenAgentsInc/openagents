@@ -241,6 +241,11 @@ pub struct Refusal {
     /// The allowance window in minutes, when the provider named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_minutes: Option<u64>,
+    /// The fingerprint of the login that was refused
+    /// ([`crate::account`]), when it has one. A reader drops the refusal
+    /// once a different login is signed in (#10105).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
 }
 
 impl Refusal {
@@ -259,6 +264,7 @@ impl Refusal {
             until,
             plan: None,
             window_minutes: None,
+            account: None,
         }
     }
 
@@ -551,17 +557,30 @@ impl Default for Book {
 }
 
 impl Book {
-    /// The book in `dir`, less each refusal a later usage reading in the
-    /// same directory lifts ([`Book::lifted_by`]). Missing, unreadable, or
-    /// malformed is empty.
+    /// The book in `dir`, less each refusal observed on another login than
+    /// the one signed in now ([`crate::account`], #10105) and each refusal
+    /// a later usage reading in the same directory lifts
+    /// ([`Book::lifted_by`]). Missing, unreadable, or malformed is empty.
     #[must_use]
     pub fn load(dir: &Path) -> Book {
-        std::fs::read(dir.join(FILE))
+        Book::load_with(dir, crate::account::identify)
+    }
+
+    /// [`Book::load`] with `identify` naming each provider's login now.
+    #[must_use]
+    pub fn load_with(dir: &Path, identify: crate::account::Identify) -> Book {
+        let mut book = std::fs::read(dir.join(FILE))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<Book>(&bytes).ok())
             .filter(|book| book.schema == SCHEMA)
-            .unwrap_or_default()
-            .lifted_by(&crate::usage::Book::load(dir))
+            .unwrap_or_default();
+        book.refusals.retain(|refusal| {
+            crate::account::applies(
+                refusal.account.as_deref(),
+                crate::account::current(dir, refusal.provider, identify).as_deref(),
+            )
+        });
+        book.lifted_by(&crate::usage::Book::load_with(dir, identify))
     }
 
     /// The book without the refusals `usage` lifts
@@ -609,15 +628,32 @@ impl Book {
 }
 
 /// Record `refusal` in the book in `dir`, replacing the provider's earlier
-/// entry and dropping entries that no longer hold. The file is `0600`,
+/// entry and dropping entries that no longer hold. The refusal keeps the
+/// fingerprint of the login signed in now ([`crate::account`]), so it
+/// stops holding once another login is (#10105). The file is `0600`,
 /// written under an exclusive lock so concurrent runs do not lose entries.
 ///
 /// # Errors
 /// Reports a failed read or write.
 pub fn record(dir: &Path, refusal: Refusal) -> Result<Book, String> {
+    record_with(dir, refusal, crate::account::identify)
+}
+
+/// [`record`] with `identify` naming each provider's login now.
+///
+/// # Errors
+/// Reports a failed read or write.
+pub fn record_with(
+    dir: &Path,
+    mut refusal: Refusal,
+    identify: crate::account::Identify,
+) -> Result<Book, String> {
     let now = refusal.observed_at;
     let path = dir.join(FILE);
     let mut file = open_private(dir, &path)?;
+    if refusal.account.is_none() {
+        refusal.account = crate::account::current(dir, refusal.provider, identify);
+    }
     file.lock()
         .map_err(|_| format!("cannot lock {}", path.display()))?;
     let mut bytes = Vec::new();
@@ -687,8 +723,9 @@ impl Connection {
 /// - **Claude**: a `claude` binary (`CLAUDE_BIN`, else
 ///   [`crate::claude::locate`]: `PATH`, the folders Claude Code, npm, and
 ///   Homebrew install it in, or the login shell's `PATH`) and a Claude Code sign-in: the account record in
-///   `~/.claude.json`, or `~/.claude/.credentials.json`. The credential
-///   itself, in the macOS keychain or that file, is not read.
+///   `~/.claude.json`, or `~/.claude/.credentials.json` (both under
+///   `CLAUDE_CONFIG_DIR` when it is set). The credential itself, in the
+///   macOS keychain or that file, is not read.
 ///
 /// - **Devin**: a `devin` binary (`DEVIN_BIN`, `PATH`, or
 ///   `~/.local/bin/devin`) and Devin's stored CLI login,
@@ -802,17 +839,28 @@ fn claude_binary() -> Option<PathBuf> {
 }
 
 /// Claude Code keeps the signed-in account's metadata (not the credential)
-/// in `~/.claude.json` as `oauthAccount`.
+/// in `~/.claude.json` as `oauthAccount`; `CLAUDE_CONFIG_DIR` moves both
+/// it and the credentials file, as it does for Claude Code itself.
 fn claude_signed_in(home: &Path) -> bool {
     #[derive(Deserialize)]
     struct State {
         #[serde(default, rename = "oauthAccount")]
         oauth_account: Option<serde::de::IgnoredAny>,
     }
-    if home.join(".claude/.credentials.json").is_file() {
+    let config = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from);
+    let (credentials, state) = match &config {
+        Some(dir) => (dir.join(".credentials.json"), dir.join(".claude.json")),
+        None => (
+            home.join(".claude/.credentials.json"),
+            home.join(".claude.json"),
+        ),
+    };
+    if credentials.is_file() {
         return true;
     }
-    std::fs::read(home.join(".claude.json"))
+    std::fs::read(state)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<State>(&bytes).ok())
         .is_some_and(|state| state.oauth_account.is_some())
@@ -868,6 +916,7 @@ mod tests {
                     }],
                     limit_reached: false,
                     plan: Some("pro".into()),
+                    account: None,
                 }),
                 failure: None,
             }],
@@ -898,6 +947,49 @@ mod tests {
                 .refusals
                 .is_empty()
         );
+    }
+
+    fn login_a(_: Provider) -> Option<String> {
+        Some("acct-a".into())
+    }
+    fn login_b(_: Provider) -> Option<String> {
+        Some("acct-b".into())
+    }
+    fn no_login(_: Provider) -> Option<String> {
+        None
+    }
+
+    /// The owner on 2026-10-01 (#10105): Claude refused on an exhausted
+    /// account, the owner signed in to another, and the hold kept passing
+    /// Claude over. A hold keeps the fingerprint of the login it refused;
+    /// once another login is signed in it no longer holds, and signing back
+    /// in to the refused one brings it back while it lasts.
+    #[test]
+    fn a_hold_stops_holding_once_another_login_is_signed_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_900_000;
+        let refusal = Refusal::new(Provider::Claude, Kind::UsageLimit, now, Some(now + 86_400));
+        let book = record_with(dir.path(), refusal, login_a).unwrap();
+        let kept = &book.refusals[0];
+        let fingerprint = kept.account.clone().unwrap();
+        assert_eq!(fingerprint.len(), 32);
+        assert!(!fingerprint.contains("acct"));
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("acct-a"));
+        assert!(!Book::load_with(dir.path(), login_a).has_capacity(Provider::Claude, now + 60));
+        assert!(Book::load_with(dir.path(), login_b).has_capacity(Provider::Claude, now + 60));
+        // Signed out, or a login with no identity: the hold keeps its
+        // meaning and ends by time, as before fingerprints.
+        assert!(!Book::load_with(dir.path(), no_login).has_capacity(Provider::Claude, now + 60));
+        // A hold recorded before fingerprints holds for every login.
+        let dir = tempfile::tempdir().unwrap();
+        record_with(
+            dir.path(),
+            Refusal::new(Provider::Codex, Kind::UsageLimit, now, Some(now + 600)),
+            no_login,
+        )
+        .unwrap();
+        assert!(!Book::load_with(dir.path(), login_b).has_capacity(Provider::Codex, now + 60));
     }
 
     const BODY: &str = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1791050823,"eligible_promo":null,"limit_window_minutes":10080,"resets_in_seconds":478613}}"#;

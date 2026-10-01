@@ -23,6 +23,7 @@
 //! Terminal-Bench, and the knowledge network) run the same loop. Issues
 //! #9666 to #9669 hold the design, and #9879 the split.
 
+pub mod account;
 pub mod capacity;
 pub mod claude;
 pub mod door;

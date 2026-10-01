@@ -25,7 +25,9 @@ pub const FAST_POLL: Duration = Duration::from_secs(2);
 pub const SLOW_POLL: Duration = Duration::from_secs(5);
 /// How often Coder's tasks and sign-ins are read.
 pub const CODER_POLL: Duration = Duration::from_secs(15);
-/// How often the window reads Coder's engine and usage.
+/// How often the window reads Coder's engine and usage while it is shown.
+/// It also reads them at once when it is shown or focused, on a new chat,
+/// and after a run is passed over or refused for capacity (#10105).
 pub const ENGINE_POLL: Duration = Duration::from_secs(60);
 /// How soon to read again while a usage refresh is due.
 pub const ENGINE_WAIT: Duration = Duration::from_secs(2);
@@ -580,7 +582,10 @@ impl Model {
             };
             self.next_poll = now + wait;
         }
-        if self.screen != Screen::Connect && now >= self.next_engine {
+        // The sidebar and Settings → Coder show the engine on every screen,
+        // so it is read while the window shows, whatever the screen
+        // (#10105); a hidden window reads it when shown again.
+        if self.visible && now >= self.next_engine {
             requests.push(Request::Engine);
             self.next_engine = now + ENGINE_POLL;
         }
@@ -620,18 +625,30 @@ impl Model {
         for (_, at) in &self.clear {
             wake = wake.min(*at);
         }
-        if self.screen != Screen::Connect {
+        if self.visible {
             wake = wake.min(self.next_engine);
         }
         wake
     }
 
-    /// The window was shown or hidden.
+    /// The window was shown or hidden. Shown again, it reads the engine at
+    /// once.
     pub fn shown(&mut self, visible: bool, now: Instant) {
+        if visible && !self.visible {
+            self.read_engine(now);
+        }
         self.visible = visible;
         if visible {
             self.codes.input(now);
         }
+    }
+
+    /// Read Coder's engine and usage on the next tick rather than at the
+    /// next poll: the window was focused, a new chat opened, or a run was
+    /// passed over or refused for capacity (#10105). The host reads a
+    /// provider's usage again when its reading is due.
+    pub fn read_engine(&mut self, now: Instant) {
+        self.next_engine = self.next_engine.min(now);
     }
 
     /// The screen was locked or unlocked.
@@ -1147,8 +1164,19 @@ mod tests {
                 .iter()
                 .any(|request| matches!(request, Request::SetAutostart(_)))
         );
+        // Every screen shows the engine in the sidebar, so the code screen
+        // reads it too; a hidden window does not, until it is shown.
         let mut connect = Model::new(start, Screen::Connect, Agent::Enabled);
-        assert!(!connect.tick(start).contains(&Request::Engine));
+        assert!(connect.tick(start).contains(&Request::Engine));
+        let mut hidden = Model::new(start, Screen::Home, Agent::Enabled);
+        hidden.visible = false;
+        assert!(!hidden.tick(start).contains(&Request::Engine));
+        hidden.shown(true, start + Duration::from_secs(1));
+        assert!(
+            hidden
+                .tick(start + Duration::from_secs(1))
+                .contains(&Request::Engine)
+        );
         let report = EngineReport {
             enabled: true,
             adapter: String::new(),

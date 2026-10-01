@@ -973,6 +973,30 @@ impl Panel {
             .release(revision, key, Some(&offered), Pressed::late)
             .is_some()
     }
+    /// How many times a Coder run in these chats was passed over or refused
+    /// for capacity: a start that ran another engine than the first, or
+    /// none, a provider switch mid-run, or an ending for no capacity. The
+    /// shell reads the engine again when it grows (#10105). Typed events
+    /// only; no text is read.
+    #[must_use]
+    pub fn capacity_signals(&self) -> usize {
+        use openagents_chat::coder_events::{CoderEvent, Runner};
+        self.runs
+            .values()
+            .flat_map(|run| run.lines())
+            .filter(|line| match &line.event {
+                CoderEvent::ProviderSwitched(_) => true,
+                CoderEvent::Failure(failure) => failure.ending.as_deref() == Some("no_capacity"),
+                CoderEvent::CoderStarted(started) => match &started.runner {
+                    Some(Runner::Runs { passed, .. }) => !passed.is_empty(),
+                    Some(Runner::NoCapacity { .. }) => true,
+                    _ => false,
+                },
+                _ => false,
+            })
+            .count()
+    }
+
     /// Each chat with Coder work, its title, and what Coder is doing, for
     /// desktop notifications ([`crate::notices`]).
     pub fn coder_statuses(&self) -> Vec<(String, String, crate::notices::Status)> {

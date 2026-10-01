@@ -26,9 +26,11 @@
 //!
 //! **Credentials.** A probe reads the provider's OAuth access token: the
 //! Codex login `codex_transport::codex::Login::load` reads, and Claude Code's
-//! `claudeAiOauth.accessToken` from `~/.claude/.credentials.json` or, on
-//! macOS, the `Claude Code-credentials` keychain item (read with
-//! `/usr/bin/security`, as Claude Code itself reads it). The token is sent
+//! `claudeAiOauth.accessToken` from, on macOS, the `Claude Code-credentials`
+//! keychain item (read with `/usr/bin/security`, as Claude Code itself
+//! reads it), else `$CLAUDE_CONFIG_DIR/.credentials.json` or
+//! `~/.claude/.credentials.json`. The keychain comes first on macOS, where
+//! Claude Code keeps its current login (#10105). The token is sent
 //! only to that provider's own usage endpoint, is never written, logged,
 //! or stored in `usage.json`, and no credential store is ever modified.
 //!
@@ -158,20 +160,36 @@ fn claude_credential(bytes: &[u8], now_ms: u64) -> Result<ClaudeToken, Failure> 
     Ok(ClaudeToken(token))
 }
 
-/// Claude Code's token: `~/.claude/.credentials.json`, else on macOS the
-/// keychain item Claude Code writes, for this account.
+/// Claude Code's token, from where Claude Code itself keeps the login it
+/// signed in last: on macOS the keychain item it writes for this account,
+/// else (and on other systems) its credentials file
+/// ([`claude_credentials_file`]). The keychain comes first on macOS: a
+/// file left from an earlier login must not be read in place of the
+/// current one (#10105).
 fn claude_token(now_ms: u64) -> Result<ClaudeToken, Failure> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or(Failure::NoCredential)?;
-    if let Ok(bytes) = std::fs::read(home.join(".claude/.credentials.json")) {
+    let variable = |name: &str| std::env::var_os(name);
+    if cfg!(target_os = "macos")
+        && std::env::var_os("CLAUDE_CONFIG_DIR").is_none_or(|dir| dir.is_empty())
+        && let Some(bytes) = keychain_record()
+    {
         return claude_credential(&bytes, now_ms);
     }
-    if cfg!(target_os = "macos") {
-        let bytes = keychain_record().ok_or(Failure::NoCredential)?;
-        return claude_credential(&bytes, now_ms);
+    let path = claude_credentials_file(&variable).ok_or(Failure::NoCredential)?;
+    let bytes = std::fs::read(path).map_err(|_| Failure::NoCredential)?;
+    claude_credential(&bytes, now_ms)
+}
+
+/// Claude Code's credentials file: `$CLAUDE_CONFIG_DIR/.credentials.json`,
+/// else `~/.claude/.credentials.json`, as Claude Code resolves it.
+fn claude_credentials_file(
+    variable: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    if let Some(dir) = variable("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
+        return Some(PathBuf::from(dir).join(".credentials.json"));
     }
-    Err(Failure::NoCredential)
+    variable("HOME")
+        .filter(|home| !home.is_empty())
+        .map(|home| PathBuf::from(home).join(".claude/.credentials.json"))
 }
 
 /// The `Claude Code-credentials` generic password for this account, read
@@ -261,5 +279,25 @@ mod tests {
             claude_credential(b"not json", 1_000).unwrap_err(),
             Failure::NoCredential
         );
+    }
+
+    /// The probe reads the credentials file Claude Code writes on sign-in,
+    /// `CLAUDE_CONFIG_DIR` included (#10105). Paths only: no file is read.
+    #[test]
+    fn the_claude_credentials_file_is_where_claude_code_keeps_it() {
+        let home = |name: &str| (name == "HOME").then(|| "/home/owner".into());
+        assert_eq!(
+            claude_credentials_file(&home),
+            Some(PathBuf::from("/home/owner/.claude/.credentials.json"))
+        );
+        let relocated = |name: &str| match name {
+            "CLAUDE_CONFIG_DIR" => Some("/srv/claude".into()),
+            _ => home(name),
+        };
+        assert_eq!(
+            claude_credentials_file(&relocated),
+            Some(PathBuf::from("/srv/claude/.credentials.json"))
+        );
+        assert_eq!(claude_credentials_file(&|_| None), None);
     }
 }

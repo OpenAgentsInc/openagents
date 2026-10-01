@@ -74,6 +74,16 @@ example "it skips codex because the Codex login is out of its usage limit
 until 2026-10-03 18:07 UTC". The turn starts on the first connected
 provider with capacity.
 
+A refusal (and a usage reading in `usage.json`) applies only to the login
+it was observed on. Each keeps a salted fingerprint of that login, taken
+from non-secret account metadata (Claude Code's `oauthAccount` in
+`~/.claude.json`, Codex's `tokens.account_id`, Grok Build's per-login
+`user_id`), never a token; once another account is signed in, the refusal
+no longer holds and the provider is probed again when probes are on
+(#10105). With probes on, a start also reads a provider again before it
+passes it over for capacity on a reading a minute old or older, and always
+reads the engine the person asked for.
+
 When a provider refuses for a usage or rate limit during the turn, such as
 Codex's HTTP 429 `usage_limit_reached` or the cloud worker's
 `quota_exhausted`, the loop records the refusal in the

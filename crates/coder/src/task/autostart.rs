@@ -45,6 +45,7 @@ use openagents_connect::control::{
     EngineAccount, EngineReport, EngineRoute, RouteUsage, UsageWindow,
 };
 
+use super::account;
 use super::capacity::{self, Connection, Provider};
 use super::usage;
 use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};
@@ -733,6 +734,7 @@ pub struct Autostart {
     now: fn() -> u64,
     probe: fn(Provider) -> Connection,
     fetch: usage::Fetch,
+    identify: account::Identify,
     sweeping: Mutex<()>,
     background: bool,
     store_wait: Duration,
@@ -765,6 +767,7 @@ impl Autostart {
             now,
             probe: capacity::probe,
             fetch: usage::fetch,
+            identify: account::identify,
             sweeping: Mutex::new(()),
             background: true,
             store_wait: STORE_WAIT,
@@ -791,6 +794,14 @@ impl Autostart {
     #[must_use]
     pub fn with_usage_fetch(mut self, fetch: usage::Fetch) -> Self {
         self.fetch = fetch;
+        self
+    }
+
+    /// Name each provider's signed-in login with `identify` instead of its
+    /// local metadata ([`account::identify`]), for tests.
+    #[must_use]
+    pub fn with_identify(mut self, identify: account::Identify) -> Self {
+        self.identify = identify;
         self
     }
 
@@ -994,12 +1005,27 @@ impl Autostart {
         }
         // Probe usage before opening the task store, so no request runs
         // under its lock. Cached, so a sweep every few seconds asks each
-        // provider at most once per `usage::MIN_INTERVAL`.
+        // provider at most once per `usage::MIN_INTERVAL`, except that a
+        // provider a waiting task asked for, or one this start would pass
+        // over for capacity on an older reading, is read now (#10105).
         let usage_book = if policy.engine.usage_probe.is_some() && !waiting.is_empty() {
             let mut providers: Vec<Provider> =
                 policy.routes().iter().map(|route| route.provider).collect();
             providers.dedup();
-            usage::refresh(&self.store, &providers, now, self.fetch)
+            let asked: Vec<Provider> = waiting
+                .iter()
+                .filter_map(|entry| entry.task.as_ref().and_then(|t| requested.get(t)))
+                .copied()
+                .collect();
+            let fresh = recheck(&self.store, &policy, &asked, now, self.identify);
+            usage::refresh_with(
+                &self.store,
+                &providers,
+                &fresh,
+                now,
+                self.fetch,
+                self.identify,
+            )
         } else {
             usage::Book::default()
         };
@@ -1154,7 +1180,7 @@ impl Autostart {
                     break;
                 }
                 // Route at start time: capacity changes while tasks wait.
-                let book = capacity::Book::load(&self.store);
+                let book = capacity::Book::load_with(&self.store, self.identify);
                 let order = match policy.choose(&book, &usage_book, &self.probe, now) {
                     Choice::Start { order } => order,
                     Choice::NoCapacity { until } => {
@@ -1462,19 +1488,57 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::result::Result<()
     std::fs::rename(&temporary, path).map_err(|_| format!("cannot replace {}", path.display()))
 }
 
+/// The providers a start must read again before it passes any over for
+/// capacity (#10105): each of `asked` (the engines a person asked for),
+/// and each admitted route's provider that a refusal in the capacity book
+/// holds or a reading puts at the policy's threshold, when its reading is
+/// [`usage::RECHECK_AFTER`] old or older. Only providers with a usage
+/// endpoint; it reads the books and asks no provider.
+#[must_use]
+pub fn recheck(
+    store: &Path,
+    policy: &Policy,
+    asked: &[Provider],
+    now: u64,
+    identify: account::Identify,
+) -> Vec<Provider> {
+    let book = capacity::Book::load_with(store, identify);
+    let readings = usage::Book::load_with(store, identify);
+    let threshold = policy
+        .engine
+        .usage_probe
+        .as_ref()
+        .map(|probe| probe.threshold_percent);
+    let mut providers: Vec<Provider> = asked.to_vec();
+    for route in policy.routes() {
+        let passed_over = !book.has_capacity(route.provider, now)
+            || threshold.is_some_and(|t| readings.near_limit(route.provider, t, now));
+        if passed_over && readings.needs_recheck(route.provider, now) {
+            providers.push(route.provider);
+        }
+    }
+    providers.retain(|provider| Provider::PROBED.contains(provider));
+    providers.sort();
+    providers.dedup();
+    providers
+}
+
 /// Read the usage book an engine report shows.
 ///
 /// When the policy's usage probe is off, or there is no policy, this
 /// returns an empty book and does not call `fetch`. A cached read loads
 /// `usage.json`. A refresh probes only the admitted providers that have a
-/// usage endpoint, and only when the probe is on.
+/// usage endpoint, and only when the probe is on; each of `fresh` is read
+/// now rather than when its cache allows ([`usage::refresh_with`]).
 #[must_use]
 pub fn usage_book(
     policy: Option<&Policy>,
     store: &Path,
     now: u64,
     refresh: bool,
+    fresh: &[Provider],
     fetch: usage::Fetch,
+    identify: account::Identify,
 ) -> usage::Book {
     let Some(policy) = policy else {
         return usage::Book::default();
@@ -1483,7 +1547,7 @@ pub fn usage_book(
         return usage::Book::default();
     }
     if !refresh {
-        return usage::Book::load(store);
+        return usage::Book::load_with(store, identify);
     }
     let mut providers: Vec<Provider> = policy
         .routes()
@@ -1493,7 +1557,7 @@ pub fn usage_book(
         .collect();
     providers.sort();
     providers.dedup();
-    usage::refresh(store, &providers, now, fetch)
+    usage::refresh_with(store, &providers, fresh, now, fetch, identify)
 }
 
 /// The read-only engine report for one computer.
@@ -1707,15 +1771,16 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        (from DIR, default ~/.openagents/tasks), and usage
                        windows, and the latest decisions. Usage is probed
                        when the policy probes it or --probe-usage is given.
-  status [--store DIR] [--refresh]
+  status [--store DIR] [--refresh] [--fresh PROVIDER]...
                        Print one JSON report: the engine routes in order,
                        whether Codex and Claude Code (and Grok Build, when
                        installed) are signed in, and
                        each probed usage window as percents and reset
                        times. The report has no credential. --refresh asks
                        a provider only when this policy's usage probe is
-                       on. DIR is the task store (default
-                       ~/.openagents/tasks).
+                       on; --fresh asks PROVIDER now rather than when its
+                       cached reading allows, and implies --refresh. DIR
+                       is the task store (default ~/.openagents/tasks).
   on --workspace LABEL [--workspace LABEL]... [--max-running N]
      [--model ID | --route PROVIDER:MODEL [--route PROVIDER:MODEL]...]
      [--effort low|medium|high|xhigh]
@@ -1855,9 +1920,22 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             if read_only || full_access || keep_engine || probe_usage {
                 return Err("usage: status does not take that option".into());
             }
-            if let Some(name) = values.keys().find(|name| name.as_str() != "--store") {
+            if let Some(name) = values
+                .keys()
+                .find(|name| !matches!(name.as_str(), "--store" | "--fresh"))
+            {
                 return Err(format!("usage: {name} does not apply to status"));
             }
+            // `--fresh PROVIDER` (#10105): read that provider now, not when
+            // its cache allows; it implies `--refresh`.
+            let mut fresh = Vec::new();
+            for name in values.remove("--fresh").unwrap_or_default() {
+                fresh.push(
+                    Provider::from_config(&name)
+                        .ok_or_else(|| format!("usage: --fresh names no provider `{name}`"))?,
+                );
+            }
+            let refresh = refresh || !fresh.is_empty();
             let store = match take_one(&mut values, "--store")? {
                 Some(store) => PathBuf::from(store),
                 None => PathBuf::from(std::env::var_os("HOME").ok_or("HOME is not set")?)
@@ -1869,7 +1947,15 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 let connected = matches!(capacity::probe(provider), Connection::Connected);
                 signed_in.insert(provider, connected);
             }
-            let book = usage_book(policy.as_ref(), &store, now, refresh, usage::fetch);
+            let book = usage_book(
+                policy.as_ref(),
+                &store,
+                now,
+                refresh,
+                &fresh,
+                usage::fetch,
+                account::identify,
+            );
             let variable = |name: &str| std::env::var_os(name);
             let report = engine_report_with(
                 policy.as_ref(),
@@ -2215,6 +2301,11 @@ fn controller_candidates(exe: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// No login identity: tests never read the person's own files.
+    fn no_login(_: Provider) -> Option<String> {
+        None
+    }
     use crate::task::remote::Inbox;
     use coder_host::{Code, TaskCreate, Tasks};
     use std::cell::Cell;
@@ -2223,6 +2314,16 @@ mod tests {
         // Each test runs on its own thread and sweeps in the foreground, so
         // a per-thread clock keeps tests from moving each other's time.
         static CLOCK: Cell<u64> = const { Cell::new(1_000) };
+        // The stand-in account every engine is signed in as, by number; 0
+        // is none. Tests never read the person's own login files.
+        static LOGIN: Cell<u8> = const { Cell::new(0) };
+    }
+
+    fn login(_: Provider) -> Option<String> {
+        match LOGIN.with(Cell::get) {
+            0 => None,
+            n => Some(format!("stand-in-account-{n}")),
+        }
     }
 
     fn clock() -> u64 {
@@ -2336,6 +2437,7 @@ mod tests {
             )
             .with_probe(|_| Connection::Connected)
             .with_usage_fetch(fetch)
+            .with_identify(login)
             .foreground(),
         );
         let inbox = Inbox::new(&store, workspaces).with_autostart(autostart.clone());
@@ -2423,7 +2525,12 @@ mod tests {
     /// Codex's weekly limit, as the backend reported it, observed now.
     fn exhaust_codex(store: &Path) {
         let body = r#"{"error":{"type":"usage_limit_reached","resets_at":500000,"resets_in_seconds":499000}}"#;
-        capacity::record(store, capacity::Refusal::codex(429, body, clock()).unwrap()).unwrap();
+        capacity::record_with(
+            store,
+            capacity::Refusal::codex(429, body, clock()).unwrap(),
+            login,
+        )
+        .unwrap();
     }
 
     fn create(workspace: &str) -> TaskCreate {
@@ -3688,7 +3795,7 @@ mod tests {
     fn routing_passes_over_a_provider_at_its_probed_limit() {
         let dir = tempfile::tempdir().unwrap();
         let now = 1_790_572_210;
-        let usage = usage::refresh(dir.path(), &Provider::ALL, now, recorded);
+        let usage = usage::refresh_with(dir.path(), &Provider::ALL, &[], now, recorded, no_login);
         let refusals = capacity::Book::default();
         let connected = |_: Provider| Connection::Connected;
         let first = |policy: &Policy, usage: &usage::Book, at: u64| match policy
@@ -3753,6 +3860,130 @@ mod tests {
         assert!(bad.validate().is_err());
     }
 
+    /// The owner on 2026-10-01 (#10105): Claude refused on an exhausted
+    /// account, the owner signed in to another, and a start that asked for
+    /// Claude still passed it over. Probes off: the hold keeps the refused
+    /// login's fingerprint, and once another login is signed in the next
+    /// start that asks for Claude runs on Claude.
+    #[test]
+    fn an_account_change_clears_the_hold_and_the_next_start_uses_the_engine() {
+        use nostr::cj_conversation::Engine;
+        let s = setup();
+        let mut policy = routed(2);
+        policy.engine.usage_probe = None;
+        policy.save(&s.root).unwrap();
+        LOGIN.with(|login| login.set(1));
+        let now = clock();
+        capacity::record_with(
+            &s.store,
+            capacity::Refusal::new(
+                Provider::Claude,
+                capacity::Kind::UsageLimit,
+                now,
+                Some(now + 5 * 86_400),
+            ),
+            login,
+        )
+        .unwrap();
+        let asked = |task: &str| {
+            let created = TaskCreate {
+                engine: Some(Engine::ClaudeCode),
+                ..create("allowed")
+            };
+            s.inbox.create(task, "phone", &created).unwrap();
+        };
+        asked(&"1".repeat(64));
+        let first = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(first.provider, "codex", "the refused login is held");
+        advance(5);
+        LOGIN.with(|login| login.set(2));
+        asked(&"2".repeat(64));
+        let second = launched_grant(&s, 1).adapter_configuration.unwrap();
+        assert_eq!(second.provider, "claude", "another login is not held");
+        // The book keeps no identity, only the salted fingerprint.
+        let book = std::fs::read_to_string(s.store.join(capacity::FILE)).unwrap();
+        assert!(!book.contains("stand-in-account"));
+        LOGIN.with(|login| login.set(0));
+    }
+
+    /// A start does not pass an engine over on an old reading: with probes
+    /// on, the engine a person asked for, at its limit on a reading two
+    /// minutes old and not due by the cache, is read again first, and its
+    /// fresh reading under the limit starts it (#10105).
+    #[test]
+    fn a_stale_reading_is_probed_again_before_an_engine_is_passed_over() {
+        use nostr::cj_conversation::Engine;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CLAUDE_PROBES: AtomicUsize = AtomicUsize::new(0);
+        fn calm(provider: Provider) -> Result<usage::Response, usage::Failure> {
+            if provider == Provider::Claude {
+                CLAUDE_PROBES.fetch_add(1, Ordering::SeqCst);
+                return Ok(usage::Response {
+                    status: 200,
+                    retry_after: None,
+                    body: br#"{"five_hour":{"utilization":6.0,"resets_at":null},"seven_day":{"utilization":2.0,"resets_at":null}}"#.to_vec(),
+                });
+            }
+            // Codex well under its limit: an old Claude reading alone would
+            // send the start to Codex.
+            Ok(usage::Response {
+                status: 200,
+                retry_after: None,
+                body: br#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":5}}}"#
+                    .to_vec(),
+            })
+        }
+        let s = setup_with(calm);
+        let now = 1_790_572_210;
+        CLOCK.with(|clock| clock.set(now));
+        probed(90).save(&s.root).unwrap();
+        // Claude read at its limit two minutes ago; the cache says not to
+        // ask again for five more minutes.
+        let full = usage::Book {
+            schema: usage::SCHEMA.into(),
+            entries: vec![usage::Entry {
+                provider: Provider::Claude,
+                attempted_at: now - 120,
+                next_probe_at: now + 300,
+                reading: Some(usage::Reading {
+                    provider: Provider::Claude,
+                    observed_at: now - 120,
+                    windows: vec![usage::Window {
+                        window: usage::WindowName::SevenDay,
+                        used_fraction: 1.0,
+                        resets_at: Some(now + 3 * 86_400),
+                        length_seconds: Some(604_800),
+                    }],
+                    limit_reached: false,
+                    plan: None,
+                    account: None,
+                }),
+                failure: None,
+            }],
+        };
+        drop(Store::open(&s.store).unwrap());
+        std::fs::write(
+            s.store.join(usage::FILE),
+            serde_json::to_vec(&full).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            recheck(&s.store, &probed(90), &[], now, login),
+            [Provider::Claude],
+            "a provider at its limit on a reading older than a minute"
+        );
+        let task = "9".repeat(64);
+        let asked = TaskCreate {
+            engine: Some(Engine::ClaudeCode),
+            ..create("allowed")
+        };
+        s.inbox.create(&task, "phone", &asked).unwrap();
+        assert_eq!(CLAUDE_PROBES.load(Ordering::SeqCst), 1);
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "claude");
+        assert!(recheck(&s.store, &probed(90), &[], now, login).is_empty());
+    }
+
     #[test]
     fn with_usage_probes_a_start_avoids_a_provider_above_the_threshold() {
         let s = setup_with(recorded);
@@ -3787,7 +4018,7 @@ mod tests {
         // Offline probes: the first admitted route starts, as without probes.
         let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
         assert_eq!(configuration.provider, "codex");
-        let book = usage::Book::load(&s.store);
+        let book = usage::Book::load_with(&s.store, login);
         assert_eq!(
             book.entry(Provider::Claude).unwrap().failure,
             Some(usage::Failure::Network)
@@ -3814,7 +4045,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let now = 1_790_572_210;
         let policy = probed(90);
-        let book = usage_book(Some(&policy), dir.path(), now, true, recorded);
+        let book = usage_book(
+            Some(&policy),
+            dir.path(),
+            now,
+            true,
+            &[],
+            recorded,
+            no_login,
+        );
         let report = engine_report(
             Some(&policy),
             now,
@@ -3882,7 +4121,7 @@ mod tests {
     fn usage_limits_stay_off_until_the_owner_turns_probes_on() {
         let dir = tempfile::tempdir().unwrap();
         let policy = routed(1);
-        let book = usage_book(Some(&policy), dir.path(), 1, true, explode);
+        let book = usage_book(Some(&policy), dir.path(), 1, true, &[], explode, no_login);
         let report = engine_report(Some(&policy), 1, &|_| false, &book);
         assert!(
             report
@@ -3899,7 +4138,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let now = 1_790_572_210;
         let policy = probed(90);
-        let book = usage_book(Some(&policy), dir.path(), now, false, explode);
+        let book = usage_book(
+            Some(&policy),
+            dir.path(),
+            now,
+            false,
+            &[],
+            explode,
+            no_login,
+        );
         let report = engine_report(Some(&policy), now, &|_| false, &book);
         assert!(report.refresh_due);
         assert!(report.routes.iter().all(|route| {
@@ -3910,7 +4157,7 @@ mod tests {
     #[test]
     fn without_a_policy_the_report_still_names_the_accounts() {
         let dir = tempfile::tempdir().unwrap();
-        let book = usage_book(None, dir.path(), 1, true, explode);
+        let book = usage_book(None, dir.path(), 1, true, &[], explode, no_login);
         let report = engine_report(None, 1, &|provider| provider == Provider::Claude, &book);
         assert!(!report.enabled);
         assert!(report.routes.is_empty());
@@ -3926,7 +4173,7 @@ mod tests {
     #[test]
     fn grok_build_gets_an_account_line_when_installed_or_signed_in() {
         let dir = tempfile::tempdir().unwrap();
-        let book = usage_book(None, dir.path(), 1, true, explode);
+        let book = usage_book(None, dir.path(), 1, true, &[], explode, no_login);
         let grok = |provider: Provider| provider == Provider::Grok;
         let names = |report: &EngineReport| {
             report
@@ -3976,7 +4223,7 @@ mod tests {
         policy.engine.usage_probe = Some(UsageProbe {
             threshold_percent: 90,
         });
-        let book = usage_book(Some(&policy), dir.path(), 1, true, explode);
+        let book = usage_book(Some(&policy), dir.path(), 1, true, &[], explode, no_login);
         let report = engine_report(Some(&policy), 1, &|_| true, &book);
         assert_eq!(report.routes[0].usage, RouteUsage::Unsupported);
         assert!(!report.refresh_due);
@@ -3987,7 +4234,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let now = 1_790_572_210;
         let policy = probed(90);
-        let book = usage_book(Some(&policy), dir.path(), now, true, unauthorized);
+        let book = usage_book(
+            Some(&policy),
+            dir.path(),
+            now,
+            true,
+            &[],
+            unauthorized,
+            no_login,
+        );
         let report = engine_report(Some(&policy), now, &|_| false, &book);
         assert!(report.routes.iter().all(|route| {
             matches!(&route.usage, RouteUsage::Unknown { reason } if reason == "unauthorized")

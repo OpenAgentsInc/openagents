@@ -46,6 +46,9 @@ fn every_op() -> Vec<Op> {
             secret: "33".repeat(32),
         },
         Op::EngineStatus {},
+        Op::EngineRefresh {
+            providers: vec!["claude".into()],
+        },
         Op::ChatMigrate {
             home: "/Users/kai/.openagents/chat".into(),
         },

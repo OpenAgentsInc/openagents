@@ -1419,8 +1419,8 @@ mod tests {
     #[test]
     fn the_capacity_book_skips_a_cli_whose_login_is_out_of_its_limit() {
         let dir = tempfile::tempdir().unwrap();
-        capacity::record(dir.path(), codex_refusal()).unwrap();
-        let book = capacity::Book::load(dir.path());
+        capacity::record_with(dir.path(), codex_refusal(), |_| None).unwrap();
+        let book = capacity::Book::load_with(dir.path(), |_| None);
         let env = |_: &str| None;
         let codex = Target::find(Cli::Codex, env, &book, 2_000);
         assert!(
@@ -1911,11 +1911,16 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         assert_eq!(done.text, "Hello from Claude.");
         assert_eq!(done.model, microcoder::CLAUDE_MODEL);
         // The refusal is in the book with its reset.
-        let book = capacity::Book::load(&dir.path().join("tasks"));
-        assert_eq!(
-            book.blocking(Provider::Codex, 2_000),
-            Some(&codex_refusal())
-        );
+        let book = capacity::Book::load_with(&dir.path().join("tasks"), |_| None);
+        // The refusal keeps the login's fingerprint, when it has one (#10105).
+        let held = book
+            .blocking(Provider::Codex, 2_000)
+            .cloned()
+            .map(|mut held| {
+                held.account = None;
+                held
+            });
+        assert_eq!(held, Some(codex_refusal()));
         // The trace holds the switch.
         let switched = done.steps.iter().any(|step| {
             serde_json::to_value(step)
@@ -2022,7 +2027,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         assert!(done.failure.is_none(), "{:?}", done.failure);
         assert_eq!(done.text, "Hello from Claude.");
         // The book holds the cloud's quota refusal until its wait ends.
-        let book = capacity::Book::load(&dir.path().join("tasks"));
+        let book = capacity::Book::load_with(&dir.path().join("tasks"), |_| None);
         let held = book.blocking(Provider::Vertex, 2_000).unwrap();
         assert_eq!(held.kind, capacity::Kind::UsageLimit);
         assert_eq!(held.until, 2_041);
@@ -2334,11 +2339,16 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         let result = answer.report.summary.result.clone().unwrap_or_default();
         assert!(result.contains("Wrote note.txt."), "{result}");
         assert!(result.contains("Published nothing"), "{result}");
-        let book = capacity::Book::load(&dir.path().join("tasks"));
-        assert_eq!(
-            book.blocking(Provider::Codex, 2_000),
-            Some(&codex_refusal())
-        );
+        let book = capacity::Book::load_with(&dir.path().join("tasks"), |_| None);
+        // The refusal keeps the login's fingerprint, when it has one (#10105).
+        let held = book
+            .blocking(Provider::Codex, 2_000)
+            .cloned()
+            .map(|mut held| {
+                held.account = None;
+                held
+            });
+        assert_eq!(held, Some(codex_refusal()));
         let switched = answer.steps.iter().any(|step| {
             serde_json::to_value(step)
                 .unwrap()

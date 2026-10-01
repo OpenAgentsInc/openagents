@@ -19,6 +19,8 @@ openrouter = { path = "../openrouter" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+getrandom = "0.3"
 tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util"] }
 
 # Windows: owner-only directories for the capacity and usage books.

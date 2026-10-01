@@ -122,6 +122,12 @@ pub enum Op {
     /// Coder's engine, model, sign-in, and usage on this computer.
     /// Read-only: the answer has no credential and changes nothing.
     EngineStatus {},
+    /// [`Op::EngineStatus`] after the host reads `providers`' usage now
+    /// (`codex`, `claude`), when its usage probes are on (#10105): a start
+    /// on this computer asks before it passes an engine over for capacity.
+    /// The host waits a few seconds at most, then answers with what it
+    /// has. Only the host reads a credential for the probe.
+    EngineRefresh { providers: Vec<String> },
     /// The projects (workspaces) the host admits.
     ProjectList {},
     /// Admit a Git checkout as a project.

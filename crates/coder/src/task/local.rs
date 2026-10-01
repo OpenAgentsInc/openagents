@@ -52,7 +52,7 @@ use super::autostart::{self, Choice, Engine, Launch, Policy, Route, UsageProbe};
 use super::capacity::{self, Connection, Provider};
 use super::{
     Action, COMMAND_SCHEMA, Command, RequestedConfiguration, Status, Store, TaskIntent, Workspace,
-    adapter, owner, settings, usage,
+    account, adapter, owner, settings, usage,
 };
 
 /// The routes a local run admits by default, in preference order: Codex,
@@ -319,7 +319,17 @@ pub struct Local {
     /// The person's settings, or why they could not be read: a run then
     /// refuses rather than falling back to the defaults.
     settings: Result<settings::Coder, String>,
+    /// Names each provider's signed-in login ([`account::identify`]).
+    identify: account::Identify,
+    /// Asks this computer's host to read these providers' usage now
+    /// (#10105). Only the host reads a probe's token; this process never
+    /// does.
+    fresh: Option<Fresh>,
 }
+
+/// Asks the host on this computer to read some providers' usage now, and
+/// returns once it has or has given up ([`Local::with_fresh`]).
+pub type Fresh = Box<dyn Fn(&[Provider]) + Send + Sync>;
 
 impl std::fmt::Debug for Local {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -346,6 +356,8 @@ impl Local {
             now: autostart::unix_now,
             controller: None,
             settings: Ok(settings::Coder::default()),
+            identify: account::identify,
+            fresh: None,
         }
     }
 
@@ -433,6 +445,42 @@ impl Local {
     pub fn with_probe(mut self, probe: fn(Provider) -> Connection) -> Self {
         self.probe = probe;
         self
+    }
+
+    /// Name each provider's signed-in login with `identify` instead of its
+    /// local metadata, for tests.
+    #[must_use]
+    pub fn with_identify(mut self, identify: account::Identify) -> Self {
+        self.identify = identify;
+        self
+    }
+
+    /// Before a start passes a provider over for capacity, or starts the
+    /// engine the person asked for, ask `fresh` to have the host read those
+    /// providers' usage now ([`Local::recheck`]), so the choice reads a
+    /// reading of the login signed in now (#10105). Without it, a start
+    /// reads only what the books hold.
+    #[must_use]
+    pub fn with_fresh(mut self, fresh: Fresh) -> Self {
+        self.fresh = Some(fresh);
+        self
+    }
+
+    /// The providers a start for `requested` should have read now before it
+    /// chooses (#10105): the requested one, and each the books would pass
+    /// over for capacity on a reading [`usage::RECHECK_AFTER`] old or
+    /// older ([`autostart::recheck`]). Reads only.
+    #[must_use]
+    pub fn recheck(&self, requested: Option<Provider>) -> Vec<Provider> {
+        let controller = self
+            .controller
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("/"));
+        let Ok(policy) = self.policy_with("project", controller) else {
+            return Vec::new();
+        };
+        let asked: Vec<Provider> = requested.into_iter().collect();
+        autostart::recheck(&self.store, &policy, &asked, (self.now)(), self.identify)
     }
 
     /// Name the engine instead of [`controller`].
@@ -545,8 +593,8 @@ impl Local {
     /// can start.
     fn forecast(&self, policy: &Policy, asked: Option<Asked>) -> (Runner, Option<Vec<Route>>) {
         let now = (self.now)();
-        let book = capacity::Book::load(&self.store);
-        let readings = usage::Book::load(&self.store);
+        let book = capacity::Book::load_with(&self.store, self.identify);
+        let readings = usage::Book::load_with(&self.store, self.identify);
         let probe = self.probe;
         let routes = policy.routes();
         let unconnected = || Runner::NotSignedIn {
@@ -705,6 +753,15 @@ impl Local {
             checkout.head = commit.trim().to_owned();
         }
         let (policy, asked) = self.asking(self.policy(&checkout.name)?, requested);
+        // Read again before passing an engine over, and always the one the
+        // person asked for (#10105): a reading or hold may be another
+        // login's, or old.
+        if let Some(fresh) = &self.fresh {
+            let providers = self.recheck(requested);
+            if !providers.is_empty() {
+                fresh(&providers);
+            }
+        }
         let (order, runner) = self.choose_asking(&policy, asked)?;
         let now = (self.now)();
         let task = identity(&format!(
@@ -1693,6 +1750,7 @@ mod tests {
         Local::new(dir.join("tasks"))
             .with_probe(probe)
             .with_controller(std::env::current_exe().unwrap())
+            .with_identify(|_| None)
     }
 
     /// Starts nothing: the task stays queued, as a run whose engine has
@@ -1867,7 +1925,7 @@ mod tests {
 
         // A refusal that holds in this store's book passes Codex over.
         let now = autostart::unix_now();
-        capacity::record(
+        capacity::record_with(
             run.store(),
             capacity::Refusal::new(
                 Provider::Codex,
@@ -1875,6 +1933,7 @@ mod tests {
                 now,
                 Some(now + 3600),
             ),
+            |_| None,
         )
         .unwrap();
         let (order, runner) = run.choose(&policy).unwrap();
@@ -2138,6 +2197,7 @@ mod tests {
                     }],
                     limit_reached: false,
                     plan: None,
+                    account: None,
                 }),
                 failure: None,
             }],
@@ -2253,6 +2313,7 @@ mod tests {
                     }],
                     limit_reached: false,
                     plan: None,
+                    account: None,
                 }),
                 failure: None,
             }],
@@ -2262,6 +2323,76 @@ mod tests {
             &serde_json::to_vec(&book).unwrap(),
         )
         .unwrap();
+    }
+
+    /// A start that asks for an engine, or would pass one over on an old
+    /// reading, has the host read it now first (#10105): the hook runs with
+    /// those providers before the choice, and the choice reads what the
+    /// host then wrote. Here Claude, at its limit on a reading two minutes
+    /// old, reads 5% fresh and runs; without the hook the old reading
+    /// passes it over.
+    #[test]
+    fn a_start_has_the_host_read_an_engine_again_before_passing_it_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let old_full = |store: &Path| {
+            let now = autostart::unix_now();
+            let book = usage::Book {
+                schema: usage::SCHEMA.into(),
+                entries: vec![usage::Entry {
+                    provider: Provider::Claude,
+                    attempted_at: now - 120,
+                    next_probe_at: now + 300,
+                    reading: Some(usage::Reading {
+                        provider: Provider::Claude,
+                        observed_at: now - 120,
+                        windows: vec![usage::Window {
+                            window: usage::WindowName::SevenDay,
+                            used_fraction: 1.0,
+                            resets_at: Some(now + 86_400),
+                            length_seconds: None,
+                        }],
+                        limit_reached: false,
+                        plan: None,
+                        account: None,
+                    }),
+                    failure: None,
+                }],
+            };
+            autostart::write_private(
+                &store.join(usage::FILE),
+                &serde_json::to_vec(&book).unwrap(),
+            )
+            .unwrap();
+        };
+        // Without a host to ask: the old reading passes Claude over.
+        let alone = local(&dir.path().join("alone"), both).with_launcher(Box::new(Held));
+        old_full(alone.store());
+        assert_eq!(alone.recheck(Some(Provider::Claude)), [Provider::Claude]);
+        let record = alone
+            .start_requested(&top, "Fix it", "Fix it.", None, &[], Some(Provider::Claude))
+            .unwrap();
+        assert_eq!(record.turns[0].provider, "codex");
+        // With the host asked first: it reads Claude at 5% and Claude runs.
+        let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let store = dir.path().join("hosted").join("tasks");
+        let hook = {
+            let asked = asked.clone();
+            let store = store.clone();
+            Box::new(move |providers: &[Provider]| {
+                asked.lock().unwrap().push(providers.to_vec());
+                reading(&store, Provider::Claude, 0.05);
+            })
+        };
+        let hosted = local(&dir.path().join("hosted"), both)
+            .with_launcher(Box::new(Held))
+            .with_fresh(hook);
+        old_full(hosted.store());
+        let record = hosted
+            .start_requested(&top, "Fix it", "Fix it.", None, &[], Some(Provider::Claude))
+            .unwrap();
+        assert_eq!(record.turns[0].provider, "claude");
+        assert_eq!(asked.lock().unwrap().as_slice(), [vec![Provider::Claude]]);
     }
 
     /// The three things an offer says, each from the store's own books
@@ -2316,7 +2447,7 @@ mod tests {
             }
             if refused {
                 let now = autostart::unix_now();
-                capacity::record(
+                capacity::record_with(
                     run.store(),
                     capacity::Refusal::new(
                         Provider::Codex,
@@ -2324,6 +2455,7 @@ mod tests {
                         now,
                         Some(now + 3600),
                     ),
+                    |_| None,
                 )
                 .unwrap();
             }
@@ -2428,7 +2560,7 @@ mod tests {
             let run = local(&home, probe).with_launcher(Box::new(Held));
             if refused {
                 let now = autostart::unix_now();
-                capacity::record(
+                capacity::record_with(
                     run.store(),
                     capacity::Refusal::new(
                         Provider::Claude,
@@ -2436,6 +2568,7 @@ mod tests {
                         now,
                         Some(now + 3600),
                     ),
+                    |_| None,
                 )
                 .unwrap();
             }

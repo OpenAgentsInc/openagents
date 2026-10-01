@@ -389,6 +389,7 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             reply
         }
         Op::EngineStatus {} => engine_status(shared),
+        Op::EngineRefresh { providers } => engine_refresh(shared, &providers),
     }
 }
 
@@ -413,6 +414,73 @@ fn engine_status(shared: &Shared) -> Reply {
             }
             Reply::EngineStatus { report }
         }
+        Err(()) => refused("malformed", "Coder's engine report was unreadable."),
+    }
+}
+
+/// The engines whose usage a refresh may read now: those with a usage
+/// endpoint. Any other name is ignored.
+const FRESH_PROVIDERS: [&str; 2] = ["codex", "claude"];
+/// How long [`engine_refresh`] waits for the fresh reading before it
+/// answers with the cached report; the reading still lands for the next.
+const FRESH_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Read `providers`' usage now (`status --fresh`, #10105), then answer the
+/// engine report. The `coder` program probes only when the owner's policy
+/// has usage probes on, so this reads no credential otherwise. A refresh
+/// slower than [`FRESH_WAIT`] keeps running detached, and the answer is
+/// the cached report.
+fn engine_refresh(shared: &Shared, providers: &[String]) -> Reply {
+    let Some(control) = shared.config.control.as_ref() else {
+        return refused("unavailable", "This computer cannot read Coder's engine.");
+    };
+    let Some(program) = control.autostart.as_ref() else {
+        return refused("unavailable", "This computer cannot read Coder's engine.");
+    };
+    let mut fresh: Vec<&str> = FRESH_PROVIDERS
+        .into_iter()
+        .filter(|name| providers.iter().any(|asked| asked == name))
+        .collect();
+    fresh.dedup();
+    if fresh.is_empty() {
+        return engine_status(shared);
+    }
+    let mut command = std::process::Command::new(program);
+    command
+        .args(["host", "autostart", "status", "--refresh", "--root"])
+        .arg(&control.root)
+        .arg("--store")
+        .arg(&control.tasks);
+    for name in &fresh {
+        command.args(["--fresh", name]);
+    }
+    let child = command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Ok(mut child) = child {
+        let deadline = std::time::Instant::now() + FRESH_WAIT;
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) | Err(_) => break,
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                Ok(None) => {
+                    // Let it finish on its own; reap it there.
+                    let _ = std::thread::Builder::new()
+                        .name("engine-fresh".into())
+                        .spawn(move || {
+                            let _ = child.wait();
+                        });
+                    break;
+                }
+            }
+        }
+    }
+    match run_engine_status(program, &control.root, &control.tasks) {
+        Ok(report) => Reply::EngineStatus { report },
         Err(()) => refused("malformed", "Coder's engine report was unreadable."),
     }
 }

@@ -1029,7 +1029,7 @@ async fn a_capacity_refusal_fails_over_to_the_next_admitted_route_and_is_recorde
         b"output"
     );
     // The refusal is durable capacity state with its reset.
-    let book = capacity::Book::load(&store);
+    let book = capacity::Book::load_with(&store, |_| None);
     let refusal = book.blocking(Provider::Codex, during_limit()).unwrap();
     assert_eq!(refusal.until, RESET);
     // The transcript records why the route changed, and the step's cost
@@ -1088,7 +1088,12 @@ async fn with_every_route_exhausted_the_run_ends_as_no_capacity_with_the_earlies
 #[tokio::test]
 async fn a_run_starts_on_the_first_route_with_capacity() {
     let (_root, store, grant) = fixture();
-    capacity::record(&store, Refusal::codex(429, LIMIT, during_limit()).unwrap()).unwrap();
+    capacity::record_with(
+        &store,
+        Refusal::codex(429, LIMIT, during_limit()).unwrap(),
+        |_| None,
+    )
+    .unwrap();
     let codex = lane("gpt-6-luna", 0.0, vec![Ok(done())]);
     let claude = lane("claude-opus-5-5", 0.0, vec![Ok(done())]);
     let host = Host::admit(&store, &grant).await.unwrap();

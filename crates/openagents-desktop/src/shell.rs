@@ -48,6 +48,9 @@ pub struct DesktopApp {
     /// saw ([`openagents_desktop::notices`]).
     focused: bool,
     notices: openagents_desktop::notices::Notices,
+    /// How many capacity events Coder's runs had at the last look; more
+    /// reads the engine again ([`openagents_desktop::chat::Panel::capacity_signals`]).
+    capacity_seen: usize,
     /// A downloaded update's version, for the update strip ([`crate::strip`]).
     update_ready: Option<String>,
     #[cfg(not(windows))]
@@ -223,6 +226,7 @@ impl DesktopApp {
             }),
             chat: (live && chrome).then(|| openagents_desktop::chat::Panel::new(Instant::now())),
             focused: true,
+            capacity_seen: 0,
             notices: openagents_desktop::notices::Notices::default(),
             update_ready: None,
             #[cfg(not(windows))]
@@ -945,6 +949,15 @@ impl App for DesktopApp {
             })
             .or_else(|| self.map.as_ref().and_then(|page| page.next_wake(now)));
         self.notify();
+        // A run passed over or refused for capacity: show what the engine
+        // reads now (#10105).
+        if let Some(chat) = &self.chat {
+            let signals = chat.capacity_signals();
+            if signals > self.capacity_seen {
+                self.model.read_engine(now);
+            }
+            self.capacity_seen = signals;
+        }
         self.present();
         let wake = self.model.next_wake().min(
             self.chat
@@ -1108,7 +1121,12 @@ impl App for DesktopApp {
             let mut chat_request = None;
             if let Some(chat) = &mut self.chat {
                 chat_request = match &action {
-                    chrome::Action::NewChat => Some(chat.new_chat()),
+                    chrome::Action::NewChat => {
+                        // A new chat shows the engines as they read now
+                        // (#10105).
+                        self.model.read_engine(now);
+                        Some(chat.new_chat())
+                    }
                     chrome::Action::SelectChat { id } => chat.select_numeric(*id),
                     _ => None,
                 };
@@ -1173,6 +1191,11 @@ impl App for DesktopApp {
         now: Instant,
     ) -> bool {
         if let rust_native_desktop::input::NativeInput::Focus(focused) = event {
+            if focused && !self.focused {
+                // Back in front: the engine may have changed meanwhile, such
+                // as a sign-in to another account (#10105).
+                self.model.read_engine(now);
+            }
             self.focused = focused;
         }
         // A wheel over the Map page's side panel scrolls it (#10085).
@@ -2098,6 +2121,41 @@ mod tests {
             turns: (0..rows).map(|i| if i % 2 == 0 { Turn::user(format!("Question {i}: how does this work?")) } else { Turn::assistant(format!("Reply {i} with **bold**, *italic*, and `inline code`.\n\n- First item\n- Second item\n\n```rust\nlet answer = 42;\n```"), None) }).collect(), ..Snapshot::default() }));
         app.present();
         (app, now)
+    }
+
+    /// The sidebar's engine rows and Settings → Coder read the engine
+    /// again at once on a new chat and when the window comes back to the
+    /// front, not only every minute (#10105).
+    #[test]
+    fn a_new_chat_and_focus_read_the_engine_again() {
+        use openagents_desktop::model::Request;
+        let fake = FakeHost::new("Test computer", unix_now());
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            std::env::temp_dir(),
+        );
+        let now = Instant::now();
+        let mut app =
+            DesktopApp::inline_chat(Model::new(now, Screen::Home, Agent::Enabled), context);
+        assert!(app.model.tick(now).contains(&Request::Engine));
+        let later = now + Duration::from_secs(5);
+        assert!(!app.model.tick(later).contains(&Request::Engine));
+        app.activate(
+            Intent::Navigate {
+                action: Action::NewChat,
+            },
+            later,
+        );
+        assert!(app.model.next_wake() <= later);
+        assert!(app.model.tick(later).contains(&Request::Engine));
+        let after = later + Duration::from_secs(5);
+        assert!(!app.model.tick(after).contains(&Request::Engine));
+        app.native_input(rust_native_desktop::input::NativeInput::Focus(false), after);
+        app.native_input(rust_native_desktop::input::NativeInput::Focus(true), after);
+        assert!(app.model.tick(after).contains(&Request::Engine));
     }
 
     #[test]

@@ -499,8 +499,26 @@ impl CoderLane {
         if self.local.is_none() {
             self.here = true;
         }
+        let fake = self.fake;
         self.local.get_or_insert_with(|| {
-            coder::task::local::Local::here(coder::task::local::default_store())
+            let local = coder::task::local::Local::here(coder::task::local::default_store());
+            if fake {
+                return local;
+            }
+            // Before a start passes an engine over for capacity, or starts
+            // the one the person asked for, the host on this computer reads
+            // its usage now (#10105); only the host reads the probe's token.
+            local.with_fresh(Box::new(|providers| {
+                use openagents_desktop::control::{HostControl, SocketControl};
+                let Some(path) = openagents_connect::control::socket_path() else {
+                    return;
+                };
+                let names: Vec<String> = providers
+                    .iter()
+                    .map(|provider| provider.as_str().to_owned())
+                    .collect();
+                let _ = SocketControl::new(path).engine_refresh(&names);
+            }))
         })
     }
 
