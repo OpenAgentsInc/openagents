@@ -7,6 +7,15 @@
 //! once the run ends, and the key never enters the child's environment,
 //! its trajectory, or anything under `out/`. On macOS the sandbox denies
 //! every other address, so the proxy is also the child's only network.
+//!
+//! A decision door may carry Jev's other doors ([`Upstream::decisions`]):
+//! then a decision (`POST /v1/systemone`) goes through
+//! [`jev::doors::Failover`], which asks each door in its order and leaves
+//! one only when it couldn't answer for a reason of its own (a 402 for an
+//! account out of credits, a 5xx, a timeout). Every other route goes to
+//! [`Upstream::url`] alone. Without it, one door that can't pay takes Jev,
+//! and with Jev the programs Coder picks, away from both arms
+//! ([#10122](https://github.com/OpenAgentsInc/openagents/issues/10122)).
 
 use std::fmt;
 use std::net::SocketAddr;
@@ -59,7 +68,14 @@ pub struct Upstream {
     pub url: String,
     /// The bearer the door takes.
     pub key: Secret,
+    /// Jev's doors, in the order a decision asks them, when this is a
+    /// decision door with more than one. `None` sends every request to
+    /// `url`.
+    pub decisions: Option<jev::doors::Failover>,
 }
+
+/// The longest a decision may take across all of Jev's doors.
+pub const DECISION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 struct Shared {
     upstream: Upstream,
@@ -201,6 +217,60 @@ fn plain(status: StatusCode, message: &'static str) -> Response {
     response
 }
 
+/// A decision through Jev's doors in order, answered as the door that
+/// answered it (or, when none did, as the first door refused).
+async fn decide(
+    shared: &Shared,
+    failover: &jev::doors::Failover,
+    headers: &HeaderMap,
+    path: &str,
+    body: Vec<u8>,
+) -> Response {
+    use jev::exchange::{Call, Exchange, Failure};
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
+    };
+    let call = Call {
+        method: "POST".into(),
+        path: path.to_string(),
+        body: Some(body),
+        idempotency_key: header("idempotency-key"),
+        attempt: header("x-attempt")
+            .and_then(|attempt| attempt.parse().ok())
+            .unwrap_or(1),
+        timeout: DECISION_TIMEOUT,
+    };
+    let reply = match failover.exchange(call).await {
+        Ok(reply) => reply,
+        Err(Failure::Timeout) => {
+            return plain(StatusCode::GATEWAY_TIMEOUT, "no Jev door answered in time");
+        }
+        Err(Failure::Unreachable(_)) => {
+            return plain(StatusCode::BAD_GATEWAY, "no Jev door could be reached");
+        }
+    };
+    if reply.status == 401 || reply.status == 403 {
+        shared.refused_credential.store(true, Ordering::SeqCst);
+    }
+    let mut response = Response::new(Body::from(reply.body));
+    *response.status_mut() = StatusCode::from_u16(reply.status).unwrap_or(StatusCode::BAD_GATEWAY);
+    for (name, value) in reply.headers {
+        let (Ok(name), Ok(value)) = (
+            HeaderName::from_bytes(name.as_bytes()),
+            HeaderValue::from_str(&value),
+        ) else {
+            continue;
+        };
+        if !HOP_BY_HOP.contains(&name) {
+            response.headers_mut().insert(name, value);
+        }
+    }
+    response
+}
+
 async fn forward(State(shared): State<Arc<Shared>>, request: Request) -> Response {
     let expected = format!("Bearer {}", shared.token);
     let bearer = request
@@ -226,6 +296,12 @@ async fn forward(State(shared): State<Arc<Shared>>, request: Request) -> Respons
         .uri
         .path_and_query()
         .map_or("/", axum::http::uri::PathAndQuery::as_str);
+    if let Some(failover) = &shared.upstream.decisions
+        && parts.method == axum::http::Method::POST
+        && parts.uri.path() == jev::doors::SYSTEM_ONE_PATH
+    {
+        return decide(&shared, failover, &parts.headers, path, bytes.to_vec()).await;
+    }
     let url = format!("{}{path}", shared.upstream.url.trim_end_matches('/'));
     let mut headers = HeaderMap::new();
     for (name, value) in &parts.headers {

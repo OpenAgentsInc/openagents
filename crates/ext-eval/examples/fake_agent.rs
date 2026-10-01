@@ -8,7 +8,9 @@
 //! programs and the prompt asks about the repository or its callers, it
 //! records one call to each step it finds under
 //! `$HOME/.openagents/programs`, so `operation_used` graders see the
-//! subject arm reach the extension. `OA_EVAL_FAKE` picks extra behavior:
+//! subject arm reach the extension. With a decision door
+//! (`TYPESAFE_BASE_URL`), it first asks Jev there, as Coder does, and runs
+//! no program when the door doesn't answer. `OA_EVAL_FAKE` picks extra behavior:
 //! `env` dumps the environment to stderr and to `env.txt`; `canary`
 //! reports whether it could read `OA_EVAL_CANARY`; `sleep` prints its
 //! process id and sleeps until it is stopped; `write` writes the reply to `summary.md`.
@@ -82,7 +84,7 @@ fn main() {
     let programs = std::env::var("CODER_PROGRAMS").unwrap_or_default();
     let asks_for_a_map = prompt.to_ascii_lowercase().contains("repository")
         || prompt.to_ascii_lowercase().contains("callers");
-    if !programs.is_empty() && programs != "none" && asks_for_a_map {
+    if !programs.is_empty() && programs != "none" && asks_for_a_map && jev_answers(&prompt) {
         let dir =
             PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".openagents/programs");
         let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -175,6 +177,27 @@ fn ask(guidance: &str, prompt: &str) -> Result<String, String> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string())
+}
+
+/// Whether the decision door answered whether a program applies, or
+/// there is none to ask. Coder runs no program when Jev can't answer.
+fn jev_answers(prompt: &str) -> bool {
+    let Ok(url) = std::env::var("TYPESAFE_BASE_URL") else {
+        return true;
+    };
+    let key = std::env::var("TYPESAFE_API_KEY").unwrap_or_default();
+    let body = json!({
+        "model": "jev-1.13.0",
+        "state": prompt,
+        "questions": {"program": {"type": "choice", "question": "Which program?",
+                                  "choices": ["none", "map-it"]}},
+    });
+    reqwest::blocking::Client::new()
+        .post(format!("{}/v1/systemone", url.trim_end_matches('/')))
+        .bearer_auth(key)
+        .json(&body)
+        .send()
+        .is_ok_and(|response| response.status().is_success())
 }
 
 fn summary(reply: Option<&str>, outcome: &str, error: Option<&str>) {

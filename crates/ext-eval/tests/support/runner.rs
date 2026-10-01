@@ -258,3 +258,80 @@ pub fn files(dir: &Path) -> Vec<PathBuf> {
     }
     out
 }
+
+/// A fake Jev door on a loopback port: `POST path` answers `status` to
+/// its own key (a Jev answer on 2xx, TypeSafe's billing refusal on 402)
+/// and records the model each request named.
+pub struct FakeJev {
+    pub url: String,
+    pub key: String,
+    pub models: Arc<std::sync::Mutex<Vec<String>>>,
+    _stop: tokio::sync::oneshot::Sender<()>,
+    _thread: std::thread::JoinHandle<()>,
+}
+
+pub fn fake_jev(path: &'static str, status: u16) -> FakeJev {
+    use axum::Json;
+    use axum::http::{HeaderMap, StatusCode};
+    let key = format!("real-jev-key-{status}-{}", std::process::id());
+    let models = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let expected = format!("Bearer {key}");
+    let seen = Arc::clone(&models);
+    let thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let app = axum::Router::new().route(
+                path,
+                axum::routing::post(move |headers: HeaderMap, Json(body): Json<Value>| {
+                    let expected = expected.clone();
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        let auth = headers
+                            .get("authorization")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default();
+                        if auth != expected {
+                            return (StatusCode::UNAUTHORIZED, Json(json!({"error": "key"})));
+                        }
+                        seen.lock()
+                            .unwrap()
+                            .push(body["model"].as_str().unwrap_or_default().to_string());
+                        let status = StatusCode::from_u16(status).unwrap();
+                        if status.is_success() {
+                            (
+                                status,
+                                Json(json!({"answers": {"program": {"choice": "map-it"}}})),
+                            )
+                        } else {
+                            (
+                                status,
+                                Json(json!({"detail": {"error_type": "billing_error",
+                                    "message": "Your organization has no available TypeSafe API credits."}})),
+                            )
+                        }
+                    }
+                }),
+            );
+            let _ = axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = stopped.await;
+                })
+                .await;
+        });
+    });
+    FakeJev {
+        url,
+        key,
+        models,
+        _stop: stop,
+        _thread: thread,
+    }
+}

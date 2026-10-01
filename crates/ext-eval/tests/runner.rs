@@ -21,6 +21,80 @@ use support::*;
 
 fn quiet(_: Progress) {}
 
+/// Whether the subject arm's callers run reached the extension's
+/// program (its `repo_map` step), with `decision` as the child's decision
+/// door.
+#[cfg(unix)]
+fn subject_reached_the_program(decision: &run::DecisionPin) -> bool {
+    let door = fake_door();
+    let work = tempfile::tempdir().unwrap();
+    let suite = suite(work.path(), 1, "");
+    let subject = subject();
+    let agent = agent();
+    let options = options(work.path());
+    let door_pin = door.door();
+    let setup = Setup {
+        suite: &suite,
+        subject: &subject,
+        agent: &agent,
+        door: &door_pin,
+        decision: Some(decision),
+        options: &options,
+    };
+    let outcome = run::run_suite(
+        &setup,
+        &author(),
+        &work.path().join("evals/results"),
+        None,
+        &Cancel::new(),
+        &quiet,
+    )
+    .expect("the suite runs");
+    let run = outcome
+        .evaluation
+        .runs
+        .iter()
+        .find(|run| run.arm == Arm::Subject && run.case == "find-callers")
+        .expect("the subject arm ran the callers case");
+    run.graders
+        .iter()
+        .find(|grader| grader.name == "used-map")
+        .expect("the used-map grader ran")
+        .passed
+}
+
+/// #10122: TypeSafe's account ran out of credits, the child's classifier
+/// failed, and the subject arm never ran its program, so it scored what
+/// the baseline did. With Jev's gateway door on the pin, a decision asks
+/// the gateway first (under Jev's gateway name) and the subject arm gets
+/// its extension again.
+#[test]
+#[cfg(unix)]
+fn the_subject_arm_gets_its_program_when_typesafe_is_out_of_credits() {
+    let typesafe = fake_jev("/v1/systemone", 402);
+    let gateway = fake_jev("/typesafe/v1/systemone", 200);
+    let alone = run::DecisionPin::new(
+        typesafe.url.clone(),
+        ext_eval::proxy::Secret::new(typesafe.key.clone()),
+    );
+    // TypeSafe alone: the program never runs.
+    assert!(!subject_reached_the_program(&alone));
+    let mut with_gateway = alone.clone();
+    with_gateway.fallbacks.push(jev::doors::Door::new(
+        gateway.url.clone(),
+        format!("{}/typesafe/v1/systemone", gateway.url),
+        jev::doors::Naming::Gateway,
+        jev::ApiKey::new(gateway.key.clone()),
+    ));
+    assert!(subject_reached_the_program(&with_gateway));
+    let models = gateway.models.lock().unwrap().clone();
+    assert!(!models.is_empty(), "the gateway was asked");
+    assert!(
+        models.iter().all(|model| model == "typesafe-ai/jev"),
+        "{models:?}"
+    );
+}
+
 #[test]
 // The run sandbox is Unix's; elsewhere every run refuses as unconfined.
 #[cfg(unix)]

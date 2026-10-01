@@ -69,12 +69,100 @@ impl Door {
 }
 
 /// The decision door a child classifies its turns through.
+///
+/// Coder asks Jev whether a turn runs a program before it does anything
+/// else, so a decision door that can't answer takes the extension's
+/// programs away from the subject arm and both arms score alike
+/// ([#10122](https://github.com/OpenAgentsInc/openagents/issues/10122)).
+/// A pin may carry Jev's other doors ([`DecisionPin::fallbacks`]); a
+/// decision then asks them first and TypeSafe last, the order every server
+/// that holds the keys uses ([`jev::doors::Failover::primary_last`]).
 #[derive(Clone, Debug)]
 pub struct DecisionPin {
     /// Its base URL, such as `https://api.typesafe.ai`.
     pub url: String,
     /// Its key. Never handed to a child.
     pub key: Secret,
+    /// Jev's other doors with their keys, asked before `url` (the Vercel
+    /// AI Gateway, then OpenRouter). Empty asks `url` alone.
+    pub fallbacks: Vec<jev::doors::Door>,
+}
+
+impl DecisionPin {
+    /// TypeSafe's door at `url` under `key`, alone.
+    #[must_use]
+    pub fn new(url: impl Into<String>, key: Secret) -> Self {
+        Self {
+            url: url.into(),
+            key,
+            fallbacks: Vec::new(),
+        }
+    }
+
+    /// The pin with Jev's other doors ([`jev::doors::FALLBACKS`]) whose
+    /// keys `key_of` finds, by each door's key variable
+    /// (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`). A blank key is no
+    /// door.
+    #[must_use]
+    pub fn with_fallbacks(mut self, key_of: &dyn Fn(&str) -> Option<String>) -> Self {
+        for fallback in &jev::doors::FALLBACKS {
+            if let Some(key) = key_of(fallback.key_var).filter(|key| !key.trim().is_empty()) {
+                self.fallbacks
+                    .push(jev::doors::Door::fallback(fallback, jev::ApiKey::new(key)));
+            }
+        }
+        self
+    }
+
+    /// The doors a decision asks, in order, for a log line: each door's
+    /// URL, never a key.
+    #[must_use]
+    pub fn doors(&self) -> Vec<String> {
+        self.fallbacks
+            .iter()
+            .map(|door| door.door.clone())
+            .chain(std::iter::once(self.url.trim_end_matches('/').to_string()))
+            .collect()
+    }
+
+    /// The failover across the pin's doors, or `None` when it has one.
+    #[must_use]
+    pub fn failover(&self) -> Option<jev::doors::Failover> {
+        if self.fallbacks.is_empty() {
+            return None;
+        }
+        Some(
+            jev::doors::Failover::new(
+                jev::doors::Door::new(
+                    self.url.trim_end_matches('/'),
+                    self.url.clone(),
+                    jev::doors::Naming::Canonical,
+                    jev::ApiKey::new(self.key.expose()),
+                ),
+                self.fallbacks.clone(),
+            )
+            .primary_last(),
+        )
+    }
+
+    /// Jev for the `decision` graders, through the same doors.
+    ///
+    /// # Errors
+    ///
+    /// Why there is no Jev, never a key.
+    pub fn jev_door(&self, model: Option<String>) -> Result<crate::JevDoor, String> {
+        let Some(failover) = self.failover() else {
+            return crate::JevDoor::resolved(&self.url, Some(self.key.expose()), model);
+        };
+        let client = jev::Client::new(
+            jev::Config::new()
+                .exchange(jev::doors::exchange(failover))
+                .base_url(&self.url)
+                .default_model(model.as_deref().unwrap_or(jev::defaults::MODEL)),
+        )
+        .map_err(|error| format!("Jev: {error}"))?;
+        crate::JevDoor::from_client(client, model)
+    }
 }
 
 /// How a suite runs.
@@ -427,6 +515,7 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
     let Ok(door) = Proxy::start(Upstream {
         url: setup.door.url.clone(),
         key: setup.door.key.clone(),
+        decisions: None,
     }) else {
         return refused(record);
     };
@@ -434,6 +523,7 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
         Some(pin) => match Proxy::start(Upstream {
             url: pin.url.clone(),
             key: pin.key.clone(),
+            decisions: pin.failover(),
         }) {
             Ok(proxy) => Some(proxy),
             Err(_) => return refused(record),
@@ -469,6 +559,11 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
     }
     if let Some(pin) = setup.decision {
         secrets.push(pin.key.expose().to_string());
+        secrets.extend(
+            pin.fallbacks
+                .iter()
+                .map(|door| door.key().expose().to_string()),
+        );
     }
     let refused_credential =
         door.refused_credential() || decision.as_ref().is_some_and(Proxy::refused_credential);
@@ -744,12 +839,17 @@ pub fn write_results(
         "partial": evaluation.partial,
     });
     std::fs::write(dir.join("run.json"), json_bytes(&record)).map_err(io)?;
+    let fallback_keys = setup
+        .decision
+        .into_iter()
+        .flat_map(|pin| pin.fallbacks.iter().map(|door| door.key().expose()));
     for secret in [
         Some(setup.door.key.expose()),
         setup.decision.map(|pin| pin.key.expose()),
     ]
     .into_iter()
     .flatten()
+    .chain(fallback_keys)
     {
         if let Some(found) = sandbox::holds(dir, secret) {
             let _ = std::fs::remove_dir_all(dir);

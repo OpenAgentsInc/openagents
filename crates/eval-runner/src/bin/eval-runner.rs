@@ -110,7 +110,7 @@ fn check() -> Result<(), String> {
         config
             .decision
             .as_ref()
-            .map_or("none", |pin| pin.url.as_str())
+            .map_or_else(|| "none".to_string(), |pin| pin.doors().join(" → "))
     );
     println!(
         "agent    {} ({})",

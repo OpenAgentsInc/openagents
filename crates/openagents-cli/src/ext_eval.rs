@@ -18,7 +18,7 @@ use ext_eval::case::{Grant, LoadOptions};
 use ext_eval::proxy::Secret;
 use ext_eval::run::{self, Author, DecisionPin, Door, Options, Progress, Setup};
 use ext_eval::signal::Cancel;
-use ext_eval::{Filter, JevDoor, Suite};
+use ext_eval::{Filter, Suite};
 use nostr::domain::Event;
 use serde_json::{Value, json};
 
@@ -392,7 +392,8 @@ fn door(name: Option<&str>) -> Result<Door, String> {
 }
 
 /// The decision door: `TYPESAFE_API_KEY` (and `TYPESAFE_BASE_URL`), or
-/// the key in `~/.openagents/jev.json`.
+/// the key in `~/.openagents/jev.json`, with Jev's other doors whose keys
+/// are set (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`) asked first.
 fn decision_pin() -> Option<DecisionPin> {
     let key = std::env::var(jev::env::API_KEY)
         .ok()
@@ -409,10 +410,7 @@ fn decision_pin() -> Option<DecisionPin> {
         .ok()
         .filter(|url| !url.is_empty())
         .unwrap_or_else(|| jev::defaults::BASE_URL.to_string());
-    Some(DecisionPin {
-        url,
-        key: Secret::new(key),
-    })
+    Some(DecisionPin::new(url, Secret::new(key)).with_fallbacks(&|var| std::env::var(var).ok()))
 }
 
 fn progress(event: Progress) {
@@ -611,7 +609,7 @@ fn execute(
     let jev = prepared
         .decision
         .as_ref()
-        .and_then(|pin| JevDoor::resolved(&pin.url, Some(pin.key.expose()), None).ok());
+        .and_then(|pin| pin.jev_door(None).ok());
     let cancel = Cancel::on_signals();
     eprintln!(
         "running {} case(s) of {} through {} …",

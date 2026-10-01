@@ -80,6 +80,18 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   is a run like any other. `crates/eval-runner/examples/trainer.rs` sends
   one with `--validates RESULT_ID`, with `SUITE_AUTHOR` naming the second
   test set's signer.
+- **Jev's doors.** Coder asks Jev whether a turn runs a program before
+  anything else, so a run without Jev never reaches the extension and
+  both arms score alike. The child reaches Jev only through its run's
+  decision proxy, which asks Jev's doors in the chat judge's order: the
+  Vercel AI Gateway (`typesafe-ai/jev`, under `AI_GATEWAY_API_KEY`, else
+  under `CODER_DOOR_KEY` when the chat door is the gateway), then
+  OpenRouter when `OPENROUTER_API_KEY` is set, then TypeSafe
+  (`TYPESAFE_API_KEY`) last, leaving a door only for a reason of its own
+  (`jev::doors::fails_over`: a 402 for an account out of credits, a 5xx,
+  a timeout). The `decision` graders use the same doors. The startup
+  log's `decision` line names them in order
+  ([#10122](https://github.com/OpenAgentsInc/openagents/issues/10122)).
 - **Coder's defaults.** At each admitted run the runner reads the
   `openagents:coder-defaults` releases of the package root
   (`EVAL_RUNNER_DEFAULTS_ROOT` overrides it for a test), their documents

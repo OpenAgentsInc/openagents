@@ -1039,9 +1039,11 @@ impl Runner {
             suite_release: plan.suite_release.clone(),
             requester: Some(requester),
         };
-        let jev = self.config.decision.as_ref().and_then(|pin| {
-            ext_eval::JevDoor::resolved(&pin.url, Some(pin.key.expose()), None).ok()
-        });
+        let jev = self
+            .config
+            .decision
+            .as_ref()
+            .and_then(|pin| pin.jev_door(None).ok());
         let done = std::sync::atomic::AtomicU64::new(0);
         let on_progress = |event: RunProgress| {
             if let RunProgress::Finished { .. } = event {

@@ -299,6 +299,13 @@ impl Door {
     pub fn fallback(fallback: &Fallback, key: ApiKey) -> Self {
         Self::new(fallback.door, fallback.url, fallback.naming, key)
     }
+
+    /// The door's key, for the one caller that must scrub it from what it
+    /// writes. Never log it.
+    #[must_use]
+    pub fn key(&self) -> &ApiKey {
+        &self.key
+    }
 }
 
 impl fmt::Debug for Door {

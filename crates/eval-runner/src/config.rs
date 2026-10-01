@@ -144,10 +144,7 @@ impl Config {
             key: Secret::new(key),
             model: var("CODER_MODEL").unwrap_or_else(|| "google/gemini-3.8-flash".into()),
         };
-        let decision = var("TYPESAFE_API_KEY").map(|key| DecisionPin {
-            url: var("TYPESAFE_BASE_URL").unwrap_or_else(|| "https://api.typesafe.ai".into()),
-            key: Secret::new(key),
-        });
+        let decision = decision_pin(&var, &door);
         let limits = Limits {
             runs_per_trainer: brake("EVAL_RUNNER_RUNS_PER_DAY")?,
             turns_per_day: brake("EVAL_RUNNER_TURNS_PER_DAY")?,
@@ -221,6 +218,28 @@ impl Config {
     }
 }
 
+/// The decision door: TypeSafe under `TYPESAFE_API_KEY` (at
+/// `TYPESAFE_BASE_URL`), asked last, behind Jev's other doors whose keys
+/// are set, the chat judge's order. The gateway's key is
+/// `AI_GATEWAY_API_KEY`, else the chat door's key when the chat door is
+/// the Vercel AI Gateway (one key serves both). Without the other doors,
+/// a TypeSafe account out of credits took Jev, and with it every
+/// program, from both arms
+/// ([#10122](https://github.com/OpenAgentsInc/openagents/issues/10122)).
+pub fn decision_pin(var: &dyn Fn(&str) -> Option<String>, door: &Door) -> Option<DecisionPin> {
+    let key = var("TYPESAFE_API_KEY")?;
+    let url = var("TYPESAFE_BASE_URL").unwrap_or_else(|| jev::doors::TYPESAFE_DOOR.into());
+    let door_is_gateway = door.url.trim_end_matches('/') == jev::doors::GATEWAY_DOOR;
+    Some(
+        DecisionPin::new(url, Secret::new(key)).with_fallbacks(&|name| {
+            var(name).or_else(|| {
+                (name == jev::doors::GATEWAY_KEY_VAR && door_is_gateway)
+                    .then(|| door.key.expose().to_string())
+            })
+        }),
+    )
+}
+
 /// Reads the runner's secret key from `path`: a private file holding 64
 /// hex digits.
 ///
@@ -240,4 +259,70 @@ pub fn load_identity(path: &Path) -> Result<coder::relay::Identity, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("the runner key {}: {error}", path.display()))?;
     coder::relay::Identity::from_text(&text, "the runner key")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn door(url: &str) -> Door {
+        Door {
+            name: "default".into(),
+            url: url.into(),
+            key: Secret::new("door-key"),
+            model: "google/gemini-3.8-flash".into(),
+        }
+    }
+
+    fn vars<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_string())
+        }
+    }
+
+    // #10122: TypeSafe ran out of credits and the classifier failed in
+    // both arms, so the subject arm never ran its program. The gateway the
+    // chat door already uses must lead, with TypeSafe last.
+    #[test]
+    fn the_gateway_leads_the_decision_doors_and_typesafe_is_last() {
+        let env = [("TYPESAFE_API_KEY", "ts-key")];
+        let pin = decision_pin(&vars(&env), &door("https://ai-gateway.vercel.sh/")).unwrap();
+        assert_eq!(
+            pin.doors(),
+            ["https://ai-gateway.vercel.sh", "https://api.typesafe.ai"]
+        );
+        assert_eq!(pin.fallbacks[0].key().expose(), "door-key");
+        assert!(pin.failover().is_some());
+    }
+
+    #[test]
+    fn an_explicit_gateway_key_and_openrouter_join_the_doors() {
+        let env = [
+            ("TYPESAFE_API_KEY", "ts-key"),
+            ("AI_GATEWAY_API_KEY", "gw-key"),
+            ("OPENROUTER_API_KEY", "or-key"),
+        ];
+        let pin = decision_pin(&vars(&env), &door("https://example.test")).unwrap();
+        assert_eq!(
+            pin.doors(),
+            [
+                "https://ai-gateway.vercel.sh",
+                "https://openrouter.ai",
+                "https://api.typesafe.ai"
+            ]
+        );
+        assert_eq!(pin.fallbacks[0].key().expose(), "gw-key");
+    }
+
+    #[test]
+    fn another_chat_door_lends_no_key_and_no_typesafe_key_is_no_decision_door() {
+        let env = [("TYPESAFE_API_KEY", "ts-key")];
+        let pin = decision_pin(&vars(&env), &door("https://example.test")).unwrap();
+        assert_eq!(pin.doors(), ["https://api.typesafe.ai"]);
+        assert!(pin.failover().is_none());
+        assert!(decision_pin(&vars(&[]), &door("https://ai-gateway.vercel.sh")).is_none());
+    }
 }
