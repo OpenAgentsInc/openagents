@@ -15,7 +15,7 @@ use openagents_chat::basic_chats::Summary;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::client::{Event, Kind, Op, Start};
 use openagents_chat::coder_events::{CoderEvent, Line as CoderLine};
-use openagents_chat::router::{Context, Engine, EngineState, Meta, Offer};
+use openagents_chat::router::{Context, EngineState, Meta, Offer};
 use ratatui::text::Line;
 
 use crate::rows::{self, Row};
@@ -602,15 +602,14 @@ impl App {
         }
         if coder {
             self.offer = true;
-            let mut text =
-                "Coder can do this on this computer: press Enter on an empty line to start it."
-                    .to_owned();
-            if let Some(engine) = meta.engine {
-                text.push_str(&format!(" You asked for {}.", engine.name()));
-            }
-            self.push(Row::Note(text, Intensity::ThreeQuarters));
+            self.push(Row::Note(
+                "Enter to run Coder.".to_owned(),
+                Intensity::ThreeQuarters,
+            ));
         }
-        if let Some(runner) = &meta.runner {
+        // Who runs it, only when that says more than the reply did: another
+        // engine than the one asked for, one passed over, or none ready.
+        if let Some(runner) = meta.runner.as_ref().filter(|runner| !plain(runner)) {
             self.note(runner.text());
         }
         self.followups = meta
@@ -684,68 +683,56 @@ fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
     Scrollback::new(wrap)
 }
 
-/// The welcome card.
-pub fn welcome(backend: Kind, context: &Context, resumed: Option<&str>) -> Card {
+/// The welcome card: the version, then three short facts, as the old Coder
+/// Terminal's was. No prose and no key legend: `/help` lists the keys.
+pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card {
+    let project = context
+        .project
+        .as_ref()
+        .map_or_else(|| "none".to_owned(), |project| project.name.clone());
+    let ready: Vec<String> = match &context.computer {
+        Some(openagents_chat::router::Computer::Here { engines, .. }) => engines
+            .iter()
+            .filter(|engine| engine.state == EngineState::Ready)
+            .map(|engine| rows::provider(&engine.engine))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let agents = if ready.is_empty() {
+        "none signed in".to_owned()
+    } else {
+        ready.join(" · ")
+    };
     let chats = match backend {
-        Kind::Host => "this computer's host: threads sync with the desktop app and your phone",
-        Kind::InProcess => "this terminal: threads stay on this computer until a host runs here",
-        Kind::Scratch => "scratch: a throwaway store for this session",
+        Kind::Host => "synced",
+        Kind::InProcess => "this computer · Ctrl+S to sync",
+        Kind::Scratch => "scratch",
     };
-    let project = match &context.project {
-        Some(project) => match &project.path {
-            Some(path) => format!("{} ({path})", project.name),
-            None => project.name.clone(),
-        },
-        None => "no Git checkout here; Coder runs need one".into(),
-    };
-    let engines = match &context.computer {
-        Some(openagents_chat::router::Computer::Here { engines, .. }) if !engines.is_empty() => {
-            engines.iter().map(engine).collect::<Vec<_>>().join(" · ")
-        }
-        _ => "no coding agent is signed in here".into(),
-    };
-    let mut body = Vec::new();
-    if backend == Kind::InProcess {
-        body.push(
-            "Keep this computer's chats in sync with your phone: press Ctrl+S to install the \
-             host as a service."
-                .to_owned(),
-        );
-    }
-    body.push(
-        "Ask anything. When OpenAgents judges it is coding work, Coder runs here and its \
-         steps stream below."
-            .to_owned(),
-    );
     Card {
-        title: "OpenAgents Terminal".into(),
+        title: format!("OpenAgents v{}", env!("CARGO_PKG_VERSION")),
         rows: vec![
-            ("Chats".into(), chats.into()),
             ("Project".into(), project),
-            ("Coder".into(), engines),
-            (
-                "Thread".into(),
-                resumed.map_or_else(|| "new".to_owned(), str::to_owned),
-            ),
+            ("Agents".into(), agents),
+            ("Chats".into(), chats.into()),
         ],
-        body,
+        body: Vec::new(),
         art: Vec::new(),
-        keys: vec![
-            ("Enter".into(), "send".into()),
-            ("Esc".into(), "stop".into()),
-            ("Ctrl+T".into(), "threads".into()),
-            ("/help".into(), "commands".into()),
-        ],
+        keys: Vec::new(),
     }
 }
 
-fn engine(engine: &Engine) -> String {
-    let state = match engine.state {
-        EngineState::Ready => "ready",
-        EngineState::NotSignedIn => "not signed in",
-        EngineState::Limited => "at its usage limit",
-    };
-    format!("{} {state}", rows::provider(&engine.engine))
+/// Whether a run's who-runs-it line would only repeat the reply: the
+/// engine asked for (or the first one) runs and nothing was passed over.
+fn plain(runner: &openagents_chat::coder_events::Runner) -> bool {
+    match runner {
+        openagents_chat::coder_events::Runner::Runs {
+            provider,
+            passed,
+            requested,
+            ..
+        } => passed.is_empty() && requested.as_ref().is_none_or(|asked| asked == provider),
+        _ => false,
+    }
 }
 
 /// The `/help` card.

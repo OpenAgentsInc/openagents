@@ -99,22 +99,22 @@ sources = ["docs/desktop/route-map.md", "crates/openagents-chat-app/src/route_ma
 
 [[answer]]
 id = "meta.capabilities"
-version = 2
+version = 3
 routes = ["meta"]
 place = "away"
 when = "The user asks in general what we can do, how we can help, or whether we can write code, without naming a project, file, error, or task of their own"
-text = "In this chat we can answer questions, explain code and concepts, and help you plan and write. We can't run code, read files, or reach your computer from here: work on code and repositories goes to Coder, our coding agent, which we dispatch to a computer you connect, with this conversation as its task."
+text = "In this chat we can answer questions, explain code and concepts, and help you plan and write. We can't run code, read files, or reach your computer from here: work on code and repositories goes to Coder, our coding agent, on a computer you connect."
 chip = "What can you do?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers", "meta.limits_chat"]
 
 [[answer]]
 id = "meta.capabilities.here"
-version = 1
+version = 2
 routes = ["meta"]
 place = "here"
 when = "The user asks in general what we can do, how we can help, or whether we can write code, without naming a project, file, error, or task of their own"
-text = "In this chat we can answer questions, explain code and concepts, and help you plan and write. Our replies here don't run code or read files themselves: work on code and repositories goes to Coder, our coding agent, which works on this computer with this conversation as its task."
+text = "In this chat we can answer questions, explain code and concepts, and help you plan and write. Our replies here don't run code or read files themselves: work on code and repositories goes to Coder, our coding agent, on this computer."
 chip = "What can you do?"
 sources = ["crates/openagents-chat/src/basic_coder.rs"]
 followups = ["meta.coder", "meta.limits_chat"]
@@ -154,24 +154,24 @@ followups = ["meta.capabilities", "meta.model"]
 
 [[answer]]
 id = "meta.coder"
-version = 2
+version = 3
 routes = ["meta"]
 place = "away"
 when = "The user asks what Coder is or how Coder works, in general"
 examples = ["how does coder work", "what actually happens when you dispatch coder"]
-text = "Coder is our coding agent. When a task needs a computer, we dispatch Coder to a computer you connect, with this conversation as its task, and it works there with that computer's own git and GitHub login."
+text = "Coder is our coding agent. It works on a computer you connect, with that computer's own git and GitHub login."
 chip = "What is Coder?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs", "README.md"]
 followups = ["account.computers", "meta.github", "meta.pricing"]
 
 [[answer]]
 id = "meta.coder.here"
-version = 1
+version = 2
 routes = ["meta"]
 place = "here"
 when = "The user asks what Coder is or how Coder works, in general"
 examples = ["how does coder work", "what actually happens when you dispatch coder"]
-text = "Coder is our coding agent. When a task needs it, we dispatch Coder on this computer, with this conversation as its task, and it works here with this computer's own git and GitHub login."
+text = "Coder is our coding agent. It works on this computer, with its own git and GitHub login."
 chip = "What is Coder?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "README.md"]
 followups = ["meta.github", "meta.pricing"]
@@ -341,75 +341,75 @@ verdict = "end_conversation"
 
 [[answer]]
 id = "dispatch.stem"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 when = "The user wants a change made: fix, build, add, refactor, test, bump, or release something in code or a repository"
 stem = "We'll dispatch Coder to"
-generic_end = " take this on, with this conversation as its task."
+generic_end = " take this on."
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.explore_stem"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 when = "The user wants a repository or code looked through, explained, or searched, with nothing changed"
 stem = "We'll have Coder look through"
-generic_end = " the code and report back, with this conversation as its task."
+generic_end = " the code and report back."
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.github_stem"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 when = "The user wants a specific GitHub issue or pull request worked on or reviewed"
 stem = "We'll have Coder pick up"
-generic_end = " that work, with this conversation as its task."
+generic_end = " that work."
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.capability_stem"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 records = true
 when = "Picked by code from the admitted-capability set: the user hands us work on their code that a named capability usable in a Coder run, such as Project map, would do"
 stem = "We'll dispatch Coder, with {capability}, to"
-generic_end = " take this on, with this conversation as its task."
+generic_end = " take this on."
 facts = { capability = "capability.name" }
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/coder/src/router/capability.rs", "crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.engine_stem"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 records = true
 when = "Picked by code from the typed engine reading: the user hands us work on their code and asks for a named coding engine, such as Claude Code or Codex, to do it"
-stem = "We'll dispatch Coder, asking for {engine}, to"
-generic_end = " take this on, with this conversation as its task."
+stem = "We'll dispatch {engine} to"
+generic_end = " take this on."
 facts = { engine = "engine.name" }
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/coder/src/router/judge.rs", "crates/coder/src/task/local.rs"]
 
 [[answer]]
 id = "dispatch.no_computer"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 place = "away"
 when = "The user wants work done on code or a repository, and no computer is connected yet"
-text = "That needs a computer. Connect one and we'll dispatch Coder there with this conversation."
+text = "That needs a computer. Connect one first."
 offer = { screen = "account.computers", label = "Connect a computer" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.no_computer.here"
-version = 1
+version = 2
 routes = ["work.dispatch"]
 place = "here"
 when = "The user wants work done on code or a repository on this computer, and no coding agent can take it here yet"
-text = "That needs Coder, and no coding agent can take it on this computer right now. Once Codex, Claude Code, or Grok Build is signed in here with room to work, we'll dispatch Coder with this conversation."
+text = "No coding agent can run here right now. Sign in to Codex, Claude Code, or Grok Build."
 sources = ["crates/openagents-chat/src/coder_events.rs", "crates/coder/src/task/local.rs"]
 
 # ---------------------------------------------------------------------------

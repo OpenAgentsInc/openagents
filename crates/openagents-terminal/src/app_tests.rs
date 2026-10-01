@@ -250,7 +250,7 @@ fn an_offer_waits_for_enter_on_an_empty_line_and_followups_take_alt_digits() {
     app.event(reply("Coder can fix that.", meta));
     assert!(app.offer);
     let shown = shown(&mut app);
-    assert!(shown.contains("press Enter on an empty line"), "{shown}");
+    assert!(shown.contains("Enter to run Coder."), "{shown}");
     assert!(shown.contains("Alt+1 What can Coder do?"), "{shown}");
     let actions = app.key(&alt('1'), 80);
     let [Action::Run(Op::Send { text, .. })] = actions.as_slice() else {
@@ -363,8 +363,8 @@ fn the_thread_list_opens_starts_and_archives() {
 }
 
 #[test]
-fn the_welcome_card_names_the_backend_the_project_and_the_engines() {
-    use openagents_chat::router::{Computer, Project};
+fn the_welcome_card_is_three_short_facts() {
+    use openagents_chat::router::{Computer, Engine, Project};
     let context = Context {
         computer: Some(Computer::Here {
             name: None,
@@ -386,17 +386,32 @@ fn the_welcome_card_names_the_backend_the_project_and_the_engines() {
     let shown = Row::Card(card)
         .text(80, Ladder::new(Colors::None))
         .join("\n");
-    assert!(shown.contains("OpenAgents Terminal"), "{shown}");
-    assert!(shown.contains("this terminal"), "{shown}");
-    assert!(shown.contains("demo"), "{shown}");
-    assert!(shown.contains("Codex ready"), "{shown}");
-    assert!(shown.contains("Claude Code not signed in"), "{shown}");
-    assert!(shown.contains("Ctrl+S"), "{shown}");
+    assert!(
+        shown.contains(&format!("OpenAgents v{}", env!("CARGO_PKG_VERSION"))),
+        "{shown}"
+    );
+    assert!(shown.contains("Project  demo"), "{shown}");
+    // Only the agents that can run are named, without a word of state.
+    assert!(shown.contains("Agents   Codex"), "{shown}");
+    assert!(
+        !shown.contains("Claude Code") && !shown.contains("ready"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("Chats    this computer · Ctrl+S to sync"),
+        "{shown}"
+    );
+    // Three facts and nothing else: no prose, no key legend.
+    assert!(
+        !shown.contains("Ask anything") && !shown.contains("Enter send"),
+        "{shown}"
+    );
     let host = Row::Card(welcome(Kind::Host, &Context::default(), Some("Fix CI")))
         .text(80, Ladder::new(Colors::None))
         .join("\n");
-    assert!(host.contains("sync with the desktop app"), "{host}");
+    assert!(host.contains("Chats    synced"), "{host}");
     assert!(!host.contains("Ctrl+S"), "a host needs no offer: {host}");
-    assert!(host.contains("Fix CI"), "{host}");
-    assert!(host.contains("no Git checkout here"), "{host}");
+    assert!(host.contains("Project  none"), "{host}");
+    assert!(host.contains("Agents   none signed in"), "{host}");
+    assert!(host.lines().count() <= 5, "{host}");
 }

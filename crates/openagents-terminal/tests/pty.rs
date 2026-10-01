@@ -563,15 +563,10 @@ fn the_screen_end_to_end() {
         .env("HOME", dir.path().join("home"));
     let mut session = spawn(command);
 
-    // The welcome card: the backend, the project, and the engine.
+    // The welcome card: the version, the project, the agents, the chats.
     session.wait(
         "the welcome card",
-        &[
-            "OpenAgents Terminal",
-            "this terminal",
-            "demo",
-            "Codex ready",
-        ],
+        &["OpenAgents v", "demo", "Codex", "this computer"],
     );
 
     // A question streams its answer, then the whole reply shows.
@@ -717,7 +712,7 @@ fn live() {
             std::env::var_os("RUSTUP_HOME").unwrap_or_else(|| real.join(".rustup").into()),
         );
     let mut session = spawn(command);
-    session.wait_for("the welcome card", &["OpenAgents Terminal", "scratch"], 600);
+    session.wait_for("the welcome card", &["OpenAgents v", "scratch"], 600);
     session.typed(&question);
     session.wait_for("the reply streaming", &["replying"], 60);
     let deadline = Instant::now() + Duration::from_secs(180);

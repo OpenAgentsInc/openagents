@@ -43,8 +43,7 @@ fn script(n: usize, computer_ready: bool) -> (&'static str, Vec<Value>) {
             if computer_ready {
                 "We'll dispatch Coder to find the flaky test in crates/coder and fix it."
             } else {
-                "That needs a computer. Connect one and we'll dispatch Coder there with this \
-                 conversation."
+                "That needs a computer. Connect one first."
             },
             vec![
                 json!({"v": 2, "type": "judgment", "verdict": "respond", "set": "chat-router-v1",

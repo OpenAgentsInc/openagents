@@ -1531,7 +1531,7 @@ mod tests {
             panic!("{tier:?}");
         };
         assert_eq!(answer.id, "dispatch.engine_stem");
-        assert_eq!(stem, "We'll dispatch Coder, asking for Claude Code, to");
+        assert_eq!(stem, "We'll dispatch Claude Code to");
         // Closed by its generic end, never a continuation.
         assert!(matches!(
             tier,

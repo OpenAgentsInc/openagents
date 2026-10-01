@@ -4317,7 +4317,7 @@ mod tests {
             "We'll dispatch Coder to fix the flaky relay test."
         );
         assert_eq!(result["tier"], "offer");
-        assert_eq!(result["answer"], "dispatch.stem@1");
+        assert_eq!(result["answer"], "dispatch.stem@2");
         assert_eq!(result["model"], "test/cheap");
         assert_eq!(result["route"], "work.dispatch");
         assert!(
@@ -4352,10 +4352,7 @@ mod tests {
         assert_eq!(offers[0]["offer"], "run_coder");
         assert_eq!(offers[0]["engine"], "claude_code");
         let partials = of_type(&frames, "partial");
-        assert_eq!(
-            partials[0]["delta"],
-            "We'll dispatch Coder, asking for Claude Code, to"
-        );
+        assert_eq!(partials[0]["delta"], "We'll dispatch Claude Code to");
         let result = &frames.last().unwrap().1;
         assert!(
             result["answer"]
@@ -4365,8 +4362,7 @@ mod tests {
         );
         assert_eq!(
             result["text"],
-            "We'll dispatch Coder, asking for Claude Code, to take this on, with this \
-             conversation as its task."
+            "We'll dispatch Claude Code to take this on."
         );
         let plain = frames_routed(
             slow_door(Duration::from_millis(1_500)),
@@ -4398,10 +4394,7 @@ mod tests {
         )
         .await;
         let result = &frames.last().unwrap().1;
-        assert_eq!(
-            result["text"],
-            "We'll dispatch Coder to take this on, with this conversation as its task."
-        );
+        assert_eq!(result["text"], "We'll dispatch Coder to take this on.");
         assert_eq!(result["model"], "bank:chat-answers-v1");
     }
 
@@ -4422,7 +4415,7 @@ mod tests {
         assert_eq!(offers[0]["offer"], "open_screen");
         assert_eq!(offers[0]["screen"], "account.computers");
         let result = &frames.last().unwrap().1;
-        assert_eq!(result["answer"], "dispatch.no_computer@1");
+        assert_eq!(result["answer"], "dispatch.no_computer@2");
         assert!(
             result["text"]
                 .as_str()
@@ -4578,7 +4571,7 @@ mod tests {
         .await;
         let result = &frames.last().unwrap().1;
         // No computer is connected in `v2_turn`: the no-computer answer.
-        assert_eq!(result["answer"], "dispatch.no_computer@1");
+        assert_eq!(result["answer"], "dispatch.no_computer@2");
         assert_eq!(result["capability"], "openagents.tool-project-map");
     }
 
@@ -5613,7 +5606,7 @@ mod tests {
         )
         .await;
         let result = &frames.last().unwrap().1;
-        assert_eq!(result["answer"], "dispatch.no_computer.here@1");
+        assert_eq!(result["answer"], "dispatch.no_computer.here@2");
         assert!(
             !result["text"].as_str().unwrap().contains("Connect one"),
             "{result}"

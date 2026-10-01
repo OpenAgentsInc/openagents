@@ -727,9 +727,9 @@ mod tests {
         for (id, version) in [
             ("meta.who", 1),
             ("meta.model", 1),
-            ("meta.capabilities", 2),
+            ("meta.capabilities", 3),
             ("meta.limits_chat", 2),
-            ("meta.coder", 2),
+            ("meta.coder", 3),
             ("meta.github", 1),
             ("meta.open_source", 1),
             ("smalltalk.hello", 1),
