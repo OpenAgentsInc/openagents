@@ -61,8 +61,11 @@ commits, pushes, or closing an issue whose own acceptance checks pass. Never
 hold independent issue work while it runs. Fix failures relevant to a change;
 record unrelated failures separately and continue the other work. Documentation
 changes remain exempt from Rust checks. Read `docs/verification.md` for scope
-and prerequisites. Use a separate Cargo target directory per worktree, and keep
-workspace formatting changes separate from behavior changes.
+and prerequisites. Use a separate Cargo target directory per worktree, outside
+the worktree: a Coder run already has one in `CARGO_TARGET_DIR` (keep it; never
+point it at `$PWD/target`), because a target directory inside the workspace
+outgrows what the next task's admission can observe and every later task there
+is refused. Keep workspace formatting changes separate from behavior changes.
 
 Deploy host builds only from a commit rebased on current `origin/main`, and
 give each checkout its own Cargo target directory, so an older checkout
