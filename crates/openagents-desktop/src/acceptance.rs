@@ -25,6 +25,9 @@ use super::{DesktopApp, Runner};
 /// `phone-closed-loop` (#10118).
 #[path = "acceptance_loop.rs"]
 mod closed_loop;
+/// `phone-dead-task` (#10124).
+#[path = "acceptance_dead_task.rs"]
+mod dead_task;
 use crate::worker::Context;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::coder_events::{CoderEvent, Line};
@@ -43,7 +46,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 25] = [
+pub const SCENARIOS: [&str; 26] = [
     "ui-placeholder",
     "ui-starter-chips",
     "who-are-you",
@@ -68,6 +71,7 @@ pub const SCENARIOS: [&str; 25] = [
     "phone-claude",
     "phone-start-at-once",
     "phone-closed-loop",
+    "phone-dead-task",
     "phone-agents",
 ];
 
@@ -210,6 +214,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "phone-claude" => phone_claude(&mut gate),
             "phone-start-at-once" => phone_start_at_once(&mut gate),
             "phone-closed-loop" => closed_loop::phone_closed_loop(&mut gate),
+            "phone-dead-task" => dead_task::phone_dead_task(&mut gate),
             "phone-agents" => phone_agents(&mut gate),
             _ => unreachable!(),
         };

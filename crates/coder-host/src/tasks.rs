@@ -39,6 +39,10 @@ pub enum Note {
     /// ended, or waited too long, before admitting it, and the host ended
     /// the task instead of leaving it queued.
     NotStarted { cause: StartCause },
+    /// The task's run ended because the process that owned it ended
+    /// without finishing it, killed or crashed or with the computer
+    /// restarted (#10124); the host ended the run and kept its record.
+    OwnerEnded,
     /// The engine ended its turn with a question and waits for an answer.
     Question,
     /// The engine ended its turn asking to approve a step and waits for the
@@ -100,6 +104,7 @@ impl Note {
             }
             Note::NoCapacity { until: None } => "No model capacity".to_owned(),
             Note::NotStarted { cause } => cause.headline().to_owned(),
+            Note::OwnerEnded => "Coder's process ended unexpectedly".to_owned(),
             Note::Question => "Coder asked a question".to_owned(),
             Note::Approval => "Coder asked for approval".to_owned(),
             Note::Requested { asked, runs, why } => format!(
@@ -116,7 +121,10 @@ impl Note {
     #[must_use]
     pub fn attention(self) -> Option<Attention> {
         match self {
-            Note::NoCapacity { .. } | Note::NotStarted { .. } | Note::Requested { .. } => None,
+            Note::NoCapacity { .. }
+            | Note::NotStarted { .. }
+            | Note::OwnerEnded
+            | Note::Requested { .. } => None,
             Note::Question => Some(Attention::Input),
             Note::Approval => Some(Attention::Approval),
         }
@@ -143,6 +151,10 @@ pub enum StartCause {
     Configuration,
     /// The task owner refused the task, such as when another owner held it.
     Admission,
+    /// Another task's run still holds the task's project on this computer
+    /// (#10124): its process is alive. A run whose process is gone never
+    /// holds it.
+    Busy,
     /// The owner process ended without saying why.
     Stopped,
     /// The owner process was still running but had not admitted the task
@@ -167,6 +179,9 @@ impl StartCause {
             StartCause::Admission => {
                 "Couldn't start: Coder couldn't take the task on this computer"
             }
+            StartCause::Busy => {
+                "Couldn't start: another Coder task is still running in this project"
+            }
             StartCause::Stopped => "Couldn't start: Coder stopped before starting the task",
             StartCause::Timeout => "Couldn't start: Coder didn't start the task within 2 minutes",
         }
@@ -177,7 +192,10 @@ impl StartCause {
     /// settings mismatch, fails the same way until the owner fixes it.
     #[must_use]
     pub const fn retryable(self) -> bool {
-        matches!(self, StartCause::Stopped | StartCause::Admission)
+        matches!(
+            self,
+            StartCause::Stopped | StartCause::Admission | StartCause::Busy
+        )
     }
 }
 
@@ -506,6 +524,28 @@ mod tests {
     }
 
     #[test]
+    fn a_run_whose_owner_ended_says_so_in_plain_words() {
+        let note = Note::OwnerEnded;
+        assert_eq!(note.attention(), None);
+        let headline = note.headline();
+        assert_eq!(headline, "Coder's process ended unexpectedly");
+        let summary = activity_summary::encode(&SummaryDraft {
+            host: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            subject_kind: SubjectKind::Task,
+            subject: &"a".repeat(64),
+            sequence: 3,
+            phase: Phase::Cancelled,
+            headline: &headline,
+            attention: Attention::None,
+            updated_at: 1_790_572_210,
+        })
+        .unwrap();
+        assert_eq!(summary.headline, headline);
+        assert!(StartCause::Busy.retryable());
+        assert!(!StartCause::Busy.headline().contains("couldn't take"));
+    }
+
+    #[test]
     fn every_not_started_cause_survives_the_summary_disclosure_rules() {
         for cause in [
             StartCause::Codex,
@@ -515,6 +555,7 @@ mod tests {
             StartCause::Grok,
             StartCause::Configuration,
             StartCause::Admission,
+            StartCause::Busy,
             StartCause::Stopped,
             StartCause::Timeout,
         ] {

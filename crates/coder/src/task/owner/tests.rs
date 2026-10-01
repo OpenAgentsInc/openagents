@@ -270,14 +270,263 @@ async fn a_live_owner_refuses_competitors_and_recovery_never_reexecutes() {
     }
     assert!(matches!(recover(&dir, "task-one"), Err(Error::Busy)));
     assert!(matches!(execute(&dir, &bytes).await, Err(Error::Busy)));
+    // A live owner's run is never ended under it.
+    assert_eq!(Store::open(&dir).unwrap().settle("task-one").unwrap(), None);
     handle.abort();
     let _ = handle.await;
-    let task = recover(&dir, "task-one").unwrap();
-    assert_eq!(task.execution, Execution::Unknown);
-    assert_eq!(task.run.as_ref().unwrap().epoch, 2);
+    // Once nothing of the run is left, recovery ends it (#10124); while
+    // its process group lingers it is unknown, and a later recovery ends it.
+    let task = settled(&dir, "task-one").await;
+    assert_eq!(task.execution, Execution::Failed);
     assert!(execute(&dir, &bytes).await.is_err());
     assert_eq!(recover(&dir, "task-one").unwrap(), task);
     tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
+/// Recover `id` until its run is ended, as a host's sweeps would, and check
+/// it ended as one whose owner process is gone.
+async fn settled(dir: &Path, id: &str) -> Task {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let task = recover(dir, id).unwrap_or_else(|error| panic!("{error:?}"));
+        if task.status == Status::Finished {
+            let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+            assert_eq!(result.ending, OWNER_ENDED);
+            assert!(result.group_clear && result.exit_code.is_none());
+            return task;
+        }
+        assert_eq!(task.status, Status::Unknown);
+        assert!(Instant::now() < deadline, "the run was never ended");
+        // The runtime reaps the test's own children meanwhile.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// A second task, `task-two`, on `task-one`'s workspace, and its grant.
+fn second_task(dir: &Path, grant: &Grant) -> Grant {
+    let mut store = Store::open(dir).unwrap();
+    let first = store.show("task-one").unwrap();
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: "submit-two".into(),
+        task_id: "task-two".into(),
+        expected_revision: None,
+        action: Action::Submit {
+            intent: first.intent.clone(),
+        },
+    };
+    store.apply(&serde_json::to_vec(&command).unwrap()).unwrap();
+    let task = store.show("task-two").unwrap();
+    Grant {
+        task_id: task.task_id,
+        intent_digest: task.intent_digest,
+        expected_revision: task.revision,
+        ..grant.clone()
+    }
+}
+
+#[tokio::test]
+async fn a_run_whose_owner_died_is_ended_and_the_next_task_in_its_project_runs() {
+    // Owners that died at each point a run can be left running: after
+    // admission (no process yet), and after the command ran with its
+    // process recorded and gone (#10124).
+    for point in ["after_admission", "before_result"] {
+        let (root, _workspace, grant) = fixture();
+        let dir = root.path().join("store");
+        OWNER_FAULT.with(|fault| fault.set(Some(point)));
+        assert!(
+            execute(&dir, &serde_json::to_vec(&grant).unwrap())
+                .await
+                .is_err()
+        );
+        let stuck = Store::open(&dir).unwrap().show("task-one").unwrap();
+        assert_eq!(stuck.status, Status::Running, "{point}");
+        assert_eq!(
+            stuck.run.as_ref().unwrap().process_id.is_some(),
+            point == "before_result"
+        );
+        let events_before = Store::open(&dir).unwrap().document.host_events.len();
+        // The next task in the same project starts and finishes.
+        let next = second_task(&dir, &grant);
+        let task = execute(&dir, &serde_json::to_vec(&next).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(task.execution, Execution::Finished, "{point}");
+        // The dead run was ended, not erased: its admission, effects, and
+        // trace stay, and only a result was added.
+        let store = Store::open(&dir).unwrap();
+        let ended = store.show("task-one").unwrap();
+        assert_eq!(ended.status, Status::Finished, "{point}");
+        assert_eq!(ended.execution, Execution::Failed, "{point}");
+        let run = ended.run.as_ref().unwrap();
+        assert_eq!(run.admission, stuck.run.as_ref().unwrap().admission);
+        assert_eq!(run.result.as_ref().unwrap().ending, OWNER_ENDED);
+        assert_eq!(
+            dir.join(&run.admission.trace_file).exists(),
+            point == "before_result"
+        );
+        assert!(store.document.host_events.len() > events_before);
+        // A reopened store replays the same history.
+        drop(store);
+        assert_eq!(Store::open(&dir).unwrap().show("task-one").unwrap(), ended);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+}
+
+#[tokio::test]
+async fn a_live_run_still_holds_its_project() {
+    let (root, _workspace, mut grant) = fixture();
+    let dir = root.path().join("store");
+    // A live owner.
+    grant.arguments[1] = "sleep 20".into();
+    let run_dir = dir.clone();
+    let bytes = serde_json::to_vec(&grant).unwrap();
+    let handle = tokio::spawn(async move { execute(&run_dir, &bytes).await });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Store::open(&dir)
+        .unwrap()
+        .show("task-one")
+        .unwrap()
+        .run
+        .is_none()
+    {
+        assert!(Instant::now() < deadline, "owner did not start");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let next = second_task(&dir, &grant);
+    let next_bytes = serde_json::to_vec(&next).unwrap();
+    assert!(matches!(
+        execute(&dir, &next_bytes).await,
+        Err(Error::WorkspaceBusy)
+    ));
+    let first = Store::open(&dir).unwrap().show("task-one").unwrap();
+    assert_eq!(first.status, Status::Running);
+    handle.abort();
+    let _ = handle.await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+}
+
+#[tokio::test]
+async fn a_dead_owners_live_process_still_holds_its_project_and_is_never_killed() {
+    let (root, _workspace, grant) = fixture();
+    let dir = root.path().join("store");
+    // The owner died after recording its effect intent, and a process the
+    // run recorded still runs.
+    OWNER_FAULT.with(|fault| fault.set(Some("after_intent")));
+    assert!(
+        execute(&dir, &serde_json::to_vec(&grant).unwrap())
+            .await
+            .is_err()
+    );
+    let mut child = {
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("30");
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        command.spawn().unwrap()
+    };
+    {
+        let mut store = Store::open(&dir).unwrap();
+        let owner = Owner::acquire(&store, "task-one").unwrap();
+        store
+            .record(
+                &owner,
+                Event::Spawned {
+                    process_id: child.id(),
+                },
+                1,
+            )
+            .unwrap();
+    }
+    let next = second_task(&dir, &grant);
+    let next_bytes = serde_json::to_vec(&next).unwrap();
+    assert!(matches!(
+        execute(&dir, &next_bytes).await,
+        Err(Error::WorkspaceBusy)
+    ));
+    assert_eq!(Store::open(&dir).unwrap().settle("task-one").unwrap(), None);
+    // Recovery leaves it unknown while the process runs, and kills nothing.
+    assert_eq!(recover(&dir, "task-one").unwrap().status, Status::Unknown);
+    assert!(
+        child.try_wait().unwrap().is_none(),
+        "the process was killed"
+    );
+    // Once it has ended, the next start ends the unknown run and runs.
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let task = execute(&dir, &next_bytes).await.unwrap();
+    assert_eq!(task.execution, Execution::Finished);
+    let ended = Store::open(&dir).unwrap().show("task-one").unwrap();
+    assert_eq!(ended.status, Status::Finished);
+    assert_eq!(ended.execution, Execution::Failed);
+    let run = ended.run.as_ref().unwrap();
+    assert_eq!(run.epoch, 2);
+    assert_eq!(
+        run.recovery_reason.as_deref(),
+        Some("owner_lost_effects_not_replayed")
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+}
+
+#[tokio::test]
+async fn a_stuck_task_stops_from_any_device_and_says_why() {
+    use super::super::commands::{self, Kind, Outcome, Request, Sender, State};
+    use coder_host::Tasks as _;
+    let (root, _workspace, grant) = fixture();
+    let dir = root.path().join("store");
+    OWNER_FAULT.with(|fault| fault.set(Some("after_admission")));
+    assert!(
+        execute(&dir, &serde_json::to_vec(&grant).unwrap())
+            .await
+            .is_err()
+    );
+    // Left unknown, as `coder task recover` used to leave it.
+    {
+        let mut store = Store::open(&dir).unwrap();
+        let owner = Owner::acquire(&store, "task-one").unwrap();
+        store.record(&owner, Event::OwnerLost, 2).unwrap();
+    }
+    let stuck = Store::open(&dir).unwrap().show("task-one").unwrap();
+    assert_eq!(stuck.status, Status::Unknown);
+    // A phone's, desktop's, or terminal's Stop (`task.command` interrupt).
+    let request = Request {
+        command: "c".repeat(64),
+        task: "task-one".into(),
+        kind: Kind::Interrupt,
+        based_on: stuck.revision,
+        text: "Stopped from a phone.".into(),
+        emulate: false,
+        issued_at: super::super::autostart::unix_now(),
+    };
+    let sender = Sender {
+        device: "phone".into(),
+        grant: Some("g".repeat(64)),
+        epoch: Some(1),
+    };
+    let (recorded, _) = commands::record(
+        &dir,
+        &sender,
+        &request,
+        &super::super::adapter::STEERING,
+        &|_| true,
+        super::super::autostart::unix_now(),
+    )
+    .unwrap();
+    assert!(matches!(
+        recorded.state,
+        State::Done(Outcome::Applied { .. })
+    ));
+    let task = recorded.task.unwrap();
+    assert_eq!(task.status, Status::Finished);
+    assert_eq!(task.execution, Execution::Failed);
+    // Every surface reads why, in plain words.
+    let inbox = super::super::remote::Inbox::new(&dir, Default::default());
+    let note = inbox.note("task-one").unwrap();
+    assert_eq!(note, coder_host::Note::OwnerEnded);
+    assert_eq!(note.headline(), OWNER_ENDED_TEXT);
+    assert!(
+        inbox.current().iter().any(|task| task.task == "task-one"
+            && task.phase == nostr::activity_summary::Phase::Cancelled)
+    );
 }
 
 #[tokio::test]
@@ -326,13 +575,19 @@ async fn failure_at_every_effect_barrier_never_replays_uncertain_work() {
         let bytes = serde_json::to_vec(&grant).unwrap();
         OWNER_FAULT.with(|fault| fault.set(Some(point)));
         assert!(execute(&dir, &bytes).await.is_err(), "{point}");
-        let recovered = recover(&dir, "task-one").unwrap();
+        // Recovery reruns nothing; an owner that died before its result
+        // leaves a run that is ended once nothing of it is left (#10124).
+        let recovered = if point == "after_result" {
+            recover(&dir, "task-one").unwrap()
+        } else {
+            settled(&dir, "task-one").await
+        };
         assert_eq!(
             recovered.execution,
             if point == "after_result" {
                 Execution::Finished
             } else {
-                Execution::Unknown
+                Execution::Failed
             },
             "{point}"
         );

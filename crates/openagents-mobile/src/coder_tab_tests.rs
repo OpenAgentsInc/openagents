@@ -3729,3 +3729,24 @@ fn a_restored_draft_with_images_sends_its_words_only() {
     };
     assert!(images.is_empty(), "the task carries no images");
 }
+
+#[test]
+fn a_task_in_an_unknown_state_can_be_stopped_from_the_phone() {
+    use coder_host::CommandAction;
+    use nostr::activity_summary::{Attention, Phase};
+    // The computer ends a stuck task whose process is gone when it is
+    // stopped (#10124), so the phone offers Stop for it.
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Unknown, Attention::None);
+    assert!(node(&chat, "coder-stop").is_some(), "{:?}", keys(&chat));
+    fixture.tap("coder-stop");
+    assert!(
+        script
+            .lock()
+            .unwrap()
+            .commands
+            .iter()
+            .any(|(action, _, _)| *action == CommandAction::Interrupt),
+        "{:?}",
+        script.lock().unwrap().commands
+    );
+}

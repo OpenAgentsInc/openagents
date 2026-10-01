@@ -130,6 +130,24 @@ While the policy is on:
    `Couldn't start: Claude Code isn't set up on this computer.`, and a device's summary
    headline and the desktop app's task list show that sentence. The
    headline is built from the typed cause, never from the owner's text.
+5. A run whose process dies never holds a slot or its project
+   ([#10124](https://github.com/OpenAgentsInc/openagents/issues/10124)).
+   Every sweep, and every admission in an overlapping project, ends a
+   running, stopping, or unknown run whose owner process is gone (its
+   owner lock is free, so it was killed, crashed, or the computer
+   restarted) and of which no recorded process group is left. The run gets
+   the result `owner_process_ended`: the task is finished with its run
+   failed (stopped, when a stop was asked), the sweep appends an `ended`
+   entry, a device reads the task as stopped with the headline
+   `Coder's process ended unexpectedly` (a failed summary carries only
+   `Task failed`), and the next task in that project
+   starts as usual. Nothing is killed, rerun, or deleted; the task's
+   admission, effects, and trace stay. While a live run holds the project,
+   another task there is refused with
+   `Couldn't start: another Coder task is still running in this project`
+   and started once more on a later sweep. Stop on the phone, the desktop,
+   or the terminal ends a stuck run the same way, and asks a live one to
+   stop; `coder task recover TASK_ID` does too from a shell.
 
 ## Routes and capacity
 

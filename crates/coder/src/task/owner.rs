@@ -21,6 +21,13 @@ pub const BOUNDED_COMMAND_STEERING: coder_delegate::steering::Steering =
     };
 
 pub const GRANT_SCHEMA: &str = "openagents.coder.task-execution-grant.v1";
+/// The result ending the store records for a run whose owner process ended
+/// without recording one, killed or crashed or with the computer restarted
+/// (#10124): its owner lock was free and no process group it recorded was
+/// left. Its run is failed (stopped, when a stop was asked).
+pub const OWNER_ENDED: &str = "owner_process_ended";
+/// What a person reads for a run that ended as [`OWNER_ENDED`].
+pub const OWNER_ENDED_TEXT: &str = "Coder's process ended unexpectedly";
 /// The refusal an engine gives a grant whose fields it cannot read: one
 /// written by a newer program, with a field the engine does not know or
 /// without one it still requires (#10113).
@@ -282,6 +289,31 @@ pub(super) struct Record {
     event: Event,
 }
 
+/// Whether `task` holds its workspace's tree: its execution is unresolved
+/// (running, stopping, or unknown) or its checks run. Admission and checks
+/// of another task in an overlapping tree wait for it.
+fn reserves(task: &Task) -> bool {
+    matches!(
+        task.status,
+        Status::Running | Status::CancelRequested | Status::Unknown
+    ) || task.checks == Checks::Running
+}
+
+/// Whether [`Store::settle`] may end `task`'s run once its owner is gone:
+/// a run with no result yet that is running, stopping, or unknown after a
+/// lost owner, or checks that are running.
+fn settleable(task: &Task) -> bool {
+    let Some(run) = &task.run else {
+        return false;
+    };
+    (run.result.is_none()
+        && matches!(
+            task.status,
+            Status::Running | Status::CancelRequested | Status::Unknown
+        ))
+        || (task.checks == Checks::Running && run.result.is_some())
+}
+
 pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) -> Result<(), Error> {
     let reserved_workspace = match &record.event {
         Event::Admitted { admission } => Some(&admission.workspace),
@@ -294,17 +326,14 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
     if let Some(workspace) = reserved_workspace
         && tasks.values().any(|task| {
             task.task_id != record.task_id
-                && (matches!(
-                    task.status,
-                    Status::Running | Status::CancelRequested | Status::Unknown
-                ) || task.checks == Checks::Running)
+                && reserves(task)
                 && task.run.as_ref().is_some_and(|run| {
                     run.admission.workspace.starts_with(workspace)
                         || workspace.starts_with(&run.admission.workspace)
                 })
         })
     {
-        return Err(Error::InvalidTransition);
+        return Err(Error::WorkspaceBusy);
     }
     let task = tasks.get_mut(&record.task_id).ok_or(Error::NotFound)?;
     match &record.event {
@@ -414,9 +443,13 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
         }
         Event::Result { result } => {
             let run = task.run.as_mut().ok_or(Error::InvalidTransition)?;
+            // An unknown run takes a result only as the store settles it
+            // after its owner ended (#10124).
             if run.epoch != record.epoch
                 || run.result.is_some()
-                || !matches!(task.status, Status::Running | Status::CancelRequested)
+                || !(matches!(task.status, Status::Running | Status::CancelRequested)
+                    || (task.status == Status::Unknown && result.ending == OWNER_ENDED))
+                || (result.ending == OWNER_ENDED && !result.group_clear)
                 || !hex_digest(&result.trace_digest)
                 || result.cost_status != "unknown"
             {
@@ -521,6 +554,12 @@ impl Store {
     fn record(&mut self, owner: &Owner, event: Event, epoch: u64) -> Result<Task, Error> {
         self.check_healthy()?;
         owner.verify(&self.dir)?;
+        // Before a run takes its tree, end the runs there whose owners are
+        // gone, so a dead one never holds the project (#10124).
+        if let Event::Admitted { admission } = &event {
+            let workspace = admission.workspace.clone();
+            self.settle_all(Some(&workspace), Some(&owner.task_id));
+        }
         if self.document.host_events.len() >= MAX_HOST_EVENTS {
             return Err(Error::LimitExceeded);
         }
@@ -542,6 +581,114 @@ impl Store {
         self.document = next;
         self.show(&owner.task_id)
     }
+}
+
+impl Store {
+    /// End `id`'s unresolved run when nothing of it is left (#10124): its
+    /// owner's OS lock is free, so its owner process is gone (killed,
+    /// crashed, or the computer restarted), and no process group the run
+    /// recorded is left. A run with no result gets one, ending
+    /// [`OWNER_ENDED`], so the task is finished with its run failed
+    /// (stopped, when a stop was asked); checks whose owner is gone become
+    /// unavailable. Nothing is killed, rerun, or deleted: the journal keeps
+    /// every earlier record, and the trace stays as the owner left it.
+    ///
+    /// Returns the task when this call ended it, `None` when there was
+    /// nothing to end or something of it still runs.
+    ///
+    /// # Errors
+    /// Store and lock I/O failures.
+    pub fn settle(&mut self, id: &str) -> Result<Option<Task>, Error> {
+        if !settleable(&self.show(id)?) {
+            return Ok(None);
+        }
+        // A live owner holds this lock for as long as it runs; a recycled
+        // process ID cannot hold it.
+        let owner = match Owner::acquire(self, id) {
+            Ok(owner) => owner,
+            Err(Error::Busy) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let task = self.show(id)?;
+        let Some(run) = task.run.as_ref().filter(|_| settleable(&task)) else {
+            return Ok(None);
+        };
+        if run.process_id.is_some_and(group_alive) {
+            return Ok(None);
+        }
+        let ended = if run.result.is_some() {
+            self.record(&owner, Event::CheckOwnerLost, run.epoch + 1)?
+        } else {
+            let trace = std::fs::read(self.dir.join(&run.admission.trace_file)).unwrap_or_default();
+            let result = ResultRecord {
+                ending: OWNER_ENDED.into(),
+                exit_code: None,
+                stop_requested: task.status == Status::CancelRequested
+                    || task.cancellation_reason.is_some(),
+                // The owner's lock was free and no recorded group was left.
+                group_clear: true,
+                elapsed_ms: 0,
+                trace_digest: digest_bytes(&trace),
+                candidate_snapshot: None,
+                artifact_file: None,
+                artifact_digest: None,
+                output_incomplete: true,
+                cost_status: "unknown".into(),
+            };
+            self.record(&owner, Event::Result { result }, run.epoch)?
+        };
+        Ok(Some(ended))
+    }
+
+    /// [`Store::settle`] every task but `except` whose run holds a tree
+    /// overlapping `workspace` (every task, with `None`). Returns the tasks
+    /// it ended; one it cannot end is left as it is.
+    pub fn settle_all(&mut self, workspace: Option<&Path>, except: Option<&str>) -> Vec<Task> {
+        let ids: Vec<String> = self
+            .document
+            .tasks
+            .values()
+            .filter(|task| Some(task.task_id.as_str()) != except && settleable(task))
+            .filter(|task| {
+                workspace.is_none_or(|workspace| {
+                    task.run.as_ref().is_some_and(|run| {
+                        run.admission.workspace.starts_with(workspace)
+                            || workspace.starts_with(&run.admission.workspace)
+                    })
+                })
+            })
+            .map(|task| task.task_id.clone())
+            .collect();
+        ids.iter()
+            .filter_map(|id| self.settle(id).ok().flatten())
+            .collect()
+    }
+}
+
+/// Whether process `pid` or the process group it leads still exists. A
+/// supervised command leads its own group, so a descendant that outlived
+/// it keeps the group alive. Anything but a clear "no such process" counts
+/// as alive, so nothing live is ever taken for gone.
+#[cfg(unix)]
+fn group_alive(pid: u32) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return true;
+    };
+    if pid <= 0 {
+        return true;
+    }
+    let exists = |target: libc::pid_t| {
+        // SAFETY: signal 0 checks for the process or group and delivers nothing.
+        let sent = unsafe { libc::kill(target, 0) };
+        sent == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+    };
+    exists(pid) || exists(-pid)
+}
+
+/// Without a way to look here, a recorded process counts as alive.
+#[cfg(not(unix))]
+fn group_alive(_pid: u32) -> bool {
+    true
 }
 
 /// An exclusive OS-held owner capability. It cannot be deserialized or forged by a command.
@@ -590,8 +737,15 @@ impl Owner {
 }
 
 /// Recover only after acquiring the abandoned owner's OS lock. Never dispatches work.
+///
+/// When nothing of the run is left, recovering ends it as
+/// [`Store::settle`] does (#10124); while a process group it recorded is
+/// still there, the run becomes `unknown` as before.
 pub fn recover(directory: &Path, id: &str) -> Result<Task, Error> {
     let mut store = Store::open(directory)?;
+    if let Some(task) = store.settle(id)? {
+        return Ok(task);
+    }
     let owner = Owner::acquire(&store, id)?;
     let task = store.show(id)?;
     if matches!(task.status, Status::Running | Status::CancelRequested) {

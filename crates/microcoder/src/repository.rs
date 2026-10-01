@@ -740,10 +740,16 @@ pub async fn execute(
     let session = format!("repository-{}-1", grant.task_id);
     let (stages, unavailable) = stages(config.routes(), config.access, &session)
         .map_err(|(cause, why)| Failure::unstarted(cause, why))?;
-    let host = Host::admit(directory, bytes)
-        .await
-        .map_err(|error| error.to_string())
-        .map_err(unstarted(StartCause::Admission))?;
+    // A project another live run holds says so plainly (#10124); a run
+    // whose process is gone was ended at admission and never holds it.
+    let host = Host::admit(directory, bytes).await.map_err(|error| {
+        let cause = if matches!(error, task::Error::WorkspaceBusy) {
+            StartCause::Busy
+        } else {
+            StartCause::Admission
+        };
+        Failure::unstarted(cause, error.to_string())
+    })?;
     // The person's attached images, read back and checked against the
     // digests the admitted intent names. Codex and Claude Code take them
     // natively; a whole-agent route (Devin, OpenCode, Grok Build) is left

@@ -505,6 +505,9 @@ impl Tasks for Inbox {
                 .earliest_reset(&providers, super::autostart::unix_now());
             return Some(Note::NoCapacity { until });
         }
+        if owner_ended(&task) {
+            return Some(Note::OwnerEnded);
+        }
         if task.status == Status::Cancelled && task.run.is_none() {
             let autostart = self.autostart.as_ref()?;
             if let Some(until) = autostart.no_capacity(id) {
@@ -577,6 +580,13 @@ impl Tasks for Inbox {
         revision: u64,
         reason: &str,
     ) -> Result<TaskRef, Code> {
+        // A stuck run, whose process is gone, stops by being ended
+        // (#10124); a live one is asked to stop.
+        let mut store = Store::open(&self.store).map_err(refusal)?;
+        if let Some(ended) = store.settle(task).map_err(refusal)? {
+            return Ok(current(&ended));
+        }
+        drop(store);
         self.apply(&Command {
             schema: COMMAND_SCHEMA.into(),
             command_id: format!("host-cancel-{key}"),
@@ -598,6 +608,13 @@ fn ended_without_capacity(task: &super::Task) -> bool {
 }
 
 /// The journal's sender for a host principal.
+fn owner_ended(task: &super::Task) -> bool {
+    task.run
+        .as_ref()
+        .and_then(|run| run.result.as_ref())
+        .is_some_and(|result| result.ending == super::owner::OWNER_ENDED)
+}
+
 fn sender(principal: &Principal) -> super::commands::Sender {
     super::commands::Sender {
         device: principal.device.clone(),
@@ -626,6 +643,9 @@ fn current(task: &super::Task) -> TaskRef {
         revision: task.revision,
         phase: match (task.status, task.execution) {
             (Status::Finished, _) if ended_without_capacity(task) => Phase::Cancelled,
+            // A failed summary carries only "Task failed"; a run whose
+            // process ended reads as stopped, with its plain reason (#10124).
+            (Status::Finished, _) if owner_ended(task) => Phase::Cancelled,
             (Status::Finished, _) if super::interaction::pending(task).is_some() => Phase::Waiting,
             (Status::Queued, _) => Phase::Queued,
             (Status::Running | Status::CancelRequested, _) => Phase::Running,
@@ -658,7 +678,7 @@ fn refusal(error: Error) -> Code {
         Error::InvalidCommand(_) | Error::SourceSnapshot(_) | Error::UnsupportedSchema => {
             Code::Malformed
         }
-        Error::Conflict | Error::InvalidTransition => Code::Conflict,
+        Error::Conflict | Error::InvalidTransition | Error::WorkspaceBusy => Code::Conflict,
         Error::RevisionMismatch => Code::Stale,
         Error::NotFound => Code::Forbidden,
         Error::LimitExceeded => Code::Bounds,

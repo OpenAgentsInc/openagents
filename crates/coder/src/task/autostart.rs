@@ -1082,6 +1082,17 @@ impl Autostart {
                     return written;
                 }
             };
+            // A run whose owner process is gone holds neither a slot nor
+            // its project (#10124): end it, keeping its record, before
+            // counting what runs.
+            for ended in store.settle_all(None, None) {
+                write(
+                    Entry::new(now, "ended")
+                        .task(&ended.task_id)
+                        .at_turn(ended.turn_started())
+                        .detail(super::owner::OWNER_ENDED_TEXT),
+                );
+            }
             // A started turn still queued was never admitted. It waits while
             // its owner process runs, up to the deadline; once the owner has
             // exited, or the deadline passes, the host says why and either

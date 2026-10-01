@@ -518,6 +518,9 @@ pub fn record(
     if store.show(&request.task).is_err() {
         return Err(Error::NotFound);
     }
+    // A run whose process is gone is ended before the command is read
+    // (#10124): a stop then finds it stopped, and a message continues it.
+    let settled = store.settle(&request.task)?;
     prune(&mut journal, now);
     if journal.entries.len() >= MAX_ENTRIES {
         return Err(Error::LimitExceeded);
@@ -530,6 +533,15 @@ pub fn record(
         edited: None,
         promoted: false,
     });
+    // An interrupt that found its run's process gone is what ended it.
+    if request.kind == Kind::Interrupt
+        && let Some(task) = &settled
+        && let Some(entry) = journal.entries.last_mut()
+    {
+        entry.state = State::Done(Outcome::Applied {
+            revision: task.revision,
+        });
+    }
     // The command is durable before anything evaluates it.
     write(&store.dir, &journal)?;
     let continued = evaluate(

@@ -3324,7 +3324,9 @@ impl CoderTab {
                 task: spawned.task.clone(),
             },
         )];
-        if running {
+        // A task in an unknown state can be stopped too: the computer ends
+        // it when its process is gone (#10124).
+        if running || phase == Some(Phase::Unknown) {
             controls.push(button(
                 "coder-start-stop",
                 "Stop",
@@ -3948,7 +3950,10 @@ impl CoderTab {
         if open.leased_at.is_some() {
             children.extend(self.queue_panel(open, me.as_deref()));
         }
-        if running && mode != Mode::Answer {
+        // An unknown task offers Stop as well: the computer ends it when
+        // its process is gone, and never stops a live one but by asking
+        // (#10124).
+        if (running || phase == Some(Phase::Unknown)) && mode != Mode::Answer {
             let mut controls = vec![button("coder-stop", "Stop", Intent::Stop)];
             if queued > 0 && open.leased_at.is_none() && !open.unlisted {
                 controls.push(button("coder-edit-queue", "Edit queue", Intent::EditQueue));

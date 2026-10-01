@@ -827,12 +827,18 @@ pub fn parse_tasks(json: &[u8], archived: &std::collections::BTreeSet<String>) -
         .filter_map(|entry| {
             let title = entry.pointer("/intent/title")?.as_str()?;
             let status = entry.get("status")?.as_str()?;
-            // A task the host ended before it started says why.
+            // A task the host ended before it started says why, and so
+            // does one whose process ended under it (#10124).
+            let owner_ended = entry
+                .pointer("/run/result/ending")
+                .and_then(serde_json::Value::as_str)
+                == Some(coder::task::owner::OWNER_ENDED);
             let reason = entry
                 .get("cancellation_reason")
                 .and_then(serde_json::Value::as_str)
                 .filter(|_| status == "cancelled")
-                .map(|reason| reason.chars().take(160).collect());
+                .map(|reason| reason.chars().take(160).collect())
+                .or_else(|| owner_ended.then(|| coder::task::owner::OWNER_ENDED_TEXT.to_owned()));
             Some(Task {
                 title: title.chars().take(80).collect(),
                 status: status.into(),
@@ -1473,6 +1479,23 @@ mod tests {
         assert_eq!(
             tasks[1].reason.as_deref(),
             Some("Couldn't start: Claude Code isn't set up on this computer.")
+        );
+        assert_eq!(tasks[0].reason, None);
+    }
+
+    #[test]
+    fn a_task_whose_process_ended_says_so() {
+        let json = br#"[
+            {"task_id":"a","intent":{"title":"Fix it"},"status":"finished",
+             "run":{"result":{"ending":"owner_process_ended"}}},
+            {"task_id":"b","intent":{"title":"Done"},"status":"finished",
+             "run":{"result":{"ending":"completed"}}}
+        ]"#;
+        let tasks = parse_tasks(json, &Default::default());
+        assert_eq!(tasks[1].title, "Fix it");
+        assert_eq!(
+            tasks[1].reason.as_deref(),
+            Some("Coder's process ended unexpectedly")
         );
         assert_eq!(tasks[0].reason, None);
     }

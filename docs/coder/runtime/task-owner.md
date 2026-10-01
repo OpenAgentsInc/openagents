@@ -47,7 +47,8 @@ lock until it stops. The inbox's shorter lock serializes command and host-event
 journal mutations. A new client can read or request cancellation without taking
 the execution lock. A second owner cannot execute the same task. Within one
 store, an unresolved admitted task also blocks admission of another task on the
-same canonical workspace or an overlapping subtree.
+same canonical workspace or an overlapping subtree, until it is resolved or
+its owner is gone (see [A run whose owner ended](#a-run-whose-owner-ended)).
 
 `coder task start --grant GRANT.json` retains the exact grant, creates a private
 launch diagnostic file, and starts a separate session with detached standard
@@ -66,13 +67,37 @@ The host stops after retaining at least 2 MiB of stdout; the current delivery an
 cleanup remainder can add up to two stream caps. stderr retains its declared cap.
 A stopped or capped run never becomes independently verified.
 
-`coder task recover TASK_ID` must acquire the abandoned owner's lock. It advances
-the ownership epoch and records execution as `unknown`; it does not rerun the
+`coder task recover TASK_ID` must acquire the abandoned owner's lock. When the
+run recorded a process whose process group is still there, it advances the
+ownership epoch and records execution as `unknown`; it does not rerun the
 command, kill a recycled PID, or assert that descendants have stopped. A process
-killed with SIGKILL can leave descendants behind. Inspect retained effects and
-process evidence before any separately authorized recovery. Automatic retry of
-an uncertain writing effect is unsupported. A finished task is also not rerun by
+killed with SIGKILL can leave descendants behind. Automatic retry of an
+uncertain writing effect is unsupported. A finished task is also not rerun by
 repeating `start` or `execute`.
+
+### A run whose owner ended
+
+An unknown run is no longer sticky
+([#10124](https://github.com/OpenAgentsInc/openagents/issues/10124), owner
+direction: things just work, with no decision prompt). `Store::settle` ends a
+running, stopping, or unknown run with no result once nothing of it is left:
+its owner's OS lock is free (a live owner holds it for as long as it runs, and
+a recycled process ID cannot) and no process group the run recorded exists.
+It records the run's result with ending `owner_process_ended`, no exit code,
+`group_clear` meaning the owner's lock was free and no recorded group was
+left, unknown cost, and the digest of the trace as the owner left it. The
+task becomes finished, its execution failed (stopped when a stop was
+asked). Checks whose owner is gone become `unavailable`. It kills nothing,
+reruns nothing, and keeps every earlier record; the result is the only
+event it adds. A run whose own result already said its process group was not
+confirmed clear stays `unknown`.
+
+The store settles runs automatically: before any admission, every run
+overlapping the new task's workspace; on each host auto-start sweep, every
+run; and on a device's command or cancel for that task. `recover` settles
+before falling back to `unknown`. An admission that a live run still blocks
+refuses with `workspace_busy`, which a device reads as
+`Couldn't start: another Coder task is still running in this project`.
 
 ## Durable journal and compatibility
 

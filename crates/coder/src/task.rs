@@ -418,6 +418,9 @@ pub enum Error {
     Busy,
     UnsupportedPlatform,
     ReopenRequired,
+    /// Another task's run still holds the workspace's tree (#10124): its
+    /// owner or a process it recorded is alive, or its checks run.
+    WorkspaceBusy,
 }
 
 impl Error {
@@ -438,6 +441,7 @@ impl Error {
             Self::Busy => "store_busy",
             Self::UnsupportedPlatform => "unsupported_platform",
             Self::ReopenRequired => "reopen_required",
+            Self::WorkspaceBusy => "workspace_busy",
         }
     }
 }
@@ -467,6 +471,9 @@ impl std::fmt::Display for Error {
             }
             Self::ReopenRequired => formatter
                 .write_str("a write failed; reopen the store before retrying the exact command"),
+            Self::WorkspaceBusy => {
+                formatter.write_str("another Coder task is still running in this project")
+            }
         }
     }
 }
