@@ -759,3 +759,24 @@ judge   fallback door https://openrouter.ai under $OPENROUTER_API_KEY
 "Open OpenAgents for Mac and it shows a QR code. …" (route `product.kb` at
 0.98) with the judgment naming `door` `https://api.typesafe.ai` and `model`
 `jev-1.13.0`: TypeSafe answers again, and no fallback door was asked.
+
+TestFlight build 37 (1.0.0, archived from `b63e21d90f`, 2026-09-30)
+changes no worker release. Since build 36 a message with photos sends: its
+words go to the hosted router and the photos stay in the draft, bound to
+that message; **Run Coder** carries their exact bytes to the paired
+computer, and a reply that does not lead to Coder keeps them with "Images go
+only to Coder, and this reply didn't start it. They stay in your draft."
+(`3e13917001` #10066, `1ebd5e20f7` #10070). A finished Coder run's card
+names the exact revisions it compares, marks a moved change stale with
+**Refresh**, and publishes once as a draft PR or commit read over
+`task.review` / `task.publish` (`ebdec8d004`, #10067, #10068). The mobile
+tests (154 passed), `openagents-chat-app` (133), and `openagents-chat` (50)
+pass. On a fresh iPhone 17 Pro simulator (iOS 26.5, deleted afterwards)
+build 37 launched and the changelog showed 1.0.0 (37). A photo attached
+through the `--coder-tap attach:` hook and "What is OpenAgents?" sent with
+it: the live chat worker answered, and the photo stayed above the composer
+with **Remove** and the "Images go only to Coder…" line. Run Coder with a
+screenshot and the review/publish card need a paired computer and were
+covered by the mobile and chat-app tests, not on the simulator. Build 37
+was uploaded with `build.sh upload` at 2026-09-30T18:42:06-07:00 and is
+`VALID`, in Internal Testers (`IN_BETA_TESTING`).
