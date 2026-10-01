@@ -1023,3 +1023,32 @@ desktop's context, "open the map" and "show me how you route things" got
 `meta.map.desktop@1` with **Open the map** (`routes.map`), and "test
 project map" got the Project map card and **Start the test**. The release
 gate's new `plugins-chat` scenario and `route-map-chat` passed against it.
+
+TestFlight build 41 (1.0.0, archived from `2634579ad3`, 2026-10-01 UTC)
+changes no worker release. Its source is the code the release acceptance
+gate passed 17/17 at `063044d929` plus the changelog entry, the build
+number, and two README words; `crates/`, `bins/`, and `apps/` otherwise
+match `063044d929`. It ships the phone side of #10087 (the app says
+*plugin*: **Test a plugin**, with and without the plugin, **NO PLUGIN FOR
+THAT YET** with **ADD A PLUGIN**), #10086 and #10090 (the Gym's chips and
+the computer prompt know all six catalog plugins), and #10089 (the phone
+takes `plugin list` as well as `ext list`; the worker still offers `ext
+list`). "Chat on a paired phone names your computer" is #10077, which
+shipped in build 39, so build 41's entry does not repeat it. The mobile
+tests (155 passed), `openagents-chat-app` (154), and `openagents-chat`
+(63) pass. On fresh iPhone 17 Pro and iPhone 17 Pro Max simulators (iOS
+26.5, deleted afterwards) build 41 launched and the changelog showed
+1.0.0 (41). With `--chat-script` and no computer paired, the live chat
+worker answered "which plugins can I test?" with `eval.run.choose`
+naming Explain this error, Release notes, and Dependency check in its
+text, the Project map card (**Start the test**, "6 tests, with and
+without the plugin."), and chips for Code finder, Test reader, Explain
+this error, Release notes, and Dependency check; "Can you book me a
+flight to Tokyo next week?" got "There's no plugin for that yet. Want to
+make one?" with the **NO PLUGIN FOR THAT YET** card and **ADD A
+PLUGIN**; a new chat showed the **Test a plugin** question chip. The
+start of the plugins reply scrolled above the screen and was not read
+on the simulator, and `plugin list` on a paired computer was covered by
+the tests, not on the simulator. Build 41 was uploaded with `build.sh
+upload` at 2026-10-01T01:06:03-07:00 and is `VALID`, in Internal Testers
+(`IN_BETA_TESTING`).
