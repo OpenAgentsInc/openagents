@@ -3460,7 +3460,7 @@
           "terminal"
         ],
         "usage": [
-          "openagents terminal [--thread ID] [--new] [--scratch] [--local] [--socket PATH]"
+          "openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]"
         ],
         "forms": [
           {
@@ -3474,7 +3474,7 @@
               },
               {
                 "kind": "option",
-                "name": "new",
+                "name": "continue",
                 "optional": true
               },
               {
@@ -3504,15 +3504,15 @@
       "options": [
         {
           "kind": "option",
-          "name": "thread",
-          "value": "ID",
-          "open": true,
+          "name": "continue",
           "optional": true,
           "repeated": true
         },
         {
           "kind": "option",
-          "name": "new",
+          "name": "thread",
+          "value": "ID",
+          "open": true,
           "optional": true,
           "repeated": true
         },
