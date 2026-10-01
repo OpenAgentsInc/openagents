@@ -916,3 +916,27 @@ computer, the start card's reason, and the handoff note were covered by
 the tests, not on the simulator. Build 39 was uploaded with `build.sh
 upload` at 2026-09-30T20:57:18-07:00 and is `VALID`, in Internal Testers
 (`IN_BETA_TESTING`).
+
+TestFlight build 40 (1.0.0, archived from `d8f7c3db4f`, 2026-10-01 UTC)
+changes no worker release. Its source is the code the release acceptance
+gate passed 13/13 at `1c095e50d0` plus the changelog entry and build
+number; `crates/`, `bins/`, and `apps/` otherwise match `1c095e50d0`. It
+ships the phone side of #10081, #10079, and #10084, and #10078 on the
+computer. Run Coder from the phone's own chat now names the reply's
+requested engine in `task.create` (`engine`) to a host whose presence
+advertises `task-engine`, so the note in build 39's record no longer
+holds; an older host gets the request it always got. A reply that
+answered on the computer lane offers no Coder (#10079), and the shared
+delegation prompt tells the engine its delegation is done (#10084).
+The mobile tests (155 passed), `openagents-chat-app` (136), and
+`openagents-chat` (61) pass. On a fresh iPhone 17 Pro simulator (iOS
+26.5, deleted afterwards) build 40 launched and the changelog showed
+1.0.0 (40). A plain message got a one-sentence reply, and with
+`--chat-script "do a test delegation to claude"` and no computer paired
+the live chat worker answered "That needs a computer. Connect one and
+we'll dispatch Coder there with this conversation." with a **Connect a
+computer** chip, no Gym test card, and no judge row. Engine requests to a
+paired computer, the start card's reason, the delegation prompt, and the
+wide-checkout start were covered by the tests, not on the simulator.
+Build 40 was uploaded with `build.sh upload` at 2026-09-30T22:57:26-07:00
+and is `VALID`, in Internal Testers (`IN_BETA_TESTING`).

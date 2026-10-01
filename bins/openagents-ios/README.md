@@ -57,7 +57,9 @@ The app has four tabs, shown as icons:
   words and under an opener or any part that shows first. When the worker's
   judgment places a message on a computer, or the router offers to run
   Coder, **Run Coder on** a computer shows as a chip under that reply once
-  it is complete, and starts Coder there with the conversation so far; with
+  it is complete, and starts Coder there with the conversation so far,
+  asking the computer for the engine the reply's offer named when its
+  presence advertises `task-engine` (#10081); with
   no computer the chip is **Connect a computer**. No Run Coder or Open Coder
   button stands above the field; a task a conversation started is in the
   previous chats. Each job also asks for the chat router (`router`) with a bounded
@@ -344,13 +346,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `39` |
+| Marketing version and build | `1.0.0` / `40` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `39` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `40` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution
