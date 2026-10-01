@@ -53,11 +53,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn full_amber_is_the_terminal_amber() {
+    fn full_is_the_terminal_full_white() {
+        // The terminal's ladder is white since #10111.
         let [r, g, b] = amber(Intensity::Full);
-        assert!((r - 1.0).abs() < 1e-6);
-        assert!(g > 0.4 && g < 0.45, "0xb0 in linear light, got {g}");
-        assert_eq!(b, 0.0);
+        for channel in [r, g, b] {
+            assert!((channel - 1.0).abs() < 1e-6, "{r} {g} {b}");
+        }
     }
 
     #[test]
