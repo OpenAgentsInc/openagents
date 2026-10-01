@@ -365,3 +365,41 @@ fn a_screen_reader_reaches_and_presses_a_followup_chip() {
         lines.join("\n")
     );
 }
+
+/// A new chat's starter chip above the centered composer is a button a
+/// screen reader names by its words, reads before the composer, can focus,
+/// and presses to send them (#10097).
+#[test]
+fn a_screen_reader_reaches_and_presses_a_starter_chip() {
+    let (mut app, _) = chat_fixture(0);
+    assert!(app.chat.as_ref().unwrap().composer_centered());
+    let before = tree(&mut app, None);
+    let lines = outline(&before);
+    let dump = lines.join("\n");
+    let chip = find(&lines, "Button \"Who are you?\"");
+    assert!(lines[chip].contains("<click>"), "{dump}");
+    let composer = find(&lines, "MultilineTextInput \"Message OpenAgents");
+    assert!(
+        chip < composer,
+        "the starters read before the composer: {dump}"
+    );
+    let id = node_with(&before, Role::Button, "What can you do?");
+    assert!(
+        before
+            .update
+            .nodes
+            .iter()
+            .any(|(node, data)| *node == id && data.supports_action(Action::Focus)),
+        "a starter takes keyboard focus: {dump}"
+    );
+    run(&mut app, &before, id, Action::Click, None);
+    let after = tree(&mut app, None);
+    let lines = outline(&after);
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("Button \"Who are you?\"")),
+        "the starters leave once the chat has a message:\n{}",
+        lines.join("\n")
+    );
+}

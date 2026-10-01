@@ -2964,6 +2964,132 @@ pub(super) mod card_fixtures {
         assert!(!scene.bounds.contains_key("chat-followups"));
     }
 
+    /// A new chat's starters, the phone's shared list, are chips above
+    /// the centered composer, in the follow-ups' row and style, wrapping
+    /// inside the column; a tap sends one; they leave once the chat has a
+    /// message, and the latest reply's follow-ups take the row (#10097).
+    #[test]
+    fn starters_are_chips_above_the_centered_composer_until_a_message() {
+        let starters: Vec<_> = openagents_chat_app::first_run::SUGGESTIONS
+            .iter()
+            .take(openagents_chat_app::first_run::SUGGESTIONS_SHOWN)
+            .collect();
+        assert_eq!(starters[0].label, "Who are you?");
+        let directory =
+            std::env::var_os("OPENAGENTS_STARTERS_CAPTURE_DIR").map(std::path::PathBuf::from);
+        let (mut app, now) = super::tests::chat_fixture(0);
+        for (width, height, name) in [(1200.0, 840.0, "default"), (760.0, 540.0, "minimum")] {
+            app.present();
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, 2.0);
+            let panel = app.chat.as_ref().unwrap();
+            assert!(panel.composer_centered(), "{name}");
+            assert!(!scene.bounds.contains_key("chat-followups"));
+            let row = scene.bounds["chat-starters"];
+            let card = scene.bounds["chat-composer-card"];
+            assert!(row.y + row.h <= card.y, "{row:?} above {card:?}");
+            assert!(
+                card.y - (row.y + row.h) <= 12.0,
+                "directly above: {row:?} {card:?}"
+            );
+            // The composer stays in the pane's middle, not pushed to the
+            // bottom.
+            assert!(card.y + card.h < height - 60.0, "{card:?} in {height}");
+            let mut previous: Option<rust_native_desktop::Rect> = None;
+            for starter in &starters {
+                let key = format!("coder-suggest-{}", starter.id);
+                let hit = scene
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == key)
+                    .unwrap_or_else(|| panic!("{key} at {name}"));
+                assert!(hit.enabled, "{key}");
+                assert!(hit.rect.w < card.w / 2.0, "{key}: {:?}", hit.rect);
+                assert!(hit.rect.h <= 32.0, "{key}: {:?}", hit.rect);
+                assert!(
+                    hit.rect.x >= row.x
+                        && hit.rect.x + hit.rect.w <= row.x + row.w + 0.5
+                        && hit.rect.y >= row.y
+                        && hit.rect.y + hit.rect.h <= row.y + row.h,
+                    "{key} inside the row: {:?} {row:?}",
+                    hit.rect
+                );
+                // In order: right of the one before, or on a later line.
+                if let Some(before) = previous {
+                    assert!(
+                        hit.rect.x >= before.x + before.w || hit.rect.y > before.y,
+                        "{key}: {:?} after {before:?}",
+                        hit.rect
+                    );
+                }
+                previous = Some(hit.rect);
+                assert!(panel.transcript.control_bounds(&key).is_none(), "{key}");
+            }
+            assert!(
+                !scene.hits.iter().any(|hit| hit.key
+                    == format!(
+                        "coder-suggest-{}",
+                        openagents_chat_app::first_run::SUGGESTIONS[starters.len()].id
+                    )),
+                "only the first few show"
+            );
+            if let Some(directory) = &directory {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(
+                    directory.join(format!("starters-{name}-{width}x{height}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+        }
+        // A tap sends the starter's words.
+        let view = app.view().clone();
+        let panel = app.chat.as_mut().unwrap();
+        let first = panel.action(
+            openagents_desktop::chat_action::Action::Card {
+                key: "coder-suggest-meta.who".into(),
+            },
+            &view,
+            now,
+        );
+        assert!(
+            matches!(
+                first,
+                Some(Request::Chat {
+                    command: Command::UseSuggestion { ref id, .. },
+                    ..
+                }) if id == "meta.who"
+            ),
+            "{first:?}"
+        );
+        assert!(
+            panel.take_requests().iter().any(|request| matches!(
+                request,
+                Request::Chat {
+                    command: Command::Send { text, .. },
+                    ..
+                } if text == "Who are you?"
+            )),
+            "a tap sends the starter's words"
+        );
+        // Once the chat has a message, no starters.
+        app.present();
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        assert!(!scene.bounds.contains_key("chat-starters"));
+        assert!(
+            !scene
+                .hits
+                .iter()
+                .any(|hit| hit.key.starts_with("coder-suggest-"))
+        );
+        // A chat with replies shows the latest reply's follow-ups in the
+        // row instead, above the docked composer.
+        let (mut app, _) = followups_fixture(&[], &["What does it cost?"]);
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        assert!(!app.chat.as_ref().unwrap().composer_centered());
+        assert!(!scene.bounds.contains_key("chat-starters"));
+        assert!(scene.bounds.contains_key("chat-followups"));
+    }
+
     /// Many or long follow-ups wrap onto more rows at the minimum window,
     /// each chip still inside the column and no wider than its words.
     #[test]
@@ -3483,12 +3609,16 @@ mod chat_management {
             let composer = empty.bounds["chat-composer-card"];
             assert_eq!(composer.h, 49.0);
             let pane = empty.split.unwrap().content.rect;
-            let footer_height = empty.bounds["chat-footer"].h;
+            // The centered group is the starter chips (#10097) above the
+            // composer: the footer's middle sits where the composer's did.
+            let footer = empty.bounds["chat-footer"];
+            let footer_height = footer.h;
+            assert!(empty.bounds.contains_key("chat-starters"));
+            assert!((composer.y + composer.h - (footer.y + footer.h)).abs() < 0.01);
             assert!(
-                (composer.y + composer.h / 2.0 - pane.y - (pane.h + footer_height) / 2.0 - 8.0)
-                    .abs()
+                (footer.y + footer.h / 2.0 - pane.y - (pane.h + footer_height) / 2.0 - 8.0).abs()
                     < 0.01,
-                "composer {composer:?}, reading clip {pane:?}, footer {footer_height}"
+                "composer {composer:?}, footer {footer:?}, reading clip {pane:?}"
             );
             assert!(
                 empty

@@ -99,6 +99,10 @@ pub struct Panel {
     /// The latest reply's follow-up suggestions, by card key and label:
     /// chips above the composer, as the phone shows them (#10075).
     followups: Vec<(String, String)>,
+    /// An empty chat's starter suggestions (the phone's shared list,
+    /// `first_run::SUGGESTIONS`), by card key and label: chips above the
+    /// centered composer, in the follow-ups' row and style (#10097).
+    starters: Vec<(String, String)>,
     projection: Projection,
     transcript_size: (f32, f32),
     composer_rect: Option<PxRect>,
@@ -207,6 +211,7 @@ impl Panel {
             fonts: Fonts::new(),
             transcript_rows: vec![],
             followups: vec![],
+            starters: vec![],
             projection: Projection::default(),
             transcript_size: (0.0, 0.0),
             composer_rect: None,
@@ -3447,6 +3452,7 @@ impl Panel {
                 .and_then(|id| self.tasks.get_mut(id))
                 .map(task_chat::Session::rows);
             let mut followups = vec![];
+            let mut starters = vec![];
             let rows = if let Some(rows) = task_rows {
                 rows.into_iter().map(Arc::new).collect()
             } else {
@@ -3543,7 +3549,17 @@ impl Panel {
                             }
                             _ => true,
                         })
-                        .filter(|row| !row.key.starts_with("coder-suggest-"))
+                        // An empty chat's starters sit above the centered
+                        // composer, in the same row (#10097).
+                        .filter(|row| match &row.element {
+                            Element::Button { label, .. }
+                                if row.key.starts_with("coder-suggest-") =>
+                            {
+                                starters.push((row.key.clone(), label.clone()));
+                                false
+                            }
+                            _ => true,
+                        })
                         // A run here replaces the offer to start one.
                         .filter(|row| run_rows.is_none() || row.key != "coder-run")
                         .map(Arc::new),
@@ -3570,6 +3586,7 @@ impl Panel {
                 }
             }
             self.followups = followups;
+            self.starters = starters;
             self.rows_dirty = false;
         }
         self.shown();
@@ -3844,13 +3861,19 @@ impl Panel {
         let mut content = vec![];
         // The latest reply's follow-ups: small chips, sized to their
         // words, wrapping above the composer, as on the phone (#10075).
-        if !self.followups.is_empty() {
-            let chips = self
-                .followups
+        // An empty chat's starters take the same row, above the centered
+        // composer, and leave once the chat has a message (#10097).
+        let (row_key, suggestions) = if self.followups.is_empty() {
+            ("chat-starters", &self.starters)
+        } else {
+            ("chat-followups", &self.followups)
+        };
+        if !suggestions.is_empty() {
+            let chips = suggestions
                 .iter()
                 .map(|(key, label)| followup_chip(key, label, !busy))
                 .collect();
-            let mut row = stack("chat-followups", Axis::Wrap, chips);
+            let mut row = stack(row_key, Axis::Wrap, chips);
             row.style.gap_points = Some(8);
             row.style.padding_points = Some([0, 4, 0, 4]);
             content.push(row);

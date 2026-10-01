@@ -39,8 +39,9 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 19] = [
+pub const SCENARIOS: [&str; 20] = [
     "ui-placeholder",
+    "ui-starter-chips",
     "who-are-you",
     "ui-chips",
     "ui-engines-sidebar",
@@ -177,6 +178,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
         eprintln!("acceptance: {name}");
         let outcome = match name {
             "ui-placeholder" => ui_placeholder(&mut gate),
+            "ui-starter-chips" => ui_starter_chips(&mut gate),
             "who-are-you" => who_are_you(&mut gate),
             "ui-chips" => ui_chips(&mut gate),
             "ui-engines-sidebar" => ui_engines(&mut gate),
@@ -717,6 +719,147 @@ fn ui_placeholder(gate: &mut Gate) -> Outcome {
     ))
 }
 
+/// A new chat's starters (the phone's shared list) are chips directly
+/// above the centered composer, in the follow-ups' row and style, inside
+/// the column at the default and minimum sizes; a tap sends one, and once
+/// the chat has a message they leave and the composer docks (#10097).
+fn ui_starter_chips(gate: &mut Gate) -> Outcome {
+    let chat = new_chat(gate, "ui-starter-chips")?;
+    if !gate.panel().composer_centered() {
+        return Err("a new chat's composer is not centered".into());
+    }
+    let starters: Vec<_> = openagents_chat_app::first_run::SUGGESTIONS
+        .iter()
+        .take(openagents_chat_app::first_run::SUGGESTIONS_SHOWN)
+        .collect();
+    let mut lines_at = vec![];
+    for (width, height, file) in [
+        (1200.0, 840.0, "starters-1200x840-2x"),
+        (760.0, 540.0, "starters-760x540-2x"),
+    ] {
+        let (_, scene) = gate.capture("ui-starter-chips", file, width, height, 2.0);
+        let row = *scene.bounds.get("chat-starters").ok_or(format!(
+            "no chat-starters row above the composer ({file}.png)"
+        ))?;
+        let card = *scene
+            .bounds
+            .get("chat-composer-card")
+            .ok_or("no composer card")?;
+        if row.y + row.h > card.y || card.y - (row.y + row.h) > 12.0 {
+            return Err(format!(
+                "the starters are not directly above the composer: {row:?} vs {card:?} ({file}.png)"
+            ));
+        }
+        let mut lines = vec![];
+        for starter in &starters {
+            let key = format!("coder-suggest-{}", starter.id);
+            let chip = scene
+                .hits
+                .iter()
+                .find(|hit| hit.key == key)
+                .ok_or(format!("no {:?} chip ({file}.png)", starter.label))?;
+            if chip.rect.w >= card.w / 2.0 || chip.rect.h > 32.0 {
+                return Err(format!("{key} is not a small chip: {:?}", chip.rect));
+            }
+            if chip.rect.x < row.x - 0.5 || chip.rect.x + chip.rect.w > row.x + row.w + 0.5 {
+                return Err(format!("{key} leaves the column: {:?} {row:?}", chip.rect));
+            }
+            if gate.panel().transcript.control_bounds(&key).is_some() {
+                return Err(format!("{key} is in the transcript"));
+            }
+            if !lines.contains(&(chip.rect.y as i32)) {
+                lines.push(chip.rect.y as i32);
+            }
+        }
+        lines_at.push(lines.len());
+    }
+    // A tap on "Who are you?" sends it, as the phone's chip does.
+    let first = starters[0];
+    let before = gate.panel().state().map_or(0, |s| s.total);
+    gate.app.activate(
+        Intent::Chat {
+            action: openagents_desktop::chat_action::Action::Card {
+                key: format!("coder-suggest-{}", first.id),
+            },
+        },
+        Instant::now(),
+    );
+    let mut failure = None;
+    let replied = pump(gate, REPLY_WAIT, |gate| {
+        let Some(snapshot) = gate.panel().state() else {
+            return false;
+        };
+        if snapshot.chat.as_deref() != Some(chat.as_str()) {
+            return false;
+        }
+        if let Some(why) = &snapshot.failure {
+            failure = Some(why.clone());
+            return true;
+        }
+        !snapshot.busy
+            && snapshot.total >= before + 2
+            && snapshot
+                .turns
+                .last()
+                .is_some_and(|turn| turn.role == Role::Assistant)
+    });
+    gate.save_chat("ui-starter-chips");
+    if let Some(why) = failure {
+        return Err(format!("the chat failed: {why}"));
+    }
+    if !replied {
+        return Err(format!(
+            "no reply to {:?} within {}s",
+            first.message,
+            REPLY_WAIT.as_secs()
+        ));
+    }
+    let asked = gate
+        .panel()
+        .state()
+        .and_then(|s| s.turns.iter().find(|turn| turn.role == Role::User))
+        .map(|turn| turn.text.clone())
+        .unwrap_or_default();
+    if asked != first.message {
+        return Err(format!("the tap sent {asked:?}, not {:?}", first.message));
+    }
+    let (_, scene) = gate.capture(
+        "ui-starter-chips",
+        "after-reply-1200x840-2x",
+        1200.0,
+        840.0,
+        2.0,
+    );
+    if scene.bounds.contains_key("chat-starters")
+        || scene
+            .hits
+            .iter()
+            .any(|hit| hit.key.starts_with("coder-suggest-"))
+    {
+        return Err("the starters stay after the chat has a message".into());
+    }
+    if gate.panel().composer_centered() {
+        return Err("the composer stays centered after a reply".into());
+    }
+    let followups = scene
+        .hits
+        .iter()
+        .filter(|hit| hit.key.starts_with("coder-followup-"))
+        .count();
+    Ok(format!(
+        "{} starters ({}) directly above the centered composer, on {} line(s) at 1200x840 and {} at 760x540; a tap sent {:?}; after the reply none remain and {followups} follow-up chips sit above the docked composer; captures starters-*.png, after-reply-1200x840-2x.png",
+        starters.len(),
+        starters
+            .iter()
+            .map(|starter| starter.label)
+            .collect::<Vec<_>>()
+            .join(", "),
+        lines_at[0],
+        lines_at[1],
+        first.message
+    ))
+}
+
 /// Pixels of the placeholder's faint ink inside `rect`.
 fn placeholder_ink(
     frame: &rust_native_desktop::Frame,
@@ -774,6 +917,11 @@ fn ui_chips(gate: &mut Gate) -> Outcome {
         .map(|(chat, _)| chat.clone())
         .ok_or("needs who-are-you's reply")?;
     select(gate, &chat)?;
+    // Run on its own (`--only ui-chips`), it asks who-are-you's question
+    // first, so the chat has a reply with suggestions.
+    if gate.panel().state().is_some_and(|s| s.turns.is_empty()) {
+        who_are_you(gate)?;
+    }
     let (_, scene) = gate.capture("ui-chips", "chips-1200x840-1x", 1200.0, 840.0, 1.0);
     let row = *scene
         .bounds
