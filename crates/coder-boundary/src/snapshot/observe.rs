@@ -259,14 +259,56 @@ fn list(
     over: &AtomicBool,
 ) {
     let limits = walk.limits;
-    // Each pending directory holds its own descriptor, so listing it
-    // reads the directory that was found, not whatever the path names by
-    // the time the walk reaches it.
-    let mut pending: Vec<(PathBuf, File)> = vec![(PathBuf::new(), root_fd)];
-    'walk: while let Some((rel, dir)) = pending.pop() {
+    // A pending directory is held by its parent's descriptor and its name,
+    // and opened only when the walk reaches it: holding a descriptor for
+    // every directory found but not yet listed exhausts a process's open
+    // files on a wide tree (a GUI-launched process gets 256), and every
+    // `EMFILE` is a fault (#10078). Opening it relative to the parent's
+    // descriptor under `O_NOFOLLOW`, and checking that it is still the
+    // directory the listing found, still reads the directory that was
+    // found, not whatever the path names by the time the walk reaches it.
+    // Only the ancestors of the directory being listed stay open.
+    let mut pending: Vec<(PathBuf, Pending)> = vec![(PathBuf::new(), Pending::Open(root_fd))];
+    'walk: while let Some((rel, next)) = pending.pop() {
         if over.load(Ordering::Relaxed) {
             break;
         }
+        let dir = match next {
+            Pending::Open(dir) => dir,
+            Pending::At {
+                parent,
+                name,
+                id: found,
+            } => match open_at(&parent, &name, DIR_FLAGS) {
+                Ok(child) => match child.metadata() {
+                    Ok(metadata) if metadata.is_dir() && id(&metadata) == found => {
+                        walk.entries.insert(
+                            rel.clone(),
+                            Entry::Directory {
+                                id: id(&metadata),
+                                mode: mode(&metadata),
+                            },
+                        );
+                        child
+                    }
+                    // The entry named itself a directory and opened as
+                    // something else — a mid-walk swap, which is a fault
+                    // rather than a listing.
+                    Ok(_) => {
+                        walk.read(rel, "changed while it was being opened");
+                        continue;
+                    }
+                    Err(error) => {
+                        walk.read(rel, error);
+                        continue;
+                    }
+                },
+                Err(error) => {
+                    walk.read(rel, error);
+                    continue;
+                }
+            },
+        };
         let dir = Arc::new(dir);
         if walk.attempts > walk.limits.entries {
             walk.fault(Fault::Entries {
@@ -304,26 +346,14 @@ fn list(
                 }
             };
             match kind_of(&st) {
-                Kind::Directory => match open_at(&dir, &name, DIR_FLAGS) {
-                    Ok(child) => match child.metadata() {
-                        Ok(metadata) if metadata.is_dir() => {
-                            walk.entries.insert(
-                                path.clone(),
-                                Entry::Directory {
-                                    id: id(&metadata),
-                                    mode: mode(&metadata),
-                                },
-                            );
-                            pending.push((path, child));
-                        }
-                        // The entry named itself a directory and opened
-                        // as something else — a mid-walk swap, which is
-                        // a fault rather than a listing.
-                        Ok(_) => walk.read(path, "changed while it was being opened"),
-                        Err(error) => walk.read(path, error),
+                Kind::Directory => pending.push((
+                    path,
+                    Pending::At {
+                        parent: dir.clone(),
+                        name,
+                        id: id_of(&st),
                     },
-                    Err(error) => walk.read(path, error),
-                },
+                )),
                 // A file whose digest this process already took, and that
                 // nothing moved since, needs no worker.
                 Kind::File if let Some(digest) = reused(&Stamp::at(&st)) => {
@@ -379,6 +409,18 @@ fn list(
             }
         }
     }
+}
+
+/// A directory the walk will list: the root, already open, or one found
+/// in a listing, by its parent's descriptor, its name there, and the
+/// identity the listing saw.
+enum Pending {
+    Open(File),
+    At {
+        parent: Arc<File>,
+        name: OsString,
+        id: Option<Id>,
+    },
 }
 
 fn finish(walk: Walk, root: PathBuf) -> Snapshot {

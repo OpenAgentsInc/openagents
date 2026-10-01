@@ -396,6 +396,11 @@ struct Document {
 pub enum Error {
     Io(std::io::Error),
     InvalidCommand(&'static str),
+    /// The workspace's source snapshot cannot admit a run: the observation
+    /// was incomplete (which limit, or which file could not be read), or
+    /// it differs from the one the grant pinned. The message names a path
+    /// inside the workspace, never command contents.
+    SourceSnapshot(String),
     UnsupportedSchema,
     Conflict,
     RevisionMismatch,
@@ -415,7 +420,7 @@ impl Error {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Io(_) => "io",
-            Self::InvalidCommand(_) => "invalid_command",
+            Self::InvalidCommand(_) | Self::SourceSnapshot(_) => "invalid_command",
             Self::UnsupportedSchema => "unsupported_schema",
             Self::Conflict => "command_conflict",
             Self::RevisionMismatch => "revision_mismatch",
@@ -436,6 +441,7 @@ impl std::fmt::Display for Error {
         match self {
             Self::Io(error) => write!(formatter, "task store I/O failed: {error}"),
             Self::InvalidCommand(message) | Self::Corrupt(message) => formatter.write_str(message),
+            Self::SourceSnapshot(message) => formatter.write_str(message),
             Self::UnsupportedSchema => formatter.write_str("the task schema is not supported"),
             Self::Conflict => {
                 formatter.write_str("the command identity already names different bytes")

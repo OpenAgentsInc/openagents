@@ -406,6 +406,27 @@ fn bounded(text: &str) -> String {
     format!("{}…", &text[..end])
 }
 
+/// Why a workspace observation cannot admit a run, or `None` when it can:
+/// an incomplete observation names its first fault (the limit reached, or
+/// the file that could not be read, and how many faults there were), and a
+/// complete one that differs from the grant's pin says it changed. The
+/// check itself is unchanged: either case refuses.
+fn source_snapshot_refusal(before: &Snapshot, pin: Option<&str>) -> Option<String> {
+    if let Some(first) = before.faults().first() {
+        let more = before.faults().len() - 1;
+        let more = if more == 0 {
+            String::new()
+        } else {
+            format!(" (and {more} more)")
+        };
+        return Some(format!(
+            "the workspace snapshot is incomplete: {first}{more}"
+        ));
+    }
+    pin.is_some_and(|pin| pin != before.digest())
+        .then(|| "the workspace changed since its source snapshot was granted".to_owned())
+}
+
 /// The engine's last reply in a retained trace: the last agent message, or
 /// the rationale of Microcoder's last generated action.
 fn last_reply(path: &Path) -> Option<String> {
@@ -625,15 +646,10 @@ impl Host {
         let before = observing
             .await
             .map_err(|_| Error::InvalidCommand("the workspace could not be observed"))?;
-        if !before.is_complete()
-            || grant
-                .expected_source_snapshot
-                .as_ref()
-                .is_some_and(|pin| pin != &before.digest())
+        if let Some(refusal) =
+            source_snapshot_refusal(&before, grant.expected_source_snapshot.as_deref())
         {
-            return Err(Error::InvalidCommand(
-                "the granted source snapshot is unavailable or changed",
-            ));
+            return Err(Error::SourceSnapshot(refusal));
         }
         let spec = if grant.write_workspace {
             Boundary::writing(&workspace)
@@ -1285,5 +1301,37 @@ impl Host {
             cost_status: "unknown".into(),
         };
         self.owner.record(owner::Event::Result { result })
+    }
+}
+
+#[cfg(test)]
+mod source_snapshot_tests {
+    use super::*;
+    use coder_boundary::snapshot::Limits;
+
+    #[test]
+    fn a_refusal_says_whether_the_snapshot_was_incomplete_or_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["a", "b", "c"] {
+            std::fs::write(dir.path().join(name), name).unwrap();
+        }
+        let whole = Snapshot::observe(dir.path());
+        assert!(whole.is_complete());
+        assert_eq!(source_snapshot_refusal(&whole, None), None);
+        assert_eq!(source_snapshot_refusal(&whole, Some(&whole.digest())), None);
+        assert_eq!(
+            source_snapshot_refusal(&whole, Some("other")).as_deref(),
+            Some("the workspace changed since its source snapshot was granted")
+        );
+
+        let partial = Snapshot::observe_within(dir.path(), Limits::bounded(2, u64::MAX));
+        let refusal = source_snapshot_refusal(&partial, None).unwrap();
+        assert!(
+            refusal.starts_with("the workspace snapshot is incomplete: ")
+                && refusal.contains("limit of 2 files and directories"),
+            "{refusal}"
+        );
+        // Incomplete refuses even when the pin would match.
+        assert!(source_snapshot_refusal(&partial, Some(&partial.digest())).is_some());
     }
 }

@@ -602,7 +602,9 @@ fn reference(receipt: &Receipt) -> TaskRef {
 /// local; the code carries no path or content.
 fn refusal(error: Error) -> Code {
     match error {
-        Error::InvalidCommand(_) | Error::UnsupportedSchema => Code::Malformed,
+        Error::InvalidCommand(_) | Error::SourceSnapshot(_) | Error::UnsupportedSchema => {
+            Code::Malformed
+        }
         Error::Conflict | Error::InvalidTransition => Code::Conflict,
         Error::RevisionMismatch => Code::Stale,
         Error::NotFound => Code::Forbidden,
