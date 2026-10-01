@@ -86,6 +86,18 @@ struct Recent {
     row: Node<Intent>,
 }
 
+/// The shared list order (#10100): Pinned, then every chat newest first
+/// whatever its project (the row names the project), then Archived, as
+/// [`crate::chat_list::search`] orders the desktop sidebar.
+fn order_recent(rows: &mut [Recent]) {
+    rows.sort_by_key(|recent| {
+        (
+            recent.group.rank(),
+            std::cmp::Reverse((recent.last, recent.updated)),
+        )
+    });
+}
+
 /// The key of a workspace of a computer in the list's record of when this
 /// device last started a chat there.
 fn used_key(host: &str, workspace: &str) -> String {
@@ -2799,12 +2811,7 @@ impl CoderTab {
                 }),
             );
         }
-        rows.sort_by_key(|recent| {
-            (
-                recent.group.clone(),
-                std::cmp::Reverse((recent.last, recent.updated)),
-            )
-        });
+        order_recent(&mut rows);
         rows.truncate(SHOWN_TASKS + SHOWN_TALKS);
         rows
     }
@@ -4632,6 +4639,44 @@ mod tests {
         for child in children {
             surfaces(child, found);
         }
+    }
+
+    /// #10100: on the phone, as on the desktop, a new chat with no project is
+    /// listed above older Coder chats in projects.
+    #[test]
+    fn the_phone_lists_a_new_chat_above_older_project_chats() {
+        use crate::chat_list::Group;
+        let row = |title: &str, group: Group, updated: u64| Recent {
+            group,
+            last: Some(updated),
+            updated,
+            row: button(title, title, Intent::NewChat),
+        };
+        let mut rows = vec![
+            row("work on #10058", Group::Project("openagents".into()), 100),
+            row(
+                "work on #10061",
+                Group::Project("openagents-host-tasks".into()),
+                120,
+            ),
+            row("pinned", Group::Pinned, 1),
+            row("archived", Group::Archived, 900),
+            row("old", Group::Recent, 50),
+            row("New chat", Group::Recent, 200),
+        ];
+        order_recent(&mut rows);
+        let keys: Vec<&str> = rows.iter().map(|recent| recent.row.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "pinned",
+                "New chat",
+                "work on #10061",
+                "work on #10058",
+                "old",
+                "archived"
+            ]
+        );
     }
 
     #[test]

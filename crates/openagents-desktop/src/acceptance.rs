@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 20] = [
+pub const SCENARIOS: [&str; 21] = [
     "ui-placeholder",
     "ui-starter-chips",
     "who-are-you",
@@ -55,6 +55,7 @@ pub const SCENARIOS: [&str; 20] = [
     "ui-stop-coder",
     "ui-no-attach",
     "open-deck",
+    "ui-new-chat-top",
     "ui-filter-sessions",
     "ui-no-verse",
     "route-map",
@@ -192,6 +193,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "ui-stop-coder" => ui_stop_coder(&mut gate),
             "ui-no-attach" => ui_no_attach(&mut gate),
             "open-deck" => open_deck(&mut gate),
+            "ui-new-chat-top" => ui_new_chat_top(&mut gate),
             "ui-filter-sessions" => ui_filter(&mut gate),
             "ui-no-verse" => ui_no_verse(&mut gate),
             "route-map" => route_map(&mut gate),
@@ -1704,6 +1706,114 @@ fn open_deck(gate: &mut Gate) -> Outcome {
             excerpt(&reply.text)
         )),
     }
+}
+
+/// Cmd/Ctrl-N's new chat is the sidebar's top row (below any pinned
+/// chats) and selected, above every older chat, including older Coder
+/// chats in projects; the rows below are newest first (#10100). Run after
+/// the Coder scenarios, the older chats include project chats.
+fn ui_new_chat_top(gate: &mut Gate) -> Outcome {
+    // An older chat to land above, when the gate has made none yet.
+    if gate
+        .app
+        .navigation
+        .as_ref()
+        .is_none_or(|state| state.chats.is_empty())
+    {
+        new_chat(gate, "ui-new-chat-top")?;
+    }
+    let before = gate.panel().selected_chat().map(str::to_owned);
+    // The keyboard, as the person presses it: Cmd-N on a Mac.
+    let pressed = gate.app.text_input(
+        TextInput::Key {
+            key: "n",
+            text: None,
+            command: true,
+            alt: false,
+            shift: false,
+        },
+        Instant::now(),
+    );
+    if !pressed {
+        return Err("Cmd-N was not handled".into());
+    }
+    let opened = pump(gate, Duration::from_secs(30), |gate| {
+        let panel = gate.panel();
+        let selected = panel.selected_chat().map(str::to_owned);
+        selected.is_some()
+            && selected != before
+            && panel.state().and_then(|s| s.chat.clone()) == selected
+            && gate
+                .app
+                .navigation
+                .as_ref()
+                .is_some_and(|state| state.selected().is_some())
+    });
+    if !opened {
+        return Err("Cmd-N did not open a new chat".into());
+    }
+    let chat = gate.panel().selected_chat().unwrap_or_default().to_owned();
+    let mut seen = vec![];
+    for (width, height, file) in [
+        (1200.0, 840.0, "sidebar-1200x840-1x"),
+        (760.0, 540.0, "sidebar-760x540-1x"),
+    ] {
+        let (_, scene) = gate.capture("ui-new-chat-top", file, width, height, 1.0);
+        let state = gate.app.navigation.as_ref().ok_or("no sidebar")?;
+        let selected = state
+            .selected()
+            .map(|row| row.id)
+            .ok_or("nothing is selected")?;
+        let mut rows: Vec<(f32, &chrome::Chat)> = state
+            .chats
+            .iter()
+            .filter(|row| row.section != chrome::Section::Pinned)
+            .filter_map(|row| {
+                scene
+                    .bounds
+                    .get(&format!("sidebar-chat-{}", row.id))
+                    .map(|rect| (rect.y, row))
+            })
+            .collect();
+        rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((_, top)) = rows.first() else {
+            return Err(format!("the sidebar lays out no chats ({file}.png)"));
+        };
+        if top.id != selected {
+            return Err(format!(
+                "the top row is {:?} (#{}), not the new selected chat #{selected} ({file}.png)",
+                top.title, top.id
+            ));
+        }
+        if let Some(key) = scene
+            .bounds
+            .keys()
+            .find(|key| key.starts_with("project-group-"))
+        {
+            return Err(format!(
+                "the sidebar still has a project header {key} ({file}.png)"
+            ));
+        }
+        seen.push(rows.len());
+    }
+    // Below it, newest first, as the shared order lists the summaries.
+    let summaries = gate.panel().summaries();
+    let listed = openagents_chat_app::chat_list::search(summaries, "");
+    if listed
+        .iter()
+        .find(|row| !row.pinned && !row.archived)
+        .is_none_or(|row| row.id != chat)
+    {
+        return Err("the shared list order does not put the new chat first".into());
+    }
+    let projects = summaries
+        .iter()
+        .filter(|row| row.coder.as_ref().is_some_and(|c| c.project.is_some()))
+        .count();
+    Ok(format!(
+        "the new chat is the selected top row above {} older chats ({projects} in projects) at 1200x840 and 760x540",
+        seen[0].saturating_sub(1)
+    ))
 }
 
 /// "Filter sessions…" hides with fewer than five chats and shows with

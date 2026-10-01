@@ -406,10 +406,7 @@ fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
 fn stack(key: &str, axis: Axis, gap: Space, children: Vec<Node<Intent>>) -> Node<Intent> {
     let mut node = node(key, Element::Stack { axis, children });
     node.style.gap = Some(gap);
-    if key.starts_with("sidebar-group-")
-        || key.starts_with("project-group-")
-        || key == "sidebar-body"
-    {
+    if key.starts_with("sidebar-group-") || key == "sidebar-body" {
         node.style.gap_points = Some(2);
     }
     node
@@ -556,60 +553,11 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         if state.live && matches!(section, Section::OpenAgents | Section::Website) {
             continue;
         }
-        if state.live && section == Section::Recent {
-            // Bound headings as well as chat rows within the semantic node budget.
-            let mut projects = std::collections::BTreeMap::<&str, Vec<&Chat>>::new();
-            for chat in &state.chats {
-                if let Some(project) = state.projects.get(&chat.id) {
-                    projects.entry(project).or_default().push(chat);
-                }
-            }
-            let mut overflow = vec![text("project-more", "More projects", TextRole::Heading)];
-            for (index, (project, chats)) in projects.into_iter().enumerate() {
-                let rows = chats.into_iter().map(|chat| {
-                    action(
-                        &format!("sidebar-chat-{}", chat.id),
-                        if index < 64 {
-                            format!("{}\n{}", chat.title, chat.detail)
-                        } else {
-                            format!("{} · {project}\n{}", chat.title, chat.detail)
-                        },
-                        Action::SelectChat { id: chat.id },
-                        None,
-                        state.page == Page::Chat(chat.id),
-                    )
-                });
-                if index < 64 {
-                    let mut group = vec![text(
-                        &format!("project-{}", groups.len()),
-                        project,
-                        TextRole::Heading,
-                    )];
-                    group.extend(rows);
-                    groups.push(stack(
-                        &format!("project-group-{}", groups.len()),
-                        Axis::Vertical,
-                        Space::Xs,
-                        group,
-                    ));
-                } else {
-                    overflow.extend(rows);
-                }
-            }
-            if overflow.len() > 1 {
-                groups.push(stack(
-                    "project-more-group",
-                    Axis::Vertical,
-                    Space::Xs,
-                    overflow,
-                ));
-            }
-        }
         let closed = state.closed_sections.contains(&section);
         let count = state
             .chats
             .iter()
-            .filter(|chat| chat.section == section && !state.projects.contains_key(&chat.id))
+            .filter(|chat| chat.section == section)
             .count();
         let label = format!(
             "{}  {}  {count}",
@@ -635,13 +583,18 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
                 state
                     .chats
                     .iter()
-                    .filter(|chat| {
-                        chat.section == section && !state.projects.contains_key(&chat.id)
-                    })
+                    .filter(|chat| chat.section == section)
                     .map(|chat| {
+                        // One newest-first list (#10100): a Coder chat's
+                        // project is its row's context line, not a header
+                        // that would sort its old chats above a new one.
+                        let detail = state.projects.get(&chat.id).map_or_else(
+                            || chat.detail.to_owned(),
+                            |project| format!("Coder · {project}"),
+                        );
                         action(
                             &format!("sidebar-chat-{}", chat.id),
-                            format!("{}\n{}", chat.title, chat.detail),
+                            format!("{}\n{detail}", chat.title),
                             Action::SelectChat { id: chat.id },
                             None,
                             state.page == Page::Chat(chat.id),

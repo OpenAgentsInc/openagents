@@ -1245,6 +1245,11 @@ impl Panel {
             self.rows_dirty = true;
         }
     }
+    /// Every conversation's list metadata, as the host last reported it.
+    #[must_use]
+    pub fn summaries(&self) -> &[openagents_chat::basic_chats::Summary] {
+        &self.session.summaries
+    }
     /// The archived chats Settings lists, newest first
     /// ([`openagents_chat_app::chat_list::archived`]).
     pub fn archived(&self) -> Vec<crate::settings::Archived> {
@@ -1289,17 +1294,10 @@ impl Panel {
         state.search = self.search.text().into();
         state.total_chats = self.session.summaries.len();
         state.projects.clear();
-        let mut listed =
-            openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
-        // The sidebar shows project chats inside Recent, so Recent is newest
-        // first across projects: a new chat opens at the top, not below them.
-        listed.sort_by_key(|summary| {
-            (
-                sidebar_rank(summary),
-                std::cmp::Reverse(summary.updated),
-                summary.id.clone(),
-            )
-        });
+        // The shared list order (#10100): Pinned, then Recent newest first
+        // across projects (a project is a label on its row), then Archived,
+        // so a new chat opens at the top, as on the phone.
+        let listed = openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
         for summary in &listed {
             if let openagents_chat_app::chat_list::Group::Project(project) =
                 openagents_chat_app::chat_list::group(summary)
@@ -5435,16 +5433,6 @@ fn coder_asks_first() -> bool {
 }
 
 /// The sidebar section a summary sorts into: pinned, then recent, then archived.
-fn sidebar_rank(summary: &openagents_chat::basic_chats::Summary) -> u8 {
-    if summary.archived {
-        2
-    } else if summary.pinned {
-        0
-    } else {
-        1
-    }
-}
-
 #[cfg(test)]
 mod sidebar_order_tests {
     use super::*;

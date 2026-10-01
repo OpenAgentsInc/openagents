@@ -4070,6 +4070,86 @@ mod chat_management {
         assert_eq!(page(&app), Page::Settings);
     }
 
+    /// #10100: old Coder issue-flow chats in projects ("work on #10058")
+    /// and a new chat with no project: the new chat is the sidebar's top
+    /// row and selected, and every row below is newest first, each Coder row
+    /// naming its project instead of sitting under a project header.
+    #[test]
+    fn a_new_chat_is_the_top_sidebar_row_above_older_project_chats() {
+        let now = Instant::now();
+        let (mut app, mut snapshot) = DesktopApp::performance_fixture(0, 6, now);
+        let projects = [
+            None,
+            Some(("work on #10058", "openagents", 1_000)),
+            Some(("work on #10057", "openagents", 990)),
+            Some(("work on #10060", "openagents-host-tasks", 1_010)),
+            Some(("work on #10061", "openagents-host-tasks", 1_020)),
+            None,
+        ];
+        for (index, (row, project)) in snapshot.chats.iter_mut().zip(projects).enumerate() {
+            if let Some((title, project, updated)) = project {
+                row.title = title.into();
+                row.updated = updated;
+                row.coder = Some(openagents_chat::basic_chats::Spawned {
+                    host: "local".into(),
+                    task: format!("{index:064x}"),
+                    project: Some(project.into()),
+                    at: Some(updated),
+                });
+            } else if index == 0 {
+                row.title = "New chat".into();
+                row.updated = 2_000;
+            } else {
+                row.title = "plain old".into();
+                row.updated = 900;
+            }
+        }
+        snapshot.list_total = 6;
+        snapshot.list_version = 2;
+        app.performance_stream(snapshot, now + std::time::Duration::from_secs(2));
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        let state = app.navigation.as_ref().unwrap();
+        let mut rows: Vec<_> = state
+            .chats
+            .iter()
+            .map(|chat| (scene.bounds[&format!("sidebar-chat-{}", chat.id)].y, chat))
+            .collect();
+        rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let titles: Vec<&str> = rows.iter().map(|(_, chat)| chat.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            [
+                "New chat",
+                "work on #10061",
+                "work on #10060",
+                "work on #10058",
+                "work on #10057",
+                "plain old",
+            ]
+        );
+        assert_eq!(state.selected().map(|chat| chat.id), Some(rows[0].1.id));
+        assert!(
+            !scene
+                .bounds
+                .keys()
+                .any(|key| key.starts_with("project-group-"))
+        );
+        // The project is the Coder row's context line, above its title.
+        let bounds = scene.bounds[&format!("sidebar-chat-{}", rows[1].1.id)];
+        let context = scene.ops.iter().any(|op| {
+            matches!(
+                op,
+                rust_native_desktop::layout::Op::Text { paragraph, x, y, .. }
+                    if paragraph.text == "Coder · openagents-host-tasks"
+                        && *x >= bounds.x
+                        && *x < bounds.x + bounds.w
+                        && *y >= bounds.y
+                        && *y < bounds.y + bounds.h
+            )
+        });
+        assert!(context, "the Coder row does not name its project");
+    }
+
     #[test]
     fn a_512_project_sidebar_keeps_every_chat_within_the_node_budget() {
         let now = Instant::now();
@@ -4094,7 +4174,13 @@ mod chat_management {
                 .count(),
             512
         );
-        assert!(scene.bounds.contains_key("project-more-group"));
+        // One list, no project headers (#10100): each row names its project.
+        assert!(
+            !scene
+                .bounds
+                .keys()
+                .any(|key| key.starts_with("project-group-") || key == "project-more-group")
+        );
         assert!(scene.bounds.len() < rust_native::view::MAX_NODES);
         assert!(scene.ops.len() < 300);
     }
@@ -4675,9 +4761,14 @@ mod command_fixtures {
                         .ops
                         .iter()
                         .find_map(|op| match op {
+                            // The palette's row, not the sidebar's selected
+                            // chat, which shares the color (#10100 put the
+                            // open chat at the top of the sidebar).
                             rust_native_desktop::layout::Op::Fill { rect, color, .. }
                                 if *color == openagents_chat_app::visual::SELECTED
-                                    && rect.w < window.w =>
+                                    && rect.w < window.w
+                                    && rect.x >= window.x - 0.01
+                                    && rect.x + rect.w <= window.x + window.w + 0.01 =>
                             {
                                 Some(*rect)
                             }
