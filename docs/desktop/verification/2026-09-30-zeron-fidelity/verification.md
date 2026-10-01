@@ -1,8 +1,38 @@
 # Zeron chat fidelity verification
 
 Progress on [#10029](https://github.com/OpenAgentsInc/openagents/issues/10029).
-This issue remains open. These slices establish matching component values;
-they do not claim pixel-for-pixel fidelity for the completed screen.
+The [closeout record](closeout.md) maps the acceptance items to evidence and
+lists the remaining mismatches. These slices establish matching component
+values; they do not claim pixel-for-pixel fidelity for the completed screen.
+
+## Palette viewport and titlebar navigation
+
+`ad40a50bef` adds Rust Native `Style.viewport`: a vertical stack shown through
+a bounded window the application scrolls. The desktop adapter clips drawing
+and hit targets to it, clamps the offset, fades each edge that hides content,
+and reports the region. The command palette now follows Zeron's scrolling list
+instead of a window of whole rows: results up to (height − 180) points clamped
+to 100–360, every action and the first 30 matching conversations, 8-point
+insets that scroll with the rows, a 2-point gap, an 18-point edge fade, wheel
+scrolling by points over the results, keyboard reveal with the least movement,
+and hover that never scrolls. While a command overlay is open it owns the wheel,
+so the conversation beneath no longer scrolls behind the scrim.
+
+The titlebar now matches Zeron's cluster: a 24-point sidebar toggle, Back and
+Forward two points apart, and the plus, with groups eight points apart and
+centered 21 points down. The title uses 12-point medium type at 85% and starts
+16 points past the sidebar, followed by the project as a muted target. Back and
+Forward step through visited conversations and pages. New Forward and Plus
+glyphs use the reference artwork.
+
+The viewport, palette, titlebar, and closeout transcript checks pass at both
+window sizes; the palette and titlebar checks also run at 1× and 2×. Captures:
+[titlebar](titlebar-1200x840-1x.png), [titlebar at minimum](titlebar-760x540-2x.png),
+[scrolled palette](palette-scroll-1200x840-1x.png), and
+[scrolled palette at minimum](palette-scroll-760x540-1x.png). Four native runs at
+this commit keep every steady phase below 8.3 ms at p99 with no acquisition
+stall; the cold palette frame still misses in two of three default runs. See the
+[closeout record](closeout.md#native-benchmark).
 
 ## Stable palette hover
 

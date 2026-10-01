@@ -3791,6 +3791,34 @@ mod command_fixtures {
         }
     }
     #[test]
+    fn a_conversation_fits_both_window_sizes_under_the_zeron_titlebar() {
+        // Retained closeout captures of a real transcript (Markdown, inline
+        // code, lists, and a code block) at the default and minimum windows.
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            for scale in [1.0, 2.0] {
+                let (mut app, _) = super::tests::chat_fixture(8);
+                let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+                assert_eq!(scene.bounds["shell-titlebar"].h, 38.0);
+                let transcript = scene
+                    .surface_rect(openagents_desktop::chat::TRANSCRIPT)
+                    .expect("a transcript");
+                let composer = scene.bounds["chat-composer-card"];
+                assert!(transcript.y >= 38.0 && transcript.x + transcript.w <= width);
+                assert!(composer.y + composer.h <= height);
+                if let Some(path) = std::env::var_os("OPENAGENTS_COMMAND_CAPTURE_DIR") {
+                    let path = std::path::PathBuf::from(path);
+                    std::fs::create_dir_all(&path).unwrap();
+                    std::fs::write(
+                        path.join(format!("transcript-{width}x{height}-{scale}x.png")),
+                        frame.png().unwrap(),
+                    )
+                    .unwrap();
+                }
+            }
+        }
+    }
+    #[test]
     fn pointer_motion_and_keys_share_one_palette_selection() {
         let (mut app, now) = super::tests::chat_fixture(0);
         key(&mut app, now, "n", true, false);
