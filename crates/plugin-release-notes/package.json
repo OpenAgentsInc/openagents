@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "release-notes",
+  "name": "Release notes",
+  "summary": "Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit.",
+  "version": "0.1.0",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+  "provenance": "OpenAgents catalog: the release-notes guest (crates/plugin-release-notes), an example plugin (docs/plugins/examples/)",
+  "program": {
+    "name": "release-notes",
+    "digest": "d68c4c00d8f3837f6e6441babc63d2262e42ce2d6114404a9e931cc845fe1382"
+  }
+}

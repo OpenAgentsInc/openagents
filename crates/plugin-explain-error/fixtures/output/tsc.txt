@@ -1,0 +1,4 @@
+$ npx tsc --noEmit
+web/api.ts(7,18): error TS2339: Property 'userID' does not exist on type 'Session'. Did you mean 'userId'?
+
+Found 1 error in web/api.ts:7

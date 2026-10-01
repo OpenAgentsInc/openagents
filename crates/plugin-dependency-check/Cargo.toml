@@ -1,0 +1,17 @@
+[package]
+name = "plugin-dependency-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Dependency-check guest: reads manifests and lockfiles offline and flags duplicate versions, loose ranges, and licenses a declared policy doesn't allow."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

@@ -22,6 +22,7 @@ mod eval;
 mod ext_defaults;
 mod ext_eval;
 mod ext_eval_init;
+mod ext_run;
 mod gym;
 mod hosts;
 mod kb;

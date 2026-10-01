@@ -51,6 +51,7 @@ component or grant a provider access.
 | [TypeSafe opportunities](opportunities.md) | Concrete applications of explicit state and economical semantic operations. |
 | [Delivery and evaluation](delivery.md) | Implementation sequence and acceptance requirements. |
 | [Extension evaluation](evaluation.md) | `openagents plugin test` (also `ext eval`) and the chat product path: suites, graders, the run sandbox, hosted runs, publishing results to the Gym, checks, adoption, and XP credit. |
+| [Example plugins](../plugins/examples/README.md) | Three plugins to copy (Explain this error, Release notes, and Dependency check): Wasm, the workflow that runs it, a test set, and their measured results. |
 | [Optimization architecture](../optimization/architecture.md) | Stable semantic contracts and replaceable inference implementations. |
 
 The [OpenAgents NIPs](../../nips/openagents/README.md) are standalone v1

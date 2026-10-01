@@ -1,0 +1,10 @@
+file:///srv/shop/web/cart.js:4
+  const discount = order.customer.discount;
+                                  ^
+
+TypeError: Cannot read properties of undefined (reading 'discount')
+    at cartTotal (file:///srv/shop/web/cart.js:4:35)
+    at file:///srv/shop/web/checkout.js:12:15
+    at ModuleJob.run (node:internal/modules/esm/module_job:234:25)
+
+Node.js v22.3.0

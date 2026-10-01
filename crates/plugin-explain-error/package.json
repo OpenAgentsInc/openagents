@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "explain-error",
+  "name": "Explain this error",
+  "summary": "Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix.",
+  "version": "0.1.0",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+  "provenance": "OpenAgents catalog: the explain-error guest (crates/plugin-explain-error), an example plugin (docs/plugins/examples/)",
+  "program": {
+    "name": "explain-error",
+    "digest": "9023dc421f1b2261ff041a39994ffd6fb3bc8f25068268c6bced8208b0b0f8ff"
+  }
+}

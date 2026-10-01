@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "dependency-check",
+  "name": "Dependency check",
+  "summary": "Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow.",
+  "version": "0.1.0",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+  "provenance": "OpenAgents catalog: the dependency-check guest (crates/plugin-dependency-check), an example plugin (docs/plugins/examples/)",
+  "program": {
+    "name": "dependency-check",
+    "digest": "98be322da8c851c2725ea4330f197ccc252f207ee904fec06098d52c25788ae3"
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "plugin-release-notes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Release-notes guest: groups a git log into user-facing release notes (breaking changes, features, fixes), each line citing its commit."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

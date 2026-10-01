@@ -1,0 +1,10 @@
+Run python -m pricing.quote --region eu
+Traceback (most recent call last):
+  File "/home/runner/work/shop/shop/pricing/quote.py", line 11, in <module>
+    print(quote(120.0))
+          ^^^^^^^^^^^^
+  File "/home/runner/work/shop/shop/pricing/quote.py", line 7, in quote
+    return round(net * (1 + vat_rate), 2)
+                            ^^^^^^^^
+NameError: name 'vat_rate' is not defined
+Error: Process completed with exit code 1.

@@ -11124,6 +11124,56 @@
           }
         },
         {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "plugin",
+              "run"
+            ],
+            "usage": [
+              "run DIR [--in WORKSPACE] [--request TEXT | --request-file FILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIR"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "in",
+                    "value": "WORKSPACE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "request",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "request-file",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the plugin's workflow once on WORKSPACE through Coder's program runtime, granted reads only, and print its reply.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "test",
           "children": [
             {
@@ -11613,6 +11663,30 @@
           "kind": "option",
           "name": "limit",
           "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "in",
+          "value": "WORKSPACE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "request",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "request-file",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

@@ -287,7 +287,7 @@ fn ran(run: Run) -> Finished {
         (true, [only]) if only.answered() && !only.answer().trim().is_empty() => {
             format!("{}\n\n{}", only.answer().trim(), run.summary())
         }
-        _ => run.summary(),
+        _ => run.reply(),
     };
     Finished {
         reply,

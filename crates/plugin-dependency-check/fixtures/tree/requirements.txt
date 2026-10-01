@@ -1,0 +1,4 @@
+# Runtime dependencies for the reporting job.
+flask
+requests>=2.0
+numpy==1.26.4

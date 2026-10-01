@@ -520,6 +520,44 @@ impl Run {
         tally
     }
 
+    /// What the run's guest rendered for a person: the `markdown` text
+    /// the last `module` step that answered returned in its value, held to
+    /// [`RENDERED_CHARS`]. `None` when the run stopped, or when no guest
+    /// rendered anything, which is every guest that returns data only.
+    #[must_use]
+    pub fn rendered(&self) -> Option<String> {
+        if self.stopped.is_some() {
+            return None;
+        }
+        self.steps
+            .iter()
+            .rev()
+            .filter(|step| step.kind == Kind::Module)
+            .find_map(|step| {
+                let output: Value = serde_json::from_str(&step.output).ok()?;
+                if output.get("status").and_then(Value::as_str) != Some("ok") {
+                    return None;
+                }
+                let text = output.pointer("/value/markdown")?.as_str()?.trim();
+                (!text.is_empty()).then(|| match text.char_indices().nth(RENDERED_CHARS) {
+                    Some((at, _)) => {
+                        format!("{}\n\n[cut at {RENDERED_CHARS} characters]", &text[..at])
+                    }
+                    None => text.to_string(),
+                })
+            })
+    }
+
+    /// The reply a run gives when no delegation answered for it: what its
+    /// guest rendered, when one did, then the summary.
+    #[must_use]
+    pub fn reply(&self) -> String {
+        match self.rendered() {
+            Some(rendered) => format!("{rendered}\n\n{}", self.summary()),
+            None => self.summary(),
+        }
+    }
+
     /// What the run comes to, in the sentence a reader sees last.
     #[must_use]
     pub fn summary(&self) -> String {
@@ -530,6 +568,15 @@ impl Run {
                     "{program} ran {} steps and passed {} independent verification plans.",
                     self.steps.len(),
                     self.verification.len()
+                );
+            }
+            // A run that handed nothing to an executor, such as one whose
+            // steps are Wasm guests, has no delegation tally to report.
+            if self.delegations.is_empty() {
+                let steps = self.steps.len();
+                return format!(
+                    "{program} ran its {steps} step{}.",
+                    if steps == 1 { "" } else { "s" }
                 );
             }
             let tally = self.tally();
@@ -554,6 +601,9 @@ impl Run {
         format!("{program} stopped at {stopped}.")
     }
 }
+
+/// The most characters of a guest's rendering a reply carries.
+pub const RENDERED_CHARS: usize = 16_000;
 
 /// What a step list's run came to.
 ///
@@ -1170,6 +1220,30 @@ impl Runtime {
             .get("profile")
             .and_then(Value::as_str)
             .unwrap_or("pure");
+        request_binding(module).map_err(|reason| Refused::at(&step.name, "malformed", reason))?;
+        if profile == "pure"
+            && (module.contains_key("read_present") || module.contains_key("read_named"))
+        {
+            return Err(Refused::at(
+                &step.name,
+                "scope_invalid",
+                "a pure module step reads nothing, and this step names a read scope",
+            ));
+        }
+        if profile == "snapshot-read" {
+            read_scope(module.get("read_present"))
+                .map_err(|reason| Refused::at(&step.name, "scope_invalid", reason))?;
+            if module
+                .get("read_named")
+                .is_some_and(|named| !named.is_boolean())
+            {
+                return Err(Refused::at(
+                    &step.name,
+                    "scope_invalid",
+                    "read_named is true or false",
+                ));
+            }
+        }
         match (profile, module.get("read")) {
             ("pure", None) => Ok(()),
             ("pure", Some(_)) => Err(Refused::at(
@@ -1198,6 +1272,7 @@ impl Runtime {
         &self,
         step: &Step,
         name: &str,
+        request: &str,
         remaining: Option<Duration>,
     ) -> Result<String, Refused> {
         let unavailable = || {
@@ -1231,14 +1306,30 @@ impl Runtime {
             .and_then(Value::as_str)
             .unwrap_or("echo")
             .to_string();
-        let input = module.get("input").cloned().unwrap_or(Value::Null);
+        let fixed = module.get("input").cloned().unwrap_or(Value::Null);
+        let input = match request_binding(module)
+            .map_err(|reason| Refused::at(name, "malformed", reason))?
+        {
+            Some(key) => plugin::scope::with_request(&fixed, key, request)
+                .map_err(|reason| Refused::at(name, "malformed", reason))?,
+            None => fixed,
+        };
         let limits = self.module_limits(step);
         // A pure guest gets no snapshot and no handles at all.
         let (snapshot, handles) = match profile {
             plugin::Profile::Pure => (plugin::Snapshot::default(), BTreeMap::new()),
             plugin::Profile::SnapshotRead => {
-                let scope = read_scope(module.get("read"))
+                let read = read_scope(module.get("read"))
                     .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+                let present = read_scope(module.get("read_present"))
+                    .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+                let named = module.get("read_named").and_then(Value::as_bool) == Some(true);
+                let scope = plugin::scope::resolve(
+                    &self.survey.workspace,
+                    &read,
+                    &present,
+                    named.then_some(request),
+                );
                 self.grant_snapshot(name, &scope, limits.read_bytes)?
             }
         };
@@ -2464,7 +2555,9 @@ impl Runtime {
                 )),
                 Kind::Module => {
                     let started = Instant::now();
-                    let outcome = self.run_module(step, &name, remaining).await;
+                    let outcome = self
+                        .run_module(step, &name, &ctx.inputs.request, remaining)
+                        .await;
                     self.record_module(step, &name, &outcome, started, ctx.trace.as_deref_mut());
                     outcome
                 }
@@ -4440,11 +4533,18 @@ impl Runtime {
         trace: Option<&mut Recorder>,
     ) {
         let module = step.module.as_ref();
-        let arguments = json!({
+        let mut arguments = json!({
             "operation": module.and_then(|m| m.get("operation")).cloned().unwrap_or(Value::Null),
             "profile": module.and_then(|m| m.get("profile")).cloned().unwrap_or(Value::Null),
             "read": module.and_then(|m| m.get("read")).cloned().unwrap_or(Value::Null),
         });
+        // The request-driven parts of the step, only when it has them, so
+        // the record of a step without them is unchanged.
+        for key in ["read_present", "read_named", "request"] {
+            if let Some(value) = module.and_then(|m| m.get(key)) {
+                arguments[key] = value.clone();
+            }
+        }
         let (output, recorded) = match outcome {
             Ok(output) => (output.clone(), Outcome::Completed),
             Err(refused) => (
@@ -4483,7 +4583,7 @@ impl Runtime {
     fn report(&self, run: &Run, started: Instant, trace: Option<&mut Recorder>) {
         let Some(trace) = trace else { return };
         trace.answer(
-            &run.summary(),
+            &run.reply(),
             None,
             started.elapsed().as_millis() as u64,
             None,
@@ -4500,6 +4600,25 @@ impl Runtime {
 /// program asked for, so a program that forgets to scope its guest shows
 /// an empty listing rather than the whole checkout. `.` names the whole
 /// workspace.
+/// The input field a `module` step's binding hands the run's request to,
+/// when it names one (`request`), as [`plugin::scope::with_request`] puts
+/// it there.
+fn request_binding(module: &Map<String, Value>) -> Result<Option<&str>, String> {
+    match module.get("request") {
+        None => Ok(None),
+        Some(Value::String(key))
+            if !key.is_empty()
+                && key.len() <= 64
+                && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+        {
+            Ok(Some(key.as_str()))
+        }
+        Some(other) => Err(format!(
+            "request names the input field the request goes to, a plain name, and this one is {other}"
+        )),
+    }
+}
+
 fn read_scope(value: Option<&Value>) -> Result<Vec<String>, String> {
     let Some(value) = value else {
         return Ok(Vec::new());
@@ -7887,6 +8006,101 @@ mod tests {
 
     /// A `snapshot-read` guest lists the files its read scope names and
     /// nothing else in the workspace.
+    /// A step that names `request` gets the run's request in its input,
+    /// and one with `read_named` reads the workspace files the request
+    /// names and `read_present` lists, and nothing else; a guest that
+    /// renders `markdown` leads the run's reply with it.
+    #[tokio::test]
+    async fn a_module_step_takes_the_request_and_reads_what_it_names() {
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/billing.rs"), "fn total() {}").unwrap();
+        std::fs::write(root.join("Cargo.lock"), "lock").unwrap();
+        std::fs::write(root.join("secret.txt"), "not named").unwrap();
+        let runtime = workspace_runtime(root);
+        let outline = plugin::encode_base64(&fixture("outline.wasm"));
+        let request = "error[E0308]: mismatched types\n --> src/billing.rs:1:4\nand missing.rs:2";
+        let listing = module_program(
+            json!({
+                "profile": "snapshot-read",
+                "operation": "outline",
+                "read_present": ["Cargo.lock", "package-lock.json"],
+                "read_named": true,
+                "bytes_base64": outline
+            }),
+            json!({}),
+        );
+        runtime
+            .admit(&listing)
+            .expect("a request-scoped reader is admitted");
+        let run = runtime
+            .run(
+                &listing,
+                &Inputs::read(request, "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(
+            output["value"]["entries"],
+            json!(["workspace/Cargo.lock", "workspace/src/billing.rs"])
+        );
+        assert_eq!(
+            run.reply(),
+            run.summary(),
+            "a guest that renders nothing adds nothing"
+        );
+
+        let echo = module_program(
+            json!({
+                "profile": "snapshot-read",
+                "operation": "echo",
+                "request": "text",
+                "input": {"markdown": "**Rendered** by the guest."},
+                "bytes_base64": outline
+            }),
+            json!({}),
+        );
+        let run = runtime
+            .run(
+                &echo,
+                &Inputs::read(request, "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(output["value"]["text"], json!(request));
+        assert_eq!(output["value"]["text_truncated"], json!(false));
+        assert_eq!(
+            run.reply(),
+            format!("**Rendered** by the guest.\n\n{}", run.summary())
+        );
+
+        for (key, value) in [
+            ("request", json!("not a name")),
+            ("request", json!(7)),
+            ("read_named", json!("yes")),
+            ("read_present", json!(["../up"])),
+        ] {
+            let mut module = json!({"profile": "snapshot-read", "bytes_base64": outline});
+            module[key] = value;
+            assert!(
+                runtime.admit(&module_program(module, json!({}))).is_err(),
+                "{key} is checked at admission"
+            );
+        }
+        let pure = module_program(
+            json!({"profile": "pure", "read_named": true, "bytes_base64": outline}),
+            json!({}),
+        );
+        assert!(runtime.admit(&pure).is_err(), "a pure step reads nothing");
+    }
+
     #[tokio::test]
     async fn a_snapshot_read_guest_lists_only_its_granted_files() {
         let workspace = tempfile::tempdir().unwrap();
@@ -8187,7 +8401,7 @@ mod tests {
         // down, so a guest the drop didn't stop would hang this test.
         let outcome = tokio::time::timeout(
             Duration::from_millis(200),
-            runtime.run_module(&step, "spin", None),
+            runtime.run_module(&step, "spin", "", None),
         )
         .await;
         assert!(outcome.is_err(), "the guest was still running");

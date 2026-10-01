@@ -151,7 +151,14 @@ as `limit_exceeded` with `output bytes`. A child program's `module` step is
 held to the same ceilings, and a `program` step can't widen them for it.
 
 A `snapshot-read` step reads only what its `read` field names: a list of
-workspace-relative paths, where `.` names the whole workspace. A step with
+workspace-relative paths, where `.` names the whole workspace. Two more
+fields add to that scope without widening it past the workspace:
+`read_present` lists paths read only when they exist, and `read_named:
+true` adds the files the run's request names, and the files a named saved
+log names, at most 16 (`plugin::scope::resolve`). A step whose binding
+names `request` gets the run's request in that input field, held to
+32 KiB. A guest whose value carries a `markdown` string leads the run's
+reply with it. A step with
 no `read` field is granted nothing and sees an empty listing. The safer
 default is to grant nothing: a program that forgets to scope its guest
 then shows an empty listing, rather than silently handing the guest every
@@ -244,6 +251,14 @@ measures whether an extension changes what Coder does, with and without it:
 - A plugin made in chat is a skill, optionally with catalog plugins
   turned on; `CODER_GUIDANCE` and its digest carry the skill into a run. A
   plugin that needs new code is built with Coder on a connected computer.
+- Three [example plugins](../plugins/examples/README.md) (Explain this
+  error, Release notes, and Dependency check, #10086) join the catalog with
+  their own guests, workflows, and test sets. Their workflows use the
+  `module` binding's request fields: `request` hands the guest what the
+  person asked, and `read_present` and `read_named` grant the files that
+  exist and the files the request names, instead of the whole workspace
+  ([The program runtime](#the-program-runtime)). `openagents plugin run`
+  runs one on a workspace without a model.
 
 ## Evidence guests
 

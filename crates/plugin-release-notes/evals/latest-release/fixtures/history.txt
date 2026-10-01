@@ -1,0 +1,6 @@
+a1b2c3d (HEAD -> main, tag: v3.2.0) feat: add CSV import for contacts
+b2c3d4e fix: keep the cursor position after autosave
+c3d4e5f docs: describe the import format
+d4e5f6a (tag: v3.1.0) feat: add a calendar view
+e5f6a7b fix: stop duplicate reminder emails
+f6a7b8c (tag: v3.0.0) feat!: new storage format

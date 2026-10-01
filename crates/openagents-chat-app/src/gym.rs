@@ -2974,9 +2974,11 @@ fn computer_prompt(run: &str, tool: &str, subject: &SubjectSource, runs: u64) ->
     format!(
         "Run the test set for the plugin {tool} ({id}) with the OpenAgents command line, and tell \
          us how it went. The person started this test from the OpenAgents app on their phone.\n\n\
-         Find the plugin's directory (Project map, Code finder, and Test reader are \
-         crates/plugin-repo-map, crates/plugin-code-search, and crates/plugin-test-report in the \
-         OpenAgents repository), then run:\n\n\
+         Find the plugin's directory (Project map, Code finder, Test reader, Explain this \
+         error, Release notes, and Dependency check are crates/plugin-repo-map, \
+         crates/plugin-code-search, crates/plugin-test-report, crates/plugin-explain-error, \
+         crates/plugin-release-notes, and crates/plugin-dependency-check in the OpenAgents \
+         repository), then run:\n\n\
          openagents ext eval run DIR --trust --grant write --runs {runs} --output-dir {path} \
          --json {path}/result.json\n\n\
          Don't publish anything: the person adds the result to the Gym from their phone. When it \

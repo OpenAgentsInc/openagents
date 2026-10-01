@@ -1,10 +1,12 @@
-//! The checked-in evidence guests, run through [`plugin::invoke`] over their
-//! crates' fixtures, and their build receipts.
+//! The checked-in guests, run through [`plugin::invoke`] over their crates'
+//! fixtures, and their build receipts.
 //!
-//! `scripts/build-plugin-guests.sh` builds `repo-map.wasm`,
-//! `code-search.wasm`, and `test-report.wasm` into `fixtures/`. The receipt
-//! beside each module pins the PDK source, the guest source, and the module
-//! bytes, so an edit to either source without a rebuild fails here.
+//! `scripts/build-plugin-guests.sh` builds the evidence guests
+//! (`repo-map.wasm`, `code-search.wasm`, and `test-report.wasm`) and the
+//! example plugins' tools (`explain-error.wasm`, `release-notes.wasm`, and
+//! `dependency-check.wasm`) into `fixtures/`. The receipt beside each
+//! module pins the PDK source, the guest source, and the module bytes, so
+//! an edit to either source without a rebuild fails here.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -14,7 +16,14 @@ use std::sync::atomic::AtomicBool;
 use plugin::{Entry, GuestValue, HostError, Limits, Profile, Snapshot, invoke};
 use serde_json::{Value, json};
 
-const GUESTS: [&str; 3] = ["repo-map", "code-search", "test-report"];
+const GUESTS: [&str; 6] = [
+    "repo-map",
+    "code-search",
+    "test-report",
+    "explain-error",
+    "release-notes",
+    "dependency-check",
+];
 
 fn crates() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
@@ -71,7 +80,12 @@ fn snapshot(dir: &Path) -> (Snapshot, BTreeMap<String, String>) {
 }
 
 fn run(guest: &str, operation: &str, input: Value) -> Result<GuestValue, HostError> {
-    let (snapshot, handles) = snapshot(&crates().join(format!("plugin-{guest}/fixtures/tree")));
+    run_in(guest, "fixtures/tree", operation, input)
+}
+
+/// Runs `guest` over the files under `dir` in its crate.
+fn run_in(guest: &str, dir: &str, operation: &str, input: Value) -> Result<GuestValue, HostError> {
+    let (snapshot, handles) = snapshot(&crates().join(format!("plugin-{guest}/{dir}")));
     invoke(plugin::Call {
         wasm: &wasm(guest),
         profile: Profile::SnapshotRead,
@@ -133,6 +147,73 @@ fn the_test_report_guest_reads_all_three_formats() {
     assert_eq!(value["failures_total"], 6);
     assert_eq!(value["reports"][0]["failures"][0]["file"], "src/ledger.rs");
     assert_eq!(value["reports"][0]["failures"][0]["line"], 42);
+}
+
+/// The example plugins' tools, as Wasm, under the limits Coder's runtime
+/// holds a step to (the default read, output, and memory budgets).
+fn run_bounded(guest: &str, dir: &str, operation: &str, input: Value) -> Value {
+    let (snapshot, handles) = snapshot(&crates().join(format!("plugin-{guest}/{dir}")));
+    invoke(plugin::Call {
+        wasm: &wasm(guest),
+        profile: Profile::SnapshotRead,
+        invocation: "inv-example",
+        operation,
+        input: &input,
+        snapshot: &snapshot,
+        handles: &handles,
+        limits: Limits {
+            fuel: 50_000_000,
+            ..Limits::default()
+        },
+        cancelled: Arc::new(AtomicBool::new(false)),
+        required: true,
+    })
+    .unwrap_or_else(|error| panic!("{guest}: {error}"))
+    .value
+}
+
+#[test]
+fn the_explain_error_guest_explains_a_traceback_under_coders_limits() {
+    let output = std::fs::read_to_string(
+        crates().join("plugin-explain-error/fixtures/output/python-keyerror.txt"),
+    )
+    .unwrap();
+    let value = run_bounded(
+        "explain-error",
+        "fixtures/tree",
+        "explain",
+        json!({"text": output, "text_truncated": false, "max_frames": 8, "context_lines": 4}),
+    );
+    assert_eq!(value["found"], true);
+    assert_eq!(value["location"]["file"], "shop/billing.py");
+    assert_eq!(value["location"]["line"], 9);
+    assert!(value["markdown"].as_str().unwrap().contains("`quantity`"));
+}
+
+#[test]
+fn the_release_notes_guest_groups_a_saved_log() {
+    let value = run_bounded(
+        "release-notes",
+        "fixtures/logs",
+        "notes",
+        json!({"text": "Release notes from the logs here, please."}),
+    );
+    assert_eq!(value["found"], true);
+    assert_eq!(value["groups"][0]["group"], "breaking");
+    assert!(value["markdown"].as_str().unwrap().contains("(`4f2a9c1`)"));
+}
+
+#[test]
+fn the_dependency_check_guest_checks_its_fixture_project() {
+    let value = run_bounded("dependency-check", "fixtures/tree", "check", json!({}));
+    assert_eq!(value["policy"]["source"], "dependency-policy.toml");
+    assert!(value["findings_total"].as_u64().unwrap() >= 10);
+    assert!(
+        value["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("Duplicate versions")
+    );
 }
 
 #[test]

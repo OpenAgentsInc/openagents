@@ -51,6 +51,14 @@ pub struct ModuleStep {
     pub input: Value,
     /// The workspace-relative read scope.
     pub read: Vec<String>,
+    /// Paths read when they exist (`read_present`).
+    pub read_present: Vec<String>,
+    /// Whether the step also reads the workspace files the request names
+    /// (`read_named`).
+    pub read_named: bool,
+    /// The input field the run's request goes to (`request`), when the
+    /// step takes it.
+    pub request: Option<String>,
     /// The step's declared bounds.
     pub bounds: Value,
 }
@@ -114,17 +122,13 @@ impl ModuleReplayer {
                     snapshot_read: module.get("profile").and_then(Value::as_str)
                         == Some("snapshot-read"),
                     input: module.get("input").cloned().unwrap_or(Value::Null),
-                    read: module
-                        .get("read")
-                        .and_then(Value::as_array)
-                        .map(|items| {
-                            items
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .map(str::to_string)
-                                .collect()
-                        })
-                        .unwrap_or_default(),
+                    read: paths(module.get("read")),
+                    read_present: paths(module.get("read_present")),
+                    read_named: module.get("read_named").and_then(Value::as_bool) == Some(true),
+                    request: module
+                        .get("request")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                     bounds,
                 });
             }
@@ -150,6 +154,32 @@ impl ModuleReplayer {
     pub fn steps(&self) -> &[ModuleStep] {
         &self.steps
     }
+}
+
+/// A binding's list of paths.
+fn paths(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The request a trajectory's run answered: its first user message, which
+/// is the turn's request as Coder's runtime handed it to the program.
+#[must_use]
+pub fn recorded_request(trajectory: &Trajectory) -> Option<String> {
+    trajectory.steps().iter().find_map(|step| {
+        (step.get("source").and_then(Value::as_str) == Some("user"))
+            .then(|| step.get("message").and_then(Value::as_str))
+            .flatten()
+            .map(str::to_string)
+    })
 }
 
 /// The outputs a trajectory recorded for calls named `name`, in order.
@@ -219,8 +249,9 @@ impl ModuleStep {
         }
     }
 
-    /// Reruns the guest on `workspace` and compares with `recorded`.
-    fn replay(&self, workspace: &Path, recorded: &str) -> ReplayVerdict {
+    /// Reruns the guest on `workspace`, with the run's `request`, and
+    /// compares with `recorded`.
+    fn replay(&self, workspace: &Path, request: Option<&str>, recorded: &str) -> ReplayVerdict {
         let Ok(recorded) = serde_json::from_str::<Value>(recorded) else {
             return ReplayVerdict::Unverifiable {
                 reason: "the trajectory recorded no guest output for the call".into(),
@@ -238,9 +269,30 @@ impl ModuleStep {
             "{status} {}",
             plugin::digest(plugin::canonical(value).as_bytes())
         );
+        let needs_request = self.request.is_some() || self.read_named;
+        if needs_request && request.is_none() {
+            return ReplayVerdict::Unverifiable {
+                reason: "the step takes the request, and the trajectory recorded none".into(),
+            };
+        }
+        let input = match &self.request {
+            Some(key) => {
+                match plugin::scope::with_request(&self.input, key, request.unwrap_or_default()) {
+                    Ok(input) => input,
+                    Err(reason) => return ReplayVerdict::Unverifiable { reason },
+                }
+            }
+            None => self.input.clone(),
+        };
         let limits = self.limits();
         let (snapshot, handles) = if self.snapshot_read {
-            match capture(workspace, &self.read, limits.read_bytes) {
+            let scope = plugin::scope::resolve(
+                workspace,
+                &self.read,
+                &self.read_present,
+                if self.read_named { request } else { None },
+            );
+            match capture(workspace, &scope, limits.read_bytes) {
                 Ok(captured) => captured,
                 Err(reason) => return ReplayVerdict::Unverifiable { reason },
             }
@@ -256,7 +308,7 @@ impl ModuleStep {
             },
             invocation: &self.name,
             operation: &self.operation,
-            input: &self.input,
+            input: &input,
             snapshot: &snapshot,
             handles: &handles,
             limits,
@@ -302,9 +354,10 @@ impl Replayer for ModuleReplayer {
         let Some(trajectory) = trajectory else {
             return Ok(Vec::new());
         };
+        let request = recorded_request(trajectory);
         Ok(recorded_outputs(trajectory, &step.name)
             .iter()
-            .map(|recorded| step.replay(workspace, recorded))
+            .map(|recorded| step.replay(workspace, request.as_deref(), recorded))
             .collect())
     }
 }
@@ -563,6 +616,102 @@ mod tests {
             replay("not the guest's output").as_slice(),
             [ReplayVerdict::Unverifiable { .. }]
         ));
+    }
+
+    /// A step that takes the request and reads what it names replays from
+    /// the trajectory's request and the run's workspace, and a run whose
+    /// trajectory holds no request is unverifiable.
+    #[test]
+    fn a_step_that_takes_the_request_replays_from_the_recorded_request() {
+        let outline = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../plugin/fixtures/outline.wasm"
+        ))
+        .unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(workspace.path().join("src")).unwrap();
+        std::fs::write(workspace.path().join("src/app.rs"), "fn main() {}").unwrap();
+        std::fs::write(workspace.path().join("other.rs"), "unnamed").unwrap();
+        let request = "error: oops\n --> src/app.rs:1:4";
+        for operation in ["echo", "outline"] {
+            let program = json!({
+                "definition": {"id": "a:b/guest", "steps": [{"name": "guest", "kind": "module", "bounds": {}}]},
+                "binding": {"steps": {"guest": {"module": {
+                    "profile": "snapshot-read",
+                    "operation": operation,
+                    "request": "text",
+                    "read_named": true,
+                    "input": {"max": 3},
+                    "bytes_base64": plugin::encode_base64(&outline),
+                }}}},
+            });
+            let subject = Subject {
+                slug: "guest".into(),
+                definition: json!({}),
+                package_lock: json!({}),
+                programs: vec![Program {
+                    slug: "guest".into(),
+                    bytes: serde_json::to_vec(&program).unwrap(),
+                }],
+                skills: Vec::new(),
+            };
+            let scope = plugin::scope::resolve(workspace.path(), &[], &[], Some(request));
+            assert_eq!(scope, ["src/app.rs"]);
+            let (snapshot, handles) = capture(workspace.path(), &scope, 65_536).unwrap();
+            let recorded = plugin::invoke(plugin::Call {
+                wasm: &outline,
+                profile: plugin::Profile::SnapshotRead,
+                invocation: "guest",
+                operation,
+                input: &plugin::scope::with_request(&json!({"max": 3}), "text", request).unwrap(),
+                snapshot: &snapshot,
+                handles: &handles,
+                limits: plugin::Limits {
+                    fuel: MODULE_FUEL,
+                    ..plugin::Limits::default()
+                },
+                cancelled: Arc::new(AtomicBool::new(false)),
+                required: true,
+            })
+            .unwrap();
+            let output = json!({"status": recorded.status, "value": recorded.value}).to_string();
+            let session = atif::Session::opening("s", "m", "d", "/w", "0");
+            let asked = atif::Step::said(atif::Source::User, request);
+            let mut ran = atif::Step::said(atif::Source::System, "Ran the guest.");
+            ran.call = Some(atif::Call {
+                id: "c1".into(),
+                name: "guest".into(),
+                arguments: json!({"operation": operation}),
+                output,
+                outcome: atif::Outcome::Completed,
+                milliseconds: 1,
+                purpose: None,
+                extra: serde_json::Map::new(),
+            });
+            let key = RunKey {
+                case: "case",
+                arm: Arm::Subject,
+                attempt: 1,
+            };
+            for (steps, passes) in [(vec![asked, ran.clone()], true), (vec![ran], false)] {
+                let document = atif::document(&session, &steps);
+                let mut replayer = ModuleReplayer::new(&subject);
+                replayer.add_run(
+                    ("case".into(), Arm::Subject, 1),
+                    workspace.path().to_path_buf(),
+                    Some(Trajectory::from_bytes(&serde_json::to_vec(&document).unwrap()).unwrap()),
+                );
+                let verdicts = replayer.replay(key, "guest").unwrap();
+                if passes {
+                    assert_eq!(verdicts, vec![ReplayVerdict::Passed], "{operation}");
+                } else {
+                    assert!(
+                        matches!(verdicts.as_slice(), [ReplayVerdict::Unverifiable { .. }]),
+                        "{operation}: {verdicts:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -563,7 +563,16 @@ fn every_worker_card_renders_in_the_phones_words() {
     );
     assert_eq!(tool.primary.as_ref().unwrap().label, "START THE TEST");
     let others: Vec<&str> = tool.chips.iter().map(|c| c.label.as_str()).collect();
-    assert_eq!(others, ["Code finder", "Test reader"]);
+    assert_eq!(
+        others,
+        [
+            "Code finder",
+            "Test reader",
+            "Explain this error",
+            "Release notes",
+            "Dependency check"
+        ]
+    );
     assert_eq!(
         tool.source.as_deref(),
         Some("From a published result in the Gym.")

@@ -1,0 +1,11 @@
+$ python -m shop.cli orders.csv
+Traceback (most recent call last):
+  File "/srv/app/shop/cli.py", line 14, in <module>
+    main()
+  File "/srv/app/shop/cli.py", line 10, in main
+    print(line_total(row))
+          ^^^^^^^^^^^^^^^
+  File "/srv/app/shop/billing.py", line 9, in line_total
+    return price * row["qty"]
+                   ~~~^^^^^^^
+KeyError: 'qty'

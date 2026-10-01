@@ -1060,6 +1060,26 @@ suite, verifies every byte, refuses unless TARGET is the same plugin
 `3189` citing the original. It prints `confirm` or `dispute` and exits 0
 only on a confirm.
 
+## Running a plugin once (`plugin run`)
+
+```sh
+openagents plugin run crates/plugin-explain-error --in ~/code/shop --request-file failure.txt
+openagents plugin run crates/plugin-dependency-check --in ~/code/shop
+openagents --json plugin run crates/plugin-release-notes --request "$(git log --oneline v1.4.0..v1.5.0)"
+```
+
+`plugin run` (also `ext run`) runs a plugin's workflow once on a workspace
+(default: the current directory) through Coder's program runtime, the step
+a Coder turn takes once it selects the workflow, and prints the reply. The
+request is what you would say to Coder; a workflow that takes it
+(`"request"` in its `module` binding) hands it to its Wasm, and one with
+`"read_named": true` lets the Wasm read the workspace files the request
+names. The grant is the plugin's own workflow with `reads` only: nothing
+writes, delegates, spawns a process, or uses the network, and a workflow
+that needs more is refused before its first step. The read-only smokes of
+the [example plugins](../plugins/examples/README.md) and the release gate's
+`explain-error` scenario use it.
+
 ## MCP server and shell completions
 
 ```sh

@@ -1,0 +1,23 @@
++++
+v = "openagents.eval-case.v1"
+description = "A Go panic with its goroutine trace: the loop that runs past the end is only in the source."
+kind = "should-fire"
+tags = ["go", "panic"]
+
+[run]
+allowed_operations = ["read", "write"]
++++
+
+Our report command panics. Why?
+
+```
+$ go run ./cmd/report
+panic: runtime error: index out of range [3] with length 3
+
+goroutine 1 [running]:
+main.average(...)
+	/home/dev/report/cmd/report/main.go:8
+main.main()
+	/home/dev/report/cmd/report/main.go:14 +0x1d
+exit status 2
+```

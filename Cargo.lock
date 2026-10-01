@@ -8013,12 +8013,29 @@ dependencies = [
  "nostr",
  "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "wasmtime",
  "wat",
 ]
 
 [[package]]
 name = "plugin-code-search"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
+ "serde_json",
+]
+
+[[package]]
+name = "plugin-dependency-check"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
+ "serde_json",
+]
+
+[[package]]
+name = "plugin-explain-error"
 version = "0.1.0"
 dependencies = [
  "plugin-pdk",
@@ -8038,6 +8055,14 @@ name = "plugin-pdk"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "plugin-release-notes"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
  "serde_json",
 ]
 

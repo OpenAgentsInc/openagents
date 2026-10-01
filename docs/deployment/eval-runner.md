@@ -32,9 +32,13 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   `coder-boundary` (`bwrap` on Linux), with the extension admitted and
   without it. The grant is fixed: read and sandbox write, never `exec` or
   `network`, so Coder's shell is off in both arms.
-- **What it admits.** The catalog, the extension directories the operator
-  lists (`EVAL_RUNNER_CATALOG`): today Project map, Code finder, and Test
-  reader under `crates/plugin-*`. A request may name a catalog tool by its
+- **What it admits.** The catalog, the extension directories listed in
+  [`deploy/eval-runner/catalog`](../../deploy/eval-runner/catalog), which
+  `install.sh` turns into `EVAL_RUNNER_CATALOG`: Project map, Code finder,
+  and Test reader, and the example plugins Explain this error, Release
+  notes, and Dependency check
+  ([#10086](https://github.com/OpenAgentsInc/openagents/issues/10086)), all
+  under `crates/plugin-*`. A request may name a catalog tool by its
   extension's DefinitionRef or by the DefinitionRef of the Wasm guest it
   runs, which is how the chat catalog names it. Chat-made tools are a
   skill that may turn on catalog tools. Everything else is refused
@@ -165,9 +169,12 @@ cat ~/.local/libexec/openagents-eval-runner/REVISION
 ```
 
 `install.sh` builds `eval-runner` and `coder` in their own worktree and
-target directory (`~/.cache/openagents/eval-runner`), runs
-`eval-runner check` against the environment file, and restarts the user
-service. The service reads the catalog, the question sets, and the gates
+target directory (`~/.cache/openagents/eval-runner`), writes the catalog
+from `deploy/eval-runner/catalog` to
+`~/.cache/openagents/eval-runner/catalog.env` (the unit reads it after the
+environment file, so the catalog moves with the code and the file that
+holds the keys never changes for it), runs `eval-runner check` against
+both, and restarts the user service. The service reads the catalog, the question sets, and the gates
 from that worktree, so they always match the binaries. The first log lines
 name the runner key, the relay, the catalog, and the agent's digest, then
 `subscribed; requests arrive live from here`.
@@ -190,7 +197,7 @@ from before the adoption can't be checked or validated on the runner
 either, and an adopted tool's own suite reads inconclusive from then on
 (both arms hold it).
 
-## Releasing the starter test sets
+## Releasing a catalog test set
 
 With the environment file loaded, on the runner host:
 
@@ -204,7 +211,9 @@ set -a; . ~/.config/openagents/eval-runner.env; set +a
 
 It uploads each suite's files to the relay's Blossom server and publishes
 one `3184` per suite, and prints each release's event ID. A second run
-reuses the releases. The measured first runs are in
+reuses the releases. A new catalog extension's test set is released the
+same way, naming its directory (for example
+`…/src/crates/plugin-explain-error`). The measured first runs are in
 [the live run](../extensions/measurements/2026-09-29-hosted-runner-live.md).
 
 ## Checking the deployed path

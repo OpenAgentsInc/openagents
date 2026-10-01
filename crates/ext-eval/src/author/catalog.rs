@@ -111,7 +111,7 @@ struct Guest {
 /// (`programs/evidence-guests.json`).
 pub const STARTER_KEY: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-const GUESTS: [Guest; 3] = [
+const GUESTS: [Guest; 6] = [
     Guest {
         name: "Project map",
         summary: "Shows Coder how the project is laid out before it starts.",
@@ -139,12 +139,41 @@ const GUESTS: [Guest; 3] = [
         digest: "sha256:37d024ef86db9c24ea750131dcf621322ed5a7153678f435692f34e6596ce887",
         size: 121_806,
     },
+    Guest {
+        name: "Explain this error",
+        summary: "Finds the line a failing command points at and says why it failed.",
+        words: "Reads a failing command's output (a compiler error, a failing test, or a stack trace) that the request pastes or names in a saved log, finds the file and line in the project it points at, shows the code there, and says the likely cause and a likely fix: the names close to a missing one, the keys a dictionary has, the value that was undefined, a loop that runs one past the end. It runs as a program step and reads only the files the output names. It does not run the command or change code.",
+        step: "explain_error",
+        component: "explain-error",
+        digest: "sha256:3f037b24ce3f60a81f8e126d9e91a55a9ef0607ad4b8ce72f93aee3ae420289e",
+        size: 167_423,
+    },
+    Guest {
+        name: "Release notes",
+        summary: "Turns a list of commits into grouped release notes.",
+        words: "Reads a git log the request pastes or names in a saved file (the default format, --oneline, or --graph) and groups the commits into user-facing release notes: breaking changes, features, fixes, and the rest, each line citing its commit, with merges left out. Conventional Commits types decide the group, then a commit's first word; a commit whose first word says nothing goes under Other changes. Without a FROM..TO range, a decorated log stops at the previous tag. It does not run git.",
+        step: "release_notes",
+        component: "release-notes",
+        digest: "sha256:22f5ca7b2b8f611d75474e9c6b1d520e93916b3eef08e717615bf79a874bf255",
+        size: 123_507,
+    },
+    Guest {
+        name: "Dependency check",
+        summary: "Flags duplicate versions, loose ranges, and licenses your policy rejects.",
+        words: "Reads a project's manifests and lockfiles offline (Cargo, npm, pnpm, Yarn, Python, and Go) and flags packages a lockfile holds at more than one version, dependencies left at any version, with no upper bound, or on a Git branch, and licenses the project's dependency-policy.toml or deny.toml doesn't allow. It checks licenses only where a file records them and says which packages it couldn't check. It does not install, update, or fetch anything.",
+        step: "dependency_check",
+        component: "dependency-check",
+        digest: "sha256:9cfbe8d4f18fc78712e7fe4fc83bbf1293ed222ab28e6f07893998725a8f3841",
+        size: 186_410,
+    },
 ];
 
 impl Catalog {
     /// The starter catalog: Project map, Code finder, and Test reader, the
     /// three evidence guests, pinned to the modules
-    /// `programs/evidence-guests.json` runs.
+    /// `programs/evidence-guests.json` runs, then Explain this error,
+    /// Release notes, and Dependency check, the example plugins, pinned to
+    /// the modules their own programs run.
     ///
     /// # Panics
     ///
@@ -255,16 +284,19 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    /// The starter pins are the modules the evidence-guest program runs.
+    /// The starter pins are the modules the evidence-guest program runs,
+    /// and every tool's pin is the module its own extension's program runs.
     #[test]
-    fn the_starter_pins_match_the_evidence_guest_program() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../programs/evidence-guests.json");
-        let program: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    fn the_starter_pins_match_the_programs_that_run_them() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let program: Value = serde_json::from_slice(
+            &std::fs::read(root.join("programs/evidence-guests.json")).unwrap(),
+        )
+        .unwrap();
         let steps = program["definition"]["steps"].as_array().unwrap();
         let catalog = Catalog::starter();
-        assert_eq!(catalog.tools.len(), steps.len());
-        for (tool, step) in catalog.tools.iter().zip(steps) {
+        assert_eq!(catalog.tools.len(), 6);
+        let pinned = |tool: &Tool, step: &Value| {
             let Source::Existing(definition) = &tool.source else {
                 panic!("a starter tool is existing")
             };
@@ -272,12 +304,30 @@ mod tests {
             assert_eq!(definition.id, step["target"]["id"].as_str().unwrap());
             assert_eq!(
                 definition.artifact.digest,
-                step["target"]["artifact"]["digest"].as_str().unwrap()
+                step["target"]["artifact"]["digest"].as_str().unwrap(),
+                "{}",
+                tool.name
             );
             assert_eq!(
                 definition.artifact.size,
                 step["target"]["artifact"]["size"].as_u64().unwrap()
             );
+        };
+        for (tool, step) in catalog.tools.iter().zip(steps) {
+            pinned(tool, step);
+        }
+        for (tool, guest) in catalog.tools.iter().zip(GUESTS) {
+            let crate_dir = root.join(format!("crates/plugin-{}", guest.component));
+            let package: Value =
+                serde_json::from_slice(&std::fs::read(crate_dir.join("package.json")).unwrap())
+                    .unwrap();
+            let name = package["program"]["name"].as_str().unwrap();
+            let program: Value = serde_json::from_slice(
+                &std::fs::read(crate_dir.join(format!("programs/{name}.json"))).unwrap(),
+            )
+            .unwrap();
+            pinned(tool, &program["definition"]["steps"][0]);
+            assert_eq!(package["name"], tool.name.as_str());
         }
     }
 

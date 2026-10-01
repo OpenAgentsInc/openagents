@@ -40,13 +40,14 @@ by workflows and typed decisions, never by a name a model writes.
 | Project map | Shows Coder how a project is laid out before it starts: its files, languages, largest files, build files, and tests. | [`crates/plugin-repo-map`](../../crates/plugin-repo-map/) |
 | Code finder | Searches a project for up to 16 patterns and shows Coder the matching lines grouped by file. | [`crates/plugin-code-search`](../../crates/plugin-code-search/) |
 | Test reader | Reads a project's test reports (JUnit XML, `cargo test`, or pytest output) and shows Coder each failing test with its file, line, and message. | [`crates/plugin-test-report`](../../crates/plugin-test-report/) |
+| Explain this error | Reads a failing command's output, finds the file and line in your project it points at, shows the code, and says the likely cause and a likely fix. | [`crates/plugin-explain-error`](../../crates/plugin-explain-error/) |
+| Release notes | Groups the commits between two releases into user-facing release notes, each line citing its commit. | [`crates/plugin-release-notes`](../../crates/plugin-release-notes/) |
+| Dependency check | Reads manifests and lockfiles offline and flags duplicate versions, loose version ranges, and licenses your policy doesn't allow. | [`crates/plugin-dependency-check`](../../crates/plugin-dependency-check/) |
 
 Each directory is a complete plugin to copy: `package.json`, a workflow
 under `programs/`, the Wasm crate itself, and a test set under `evals/`.
-More worked examples (Explain this error, Release notes, and Dependency
-check) are being written in
-[#10086](https://github.com/OpenAgentsInc/openagents/issues/10086) and
-will be listed here when they land.
+The last three are [worked examples](examples/README.md) written to be
+copied, each with its test result and a run on a real repository.
 
 ## Make a plugin in chat
 

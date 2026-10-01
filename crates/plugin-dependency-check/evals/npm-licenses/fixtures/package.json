@@ -1,0 +1,10 @@
+{
+  "name": "storefront",
+  "version": "2.3.0",
+  "license": "MIT",
+  "dependencies": {
+    "chart-kit": "^4.1.0",
+    "date-fns": "^3.6.0",
+    "pdf-render": "^1.2.0"
+  }
+}

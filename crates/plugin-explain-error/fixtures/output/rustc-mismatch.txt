@@ -1,0 +1,18 @@
+   Compiling ledger v0.1.0 (/home/dev/ledger)
+error[E0308]: mismatched types
+ --> src/ledger.rs:9:24
+  |
+9 |         let cap: u64 = limit;
+  |                  ---   ^^^^^ expected `u64`, found `&str`
+  |                  |
+  |                  expected due to this
+
+error[E0425]: cannot find value `totl_cents` in this scope
+  --> src/ledger.rs:15:31
+   |
+15 |         format!("{} dollars", totl_cents / 100)
+   |                               ^^^^^^^^^^ help: a local variable with a similar name exists: `total_cents`
+
+Some errors have detailed explanations: E0308, E0425.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `ledger` (lib) due to 2 previous errors

@@ -440,7 +440,7 @@ async fn a_skill_shaped_tool_stays_in_the_interview_and_reaches_a_draft() {
         .into_iter()
         .find(|(id, _)| id == "build")
         .unwrap();
-    assert_eq!(state["catalog"].as_array().unwrap().len(), 3);
+    assert_eq!(state["catalog"].as_array().unwrap().len(), 6);
 }
 
 #[tokio::test]

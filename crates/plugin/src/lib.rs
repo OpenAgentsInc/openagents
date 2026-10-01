@@ -10,6 +10,7 @@
 mod engine;
 mod memory;
 mod replay;
+pub mod scope;
 mod snapshot;
 
 pub use engine::{

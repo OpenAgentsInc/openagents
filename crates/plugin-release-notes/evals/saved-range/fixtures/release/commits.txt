@@ -1,0 +1,28 @@
+commit 9f8e7d6c5b4a39281706f5e4d3c2b1a098765432
+Author: Ada Example <ada@example.com>
+Date:   Tue Sep 29 10:12:01 2026 +0000
+
+    feat(auth): store sessions in Redis
+
+    Sessions moved out of process memory.
+
+    BREAKING CHANGE: SESSION_STORE must now be set.
+
+commit 1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d
+Merge: 2b3c4d5 3c4d5e6
+Author: Ada Example <ada@example.com>
+Date:   Mon Sep 28 16:40:00 2026 +0000
+
+    Merge pull request #88 from acme/retry
+
+commit 2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e
+Author: Lin Example <lin@example.com>
+Date:   Mon Sep 28 15:02:44 2026 +0000
+
+    fix(queue): back off between webhook retries
+
+commit 3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f
+Author: Lin Example <lin@example.com>
+Date:   Sun Sep 27 09:30:10 2026 +0000
+
+    feat(reports): export monthly statements as PDF

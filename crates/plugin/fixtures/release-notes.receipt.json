@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.plugin-build-receipt.v1",
+  "guest": "release-notes",
+  "crate": "plugin-release-notes",
+  "profile": "snapshot-read",
+  "pdk_digest": "sha256:43850828ef08df2014f724f5fac3c4431307d7d6930f837b71f8567090091be9",
+  "source_digest": "sha256:6bb8053156f152f183d63353dde417239f7b3010f3907bd3b88f8d51cdd63834",
+  "guest_digest": "sha256:22f5ca7b2b8f611d75474e9c6b1d520e93916b3eef08e717615bf79a874bf255",
+  "size": 123507,
+  "toolchain": "1.97.1",
+  "target": "wasm32-unknown-unknown",
+  "cargo_profile": "guest",
+  "command": "./scripts/build-plugin-guests.sh"
+}

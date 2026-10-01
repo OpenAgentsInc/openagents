@@ -43,6 +43,18 @@ fi
 (cd "$base/src" && CARGO_TARGET_DIR="$base/target" nice cargo build --release \
   -p eval-runner --bin eval-runner -p coder --bin coder)
 
+# The catalog is tracked in the repository (deploy/eval-runner/catalog), so
+# a deploy carries it: the service reads EVAL_RUNNER_CATALOG from this file
+# after the environment file, which keeps the keys and nothing else that
+# changes with the code.
+catalog=""
+while IFS= read -r line; do
+  case "$line" in ''|'#'*) continue ;; esac
+  catalog="${catalog:+$catalog:}$base/src/$line"
+done < "$base/src/deploy/eval-runner/catalog"
+printf 'EVAL_RUNNER_CATALOG=%s\n' "$catalog" > "$base/catalog.env.new"
+mv "$base/catalog.env.new" "$base/catalog.env"
+
 mkdir -p "$bin" "$units"
 install -m 0755 "$base/target/release/eval-runner" "$bin/eval-runner.new"
 install -m 0755 "$base/target/release/coder" "$bin/coder.new"
@@ -52,7 +64,7 @@ echo "$commit" > "$bin/REVISION"
 install -m 0644 "$base/src/deploy/eval-runner/openagents-eval-runner.service" "$units/"
 systemctl --user daemon-reload
 # Check the configuration before the service takes requests.
-(set -a; . "$env_file"; set +a; "$bin/eval-runner" check)
+(set -a; . "$env_file"; . "$base/catalog.env"; set +a; "$bin/eval-runner" check)
 systemctl --user enable openagents-eval-runner.service
 systemctl --user restart openagents-eval-runner.service
 echo "the eval runner runs $(cat "$bin/REVISION")"

@@ -25,7 +25,10 @@
 #      project, and asserting the window's view tree and captures. The phone
 #      scenario pairs a phone-shaped NIP-HOST client with the host and
 #      presses Run Coder as the phone does.
-#   4. A PASS/FAIL line per scenario, a summary table, and the evidence
+#   4. The gate's own scenarios, run with the build's binaries outside the
+#      window: explain-error runs the Explain this error plugin on a planted
+#      failure through `openagents plugin run`.
+#   5. A PASS/FAIL line per scenario, a summary table, and the evidence
 #      directory. Exit status 1 when any scenario fails, 2 on a setup error.
 #
 # Options:
@@ -82,7 +85,11 @@ usage() { sed -n '2,/^set -uo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,
 die() { echo "acceptance: $*" >&2; exit 2; }
 say() { echo "==> $*" >&2; }
 
-scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips"
+# The desktop driver's scenarios, then the gate's own: ones this script
+# runs itself with the build's binaries, outside the desktop window.
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips"
+gate_scenarios="explain-error"
+scenarios="$desktop_scenarios $gate_scenarios"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -371,15 +378,84 @@ wait_host || die "the host did not answer after autostart_set (see $evidence/hos
 "$coder" host autostart show > "$evidence/autostart.txt" 2>&1 || true
 say "host ready: project $label at $worktree"
 
-# The scenarios, through the build's desktop binary.
 names="$scenarios"
 [ -n "$only" ] && names="${only//,/ }"
+desktop_names=""
+gate_names=""
+for name in $names; do
+  case " $gate_scenarios " in
+    *" $name "*) gate_names="$gate_names $name" ;;
+    *) desktop_names="$desktop_names $name" ;;
+  esac
+done
+desktop_names="${desktop_names# }"
 say "running: $names"
-"$desktop" --acceptance "$evidence" --only "${names// /,}" 2>"$evidence/desktop.log" \
-  | tee "$evidence/desktop.out"
-driver=${PIPESTATUS[0]}
-if [ "$driver" -ne 0 ] && [ "$driver" -ne 1 ]; then
-  record desktop-driver FAIL "the desktop binary's acceptance mode exited $driver (see desktop.log)"
+
+# explain-error: the Explain this error plugin
+# (docs/plugins/examples/explain-this-error.md) on a planted failure,
+# through the build's own `openagents plugin run`, which runs the plugin's
+# workflow in Coder's program runtime with reads only. A Python file with
+# a wrong dictionary key is planted in a scratch project, the build runs
+# it, and the plugin must name the file and line, show the code, and
+# suggest the key the dictionary has.
+explain_error() {
+  local dir="$evidence/explain-error"
+  local project="$H/work/planted-failure"
+  mkdir -p "$dir" "$project"
+  cat > "$project/billing.py" <<'PY'
+"""Tax for an invoice line."""
+RATES = {"standard": 0.2, "reduced": 0.05}
+
+def tax(amount, band):
+    return amount * RATES[band]
+
+if __name__ == "__main__":
+    print(tax(100, "reduce"))
+PY
+  (cd "$project" && python3 billing.py) > "$dir/failure.txt" 2>&1 && {
+    record explain-error FAIL "the planted failure didn't fail"
+    return
+  }
+  "$openagents" --json plugin run "$root/crates/plugin-explain-error" --in "$project" \
+    --request-file "$dir/failure.txt" > "$dir/run.json" 2> "$dir/run.err" || {
+    record explain-error FAIL "openagents plugin run failed: $(tail -1 "$dir/run.err")"
+    return
+  }
+  local verdict
+  verdict="$(python3 - "$dir/run.json" <<'PY'
+import json, sys
+run = json.load(open(sys.argv[1]))
+value = run["steps"][0]["output"]["value"]
+problems = []
+if value.get("location", {}).get("file") != "billing.py" or value["location"].get("line") != 5:
+    problems.append(f"location {value.get('location')}")
+if not any(s.get("name") == "reduced" for s in value.get("suggestions", [])):
+    problems.append(f"suggestions {value.get('suggestions')}")
+if "billing.py:5" not in run.get("reply", "") or "RATES[band]" not in run.get("reply", ""):
+    problems.append("the reply doesn't show the line")
+print("; ".join(problems) if problems else "ok")
+PY
+)"
+  if [ "$verdict" = "ok" ]; then
+    record explain-error PASS "named billing.py:5, showed the line, and suggested the key 'reduced' (run.json)"
+  else
+    record explain-error FAIL "$verdict (run.json)"
+  fi
+}
+for name in $gate_names; do
+  case "$name" in
+    explain-error) explain_error ;;
+  esac
+done
+
+# The scenarios, through the build's desktop binary.
+if [ -n "$desktop_names" ]; then
+  "$desktop" --acceptance "$evidence" --only "${desktop_names// /,}" 2>"$evidence/desktop.log" \
+    | tee "$evidence/desktop.out"
+  driver=${PIPESTATUS[0]}
+  if [ "$driver" -ne 0 ] && [ "$driver" -ne 1 ]; then
+    record desktop-driver FAIL "the desktop binary's acceptance mode exited $driver (see desktop.log)"
+  fi
 fi
 for name in $names; do
   grep -Eq "\"scenario\": ?\"$name\"" "$evidence/results.jsonl" \

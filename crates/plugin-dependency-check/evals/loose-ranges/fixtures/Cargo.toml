@@ -1,0 +1,9 @@
+[package]
+name = "ingest"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+csv = "1.3"
+rand = "*"
+geo-index = { git = "https://github.com/acme/geo-index", branch = "main" }

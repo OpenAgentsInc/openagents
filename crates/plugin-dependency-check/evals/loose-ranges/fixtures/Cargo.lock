@@ -1,0 +1,14 @@
+version = 4
+
+[[package]]
+name = "csv"
+version = "1.3.0"
+
+[[package]]
+name = "geo-index"
+version = "0.1.0"
+source = "git+https://github.com/acme/geo-index?branch=main#4b1c9a0e7d2f3b8c6a5e1d0f9c8b7a6e5d4c3b2a"
+
+[[package]]
+name = "rand"
+version = "0.8.5"

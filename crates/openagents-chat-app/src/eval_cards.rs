@@ -485,8 +485,16 @@ pub fn tool_glyph(name: &str) -> &'static str {
     }
 }
 
-/// The catalog's three tools, as chips name them.
-pub const CATALOG: &[&str] = &["Project map", "Code finder", "Test reader"];
+/// The catalog's tools, as chips name them: the three evidence guests,
+/// then the example plugins.
+pub const CATALOG: &[&str] = &[
+    "Project map",
+    "Code finder",
+    "Test reader",
+    "Explain this error",
+    "Release notes",
+    "Dependency check",
+];
 
 /// A result's headline, by verdict: for a check, whether it held up.
 pub fn verdict_headline(verdict: Verdict3, check: Option<Verdict3>, pilot: bool) -> String {

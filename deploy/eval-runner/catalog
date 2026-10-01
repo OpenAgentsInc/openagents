@@ -1,0 +1,10 @@
+# The hosted eval runner's catalog: the extension directories it tests,
+# relative to the worktree install.sh builds. install.sh turns this list
+# into EVAL_RUNNER_CATALOG (docs/deployment/eval-runner.md), so a deploy
+# carries the catalog with the code. Order is the order the runner lists.
+crates/plugin-repo-map
+crates/plugin-code-search
+crates/plugin-test-report
+crates/plugin-explain-error
+crates/plugin-release-notes
+crates/plugin-dependency-check

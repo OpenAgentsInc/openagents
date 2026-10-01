@@ -96,6 +96,13 @@ or the owner's host.
    `CoderTab::context` builds it, and presses Run Coder as
    `CoderTab::run_coder` does.
 
+7. **The gate's own scenarios.** Some scenarios need no window: the script
+   runs them itself with the build's binaries. `explain-error` plants a
+   failure in a scratch folder under the temporary home, runs it, and hands
+   the output to `openagents plugin run crates/plugin-explain-error`, which runs
+   the plugin's workflow in Coder's program runtime granted reads only. It
+   costs nothing: no model and no engine.
+
 When the scenarios end, the gate gives Coder runs up to four minutes to
 finish, stops any that remain, stops the host, copies the task store's
 journals into the evidence, and deletes the temporary home.
@@ -120,6 +127,7 @@ conversation run in the owner's order.
 | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |
 | `ui-no-verse` | The Verse world never loads while a chat page shows, loads on the Verse page, and is released after. | #10071 |
 | `phone-claude` | A paired phone-shaped client asks "do a test delegation to claude" and presses Run Coder; the computer's run starts on Claude Code. | #10081 |
+| `explain-error` | A gate scenario, outside the window: a Python file with a wrong dictionary key is planted in a scratch project and run, and the build's `openagents plugin run` runs the [Explain this error](../plugins/examples/explain-this-error.md) plugin's workflow on its output with reads only. The plugin names `billing.py:5`, shows the line, and suggests the key the dictionary has. | #10086 |
 
 ## Proof that it catches the owner's bugs
 
@@ -149,10 +157,14 @@ The evidence folder holds:
 
 ## Add a scenario
 
+A scenario that needs no window, such as `explain-error`, is a shell function
+in `scripts/release/acceptance.sh` named in `gate_scenarios`, with a row in
+the table above. Every other scenario drives the window:
+
 1. Add a function to `crates/openagents-desktop/src/acceptance.rs` that drives
    the window the way the person did (`new_chat`, `send`, `follow_run`,
    `capture`) and returns `Ok(evidence)` or `Err(what was wrong)`.
 2. Add its name to `SCENARIOS` and to the `match` in `run`, and to
-   `scenarios` in `scripts/release/acceptance.sh`.
+   `desktop_scenarios` in `scripts/release/acceptance.sh`.
 3. Add a row to the table above that names the issue it guards.
 4. Run it against the build that had the bug, and check that it fails.

@@ -59,6 +59,9 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]
         List published plugin records (NIP-EXT). TYPE is listing (default),
         release, revocation, migration, or checkpoint.
+  run DIR [--in WORKSPACE] [--request TEXT | --request-file FILE]
+        Run the plugin's workflow once on WORKSPACE through Coder's
+        program runtime, granted reads only, and print its reply.
   test run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH]
@@ -91,6 +94,7 @@ for those commands in full.";
 #[cfg(test)]
 pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
+    Declared::computer("run", Effect::ReadOnly),
     crate::ext_eval::EFFECTS[0],
     crate::ext_eval::EFFECTS[1],
     crate::ext_eval::EFFECTS[2],
@@ -163,6 +167,9 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|word| word == "defaults") {
         return crate::ext_defaults::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|word| word == "run") {
+        return crate::ext_run::run(output, &words[1..]);
     }
     run(Group::Ext, output, words)
 }

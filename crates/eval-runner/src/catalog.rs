@@ -284,13 +284,40 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
     }
 
+    /// The catalog's guests, in the order the operator lists them
+    /// (`deploy/eval-runner/catalog`): the three evidence guests, then the
+    /// example plugins' tools.
+    const GUESTS: [&str; 6] = [
+        "repo-map",
+        "code-search",
+        "test-report",
+        "explain-error",
+        "release-notes",
+        "dependency-check",
+    ];
+
     fn starters() -> Catalog {
-        Catalog::load(&[
-            root().join("plugin-repo-map"),
-            root().join("plugin-code-search"),
-            root().join("plugin-test-report"),
-        ])
-        .expect("the starter extensions resolve")
+        let roots: Vec<PathBuf> = GUESTS
+            .iter()
+            .map(|guest| root().join(format!("plugin-{guest}")))
+            .collect();
+        Catalog::load(&roots).expect("the catalog extensions resolve")
+    }
+
+    /// The deployed catalog list names exactly these extensions, in order.
+    #[test]
+    fn the_deployed_catalog_lists_every_catalog_extension() {
+        let listed = std::fs::read_to_string(root().join("../deploy/eval-runner/catalog")).unwrap();
+        let listed: Vec<&str> = listed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        let expected: Vec<String> = GUESTS
+            .iter()
+            .map(|guest| format!("crates/plugin-{guest}"))
+            .collect();
+        assert_eq!(listed, expected);
     }
 
     /// Each starter extension resolves, pins the guest the evidence
@@ -301,12 +328,18 @@ mod tests {
         let catalog = starters();
         let chat = ext_eval::author::catalog::Catalog::starter();
         let names: Vec<&str> = catalog.tools.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, ["Project map", "Code finder", "Test reader"]);
-        for (tool, guest) in catalog
-            .tools
-            .iter()
-            .zip(["repo-map", "code-search", "test-report"])
-        {
+        assert_eq!(
+            names,
+            [
+                "Project map",
+                "Code finder",
+                "Test reader",
+                "Explain this error",
+                "Release notes",
+                "Dependency check"
+            ]
+        );
+        for (tool, guest) in catalog.tools.iter().zip(GUESTS) {
             let wasm = std::fs::read(root().join(format!("plugin/fixtures/{guest}.wasm"))).unwrap();
             assert_eq!(tool.aliases.len(), 1, "{}", tool.name);
             assert_eq!(tool.aliases[0].artifact.digest, digest_bytes(&wasm));

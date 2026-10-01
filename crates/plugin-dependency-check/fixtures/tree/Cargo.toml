@@ -1,0 +1,15 @@
+[package]
+name = "ledger"
+version = "0.3.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+anyhow = ">=1.0"
+rand = "*"
+ledger-core = { git = "https://github.com/acme/ledger-core", branch = "main" }
+local-util = { path = "../util" }
+
+[dev-dependencies]
+proptest = "1.4"

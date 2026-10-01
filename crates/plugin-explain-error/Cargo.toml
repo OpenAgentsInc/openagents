@@ -1,0 +1,17 @@
+[package]
+name = "plugin-explain-error"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Explain-this-error guest: finds the repository file and line a failing command's output points at, shows the code, and names the likely cause and fix."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

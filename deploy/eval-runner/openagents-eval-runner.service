@@ -9,6 +9,9 @@ Type=simple
 # Keys stay in this file (mode 0600) and the runner key file; the service
 # never prints either.
 EnvironmentFile=%h/.config/openagents/eval-runner.env
+# The catalog install.sh writes from deploy/eval-runner/catalog; it comes
+# second, so it overrides an EVAL_RUNNER_CATALOG the file above still has.
+EnvironmentFile=-%h/.cache/openagents/eval-runner/catalog.env
 ExecStart=%h/.local/libexec/openagents-eval-runner/eval-runner serve
 Restart=on-failure
 RestartSec=5

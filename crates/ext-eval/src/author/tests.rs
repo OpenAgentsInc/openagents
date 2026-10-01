@@ -211,7 +211,7 @@ fn the_start_asks_or_hands_off_when_there_is_no_tool_to_test() {
     let turn = interview.start(Pick::Unclear).unwrap_err();
     assert!(
         turn.say
-            .contains("Project map, Code finder, or Test reader"),
+            .contains("Project map, Code finder, Test reader, Explain this error, Release notes, or Dependency check"),
         "{}",
         turn.say
     );

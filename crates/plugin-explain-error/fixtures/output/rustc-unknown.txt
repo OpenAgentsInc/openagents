@@ -1,0 +1,5 @@
+error[E0425]: cannot find value `totl_cents` in this scope
+  --> src/ledger.rs:15:31
+   |
+15 |         format!("{} dollars", totl_cents / 100)
+   |                               ^^^^^^^^^^
