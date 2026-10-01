@@ -1,29 +1,29 @@
 {
   "schema": "openagents.chat-router.calibration.v1",
   "set": "chat-router-v4@ca74e9da5045",
-  "bank": "chat-answers-v1@f1b498639ec6",
+  "bank": "chat-answers-v1@d3ff1e68a58a",
   "created": "2026-10-01",
   "fitted_on": "calibration",
-  "fitted_rows": 295,
+  "fitted_rows": 311,
   "route": {
     "map": {
       "bins": [
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.9220338983050848,
+          "fitted": 0.9228295819935691,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.9220338983050848,
+          "fitted": 0.9228295819935691,
           "count": 0
         },
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.9220338983050848,
+          "fitted": 0.9228295819935691,
           "count": 0
         },
         {
@@ -35,59 +35,59 @@
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.6428571428571429,
-          "count": 6
+          "fitted": 0.6111111111111112,
+          "count": 8
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.65,
-          "count": 9
+          "fitted": 0.6538461538461539,
+          "count": 12
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.6071428571428571,
-          "count": 13
+          "fitted": 0.6818181818181818,
+          "count": 10
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.8055555555555556,
-          "count": 17
+          "fitted": 0.8529411764705882,
+          "count": 16
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.925,
-          "count": 19
+          "fitted": 0.8541666666666666,
+          "count": 23
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9757709251101322,
-          "count": 226
+          "fitted": 0.976890756302521,
+          "count": 237
         }
       ],
-      "base_rate": 0.9220338983050848,
-      "fitted_on": 295
+      "base_rate": 0.9228295819935691,
+      "fitted_on": 311
     },
-    "held_out_items": 230,
+    "held_out_items": 246,
     "raw": {
-      "accuracy": 0.8913043478260869,
-      "ece": 0.03395652173913059,
-      "brier": 0.07169347826086955,
-      "nll": 0.23032729746616087,
-      "confident_errors": 1,
-      "items": 230
+      "accuracy": 0.9065040650406504,
+      "ece": 0.04105691056910565,
+      "brier": 0.06850569105691055,
+      "nll": 0.22213175155734788,
+      "confident_errors": 2,
+      "items": 246
     },
     "calibrated": {
-      "accuracy": 0.8913043478260869,
-      "ece": 0.02475289603352116,
-      "brier": 0.07032033119722525,
-      "nll": 0.22677145368867896,
-      "confident_errors": 3,
-      "items": 230
+      "accuracy": 0.9065040650406504,
+      "ece": 0.031134453012553007,
+      "brier": 0.06637086476699973,
+      "nll": 0.22127344695588763,
+      "confident_errors": 2,
+      "items": 246
     },
     "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
@@ -98,14 +98,14 @@
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.5686274509803921,
+          "fitted": 0.5868544600938967,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.25,
-          "count": 1
+          "fitted": 0.5868544600938967,
+          "count": 0
         },
         {
           "lo": 0.2,
@@ -116,32 +116,32 @@
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.23333333333333334,
-          "count": 14
+          "fitted": 0.2777777777777778,
+          "count": 8
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.15,
-          "count": 29
+          "fitted": 0.25,
+          "count": 37
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.1956521739130435,
-          "count": 22
+          "fitted": 0.3387096774193548,
+          "count": 30
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.325,
-          "count": 19
+          "fitted": 0.21875,
+          "count": 15
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.4642857142857143,
-          "count": 13
+          "fitted": 0.46875,
+          "count": 15
         },
         {
           "lo": 0.8,
@@ -152,31 +152,31 @@
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9583333333333334,
-          "count": 83
+          "fitted": 0.9476744186046512,
+          "count": 85
         }
       ],
-      "base_rate": 0.5686274509803921,
-      "fitted_on": 204
+      "base_rate": 0.5868544600938967,
+      "fitted_on": 213
     },
-    "held_out_items": 169,
+    "held_out_items": 176,
     "raw": {
-      "accuracy": 0.6094674556213018,
-      "ece": 0.13739644970414214,
-      "brier": 0.1619727810650888,
-      "nll": 0.4668012580609655,
-      "confident_errors": 0,
-      "items": 169
+      "accuracy": 0.625,
+      "ece": 0.09738636363636374,
+      "brier": 0.17081477272727272,
+      "nll": 0.4898162149498919,
+      "confident_errors": 2,
+      "items": 176
     },
     "calibrated": {
-      "accuracy": 0.6094674556213018,
-      "ece": 0.08018241513224764,
-      "brier": 0.1448651416529073,
-      "nll": 0.4339161095803447,
-      "confident_errors": 0,
-      "items": 169
+      "accuracy": 0.625,
+      "ece": 0.06529174526789189,
+      "brier": 0.16730191748539214,
+      "nll": 0.4929618125586956,
+      "confident_errors": 2,
+      "items": 176
     },
-    "verdict": "passed",
+    "verdict": "failed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
   }
 }
