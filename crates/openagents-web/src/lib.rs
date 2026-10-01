@@ -4,12 +4,14 @@
 //! page, the terms and the privacy policy, the pairing link's landing page,
 //! and profiles) and the local, read-only task browser at `/app`.
 //!
-//! No page runs a script. Pages that need the production account store
+//! Only the homepage runs a script: its terminal (`static/ask.js`), which
+//! posts questions to [`ask`] (#10106). Pages that need the production account store
 //! read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
 //! without records or secrets. The design follows the private Coder
 //! service's site, reimplemented here.
 
+pub mod ask;
 pub mod backend;
 mod layout;
 mod markdown;
@@ -46,6 +48,14 @@ pub struct Config {
     /// browser answers only the local hosts.
     pub public_hosts: Vec<String>,
     pub backend: Arc<dyn Backend>,
+    /// Where the homepage terminal's questions are answered ([`ask`]).
+    pub chat: Arc<dyn ask::Chat>,
+    /// The server's secret the visitors' signing keys are derived from.
+    /// Random for each process unless set; a deployment with several
+    /// instances sets one, so a visitor keeps one key.
+    pub ask_salt: [u8; 32],
+    /// Whether the visitor cookie is marked `Secure` (served over HTTPS).
+    pub secure_cookies: bool,
 }
 
 impl Config {
@@ -57,6 +67,9 @@ impl Config {
             port: 4300,
             public_hosts: Vec::new(),
             backend: Arc::new(Development),
+            chat: Arc::new(ask::Worker),
+            ask_salt: secp256k1::rand::random(),
+            secure_cookies: false,
         }
     }
 }
@@ -67,6 +80,7 @@ pub(crate) struct App(Arc<Inner>);
 
 pub(crate) struct Inner {
     pub config: Config,
+    pub limits: Arc<ask::Limits>,
 }
 
 impl std::ops::Deref for App {
@@ -78,7 +92,10 @@ impl std::ops::Deref for App {
 
 /// The whole site.
 pub fn router(config: Config) -> Router {
-    let app = App(Arc::new(Inner { config }));
+    let app = App(Arc::new(Inner {
+        config,
+        limits: Arc::default(),
+    }));
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
@@ -87,9 +104,11 @@ pub fn router(config: Config) -> Router {
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
         .route("/static/verse-grid.jpg", get(verse_grid))
+        .route("/static/ask.js", get(ask_script))
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
+        .merge(ask::routes())
         .merge(tasks::routes())
         .fallback(not_found)
         .layer(middleware::from_fn(move |request, next| {
@@ -155,6 +174,18 @@ fn css() -> String {
         palette::root_block(),
         include_str!("../static/site.css")
     )
+}
+
+/// The homepage terminal's script.
+async fn ask_script() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        include_str!("../static/ask.js"),
+    )
+        .into_response()
 }
 
 async fn stylesheet() -> Response {

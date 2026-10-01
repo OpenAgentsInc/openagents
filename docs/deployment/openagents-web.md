@@ -16,9 +16,17 @@ white on near-black instead of four intensities of amber.
 These pages need nothing more than this repository and the public buckets:
 
 - `/`, the homepage: what OpenAgents is, one `[ Install OpenAgents ]` link
-  to `/install`, and a screenshot of the Verse. The terminal-style welcome
-  card and the `/ask` box were removed on 2026-09-29 at the owner's
-  direction.
+  to `/install`, the **Ask OpenAgents** terminal, and a screenshot of the
+  Verse. The old terminal and its `/ask` box were removed on 2026-09-29 and
+  brought back on 2026-10-01 at the owner's direction
+  ([#10106](https://github.com/OpenAgentsInc/openagents/issues/10106)), now
+  on the white theme and tied to the same OpenAgents chat worker the apps
+  use, as the `web` surface: answers and knowledge about OpenAgents only,
+  pointing to `/install` for anything the apps do; never Coder or a
+  computer. `help`, `install`, `docs`, and `clear` are its commands. A
+  deployment with several instances sets `OPENAGENTS_WEB_ASK_SALT` (64 hex
+  characters, a secret) so a visitor keeps one signing key; it needs no
+  model key, since the chat worker holds its own.
 - `/install`: new. The one install page for everything being launched, in
   order: the notarized OpenAgents for Mac `.dmg` in
   `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by

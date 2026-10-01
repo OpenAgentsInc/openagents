@@ -1,5 +1,12 @@
-//! The homepage: what OpenAgents is, one link to `/install`, and a
-//! screenshot of the Verse.
+//! The homepage: what OpenAgents is, one link to `/install`, a terminal to
+//! ask OpenAgents about itself, and a screenshot of the Verse.
+//!
+//! The terminal (#10106) is the one script on the site, `static/ask.js`.
+//! `help`, `install`, `docs`, and `clear` are its commands, matched whole;
+//! any other line is a question for [`crate::ask`], which answers it from
+//! the same OpenAgents chat the apps use, as the website: about OpenAgents
+//! only, never Coder or a computer. Without the script the box says to
+//! turn scripts on and the install link still works.
 //!
 //! The image is the Grid, the OpenAgents Verse world, seen from above as
 //! the desktop app's backdrop draws it, captured from the live relay with
@@ -9,6 +16,7 @@
 
 use axum::Router;
 use axum::extract::State;
+use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use axum::routing::get;
 
@@ -52,6 +60,31 @@ your own machines, and Coder is the one that writes code.</p>",
     out
 }
 
+/// The homepage's policy: the site's, plus its one script and its
+/// questions to `/ask`.
+const HOME_POLICY: &str = "default-src 'none'; style-src 'self'; img-src 'self'; \
+script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
+frame-ancestors 'none'";
+
+/// The terminal: a welcome, the screen the answers land on, and the line
+/// a visitor types into.
+fn terminal() -> &'static str {
+    "<section class=\"box term\" aria-labelledby=\"term-title\">\
+<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>\
+<div class=\"term-screen\" id=\"term-screen\" role=\"log\" aria-live=\"polite\">\
+<p class=\"term-welcome\">Ask us anything about OpenAgents: the apps, Coder, plugins, \
+pricing, or privacy. Coder works on your own computer through the OpenAgents app for Mac. \
+Type <code>help</code> for commands.</p>\
+<noscript><p class=\"dim\">Turn on JavaScript to ask a question here, or \
+<a href=\"/install\">install OpenAgents</a>.</p></noscript></div>\
+<form class=\"term-line\" id=\"term-form\" action=\"/install\" method=\"get\">\
+<label class=\"term-prompt\" for=\"term-input\">&gt;</label>\
+<input id=\"term-input\" name=\"q\" type=\"text\" autocomplete=\"off\" \
+spellcheck=\"false\" maxlength=\"4000\" placeholder=\"Ask about OpenAgents\" \
+aria-label=\"Ask OpenAgents\"></form></section>\
+<script src=\"/static/ask.js\" defer></script>"
+}
+
 /// The Verse screenshot.
 fn grid() -> String {
     format!(
@@ -63,11 +96,16 @@ from above.</figcaption></figure>"
 
 async fn home(State(app): State<App>) -> Response {
     let credit = credit(app.config.backend.new_account_credit_cents());
-    page(
+    let mut response = page(
         "OpenAgents",
         None,
-        &format!("{}{}", intro(credit.as_deref()), grid()),
-    )
+        &format!("{}{}{}", intro(credit.as_deref()), terminal(), grid()),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(HOME_POLICY),
+    );
+    response
 }
 
 #[cfg(test)]

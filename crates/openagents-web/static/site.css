@@ -69,6 +69,23 @@ main:focus{outline:none}
 .intro{margin:0 0 2rem}
 .intro h1{font-size:2rem;margin:0 0 .75rem}
 .lede{color:var(--w100);font-size:1.1rem;max-width:60ch}
+/* The homepage terminal: the screen the answers land on, then the line. */
+.term{padding-bottom:.5rem}
+.term-screen{max-height:min(28rem,55vh);overflow-y:auto;overscroll-behavior:contain;margin:0 0 .75rem}
+.term-screen p{margin:0 0 .5rem}
+.term-welcome{color:var(--w75)}
+.term-said{color:var(--w100);margin-top:1rem!important;white-space:pre-wrap;overflow-wrap:anywhere}
+.term-mark{color:var(--w50)}
+.term-out{color:var(--w75);white-space:pre-wrap}
+.term-answer{color:var(--w75);margin:0 0 .75rem;overflow-wrap:anywhere}
+.term-answer>:last-child{margin-bottom:0}
+.term-error{color:var(--w100);border-left:2px solid var(--w100);padding-left:1ch}
+.term-line{display:flex;align-items:center;gap:1ch;border-top:1px solid var(--w25);padding-top:.6rem}
+.term-prompt{color:var(--w100);font-weight:700}
+.term-line input{flex:1;min-width:0;background:transparent;border:0;color:var(--w100);font:inherit;padding:.25rem 0;caret-color:var(--w100)}
+.term-line input::placeholder{color:var(--w50)}
+.term-line input:focus-visible{outline:none}
+.term-line:focus-within{border-top-color:var(--w50)}
 .shot{margin:0}
 .shot img{display:block;width:100%;height:auto;border:1px solid var(--w25)}
 .shot figcaption{color:var(--w50);font-size:.9rem;margin-top:.5rem}

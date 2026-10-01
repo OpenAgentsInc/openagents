@@ -43,7 +43,8 @@ pub fn offered(leaf: &Leaf, surface: Surface) -> bool {
 #[must_use]
 pub fn runs_on(leaf: &Leaf, surface: Surface) -> RunsOn {
     match surface {
-        Surface::Phone => leaf.runs_on,
+        // The website proposes no command (`gate`); its place is the declared one.
+        Surface::Phone | Surface::Web => leaf.runs_on,
         Surface::Desktop | Surface::Terminal => RunsOn::ThisDevice,
     }
 }

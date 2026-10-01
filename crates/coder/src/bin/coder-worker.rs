@@ -2724,7 +2724,9 @@ fn proposal(seams: &Seams, ask: CliAsk) -> SeamCall {
 /// The exploration dispatch a codebase question escalates to: the
 /// no-computer answer when the device has none, else the explore stem.
 fn explore(bank: &Bank, facts: &router::Facts, turn: &Turn) -> Option<Tier> {
-    if turn.context.computer_ready == Some(false) {
+    // The website offers no Coder run (#10106).
+    if turn.context.computer_ready == Some(false) || turn.context.surface() == router::Surface::Web
+    {
         return None;
     }
     let entry = bank.entry("dispatch.explore_stem")?;

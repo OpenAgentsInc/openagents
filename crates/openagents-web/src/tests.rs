@@ -119,13 +119,25 @@ async fn every_public_page_answers_in_development() {
         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
         let lower = body.to_ascii_lowercase();
         assert!(lower.starts_with("<!doctype html>"), "{uri}");
-        assert!(!lower.contains("<script"), "{uri} runs a script");
+        // The homepage terminal is the site's one script (#10106).
+        let script = uri == "/";
+        assert_eq!(
+            lower.matches("<script").count(),
+            usize::from(script),
+            "{uri} runs a script"
+        );
         assert!(body.contains("href=\"/terms\""), "{uri} links the terms");
         assert!(body.contains("href=\"/privacy\""), "{uri} links the policy");
         assert!(body.contains("class=\"wordmark\""), "{uri} has the header");
         let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
         assert!(policy.starts_with("default-src 'none'"), "{uri}: {policy}");
-        assert!(!policy.contains("script-src"), "{uri}: {policy}");
+        if script {
+            assert!(policy.contains("script-src 'self'"), "{uri}: {policy}");
+            assert!(policy.contains("connect-src 'self'"), "{uri}: {policy}");
+            assert!(!policy.contains("unsafe"), "{uri}: {policy}");
+        } else {
+            assert!(!policy.contains("script-src"), "{uri}: {policy}");
+        }
         assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
     }
 }
@@ -156,7 +168,10 @@ async fn the_homepage_links_one_install_page_and_shows_the_verse() {
         "the download lives on /install"
     );
     assert!(!home.contains("curl ") && !home.contains("irm "));
-    assert!(!home.contains("class=\"terminal\"") && !home.contains("<form"));
+    // The terminal (#10106): its box, its line, and its one script.
+    assert!(home.contains("<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>"));
+    assert!(home.contains("id=\"term-input\""));
+    assert!(home.contains("<script src=\"/static/ask.js\" defer></script>"));
     assert!(home.contains("<img src=\"/static/verse-grid.jpg\""));
     assert!(home.contains("alt=\"The Grid, the OpenAgents Verse world"));
     let (status, headers, image) =
@@ -164,8 +179,18 @@ async fn the_homepage_links_one_install_page_and_shows_the_verse() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
     assert!(image.starts_with(&[0xff, 0xd8, 0xff]), "a JPEG");
-    let (status, _) = get(router(config(root.path().into())), "/ask?q=help").await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "the ask box is gone");
+    let (status, headers, script) =
+        get_with(router(config(root.path().into())), "/static/ask.js", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers[header::CONTENT_TYPE],
+        "text/javascript; charset=utf-8"
+    );
+    assert!(script.contains("fetch(\"/ask\""));
+    assert!(
+        !script.contains("innerHTML = message.text"),
+        "only server-drawn HTML"
+    );
 }
 
 #[tokio::test]
@@ -462,4 +487,123 @@ async fn task_view_escapes_private_content_and_rejects_bad_cursor() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// ---------------------------------------------------------------------
+// The homepage terminal's questions (#10106), answered in process.
+
+struct Answering;
+
+struct AnsweringDoor;
+
+impl openagents_chat::basic_coder::Door for AnsweringDoor {
+    fn ask(
+        &self,
+        turns: Vec<openagents_chat::basic_coder::Turn>,
+        context: openagents_chat::router::Context,
+        reply: Arc<std::sync::Mutex<openagents_chat::basic_coder::Reply>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            // The website asks as itself, with nothing about a computer.
+            let payload = openagents_chat::basic_coder::payload(&turns, &context);
+            assert_eq!(payload["context"]["surface"], "web");
+            assert_eq!(payload["context"]["computer_ready"], false);
+            assert!(payload["context"].get("computer").is_none());
+            assert_eq!(payload["client"], "openagents-web");
+            assert_eq!(
+                payload["instructions"],
+                openagents_chat::basic_coder::INSTRUCTIONS_WEB
+            );
+            let mut reply = openagents_chat::basic_coder::lock(&reply);
+            reply.text = format!("You asked **{}** <b>raw</b>", turns.last().unwrap().text);
+            reply.done = true;
+        })
+    }
+}
+
+impl ask::Chat for Answering {
+    fn door(
+        &self,
+        _secret: secp256k1::SecretKey,
+    ) -> Result<Box<dyn openagents_chat::basic_coder::Door>, String> {
+        Ok(Box::new(AnsweringDoor))
+    }
+}
+
+async fn post_ask(
+    router: Router,
+    body: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, axum::http::HeaderMap, String) {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri("/ask")
+        .header(header::HOST, LOCAL)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        request = request.header(header::COOKIE, cookie);
+    }
+    let response = router
+        .oneshot(request.body(Body::from(body.to_owned())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (status, headers, String::from_utf8_lossy(&body).into_owned())
+}
+
+#[tokio::test]
+async fn a_question_streams_its_answer_as_the_website_and_names_the_visitor() {
+    let root = tempfile::tempdir().unwrap();
+    let mut config = config(root.path().into());
+    config.chat = Arc::new(Answering);
+    let question = json!({"turns": [{"role": "user", "text": "what is OpenAgents?"}]}).to_string();
+    let (status, headers, body) = post_ask(router(config.clone()), &question, None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        headers[header::CONTENT_TYPE],
+        "application/x-ndjson; charset=utf-8"
+    );
+    let cookie = headers[header::SET_COOKIE].to_str().unwrap();
+    assert!(cookie.starts_with("oa_visitor="), "{cookie}");
+    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"));
+    let lines: Vec<serde_json::Value> = body
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let html = lines[0]["html"].as_str().unwrap();
+    assert!(
+        html.contains("<strong>what is OpenAgents?</strong>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("&lt;b&gt;raw&lt;/b&gt;"),
+        "raw HTML shows as text: {html}"
+    );
+    let last = lines.last().unwrap();
+    assert_eq!(last["done"], true);
+    assert_eq!(last["text"], "You asked **what is OpenAgents?** <b>raw</b>");
+    // A visitor the site already named keeps its cookie.
+    let named = cookie.split(';').next().unwrap();
+    let (status, headers, _) = post_ask(router(config), &question, Some(named)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(headers.get(header::SET_COOKIE).is_none());
+}
+
+#[tokio::test]
+async fn a_question_must_end_with_the_visitor() {
+    let root = tempfile::tempdir().unwrap();
+    let mut config = config(root.path().into());
+    config.chat = Arc::new(Answering);
+    for body in [
+        "not json",
+        r#"{"turns":[]}"#,
+        r#"{"turns":[{"role":"assistant","text":"hi"}]}"#,
+        r#"{"turns":[{"role":"user","text":"   "}]}"#,
+        r#"{"turns":[{"role":"system","text":"hi"}]}"#,
+    ] {
+        let (status, _, _) = post_ask(router(config.clone()), body, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
 }

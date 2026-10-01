@@ -92,7 +92,7 @@
 use super::bank::{Bank, Entry, Facts};
 use super::capability::{Capability, Reach};
 use super::judge::Routing;
-use super::{Context, Corpus, Offer, Risk, RouteId, Surface};
+use super::{Context, Corpus, Offer, Risk, RouteFamily, RouteId, Surface};
 use crate::first::Lane;
 
 /// The least `route` probability for a whole prepared answer or `end`.
@@ -633,9 +633,67 @@ fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
     })
 }
 
+/// What the model is told on the website when the turn asked for
+/// something only the OpenAgents app does (#10106).
+pub const WEB_NOTE: &str = "This chat is on the openagents.com website, which only answers \
+questions about OpenAgents. The visitor asked for something the website cannot do (work on \
+code or a computer, a command, a screen, the wallet, an account, or the Gym). Say in one or two \
+sentences that the OpenAgents app does that, and that they can download it at \
+openagents.com/install; answer any question in the message about OpenAgents itself.";
+
 /// The tier for `routing`. See the module documentation for the rules.
+/// On the website ([`Surface::Web`]) it is then held to [`for_web`].
 #[must_use]
 pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+    let tier = decide_anywhere(routing, bank, facts, situation);
+    if situation.context.surface() == Surface::Web {
+        for_web(routing, tier)
+    } else {
+        tier
+    }
+}
+
+/// The website's tiers (#10106): refusals, knowledge, the model, and
+/// prepared answers on the answer routes, each without an offer. Work,
+/// commands, screens, the Gym, decks, and capabilities become the model
+/// told [`WEB_NOTE`], since nothing on the website can act on them.
+#[must_use]
+pub fn for_web(routing: &Routing, tier: Tier) -> Tier {
+    let answers = matches!(
+        routing.route.family(),
+        Some(RouteFamily::Answers | RouteFamily::Boundaries) | None
+    ) && routing.route != RouteId::CapabilityMissing;
+    let web_model = || Tier::Model {
+        lead: None,
+        note: Some(WEB_NOTE),
+    };
+    match tier {
+        Tier::Refuse { .. } => tier,
+        _ if !answers => web_model(),
+        Tier::Grounded { .. } | Tier::Model { .. } => tier,
+        Tier::CannedFinal { answer, text, .. } if !dispatches(&answer) => Tier::CannedFinal {
+            answer,
+            text,
+            offer: None,
+        },
+        Tier::CannedStem {
+            answer,
+            stem,
+            generic_end,
+            personalize,
+            ..
+        } if !dispatches(&answer) => Tier::CannedStem {
+            answer,
+            stem,
+            generic_end,
+            offer: None,
+            personalize,
+        },
+        _ => web_model(),
+    }
+}
+
+fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
     if situation.mode == Mode::Legacy {
         return canned(routing, facts, false).unwrap_or_else(|| model(routing));
     }
@@ -915,6 +973,71 @@ mod tests {
 
     fn router(routing: &Routing) -> Tier {
         decided(routing, &Context::default(), false)
+    }
+
+    fn web() -> Context {
+        Context::of(&serde_json::json!({ "surface": "web" }))
+    }
+
+    /// On the website (#10106) work, commands, and screens become the
+    /// model told [`WEB_NOTE`]; answers, knowledge, and refusals stay,
+    /// without an offer.
+    #[test]
+    fn the_website_answers_and_never_offers() {
+        assert_eq!(web().surface(), Surface::Web);
+        let work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
+        assert!(matches!(
+            router(&work),
+            Tier::CannedStem { offer: Some(_), .. }
+        ));
+        assert_eq!(
+            decided(&work, &web(), true),
+            Tier::Model {
+                lead: None,
+                note: Some(WEB_NOTE)
+            }
+        );
+        let mut cli = routed(RouteId::Cli, 0.95, "cli.offer", 0.9, 0.9);
+        cli.cli_group = Some(("session".to_string(), 0.95));
+        assert!(matches!(router(&cli), Tier::Cli { .. }));
+        assert!(matches!(
+            decided(&cli, &web(), false),
+            Tier::Model {
+                note: Some(WEB_NOTE),
+                ..
+            }
+        ));
+        let wallet = routed(RouteId::Wallet, 0.95, "wallet.receive", 0.95, 0.1);
+        assert!(matches!(
+            decided(&wallet, &web(), false),
+            Tier::Model {
+                note: Some(WEB_NOTE),
+                ..
+            }
+        ));
+        let kb = routed(RouteId::ProductKb, 0.95, "none", 0.0, 0.9);
+        assert!(matches!(
+            decided(&kb, &web(), false),
+            Tier::Grounded {
+                corpus: Corpus::Product,
+                ..
+            }
+        ));
+        let map = routed(RouteId::Meta, 0.95, "meta.map", 0.95, 0.1);
+        match decided(&map, &web(), false) {
+            Tier::CannedFinal { answer, offer, .. } => {
+                assert_eq!(answer.id, "meta.map");
+                assert_eq!(offer, None);
+            }
+            other => panic!("{other:?}"),
+        }
+        let mut secret = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
+        secret.risk = Risk::SecretShared;
+        secret.risk_p = 0.99;
+        assert!(matches!(
+            decided(&secret, &web(), false),
+            Tier::Refuse { .. }
+        ));
     }
 
     /// T0: a sure route and a sure answer of that route, with no

@@ -518,6 +518,11 @@ pub enum Surface {
     Phone,
     Desktop,
     Terminal,
+    /// The terminal on the openagents.com homepage (#10106): answers and
+    /// knowledge only. [`policy::decide`] serves it no offer, card, or
+    /// command, and turns work and screen routes into an answer that points
+    /// to the OpenAgents app.
+    Web,
 }
 
 impl Surface {
@@ -528,13 +533,19 @@ impl Surface {
             Surface::Phone => "phone",
             Surface::Desktop => "desktop",
             Surface::Terminal => "terminal",
+            Surface::Web => "web",
         }
     }
 
     fn parse(word: &str) -> Option<Self> {
-        [Surface::Phone, Surface::Desktop, Surface::Terminal]
-            .into_iter()
-            .find(|surface| surface.word() == word)
+        [
+            Surface::Phone,
+            Surface::Desktop,
+            Surface::Terminal,
+            Surface::Web,
+        ]
+        .into_iter()
+        .find(|surface| surface.word() == word)
     }
 }
 
@@ -1338,7 +1349,7 @@ pub enum CliGate {
 pub fn gate(effect: Effect, surface: Surface) -> CliGate {
     match (effect, surface) {
         (Effect::Spends | Effect::Secret, Surface::Phone) => CliGate::Screen(Screen::Wallet),
-        (Effect::Spends | Effect::Secret, _) => CliGate::Withhold,
+        (Effect::Spends | Effect::Secret, _) | (_, Surface::Web) => CliGate::Withhold,
         (Effect::ReadOnly, _) => CliGate::Offer,
         (Effect::Grants, Surface::Phone) => CliGate::Screen(Screen::AccountComputers),
         (_, Surface::Phone) => CliGate::Withhold,

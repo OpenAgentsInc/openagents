@@ -47,6 +47,9 @@ pub enum Surface {
     Desktop,
     /// The `openagents chat` command running without a host.
     Terminal,
+    /// The terminal on the openagents.com homepage (#10106): answers and
+    /// knowledge only, never Coder, a computer, or an offer.
+    Web,
 }
 impl Surface {
     pub fn word(self) -> &'static str {
@@ -54,6 +57,7 @@ impl Surface {
             Self::Phone => "phone",
             Self::Desktop => "desktop",
             Self::Terminal => "terminal",
+            Self::Web => "web",
         }
     }
 
@@ -63,6 +67,7 @@ impl Surface {
             Self::Phone => "openagents-mobile",
             Self::Desktop => "openagents-desktop",
             Self::Terminal => "openagents-cli",
+            Self::Web => "openagents-web",
         }
     }
 }
