@@ -67,11 +67,14 @@ pub enum Screen {
     /// The Gym in the Verse, at its EVALS board: published results and the
     /// agents' notes (**See the board**).
     VerseGym,
+    /// The desktop app's Map page: the route map (#10085). Sent only to a
+    /// desktop turn.
+    RoutesMap,
 }
 
 impl Screen {
     /// Every screen, in order.
-    pub const ALL: [Screen; 9] = [
+    pub const ALL: [Screen; 10] = [
         Screen::AccountComputers,
         Screen::AccountKeys,
         Screen::AccountPlaytest,
@@ -81,6 +84,7 @@ impl Screen {
         Screen::GymPublish,
         Screen::GymTestSet,
         Screen::VerseGym,
+        Screen::RoutesMap,
     ];
 
     /// The word the wire carries.
@@ -96,6 +100,7 @@ impl Screen {
             Screen::GymPublish => "gym.publish",
             Screen::GymTestSet => "gym.test_set",
             Screen::VerseGym => "verse.gym",
+            Screen::RoutesMap => "routes.map",
         }
     }
 

@@ -166,6 +166,7 @@ pub fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
         Screen::GymResult => ("See your result", Glyph::Check),
         Screen::GymPublish => ("Add to the Gym", Glyph::Add),
         Screen::GymTestSet => ("See the tests", Glyph::Ask),
+        Screen::RoutesMap => ("Open the map", Glyph::Map),
     }
 }
 

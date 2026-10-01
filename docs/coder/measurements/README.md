@@ -6,6 +6,7 @@ Recorded measurements and task-selection studies, with supporting evidence.
 
 | Document | Topic |
 | --- | --- |
+| [2026-10-01-route-map-route](2026-10-01-route-map-route.md) | "Show me how you route things" opens the desktop's route map through `meta.map.desktop` and its typed `routes.map` offer (#10085): the map rows and the published held-out eval, whose per-route record the map reads |
 | [2026-09-30-engine-request](2026-09-30-engine-request.md) | The engine a person names ("Do a test delegation to claude") reaches the dispatch offer and the Coder start (#10076): the engine rows and the published held-out eval |
 | [2026-09-30-delegation-route](2026-09-30-delegation-route.md) | An explicit request to delegate to Coder routes to `work.dispatch`, not a Gym test (#10073): the delegation rows before and after, and the published held-out eval |
 | [2026-09-30-presentation-route](2026-09-30-presentation-route.md) | The chat router's `presentation.open` route (`chat-router-v4`) on the labeled set's held-out split, and the desktop `deck` question on every deck row |

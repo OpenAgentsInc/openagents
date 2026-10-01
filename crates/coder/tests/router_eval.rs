@@ -15,7 +15,8 @@
 //! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
 //! added), `presentation` (the rows `routes-v4.json` added), or
 //! `delegation` (the delegation rows and near misses #10073 added), or
-//! `engine` (the engine requests and near misses #10076 added). Every run
+//! `engine` (the engine requests and near misses #10076 added), or `map`
+//! (asking to see the route map, and its near misses, #10085). Every run
 //! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
@@ -94,11 +95,17 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let presentation = |row: &Row| row.tags.iter().any(|tag| tag == "presentation");
     let delegation = |row: &Row| row.tags.iter().any(|tag| tag == "delegation");
     let engine = |row: &Row| row.tags.iter().any(|tag| tag == "engine");
+    let map = |row: &Row| row.tags.iter().any(|tag| tag == "map");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
                 .filter(|r| {
-                    !gym(r) && !capability(r) && !presentation(r) && !delegation(r) && !engine(r)
+                    !gym(r)
+                        && !capability(r)
+                        && !presentation(r)
+                        && !delegation(r)
+                        && !engine(r)
+                        && !map(r)
                 })
                 .collect(),
             format!("{split}-v1-rows"),
@@ -106,6 +113,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "engine" => (
             rows.into_iter().filter(|r| engine(r)).collect(),
             format!("{split}-engine-rows"),
+        ),
+        "map" => (
+            rows.into_iter().filter(|r| map(r)).collect(),
+            format!("{split}-map-rows"),
         ),
         "gym" => (
             rows.into_iter().filter(|r| gym(r)).collect(),
@@ -187,6 +198,8 @@ async fn run_router(name: &str, mode: router::Mode) {
     };
     let admitted = router::Admitted::of(&tools, &[]);
     let desktop = std::env::var("ROUTER_EVAL_SURFACE").as_deref() == Ok("desktop");
+    // The desktop app's entries (`.desktop` variants, #10085) show only there.
+    let facts = facts.on_desktop(desktop);
     let context = router::Context {
         surface: desktop.then_some(router::Surface::Desktop),
         ..router::Context::default()

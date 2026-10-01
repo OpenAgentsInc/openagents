@@ -745,7 +745,10 @@ impl Context {
     /// computer's name and the project folder in the `chat.*` slots.
     #[must_use]
     pub fn facts(&self, base: &Facts) -> Facts {
-        let mut facts = base.clone().on_computer(self.here());
+        let mut facts = base
+            .clone()
+            .on_computer(self.here())
+            .on_desktop(self.surface() == Surface::Desktop);
         let name = match &self.computer {
             Some(Computer::Here { name, .. }) => name.clone(),
             Some(Computer::Paired { name }) => Some(name.clone()),
@@ -901,11 +904,13 @@ pub enum Screen {
     GymTestSet,
     /// The Gym in the Verse at its EVALS board: **See the board**.
     VerseGym,
+    /// The desktop app's Map page (#10085).
+    RoutesMap,
 }
 
 impl Screen {
     /// Every screen, in order.
-    pub const ALL: [Screen; 9] = [
+    pub const ALL: [Screen; 10] = [
         Screen::AccountComputers,
         Screen::AccountKeys,
         Screen::AccountPlaytest,
@@ -915,6 +920,7 @@ impl Screen {
         Screen::GymPublish,
         Screen::GymTestSet,
         Screen::VerseGym,
+        Screen::RoutesMap,
     ];
 
     /// The word the wire and the bank carry.
@@ -930,6 +936,7 @@ impl Screen {
             Screen::GymPublish => "gym.publish",
             Screen::GymTestSet => "gym.test_set",
             Screen::VerseGym => "verse.gym",
+            Screen::RoutesMap => "routes.map",
         }
     }
 

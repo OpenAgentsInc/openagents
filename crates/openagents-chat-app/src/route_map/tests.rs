@@ -381,8 +381,8 @@ fn route_gaps_from_the_sources() {
     assert!(
         matches!(&unanswered.step, NextStep::Command { command, .. } if command.starts_with("microcoder kb add"))
     );
-    // The committed record predates presentation.open.
-    assert!(gap_on(&map, "route:presentation.open", GapKind::RouteUnmeasured).is_some());
+    // Every route is in the committed per-route record.
+    assert!(!kinds(&map).contains(&GapKind::RouteUnmeasured));
 
     let mut sources = Sources::committed();
     sources.measurement.routes.insert(
@@ -395,6 +395,7 @@ fn route_gaps_from_the_sources() {
         },
     );
     sources.labeled.routes.get_mut("end").unwrap().rows = 3;
+    sources.measurement.routes.remove("presentation.open");
     sources
         .answers
         .retain(|a| !a.routes.iter().any(|r| r == "smalltalk"));
@@ -413,6 +414,7 @@ fn route_gaps_from_the_sources() {
         Health::Weak
     );
     assert!(gap_on(&map, "route:end", GapKind::FewExamples).is_some());
+    assert!(gap_on(&map, "route:presentation.open", GapKind::RouteUnmeasured).is_some());
     assert!(gap_on(&map, "route:smalltalk", GapKind::ModelOnly).is_some());
     let clarify = gap_on(&map, "route:clarify", GapKind::FrequentClarify).unwrap();
     assert!(clarify.detail.contains("8 of your 32 replies"));

@@ -2,8 +2,15 @@
   "schema": "openagents.route-map.records.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs (live_route_map_records)",
   "relay": "wss://relay.openagents.com",
-  "fetched_at": 1790834084,
+  "fetched_at": 1790837387,
   "releases": [
+    {
+      "id": "03a418dcb60731756f55d0e2a64ae82371d009e6f829937ac0177d7b33077ac2",
+      "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:explain-error-tests",
+      "version": "suite-2166530c72e7",
+      "created_at": 1790837084
+    },
     {
       "id": "086f3b7392cd7eb70470af1ffab39004d9c0cf26e8261e85ecb029963b6a449c",
       "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
@@ -12,11 +19,25 @@
       "created_at": 1790667228
     },
     {
+      "id": "15c8f23584b4d5cc5d860dc1c70435daca3bbfad8784199badeca7f57f708180",
+      "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:dependency-check",
+      "version": "0.1.0-16b94f439713",
+      "created_at": 1790837006
+    },
+    {
       "id": "1f896130aaa48adf679d506d1533fad43be6ec3c4f259a9cb00195e07475b449",
       "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:test-reader-tests",
       "version": "suite-e75ed86b8ab2",
       "created_at": 1790705706
+    },
+    {
+      "id": "378df8f45de57c4097bd477f7b915789ee21ab0405e6b395bce0560e0b89334f",
+      "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:release-notes",
+      "version": "0.1.0-fca90fd70d9c",
+      "created_at": 1790836996
     },
     {
       "id": "4aa8599a38a1897763d6228c88b7838310147b40371556cf0e3f2418115f7209",
@@ -31,6 +52,13 @@
       "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:changelog-writer-tests",
       "version": "suite-c375d3b133f5",
       "created_at": 1790675693
+    },
+    {
+      "id": "667af97ebd6c466b69078f34060fb06562a1e3542a6f2e5e4e4101f753b0eab0",
+      "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:explain-error",
+      "version": "0.1.0-8b1d7eab9c89",
+      "created_at": 1790836989
     },
     {
       "id": "680720dd100f96b906a2fdf622e0c363a88539916103291b84e3ec23a8954261",
@@ -68,11 +96,25 @@
       "created_at": 1790668061
     },
     {
+      "id": "a6b800a63b4e463695a0da9bfff7194f21fe385994b6988f8199a7a1310a2b7c",
+      "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:dependency-check-tests",
+      "version": "suite-b3278d756959",
+      "created_at": 1790837219
+    },
+    {
       "id": "c5936ac2fa5a021c00c676aa711455d7dbbca02ea30fc5207c04fa2d881b87e2",
       "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:code-finder-tests",
       "version": "suite-90c7a8fc325c",
       "created_at": 1790705698
+    },
+    {
+      "id": "d53dfd6fff1857689146a23d05519963dc5c0f984798f145fe82eaab9f452cb5",
+      "pubkey": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:release-notes-tests",
+      "version": "suite-f7c1d1b87e26",
+      "created_at": 1790837146
     },
     {
       "id": "e42741c2e8eb567000b78a72a4c0980a4a20bbac45e537deefe092f0ab351d35",

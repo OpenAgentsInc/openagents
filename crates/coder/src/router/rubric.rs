@@ -71,7 +71,9 @@ pub fn route(route: RouteId) -> Value {
              what it costs, message limits, privacy and whether we keep chats, memory, whether \
              we are open source, what Coder or Jev is, and how we work with GitHub or \
              connected computers in general, including asking us to connect, sign in to, or \
-             link GitHub, or asking whether we can do a kind of work for them",
+             link GitHub, or asking whether we can do a kind of work for them; and asking to \
+             see how we route or handle messages or how we are put together: our route map, \
+             our routes, what serves each, our plugins and engines, or where we are weak",
             Some(
                 "Handing us a concrete task in the user's own repository, or asking us to \
                  delegate to Coder or run it now, even as a test (work.dispatch); how to \
@@ -91,6 +93,8 @@ pub fn route(route: RouteId) -> Value {
                 "are you able to help with terraform for our aws setup",
                 "can you help debug my flutter app's login screen?",
                 "who can you delegate to",
+                "can I see a map of how you work",
+                "open the route map",
             ],
         ),
         RouteId::Smalltalk => option(
@@ -151,7 +155,8 @@ pub fn route(route: RouteId) -> Value {
              components or protocols works inside, or why it was designed that way",
             Some(
                 "The user's own code or repository (work.dispatch); how to use a feature \
-                 (product.kb)",
+                 (product.kb); asking to see how we route messages or our route map, rather \
+                 than where its code lives (meta)",
             ),
             &[
                 "where is the chat worker quota implemented",
@@ -244,7 +249,8 @@ pub fn route(route: RouteId) -> Value {
              the user means",
             Some(
                 "A short but clear question or request, including a short question about us \
-                 or this app such as who built it (meta); a short answer to our question while \
+                 or this app such as who built it, or a short request to open our map (meta); \
+                 a short answer to our question while \
                  we make a tool or a test set together (eval.author)",
             ),
             &[
@@ -408,7 +414,8 @@ pub fn route(route: RouteId) -> Value {
                 "Writing, outlining, or advice about a talk or slides (general); opening a \
                  site, another app, or a file, or sharing a screen (capability.missing); \
                  slides or files in the user's own repository (work.dispatch); where our deck \
-                 or slide viewer code lives (codebase.kb)",
+                 or slide viewer code lives (codebase.kb); opening our route map, the map of \
+                 how we route messages (meta)",
             ),
             &[
                 "open the three devdays later deck",

@@ -66,6 +66,11 @@ pub const FACT_KEYS: &[&str] = &[
 /// ([`Bank::placed`]).
 pub const HERE_SUFFIX: &str = ".here";
 
+/// The id suffix of an entry's variant for the desktop app: the entry
+/// `meta.map` answers off it and `meta.map.desktop` in it, where its offer
+/// can open the desktop's own screen (#10085).
+pub const DESKTOP_SUFFIX: &str = ".desktop";
+
 /// Where an entry may be shown (#10077).
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -80,6 +85,11 @@ pub enum Place {
     /// Only in a chat that is not on such a computer: a phone, or a client
     /// that does not say.
     Away,
+    /// Only in the desktop app (the request's `context.surface` is
+    /// `desktop`), for an offer only it can open.
+    Desktop,
+    /// Anywhere but the desktop app: the base of a `.desktop` variant.
+    OffDesktop,
 }
 
 impl Place {
@@ -87,10 +97,19 @@ impl Place {
     /// not, on a computer.
     #[must_use]
     pub fn admits(self, on_computer: bool) -> bool {
+        self.admits_in(on_computer, false)
+    }
+
+    /// Whether an entry with this place may show in a chat that is, or is
+    /// not, on a computer, and is, or is not, in the desktop app.
+    #[must_use]
+    pub fn admits_in(self, on_computer: bool, desktop: bool) -> bool {
         match self {
             Place::Any => true,
             Place::Here => on_computer,
             Place::Away => !on_computer,
+            Place::Desktop => desktop,
+            Place::OffDesktop => !desktop,
         }
     }
 }
@@ -240,7 +259,7 @@ impl Entry {
     /// place, with every slot filled.
     #[must_use]
     pub fn eligible(&self, facts: &Facts) -> bool {
-        self.place.admits(facts.on_computer)
+        self.place.admits_in(facts.on_computer, facts.desktop)
             && (self.render(facts).is_some() || self.stem(facts).is_some())
     }
 
@@ -346,9 +365,15 @@ impl Bank {
     #[must_use]
     pub fn placed(&self, id: &str, facts: &Facts) -> Option<&Entry> {
         facts
-            .on_computer
-            .then(|| self.entry(&format!("{id}{HERE_SUFFIX}")))
+            .desktop
+            .then(|| self.entry(&format!("{id}{DESKTOP_SUFFIX}")))
             .flatten()
+            .or_else(|| {
+                facts
+                    .on_computer
+                    .then(|| self.entry(&format!("{id}{HERE_SUFFIX}")))
+                    .flatten()
+            })
             .or_else(|| self.entry(id))
     }
 
@@ -380,6 +405,9 @@ pub struct Facts {
     /// The chat is on the computer Coder runs on, so entries placed
     /// `away` are not shown and `here` ones are.
     on_computer: bool,
+    /// The chat is in the desktop app, so `desktop` entries are shown and
+    /// `off_desktop` ones are not.
+    desktop: bool,
 }
 
 impl Facts {
@@ -389,6 +417,19 @@ impl Facts {
     pub fn on_computer(mut self, here: bool) -> Self {
         self.on_computer = here;
         self
+    }
+
+    /// The same facts for a chat that is, or is not, in the desktop app.
+    #[must_use]
+    pub fn on_desktop(mut self, desktop: bool) -> Self {
+        self.desktop = desktop;
+        self
+    }
+
+    /// Whether these facts are for a chat in the desktop app.
+    #[must_use]
+    pub fn is_on_desktop(&self) -> bool {
+        self.desktop
     }
 
     /// Whether these facts are for a chat on a computer.
@@ -591,6 +632,23 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
                     push(
                         id,
                         format!("varies {}, which needs place = \"away\"", base.id),
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        // A `.desktop` variant is shown only in the desktop app, beside its
+        // base, which is shown everywhere else.
+        if let Some(base) = id.strip_suffix(DESKTOP_SUFFIX) {
+            if entry.place != Place::Desktop {
+                push(id, "a .desktop variant needs place = \"desktop\"".into());
+            }
+            match bank.entry(base) {
+                None => push(id, format!("varies the unknown entry {base}")),
+                Some(base) if base.place != Place::OffDesktop => {
+                    push(
+                        id,
+                        format!("varies {}, which needs place = \"off_desktop\"", base.id),
                     );
                 }
                 Some(_) => {}
@@ -856,5 +914,30 @@ text = "Hi."
     #[should_panic(expected = "unknown fact key")]
     fn an_unknown_fact_key_is_a_bug() {
         let _ = Facts::default().set("worker.typo", "x");
+    }
+
+    /// The route map's answer (#10085): in the desktop app its variant
+    /// offers the map (`routes.map`); a phone or a terminal gets the line
+    /// that says where it opens, with no offer.
+    #[test]
+    fn the_map_answer_offers_the_map_only_in_the_desktop_app() {
+        let bank = Bank::builtin();
+        let desktop = Facts::default().on_computer(true).on_desktop(true);
+        let placed = bank.placed("meta.map", &desktop).unwrap();
+        assert_eq!(placed.id, "meta.map.desktop");
+        assert!(matches!(
+            placed.offer(),
+            Some(super::super::Offer::OpenScreen {
+                screen: super::super::Screen::RoutesMap,
+                ..
+            })
+        ));
+        assert!(!bank.entry("meta.map").unwrap().eligible(&desktop));
+        for facts in [Facts::default().on_computer(true), Facts::default()] {
+            let placed = bank.placed("meta.map", &facts).unwrap();
+            assert_eq!(placed.id, "meta.map");
+            assert!(placed.offer().is_none());
+            assert!(!bank.entry("meta.map.desktop").unwrap().eligible(&facts));
+        }
     }
 }

@@ -886,6 +886,8 @@ mod tests {
 
     /// Every prepared answer id the set may name.
     const ANSWER_IDS: &[&str] = &[
+        "meta.map",
+        "meta.map.desktop",
         "meta.who",
         "meta.model",
         "meta.jev",

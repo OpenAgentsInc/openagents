@@ -242,6 +242,9 @@ impl Go {
             Screen::VerseGym => Go::VerseGym,
             // The Gym's sheets open inside the chat.
             Screen::GymResult | Screen::GymPublish | Screen::GymTestSet => Go::Gym,
+            // The route map is the desktop app's; the worker offers it
+            // only to a desktop turn, and the phone stays in the chat.
+            Screen::RoutesMap => Go::Chat,
         }
     }
 }

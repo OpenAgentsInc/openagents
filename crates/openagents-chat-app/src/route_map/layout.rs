@@ -224,7 +224,12 @@ impl Camera {
     /// geometrically so the motion looks even.
     #[must_use]
     pub fn toward(&self, to: &Camera, t: f32) -> Camera {
-        let t = t.clamp(0.0, 1.0);
+        if t <= 0.0 {
+            return *self;
+        }
+        if t >= 1.0 {
+            return *to;
+        }
         Camera {
             center: Point::new(
                 self.center.x + (to.center.x - self.center.x) * t,

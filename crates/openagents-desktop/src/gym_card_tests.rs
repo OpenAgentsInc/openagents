@@ -367,3 +367,38 @@ fn a_hosted_run_still_going_is_followed_again_after_a_reopen() {
         [serde_json::json!({"id": "ab".repeat(32)})]
     );
 }
+
+/// The route map's typed offer (#10085): a desktop reply carrying the
+/// router's `open_screen` offer for `routes.map` shows **Open the map**,
+/// whose tap opens the Map page. Nothing reads the reply's words.
+#[test]
+fn the_route_map_offer_opens_the_map_page() {
+    let mut meta = Meta::default();
+    meta.offered(&serde_json::json!({
+        "v": 2,
+        "type": "offer",
+        "offer": "open_screen",
+        "screen": "routes.map",
+        "label": "Open the map",
+    }));
+    assert_eq!(
+        meta.offers,
+        vec![Offer::OpenScreen {
+            screen: Screen::RoutesMap
+        }]
+    );
+    let mut app = chat_with(
+        "Our route map shows how we handle a message: the router that reads it first, each route it can take, what serves each one, and where we're thin.",
+        meta,
+    );
+    rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+    let key = key_of(&app, "Open the map");
+    app.activate(
+        Intent::Chat {
+            action: openagents_desktop::chat_action::Action::Card { key },
+        },
+        Instant::now(),
+    );
+    assert!(app.map_view().is_some(), "the tap opens the Map page");
+    assert_eq!(app.navigation.as_ref().unwrap().page, Page::Map);
+}

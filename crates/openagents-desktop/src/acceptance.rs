@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 13] = [
+pub const SCENARIOS: [&str; 15] = [
     "ui-placeholder",
     "who-are-you",
     "ui-chips",
@@ -52,6 +52,8 @@ pub const SCENARIOS: [&str; 13] = [
     "open-deck",
     "ui-filter-sessions",
     "ui-no-verse",
+    "route-map",
+    "route-map-chat",
     "phone-claude",
 ];
 
@@ -175,6 +177,8 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "open-deck" => open_deck(&mut gate),
             "ui-filter-sessions" => ui_filter(&mut gate),
             "ui-no-verse" => ui_no_verse(&mut gate),
+            "route-map" => route_map(&mut gate),
+            "route-map-chat" => route_map_chat(&mut gate),
             "phone-claude" => phone_claude(&mut gate),
             _ => unreachable!(),
         };
@@ -1249,6 +1253,162 @@ fn ui_no_verse(gate: &mut Gate) -> Outcome {
     Ok(format!(
         "no world on the chat page ({chat:?}); loaded only on the Verse page and released after"
     ))
+}
+
+/// The Map page (#10085): open it from the sidebar's footer, zoom into
+/// `work.dispatch`, inspect Coder, open the Gaps panel, and find
+/// `capability.missing` there as a gap with a next step.
+fn route_map(gate: &mut Gate) -> Outcome {
+    use openagents_chat_app::route_map::GapKind;
+    use openagents_desktop::route_map::{Action as Map, Panel};
+    let now = Instant::now();
+    let previous = gate.app.navigation.as_ref().map(|state| state.page);
+    gate.app.activate(
+        Intent::Navigate {
+            action: chrome::Action::Map,
+        },
+        now,
+    );
+    let _ = gate.capture("route-map", "map-1200x840-1x", 1200.0, 840.0, 1.0);
+    let (_, scene) = gate.capture("route-map", "map-1200x840-1x", 1200.0, 840.0, 1.0);
+    if !scene.bounds.contains_key("route-map-surface") {
+        return Err("the Map page laid out no map surface".into());
+    }
+    let find = |gate: &Gate, id: &str| gate.app.map_view().and_then(|map| map.find(id));
+    let (Some(dispatch), Some(coder)) = (find(gate, "route:work.dispatch"), find(gate, "coder"))
+    else {
+        return Err("the map has no work.dispatch route or no Coder".into());
+    };
+    let map = |gate: &mut Gate, action| {
+        gate.app.activate(Intent::Map { action }, Instant::now());
+        gate.app.settle_map();
+    };
+    let zoom_before = gate.app.map.as_ref().map(|page| page.camera().zoom);
+    map(gate, Map::Select { node: dispatch });
+    let zoom_after = gate.app.map.as_ref().map(|page| page.camera().zoom);
+    let _ = gate.capture("route-map", "work-dispatch-1200x840-1x", 1200.0, 840.0, 1.0);
+    map(gate, Map::Select { node: coder });
+    let (_, scene) = gate.capture(
+        "route-map",
+        "inspector-coder-1200x840-1x",
+        1200.0,
+        840.0,
+        1.0,
+    );
+    let inspected = gate.app.map.as_ref().and_then(|page| page.selected()) == Some(coder)
+        && scene.bounds.contains_key("map-inspector-title");
+    map(gate, Map::Panel { panel: Panel::Gaps });
+    let gap = gate.app.map_view().and_then(|map| {
+        map.gaps
+            .iter()
+            .position(|gap| gap.kind == GapKind::NoPlugin)
+            .map(|index| (index, map.gaps[index].step.label().to_string()))
+    });
+    let (_, scene) = gate.capture("route-map", "gaps-1200x840-1x", 1200.0, 840.0, 1.0);
+    // Leave the map as the scenarios before found the window.
+    if let Some(page) = previous {
+        let action = match page {
+            chrome::Page::Chat(id) => chrome::Action::SelectChat { id },
+            chrome::Page::Settings => chrome::Action::Settings,
+            _ => chrome::Action::NewChat,
+        };
+        gate.app
+            .activate(Intent::Navigate { action }, Instant::now());
+    }
+    let released = gate.app.map_view().is_none();
+    let zoomed = matches!((zoom_before, zoom_after), (Some(a), Some(b)) if b > a);
+    match gap {
+        Some((index, step))
+            if zoomed
+                && inspected
+                && released
+                && scene.bounds.contains_key(&format!("map-gap-{index}")) =>
+        {
+            Ok(format!(
+                "opened from the footer; zoomed into work.dispatch; inspected Coder; capability.missing is a gap with \"{step}\"; released on leaving"
+            ))
+        }
+        Some(_) => Err(format!(
+            "zoomed {zoomed}, inspected Coder {inspected}, gap shown in the panel {}, released {released}",
+            scene.bounds.keys().any(|k| k.starts_with("map-gap-"))
+        )),
+        None => Err("capability.missing is not a gap on the map".into()),
+    }
+}
+
+/// From chat: "show me how you route things" gets the router's typed
+/// `routes.map` offer, whose tap opens the Map page (#10085).
+fn route_map_chat(gate: &mut Gate) -> Outcome {
+    new_chat(gate, "route-map-chat")?;
+    let reply = send(gate, "show me how you route things")?;
+    gate.save_chat("route-map-chat");
+    let offered = reply.meta.as_ref().is_some_and(|meta| {
+        meta.offers.iter().any(|offer| {
+            matches!(
+                offer,
+                openagents_chat::router::Offer::OpenScreen {
+                    screen: openagents_chat::router::Screen::RoutesMap
+                }
+            )
+        })
+    });
+    if !offered {
+        return Err(format!(
+            "no routes.map offer (route {:?}, answer {:?}); reply {:?}",
+            reply.meta.as_ref().and_then(|m| m.route.clone()),
+            reply.meta.as_ref().and_then(|m| m.answer.clone()),
+            excerpt(&reply.text)
+        ));
+    }
+    let _ = gate.capture("route-map-chat", "offer-1200x840-1x", 1200.0, 840.0, 1.0);
+    let key = gate
+        .app
+        .chat
+        .as_ref()
+        .and_then(|panel| {
+            let mut buttons = Vec::new();
+            for row in panel.transcript_rows() {
+                text_buttons(row, &mut buttons);
+            }
+            buttons
+                .into_iter()
+                .find(|(_, label)| label == "Open the map")
+                .map(|(key, _)| key)
+        })
+        .ok_or("the offer shows no Open the map button")?;
+    gate.app.activate(
+        Intent::Chat {
+            action: openagents_desktop::chat_action::Action::Card { key },
+        },
+        Instant::now(),
+    );
+    let opened = gate.app.map_view().is_some();
+    let _ = gate.capture("route-map-chat", "map-1200x840-1x", 1200.0, 840.0, 1.0);
+    gate.app.activate(
+        Intent::Navigate {
+            action: chrome::Action::Back,
+        },
+        Instant::now(),
+    );
+    if opened {
+        Ok(format!(
+            "typed routes.map offer on {:?}; Open the map opened the Map page",
+            reply.meta.as_ref().and_then(|m| m.answer.clone())
+        ))
+    } else {
+        Err("the tap on Open the map did not open the Map page".into())
+    }
+}
+
+/// Every button in a transcript row: its key and label.
+fn text_buttons(node: &rust_native::Node<()>, out: &mut Vec<(String, String)>) {
+    match &node.element {
+        rust_native::Element::Button { label, .. } => out.push((node.key.clone(), label.clone())),
+        rust_native::Element::Stack { children, .. } => {
+            children.iter().for_each(|child| text_buttons(child, out));
+        }
+        _ => {}
+    }
 }
 
 /// A phone-shaped client, paired over NIP-HOST, asks "do a test delegation

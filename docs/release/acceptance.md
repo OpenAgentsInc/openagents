@@ -34,6 +34,7 @@ scripts/release/acceptance.sh --bin-dir "$CARGO_TARGET_DIR/debug"
 | `--evidence DIR` | Where results and evidence go. The default is a new folder under `$TMPDIR`. |
 | `--only NAMES` | Run only these scenarios, comma-separated. `--list` prints the names. |
 | `--allow-missing-engine` | Skip, instead of fail, the scenarios that need an engine whose login is missing. |
+| `--no-engines` | Read no engine login at all (no Codex copy, no Keychain link) and skip the scenarios that need one: for running the UI and chat scenarios alone, such as `--only route-map,route-map-chat`. |
 | `--keep` | Keep the temporary home folder for inspection. |
 
 Each scenario prints `PASS NAME: …`, `FAIL NAME: …`, or `SKIP NAME: …`. The
@@ -126,6 +127,8 @@ conversation run in the owner's order.
 | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |
 | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |
 | `ui-no-verse` | The Verse world never loads while a chat page shows, loads on the Verse page, and is released after. | #10071 |
+| `route-map` | The Map page opens from the sidebar's footer, zooms into `work.dispatch`, inspects Coder, opens the Gaps panel, and shows `capability.missing` as a gap with a next step; leaving releases the page. Offline: no chat message. | #10085 |
+| `route-map-chat` | "show me how you route things" on the desktop gets the router's typed `routes.map` offer, and its **Open the map** opens the Map page. | #10085 |
 | `phone-claude` | A paired phone-shaped client asks "do a test delegation to claude" and presses Run Coder; the computer's run starts on Claude Code. | #10081 |
 | `explain-error` | A gate scenario, outside the window: a Python file with a wrong dictionary key is planted in a scratch project and run, and the build's `openagents plugin run` runs the [Explain this error](../plugins/examples/explain-this-error.md) plugin's workflow on its output with reads only. The plugin names `billing.py:5`, shows the line, and suggests the key the dictionary has. | #10086 |
 

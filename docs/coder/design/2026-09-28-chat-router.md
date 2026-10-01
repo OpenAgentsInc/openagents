@@ -1715,3 +1715,29 @@ The original questions follow.
 9. **Who owns the bank's text?** Proposed: the bank file is reviewed like
    user-facing copy (the owner or a named delegate approves text changes),
    since `AGENTS.md` protects user-facing copy from drive-by edits.
+
+## Opening the route map: `meta.map` (2026-10-01)
+
+Implemented in [#10085](https://github.com/OpenAgentsInc/openagents/issues/10085).
+"Show me how you route things" is a question about us, so it stays on
+`meta`; the route list and the question set's name do not change
+(`chat-router-v4`, its digest moves with the rubric). What changed:
+
+- **The `meta` rubric** covers asking to see how we route or handle
+  messages, how we are put together, our routes, what serves each, our
+  plugins and engines, or where we are weak; `codebase.kb`,
+  `presentation.open`, and `clarify` name it in their `not_for`.
+- **Two bank entries**, a pair like `.here`: `meta.map` (place
+  `off_desktop`) says the route map opens in the desktop app;
+  `meta.map.desktop` (place `desktop`, shown only when the request's
+  `context.surface` is `desktop`) carries a typed `open_screen` offer for
+  `routes.map`, **Open the map**. The bank's new places
+  (`Place::Desktop`, `Place::OffDesktop`) are the `.desktop` variant's
+  rule, which the lint checks as it checks `.here`; `Bank::placed` picks
+  the desktop variant first.
+- **The wire.** NIP-CJ's `open_screen` adds `routes.map`; the desktop
+  opens its Map page on the tap; the phone never gets it and stays in the
+  chat if it did.
+- **The labeled set** adds 22 rows tagged `map` (14 asking to see the map,
+  8 near misses), and calibration is refit for the moved bank. Numbers:
+  [the route map measurement](../measurements/2026-10-01-route-map-route.md).

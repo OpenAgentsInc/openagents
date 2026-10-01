@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "3a8b153c70f98b0dad59a956c73cbe898bd2b51b1c468fa59c963401471b7479",
+  "digest": "06f04cc50bea5f7b606d36970c81d8850b7a0c83012b43dd6a1c8c39fbed7093",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -15174,6 +15174,402 @@
           {
             "role": "user",
             "text": "ask GPT what it thinks of rust"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me how you route things",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me how you route things"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can I see a map of how you work",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "can I see a map of how you work"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how are you put together? show me the whole thing",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how are you put together? show me the whole thing"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "open the route map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "open the route map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me your routes",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me your routes"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "which plugins and engines do you have, show me the map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "which plugins and engines do you have, show me the map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "where are you weak? what should we fill in to make you better",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "where are you weak? what should we fill in to make you better"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "visualize how a message gets handled",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "visualize how a message gets handled"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "muéstrame el mapa de cómo diriges los mensajes",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "muéstrame el mapa de cómo diriges los mensajes"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me the map of your routes and gaps",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me the map of your routes and gaps"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's missing in openagents right now, show me the gaps",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's missing in openagents right now, show me the gaps"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "draw the composition: the router, the routes, and what serves them",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "draw the composition: the router, the routes, and what serves them"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "open the map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "open the map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how do you decide where my message goes? show me the map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how do you decide where my message goes? show me the map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-near-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is jev",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is jev"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-near-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what can you do for me",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what can you do for me"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/presentation.open/map-near-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "open the test-time capabilities deck",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "open the test-time capabilities deck"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "presentation.open",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/map-near-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "map out the folders in my repo and tell me what each does",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "map out the folders in my repo and tell me what each does"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/map-near-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "draw me a map of europe in ascii",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "draw me a map of europe in ascii"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/codebase.kb/map-near-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "where is the router's route rubric defined in the code",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "where is the router's route rubric defined in the code"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "codebase.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.author/map-near-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "help me make a plugin that writes release notes",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "help me make a plugin that writes release notes"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.author",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/map-near-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how do routers decide where to send network packets",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how do routers decide where to send network packets"
           }
         ],
         "repo_members": []

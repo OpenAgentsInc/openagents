@@ -4,7 +4,7 @@
 # runbook and the scenario list.
 #
 #   scripts/release/acceptance.sh [--app PATH | --bin-dir DIR] [--evidence DIR]
-#                                 [--only NAME[,NAME...]] [--allow-missing-engine]
+#                                 [--only NAME[,NAME...]] [--allow-missing-engine] [--no-engines]
 #                                 [--keep] [--list]
 #
 # What it runs, never touching the real home or its stores:
@@ -48,6 +48,9 @@
 #   --allow-missing-engine
 #                      A missing Codex or Claude Code login skips the
 #                      scenarios that need it instead of failing them.
+#   --no-engines       Read no engine login at all (no Codex copy, no
+#                      Keychain link) and skip the scenarios that need one:
+#                      for the UI and chat scenarios alone.
 #   --keep             Keep the temporary HOME (its path is printed).
 #   -h, --help         This text.
 #
@@ -87,7 +90,7 @@ say() { echo "==> $*" >&2; }
 
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
-desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips"
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
 gate_scenarios="explain-error"
 scenarios="$desktop_scenarios $gate_scenarios"
 
@@ -98,6 +101,7 @@ while [ $# -gt 0 ]; do
     --evidence) evidence="${2:?--evidence needs a directory}"; shift 2 ;;
     --only) only="${2:?--only needs scenario names}"; shift 2 ;;
     --allow-missing-engine) allow_missing=1; shift ;;
+    --no-engines) no_engines=1; allow_missing=1; shift ;;
     --keep) keep=1; shift ;;
     --list) for s in $scenarios; do echo "$s"; done; exit 0 ;;
     -h|--help) usage; exit 0 ;;
@@ -226,7 +230,9 @@ say "build under test: $desktop"
 # Engine logins, read-only.
 codex_ok=0
 claude_ok=0
-if [ -f "$real_home/.codex/auth.json" ]; then
+if [ "${no_engines:-0}" = 1 ]; then
+  say "no engine logins read (--no-engines); scenarios needing one are skipped"
+elif [ -f "$real_home/.codex/auth.json" ]; then
   # A private copy, never a link, so nothing a run does reaches the real
   # login. Nothing refreshes it; it goes with the scratch home.
   mkdir -p "$H/.codex"
@@ -236,7 +242,7 @@ if [ -f "$real_home/.codex/auth.json" ]; then
   codex_ok=1
 fi
 claude_bin="$(command -v claude || true)"
-if [ -n "$claude_bin" ] && [ -f "$real_home/.claude.json" ] \
+if [ "${no_engines:-0}" != 1 ] && [ -n "$claude_bin" ] && [ -f "$real_home/.claude.json" ] \
   && /usr/bin/security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
   mkdir -p "$H/Library"
   ln -s "$real_home/Library/Keychains" "$H/Library/Keychains"

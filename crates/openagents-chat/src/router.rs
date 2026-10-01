@@ -334,6 +334,8 @@ pub enum Screen {
     GymPublish,
     /// The test set of the conversation's card or draft (`SCR-21`).
     GymTestSet,
+    /// The desktop app's Map page (#10085).
+    RoutesMap,
 }
 
 impl Screen {
@@ -350,6 +352,7 @@ impl Screen {
             Self::GymResult => "gym.result",
             Self::GymPublish => "gym.publish",
             Self::GymTestSet => "gym.test_set",
+            Self::RoutesMap => "routes.map",
         }
     }
 
@@ -365,6 +368,7 @@ impl Screen {
             "gym.result" => Screen::GymResult,
             "gym.publish" => Screen::GymPublish,
             "gym.test_set" => Screen::GymTestSet,
+            "routes.map" => Screen::RoutesMap,
             _ => return None,
         })
     }

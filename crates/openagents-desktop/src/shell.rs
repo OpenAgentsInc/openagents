@@ -1007,6 +1007,8 @@ impl App for DesktopApp {
                     Screen::Computers => Some(chrome::Action::Computers),
                     Screen::Keys => Some(chrome::Action::Settings),
                     Screen::VerseGym => Some(chrome::Action::Grid),
+                    // The route map's typed `open_screen` offer (#10085).
+                    Screen::RoutesMap => Some(chrome::Action::Map),
                     _ => None,
                 };
                 if let Some(action) = action {

@@ -603,11 +603,17 @@ mod tests {
             answer["criteria"].as_object().unwrap().len(),
             bank.answers
                 .iter()
-                .filter(|entry| !entry.records && entry.place != crate::router::bank::Place::Here)
+                .filter(|entry| {
+                    !entry.records
+                        && !matches!(
+                            entry.place,
+                            crate::router::bank::Place::Here | crate::router::bank::Place::Desktop
+                        )
+                })
                 .count()
                 + 1,
-            "every entry but the Gym's records entries and the computer's own variants is \
-             selectable on a metered gateway worker off a computer"
+            "every entry but the Gym's records entries and the computer's and the desktop's \
+             own variants is selectable on a metered gateway worker off a computer"
         );
         // On a computer, each `.here` variant is offered instead of its
         // base (#10077); the working-directory one needs the project folder.

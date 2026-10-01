@@ -15,7 +15,7 @@
       },
       "criteria": {
         "meta": {
-          "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them",
+          "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them; and asking to see how we route or handle messages or how we are put together: our route map, our routes, what serves each, our plugins and engines, or where we are weak",
           "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing)",
           "examples": [
             "who r u",
@@ -28,7 +28,9 @@
             "do you work with github?",
             "are you able to help with terraform for our aws setup",
             "can you help debug my flutter app's login screen?",
-            "who can you delegate to"
+            "who can you delegate to",
+            "can I see a map of how you work",
+            "open the route map"
           ]
         },
         "smalltalk": {
@@ -73,7 +75,7 @@
         },
         "codebase.kb": {
           "what": "How the OpenAgents software itself is built: where something lives in the OpenAgents repository, which crate or file implements it, how one of its components or protocols works inside, or why it was designed that way",
-          "not_for": "The user's own code or repository (work.dispatch); how to use a feature (product.kb)",
+          "not_for": "The user's own code or repository (work.dispatch); how to use a feature (product.kb); asking to see how we route messages or our route map, rather than where its code lives (meta)",
           "examples": [
             "where is the chat worker quota implemented",
             "which crate owns the chat router",
@@ -132,7 +134,7 @@
         },
         "clarify": {
           "what": "The latest message is too ambiguous to act on or answer well without asking what the user means",
-          "not_for": "A short but clear question or request, including a short question about us or this app such as who built it (meta); a short answer to our question while we make a tool or a test set together (eval.author)",
+          "not_for": "A short but clear question or request, including a short question about us or this app such as who built it, or a short request to open our map (meta); a short answer to our question while we make a tool or a test set together (eval.author)",
           "examples": [
             "can you check",
             "do it again",
@@ -245,7 +247,7 @@
         },
         "presentation.open": {
           "what": "The user asks us to open, show, pull up, or present a presentation, a slide deck, or a talk's slides now, whether they name one of our decks, describe it, name a deck we may not have, or name none",
-          "not_for": "Writing, outlining, or advice about a talk or slides (general); opening a site, another app, or a file, or sharing a screen (capability.missing); slides or files in the user's own repository (work.dispatch); where our deck or slide viewer code lives (codebase.kb)",
+          "not_for": "Writing, outlining, or advice about a talk or slides (general); opening a site, another app, or a file, or sharing a screen (capability.missing); slides or files in the user's own repository (work.dispatch); where our deck or slide viewer code lives (codebase.kb); opening our route map, the map of how we route messages (meta)",
           "examples": [
             "open the three devdays later deck",
             "show me the test-time capabilities presentation",
