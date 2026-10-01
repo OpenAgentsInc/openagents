@@ -518,7 +518,7 @@ quota it needs.
   answered 8 of 8 repository questions against Gemini's 6, at $0.054 a turn
   against $0.009.
 - The founding strategy: [episode 287](../transcripts/287.md) and
-  [episode 288](../transcripts/288-prep.md).
+  [the 288 preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md).
 - In-flight experiments: `~/.openagents/terminal-bench/experiments/{effort-9569,escalate-9571b,escalate-9571c,v10-persist-9570}/`,
   their job directories under `~/.openagents/terminal-bench/jobs/`, and the
   standing outcome matrix from `gym coder matrix --profile tb4`. Issues

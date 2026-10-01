@@ -30,7 +30,7 @@ make a weak test complete.
 
 ## What episode 288 actually supports
 
-The retained [transcript](../transcripts/288-prep.md) describes the intended
+The retained [transcript](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) describes the intended
 system: code owns execution and stopping, Jev supplies narrow judgments,
 Luna generates code, and the Gym exposes the evidence. It explicitly asks
 for both kinds of win, accepts slower work if it is much cheaper at the same

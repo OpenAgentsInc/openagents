@@ -53,7 +53,7 @@ notes: The unit that compounds is a capability claim with independent evidence: 
 layout: points
 id: nostr
 title: Nostr is already the agent-to-agent protocol
-source: docs/transcripts/288-draft.md#nostr-before-the-nip-slides
+source: https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md#nostr-before-the-nip-slides
 
 - **Perfect in the "worse is better" sense.** Like C and Unix: it started simple and became ubiquitous.
 - **Easily extensible.** About a hundred specs, and if they lack what you need, you add one.

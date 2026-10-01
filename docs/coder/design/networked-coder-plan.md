@@ -9,7 +9,7 @@ the [knowledge-base design](knowledge-base.md), and the
 [OpenAgents protocols](../../../nips/openagents/README.md). It also uses the
 design discussions in [episode 286](../../transcripts/286.md),
 [episode 287](../../transcripts/287.md), and the in-progress
-[episode 288](../../transcripts/288-prep.md). Those transcripts express product
+[the 288 preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md). Those transcripts express product
 intent; their benchmark remarks are not substitutes for retained run records.
 
 Update: [episodes 213–215, 266, and 267](../../agents/market-infrastructure.md)

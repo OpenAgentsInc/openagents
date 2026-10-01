@@ -2,7 +2,7 @@
 
 Status: report, 2026-09-24. It covers everything from the first
 `microluna-v6` run through `microluna-v8`, the period after the last
-recorded episode segment (the end of [episode 288](../transcripts/288-prep.md)).
+recorded episode segment (the end of [the 288 preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md)).
 It collects results from the detailed analyses linked below, and it
 corrects claims made while the work was in progress.
 

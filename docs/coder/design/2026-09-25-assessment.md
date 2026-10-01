@@ -10,7 +10,7 @@ Status: assessment, written early on 2026-09-25 after reading the
 [2026-09-24 assessment](2026-09-24-assessment.md), every Terminal-Bench
 record dated 2026-09-24 and 2026-09-25, the five open issues, and the
 transcripts of [episode 287](../../transcripts/287.md) and
-[episode 288](../../transcripts/288-prep.md). It answers four questions: where we
+[the 288 preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md). It answers four questions: where we
 are, what every failure mode is, what happened to the acceptance contract
 the thesis rests on, and what shape a faster, cheaper, better Coder built
 from Jev and GPT-6 Luna would have to take.
@@ -569,4 +569,4 @@ Every gain so far came from code and evidence.
   records.
 - Issues #9577, #9584, #9587, #9607, and #9624, with every comment through
   2026-09-25 05:25 UTC.
-- Transcripts [287](../../transcripts/287.md) and [288](../../transcripts/288-prep.md).
+- Transcripts [287](../../transcripts/287.md) and [288 prep](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md).
