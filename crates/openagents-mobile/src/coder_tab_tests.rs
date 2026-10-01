@@ -983,17 +983,24 @@ fn a_sent_message_shows_in_the_chat_at_once() {
 
 #[test]
 fn a_pulled_chat_publishes_its_rows_for_the_layout_instead_of_listing_them() {
-    let mut listed = Fixture::hosts();
-    let task = first_task(&listed.list());
-    let listed = listed.tap(&task);
-    let rows: Vec<String> =
-        node(&listed, "coder-transcript").expect("transcript")["element"]["props"]["children"]
-            .as_array()
-            .expect("rows")
-            .iter()
-            .map(|row| row["key"].as_str().expect("key").to_owned())
-            .collect();
-    assert!(!rows.is_empty());
+    // A chat with rows: a running task's shows Coder working.
+    let (task, rows) = keys(&Fixture::hosts().list())
+        .into_iter()
+        .filter(|key| key.starts_with("task-") && key.matches('-').count() == 1)
+        .find_map(|task| {
+            let mut listed = Fixture::hosts();
+            listed.list();
+            let listed = listed.tap(&task);
+            let rows: Vec<String> = node(&listed, "coder-transcript").expect("transcript")
+                ["element"]["props"]["children"]
+                .as_array()
+                .expect("rows")
+                .iter()
+                .map(|row| row["key"].as_str().expect("key").to_owned())
+                .collect();
+            (!rows.is_empty()).then_some((task, rows))
+        })
+        .expect("a chat with rows");
 
     let mut pulled = Fixture::hosts();
     pulled.coder = CoderTab::new("coder:pulled".into()).with_pulled_transcripts(true);
@@ -3313,6 +3320,51 @@ fn a_finished_start_shows_its_outcome() {
     let talk = conversation_row(&list);
     let view = again.tap(&talk);
     assert_eq!(start_note(&view), "Uploaded build 42 to TestFlight.");
+}
+
+/// A finished run whose chat this phone cannot read, as on a computer it
+/// holds no chat pairing for: the card says Done once, not "Done · Done",
+/// and Open Coder says the messages can't be read instead of a spinner
+/// that never ends (#10118).
+#[test]
+fn a_finished_start_on_an_unlinked_computer_says_so() {
+    use nostr::activity_summary::Phase;
+    let delivery = at_once();
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    started_at_once(&mut fixture, &hand);
+    delivery.lock().unwrap().phase = Some(Phase::Completed);
+    fixture.computers.refresh().expect("refresh");
+    let view = fixture.render();
+    assert!(
+        texts(&view)
+            .iter()
+            .any(|t| t == "Coder on Studio Mac: Done"),
+        "{:?}",
+        texts(&view)
+    );
+    assert!(
+        node(&view, "coder-start-note").is_none(),
+        "{:?}",
+        texts(&view)
+    );
+    let view = fixture.tap("coder-start-open");
+    assert!(
+        node(&view, "coder-transcript-working").is_none(),
+        "{:?}",
+        keys(&view)
+    );
+    let said = node(&view, "coder-unlinked")
+        .and_then(|note| note["element"]["props"]["value"].as_str())
+        .unwrap_or_else(|| panic!("no unlinked note in {:?}", keys(&view)));
+    assert_eq!(
+        said,
+        "This phone can't read Coder's messages on Studio Mac yet."
+    );
 }
 
 /// An offline computer, even one whose last presence said it starts Coder

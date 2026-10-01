@@ -2863,7 +2863,10 @@ impl CoderTab {
             let mut root = match (&self.open, &self.talk) {
                 _ if self.drawer => self.previous(computers, chats),
                 _ if self.threads.opened().is_some() => self.thread_view(computers),
-                (Some(open), _) => self.chat(open, computers),
+                (Some(open), _) => {
+                    let linked = chats.coder_client(&open.host).is_some();
+                    self.chat(open, computers, linked)
+                }
                 (None, Some(id)) => {
                     let id = id.clone();
                     self.talk_view(&id, computers)
@@ -3289,25 +3292,30 @@ impl CoderTab {
         } else {
             format!("Coder on {label}: {}", phase.map_or("Unknown", phase_label))
         };
-        let mut note = summary
+        let headline = summary
             .filter(|s| {
                 s.headline != nostr::activity_summary::generic_headline(SubjectKind::Task, s.phase)
             })
-            .map(|s| s.headline.clone())
-            .unwrap_or_else(|| phase.map_or("Starting", phase_label).to_owned());
-        if running {
+            .map(|s| s.headline.clone());
+        let note = if running {
+            let note = headline.unwrap_or_else(|| phase.map_or("Starting", phase_label).to_owned());
             // A run can take many minutes, such as an iOS archive.
             let now = computers.map_or_else(unix_now, |c| c.snapshot().now);
-            if let Some(worked) = started
-                .map(|s| s.at)
-                .or(spawned.at)
-                .and_then(|at| worked(now.saturating_sub(at)))
-            {
-                note = format!("{note} · {worked}");
-            }
-        } else if let Some(outcome) = started.and_then(|s| s.outcome.clone()) {
-            note = outcome;
-        }
+            Some(
+                match started
+                    .map(|s| s.at)
+                    .or(spawned.at)
+                    .and_then(|at| worked(now.saturating_sub(at)))
+                {
+                    Some(worked) => format!("{note} · {worked}"),
+                    None => note,
+                },
+            )
+        } else {
+            // The title says how it ended; the note says what it did, or
+            // nothing rather than the title's word again.
+            started.and_then(|s| s.outcome.clone()).or(headline)
+        };
         let mut controls = vec![button(
             "coder-start-open",
             "Open Coder",
@@ -3330,11 +3338,17 @@ impl CoderTab {
             "coder-start",
             Element::Stack {
                 axis: Axis::Vertical,
-                children: vec![
-                    text("coder-start-title", &title, TextRole::Body, WHITE, true),
-                    status("coder-start-note", &note),
-                    row("coder-start-controls", controls),
-                ],
+                children: [text(
+                    "coder-start-title",
+                    &title,
+                    TextRole::Body,
+                    WHITE,
+                    true,
+                )]
+                .into_iter()
+                .chain(note.map(|note| status("coder-start-note", &note)))
+                .chain([row("coder-start-controls", controls)])
+                .collect(),
             },
         ))
     }
@@ -3788,7 +3802,9 @@ impl CoderTab {
         }
     }
 
-    fn chat(&self, open: &Open, computers: Option<&Computers>) -> Node<Intent> {
+    /// `linked`: this device holds a chat pairing for the open task's
+    /// computer, so its transcript can be read.
+    fn chat(&self, open: &Open, computers: Option<&Computers>, linked: bool) -> Node<Intent> {
         let summary = computers.and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task));
         let phase = summary.map(|s| s.phase);
         let attention = summary.map(|s| s.attention);
@@ -3871,10 +3887,16 @@ impl CoderTab {
                         },
                     ));
                 }
+                // Without a chat pairing for the computer the transcript
+                // never loads: say so instead of a spinner that never ends.
                 let mut transcript = Conversation::pending_transcript(
                     "coder-transcript",
                     &echoes,
-                    Some(working.unwrap_or("Loading the chat")),
+                    if linked {
+                        Some(working.unwrap_or("Loading the chat"))
+                    } else {
+                        working
+                    },
                 );
                 if let Element::Transcript { children, .. } = &mut transcript.element {
                     rows.append(children);
@@ -3884,6 +3906,12 @@ impl CoderTab {
             }
         };
         children.push(transcript);
+        if open.conversation.is_none() && !linked {
+            children.push(status(
+                "coder-unlinked",
+                &format!("This phone can't read Coder's messages on {label} yet."),
+            ));
+        }
         let waiting = self.outbox.waiting(&open.task);
         if waiting > 0 {
             children.push(status(
