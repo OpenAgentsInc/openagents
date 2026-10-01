@@ -41,8 +41,7 @@ async fn live_hosted_decision_answers() {
         response.usage.input_tokens,
         started.elapsed().as_millis()
     );
-    assert_eq!(response.model, "jev-1.13.0");
-    assert!(response.service().is_some());
+    assert_served_jev(&response);
 }
 
 /// A structured decision from the deployed worker (NIP-DEC): object
@@ -144,6 +143,27 @@ async fn live_hosted_structured_decision_answers() {
     );
     assert_eq!(queue.choice, "billing");
     assert!(refund.noul > 0.5);
+    assert_served_jev(&response);
+}
+
+/// The answer names the door that served it, and the model is the admitted
+/// Jev as that door names it (`jev::doors::Naming`): `jev-1.13.0` at
+/// TypeSafe, `typesafe-ai/jev` at the Vercel AI Gateway (the open lane's
+/// first door since #10112), and `typesafe/jev-1.13` (dated) at OpenRouter.
+fn assert_served_jev(response: &jev::SystemOneResponse) {
+    use jev::doors::{GATEWAY_DOOR, Naming, OPENROUTER_DOOR};
+    let service = response.service().expect("the answer names its service");
+    let door = service["door"].as_str().expect("the service names its door");
+    let named = match door {
+        GATEWAY_DOOR => Naming::Gateway.model("jev-1.13.0"),
+        OPENROUTER_DOOR => Naming::OpenRouter.model("jev-1.13.0"),
+        _ => "jev-1.13.0".to_string(),
+    };
+    assert!(
+        response.model.starts_with(&named),
+        "{door} served {}, not the admitted Jev ({named})",
+        response.model
+    );
 }
 
 /// Every TypeSafe docs example (`crates/gateway/tests/fixtures/typesafe-docs`)
@@ -211,7 +231,7 @@ async fn live_hosted_docs_examples_answer_under_the_alias() {
             call.extra["cost_usd"],
             milliseconds
         );
-        assert_eq!(response.model, "jev-1.13.0");
+        assert_served_jev(&response);
         assert_eq!(call.extra["via"], "hosted");
     }
 }

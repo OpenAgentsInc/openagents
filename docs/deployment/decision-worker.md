@@ -401,3 +401,45 @@ The gateway door turns on once `AI_GATEWAY_API_KEY` is in
 `~/work/.secrets/ai-gateway.env` and an agent runs
 `scripts/decision-worker-install-door-keys.sh`; the owner step is in the
 workspace's `NEEDS_OWNER.md`.
+
+Release `aab51b62af` (2026-10-01,
+[#10112](https://github.com/OpenAgentsInc/openagents/issues/10112), "the
+gateway first, TypeSafe last") replaced it: built with `cargo zigbuild` as
+above, installed as `/opt/decision-worker/releases/aab51b62af` beside the
+earlier releases (rollback: move `current` back to `5ed35bf130` and
+restart), with `open.upstream_last` in the config, so the open lane asks
+the Vercel AI Gateway, then OpenRouter, then TypeSafe last, and benches a
+401 or 402 door for five minutes. The owner's AI Gateway key was already
+in the environment file; the file was backed up and not changed.
+`coder-worker.service`, `coder-worker-chat.service`, and
+`/opt/coder-worker` were not touched. The journal:
+
+```text
+decision-worker: pubkey ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc
+decision-worker: upstream https://api.typesafe.ai
+decision-worker: relay wss://relay.openagents.com
+decision-worker: open lane under $TYPESAFE_API_KEY, models jev-1.13.0,jev-latest, quota 2000/key/day 60/key/min 20000/day total
+decision-worker: open lane doors https://ai-gateway.vercel.sh → https://openrouter.ai → https://api.typesafe.ai
+decision-worker: backup door https://ai-gateway.vercel.sh/typesafe/v1/systemone under $AI_GATEWAY_API_KEY
+decision-worker: backup door https://openrouter.ai/api/alpha/decisions under $OPENROUTER_API_KEY
+decision-worker: door https://ai-gateway.vercel.sh answered in 292 ms
+```
+
+Before it, TypeSafe direct was refusing every job with `payment_required`
+and the gateway answered each one second (`upstream refused
+(payment_required); backup door https://ai-gateway.vercel.sh answered`).
+
+Live checks the same day, with no key, in a temporary `HOME`, through
+`jev_hosted::resolve` with the TypeSafe door a host's autostart policy
+names as `decision_endpoint` (the path `microcoder repository` takes):
+`live_hosted_decision_answers` answered `typesafe-ai/jev passed=0.990
+service={"door":"https://ai-gateway.vercel.sh","version":"decision-worker@aab51b62af"}`
+in 856 ms; `live_hosted_structured_decision_answers` `queue=billing
+confidence=1.000 refund=0.990` in 572 ms; and
+`live_hosted_docs_examples_answer_under_the_alias` answered all five docs
+examples from the gateway in 557 to 683 ms, recorded `via: hosted` with
+`cost_usd` (0.000020 to 0.000034 USD). The journal logged ten `door
+https://ai-gateway.vercel.sh answered` lines (192 to 484 ms at the worker)
+and no other door. The live tests now accept the admitted Jev as the
+answering door names it (`typesafe-ai/jev` at the gateway), as a
+repository run's judge does (#10107).
