@@ -267,13 +267,15 @@ pub fn card<I>(view: &CardView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
             },
         });
     }
-    for button in view
-        .primary
-        .iter()
-        .chain(&view.secondary)
-        .chain(&view.chips)
-    {
+    // The one filled button spans the card, as on the phone; its outlined
+    // buttons and chips are as wide as their words.
+    if let Some(button) = &view.primary {
         rows.push(card_button(button, intent(&button.id)));
+    }
+    for button in view.secondary.iter().chain(&view.chips) {
+        let mut node = card_button(button, intent(&button.id));
+        node.style.intrinsic_width = Some(true);
+        rows.push(node);
     }
     Node {
         key: prefix.clone(),
@@ -403,13 +405,15 @@ pub fn sheet<I>(view: &SheetView, mut intent: impl FnMut(&str) -> I) -> Node<I> 
             },
         });
     }
-    for button in view
-        .primary
-        .iter()
-        .chain(&view.secondary)
-        .chain(&view.close)
-    {
+    // As on the phone, the primary button spans the sheet; its other
+    // choices and its close control are as wide as their words.
+    if let Some(button) = &view.primary {
         rows.push(card_button(button, intent(&button.id)));
+    }
+    for button in view.secondary.iter().chain(&view.close) {
+        let mut node = card_button(button, intent(&button.id));
+        node.style.intrinsic_width = Some(true);
+        rows.push(node);
     }
     Node {
         key: prefix,

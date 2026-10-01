@@ -1229,3 +1229,50 @@ fn a_table_just_too_wide_wraps_instead_of_scrolling() {
     assert!(!scrolls(720.0 + side), "780 of cells in 720 points wraps");
     assert!(scrolls(600.0 + side), "780 of cells in 600 points scrolls");
 }
+
+/// A pill chip, or a button that keeps its measured width, is as wide as
+/// its label; any other button fills the row; a long chip wraps inside it.
+#[test]
+fn pill_and_intrinsic_buttons_hug_their_labels() {
+    let button = |key: &str, label: &str, pill: bool, intrinsic: bool| Node {
+        key: key.into(),
+        style: Style {
+            intrinsic_width: intrinsic.then_some(true),
+            ..Style::default()
+        },
+        element: Element::Button {
+            shortcut: None,
+            label: label.into(),
+            enabled: true,
+            icon: pill.then_some(crate::view::Icon {
+                glyph: crate::view::Glyph::Ask,
+                circular: false,
+                pill: true,
+            }),
+            intent: (),
+        },
+    };
+    let long = "A follow-up question long enough to need more than one line here";
+    let rows = vec![
+        button("full", "Start the test", false, false),
+        button("pill", "What can you do?", true, false),
+        button("hug", "Not now", false, true),
+        button("long", long, true, false),
+    ];
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    layout.update(update(rows, 390.0), &mut measurer).unwrap();
+    let widget = |index: usize| layout.display(index).unwrap().widgets[0].clone();
+    let full = widget(0);
+    let pill = widget(1);
+    let hug = widget(2);
+    let long = widget(3);
+    assert!(pill.w < full.w / 2.0, "{pill:?} {full:?}");
+    assert!(hug.w < pill.w, "{hug:?} {pill:?}");
+    assert_eq!(pill.x, full.x);
+    assert_eq!(long.w, full.w, "a chip never overflows its row");
+    assert!(long.h > pill.h, "a long chip wraps: {long:?}");
+    let pill_rect = layout.display(1).unwrap().rects[0].clone();
+    assert_eq!(pill_rect.w, pill.w);
+    assert!(pill_rect.radii[0] > 7.0, "a capsule: {pill_rect:?}");
+}

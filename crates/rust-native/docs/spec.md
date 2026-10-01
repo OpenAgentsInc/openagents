@@ -48,7 +48,10 @@ versions rather than silently converting them.
 
 Buttons inside transcript rows produce a native `button` widget with the
 semantic node key and enabled state. Their labels and bounds come from the
-shared row layout. An adapter returns the key only after a matching pointer
+shared row layout. A transcript button fills the reading band, except a
+`pill` button or one with `style.intrinsic_width`, which is as wide as its
+label (wrapping inside the band when the label is longer); a `pill` button
+is drawn as a capsule. An adapter returns the key only after a matching pointer
 release; the application resolves it against its current action registry and
 checks authority. Replacing a row cancels a press in progress. A display-list
 button carries no executable command or application intent. Transcript stack

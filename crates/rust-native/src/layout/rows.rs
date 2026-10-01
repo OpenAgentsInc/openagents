@@ -878,13 +878,29 @@ impl Ctx<'_> {
             Element::List { children, .. } | Element::Transcript { children, .. } => {
                 self.stack(children, x, y, w, ink, 8.0, in_tool)
             }
-            Element::Button { label, enabled, .. } => {
-                let pad = 10.0_f32.min(w / 4.0);
+            Element::Button {
+                label,
+                enabled,
+                icon,
+                ..
+            } => {
+                // A pill chip, or a button that keeps its measured width,
+                // is as wide as its label, as the phone draws it; any
+                // other button fills the row.
+                let pill = icon.is_some_and(|icon| icon.pill && !icon.circular);
+                let hug = pill || node.style.intrinsic_width == Some(true);
+                let pad = if hug { 14.0_f32 } else { 10.0 }.min(w / 4.0);
                 let style =
                     self.style(15.0, Weight::Medium, if *enabled { ink } else { SECONDARY });
+                let para = Para::plain(label, style);
+                let w = if hug {
+                    (self.natural(&para) + 2.0 * pad).min(w)
+                } else {
+                    w
+                };
                 let height =
                     self.para(
-                        &Para::plain(label, style),
+                        &para,
                         x + pad,
                         y + 7.0,
                         Wrap::At((w - 2.0 * pad).max(1.0)),
@@ -892,7 +908,8 @@ impl Ctx<'_> {
                         AlignX::Center,
                     )
                     .0 + 14.0;
-                let mut bounds = rect(x, y, w, height, 7.0);
+                let radius = if pill { (height / 2.0).min(18.0) } else { 7.0 };
+                let mut bounds = rect(x, y, w, height, radius);
                 bounds.fill = Some(
                     node.style
                         .background

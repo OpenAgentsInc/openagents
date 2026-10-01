@@ -2567,14 +2567,214 @@ mod tests {
 }
 
 #[cfg(test)]
-mod card_fixtures {
+pub(super) mod card_fixtures {
     use super::*;
     use openagents_chat::{
         basic_coder::Turn,
         router::Meta,
         service::{Command, Snapshot},
     };
-    use rust_native_desktop::input::SurfaceInput;
+
+    /// A chat whose earlier reply offered `old` follow-ups and whose
+    /// latest reply offers `latest`, as the router signs them.
+    pub(super) fn followups_fixture(old: &[&str], latest: &[&str]) -> (DesktopApp, Snapshot) {
+        let meta = |labels: &[&str]| {
+            let mut meta = Meta::default();
+            for label in labels {
+                meta.followups.push(openagents_chat::router::Followup {
+                    label: (*label).into(),
+                    answer: None,
+                });
+            }
+            Some(meta)
+        };
+        let mut app = super::tests::chat_fixture(0).0;
+        let panel = app.chat.as_mut().unwrap();
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat },
+        } = panel.new_chat()
+        else {
+            panic!("create")
+        };
+        let snapshot = Snapshot {
+            chat: Some(chat),
+            total: 4,
+            turns: vec![
+                Turn::user("Hello"),
+                Turn::assistant("Hi. I can answer questions and run Coder.", meta(old)),
+                Turn::user("Tell me more"),
+                Turn::assistant("I am OpenAgents. Ask me anything.", meta(latest)),
+            ],
+            ..Default::default()
+        };
+        panel.outcome(ticket, Ok(snapshot.clone()));
+        app.present();
+        (app, snapshot)
+    }
+
+    /// The latest reply's follow-ups are small chips above the composer,
+    /// sized to their words and wrapping, docked or centered; an earlier
+    /// reply's never show, and none are in the transcript (#10075).
+    #[test]
+    fn followups_are_chips_above_the_composer_for_the_latest_reply_only() {
+        const LATEST: [&str; 3] = [
+            "What can you do?",
+            "What model is this?",
+            "What does it cost?",
+        ];
+        let directory =
+            std::env::var_os("OPENAGENTS_CHIPS_CAPTURE_DIR").map(std::path::PathBuf::from);
+        let (mut app, _) = followups_fixture(&["An older question"], &LATEST);
+        for (width, height, scale, name) in [
+            (1200.0, 840.0, 2.0, "default"),
+            (760.0, 540.0, 2.0, "minimum"),
+        ] {
+            app.present();
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+            let panel = app.chat.as_ref().unwrap();
+            assert!(!panel.composer_centered());
+            let row = scene.bounds["chat-followups"];
+            let card = scene.bounds["chat-composer-card"];
+            assert!(row.y + row.h <= card.y, "{row:?} above {card:?}");
+            assert!(
+                card.y - (row.y + row.h) <= 12.0,
+                "directly above: {row:?} {card:?}"
+            );
+            let mut right = row.x;
+            for (index, label) in LATEST.iter().enumerate() {
+                let key = format!("coder-followup-{index}");
+                let hit = scene.hits.iter().find(|hit| hit.key == key).unwrap();
+                assert!(hit.enabled, "{key}");
+                // Sized to its words: a short question is a small chip,
+                // on one line, far narrower than the column.
+                assert!(
+                    hit.rect.w < 12.0 * label.len() as f32,
+                    "{key}: {:?}",
+                    hit.rect
+                );
+                assert!(hit.rect.w < card.w / 2.0, "{key}: {:?}", hit.rect);
+                assert!(hit.rect.h <= 32.0, "{key}: {:?}", hit.rect);
+                assert!(hit.rect.y >= row.y && hit.rect.y + hit.rect.h <= row.y + row.h);
+                // One row, left to right, in the default window; the
+                // minimum window may wrap them.
+                if name == "default" {
+                    assert!(hit.rect.x >= right, "{key}: {:?}", hit.rect);
+                }
+                right = right.max(hit.rect.x + hit.rect.w);
+                // Not in the transcript.
+                assert!(panel.transcript.control_bounds(&key).is_none(), "{key}");
+            }
+            assert!(right <= row.x + row.w);
+            assert!(!scene.hits.iter().any(|hit| hit.key == "coder-followup-3"));
+            if let Some(directory) = &directory {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(
+                    directory.join(format!("chips-{name}-{width}x{height}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+        }
+        // The earlier reply's follow-up is nowhere: not a chip, not a row.
+        fn labels(node: &rust_native::Node<Intent>, out: &mut Vec<String>) {
+            match &node.element {
+                rust_native::Element::Button { label, .. } => out.push(label.clone()),
+                rust_native::Element::Stack { children, .. } => {
+                    children.iter().for_each(|child| labels(child, out))
+                }
+                _ => {}
+            }
+        }
+        let view = app.view().clone();
+        let mut shown = vec![];
+        labels(&view.view().root, &mut shown);
+        for label in LATEST {
+            assert!(shown.iter().any(|shown| shown == label), "{shown:?}");
+        }
+        assert!(!shown.iter().any(|label| label == "An older question"));
+        assert!(
+            app.chat
+                .as_ref()
+                .unwrap()
+                .transcript
+                .control_bounds("coder-followup-0")
+                .is_none()
+        );
+        // A tap sends the suggestion's words.
+        let panel = app.chat.as_mut().unwrap();
+        assert!(
+            panel
+                .action(
+                    openagents_desktop::chat_action::Action::Card {
+                        key: "coder-followup-1".into(),
+                    },
+                    &view,
+                    Instant::now(),
+                )
+                .is_some_and(|request| matches!(
+                    request,
+                    Request::Chat {
+                        command: Command::Send { ref text, .. },
+                        ..
+                    } if text == "What model is this?"
+                )),
+            "a tap sends the suggestion's words"
+        );
+        // While the reply to it comes, no chips.
+        app.present();
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        assert!(!scene.bounds.contains_key("chat-followups"));
+    }
+
+    /// Many or long follow-ups wrap onto more rows at the minimum window,
+    /// each chip still inside the column and no wider than its words.
+    #[test]
+    fn followup_chips_wrap_at_the_minimum_window() {
+        let latest = [
+            "What can you do?",
+            "What model is this?",
+            "What does it cost?",
+            "How do I connect my own computer?",
+            "Can Coder work on my repository while I sleep?",
+        ];
+        let (mut app, _) = followups_fixture(&[], &latest);
+        let directory =
+            std::env::var_os("OPENAGENTS_CHIPS_CAPTURE_DIR").map(std::path::PathBuf::from);
+        for (width, height, name) in [(1200.0, 840.0, "default"), (760.0, 540.0, "minimum")] {
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, 2.0);
+            let row = scene.bounds["chat-followups"];
+            let card = scene.bounds["chat-composer-card"];
+            assert!(row.y + row.h <= card.y);
+            let hits: Vec<_> = (0..latest.len())
+                .map(|index| {
+                    scene
+                        .hits
+                        .iter()
+                        .find(|hit| hit.key == format!("coder-followup-{index}"))
+                        .unwrap()
+                        .rect
+                })
+                .collect();
+            let mut lines: Vec<_> = hits.iter().map(|rect| rect.y as i32).collect();
+            lines.dedup();
+            if name == "minimum" {
+                assert!(lines.len() >= 2, "wraps at the minimum: {hits:?}");
+            }
+            for rect in &hits {
+                assert!(rect.x >= row.x && rect.x + rect.w <= row.x + row.w + 0.5);
+                assert!(rect.w < row.w, "{rect:?}");
+            }
+            if let Some(directory) = &directory {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(
+                    directory.join(format!("chips-wrap-{name}-{width}x{height}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+        }
+    }
 
     #[test]
     fn coder_offer_dispatch_and_binding_mount_at_default_and_minimum_sizes() {
@@ -2724,20 +2924,25 @@ mod card_fixtures {
         snapshot.turns = vec![Turn::user("Hello"), Turn::assistant("Hello", Some(meta))];
         app.performance_stream(snapshot, now + std::time::Duration::from_secs(2));
         rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+        // The follow-up is a chip above the composer, not a transcript row
+        // (#10075); a click on it leaves the draft alone.
         let panel = app.chat.as_mut().unwrap();
-        let bounds = panel.transcript.control_bounds("coder-followup-0").unwrap();
-        let x = bounds.x + bounds.w / 2.0;
-        let y = bounds.y + bounds.h / 2.0;
-        assert!(app.surface_input(
-            openagents_desktop::chat::TRANSCRIPT,
-            SurfaceInput::Down { x, y, shift: false },
-            now
-        ));
-        assert!(app.surface_input(
-            openagents_desktop::chat::TRANSCRIPT,
-            SurfaceInput::Up { x, y },
-            now
-        ));
+        assert!(
+            panel
+                .transcript
+                .control_bounds("coder-followup-0")
+                .is_none()
+        );
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+        assert!(scene.hits.iter().any(|hit| hit.key == "coder-followup-0"));
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Card {
+                    key: "coder-followup-0".into(),
+                },
+            },
+            now,
+        );
         assert_eq!(app.chat.as_ref().unwrap().draft(), "");
         let captures =
             std::env::var_os("OPENAGENTS_CARD_CAPTURE_DIR").map(std::path::PathBuf::from);

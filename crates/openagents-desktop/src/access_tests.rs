@@ -328,3 +328,40 @@ fn a_screen_reader_opens_settings_and_reads_its_controls() {
         }
     }
 }
+
+/// A follow-up chip above the composer is a button a screen reader names
+/// by its words, can focus, and presses to send them (#10075, #10024).
+#[test]
+fn a_screen_reader_reaches_and_presses_a_followup_chip() {
+    let (mut app, _) =
+        super::card_fixtures::followups_fixture(&[], &["What can you do?", "What model is this?"]);
+    let before = tree(&mut app, None);
+    let lines = outline(&before);
+    let dump = lines.join("\n");
+    let chip = find(&lines, "Button \"What can you do?\"");
+    assert!(lines[chip].contains("<click>"), "{dump}");
+    let composer = find(&lines, "MultilineTextInput \"Message OpenAgents");
+    assert!(
+        chip < composer,
+        "the chips read before the composer: {dump}"
+    );
+    let id = node_with(&before, Role::Button, "What model is this?");
+    assert!(
+        before
+            .update
+            .nodes
+            .iter()
+            .any(|(node, data)| *node == id && data.supports_action(Action::Focus)),
+        "a chip takes keyboard focus: {dump}"
+    );
+    run(&mut app, &before, id, Action::Click, None);
+    let after = tree(&mut app, None);
+    let lines = outline(&after);
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("Button \"What can you do?\"")),
+        "the chips leave while the reply to one comes:\n{}",
+        lines.join("\n")
+    );
+}

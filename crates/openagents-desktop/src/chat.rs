@@ -96,6 +96,9 @@ pub struct Panel {
     pub transcript: Transcript,
     fonts: Fonts,
     transcript_rows: Vec<Arc<Node<()>>>,
+    /// The latest reply's follow-up suggestions, by card key and label:
+    /// chips above the composer, as the phone shows them (#10075).
+    followups: Vec<(String, String)>,
     projection: Projection,
     transcript_size: (f32, f32),
     composer_rect: Option<PxRect>,
@@ -199,6 +202,7 @@ impl Panel {
             transcript,
             fonts: Fonts::new(),
             transcript_rows: vec![],
+            followups: vec![],
             projection: Projection::default(),
             transcript_size: (0.0, 0.0),
             composer_rect: None,
@@ -3333,6 +3337,7 @@ impl Panel {
                 .as_ref()
                 .and_then(|id| self.tasks.get_mut(id))
                 .map(task_chat::Session::rows);
+            let mut followups = vec![];
             let rows = if let Some(rows) = task_rows {
                 rows.into_iter().map(Arc::new).collect()
             } else {
@@ -3369,13 +3374,26 @@ impl Panel {
                     .as_ref()
                     .and_then(|id| self.session.states.get(id))
                     .unwrap_or(&fallback);
-                rows.extend(
+                let cards =
                     self.session
                         .cards
-                        .rows_with(snapshot, busy, self.session.error.as_deref())
+                        .rows_with(snapshot, busy, self.session.error.as_deref());
+                rows.extend(
+                    cards
                         .into_iter()
-                        // A run here replaces the offer to start one.
+                        // The latest reply's follow-ups sit above the
+                        // composer, not in the transcript (#10075).
+                        .filter(|row| match &row.element {
+                            Element::Button { label, .. }
+                                if row.key.starts_with("coder-followup-") =>
+                            {
+                                followups.push((row.key.clone(), label.clone()));
+                                false
+                            }
+                            _ => true,
+                        })
                         .filter(|row| !row.key.starts_with("coder-suggest-"))
+                        // A run here replaces the offer to start one.
                         .filter(|row| run_rows.is_none() || row.key != "coder-run")
                         .map(Arc::new),
                 );
@@ -3400,6 +3418,7 @@ impl Panel {
                             .update_shared(self.transcript_rows.clone(), size.0, size.1);
                 }
             }
+            self.followups = followups;
             self.rows_dirty = false;
         }
         self.shown();
@@ -3647,6 +3666,19 @@ impl Panel {
             ));
         }
         let mut content = vec![];
+        // The latest reply's follow-ups: small chips, sized to their
+        // words, wrapping above the composer, as on the phone (#10075).
+        if !self.followups.is_empty() {
+            let chips = self
+                .followups
+                .iter()
+                .map(|(key, label)| followup_chip(key, label, !busy))
+                .collect();
+            let mut row = stack("chat-followups", Axis::Wrap, chips);
+            row.style.gap_points = Some(8);
+            row.style.padding_points = Some([0, 4, 0, 4]);
+            content.push(row);
+        }
         let has_previews = !previews.is_empty();
         if has_previews {
             content.push(stack("image-previews", Axis::Wrap, previews));
@@ -4127,6 +4159,25 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
             intent: Intent::Chat { action },
         },
     }
+}
+/// A follow-up suggestion: a pill as wide as its words, which sends them.
+fn followup_chip(key: &str, label: &str, enabled: bool) -> Node<Intent> {
+    let mut node = button(key, label, Action::Card { key: key.into() }, enabled);
+    node.style.background = Some(openagents_chat_app::visual::SELECTED);
+    node.style.foreground = Some(openagents_chat_app::visual::TEXT);
+    node.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
+    node.style.text_size = Some(13);
+    node.style.button_padding = Some([12, 6]);
+    node.style.glyph_size = Some(13);
+    node.style.glyph_gap = Some(6);
+    if let Element::Button { icon, .. } = &mut node.element {
+        *icon = Some(Icon {
+            glyph: Glyph::Ask,
+            circular: false,
+            pill: true,
+        });
+    }
+    node
 }
 fn icon_button(
     key: &str,
