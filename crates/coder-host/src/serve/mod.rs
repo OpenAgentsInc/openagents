@@ -87,6 +87,11 @@ pub(crate) struct Shared {
     /// Set when a local action changed what the host serves, such as its
     /// projects, and the host must start again to serve it.
     pub(crate) restart: tokio::sync::watch::Sender<bool>,
+    /// The coding agents on this computer as presence capabilities
+    /// (`engine-<state>-<engine>`, #10119), read off the runtime by the
+    /// presence loop; empty until the first reading, and always where the
+    /// serving program lists none.
+    pub(crate) engines: std::sync::Mutex<Vec<String>>,
 }
 
 /// A running host.
@@ -194,6 +199,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         iroh: std::sync::OnceLock::new(),
         grants_changed: tokio::sync::Notify::new(),
         restart: tokio::sync::watch::channel(false).0,
+        engines: std::sync::Mutex::new(Vec::new()),
     });
 
     let (ready, relay_ready) = tokio::sync::oneshot::channel();
@@ -343,18 +349,60 @@ impl Running {
     }
 }
 
-/// Republish presence and hints when the enrolled device set changes, and
-/// otherwise at the configured period.
+/// How often the presence loop reads this computer's coding agents again
+/// (#10119). The serving program's own reading keeps its answer as long.
+const ENGINES_EVERY: Duration = Duration::from_secs(15);
+
+/// This computer's coding agents as presence capabilities (#10119), in the
+/// order listed, within the bound a presence carries.
+pub(crate) fn engine_capabilities(engines: &[openagents_chat::router::Engine]) -> Vec<String> {
+    use coder_access::protocol::{MAX_ENGINE_FLAGS, engine_flag};
+    engines
+        .iter()
+        .filter_map(|engine| engine_flag(&engine.engine, engine.state.word()))
+        .take(MAX_ENGINE_FLAGS)
+        .collect()
+}
+
+/// Republish presence and hints when the enrolled device set changes or
+/// this computer's coding agents change (#10119: a sign-in, a sign-out, a
+/// usage limit, or the settings), and otherwise at the configured period.
 async fn presence_loop(shared: Arc<Shared>) {
     let mut last: Option<(Vec<String>, Instant)> = None;
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    let mut engines_read: Option<Instant> = None;
+    let mut reading: Option<JoinHandle<Vec<String>>> = None;
     loop {
         ticker.tick().await;
         let Ok(now) = unix_time() else { continue };
+        // The listing probes logins, so it runs off the runtime.
+        if reading.is_none() && engines_read.is_none_or(|at| at.elapsed() >= ENGINES_EVERY) {
+            if let Some(list) = crate::control::local_engines() {
+                reading = Some(tokio::task::spawn_blocking(move || {
+                    engine_capabilities(&list())
+                }));
+            }
+            engines_read = Some(Instant::now());
+        }
+        let mut engines_changed = false;
+        if reading.as_ref().is_some_and(JoinHandle::is_finished)
+            && let Some(handle) = reading.take()
+            && let Ok(flags) = handle.await
+        {
+            let mut held = shared
+                .engines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if *held != flags {
+                *held = flags;
+                engines_changed = true;
+            }
+        }
         let devices = shared.authority.active_devices(None, now);
-        let due = last.as_ref().is_none_or(|(known, at)| {
-            *known != devices || at.elapsed() >= shared.config.presence_every
-        });
+        let due = engines_changed
+            || last.as_ref().is_none_or(|(known, at)| {
+                *known != devices || at.elapsed() >= shared.config.presence_every
+            });
         if due {
             publish_reach(&shared).await;
             last = Some((devices, Instant::now()));
@@ -404,7 +452,21 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
             min: PROTOCOL_VERSION,
             max: PROTOCOL_VERSION,
         },
-        capabilities: presence_capabilities(shared.tasks.capabilities()),
+        capabilities: presence_capabilities(
+            shared
+                .tasks
+                .capabilities()
+                .into_iter()
+                .chain(
+                    shared
+                        .engines
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .iter()
+                        .cloned(),
+                )
+                .collect(),
+        ),
         observed_at: now,
         // Coarse telemetry lets placement rank this host. A value the host
         // cannot read withholds the whole sample; placement then skips it.

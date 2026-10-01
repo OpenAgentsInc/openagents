@@ -303,6 +303,18 @@ async fn a_replaced_program_still_starts_again_after_a_project_change() {
     assert!(!text.contains("cannot start again"), "{text}");
     assert_eq!(text.matches("control socket").count(), 2, "{text}");
 
+    // The host stops on `SIGTERM` once it says it serves: the control
+    // socket answers a moment before its stop handler is installed.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while std::fs::read_to_string(&log)
+        .unwrap_or_default()
+        .matches("coder host: serving")
+        .count()
+        < 2
+    {
+        assert!(Instant::now() < deadline, "the host never served again");
+        std::thread::sleep(Duration::from_millis(50));
+    }
     let pid = libc::pid_t::try_from(serve.id()).unwrap();
     // SAFETY: `kill` takes two integers; the process is this test's child.
     assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);

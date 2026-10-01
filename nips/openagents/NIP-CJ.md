@@ -54,7 +54,10 @@ worker serves, such as `chat-router-v1`) and `context`, a bounded object of
 and `app_build` (at most 64 bytes). Added 2026-09-30: `computer`, where
 Coder runs for the chat, as `{place: "here", name?, engines}` when the
 sending device is itself that computer (the desktop app, or the terminal on
-a computer) or `{place: "paired", name}` when a phone is paired with one;
+a computer) or `{place: "paired", name, engines?}` when a phone is paired
+with one (`engines` added 2026-10-01: the coding agents the computer's
+[HOST](NIP-HOST.md) presence names, omitted when it names none; a worker
+that predates it ignores it);
 `name` is the label the person gave the computer (at most 64 characters),
 and `engines` is at most 8 `{engine, state}` (at most 4 before 2026-10-01)
 with `engine` a word of at most 16 lowercase ASCII letters, digits, `-`, or

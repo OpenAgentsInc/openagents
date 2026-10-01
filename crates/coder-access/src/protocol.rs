@@ -332,6 +332,70 @@ pub const TASK_ENGINE: &str = "task-engine";
 /// and how the task runs.
 pub const CODER_START_AT_ONCE: &str = "coder-start-at-once";
 
+/// The prefix of a presence capability that names one coding agent on the
+/// host and its state (#10119): `engine-<state>-<engine>`, such as
+/// `engine-ready-codex` or `engine-not_enabled-devin`. A host lists every
+/// coding agent installed or signed in there, the ones its owner's settings
+/// allow first, so a paired device can name them in its chat. A reader that
+/// predates it ignores the flags as unknown capabilities. The flags carry a
+/// closed state and the engine's word only, never an account, a token, or a
+/// usage figure, and grant nothing.
+pub const ENGINE_FLAG: &str = "engine-";
+
+/// The states an [`ENGINE_FLAG`] carries: ready, not signed in, at its
+/// usage limit, or installed but not allowed by the owner's settings.
+pub const ENGINE_STATES: [&str; 4] = ["ready", "not_signed_in", "limited", "not_enabled"];
+
+/// The most [`ENGINE_FLAG`] capabilities one presence carries or a reader
+/// takes.
+pub const MAX_ENGINE_FLAGS: usize = 8;
+
+/// Whether `engine` is a coding agent's word: 1 to 16 lowercase ASCII
+/// letters, digits, `-`, or `_`.
+fn engine_word(engine: &str) -> bool {
+    (1..=16).contains(&engine.len())
+        && engine
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+}
+
+/// The presence capability for `engine` in `state` (#10119), or `None` for
+/// a word or state outside [`ENGINE_FLAG`]'s bounds.
+#[must_use]
+pub fn engine_flag(engine: &str, state: &str) -> Option<String> {
+    (engine_word(engine) && ENGINE_STATES.contains(&state))
+        .then(|| format!("{ENGINE_FLAG}{state}-{engine}"))
+}
+
+/// The coding agents a host's presence names (#10119), as `(engine,
+/// state)` in the order it lists them: at most [`MAX_ENGINE_FLAGS`], each
+/// engine once, and a flag with a state this reader does not know left out.
+#[must_use]
+pub fn engine_flags<'a>(
+    capabilities: impl IntoIterator<Item = &'a str>,
+) -> Vec<(String, &'static str)> {
+    let mut engines: Vec<(String, &'static str)> = Vec::new();
+    for capability in capabilities {
+        let Some(rest) = capability.strip_prefix(ENGINE_FLAG) else {
+            continue;
+        };
+        let Some((state, engine)) = ENGINE_STATES.iter().find_map(|state| {
+            rest.strip_prefix(state)
+                .and_then(|rest| rest.strip_prefix('-'))
+                .map(|engine| (*state, engine))
+        }) else {
+            continue;
+        };
+        if engine_word(engine) && !engines.iter().any(|(known, _)| known == engine) {
+            engines.push((engine.to_owned(), state));
+        }
+        if engines.len() == MAX_ENGINE_FLAGS {
+            break;
+        }
+    }
+    engines
+}
+
 /// What a durable task command asks for. The device picks it from task
 /// state and its rights, never from the text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -241,6 +241,29 @@ fn access_code(error: Error) -> Code {
 
 /// Run the whole acceptance path. `build` makes the task owner under test
 /// and a way to read a task back from its store.
+/// The coding agents the scenario's host lists, as `(engine, state)`
+/// (#10119).
+pub const ENGINES: [(&str, &str); 4] = [
+    ("codex", "ready"),
+    ("claude", "limited"),
+    ("grok", "ready"),
+    ("devin", "not_enabled"),
+];
+
+/// [`ENGINES`] as a serving program's `engines_here` lists them. A test
+/// that runs the scenario hands it to
+/// `coder_host::control::set_local_engines` first.
+pub fn engines_here() -> Vec<openagents_chat::router::Engine> {
+    use openagents_chat::router::{Engine, EngineState};
+    ENGINES
+        .iter()
+        .map(|(engine, state)| Engine {
+            engine: (*engine).into(),
+            state: EngineState::of_word(state).unwrap(),
+        })
+        .collect()
+}
+
 pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     let temp = tempfile::tempdir().unwrap();
     let paths = Paths {
@@ -342,6 +365,30 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     assert_eq!(reach.presence.presence.generation, GENERATION);
     assert_eq!(reach.presence.presence.owner, pubkey(&owner));
     assert!(reach.presence.presence.supports("terminal"));
+    // The host's coding agents reach the device in its presence, each with
+    // its state, in the host's order (#10119), once the host has read them.
+    let named = eventually("the host's coding agents in presence", || async {
+        fetch_reach(&device, &entry.relays[0])
+            .await
+            .ok()
+            .map(|reach| {
+                coder_host::access::protocol::engine_flags(
+                    reach
+                        .presence
+                        .presence
+                        .capabilities
+                        .iter()
+                        .map(String::as_str),
+                )
+            })
+            .filter(|named| !named.is_empty())
+    })
+    .await;
+    let expected: Vec<(String, &str)> = ENGINES
+        .iter()
+        .map(|(engine, state)| ((*engine).to_owned(), *state))
+        .collect();
+    assert_eq!(named, expected);
     // Presence carries coarse telemetry, so placement ranks the host rather
     // than skipping it for lack of a sample.
     let telemetry = reach.presence.presence.telemetry.expect("telemetry");

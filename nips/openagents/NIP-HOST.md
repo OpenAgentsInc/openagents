@@ -707,7 +707,23 @@ publishes presence. A device may then send `task.create` for its chat's
 capability (an older host, an owner who asks first, or a policy that is off)
 it waits for the person to choose **Run Coder**. The capability grants
 nothing: the host checks the grant and `operate` right on the request as
-always, and its policy decides whether and how the task runs. `terminal.open` carries `{cols, rows}`, each
+always, and its policy decides whether and how the task runs. A host also
+names the coding agents on its computer in its presence (added 2026-10-01),
+one capability each, `engine-<state>-<engine>`: `state` is `ready`,
+`not_signed_in`, `limited` (at its usage limit), or `not_enabled` (installed
+or signed in, but not allowed by the owner's settings), and `engine` is a
+word of at most 16 lowercase ASCII letters, digits, `-`, or `_`, such as
+`engine-ready-codex` or `engine-not_enabled-devin`. They are the list the
+host's own chats send as [CJ](NIP-CJ.md) `context.computer.engines`: the
+engines the owner's settings allow, in that order, then the others
+installed there. At most 8, each engine once. The host reads them off its
+runtime at most every 15 seconds and publishes presence again when they
+change (a sign-in, a sign-out, a usage limit, or a settings change). They
+carry no account, token, or usage figure and grant nothing. A device keeps
+them with the computer's record and names them in its chat's CJ context as
+`{place: "paired", name, engines}`. A reader leaves out a flag whose state it
+does not know, and one that predates the flags ignores them as unknown
+capabilities. `terminal.open` carries `{cols, rows}`, each
 1–1,000; [TERM](NIP-TERM.md) defines the session and stream.
 `workspace.list` carries nothing and returns `{workspaces}`: the labels
 `task.create` accepts on this host, sorted and distinct, at most 64, each

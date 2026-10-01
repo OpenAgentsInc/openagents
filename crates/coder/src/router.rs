@@ -574,8 +574,10 @@ pub enum Computer {
         name: Option<String>,
         engines: Vec<Engine>,
     },
-    /// The phone is paired with a ready computer, named by its label.
-    Paired { name: String },
+    /// The phone is paired with a ready computer, named by its label, with
+    /// the coding agents its presence names (#10119); empty from a phone or
+    /// computer that predates them.
+    Paired { name: String, engines: Vec<Engine> },
 }
 
 /// One coding agent on the computer and whether a Coder run may use it.
@@ -629,21 +631,22 @@ impl Computer {
             4 * MAX_COMPUTER_NAME_CHARS,
             MAX_COMPUTER_NAME_CHARS,
         );
+        let engines = value["engines"]
+            .as_array()
+            .map(|engines| {
+                engines
+                    .iter()
+                    .filter_map(Engine::of)
+                    .take(MAX_ENGINES)
+                    .collect()
+            })
+            .unwrap_or_default();
         match value["place"].as_str()? {
-            "here" => Some(Computer::Here {
-                name,
-                engines: value["engines"]
-                    .as_array()
-                    .map(|engines| {
-                        engines
-                            .iter()
-                            .filter_map(Engine::of)
-                            .take(MAX_ENGINES)
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+            "here" => Some(Computer::Here { name, engines }),
+            "paired" => Some(Computer::Paired {
+                name: name?,
+                engines,
             }),
-            "paired" => Some(Computer::Paired { name: name? }),
             _ => None,
         }
     }
@@ -696,6 +699,15 @@ impl Engine {
         }
     }
 }
+
+/// What the chat model is told beside a computer's coding agents (#10119):
+/// they are the agents connected to this chat, Coder runs one of them, and
+/// a question about which agents are connected or who the chat delegates to
+/// is answered from that list.
+const ENGINES_NOTE: &str = " These are the coding agents connected to this chat: each Coder \
+     run uses one of them, never other agents or tools. When the user asks which agents or \
+     coding agents are connected, which ones Coder can use, or who we can delegate to, \
+     answer from this list, naming each one and its state.";
 
 /// The most bytes of `context.coder_run.summary` read.
 pub const MAX_RUN_SUMMARY_BYTES: usize = 4 * 1024;
@@ -1007,7 +1019,7 @@ impl Context {
             .on_desktop(self.surface() == Surface::Desktop);
         let name = match &self.computer {
             Some(Computer::Here { name, .. }) => name.clone(),
-            Some(Computer::Paired { name }) => Some(name.clone()),
+            Some(Computer::Paired { name, .. }) => Some(name.clone()),
             None => None,
         };
         if let Some(name) = name {
@@ -1053,15 +1065,35 @@ impl Context {
                         " Coding agents on this computer: {}.",
                         lines.join("; ")
                     ));
+                    note.push_str(ENGINES_NOTE);
                 }
                 note
             }
-            Computer::Paired { name } => format!(
-                "About this chat: it runs in the OpenAgents app on the user's phone, which is \
-                 paired with their computer {name:?}. Coder, our coding agent, works on {name:?} \
-                 when the user starts it from this chat, so never tell them to connect a \
-                 computer; explain connecting another computer only when they ask about that."
-            ),
+            Computer::Paired { name, engines } => {
+                let mut note = format!(
+                    "About this chat: it runs in the OpenAgents app on the user's phone, which \
+                     is paired with their computer {name:?}. Coder, our coding agent, works on \
+                     {name:?} when the user starts it from this chat, so never tell them to \
+                     connect a computer; explain connecting another computer only when they ask \
+                     about that."
+                );
+                if engines.is_empty() {
+                    note.push_str(&format!(
+                        " Coder runs one of the coding agents installed on {name:?}, such as \
+                         Codex, Claude Code, or Grok Build; this chat has not been told which \
+                         ones are there, so say that rather than guess, and never speak of other \
+                         agents or tools."
+                    ));
+                } else {
+                    let lines: Vec<String> = engines.iter().map(Engine::line).collect();
+                    note.push_str(&format!(
+                        " Coding agents on {name:?}: {}.",
+                        lines.join("; ")
+                    ));
+                    note.push_str(ENGINES_NOTE);
+                }
+                note
+            }
         };
         if let Some(project) = &self.project {
             match (&project.path, self.here()) {
@@ -2042,6 +2074,43 @@ mod tests {
         };
         assert_eq!(engines.len(), 4);
         assert!(engines.iter().all(|engine| engine.engine != "devin"));
+    }
+
+    /// A phone's paired computer names its coding agents (#10119): the
+    /// model is told each one and its state, that Coder runs one of them,
+    /// and that "what agents are connected" is answered from them; a phone
+    /// whose computer named none is told not to guess.
+    #[test]
+    fn a_paired_computers_engines_reach_the_note() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../fixtures/nip-cj/router-request-paired-engines.json"
+        ))
+        .unwrap();
+        let context = Context::of(&fixture["context"]);
+        let Some(Computer::Paired { name, engines }) = &context.computer else {
+            panic!("the computer is paired");
+        };
+        assert_eq!(name, "macbook-pro-m5");
+        assert_eq!(engines.len(), 5);
+        assert!(!context.here());
+        let note = context.note().unwrap();
+        assert!(
+            note.contains(
+                "Coding agents on \"macbook-pro-m5\": Codex is ready; Claude Code is ready; \
+                 Grok Build is ready; OpenCode is installed but not enabled in Coder's settings; \
+                 Devin is installed but not enabled in Coder's settings."
+            ),
+            "{note}"
+        );
+        assert!(note.contains("each Coder run uses one of them, never other agents or tools"));
+        assert!(note.contains("who we can delegate to"));
+        let bare = Context::of(&json!({
+            "surface": "phone",
+            "computer": { "place": "paired", "name": "macbook-pro-m5" },
+        }));
+        let note = bare.note().unwrap();
+        assert!(!note.contains("Coding agents on"), "{note}");
+        assert!(note.contains("say that rather than guess"), "{note}");
     }
 
     #[test]

@@ -1,0 +1,24 @@
+{
+  "v": 2,
+  "requires": [],
+  "task": "what coding agents are connected?",
+  "transcript": [{ "role": "user", "content": "what coding agents are connected?" }],
+  "client": "openagents-mobile",
+  "opener": true,
+  "router": "chat-router-v2",
+  "context": {
+    "surface": "phone",
+    "computer_ready": true,
+    "computer": {
+      "place": "paired",
+      "name": "macbook-pro-m5",
+      "engines": [
+        { "engine": "codex", "state": "ready" },
+        { "engine": "claude", "state": "ready" },
+        { "engine": "grok", "state": "ready" },
+        { "engine": "opencode", "state": "not_enabled" },
+        { "engine": "devin", "state": "not_enabled" }
+      ]
+    }
+  }
+}

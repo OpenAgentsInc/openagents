@@ -43,7 +43,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 24] = [
+pub const SCENARIOS: [&str; 25] = [
     "ui-placeholder",
     "ui-starter-chips",
     "who-are-you",
@@ -68,6 +68,7 @@ pub const SCENARIOS: [&str; 24] = [
     "phone-claude",
     "phone-start-at-once",
     "phone-closed-loop",
+    "phone-agents",
 ];
 
 /// How long a reply may take.
@@ -209,6 +210,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "phone-claude" => phone_claude(&mut gate),
             "phone-start-at-once" => phone_start_at_once(&mut gate),
             "phone-closed-loop" => closed_loop::phone_closed_loop(&mut gate),
+            "phone-agents" => phone_agents(&mut gate),
             _ => unreachable!(),
         };
         gate.record(name, outcome);
@@ -2163,6 +2165,11 @@ fn phone_claude(gate: &mut Gate) -> Outcome {
         computer_ready: true,
         computer: Some(openagents_chat::router::Computer::Paired {
             name: label.clone(),
+            engines: computers
+                .snapshot()
+                .host(&host)
+                .map(openagents_chat_app::coder_tab::engines_of)
+                .unwrap_or_default(),
         }),
         ..openagents_chat::router::Context::default()
     };
@@ -2263,6 +2270,123 @@ fn phone_claude(gate: &mut Gate) -> Outcome {
         ))
     } else {
         Err(problems.join("; "))
+    }
+}
+
+/// A phone-shaped client, paired over NIP-HOST, asks "what coding agents
+/// are connected?" as the phone does (#10119): the computer's presence
+/// names its coding agents, the phone's context carries them
+/// (`coder_tab::engines_of`), and the reply names each ready one.
+fn phone_agents(gate: &mut Gate) -> Outcome {
+    if let Some(skip) = gate.need(true, false) {
+        return skip;
+    }
+    use openagents_chat::basic_coder::{Door, Relay, Reply};
+    use openagents_chat::router::EngineState;
+    const ASK: &str = "what coding agents are connected?";
+    let evidence = gate.evidence("phone-agents");
+    let Phone {
+        runtime,
+        mut computers,
+        host,
+        label,
+        ..
+    } = pair_phone("acceptance-phone-agents")?;
+    // The host reads its coding agents off its runtime, so they may come
+    // with a later presence than the first.
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let engines = loop {
+        let engines = computers
+            .snapshot()
+            .host(&host)
+            .map(openagents_chat_app::coder_tab::engines_of)
+            .unwrap_or_default();
+        if !engines.is_empty() {
+            break engines;
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "{label}'s presence never named its coding agents ({:?})",
+                computers
+                    .snapshot()
+                    .host(&host)
+                    .and_then(|record| record.presence.as_ref())
+                    .map(|received| received.presence.capabilities.clone())
+            ));
+        }
+        let _ = computers.refresh();
+        std::thread::sleep(Duration::from_secs(2));
+    };
+    let name = |engine: &str| match engine {
+        "codex" => "Codex",
+        "claude" => "Claude Code",
+        "grok" => "Grok Build",
+        "opencode" => "OpenCode",
+        "devin" => "Devin",
+        _ => "",
+    };
+    let ready: Vec<&str> = engines
+        .iter()
+        .filter(|engine| engine.state == EngineState::Ready)
+        .map(|engine| name(&engine.engine))
+        .filter(|name| !name.is_empty())
+        .collect();
+    if ready.is_empty() {
+        return Err(format!("no coding agent is ready on {label}: {engines:?}"));
+    }
+    let chat_secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+    let door = Relay::new(
+        openagents_chat::basic_coder::RELAY,
+        openagents_chat::basic_coder::WORKER,
+        chat_secret,
+    )?;
+    let context = openagents_chat::router::Context {
+        surface: openagents_chat::router::Surface::Phone,
+        computer_ready: true,
+        computer: Some(openagents_chat::router::Computer::Paired {
+            name: label.clone(),
+            engines: engines.clone(),
+        }),
+        ..openagents_chat::router::Context::default()
+    };
+    let wire = context.json();
+    let reply = std::sync::Arc::new(std::sync::Mutex::new(Reply::default()));
+    runtime.block_on(async {
+        let asking = door.ask(vec![Turn::user(ASK)], context, reply.clone());
+        let _ = tokio::time::timeout(REPLY_WAIT, asking).await;
+    });
+    let reply = openagents_chat::basic_coder::lock(&reply).clone();
+    let _ = std::fs::write(
+        evidence.join("phone-reply.json"),
+        serde_json::to_vec_pretty(&json!({
+            "context": wire,
+            "text": reply.text,
+            "meta": serde_json::to_value(&reply.meta).unwrap_or(Value::Null),
+        }))
+        .unwrap_or_default(),
+    );
+    if let Some(failure) = &reply.failure {
+        return Err(format!("the phone's chat failed: {failure:?}"));
+    }
+    if !reply.done {
+        return Err("the phone's chat got no reply".into());
+    }
+    let text = reply.text.to_lowercase();
+    let missing: Vec<&&str> = ready
+        .iter()
+        .filter(|name| !text.contains(&name.to_lowercase()))
+        .collect();
+    if missing.is_empty() {
+        Ok(format!(
+            "the reply names every ready agent on {label} ({}): {:?}",
+            ready.join(", "),
+            excerpt(&reply.text)
+        ))
+    } else {
+        Err(format!(
+            "the reply leaves out {missing:?}: {:?}",
+            excerpt(&reply.text)
+        ))
     }
 }
 

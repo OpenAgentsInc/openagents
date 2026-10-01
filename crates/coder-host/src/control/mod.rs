@@ -1125,6 +1125,13 @@ pub fn set_local_engines(engines: LocalEngines) {
     let _ = LOCAL_ENGINES.set(engines);
 }
 
+/// How the serving program lists the coding agents here, when it set one
+/// ([`set_local_engines`]). The presence loop reads it too, so a paired
+/// device names them (#10119).
+pub(crate) fn local_engines() -> Option<LocalEngines> {
+    LOCAL_ENGINES.get().copied()
+}
+
 /// What a chat's Coder task did in its last turn, once that turn ended:
 /// set once by the program serving the host
 /// (`coder::task::local::result_in`). The host puts it on a send in a

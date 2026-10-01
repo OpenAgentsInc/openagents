@@ -1192,7 +1192,8 @@ mod tests {
 /// says this device is the computer Coder runs on, with that project
 /// folder, as the desktop app and `openagents chat` do (#10077);
 /// `OPENAGENTS_TEST_CHAT_PAIRED=NAME` says a phone is paired with the
-/// computer NAME.
+/// computer NAME; `OPENAGENTS_TEST_CHAT_ENGINES=codex=ready,devin=not_enabled`
+/// names that computer's coding agents (#10119).
 #[cfg(test)]
 #[test]
 #[ignore = "network: needs the chat worker on the relay"]
@@ -1205,6 +1206,20 @@ fn live_basic_coder_streams_a_reply() {
     let door = Relay::new(&relay, &worker, secret).unwrap();
     let reply = Arc::new(Mutex::new(Reply::default()));
     let started = std::time::Instant::now();
+    // `codex=ready,claude=limited`: the computer's coding agents (#10119).
+    let engines = || {
+        std::env::var("OPENAGENTS_TEST_CHAT_ENGINES")
+            .unwrap_or_default()
+            .split(',')
+            .filter_map(|pair| {
+                let (engine, state) = pair.split_once('=')?;
+                Some(crate::router::Engine {
+                    engine: engine.to_owned(),
+                    state: crate::router::EngineState::of_word(state)?,
+                })
+            })
+            .collect::<Vec<_>>()
+    };
     let turns = vec![Turn::user(
         std::env::var("OPENAGENTS_TEST_CHAT_MESSAGE")
             .unwrap_or_else(|_| "In three short sentences, what does a Nostr relay do?".into()),
@@ -1222,9 +1237,12 @@ fn live_basic_coder_streams_a_reply() {
         ) {
             (Ok(_), _) => Some(crate::router::Computer::Here {
                 name: None,
-                engines: vec![],
+                engines: engines(),
             }),
-            (_, Ok(name)) => Some(crate::router::Computer::Paired { name }),
+            (_, Ok(name)) => Some(crate::router::Computer::Paired {
+                name,
+                engines: engines(),
+            }),
             _ => None,
         },
         project: std::env::var("OPENAGENTS_TEST_CHAT_PROJECT")

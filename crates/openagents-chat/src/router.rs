@@ -178,8 +178,10 @@ pub enum Computer {
         name: Option<String>,
         engines: Vec<Engine>,
     },
-    /// The phone's ready paired computer, by the label the person gave it.
-    Paired { name: String },
+    /// The phone's ready paired computer, by the label the person gave it,
+    /// with the coding agents its presence names (#10119): empty for a
+    /// computer that predates them.
+    Paired { name: String, engines: Vec<Engine> },
 }
 
 /// One coding agent on this computer and whether a Coder run may use it.
@@ -205,13 +207,30 @@ pub enum EngineState {
 }
 
 impl EngineState {
-    fn word(self) -> &'static str {
+    /// The state's wire word, as `context.computer.engines` and a host's
+    /// presence (#10119) carry it.
+    #[must_use]
+    pub fn word(self) -> &'static str {
         match self {
             Self::Ready => "ready",
             Self::NotSignedIn => "not_signed_in",
             Self::Limited => "limited",
             Self::NotEnabled => "not_enabled",
         }
+    }
+
+    /// The state a wire word names, or `None` for a word this build does
+    /// not know.
+    #[must_use]
+    pub fn of_word(word: &str) -> Option<Self> {
+        [
+            Self::Ready,
+            Self::NotSignedIn,
+            Self::Limited,
+            Self::NotEnabled,
+        ]
+        .into_iter()
+        .find(|state| state.word() == word)
     }
 }
 
@@ -448,25 +467,35 @@ impl Computer {
     fn json(&self) -> Option<Value> {
         let name_ok =
             |name: &str| plain(name, 4 * MAX_COMPUTER_NAME_CHARS, MAX_COMPUTER_NAME_CHARS);
+        let wire = |engines: &[Engine]| {
+            engines
+                .iter()
+                .filter(|engine| engine.bounded())
+                .take(MAX_ENGINES)
+                .map(|engine| json!({"engine": engine.engine, "state": engine.state.word()}))
+                .collect::<Vec<_>>()
+        };
         match self {
             Self::Here { name, engines } => {
                 let mut value = json!({
                     "place": "here",
-                    "engines": engines
-                        .iter()
-                        .filter(|engine| engine.bounded())
-                        .take(MAX_ENGINES)
-                        .map(|engine| json!({"engine": engine.engine, "state": engine.state.word()}))
-                        .collect::<Vec<_>>(),
+                    "engines": wire(engines),
                 });
                 if let Some(name) = name.as_deref().filter(|name| name_ok(name)) {
                     value["name"] = json!(name);
                 }
                 Some(value)
             }
-            Self::Paired { name } => {
-                name_ok(name).then(|| json!({"place": "paired", "name": name}))
-            }
+            // `engines` only when the computer named some (#10119), so a
+            // phone paired with an older host sends what it always did.
+            Self::Paired { name, engines } => name_ok(name).then(|| {
+                let mut value = json!({"place": "paired", "name": name});
+                let engines = wire(engines);
+                if !engines.is_empty() {
+                    value["engines"] = json!(engines);
+                }
+                value
+            }),
         }
     }
 }
@@ -1445,6 +1474,60 @@ mod computer_context_tests {
         );
     }
 
+    /// A phone sends the coding agents its paired computer's presence
+    /// names (#10119), exactly as the worker's fixture reads them, within
+    /// [`MAX_ENGINES`]; with none, the context is what it always was.
+    #[test]
+    fn a_phone_names_its_computers_engines() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../coder/fixtures/nip-cj/router-request-paired-engines.json"
+        ))
+        .unwrap();
+        let engine = |engine: &str, state| Engine {
+            engine: engine.into(),
+            state,
+        };
+        let context = Context {
+            computer_ready: true,
+            computer: Some(Computer::Paired {
+                name: "macbook-pro-m5".into(),
+                engines: vec![
+                    engine("codex", EngineState::Ready),
+                    engine("claude", EngineState::Ready),
+                    engine("grok", EngineState::Ready),
+                    engine("opencode", EngineState::NotEnabled),
+                    engine("devin", EngineState::NotEnabled),
+                ],
+            }),
+            ..Context::default()
+        };
+        let request = crate::basic_coder::payload(
+            &[crate::basic_coder::Turn::user(
+                "what coding agents are connected?",
+            )],
+            &context,
+        );
+        assert_eq!(request["context"], fixture["context"]);
+        assert_eq!(request["client"], fixture["client"]);
+        let many = Context {
+            computer: Some(Computer::Paired {
+                name: "macbook-pro-m5".into(),
+                engines: (0..MAX_ENGINES + 3)
+                    .map(|n| engine(&format!("agent{n}"), EngineState::Ready))
+                    .collect(),
+            }),
+            ..Context::default()
+        };
+        assert_eq!(
+            many.json()["computer"]["engines"].as_array().unwrap().len(),
+            MAX_ENGINES
+        );
+        for word in ["ready", "not_signed_in", "limited", "not_enabled"] {
+            assert_eq!(EngineState::of_word(word).unwrap().word(), word);
+        }
+        assert_eq!(EngineState::of_word("busy"), None);
+    }
+
     /// A follow-up in a chat whose Coder run finished carries the run's
     /// result as typed context, exactly as the worker's fixture reads it
     /// (#10094).
@@ -1526,6 +1609,7 @@ mod computer_context_tests {
             computer_ready: true,
             computer: Some(Computer::Paired {
                 name: "Studio Mac".into(),
+                engines: vec![],
             }),
             project: Some(Project {
                 name: "openagents".into(),

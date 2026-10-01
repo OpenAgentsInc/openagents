@@ -342,3 +342,47 @@ fn thread_run_needs_operate_and_is_retained() {
         request: None,
     }));
 }
+
+/// A host's coding agents ride its presence as capability flags (#10119):
+/// each agent and its closed state round-trip in order, each engine once,
+/// and a flag with an unknown state, a word past its bound, or a flag that
+/// is not an engine's is left out, as is anything past the bound.
+#[test]
+fn engine_flags_round_trip_bounded_and_closed() {
+    use coder_access::protocol::{MAX_ENGINE_FLAGS, engine_flag, engine_flags};
+    let listed = [
+        ("codex", "ready"),
+        ("claude", "limited"),
+        ("grok", "not_signed_in"),
+        ("devin", "not_enabled"),
+    ];
+    let mut flags: Vec<String> = vec!["task-create".into(), "coder-start-at-once".into()];
+    flags.extend(
+        listed
+            .iter()
+            .map(|(engine, state)| engine_flag(engine, state).unwrap()),
+    );
+    assert_eq!(flags[2], "engine-ready-codex");
+    assert_eq!(flags[5], "engine-not_enabled-devin");
+    // Every flag is a presence capability slug.
+    assert!(flags.iter().all(|flag| flag.len() <= 64));
+    flags.push("engine-ready-codex".into());
+    flags.push("engine-sleeping-opencode".into());
+    flags.push("engine-ready-".into());
+    flags.push("engine-ready-Codex".into());
+    let read = engine_flags(flags.iter().map(String::as_str));
+    let expected: Vec<(String, &str)> = listed
+        .iter()
+        .map(|(engine, state)| ((*engine).to_owned(), *state))
+        .collect();
+    assert_eq!(read, expected);
+    assert_eq!(engine_flag("codex", "busy"), None);
+    assert_eq!(engine_flag("a-very-long-engine-word", "ready"), None);
+    let many: Vec<String> = (0..MAX_ENGINE_FLAGS + 3)
+        .map(|n| engine_flag(&format!("agent{n}"), "ready").unwrap())
+        .collect();
+    assert_eq!(
+        engine_flags(many.iter().map(String::as_str)).len(),
+        MAX_ENGINE_FLAGS
+    );
+}

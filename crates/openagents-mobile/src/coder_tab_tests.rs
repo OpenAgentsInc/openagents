@@ -1441,7 +1441,8 @@ fn a_turn_asks_for_routing_with_a_bounded_context() {
             computer_ready: true,
             app_build: Some("1.0.0 (19)".into()),
             computer: Some(crate::router::Computer::Paired {
-                name: "Studio Mac".into()
+                name: "Studio Mac".into(),
+                engines: vec![],
             }),
             ..crate::router::Context::default()
         }]
@@ -3158,6 +3159,58 @@ fn a_computer_that_asks_first_keeps_run_coder() {
         fixture.render();
     }
     assert_eq!(delivery.lock().unwrap().engines.len(), 1);
+}
+
+/// The paired computer's coding agents, from its presence, ride every
+/// chat turn's context (#10119): each engine and its state in the
+/// computer's order, so "what coding agents are connected?" is answered
+/// from them; a flag this build does not know is left out, and a computer
+/// whose presence names none sends the context it always did.
+#[test]
+fn a_turn_names_the_paired_computers_coding_agents() {
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec![
+            "task-create",
+            "engine-ready-codex",
+            "engine-ready-claude",
+            "engine-limited-grok",
+            "engine-someday-devin",
+            "engine-not_enabled-opencode",
+        ]),
+        ..Delivery::default()
+    }));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.say("what coding agents are connected?");
+    let context = hand.contexts.lock().unwrap()[0].clone();
+    assert_eq!(
+        context.json()["computer"],
+        json!({"place": "paired", "name": "Studio Mac", "engines": [
+            {"engine": "codex", "state": "ready"},
+            {"engine": "claude", "state": "ready"},
+            {"engine": "grok", "state": "limited"},
+            {"engine": "opencode", "state": "not_enabled"},
+        ]})
+    );
+
+    let older = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+            advertise: Some(vec!["task-create"]),
+            ..Delivery::default()
+        })),
+    })
+    .answered_by(&older);
+    fixture.say("what coding agents are connected?");
+    assert_eq!(
+        older.contexts.lock().unwrap()[0].json()["computer"],
+        json!({"place": "paired", "name": "Studio Mac"})
+    );
 }
 
 /// The phone's start card, after a coding reply started Coder at once on

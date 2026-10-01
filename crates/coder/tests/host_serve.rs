@@ -16,6 +16,7 @@ mod scenario;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn host_serve_composes_access_reach_terminals_and_the_task_inbox() {
+    coder_host::control::set_local_engines(scenario::engines_here);
     scenario::run(|paths| {
         let workspace = std::fs::canonicalize(&paths.workspace).unwrap();
         let inbox = Inbox::new(

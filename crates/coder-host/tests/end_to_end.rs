@@ -145,6 +145,7 @@ impl Tasks for Memory {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn enroll_discover_connect_fall_back_catch_up_and_revoke() {
+    coder_host::control::set_local_engines(scenario::engines_here);
     scenario::run(|_| {
         let memory = Arc::new(Memory::default());
         let view = memory.clone();

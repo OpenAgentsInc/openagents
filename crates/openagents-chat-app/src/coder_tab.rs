@@ -773,7 +773,7 @@ impl CoderTab {
         let paired = match availability {
             Availability::Ready(host)
             | Availability::Connecting(host)
-            | Availability::Offline(host) => Some(host.label.clone()),
+            | Availability::Offline(host) => Some((host.label.clone(), engines_of(host))),
             Availability::NotConfigured => None,
         };
         let project = self
@@ -788,8 +788,8 @@ impl CoderTab {
             client: None,
             computer_ready: ready,
             computer: paired
-                .filter(|name| !name.trim().is_empty())
-                .map(|name| crate::router::Computer::Paired { name }),
+                .filter(|(name, _)| !name.trim().is_empty())
+                .map(|(name, engines)| crate::router::Computer::Paired { name, engines }),
             project,
             coder_run: self.talk_run(computers),
             app_build: self.app_build.clone(),
@@ -4212,6 +4212,29 @@ pub fn starts_at_once(host: &HostRecord) -> bool {
             .presence
             .supports(coder_host::access::protocol::CODER_START_AT_ONCE)
     })
+}
+
+/// The coding agents `host`'s newest presence names, each with its state
+/// (#10119): the list the host builds for its own chats, kept with the
+/// computer's record and sent in this phone's chat context. Empty for a
+/// computer that predates the flags or sent no presence yet.
+pub fn engines_of(host: &HostRecord) -> Vec<crate::router::Engine> {
+    let Some(received) = host.presence.as_ref() else {
+        return Vec::new();
+    };
+    coder_host::access::protocol::engine_flags(
+        received.presence.capabilities.iter().map(String::as_str),
+    )
+    .into_iter()
+    .filter_map(|(engine, state)| {
+        Some(crate::router::Engine {
+            engine,
+            state: crate::router::EngineState::of_word(state)?,
+        })
+    })
+    .filter(crate::router::Engine::bounded)
+    .take(crate::router::MAX_ENGINES)
+    .collect()
 }
 
 /// Whether a new chat can start now, from the typed authority check and host
