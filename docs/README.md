@@ -21,7 +21,8 @@ the [document catalog](catalog.md) to find a specific reference.
 | Understand test-time compute and the capabilities agents gain at run time | [Test-Time Capabilities](essays/2026-09-29-test-time-capabilities.md) (essay) |
 | Present a talk from the desktop | [OpenAgents deck](../crates/openagents-deck/README.md), [test-time capabilities slides](decks/test-time-capabilities/) |
 | Observe and control a task over Nostr | [Scoped control host and client](coder/runtime/nostr-task-control.md) |
-| Reuse knowledge and components | [Knowledge](coder/guides/knowledge-base.md), [extensions](extensions/README.md), [programs](programs.md) |
+| Make, test, and publish a plugin | [Plugins](plugins/README.md) |
+| Reuse knowledge and components | [Knowledge](coder/guides/knowledge-base.md), [extension packages](extensions/README.md), [programs](programs.md) |
 | Build agent labor | [Market infrastructure](agents/market-infrastructure.md), [free labor host](coder/runtime/free-labor.md) |
 | Inspect decision and coding evidence | [Gym](gym/README.md), [Terminal-Bench](terminal-bench/README.md) |
 | Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |

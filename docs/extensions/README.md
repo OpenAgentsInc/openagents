@@ -1,5 +1,10 @@
 # OpenAgents programs and extensions
 
+> To make, test, or publish a plugin, start at [Plugins](../plugins/README.md).
+> This directory holds the engineering specifications beneath it: a plugin
+> ships as an extension package, its workflows are programs, and its Wasm
+> is the `plugin` component kind ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)).
+
 Status: target specification, partly implemented. The Wasm plugin host
 core and the program `program` and `module` steps are built;
 [extension evaluation](evaluation.md) (revision 2) is built and live in
@@ -8,10 +13,10 @@ the engine, the CLI, the hosted runner, the chat interview, credit, and the
 phone's eval loop;
 [What is built](plugins.md#what-is-built) lists the plugin parts.
 OpenAgents defines general agent infrastructure; Coder is its first
-specialization. People add capabilities: a program, a plugin, a skill, or a
-knowledge entry ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)).
+specialization. People add plugins, which contain skills, workflows (programs), knowledge
+entries, Wasm, and tests ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)).
 Programs compose typed work. Extension packages are the container a
-capability ships in; they distribute programs, operation descriptions, Wasm
+plugin ships in; they distribute programs, operation descriptions, Wasm
 plugins, skills, semantic AI signatures, and immutable AI implementations.
 Every component has an explicit identity, interface, effect boundary, and
 lifecycle.
@@ -45,7 +50,7 @@ component or grant a provider access.
 | [Packages and distribution](packages.md) | Immutable contents, identity, installation, publication, revocation, and adoption. |
 | [TypeSafe opportunities](opportunities.md) | Concrete applications of explicit state and economical semantic operations. |
 | [Delivery and evaluation](delivery.md) | Implementation sequence and acceptance requirements. |
-| [Extension evaluation](evaluation.md) | `openagents ext eval` and the chat product path: suites, graders, the run sandbox, hosted runs, publishing results to the Gym, checks, adoption, and XP credit. |
+| [Extension evaluation](evaluation.md) | `openagents plugin test` (also `ext eval`) and the chat product path: suites, graders, the run sandbox, hosted runs, publishing results to the Gym, checks, adoption, and XP credit. |
 | [Optimization architecture](../optimization/architecture.md) | Stable semantic contracts and replaceable inference implementations. |
 
 The [OpenAgents NIPs](../../nips/openagents/README.md) are standalone v1
@@ -56,7 +61,7 @@ A specification does not imply an implemented runtime or measured benefit.
 ## Programs, plugins, and AI implementations
 
 A program is a workflow, not a model prompt. A Wasm plugin is a bounded
-executable guest, one kind of capability and not every kind. An AI signature describes
+executable guest, one part of a plugin and not every part. An AI signature describes
 semantic behavior; an AI implementation supplies a pinned realization through
 a decision function, program, or admitted operation. An extension package can
 contain several of these components without merging their authority.

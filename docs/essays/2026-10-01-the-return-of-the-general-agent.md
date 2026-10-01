@@ -29,9 +29,9 @@ The motivation is in [episode 288, *Three DevDays Later*](../transcripts/288.md)
   was where.
 - **Our answer: a general agent is a composition.** It is an agent of
   agents: a general front that decides cheaply and in typed form what each
-  request needs, and a growing set of specialized members (answers,
-  knowledge, programs, plugins, skills, other agents, other computers)
-  that it admits per request. Specialization lives in the members.
+  request needs, and a growing set of specialized members (answers, the
+  plugins people add, other agents, other computers) that it admits per
+  request. Specialization lives in the members.
   Generality lives in the composition.
 - **What makes the front feasible now is a new kind of model.** A router
   has to be right, fast, and cheap on every turn, and it has to answer in a
@@ -49,7 +49,7 @@ The motivation is in [episode 288, *Three DevDays Later*](../transcripts/288.md)
   decaying.
 - **Because members are signed public records, the agent is extensible by
   people, by their agents, and at machine speed.** Anyone with a key can
-  publish a member, a test set, a reproduction, or a validation. No review
+  publish a plugin, a test set, a reproduction, or a validation. No review
   queue stands between a contribution and its evaluation. The cycle that
   extends the agent is a run, not a training run or an app-store review.
 - **The protocol is the agent.** The NIPs carry every step: the request
@@ -59,7 +59,7 @@ The motivation is in [episode 288, *Three DevDays Later*](../transcripts/288.md)
   application.
 - **What we have shown is narrower than the thesis.** The parts are built
   and running: a typed router in production, a coding agent that delegates
-  to five engines, an evaluation loop that took one capability from claim
+  to five engines, an evaluation loop that took one plugin from claim
   to externally validated adoption in an afternoon, and a coding agent
   that has landed changes to its own repository from a chat message. What
   we have not shown is independent contributors at scale, compounding
@@ -177,7 +177,7 @@ the scale of the whole agent.
 In OpenAgents 1.0.0 the composition looks like this. *OpenAgents* is the
 general agent people talk to, on a phone, a desktop, or a terminal.
 *Coder* is its first specialist member, a coding agent. The other members
-are what people add.
+are the agents Coder delegates to and the plugins people add.
 
 | Layer | What it does | What it is in 1.0.0 |
 | --- | --- | --- |
@@ -186,13 +186,13 @@ are what people add.
 | Conversation | A general model for everything the front doesn't hand off | A hosted chat model behind the chat worker |
 | Specialist agent | Work that needs a computer | Coder, on the person's own computer ([NIP-HOST](../../nips/openagents/NIP-HOST.md), [NIP-REACH](../../nips/openagents/NIP-REACH.md)) |
 | Engines | The executors Coder delegates to | Codex, Claude Code, Grok Build, OpenCode, Devin, chosen by policy, capacity, and the person's request |
-| Capabilities | What people add: programs, plugins, skills, knowledge entries | [NIP-EXT](../../nips/openagents/NIP-EXT.md) releases, [NIP-PRG](../../nips/openagents/NIP-PRG.md) programs, Wasm plugins, NIP-KB entries |
+| Plugins | What people add: skills, workflows, knowledge, Wasm, and tests ([plugins](../plugins/README.md)) | [NIP-EXT](../../nips/openagents/NIP-EXT.md) releases, [NIP-PRG](../../nips/openagents/NIP-PRG.md) programs, Wasm guests, NIP-KB entries |
 | Evaluation | Whether a member helps, on what, at what cost | The Gym: [NIP-EVAL](../../nips/openagents/NIP-EVAL.md) reports, checks, validations, adoption |
 | Credit | Who did the work that made a member trustworthy | [NIP-XP](../../nips/openagents/NIP-XP.md) awards |
 
 It is an agent of agents in a literal sense. The front decides; Coder is an
 agent; Coder delegates to other vendors' agents; and those engines run
-with capabilities that other people and other agents wrote. One request
+with plugins that other people and other agents wrote. One request
 can pass through four layers of agency, each chosen by a decision someone
 can inspect.
 
@@ -237,9 +237,9 @@ one identified member, admitted to one baseline agent, on one declared
 distribution, under one grant, by one measurement, read by one written
 policy. Our Gym runs those measurements, other trainers reproduce them,
 a test set written by someone else validates them, and only then can an
-operator adopt the member into every Coder's defaults. The first member
+operator adopt the plugin into every Coder's defaults. The first plugin
 went the whole way on 2026-09-29: Project map passed 5 of 6 tests with the
-member against 2 of 6 without, three distinct trainer keys reproduced it,
+plugin against 2 of 6 without, three distinct trainer keys reproduced it,
 a second test set released later under another key validated it at 4 of 6
 against 2 of 6, and it was adopted into `coder-defaults`
 ([record](../extensions/measurements/2026-09-29-first-adoption.md)). The
@@ -253,13 +253,13 @@ prepared answer reaches the phone in 0.6 to 0.7 s; a full model answer takes
 3 to 5 s
 ([measurements](2026-09-29-test-time-capabilities.md#our-numbers-judgments-before-thinking)).
 Members can substitute for compute: in the hosted runs, a Project map run
-took 10.7 s with the member against 24.9 s without, and passed more tests.
+took 10.7 s with the plugin against 24.9 s without, and passed more tests.
 Cost becomes a property of which members a request needed, which a
 composition can report per request.
 
 **E. A buyer.** "What do I use a general agent for?" was the commercial
 problem. A composition presents its members as jobs: talk to OpenAgents,
-have Coder do this issue, test whether this capability helps. The general
+have Coder do this issue, test whether this plugin helps. The general
 front is the product people open; the members are the reasons they
 return. The market drafts go further, letting agents negotiate bounded
 work and be paid for accepted results ([NIP-MKT](../../nips/openagents/NIP-MKT.md),
@@ -378,7 +378,7 @@ were missing, and each has arrived only recently.
    review, terms, and revenue share. [Episode 288](../transcripts/288.md)
    makes the point bluntly: three years after a developer revenue-sharing
    promise, the answer is still a human review queue and no stated share.
-   Signed events on Nostr let anyone publish a member, a test, or a result,
+   Signed events on Nostr let anyone publish a plugin, a test, or a result,
    and let anyone verify who signed it.
 
 ### What is different from today's composition efforts
@@ -403,12 +403,13 @@ the agent, carried in the open.
 
 ### By people
 
-A person extends the agent by writing one of four kinds of member
-([glossary](../glossary.md#one-vocabulary-what-you-can-add)): a **program**
-(a typed workflow of named steps, the default), a **plugin** (a sandboxed
-Wasm guest doing one bounded operation), a **skill** (guidance an agent
-reads before a task), or a **knowledge entry** (a versioned, cited
-reference). Each ships as a signed release. From the app, a person can
+A person extends the agent by writing a **plugin**
+([plugins](../plugins/README.md), [glossary](../glossary.md#one-vocabulary-what-you-can-add)).
+A plugin can contain **skills** (guidance an agent reads before a task),
+**workflows** (typed programs of named steps, the default), **knowledge**
+(versioned, cited references), **Wasm** (sandboxed code doing one bounded
+operation), and **tests** (the test set that measures it). Each ships as a
+signed release. From the app, a person can
 draft a test set in chat, start a with-and-without run, and publish the
 result. They need no account with us beyond a key, and no one's permission
 to publish.
@@ -416,7 +417,7 @@ to publish.
 ### By their agents
 
 The same records can be written by agents. A person's agent can author a
-member, write the test set that measures it, run the evaluation, and
+plugin, write the test set that measures it, run the evaluation, and
 publish the result; another person's agent can reproduce it. The protocol
 does not care whether a signer is a person or an agent; the admission rule
 treats both alike, which is the point.
@@ -459,7 +460,7 @@ the next run admitting it, completed in one afternoon
 ([record](../extensions/measurements/2026-09-29-first-adoption.md)).
 Nothing in the path requires a person to act at any step except the
 adoption decision, so the rate at which the agent can absorb improvements
-is bounded by how fast members can be written and measured, and members
+is bounded by how fast plugins can be written and measured, and plugins
 can be written and measured by agents.
 
 That is what we mean by extensible at machine speed. It is a statement
@@ -477,7 +478,7 @@ An agent that admits whatever it or anyone else writes will get worse
 faster than it gets better.
 
 Our own records show the same hazard in the instruments. Our first gate
-rated a member **Better** for making Coder faster without making it more
+rated a plugin **Better** for making Coder faster without making it more
 correct; a grader missed a phrasing and flipped a verdict. We replaced the
 gate the same day and versioned the test set, and the old results stay
 readable under their old digests
@@ -489,7 +490,7 @@ reads 0.907 route accuracy on held-out rows with prepared-answer precision
 at 100%, and named the right engine 22 of 22 times when one was asked for
 ([measurement](../coder/measurements/2026-09-30-engine-request.md)).
 
-The brake is what makes the speed safe: members are cheap to propose and
+The brake is what makes the speed safe: plugins are cheap to propose and
 expensive to adopt, and the expense is evidence, not permission.
 
 ## Part IV: The protocol is the agent
@@ -504,8 +505,8 @@ carry it. Status is each contract's, as the
 | --- | --- | --- |
 | A turn, its typed judgment, and its offers (run Coder, open a test, publish a result) | [NIP-CJ](../../nips/openagents/NIP-CJ.md) | Partial |
 | Typed decisions: one state, `noul`, `choice`, and `score` questions, probabilities | [NIP-DEC](../../nips/openagents/NIP-DEC.md) | Implemented |
-| Knowledge as a member, with evidence that it helps | [NIP-KB](../../nips/openagents/NIP-KB.md) | Implemented |
-| Members as signed releases: programs, plugins, skills, test sets | [NIP-EXT](../../nips/openagents/NIP-EXT.md) | Partial |
+| Knowledge in a plugin, with evidence that it helps | [NIP-KB](../../nips/openagents/NIP-KB.md) | Implemented |
+| Plugins as signed releases: workflows, Wasm, skills, test sets | [NIP-EXT](../../nips/openagents/NIP-EXT.md) | Partial |
 | Typed workflows, including `decide` and `delegate` steps | [NIP-PRG](../../nips/openagents/NIP-PRG.md) | Partial |
 | Operation descriptions, separate from the grants that allow them | [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Partial |
 | The person's computers, enrolled devices, and scoped access | [NIP-HOST](../../nips/openagents/NIP-HOST.md), [NIP-REACH](../../nips/openagents/NIP-REACH.md) | Implemented |
@@ -519,7 +520,7 @@ carry it. Status is each contract's, as the
 
 Three consequences follow from carrying the composition this way.
 
-- **Members are portable.** A member is a release anyone can fetch and a
+- **Plugins are portable.** A plugin is a release anyone can fetch and a
   claim anyone can check. It does not belong to the app that first ran it.
 - **Evidence outlives the evaluator.** A result names its subject, its
   baseline, its test set, its gate, and its signer. Anyone can rerun it,
@@ -539,7 +540,7 @@ Three consequences follow from carrying the composition this way.
   [latest measurement](../coder/measurements/2026-09-30-engine-request.md)).
 - A specialist agent on the person's own computer that delegates to five
   engines under the owner's policy, from a phone, a desktop, or a terminal.
-- An evaluation loop that took one member from claim to reproduced to
+- An evaluation loop that took one plugin from claim to reproduced to
   externally validated to adopted, and admitted it in the next runs
   ([record](../extensions/measurements/2026-09-29-first-adoption.md)).
 - A coding agent that has landed changes to its own repository from a chat
@@ -553,7 +554,7 @@ Three consequences follow from carrying the composition this way.
   and validation came from one machine and one person's agent through one
   runner. The policy counts keys; the record counts one operator.
 - **Compounding.** That adding participants makes the agent measurably
-  better is the claim we still have to earn. One adopted member is a
+  better is the claim we still have to earn. One adopted plugin is a
   proof of the path, not of a flywheel.
 - **Generality beyond software.** Every specialist member today does
   software work. The thesis predicts the same discipline works for other
@@ -579,7 +580,7 @@ Three consequences follow from carrying the composition this way.
 
 A thesis that can't fail isn't one. These results would count against it:
 
-1. **Adopted members don't transfer.** If members that pass validation stop
+1. **Adopted plugins don't transfer.** If plugins that pass validation stop
    helping on the work people actually bring, the claim discipline
    measures the wrong thing.
 2. **The front becomes the bottleneck.** If typed routing can't keep its

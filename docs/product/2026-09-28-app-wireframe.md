@@ -116,7 +116,10 @@ a separate flow a person opts into.
 - **The word is capability** ([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957)):
   Test a capability, with and without the capability, Coder has this
   capability now. "Tool" joins the banned list as an umbrella word; Project
-  map, Code finder, and Test reader keep their names.
+  map, Code finder, and Test reader keep their names. Superseded on
+  2026-10-01: the word is **plugin**
+  ([#10087](https://github.com/OpenAgentsInc/openagents/issues/10087), see
+  [Words on screen](#words-on-screen)).
 
 ## Revision 3: what changed
 
@@ -394,17 +397,17 @@ docs, and the Advanced section of Profile.
 | On screen | Internal term | Why |
 | --- | --- | --- |
 | **Coder** ("an AI that writes code") | Coder, the agent | A name plus one plain line. |
-| **Capability** | What a person adds to Coder: a program, a plugin (a Wasm guest), a skill, or a knowledge entry, shipped in an extension package ([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957), decided 2026-09-29) | The video's word and the app's word are the same word: a capability is what a claim establishes Coder can do. "Tool" is retired as the umbrella (it survives only for a model's own tool call in a transcript); "plugin" and "extension" are jargon. |
-| **Project map**, **Code finder**, **Test reader** | `repo_map`, `code_search`, `test_report` evidence guests | Says what the capability does. Names stay names: Project map is a capability, never "a tool". |
+| **Plugin** | Anything a person adds to OpenAgents: its skills, workflows (NIP-PRG programs), knowledge (NIP-KB entries), Wasm (the `plugin` component kind, a Wasm guest), and tests, shipped in a NIP-EXT extension package ([#10087](https://github.com/OpenAgentsInc/openagents/issues/10087), decided 2026-10-01; it replaces *capability*, decided 2026-09-29 in [#9957](https://github.com/OpenAgentsInc/openagents/issues/9957)) | One word for one thing: it's a plugin system. *Capability* stays the research word for what a test result shows a plugin adds ([glossary](../glossary.md#one-vocabulary-what-you-can-add)). "Tool" is never the word for any part (it survives only for a model's own tool call in a transcript), and "extension" is jargon. |
+| **Project map**, **Code finder**, **Test reader** | `repo_map`, `code_search`, `test_report` evidence guests | Says what the plugin does. Names stay names: Project map is a plugin, never "a tool". |
 | **Test** | A case in an extension eval suite | Everyone knows what a test is. "Eval" and "case" are jargon. |
 | **Test set** | A suite | A set of tests. |
-| **With the capability**, **without it** | The subject and baseline arms | Says what's being compared. |
+| **With the plugin**, **without it** | The subject and baseline arms | Says what's being compared. |
 | **Passes 7 of 8 tests** | Cases passed in the subject arm | Whole numbers, whole denominator. |
 | **Better**, **No clear change**, **Worse** | The `ext-eval-v2` gate: keep (more tests passed, beyond the spread between repeats, at a cost and time not materially worse), inconclusive, reject. Faster or cheaper is a note beside the verdict, never Better on its own | Plain verdict. |
 | **Try it once** | A one-run pilot | Says it's a quick try. |
 | **Check a result** | A rerun of a published test set by another trainer | Says what you do. |
 | **Add to the Gym** | Publish the suite and the signed result (NIP-EXT, NIP-EVAL) | Says where it goes. |
-| **Coder has this capability now** | Adoption into Coder defaults | Says what happened. |
+| **Coder can use this plugin for everyone** | Adoption into Coder defaults | Says what happened. |
 | **Train Coder** | Opt into the Gym: the intro (`FLOW-01`), then the Gym's starters, cards, and menu | Says what you're signing up for. Until it's tapped, the chat volunteers nothing of the Gym. |
 | **Trainer 7KQ** | The Verse world key's public key | A name, not a key. |
 | **XP**, **Level 2** | NIP-XP awards on `trainer-curve-v1` | Game words most people know. |
@@ -424,8 +427,9 @@ docs, and the Advanced section of Profile.
 | **Wrong answer** | A wrong-answer playtest report | Says what you're telling us. |
 
 Banned on primary surfaces: npub, nsec, key, relay, Nostr, NIP, ATIF,
-tailnet, Tailscale, Wasm, plugin, extension, tool (as the umbrella word;
-a model's tool call in a transcript keeps its name), benchmark,
+tailnet, Tailscale, Wasm, capability, extension, tool (as a name for a
+plugin or any part of one; a model's tool call in a transcript keeps its
+name), benchmark,
 Terminal-Bench, TB,
 eval, evaluation, suite, case, grader, rubric, judge, baseline, arm,
 harness, stand-in, mock, pilot, Jev, Luna, Microcoder, verifier, trace,

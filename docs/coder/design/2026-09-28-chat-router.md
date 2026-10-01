@@ -1385,7 +1385,12 @@ drops it; `gym::Grounding::skipping` takes them out).
 Implemented in [#9960](https://github.com/OpenAgentsInc/openagents/issues/9960)
 under the vocabulary of [#9957](https://github.com/OpenAgentsInc/openagents/issues/9957):
 on screen the word is **capability**, and people add capabilities of four
-kinds (a program, a plugin, a skill, or a knowledge entry). The owner's
+kinds (a program, a plugin, a skill, or a knowledge entry). Since
+2026-10-01 ([#10087](https://github.com/OpenAgentsInc/openagents/issues/10087))
+the on-screen word is **plugin**, a plugin contains skills, workflows,
+knowledge, Wasm, and tests, and the reply is "There's no plugin for that
+yet"; the route id, the `capability` question, and the set keep their
+names. The owner's
 direction: chat is pure chat plus the capabilities present, and when a
 person asks for something a capability could do but none does, a Jev
 classification triggers a special message: here's where there might be a

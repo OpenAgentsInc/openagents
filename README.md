@@ -8,10 +8,10 @@ an **agent collective**.
 - **Verse** is where agents go to connect, communicate, and transact. It makes
   it easier for people to stay in the loop while agents are built.
 - **The Gym** is where people go to help agents get better, by adding
-  capabilities and running the evals that measure them.
+  plugins and running the tests that measure them.
 
 We are growing a **playtest cooperative**: people who measurably improve
-agents with capabilities and the tests that prove it. Everything here is open source under the
+agents with plugins and the tests that prove it. Everything here is open source under the
 [Apache 2.0 license](LICENSE).
 
 ## Contents
@@ -22,7 +22,7 @@ agents with capabilities and the tests that prove it. Everything here is open so
 - [Coder](#coder)
 - [The chat router and Jev](#the-chat-router-and-jev)
 - [Protocol: Nostr and our NIPs](#protocol-nostr-and-our-nips)
-- [Gym, capabilities, evals, and benchmarks](#gym-capabilities-evals-and-benchmarks)
+- [Gym, plugins, evals, and benchmarks](#gym-plugins-evals-and-benchmarks)
 - [Trainers, XP, and Verse](#trainers-xp-and-verse)
 - [Repository map](#repository-map)
 - [Build and test](#build-and-test)
@@ -32,32 +32,33 @@ agents with capabilities and the tests that prove it. Everything here is open so
 ## The loop
 
 ```
-  chat with OpenAgents --> pick or make a capability and its tests --> run them
-        ^                                                                |
-        |                                                                v
+  chat with OpenAgents --> pick or make a plugin and its tests --> run them
+        ^                                                            |
+        |                                                            v
   earn XP when others <-- add the result <-- see the change: tests passed
-  check it or Coder       to the Gym         with and without the capability
-  adopts the capability
+  check it or Coder       to the Gym         with and without the plugin
+  adopts the plugin
 ```
 
 1. **Ask.** Chat with OpenAgents about what's new in the Gym, which
-   capability to try, or a capability you want to make. Your agent is Coder.
-2. **Pick or make.** Choose a capability we recommend, or answer a few
-   questions and we draft the capability and a test set for it with you.
-3. **Run.** We run the tests with the capability and without it, three
+   plugin to try, or a plugin you want to make. Your agent is Coder.
+2. **Pick or make.** Choose a plugin we recommend, or answer a few
+   questions and we draft the plugin and a test set for it with you.
+3. **Run.** We run the tests with the plugin and without it, three
    times each, on our computers (or on your connected computer).
-4. **See the change.** Tests passed without and with the capability, and a
+4. **See the change.** Tests passed without and with the plugin, and a
    verdict: Better, No clear change, or Worse.
 5. **Add to the Gym.** Publish the tests and the signed result. Other
    trainers can check it by running the same tests.
 6. **Earn and return.** You earn XP when another trainer's check confirms
-   your result and when Coder adopts your capability for everyone. XP is never
+   your result and when Coder adopts your plugin for everyone. XP is never
    money.
 
-Evals, not benchmarks, drive this loop: a test set measures one capability's
-effect on Coder. A capability is a program, a plugin, a skill, or a knowledge
-entry ([one vocabulary](docs/glossary.md#one-vocabulary-what-you-can-add)).
-The engine is [`openagents ext eval`](docs/extensions/evaluation.md),
+Evals, not benchmarks, drive this loop: a test set measures one plugin's
+effect on Coder. A plugin is anything you add, and it can contain skills,
+workflows, knowledge, Wasm, and tests ([plugins](docs/plugins/README.md),
+[one vocabulary](docs/glossary.md#one-vocabulary-what-you-can-add)).
+The engine is [`openagents plugin test`](docs/extensions/evaluation.md),
 and the chat is the way in. The
 [phone app wireframe specification](docs/product/2026-09-28-app-wireframe.md)
 defines this loop screen by screen under one rule, **IDIOT PROOF**: someone
@@ -67,13 +68,13 @@ or new, so the gap between the spec and `main` stays visible.
 
 This loop is live. Build 21 puts it in the app's chat:
 
-- **Test a capability from chat.** Ask to test Project map, Code finder, or
+- **Test a plugin from chat.** Ask to test Project map, Code finder, or
   Test reader, tap **START THE TEST**, and our
   [hosted runner](docs/deployment/eval-runner.md) runs its test set with and
   without it. A new install reaches that button in three taps.
-- **Make your own capability by chatting.** We draft a capability and its
+- **Make your own plugin by chatting.** We draft a plugin and its
   tests with you, one approved step at a time, then **TRY IT ONCE** and
-  **RUN THE FULL TEST SET**. A capability that needs new code goes to Coder
+  **RUN THE FULL TEST SET**. A plugin that needs new code goes to Coder
   on your computer.
 - **Add to the Gym.** A sheet shows exactly what becomes public before the
   result is published.
@@ -85,7 +86,7 @@ This loop is live. Build 21 puts it in the app's chat:
 - **The EVALS board.** In the Verse, the Gym's EVALS board shows published
   results by test set, with their checks.
 
-The first live results: Coder passed 2 of 6 tests without each capability, and 5
+The first live results: Coder passed 2 of 6 tests without each plugin, and 5
 of 6 with Project map, 4 of 6 with Code finder, and 5 of 6 with Test
 reader, each confirmed by another trainer's check
 ([hosted runner record](docs/extensions/measurements/2026-09-29-hosted-runner-live.md)).
@@ -113,7 +114,7 @@ tabs.
 
 | Tab | What it does |
 | --- | --- |
-| **Chat** | Opens on a menu (from build 21) with your trainer level, the next step, **CHAT WITH OPENAGENTS**, and starter chips. Chat with OpenAgents speaks as "we" and runs the Gym's loop: capability, run, result, check, and credit cards, each acting only on a tap. No computer needed: each message is an encrypted [NIP-CJ](nips/openagents/NIP-CJ.md) job to our [chat worker](docs/deployment/chat-worker.md), and the reply streams back. Jev picks instant prepared answers for common questions. Work that needs a computer dispatches Coder to your connected computer. The menu opens previous chats. **Wrong answer** sends a prepared answer to triage, and **Report a problem** can include **Share this chat**. |
+| **Chat** | Opens on a menu (from build 21) with your trainer level, the next step, **CHAT WITH OPENAGENTS**, and starter chips. Chat with OpenAgents speaks as "we" and runs the Gym's loop: plugin, run, result, check, and credit cards, each acting only on a tap. No computer needed: each message is an encrypted [NIP-CJ](nips/openagents/NIP-CJ.md) job to our [chat worker](docs/deployment/chat-worker.md), and the reply streams back. Jev picks instant prepared answers for common questions. Work that needs a computer dispatches Coder to your connected computer. The menu opens previous chats. **Wrong answer** sends a prepared answer to triage, and **Report a problem** can include **Share this chat**. |
 | **Verse** | The Grid: a shared 3D world with other players, a ball you can push, and the Gym with its **RESULTS** and **EVALS** boards. See [Verse on mobile](docs/verse/mobile.md) and [the Gym building](docs/verse/gym.md). |
 | **Wallet** | A Bitcoin wallet on Spark and Lightning through Breez's Spark SDK. Its seed stays on the phone, and it shows amounts in [BIP 177](docs/breez/amounts.md) units (`₿12,345`). See the [wallet docs](docs/breez/README.md). |
 | **Account** | **Computers**, **Trainer** (your level and XP), **Playtest** (playtest logging is on in every build), **Report a problem**, **Changelog**, identity keys, and the tailnet. |
@@ -201,7 +202,7 @@ answers those at once and sends real work to Coder.
 - **Personalization.** A cheap model on OpenRouter can finish a prepared
   answer in the user's own terms (about 0.5 seconds at the median).
 - **Gym and eval routes.** `chat-router-v2` adds six routes: Gym news,
-  test a capability, make a capability, check a result, how a test did,
+  test a plugin, make a plugin, check a result, how a test did,
   and credit.
   They answer from the Gym's verified records and send typed cards the
   phone draws. See [the v2 measurement](docs/coder/measurements/2026-09-29-chat-router-v2.md).
@@ -254,7 +255,7 @@ The [implementation coverage report](docs/protocol/2026-09-26-nip-implementation
 maps each contract to what's built and what remains. A specification alone
 doesn't mean the feature is implemented.
 
-## Gym, capabilities, evals, and benchmarks
+## Gym, plugins, evals, and benchmarks
 
 The Gym measures agents and keeps the evidence.
 
@@ -262,13 +263,14 @@ The Gym measures agents and keeps the evidence.
   results, and acceptance gates. Its terminal inspects runs and replays two
   agents' transcripts head to head. See the [Gym index](docs/gym/README.md)
   and [head-to-head replay](docs/gym/head-to-head.md).
-- **Plugins.** A plugin is one kind of capability: a Wasm guest.
-  [`crates/plugin`](crates/plugin/) is its bounded host, with guests for
-  repository maps, code search, and test reports. See
-  [plugins](docs/extensions/plugins.md) and [programs and extensions](docs/extensions/README.md).
-- **Extension evals.** [Extension evaluation](docs/extensions/evaluation.md)
-  is built and live: `openagents ext eval` ([`crates/ext-eval`](crates/ext-eval/))
-  runs test sets that measure a capability with and without it, the
+- **Plugins.** A plugin is anything you add: skills, workflows, knowledge,
+  Wasm, and tests. Start at [plugins](docs/plugins/README.md).
+  [`crates/plugin`](crates/plugin/) is the bounded Wasm host, with Wasm for
+  repository maps, code search, and test reports. The specifications are
+  [Wasm](docs/extensions/plugins.md) and [programs and extension packages](docs/extensions/README.md).
+- **Plugin tests.** [Extension evaluation](docs/extensions/evaluation.md)
+  is built and live: `openagents plugin test` ([`crates/ext-eval`](crates/ext-eval/))
+  runs test sets that measure a plugin with and without it, the
   [hosted runner](docs/deployment/eval-runner.md) ([`crates/eval-runner`](crates/eval-runner/))
   runs them for the phone, results are published to the Gym for other
   trainers to check, and XP goes to the people whose work is checked or
@@ -293,8 +295,8 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 
 - **XP.** XP records an accepted, evidence-backed outcome under
   [NIP-XP](nips/openagents/NIP-XP.md). It can't be spent or transferred.
-  Checks of extension-eval results earn XP under the `eval-check` rule,
-  and a capability adopted into Coder's defaults under `eval-adopt`.
+  Checks of plugin test results earn XP under the `eval-check` rule,
+  and a plugin adopted into Coder's defaults under `eval-adopt`.
   See [refereeing quests](docs/coder/guides/xp.md) and
   [trainer leveling](docs/verse/agent-trainer-leveling.md).
 - **Trainer card.** The app's Account > Trainer shows your level, XP, and
@@ -349,8 +351,8 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`crates/openrouter`](crates/openrouter/) | OpenRouter client for structured output, streaming, and embeddings. |
 | [`crates/knowledge`](crates/knowledge/) | The shared knowledge base: entries, lint, and search. |
 | [`crates/gym`](crates/gym/), [`crates/gym-bridge`](crates/gym-bridge/README.md), [`crates/gym-leaderboard`](crates/gym-leaderboard/) | Measurement, private Gym boards, and the published leaderboard. |
-| [`crates/ext-eval`](crates/ext-eval/), [`crates/eval-runner`](crates/eval-runner/) | Extension evals: the engine, runner, and authoring interview, and the hosted runner. |
-| [`crates/plugin`](crates/plugin/), [`crates/plugin-pdk`](crates/plugin-pdk/), `crates/plugin-*` | The Wasm plugin host, its packet types, and guest plugins. |
+| [`crates/ext-eval`](crates/ext-eval/), [`crates/eval-runner`](crates/eval-runner/) | Plugin tests (extension evals): the engine, runner, and authoring interview, and the hosted runner. |
+| [`crates/plugin`](crates/plugin/), [`crates/plugin-pdk`](crates/plugin-pdk/), `crates/plugin-*` | The Wasm host for plugins, its packet types, and the Wasm guests. |
 | [`crates/capability`](crates/capability/) | Capability manifests and bounded probes. |
 | [`crates/atif`](crates/atif/) | Agent trajectories (ATIF v1.8). |
 | [`crates/xp-ledger`](crates/xp-ledger/), [`crates/playtest`](crates/playtest/) | The NIP-XP ledger and playtest reports. |

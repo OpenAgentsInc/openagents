@@ -10,9 +10,12 @@ document is the target specification for typed operations, shared
 evidence, and [program execution](programs.md);
 [What is built](#what-is-built) says which parts exist today.
 
-In this document, and everywhere else, *plugin* means an OpenAgents
-WebAssembly guest, one of the four kinds of capability a contributor adds
-([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). A Claude
+In this document *plugin* means a plugin's Wasm part: an OpenAgents
+WebAssembly guest, the NIP-EXT `plugin` component kind, as in
+`crates/plugin` and the `crates/plugin-*` guests. Where people read it, in
+the apps, the chat, the CLI, and the [how-to docs](../plugins/README.md),
+*plugin* names the whole thing a person adds, and this part is called
+*Wasm* ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). A Claude
 Code or Codex package under `plugins/` is a client plugin package, named in
 full; the [glossary](../glossary.md#plugins-and-skills) separates them.
 
@@ -227,21 +230,20 @@ The following aren't built yet:
 ([#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)). It
 measures whether an extension changes what Coder does, with and without it:
 
-- `crates/ext-eval` is the engine and runner, and `openagents ext eval run
-  | init | publish | check` is its CLI. Each run is one confined `coder -p`
+- `crates/ext-eval` is the engine and runner, and `openagents plugin test
+  run | init | release | publish | check` (also `openagents ext eval`) is its CLI. Each run is one confined `coder -p`
   turn, and the Gym gate `ext-eval-v2` gives the verdict.
 - `crates/eval-runner` is the hosted runner that runs a test set for the
   phone on our computers ([runbook](../deployment/eval-runner.md)).
-- The three [evidence guests](#evidence-guests) are the app's catalog
-  capabilities: Project map (Repository map), Code finder (Code search),
+- The three [evidence guests](#evidence-guests) are the Wasm of the app's
+  catalog plugins: Project map (Repository map), Code finder (Code search),
   and Test reader (Test report). Each has a starter test set of six tests.
   On 2026-09-29, Coder passed 2 of 6 without each and 5, 4, and 5 of 6
   with it (**Better** each time), and another trainer's check confirmed
   each result ([live record](measurements/2026-09-29-hosted-runner-live.md)).
-- A capability made in chat is a skill, optionally with catalog
-  capabilities turned on; `CODER_GUIDANCE` and its digest carry the skill
-  into a run. A capability that needs new code is built with Coder on a
-  connected computer.
+- A plugin made in chat is a skill, optionally with catalog plugins
+  turned on; `CODER_GUIDANCE` and its digest carry the skill into a run. A
+  plugin that needs new code is built with Coder on a connected computer.
 
 ## Evidence guests
 
