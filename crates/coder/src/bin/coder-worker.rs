@@ -2259,7 +2259,13 @@ impl Job {
                         tier,
                         Tier::Model { note: None, .. } | Tier::Grounded { .. } | Tier::Cli { .. }
                     );
-                    seam_holds = held && keeps;
+                    // A seam's tier holds the model's words until the seam
+                    // answers, whether or not any came while the judgment
+                    // was pending: a model faster than the retrieval (the
+                    // primary's first words come in about a second) would
+                    // otherwise answer a knowledge question before its
+                    // knowledge arrived (#10109).
+                    seam_holds = matches!(tier, Tier::Grounded { .. } | Tier::Cli { .. });
                     if !keeps {
                         buffer.clear();
                         held = false;
@@ -4755,6 +4761,88 @@ mod tests {
         assert_eq!(result["tier"], "grounded");
         assert_eq!(result["model"], GEMINI);
         assert_eq!(result["citations"].as_array().unwrap().len(), 1);
+    }
+
+    /// A product knowledge seam that answers after a wait.
+    struct KnowsLate(Grounding, Duration);
+
+    impl router::seams::ProductKb for KnowsLate {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            vec!["an embedding provider".into()]
+        }
+        fn ground<'a>(
+            &'a self,
+            _: &'a Lookup,
+        ) -> futures_util::future::BoxFuture<'a, Result<Grounding, SeamError>> {
+            Box::pin(async move {
+                tokio::time::sleep(self.1).await;
+                Ok(self.0.clone())
+            })
+        }
+    }
+
+    /// A model faster than the retrieval does not answer a knowledge
+    /// question before its knowledge arrives (#10109): the words of the
+    /// call started with the turn wait for the seam, and the reply is the
+    /// one restarted with the passages. The primary's first words come in
+    /// about a second, before a retrieval does.
+    #[tokio::test]
+    async fn a_fast_model_waits_for_the_knowledge_it_is_grounded_on() {
+        let answers = routed("product.kb", "none", 0.1, "none");
+        // The call started with the turn answers after the judgment and
+        // before the retrieval, lowercase; the grounded restart answers
+        // capitalized.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let bodies = [
+                (
+                    Duration::from_millis(150),
+                    include_str!("../../fixtures/gateway/stealth-space-bunny-alpha.sse"),
+                ),
+                (
+                    Duration::ZERO,
+                    include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse"),
+                ),
+            ];
+            for (delay, body) in bodies {
+                let Ok((stream, _)) = listener.accept() else {
+                    return;
+                };
+                std::thread::spawn(move || answer_once(stream, delay, "text/event-stream", body));
+            }
+        });
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let frames = frames_routed(
+            door,
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("how do I connect my Mac", json!({})),
+            Seams {
+                product: Arc::new(KnowsLate(
+                    Grounding {
+                        passages: vec![passage(0.7, None)],
+                        ..Grounding::default()
+                    },
+                    Duration::from_millis(600),
+                )),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["type"], "result", "{result}");
+        assert_eq!(result["tier"], "grounded");
+        assert_eq!(result["text"], "One\nTwo\nThree\nFour\nFive");
+        assert!(
+            frames
+                .iter()
+                .all(|(_, body)| !body["delta"].as_str().unwrap_or("").contains("one")),
+            "the ungrounded words never reached the caller: {frames:?}"
+        );
     }
 
     /// A grounded product reply's `[openagents.…]` citations are read for

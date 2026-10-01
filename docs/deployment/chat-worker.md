@@ -49,8 +49,12 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   provider may keep prompts and completions but does not train on them;
   the privacy answer (`meta.privacy`, `meta.data_retention`) says so, and
   "What model is this?" (`meta.model`) names the model answering now,
-  Gemini while the primary's last turn failed before its first words. The
-  keys are in the worker's environment file on its host and nowhere else.
+  Gemini while the primary's last turn failed before its first words. A
+  turn the router sends to a retrieval or a CLI proposal holds the running
+  model's words until that seam answers: Gemini's first token always came
+  after the retrieval, and the primary's comes before it, so without the
+  hold the first release answered "summarize your essay" turns ungrounded.
+  The keys are in the worker's environment file on its host and nowhere else.
   No model API key ships in the app.
 - **First response and the chat router.** The worker acknowledges every
   admitted turn with `status: processing` at once. With `TYPESAFE_API_KEY`
