@@ -1,0 +1,778 @@
+[
+  {
+    "case": "default-1x-plain",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 1,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 1.271,
+        "p99_ms": 1.855,
+        "max_ms": 1.992
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 1.775,
+        "p99_ms": 3.233,
+        "max_ms": 3.234
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.844,
+        "p99_ms": 2.189,
+        "max_ms": 2.2
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 40,
+        "submitted_frames": 1,
+        "seconds": 1.014947416,
+        "cpu_percent": 16.41168767702937,
+        "peak_rss_bytes": 137216000
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.012209167,
+        "cpu_percent": 10.591244861374792,
+        "peak_rss_bytes": 140738560
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.999998417,
+        "cpu_percent": 17.84891412741553,
+        "peak_rss_bytes": 162168832
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.9999725000000002,
+        "cpu_percent": 14.48879922098929,
+        "peak_rss_bytes": 162168832
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.004666416,
+        "cpu_percent": 16.194115759556873,
+        "peak_rss_bytes": 162660352
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.000011375,
+        "cpu_percent": 21.479927832910445,
+        "peak_rss_bytes": 163512320
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.003643334,
+        "cpu_percent": 29.18069249544391,
+        "peak_rss_bytes": 163512320
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 2,
+        "seconds": 5.004473083,
+        "cpu_percent": 0.44382294862270083,
+        "peak_rss_bytes": 164298752
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "default-1x-verse",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 1,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.763,
+        "p99_ms": 4.114,
+        "max_ms": 4.161
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 4.069,
+        "p99_ms": 4.43,
+        "max_ms": 4.433
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 3.002,
+        "p99_ms": 3.206,
+        "max_ms": 3.248
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 1,
+        "submitted_frames": 1,
+        "seconds": 2.230118042,
+        "cpu_percent": 12.574536177847756,
+        "peak_rss_bytes": 153960448
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.0476565,
+        "cpu_percent": 32.94532066291392,
+        "peak_rss_bytes": 160006144
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.037876333,
+        "cpu_percent": 41.73192387724737,
+        "peak_rss_bytes": 187039744
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.035983959,
+        "cpu_percent": 30.13800758535348,
+        "peak_rss_bytes": 187039744
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.036995583,
+        "cpu_percent": 37.21829376200468,
+        "peak_rss_bytes": 187039744
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.001569958,
+        "cpu_percent": 46.176352532965005,
+        "peak_rss_bytes": 187039744
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.9999825,
+        "cpu_percent": 33.42899250368443,
+        "peak_rss_bytes": 187039744
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 50,
+        "seconds": 5.0044445,
+        "cpu_percent": 2.787841887346328,
+        "peak_rss_bytes": 187039744
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "default-2x-plain",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 2,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 3.801,
+        "p99_ms": 4.502,
+        "max_ms": 4.505
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 3.158,
+        "p99_ms": 3.683,
+        "max_ms": 3.838
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.744,
+        "p99_ms": 2.053,
+        "max_ms": 2.075
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 42,
+        "submitted_frames": 1,
+        "seconds": 1.016237333,
+        "cpu_percent": 27.978405316073935,
+        "peak_rss_bytes": 162136064
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.999947667,
+        "cpu_percent": 27.124909763951337,
+        "peak_rss_bytes": 172490752
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.999980541,
+        "cpu_percent": 25.149044687630294,
+        "peak_rss_bytes": 190054400
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.99997275,
+        "cpu_percent": 12.87967548557848,
+        "peak_rss_bytes": 190054400
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.001669125,
+        "cpu_percent": 14.123063420883819,
+        "peak_rss_bytes": 191479808
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.004662917,
+        "cpu_percent": 24.854752176772056,
+        "peak_rss_bytes": 193363968
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.002536542,
+        "cpu_percent": 22.796288128858535,
+        "peak_rss_bytes": 193363968
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 2,
+        "seconds": 5.004993083,
+        "cpu_percent": 0.41794263554629557,
+        "peak_rss_bytes": 194936832
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "default-2x-verse",
+    "platform": "macos",
+    "points": [
+      1200.0,
+      840.0
+    ],
+    "scale": 2,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.715,
+        "p99_ms": 3.485,
+        "max_ms": 3.664
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 3.569,
+        "p99_ms": 4.1,
+        "max_ms": 4.281
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.317,
+        "p99_ms": 4.925,
+        "max_ms": 5.106
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 50,
+        "submitted_frames": 22,
+        "seconds": 1.007328666,
+        "cpu_percent": 25.69012564961593,
+        "peak_rss_bytes": 177569792
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.999973542,
+        "cpu_percent": 24.803278122566287,
+        "peak_rss_bytes": 190185472
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.001150917,
+        "cpu_percent": 31.566035056815263,
+        "peak_rss_bytes": 213155840
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.003550791,
+        "cpu_percent": 24.05499287389915,
+        "peak_rss_bytes": 213155840
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.000047375,
+        "cpu_percent": 24.693215079467794,
+        "peak_rss_bytes": 213155840
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.004626667,
+        "cpu_percent": 32.3431295549058,
+        "peak_rss_bytes": 213155840
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.00001875,
+        "cpu_percent": 27.695140358059135,
+        "peak_rss_bytes": 213155840
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 50,
+        "seconds": 5.005131167,
+        "cpu_percent": 4.105886402237419,
+        "peak_rss_bytes": 213155840
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-1x-plain",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 1,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 1.925,
+        "p99_ms": 2.18,
+        "max_ms": 2.217
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 3.813,
+        "p99_ms": 4.737,
+        "max_ms": 4.77
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.974,
+        "p99_ms": 3.339,
+        "max_ms": 3.435
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 52,
+        "submitted_frames": 1,
+        "seconds": 1.00973875,
+        "cpu_percent": 14.69597952935846,
+        "peak_rss_bytes": 132235264
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 1.999973667,
+        "cpu_percent": 14.843695439516003,
+        "peak_rss_bytes": 133660672
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.058986958,
+        "cpu_percent": 26.216533227793278,
+        "peak_rss_bytes": 163840000
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.070697125,
+        "cpu_percent": 15.924781853357716,
+        "peak_rss_bytes": 163840000
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.0670247919999998,
+        "cpu_percent": 21.909993617531814,
+        "peak_rss_bytes": 164167680
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.071807583,
+        "cpu_percent": 29.94399697590062,
+        "peak_rss_bytes": 165445632
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.044157292,
+        "cpu_percent": 24.39949224807501,
+        "peak_rss_bytes": 165445632
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 2,
+        "seconds": 5.007001792,
+        "cpu_percent": 0.31713589608397685,
+        "peak_rss_bytes": 165445632
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-1x-verse",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 1,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.031,
+        "p99_ms": 2.147,
+        "max_ms": 2.779
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 3.762,
+        "p99_ms": 4.313,
+        "max_ms": 4.336
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.821,
+        "p99_ms": 2.955,
+        "max_ms": 2.964
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 50,
+        "submitted_frames": 22,
+        "seconds": 1.013535125,
+        "cpu_percent": 23.784671498188086,
+        "peak_rss_bytes": 148504576
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.046062292,
+        "cpu_percent": 20.430169777059753,
+        "peak_rss_bytes": 152305664
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.061839583,
+        "cpu_percent": 30.045693423861287,
+        "peak_rss_bytes": 181452800
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.055096917,
+        "cpu_percent": 25.827735695055786,
+        "peak_rss_bytes": 181452800
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.051900167,
+        "cpu_percent": 34.070809644804726,
+        "peak_rss_bytes": 181796864
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.040088666,
+        "cpu_percent": 30.506860332706744,
+        "peak_rss_bytes": 183238656
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.009871209,
+        "cpu_percent": 30.2949759802246,
+        "peak_rss_bytes": 183238656
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 50,
+        "seconds": 5.006242166,
+        "cpu_percent": 3.0000346571328875,
+        "peak_rss_bytes": 183238656
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-2x-plain",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 2,
+    "backdrop": false,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 2.406,
+        "p99_ms": 2.562,
+        "max_ms": 2.569
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 4.083,
+        "p99_ms": 4.447,
+        "max_ms": 4.457
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 2.678,
+        "p99_ms": 2.773,
+        "max_ms": 2.81
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 51,
+        "submitted_frames": 1,
+        "seconds": 1.008557291,
+        "cpu_percent": 15.118922976483642,
+        "peak_rss_bytes": 141475840
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.001996334,
+        "cpu_percent": 17.695187248030194,
+        "peak_rss_bytes": 145752064
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.016112833,
+        "cpu_percent": 27.780687213154593,
+        "peak_rss_bytes": 171393024
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.008889667,
+        "cpu_percent": 18.27721084096751,
+        "peak_rss_bytes": 171393024
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.041111458,
+        "cpu_percent": 25.668172012192,
+        "peak_rss_bytes": 172752896
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.073703,
+        "cpu_percent": 28.552931639680313,
+        "peak_rss_bytes": 176586752
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.076315458,
+        "cpu_percent": 24.40178336330627,
+        "peak_rss_bytes": 176586752
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 2,
+        "seconds": 5.006859459,
+        "cpu_percent": 0.37710265595853076,
+        "peak_rss_bytes": 176586752
+      }
+    },
+    "scroll_pass": true
+  },
+  {
+    "case": "minimum-2x-verse",
+    "platform": "macos",
+    "points": [
+      760.0,
+      540.0
+    ],
+    "scale": 2,
+    "backdrop": true,
+    "phases": {
+      "scroll": {
+        "samples": 115,
+        "p50_ms": 3.114,
+        "p99_ms": 3.29,
+        "max_ms": 3.35
+      },
+      "streaming": {
+        "samples": 115,
+        "p50_ms": 2.555,
+        "p99_ms": 4.069,
+        "max_ms": 4.634
+      },
+      "sidebar": {
+        "samples": 115,
+        "p50_ms": 1.79,
+        "p99_ms": 2.016,
+        "max_ms": 2.123
+      }
+    },
+    "resources": {
+      "warm": {
+        "phase": "warm",
+        "steps": 49,
+        "submitted_frames": 22,
+        "seconds": 1.013093291,
+        "cpu_percent": 23.58489609225929,
+        "peak_rss_bytes": 158400512
+      },
+      "scroll": {
+        "phase": "scroll",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.079097042,
+        "cpu_percent": 27.47404226262181,
+        "peak_rss_bytes": 163889152
+      },
+      "streaming": {
+        "phase": "streaming",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.077987,
+        "cpu_percent": 24.693898470009685,
+        "peak_rss_bytes": 189743104
+      },
+      "sidebar": {
+        "phase": "sidebar",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.077651792,
+        "cpu_percent": 17.03658916103878,
+        "peak_rss_bytes": 189743104
+      },
+      "composer": {
+        "phase": "composer",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.065177541,
+        "cpu_percent": 23.018698904202342,
+        "peak_rss_bytes": 189743104
+      },
+      "commands": {
+        "phase": "commands",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.062123542,
+        "cpu_percent": 47.82332289575306,
+        "peak_rss_bytes": 191954944
+      },
+      "chat_menu": {
+        "phase": "chat_menu",
+        "steps": 120,
+        "submitted_frames": 120,
+        "seconds": 2.073001833,
+        "cpu_percent": 34.181156462103324,
+        "peak_rss_bytes": 191954944
+      },
+      "idle": {
+        "phase": "idle",
+        "steps": 5,
+        "submitted_frames": 50,
+        "seconds": 5.007016542,
+        "cpu_percent": 2.9762434126186337,
+        "peak_rss_bytes": 191954944
+      }
+    },
+    "scroll_pass": true
+  }
+]
