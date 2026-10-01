@@ -373,7 +373,7 @@ fn shortcuts() -> Vec<Node<Intent>> {
 
 fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
     let on = settings.preferences.notifications;
-    let mut rows = vec![
+    vec![
         title("settings-notifications-title", "Notifications"),
         toggle(
             "settings-notifications",
@@ -386,18 +386,7 @@ fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
             "When Coder asks you something, finishes, or fails while OpenAgents isn't in front. A notification names the chat, never a message.",
             TextRole::Status,
         ),
-    ];
-    if !cfg!(target_os = "linux") {
-        rows.push(text(
-            "settings-notifications-platform",
-            format!(
-                "OpenAgents doesn't show notifications on this {} yet.",
-                crate::words::COMPUTER
-            ),
-            TextRole::Status,
-        ));
-    }
-    rows
+    ]
 }
 
 fn archived(settings: &Settings) -> Vec<Node<Intent>> {
