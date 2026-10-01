@@ -16,8 +16,9 @@ white on near-black instead of four intensities of amber.
 These pages need nothing more than this repository and the public buckets:
 
 - `/`, the homepage: what OpenAgents is, one `[ Install OpenAgents ]` link
-  to `/install`, the **Ask OpenAgents** terminal, and a screenshot of the
-  Verse. The old terminal and its `/ask` box were removed on 2026-09-29 and
+  to `/install`, and the **Ask OpenAgents** terminal. The Grid's
+  screenshot moved to its own guide, `/docs/the-grid`, on 2026-10-01 so the
+  homepage leads with the terminal. The old terminal and its `/ask` box were removed on 2026-09-29 and
   brought back on 2026-10-01 at the owner's direction
   ([#10106](https://github.com/OpenAgentsInc/openagents/issues/10106)), now
   on the white theme and tied to the same OpenAgents chat worker the apps

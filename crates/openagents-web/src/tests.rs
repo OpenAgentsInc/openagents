@@ -159,7 +159,7 @@ async fn the_legal_pages_carry_the_published_text() {
 }
 
 #[tokio::test]
-async fn the_homepage_links_one_install_page_and_shows_the_verse() {
+async fn the_homepage_links_one_install_page_and_leads_with_the_terminal() {
     let root = tempfile::tempdir().unwrap();
     let (_, home) = get(router(config(root.path().into())), "/").await;
     assert!(home.contains("<a class=\"button\" href=\"/install\">[ Install OpenAgents ]</a>"));
@@ -172,8 +172,14 @@ async fn the_homepage_links_one_install_page_and_shows_the_verse() {
     assert!(home.contains("<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>"));
     assert!(home.contains("id=\"term-input\""));
     assert!(home.contains("<script src=\"/static/ask.js\" defer></script>"));
-    assert!(home.contains("<img src=\"/static/verse-grid.jpg\""));
-    assert!(home.contains("alt=\"The Grid, the OpenAgents Verse world"));
+    // The Grid's screenshot moved to its own guide.
+    assert!(!home.contains("<img"));
+    let (status, grid) = get(router(config(root.path().into())), "/docs/the-grid").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(grid.contains("<h1>The Grid</h1>"), "{grid}");
+    assert!(grid.contains(
+        "<img src=\"/static/verse-grid.jpg\" alt=\"The Grid, the OpenAgents Verse world"
+    ));
     let (status, headers, image) =
         get_bytes(router(config(root.path().into())), "/static/verse-grid.jpg").await;
     assert_eq!(status, StatusCode::OK);

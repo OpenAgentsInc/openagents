@@ -41,11 +41,11 @@ everything it serves is compiled in or read from this repository.
 
 | Route | Source | Development server |
 | --- | --- | --- |
-| `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, the **Ask OpenAgents** terminal, and a screenshot of the Verse (`static/verse-grid.jpg`, the Grid from above, captured from the live relay with `crates/verse/examples/overlook_capture.rs`) | Renders. |
+| `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, and the **Ask OpenAgents** terminal | Renders. |
 | `/install` | Everything OpenAgents is launching, in order: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by QR code, and signing in to Codex or Claude Code on the Mac so the phone can run Coder | Renders. |
 | `/desktop` | Permanent redirect to `/install` | Redirects. |
 | `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
-| `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, install, connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, privacy and security, and help | Renders. |
+| `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, install, connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
 | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
 | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
@@ -89,7 +89,7 @@ cargo test -p openagents-web
 The tests check that every public page answers `200` on a development
 server with the header, the footer's links to the terms and the policy, and
 no script except the homepage terminal's; the homepage's single install
-link, its terminal, and its Verse screenshot; `/ask`'s stream, cookie,
+link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
 bounds, and limits, against an in-process door;
 the install page and the `/desktop` redirect; that the legal pages carry the
 published text; that every color in the stylesheet is a gray and that the

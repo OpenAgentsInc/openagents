@@ -1,15 +1,30 @@
-//! Markdown to HTML for the legal pages and the ask box's answers.
+//! Markdown to HTML for the legal pages, the docs, and the homepage
+//! terminal's answers.
 //!
 //! Raw HTML in the source is shown as text, never as markup, so a document
 //! or an answer cannot write into the page. A link keeps its target only
 //! when it is `http`, `https`, `mailto`, a site path, or an anchor; any
-//! other link is drawn as its text.
+//! other link is drawn as its text. An image draws as its alt text, except
+//! in a document this site ships ([`render_document`]) whose image is one
+//! of the site's own files under `/static/`.
 
 use pulldown_cmark::{Alignment, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
-/// Renders `source` as HTML.
+/// Renders `source` as HTML, every image as its alt text.
 #[must_use]
 pub fn render(source: &str) -> String {
+    rendered(source, false)
+}
+
+/// Renders a document this site ships: as [`render`], but an image whose
+/// source is one of the site's own files under `/static/` draws.
+#[must_use]
+pub fn render_document(source: &str) -> String {
+    rendered(source, true)
+}
+
+fn rendered(source: &str, own_images: bool) -> String {
+    let mut kept_images = Vec::new();
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
     let mut kept_links = Vec::new();
     let events = Parser::new_ext(source, options).filter_map(|event| match event {
@@ -46,9 +61,31 @@ pub fn render(source: &str) -> String {
         Event::Start(Tag::Table(alignments)) => Some(Event::Start(Tag::Table(
             alignments.iter().map(|_| Alignment::None).collect(),
         ))),
-        // An image draws as its alt text: the site's policy loads images
-        // from its own origin only, and no document here ships one.
-        Event::Start(Tag::Image { .. }) | Event::End(TagEnd::Image) => None,
+        // An image draws as its alt text unless it is the site's own file
+        // in a document the site ships; the site's policy loads images from
+        // its own origin only.
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
+            let kept = own_images
+                && dest_url.starts_with("/static/")
+                && !dest_url.contains("..")
+                && !dest_url.contains("//");
+            kept_images.push(kept);
+            kept.then_some(Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }))
+        }
+        Event::End(TagEnd::Image) => kept_images
+            .pop()
+            .unwrap_or(false)
+            .then_some(Event::End(TagEnd::Image)),
         other => Some(other),
     });
     let mut out = String::new();
@@ -76,6 +113,24 @@ pub fn title(source: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_shipped_document_draws_the_sites_own_image() {
+        let own = "![The Grid](/static/verse-grid.jpg)";
+        assert!(
+            render_document(own).contains("<img src=\"/static/verse-grid.jpg\" alt=\"The Grid\"")
+        );
+        // An answer, or any other image, is its alt text.
+        assert_eq!(render(own), "<p>The Grid</p>\n");
+        for elsewhere in [
+            "![x](https://example.com/a.png)",
+            "![x](//example.com/a.png)",
+            "![x](/static/../secret)",
+            "![x](/u/me.png)",
+        ] {
+            assert!(!render_document(elsewhere).contains("<img"), "{elsewhere}");
+        }
+    }
 
     #[test]
     fn raw_html_is_text() {

@@ -24,7 +24,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 12] = [
+pub(crate) const DOCS: [(&str, &str); 13] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -50,6 +50,12 @@ pub(crate) const DOCS: [(&str, &str); 12] = [
         include_str!("../../content/docs/publish-and-share.md"),
     ),
     ("verse", include_str!("../../content/docs/verse.md")),
+    // Its image is the Grid seen from above as the desktop app's backdrop
+    // draws it, captured from the live relay with
+    // `crates/verse/examples/overlook_capture.rs`
+    // (`OVERLOOK_SIZE=1600x900 … /tmp/grid.png 45 wss://relay.openagents.com 8`)
+    // and served from `/static/verse-grid.jpg`.
+    ("the-grid", include_str!("../../content/docs/the-grid.md")),
     (
         "privacy-and-security",
         include_str!("../../content/docs/privacy-and-security.md"),
@@ -111,7 +117,7 @@ async fn doc(Path(slug): Path<String>) -> Response {
         Some("/docs"),
         &format!(
             "<article class=\"md\">{}</article><p class=\"meta\">{links}</p>",
-            markdown::render(source)
+            markdown::render_document(source)
         ),
     )
 }

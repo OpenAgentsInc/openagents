@@ -1,5 +1,6 @@
-//! The homepage: what OpenAgents is, one link to `/install`, a terminal to
-//! ask OpenAgents about itself, and a screenshot of the Verse.
+//! The homepage: what OpenAgents is, one link to `/install`, and a terminal
+//! to ask OpenAgents about itself. The Grid's screenshot is on
+//! `/docs/the-grid`.
 //!
 //! The terminal (#10106) is the one script on the site, `static/ask.js`.
 //! `help`, `install`, `docs`, and `clear` are its commands, matched whole;
@@ -7,12 +8,6 @@
 //! the same OpenAgents chat the apps use, as the website: about OpenAgents
 //! only, never Coder or a computer. Without the script the box says to
 //! turn scripts on and the install link still works.
-//!
-//! The image is the Grid, the OpenAgents Verse world, seen from above as
-//! the desktop app's backdrop draws it, captured from the live relay with
-//! `crates/verse/examples/overlook_capture.rs`
-//! (`OVERLOOK_SIZE=1600x900 … /tmp/grid.png 45 wss://relay.openagents.com 8`).
-//! It is served from `/static/verse-grid.jpg`.
 
 use axum::Router;
 use axum::extract::State;
@@ -22,10 +17,6 @@ use axum::routing::get;
 
 use crate::App;
 use crate::layout::{escape, page};
-
-/// What the screenshot shows, for a reader who does not see it.
-const GRID_ALT: &str = "The Grid, the OpenAgents Verse world, seen from above: the Gym building, \
-a ball, and scattered blocks on a floor of white lines.";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/", get(home))
@@ -85,21 +76,12 @@ aria-label=\"Ask OpenAgents\"></form></section>\
 <script src=\"/static/ask.js\" defer></script>"
 }
 
-/// The Verse screenshot.
-fn grid() -> String {
-    format!(
-        "<figure class=\"shot\"><img src=\"/static/verse-grid.jpg\" width=\"1600\" \
-height=\"900\" alt=\"{GRID_ALT}\"><figcaption>The Grid, the OpenAgents Verse world, seen \
-from above.</figcaption></figure>"
-    )
-}
-
 async fn home(State(app): State<App>) -> Response {
     let credit = credit(app.config.backend.new_account_credit_cents());
     let mut response = page(
         "OpenAgents",
         None,
-        &format!("{}{}{}", intro(credit.as_deref()), terminal(), grid()),
+        &format!("{}{}", intro(credit.as_deref()), terminal()),
     );
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
