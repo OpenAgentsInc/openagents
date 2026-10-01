@@ -864,3 +864,29 @@ openagents-product@4085953fbecf (60 entries)`. Live checks:
 - `openagents chat --scratch --no-run --json` from a checkout: "whats your
   working dir" named the checkout's path; "how do I connect another
   computer" gave the pairing steps.
+
+Release `fac6e46861` (2026-10-01 UTC,
+[#10076](https://github.com/OpenAgentsInc/openagents/issues/10076)) reads
+which coding engine the person names: a typed `engine` question beside the
+others, read only for a dispatch, puts NIP-CJ `engine` on the `run_coder`
+offer and serves `dispatch.engine_stem`
+([the measurement](../coder/measurements/2026-09-30-engine-request.md)).
+The route question is unchanged (`chat-router-v4@ca74e9da5045`); the bank
+is `chat-answers-v1@d3ff1e68a58a` with 68 answers and `calibration-v2.json`
+is refit for it (serving keeps calibration off). It was built with `cargo
+zigbuild` from `fac6e46861` (rebased on `7153cd64bf`, which carries
+#10077's `ff3a99aad6`), installed as `/opt/coder-worker/releases/fac6e46861`
+with `knowledge/` and `codebase-kb.gz` copied from `ff3a99aad6`, checked
+with `--check` under the chat environment, and put live by moving the
+`chat` symlink and restarting `coder-worker-chat`; `0152ba7866` (the same
+change before the engine stem closed with its generic end) and
+`ff3a99aad6` stay in `releases/` for rollback, and `coder-worker.service`
+and `/opt/coder-worker/current` (`0757355c1d`) were not touched. With
+`openagents chat --scratch --no-run --json` from a checkout, "Do a test
+delegation to claude" answered "We'll dispatch Coder, asking for Claude
+Code, to take this on, with this conversation as its task." with a
+`run_coder` offer carrying `engine: claude_code` and the prediction "You
+asked for Claude Code; it will do this."; "delegate this" got a
+`run_coder` offer with no engine ("Codex will do this."); and "ask Claude
+what a monad is" stayed `general` with no offer. `--no-run` now reports
+this computer's readiness, so its offer is the one a run would take.
