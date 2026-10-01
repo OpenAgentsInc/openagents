@@ -33,6 +33,13 @@ The motivation is in [episode 288, *Three DevDays Later*](../transcripts/288.md)
   knowledge, programs, plugins, skills, other agents, other computers)
   that it admits per request. Specialization lives in the members.
   Generality lives in the composition.
+- **What makes the front feasible now is a new kind of model.** A router
+  has to be right, fast, and cheap on every turn, and it has to answer in a
+  form code can act on. Chat models were trained to please the person
+  reading them, which is the wrong objective for that job. Typed decision
+  models, the first being TypeSafe's Jev, answer typed questions with
+  probabilities in a fraction of a second for a fraction of a cent, so a
+  general front can decide every turn and be measured like any classifier.
 - **A composition is only as good as its admission rule.** Members can make
   an agent worse as easily as better; skills an agent wrote for itself
   have measured *below* no skills at all. So every member is a candidate
@@ -66,6 +73,7 @@ The motivation is in [episode 288, *Three DevDays Later*](../transcripts/288.md)
   - [The thesis](#the-thesis)
   - [What the composition is made of](#what-the-composition-is-made-of)
   - [The six pressures, answered by composition](#the-six-pressures-answered-by-composition)
+  - [Why the front is feasible now: decision models](#why-the-front-is-feasible-now-decision-models)
   - [Why the old composition idea didn't work before](#why-the-old-composition-idea-didnt-work-before)
   - [What is different from today's composition efforts](#what-is-different-from-todays-composition-efforts)
 - [Part III: Extensible three ways](#part-iii-extensible-three-ways)
@@ -273,6 +281,78 @@ None of these answers is free, and none is complete. The claim is narrower:
 met inside a general composition, by putting the specialization in members
 and the discipline in the admission rule.**
 
+### Why the front is feasible now: decision models
+
+Every composition stands or falls on its front. If deciding where a request
+goes is slow, the composition is slower than one model answering directly.
+If it is expensive, it is cheaper to skip it. If it is wrong, every member
+behind it inherits the error. And if its answer is prose, something has to
+parse that prose, usually another model, and the composition collapses back
+into the generic loop it was meant to replace. The 2023 agents mostly used
+the generator itself as the router: ask the chat model what to do next,
+read its text, feed the text to the next call. Diogo Almeida, who worked on
+the models behind ChatGPT and now leads TypeSafe, describes the pattern
+precisely: AI and software were "ships in the night", so builders took a
+model's output "and [gave] it to a human … or another LLM. That is what a
+while loop is, like the agent while loop"
+([a16z, 39:49–40:41](../research/typesafe/2026-09-28-a16z-jev-transcript.md)).
+
+His diagnosis of why is the part that matters for routing. Models trained
+from human preference are optimized to please the person evaluating them,
+which makes them excellent at **assistance**, where a human catches the
+mistakes, and poor at **automation**, where a decision acts on its own:
+"they're so encouraged to make plausible-looking answers, which is not
+what you want if you want to make calibrated decisions"
+([AI Council, 19:50](../research/typesafe/2026-06-19-ai-council-diogo-almeida-transcript.md)); the two objectives "pull in different
+directions in optimization space" ([AI Engineer](../research/typesafe/2026-07-31-ai-engineer-diogo-almeida-transcript.md)). The
+[Test-Time Capabilities](2026-09-29-test-time-capabilities.md#assistance-and-automation-set-different-bars)
+essay makes the same distinction. A router is pure automation. Nobody
+reads its output; code acts on it. It is exactly the call a model trained
+to sound good is worst at.
+
+A **typed decision model** is built for that call instead. It takes one
+state and typed questions (yes-or-no, a choice among named options, a
+score), and returns probabilities, not prose
+([NIP-DEC](../../nips/openagents/NIP-DEC.md)). Almeida's own framing is
+deliberately unglamorous: "Jev is absolutely a classifier … classifiers
+were designed to be useful", one "probably … better than having an MLE
+team from 2019 making the stuff for you, and you can just program it on
+the fly" ([a16z, 06:58–07:29](../research/typesafe/2026-09-28-a16z-jev-transcript.md)). He describes the interface as
+natural language married to "a state machine", and argues that most calls
+to AI will eventually be made "deep in the guts" of systems rather than for
+a human to read, with systems making cheap decisions to "optimistically
+route here and there" ([a16z, 34:48–39:38](../research/typesafe/2026-09-28-a16z-jev-transcript.md)). A general agent's
+front is that call.
+
+Four properties of such a model are what make the composition feasible,
+and each is measured in our system rather than assumed:
+
+| Property | Why the front needs it | What we measured |
+| --- | --- | --- |
+| **Fast** | It runs before anything else on every turn | One request answers every router question at 170 ms median, 235 ms p95 ([router eval](../coder/measurements/2026-09-28-chat-router-eval.md)) |
+| **Cheap** | It runs on every turn, including the ones a prepared answer serves | A judgment through the gateway cost $0.000014 in our live door check; a turn served by a prepared answer costs one judgment and no generation |
+| **Typed and calibrated** | Code acts on the reading; thresholds must mean something | Readings are calibrated against labeled conversations; prepared answers are served only above precision thresholds; the latest router reads 0.907 held-out route accuracy with prepared-answer precision at 100% ([measurement](../coder/measurements/2026-09-30-engine-request.md)) |
+| **Programmable on the fly** | The composition grows by adding routes and members | A new route is a new option and new labeled rows, recalibrated and released the same day, not a training run: opening a deck, and honoring an engine the person names, were each added on 2026-09-30 |
+
+The last row is the one that connects decision models to the rest of this
+essay. **The front itself is extensible at machine speed** for the same
+reason the members are: a route is a typed question plus labeled evidence,
+measured on a held-out set before release, and nothing about adding one
+requires retraining a model. That is what "decide what each request needs"
+costs when the decider is a classifier you can program with words.
+
+Two cautions. First, Almeida is a vendor describing his product; we cite him
+for the framing, and the numbers above are ours. Second, a decision model we
+don't run is a dependency we don't control. We pin our question sets by
+digest and calibrate against our own labeled data, but the weights behind
+the endpoint can change underneath us, which weakens how exactly any result
+can be reproduced. On the night before this launch the provider account ran
+out of credits, and until it was topped up every chat turn got a plain
+model reply with no routing; the front now fails over across three routes to the same
+model (TypeSafe directly, the Vercel AI Gateway, and OpenRouter) and records
+which one answered. A composition should not have a single point of
+judgment.
+
 ### Why the old composition idea didn't work before
 
 SRI's Open Agent Architecture had the shape in the 1990s: a facilitator
@@ -281,9 +361,10 @@ were missing, and each has arrived only recently.
 
 1. **A front that can read any request.** A facilitator could route only
    what its authors anticipated. A language model reads open-ended
-   requests, and a typed decision model turns that reading into
-   calibrated choices that code can act on, quickly enough to run on every
-   turn.
+   requests, but a chat model's answer is prose tuned to please. A typed
+   decision model turns that reading into calibrated choices that code can
+   act on, quickly and cheaply enough to run on every turn
+   ([above](#why-the-front-is-feasible-now-decision-models)).
 2. **Executors worth delegating to.** Until coding agents, a specialist
    could do only what its author had programmed. Today's engines act on
    real environments, which makes "delegate the doing" a strategy rather
@@ -488,6 +569,9 @@ Three consequences follow from carrying the composition this way.
   [end-to-end run of real flows](../release/acceptance.md) on the exact
   build. A composition's reliability is an engineering property that has
   to be earned in the joints, not assumed from the members.
+- **Independence from one decision model.** The front depends on one
+  model family behind three routes. We have not shown that a second,
+  independent decision model can take its place at the same precision.
 - **Many NIPs are drafts.** Several contracts in Part IV are Designed, not
   implemented. The parts of the argument that rest on them are designs.
 
