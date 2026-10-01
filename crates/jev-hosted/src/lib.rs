@@ -156,25 +156,23 @@ pub struct Fallback {
 impl std::fmt::Display for Fallback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.on {
-            write!(f, "fallback door {} under ${}", self.door, self.key_var)
+            write!(f, "door {} under ${}", self.door, self.key_var)
         } else {
-            write!(
-                f,
-                "fallback door {} off: ${} is not set",
-                self.door, self.key_var
-            )
+            write!(f, "door {} off: ${} is not set", self.door, self.key_var)
         }
     }
 }
 
-/// [`resolve`], with Jev's fallback doors behind a local key
-/// (`jev::doors`): TypeSafe first, then the Vercel AI Gateway
-/// (`AI_GATEWAY_API_KEY`), then OpenRouter (`OPENROUTER_API_KEY`), each
+/// [`resolve`], with Jev's other doors behind a local key (`jev::doors`):
+/// a decision asks the Vercel AI Gateway (`AI_GATEWAY_API_KEY`) first,
+/// then OpenRouter (`OPENROUTER_API_KEY`), then TypeSafe direct last, each
 /// asked only when the doors before it could not answer for their own
-/// reasons, never for a refusal of the question. A door whose variable is
-/// unset or blank is off. With no fallback on, the client is exactly
-/// [`resolve`]'s. `primary_timeout` caps TypeSafe's share of an attempt
-/// when a fallback is on, so a hung TypeSafe leaves the fallbacks time.
+/// reasons, never for a refusal of the question. The gateway routes Jev to
+/// TypeSafe itself, so it is the primary. A door whose variable is unset or
+/// blank is off. With no fallback on, the client is exactly [`resolve`]'s.
+/// `primary_timeout` caps the first door's share of an attempt when more
+/// than one door is on, so a hung door leaves the others time. Every route
+/// but a decision goes to TypeSafe.
 ///
 /// The fallback doors are for a server that holds the keys (the chat
 /// worker); without a local key the hosted service answers, its worker
@@ -218,7 +216,8 @@ pub fn resolve_with_fallbacks(
             jev::ApiKey::new(key),
         ),
         keyed,
-    );
+    )
+    .primary_last();
     if let Some(cap) = primary_timeout {
         failover = failover.primary_timeout(cap);
     }
@@ -1003,19 +1002,19 @@ mod tests {
         assert!(found.iter().all(|fallback| !fallback.on));
         assert_eq!(
             found[0].to_string(),
-            "fallback door https://ai-gateway.vercel.sh off: $AI_GATEWAY_API_KEY is not set"
+            "door https://ai-gateway.vercel.sh off: $AI_GATEWAY_API_KEY is not set"
         );
         assert_eq!(
             found[1].to_string(),
-            "fallback door https://openrouter.ai off: $OPENROUTER_API_KEY is not set"
+            "door https://openrouter.ai off: $OPENROUTER_API_KEY is not set"
         );
 
-        // A gateway key: TypeSafe, then the gateway; still direct.
+        // A gateway key: the gateway first, TypeSafe last; still direct.
         let env = keys(&[("TYPESAFE_API_KEY", "ts"), ("AI_GATEWAY_API_KEY", "vck")]);
         let (resolved, found) = resolve_with_fallbacks(&env, &dir, &door, &tune, None).unwrap();
         assert_eq!(
             resolved.client.doors().as_deref(),
-            Some("doors https://api.typesafe.ai → https://ai-gateway.vercel.sh")
+            Some("doors https://ai-gateway.vercel.sh → https://api.typesafe.ai")
         );
         assert_eq!(resolved.client.service(), None);
         assert_eq!(via(&resolved.client), "direct");
@@ -1023,7 +1022,7 @@ mod tests {
         assert!(found[0].on && !found[1].on);
         assert_eq!(
             found[0].to_string(),
-            "fallback door https://ai-gateway.vercel.sh under $AI_GATEWAY_API_KEY"
+            "door https://ai-gateway.vercel.sh under $AI_GATEWAY_API_KEY"
         );
 
         // No TypeSafe key: the hosted service answers and holds its own

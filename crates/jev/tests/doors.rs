@@ -149,6 +149,17 @@ fn failover_client(
     fallbacks: &[(&str, String, Naming)],
     cap: Option<Duration>,
 ) -> Result<Client, Box<dyn std::error::Error>> {
+    benched_client(typesafe, fallbacks, cap, doors::BENCH)
+}
+
+/// [`failover_client`] with its own bench for a door refused for its key
+/// or account.
+fn benched_client(
+    typesafe: &str,
+    fallbacks: &[(&str, String, Naming)],
+    cap: Option<Duration>,
+    bench: Duration,
+) -> Result<Client, Box<dyn std::error::Error>> {
     let mut failover = Failover::new(
         Door::new(
             doors::TYPESAFE_DOOR,
@@ -169,6 +180,7 @@ fn failover_client(
             })
             .collect(),
     );
+    failover = failover.bench(bench);
     if let Some(cap) = cap {
         failover = failover.primary_timeout(cap);
     }
@@ -459,5 +471,189 @@ async fn only_decisions_fail_over() -> Outcome {
     );
     assert_eq!(typesafe_seen.lock().await[0].path, "/v1/models");
     assert!(gateway_seen.lock().await.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_door_that_cannot_pay_is_skipped_on_the_next_call() -> Outcome {
+    let (typesafe, typesafe_seen) = door(Behavior::Answer(402, NO_CREDITS.into())).await?;
+    let (gateway, gateway_seen) = door(Behavior::Answer(200, gateway_answer())).await?;
+    let client = failover_client(
+        &typesafe,
+        &[(
+            doors::GATEWAY_DOOR,
+            format!("{gateway}/typesafe/v1/systemone"),
+            Naming::Gateway,
+        )],
+        None,
+    )?;
+    for _ in 0..3 {
+        let response = client.system_one(fixture_request()).await?;
+        assert_eq!(
+            response.service(),
+            Some(json!({"door": doors::GATEWAY_DOOR}))
+        );
+    }
+    // TypeSafe refused once for its account; the next calls went straight
+    // to the gateway.
+    assert_eq!(typesafe_seen.lock().await.len(), 1);
+    assert_eq!(gateway_seen.lock().await.len(), 3);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_benched_door_is_asked_again_when_its_bench_ends() -> Outcome {
+    let (typesafe, typesafe_seen) = door(Behavior::Answer(402, NO_CREDITS.into())).await?;
+    let (gateway, _) = door(Behavior::Answer(200, gateway_answer())).await?;
+    let client = benched_client(
+        &typesafe,
+        &[(
+            doors::GATEWAY_DOOR,
+            format!("{gateway}/typesafe/v1/systemone"),
+            Naming::Gateway,
+        )],
+        None,
+        Duration::from_millis(100),
+    )?;
+    client.system_one(fixture_request()).await?;
+    client.system_one(fixture_request()).await?;
+    assert_eq!(typesafe_seen.lock().await.len(), 1);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    client.system_one(fixture_request()).await?;
+    assert_eq!(typesafe_seen.lock().await.len(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_benched_primarys_refusal_stands_when_no_fallback_answers() -> Outcome {
+    let (typesafe, typesafe_seen) = door(Behavior::Answer(402, NO_CREDITS.into())).await?;
+    let (gateway, gateway_seen) = door(Behavior::Answer(
+        402,
+        r#"{"message": "Insufficient funds", "error_type": "payment_required"}"#.into(),
+    ))
+    .await?;
+    let client = failover_client(
+        &typesafe,
+        &[(
+            doors::GATEWAY_DOOR,
+            format!("{gateway}/typesafe/v1/systemone"),
+            Naming::Gateway,
+        )],
+        None,
+    )?;
+    for _ in 0..2 {
+        let error = client.system_one(fixture_request()).await.unwrap_err();
+        assert_eq!(
+            error
+                .refusal()
+                .map(|refusal| (refusal.status, refusal.code)),
+            Some((402, "payment_required".into()))
+        );
+    }
+    // Both doors were benched after the first call; the second asked
+    // neither and TypeSafe's remembered refusal stood.
+    assert_eq!(typesafe_seen.lock().await.len(), 1);
+    assert_eq!(gateway_seen.lock().await.len(), 1);
+    Ok(())
+}
+
+/// A client asking the gateway, then OpenRouter, then TypeSafe last: the
+/// order a server holding every key uses.
+fn gateway_first_client(
+    typesafe: &str,
+    gateway: &str,
+    openrouter: &str,
+) -> Result<Client, Box<dyn std::error::Error>> {
+    let failover = Failover::new(
+        Door::new(
+            doors::TYPESAFE_DOOR,
+            typesafe,
+            Naming::Canonical,
+            ApiKey::new("ts-key"),
+        ),
+        vec![
+            Door::new(
+                doors::GATEWAY_DOOR,
+                format!("{gateway}/typesafe/v1/systemone"),
+                Naming::Gateway,
+                ApiKey::new("gateway-key"),
+            ),
+            Door::new(
+                doors::OPENROUTER_DOOR,
+                format!("{openrouter}/api/alpha/decisions"),
+                Naming::OpenRouter,
+                ApiKey::new("openrouter-key"),
+            ),
+        ],
+    )
+    .primary_last()
+    .primary_timeout(Duration::from_secs(1));
+    Ok(Client::new(
+        Config::new()
+            .exchange(doors::exchange(failover))
+            .base_url(doors::TYPESAFE_DOOR)
+            .default_model("jev-1.13.0")
+            .timeout(Duration::from_secs(5))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                ..RetryPolicy::default()
+            }),
+    )?)
+}
+
+#[tokio::test]
+async fn with_typesafe_last_the_gateway_answers_first() -> Outcome {
+    let (typesafe, typesafe_seen) = door(Behavior::Answer(200, TYPESAFE_ANSWER.into())).await?;
+    let (gateway, gateway_seen) = door(Behavior::Answer(200, gateway_answer())).await?;
+    let (openrouter, openrouter_seen) = door(Behavior::Answer(200, openrouter_answer())).await?;
+    let client = gateway_first_client(&typesafe, &gateway, &openrouter)?;
+    let response = client.system_one(fixture_request()).await?;
+    assert_eq!(
+        response.service(),
+        Some(json!({"door": doors::GATEWAY_DOOR}))
+    );
+    assert_eq!(gateway_seen.lock().await[0].bearer, "Bearer gateway-key");
+    assert!(openrouter_seen.lock().await.is_empty());
+    assert!(typesafe_seen.lock().await.is_empty());
+    assert_eq!(
+        client.doors().as_deref(),
+        Some(
+            "doors https://ai-gateway.vercel.sh → https://openrouter.ai → https://api.typesafe.ai"
+        )
+    );
+    // Every route but a decision still goes to TypeSafe.
+    let _ = client.models().list(jev::ListOptions::default()).await;
+    assert_eq!(typesafe_seen.lock().await[0].path, "/v1/models");
+    assert_eq!(gateway_seen.lock().await.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn with_typesafe_last_it_answers_when_the_others_cannot() -> Outcome {
+    let (typesafe, typesafe_seen) = door(Behavior::Answer(200, TYPESAFE_ANSWER.into())).await?;
+    let (gateway, gateway_seen) = door(Behavior::Answer(
+        503,
+        r#"{"message": "No provider is available", "error_type": "internal_server_error"}"#.into(),
+    ))
+    .await?;
+    let (openrouter, openrouter_seen) = door(Behavior::Answer(
+        402,
+        r#"{"error": {"code": 402, "message": "Insufficient credits"}}"#.into(),
+    ))
+    .await?;
+    let client = gateway_first_client(&typesafe, &gateway, &openrouter)?;
+    for _ in 0..2 {
+        let response = client.system_one(fixture_request()).await?;
+        // TypeSafe's own answer, as it came: no fallback door named.
+        assert_eq!(response.service(), None);
+        assert_eq!(response.model, "jev-1.13.0");
+    }
+    let typesafe_seen = typesafe_seen.lock().await.clone();
+    assert_eq!(typesafe_seen.len(), 2);
+    assert_eq!(typesafe_seen[0].path, "/v1/systemone");
+    assert_eq!(typesafe_seen[0].body["model"], "jev-1.13.0");
+    // The gateway's 503 is asked again; OpenRouter's 402 benched it.
+    assert_eq!(gateway_seen.lock().await.len(), 2);
+    assert_eq!(openrouter_seen.lock().await.len(), 1);
     Ok(())
 }

@@ -296,7 +296,7 @@ pub fn state(task: &str, transcript: &[Message]) -> Value {
     crate::first::state(task, transcript)
 }
 
-/// The request the worker sends, bounded by `coder::first::BUDGET`. Each
+/// The request the worker sends, bounded by `coder::first::LATE`. Each
 /// list is one question's options, so they stay separate arguments.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
@@ -315,7 +315,7 @@ pub fn request(
         questions(bank, facts, groups, tools, admitted, decks),
     )
     .retry(crate::first::retry())
-    .timeout(crate::first::BUDGET)
+    .timeout(crate::first::LATE)
 }
 
 /// The router's reading of one turn: each answer's argmax and probability,

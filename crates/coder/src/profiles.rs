@@ -286,9 +286,10 @@ impl Profile {
     }
 
     /// [`Profile::client`] for a server that holds Jev's fallback door keys
-    /// (the chat worker): a keyed TypeSafe door fails over to the Vercel AI
-    /// Gateway and then OpenRouter when their keys are in `env`
-    /// (`jev_hosted::resolve_with_fallbacks`); every other profile builds
+    /// (the chat worker): with their keys in `env`, a decision asks the
+    /// Vercel AI Gateway first, then OpenRouter, then the keyed TypeSafe
+    /// door last (`jev_hosted::resolve_with_fallbacks`); every other
+    /// profile builds
     /// exactly as [`Profile::client`] does and reports no fallback doors.
     ///
     /// # Errors

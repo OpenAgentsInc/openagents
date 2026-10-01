@@ -131,8 +131,8 @@ use nostr::domain::{Event, Tag};
 use nostr::nip44;
 use secp256k1::XOnlyPublicKey;
 use serde_json::{Value, json};
-use tokio::sync::mpsc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 use tokio_tungstenite::tungstenite;
 
@@ -466,10 +466,10 @@ async fn serve(options: &Options) -> Result<(), String> {
     // The same decision profile the agent resolves; none configured means
     // no judgment, and a configuration that does not resolve stops the
     // worker rather than quietly running without one.
-    // A keyed TypeSafe door fails over to the Vercel AI Gateway and then
-    // OpenRouter when their keys are in the environment (`jev::doors`);
-    // TypeSafe keeps three fifths of the judgment's budget, so a hung
-    // TypeSafe leaves a fallback the rest.
+    // With their keys in the environment, a judgment asks the Vercel AI
+    // Gateway first, then OpenRouter, then TypeSafe direct last
+    // (`jev::doors`); the first door asked keeps three fifths of the
+    // first budget, so a hung door leaves the others the rest.
     let (judge, fallbacks) = match env::var(JUDGE_VAR).as_deref() {
         Ok("off") => (None, Vec::new()),
         Ok("") | Err(_) => {
@@ -511,7 +511,9 @@ async fn serve(options: &Options) -> Result<(), String> {
     match &judge {
         Some(judge) => eprintln!(
             "judge   {} ({}): first response and suggestions",
-            judge.base_url(),
+            judge
+                .doors()
+                .unwrap_or_else(|| judge.base_url().to_string()),
             judge.default_model()
         ),
         None => eprintln!("judge   none: no first response before the model's"),
@@ -1887,7 +1889,7 @@ impl Job {
     /// races, or `None` when no judge is configured.
     ///
     /// It never fails the turn: a judge that errs or runs past
-    /// [`first::BUDGET`] answers `None`, and the turn is the model's alone.
+    /// [`first::LATE`] answers `None`, and the turn is the model's alone.
     /// Its log line is a [`Shadow`] record: ids, probabilities, tiers, and
     /// the judge's time, never message text.
     fn triage(&self, turn: &Turn, input: &[Message]) -> Option<Judging> {
@@ -1928,7 +1930,7 @@ impl Job {
         let draft = turn.draft.is_some();
         Some(Box::pin(async move {
             let started = Instant::now();
-            let answered = tokio::time::timeout(first::BUDGET, judge.system_one(request)).await;
+            let answered = tokio::time::timeout(first::LATE, judge.system_one(request)).await;
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {
@@ -1940,7 +1942,7 @@ impl Job {
                         .and_then(|service| service["door"].as_str().map(str::to_string))
                         .unwrap_or_else(|| judge.base_url().to_string());
                     if door != judge.base_url() {
-                        eprintln!("judge answered by fallback door {door} in {milliseconds} ms");
+                        eprintln!("judge answered by door {door} in {milliseconds} ms");
                     }
                     let answered_by = (door, response.model.clone());
                     let mut reading = router::reading(&response, bank, &facts, &admitted);
@@ -1991,7 +1993,10 @@ impl Job {
                     None
                 }
                 Err(_) => {
-                    eprintln!("judge ran past {} ms", first::BUDGET.as_millis());
+                    eprintln!(
+                        "judge ran past {} ms; the model answers unrouted",
+                        first::LATE.as_millis()
+                    );
                     None
                 }
             }
@@ -2073,6 +2078,13 @@ impl Job {
     /// feedback, and an offer as `offer` feedback. A judgment that arrives
     /// after the model has started adds the feedback only. The third value
     /// is what a routed turn served, for its result.
+    ///
+    /// A turn that asks to be shown a first response holds the model's
+    /// words while the judgment is out, up to [`first::LATE`], so a late
+    /// judgment still routes it (#10110); past [`first::BUDGET`] the bank's
+    /// [`first::PROGRESS_OPENER`] line shows meanwhile, as partial `seq` 0
+    /// and the start of the result. A judgment that never comes leaves the
+    /// model's reply, written under [`first::UNROUTED_NOTE`].
     async fn generate(
         &self,
         version: u64,
@@ -2082,13 +2094,68 @@ impl Job {
         triage: Option<Judging>,
         turn: &Turn,
     ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
+        let mut opening = String::new();
+        let answered = self
+            .routed(
+                version,
+                instructions,
+                input,
+                publish,
+                triage,
+                turn,
+                &mut opening,
+            )
+            .await;
+        answered.map(|(text, usage, served)| (format!("{opening}{text}"), usage, served))
+    }
+
+    /// [`Job::generate`]'s turn, with the progress line it showed, if any,
+    /// in `opening`; the reply's text comes back without it.
+    #[allow(clippy::too_many_arguments)]
+    async fn routed(
+        &self,
+        version: u64,
+        instructions: &str,
+        input: &[Message],
+        publish: &(dyn Fn(u16, Value) -> Result<(), String> + Sync),
+        triage: Option<Judging>,
+        turn: &Turn,
+        opening: &mut String,
+    ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
         let bank = Bank::builtin();
         let placed = turn.context.facts(self.facts());
         let facts = &placed;
         let seams = &self.routing.seams;
-        let (mut generating, mut incoming, mut said) =
-            start_model(self.door.clone(), instructions.to_string(), input.to_vec());
         let mut judging = triage.is_some();
+        // The model's words wait for a judgment the caller asked to be
+        // shown, until it comes or runs past `first::LATE` (the triage
+        // future's own bound); a model that finishes meanwhile waits at
+        // the gate.
+        let hold = turn.show && judging;
+        let (gate, gate_open) = watch::channel(!hold);
+        // The call started with the turn answers when no judgment routes
+        // it, so it carries the fixed unrouted note.
+        let unrouted = if turn.show {
+            if instructions.is_empty() {
+                first::UNROUTED_NOTE.to_string()
+            } else {
+                format!("{instructions}\n\n{}", first::UNROUTED_NOTE)
+            }
+        } else {
+            instructions.to_string()
+        };
+        let (generating, mut incoming, mut said) =
+            start_model(self.door.clone(), unrouted, input.to_vec());
+        let mut generating = gated(generating, gate_open);
+        // Whether `buffer` holds words written while they were held.
+        let mut held = false;
+        // A late judgment whose seam races a model that already has words:
+        // the words wait for the seam too.
+        let mut seam_holds = false;
+        let mut progress = Box::pin(tokio::time::sleep(first::BUDGET));
+        let mut progressing = hold;
+        // Partials after a progress line move up one `seq`.
+        let shift = std::sync::atomic::AtomicU64::new(0);
         let mut triage: Judging =
             triage.unwrap_or_else(|| Box::pin(std::future::pending::<Option<Judged>>()));
         let mut seam: SeamCall = Box::pin(std::future::pending());
@@ -2113,6 +2180,7 @@ impl Job {
         let mut seam_ms: Option<u128> = None;
         let mut words_ms: Option<u128> = None;
         let send = |seq: u64, text: &str| {
+            let seq = seq + shift.load(std::sync::atomic::Ordering::Relaxed);
             publish(FEEDBACK_KIND, partial_payload(version, seq, text))
                 .map_err(GenerateError::Stream)
         };
@@ -2133,7 +2201,36 @@ impl Job {
             }
         };
         loop {
+            let holding = hold && (judging || (seam_holds && seam_waiting));
+            gate.send_replace(!holding);
+            if !holding && held {
+                held = false;
+                if !buffer.is_empty() {
+                    if !model_started {
+                        words_ms = Some(begun.elapsed().as_millis());
+                    }
+                    model_started = true;
+                    send(partial_seq, &buffer)?;
+                    partial_seq += 1;
+                    buffer.clear();
+                }
+            }
             tokio::select! {
+                () = &mut progress, if progressing && judging => {
+                    progressing = false;
+                    eprintln!(
+                        "judge ran past {} ms; holding the model up to {} ms",
+                        first::BUDGET.as_millis(),
+                        first::LATE.as_millis()
+                    );
+                    if partial_seq == 0
+                        && let Some(line) = bank.opener(first::PROGRESS_OPENER)
+                    {
+                        *opening = format!("{}\n\n", line.text);
+                        send(0, opening)?;
+                        shift.store(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
                 judged = &mut triage, if judging => {
                     judging = false;
                     let Some(judged) = judged else { continue };
@@ -2154,6 +2251,18 @@ impl Job {
                     let mut record = served_of(&routing, &tier, bank, facts);
                     if !turn.show || partial_seq != 0 {
                         continue;
+                    }
+                    // Words the model wrote while held are the reply's
+                    // start only on a tier that keeps the model; a tier
+                    // with a seam then holds them until the seam answers.
+                    let keeps = matches!(
+                        tier,
+                        Tier::Model { note: None, .. } | Tier::Grounded { .. } | Tier::Cli { .. }
+                    );
+                    seam_holds = held && keeps;
+                    if !keeps {
+                        buffer.clear();
+                        held = false;
                     }
                     match &tier {
                         // The whole reply: returning drops the model call.
@@ -2278,7 +2387,9 @@ impl Job {
                                 );
                                 draining = true;
                             }
-                            if let Some(shown) = shown {
+                            if let Some(shown) = shown
+                                && opening.is_empty()
+                            {
                                 lead = format!("{}\n\n", shown.text);
                                 send(partial_seq, &lead)?;
                                 partial_seq += 1;
@@ -2430,6 +2541,7 @@ impl Job {
                             }
                             if let Some(shown) = shown
                                 && lead.is_empty()
+                                && opening.is_empty()
                             {
                                 lead = format!("{}\n\n", shown.text);
                                 send(partial_seq, &lead)?;
@@ -2484,7 +2596,9 @@ impl Job {
                                             Cites::Product(Box::new(found.clone())),
                                         ));
                                     }
-                                    if let Some(shown) = shown {
+                                    if let Some(shown) = shown
+                                        && opening.is_empty()
+                                    {
                                         lead = format!("{}\n\n", shown.text);
                                         send(partial_seq, &lead)?;
                                         partial_seq += 1;
@@ -2538,7 +2652,9 @@ impl Job {
                                 }
                                 router::CliGate::Withhold => {}
                             }
-                            if let Some(shown) = shown {
+                            if let Some(shown) = shown
+                                && opening.is_empty()
+                            {
                                 lead = format!("{}\n\n", shown.text);
                                 send(partial_seq, &lead)?;
                                 partial_seq += 1;
@@ -2575,7 +2691,9 @@ impl Job {
                                 eprintln!("router seam failed: {why}");
                             }
                             let mut tier_word = "model";
-                            if let Tier::Grounded { lead: Some(shown), .. } | Tier::Cli { lead: Some(shown), .. } = tier {
+                            if let Tier::Grounded { lead: Some(shown), .. } | Tier::Cli { lead: Some(shown), .. } = tier
+                                && opening.is_empty()
+                            {
                                 lead = format!("{}\n\n", shown.text);
                                 send(partial_seq, &lead)?;
                                 partial_seq += 1;
@@ -2594,9 +2712,12 @@ impl Job {
                             Some((tidying, _)) => buffer.push_str(&tidying.push(&delta)),
                             None => buffer.push_str(&delta),
                         }
-                        // The model's first delta goes at once, so a reader
+                        // Held words wait for the judgment. Otherwise the
+                        // model's first delta goes at once, so a reader
                         // sees the answer begin; later ones collect.
-                        if buffer.len() >= PARTIAL_BYTES || !model_started {
+                        if holding {
+                            held = true;
+                        } else if buffer.len() >= PARTIAL_BYTES || !model_started {
                             if !model_started {
                                 words_ms = Some(begun.elapsed().as_millis());
                             }
@@ -2770,6 +2891,16 @@ fn start_model(
 
 /// The model a running generation's door named as its writer.
 type Said = Arc<std::sync::Mutex<Option<String>>>;
+
+/// `generation`, answering only once `gate` is open: a model call that
+/// finishes while its words are held keeps its reply until they are not.
+fn gated(generation: Generation, mut gate: watch::Receiver<bool>) -> Generation {
+    Box::pin(async move {
+        let answered = generation.await;
+        let _ = gate.wait_for(|open| *open).await;
+        answered
+    })
+}
 
 /// What a tidied grounded reply's citations are checked against.
 enum Cites {
@@ -3924,25 +4055,122 @@ mod tests {
         );
     }
 
-    /// The judge never stands in front of the model: a judge slower than
-    /// the model leaves the reply the model's, unprefixed, in the model's
-    /// time.
+    /// A judge slower than the model still routes the turn: the model's
+    /// words wait for the judgment, which serves the bank's whole answer
+    /// (#10110).
     #[tokio::test]
-    async fn a_slow_judge_never_delays_the_model() {
+    async fn a_judge_slower_than_the_model_still_routes() {
         let frames = frames_through(
             slow_door(Duration::ZERO),
             Some(judge(
-                Duration::from_millis(1_500),
-                judged("none", 0.1, "explain"),
+                Duration::from_millis(1_200),
+                judged("meta.who", 0.05, "none"),
             )),
-            turn("what is 2 + 2?"),
+            turn("Who are you?"),
         )
         .await;
+        let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
+        assert_eq!(bodies[1]["type"], "judgment");
+        assert_eq!(bodies[1]["tier"], "canned");
+        // No word of the model's went out before the judgment.
+        assert_eq!(bodies[2]["type"], "partial");
+        assert_eq!(bodies[2]["seq"], 0);
         let (at, result) = frames.last().unwrap();
-        assert_eq!(result["type"], "result");
-        assert!(*at < Duration::from_millis(1_000), "{at:?}");
-        assert!(!result["text"].as_str().unwrap().starts_with("Here's how"));
+        assert_eq!(result["model"], "bank:chat-answers-v1");
+        assert!(
+            result["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("We are OpenAgents."),
+            "{result}"
+        );
+        assert!(*at < first::BUDGET, "{at:?}");
+    }
+
+    /// A judgment past the first budget still routes the turn: the bank's
+    /// progress line shows at the budget as partial `seq` 0, the routed
+    /// reply follows it, and the result starts with it (#10110).
+    #[tokio::test]
+    async fn a_judge_past_the_first_budget_still_routes_under_a_progress_line() {
+        let frames = frames_through(
+            slow_door(Duration::ZERO),
+            Some(judge(
+                first::BUDGET + Duration::from_millis(800),
+                judged("meta.who", 0.05, "none"),
+            )),
+            turn("Who are you?"),
+        )
+        .await;
+        let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
+        let line = format!(
+            "{}\n\n",
+            Bank::builtin().opener(first::PROGRESS_OPENER).unwrap().text
+        );
+        assert_eq!(bodies[1]["type"], "partial");
+        assert_eq!(bodies[1]["seq"], 0);
+        assert_eq!(bodies[1]["delta"], line.as_str());
+        assert!(frames[1].0 >= first::BUDGET, "{:?}", frames[1].0);
+        assert_eq!(bodies[2]["type"], "judgment");
+        assert_eq!(bodies[2]["tier"], "canned");
+        assert_eq!(bodies[3]["type"], "partial");
+        assert_eq!(bodies[3]["seq"], 1);
+        let answer = bodies[3]["delta"].as_str().unwrap();
+        assert!(answer.starts_with("We are OpenAgents."), "{answer}");
+        let result = bodies.last().unwrap();
+        assert_eq!(result["model"], "bank:chat-answers-v1");
+        assert_eq!(result["text"], format!("{line}{answer}"));
+    }
+
+    /// A judge past the second bound leaves the reply the model's, under
+    /// the progress line, and the model was told what OpenAgents' own
+    /// products are (#10110).
+    #[tokio::test]
+    async fn a_judge_past_the_late_bound_leaves_the_model_under_the_unrouted_note() {
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let (url, seen) = serve_recorded(1, Duration::ZERO, "text/event-stream", stream.into());
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let frames = frames_through(
+            door,
+            Some(judge(
+                first::LATE + Duration::from_millis(2_000),
+                judged("meta.who", 0.05, "none"),
+            )),
+            turn("What's new in the Gym?"),
+        )
+        .await;
+        let line = format!(
+            "{}\n\n",
+            Bank::builtin().opener(first::PROGRESS_OPENER).unwrap().text
+        );
+        let (at, result) = frames.last().unwrap();
+        assert!(*at >= first::LATE, "{at:?}");
+        assert_eq!(result["model"], GEMINI);
+        let text = result["text"].as_str().unwrap();
+        assert!(text.starts_with(&line) && text.len() > line.len(), "{text}");
         assert!(frames.iter().all(|(_, body)| body["type"] != "judgment"));
+        let instructions = seen.lock().unwrap()[0]["instructions"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            instructions.ends_with(first::UNROUTED_NOTE),
+            "{instructions}"
+        );
+    }
+
+    /// A turn that does not ask for a first response gets no unrouted
+    /// note: its instructions reach the model as they came.
+    #[tokio::test]
+    async fn only_a_turn_that_asks_to_be_shown_gets_the_unrouted_note() {
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let (url, seen) = serve_recorded(1, Duration::ZERO, "text/event-stream", stream.into());
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let mut payload = turn("{\"next\": \"answer\"}");
+        payload.as_object_mut().unwrap().remove("opener");
+        payload["instructions"] = json!("Reply with JSON.");
+        let frames = frames_through(door, None, payload).await;
+        assert_eq!(frames.last().unwrap().1["type"], "result");
+        assert_eq!(seen.lock().unwrap()[0]["instructions"], "Reply with JSON.");
     }
 
     /// A `rank` job answers the caller's candidates, most likely first,
@@ -5364,7 +5592,11 @@ mod tests {
         );
         assert!(!paired.contains("/Users/someone"), "{paired}");
         let phone = instructions(json!({ "surface": "phone", "computer_ready": false })).await;
-        assert_eq!(phone, "We are OpenAgents.");
+        // With no judge, the reply is unrouted: the fixed note follows.
+        assert_eq!(
+            phone,
+            format!("We are OpenAgents.\n\n{}", first::UNROUTED_NOTE)
+        );
     }
 
     /// A follow-up after Coder's run ended tells the chat model what the

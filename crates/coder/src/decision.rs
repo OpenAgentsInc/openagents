@@ -55,10 +55,10 @@ pub fn from_env() -> Result<Option<jev::Client>, String> {
 }
 
 /// [`from_env`] for a server that holds Jev's fallback door keys (the chat
-/// worker): a keyed TypeSafe door fails over to the Vercel AI Gateway
-/// (`AI_GATEWAY_API_KEY`) and then OpenRouter (`OPENROUTER_API_KEY`) when
-/// their keys are in the environment, and the fallback doors come back as
-/// found, on or off, for the startup log
+/// worker): with their keys in the environment, a decision asks the Vercel
+/// AI Gateway (`AI_GATEWAY_API_KEY`) first, then OpenRouter
+/// (`OPENROUTER_API_KEY`), then the keyed TypeSafe door last, and the other
+/// doors come back as found, on or off, for the startup log
 /// ([`crate::profiles::Profile::client_with_fallbacks`]).
 ///
 /// # Errors

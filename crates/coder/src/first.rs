@@ -3,10 +3,12 @@
 //! The chat worker's first response is now the chat router
 //! ([`crate::router`], the `chat-router-v2` question set and the
 //! `chat-answers-v1` bank as a data file). What stays here is what the
-//! router and the ranking share: the judgment's [`BUDGET`] and
-//! [`retry`] policy, the [`state`] it reads, the [`Lane`] reading, the
-//! door [`Facts`] a prepared answer's model slots come from, and the
-//! [`MODEL_NOTE`] the model gets beside a first response.
+//! router and the ranking share: the judgment's [`BUDGET`] and [`LATE`]
+//! bounds and [`retry`] policy, the [`state`] it reads, the [`Lane`]
+//! reading, the door [`Facts`] a prepared answer's model slots come from,
+//! and the
+//! [`MODEL_NOTE`] and [`UNROUTED_NOTE`] the model gets beside a first
+//! response.
 //!
 //! [`rank_questions`] and [`ranking`] turn the same kind of judgment to the
 //! phone's suggestions: the caller names its candidate repositories or
@@ -28,10 +30,35 @@ use crate::generate::{DEFAULT_DOOR_URL, Lane as ModelLane, Message, OPENROUTER_D
 /// The ranking's question set identity, as a `rank` result names it.
 pub const SET: &str = "coder-first-response-v2";
 
-/// How long the worker waits for the judgment before it gives up on it.
-/// Past this the model's own first words are close, and an opener that
-/// arrives after them is not shown at all.
+/// How long the worker waits for the judgment before it shows something:
+/// past this, a turn that asked to be shown a first response gets the
+/// [`PROGRESS_OPENER`] line while the judgment finishes, up to [`LATE`].
+/// A healthy judge answers well inside it (p50 about 0.26 s), so the first
+/// response is as fast as before.
 pub const BUDGET: Duration = Duration::from_millis(2_500);
+
+/// The second, longer bound on the judgment (#10110). Until it, a turn
+/// that asked to be shown a first response holds the model's words, so a
+/// late judgment still routes the turn; past it the model answers
+/// unrouted, under [`UNROUTED_NOTE`].
+pub const LATE: Duration = Duration::from_millis(6_000);
+
+/// The bank opener shown when the judgment runs past [`BUDGET`]: a fixed
+/// line, chosen by no reading of the message.
+pub const PROGRESS_OPENER: &str = "explain";
+
+/// The fixed note the model gets on a turn that asked for a first
+/// response, beside the judgment (#10110). When no judgment routes the
+/// turn (the judge is absent, failed, or ran past [`LATE`]) the model
+/// answers alone, and this keeps it answering as OpenAgents about our own
+/// products. It is an instruction, never a router: it reads nothing.
+pub const UNROUTED_NOTE: &str = "OpenAgents' own products have plain names: the Gym (where we \
+test plugins for Coder and trainers add and check results), the Verse, Coder (our coding agent), \
+plugins, and Jev (the small, fast model from TypeSafe that reads each message first). When the \
+user names one of these, they mean ours, not an outside project with a similar name (the Gym is \
+not OpenAI Gym or Gymnasium). Answer a question about them here, about ours, and say plainly when \
+you do not know a specific detail; do not offer to run Coder or check a repository to answer a \
+question.";
 
 /// The instruction the worker adds to the caller's, so the model speaks as
 /// OpenAgents and does not open with an acknowledgement of its own after
@@ -120,12 +147,12 @@ pub fn state(task: &str, transcript: &[Message]) -> Value {
 }
 
 /// A retry policy for a call that is only worth anything fast: one
-/// attempt, bounded by [`BUDGET`].
+/// attempt, bounded by [`LATE`].
 #[must_use]
 pub fn retry() -> RetryPolicy {
     RetryPolicy {
         max_retries: 0,
-        budget: Some(BUDGET),
+        budget: Some(LATE),
         ..RetryPolicy::default()
     }
 }

@@ -1,13 +1,18 @@
 //! Jev's doors other than TypeSafe's own, and the failover across them.
 //!
 //! Jev answers at three HTTP doors with the same request body and the same
-//! answer shape (NIP-DEC, "Doors and the backup door"):
+//! answer shape (NIP-DEC, "Doors and the backup door"). A server that
+//! holds every door's key asks them in this order:
 //!
-//! | Door | Route | Model | Key |
-//! | --- | --- | --- | --- |
-//! | TypeSafe | `POST https://api.typesafe.ai/v1/systemone` | `jev-1.13.0` | `TYPESAFE_API_KEY` |
-//! | Vercel AI Gateway | `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | `AI_GATEWAY_API_KEY` |
-//! | OpenRouter | `POST https://openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` | `OPENROUTER_API_KEY` |
+//! | Order | Door | Route | Model | Key |
+//! | --- | --- | --- | --- | --- |
+//! | 1 | Vercel AI Gateway | `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | `AI_GATEWAY_API_KEY` |
+//! | 2 | OpenRouter | `POST https://openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` | `OPENROUTER_API_KEY` |
+//! | 3 | TypeSafe | `POST https://api.typesafe.ai/v1/systemone` | `jev-1.13.0` | `TYPESAFE_API_KEY` |
+//!
+//! The gateway is the primary: it routes Jev to TypeSafe itself, with the
+//! owner's key as its own fallback, so the gateway handles provider
+//! routing. TypeSafe direct is the final backup.
 //!
 //! The gateway's route is its TypeSafe-compatible API, which "implements
 //! the TypeSafe request and response shapes" (Vercel, "TypeSafe API with
@@ -16,18 +21,29 @@
 //! with the routing and the cost as a decimal string. Its own errors are
 //! `{"message", "error_type"}`; a provider's errors pass through unchanged.
 //!
-//! [`Failover`] is an [`Exchange`] that asks TypeSafe first and, only when
-//! TypeSafe could not answer for a reason of its own ([`fails_over`]: 402,
-//! 408, 429, any 5xx, the door's own key, account, or quota refusals, a
-//! timeout, or no connection), asks each fallback door in order. A refusal
-//! of the question itself (a 400, a 413) never fails over: the next door
-//! would refuse the same question. An answer from a fallback door names it
+//! [`Failover`] is an [`Exchange`] whose base door is TypeSafe's: every
+//! route goes there except a decision, which asks the doors in order. By
+//! default TypeSafe is asked first; [`Failover::primary_last`] asks every
+//! fallback door first and TypeSafe last, the order above. A door is left
+//! for the next only when it could not answer for a reason of its own
+//! ([`fails_over`]: 402, 408, 429, any 5xx, the door's own key, account,
+//! or quota refusals, a timeout, or no connection). A refusal of the
+//! question itself (a 400, a 413) never fails over: the next door would
+//! refuse the same question. An answer from any door but TypeSafe names it
 //! in `service.door`, so a decision record says which door answered; when
-//! no fallback answers, TypeSafe's own refusal stands. Each door's key is
-//! held here, sent only to its own door, and never logged.
+//! no door answers, the first door's own refusal stands. Each door's key
+//! is held here, sent only to its own door, and never logged.
+//!
+//! A door that refuses for its key or its account (401 or 402) will refuse
+//! the next call the same way, so [`Failover`] remembers it: for
+//! [`BENCH`] (a circuit breaker) that door is skipped and the call goes
+//! straight to the next one, then the door is asked again. The bench is
+//! logged once, when it starts. When a benched first door is skipped and
+//! no other door answers, its remembered refusal stands.
 
+use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -36,7 +52,8 @@ use crate::config::ApiKey;
 use crate::exchange::{Call, Exchange, Failure, Pending, Reply};
 use crate::nip_dec::{canonical_model, code_for_http_status, openrouter_model};
 
-/// TypeSafe's door, the primary.
+/// TypeSafe's door: the base door every route but a decision goes to,
+/// and the final backup for a decision when the fallbacks lead.
 pub const TYPESAFE_DOOR: &str = "https://api.typesafe.ai";
 
 /// The Vercel AI Gateway's door, as an answer's `service.door` names it.
@@ -113,8 +130,9 @@ pub struct Fallback {
     pub naming: Naming,
 }
 
-/// The fallback doors, in the order they are asked after TypeSafe: the
-/// Vercel AI Gateway, then OpenRouter.
+/// The fallback doors, in the order they are asked: the Vercel AI Gateway,
+/// then OpenRouter. With [`Failover::primary_last`] they come before
+/// TypeSafe; otherwise after it.
 pub const FALLBACKS: [Fallback; 2] = [
     Fallback {
         name: "the Vercel AI Gateway",
@@ -228,6 +246,24 @@ pub fn normalize_answer(body: &mut Value) -> bool {
     }
 }
 
+/// How long a door that refused for its key or account is skipped before
+/// it is asked again.
+pub const BENCH: Duration = Duration::from_secs(300);
+
+/// Whether a door's refusal is about its key or its account (401, 402):
+/// the next call would be refused the same way, so the door is benched.
+#[must_use]
+pub fn benches(status: u16) -> bool {
+    matches!(status, 401 | 402)
+}
+
+/// A door skipped until `until`, and the refusal that benched it.
+#[derive(Debug, Clone)]
+struct Benched {
+    until: Instant,
+    refusal: Reply,
+}
+
 /// A door [`Failover`] asks, with its key.
 #[derive(Clone)]
 pub struct Door {
@@ -276,13 +312,16 @@ impl fmt::Debug for Door {
     }
 }
 
-/// TypeSafe first, then each fallback door in order (module docs).
+/// TypeSafe and the fallback doors, asked in order (module docs).
 #[derive(Debug, Clone)]
 pub struct Failover {
     http: reqwest::Client,
     primary: Door,
     fallbacks: Vec<Door>,
     primary_timeout: Option<Duration>,
+    primary_last: bool,
+    bench: Duration,
+    benched: Arc<Mutex<HashMap<String, Benched>>>,
 }
 
 impl Failover {
@@ -296,12 +335,74 @@ impl Failover {
             primary,
             fallbacks,
             primary_timeout: None,
+            primary_last: false,
+            bench: BENCH,
+            benched: Arc::default(),
         }
     }
 
-    /// Cap the primary's share of an attempt, so a primary that hangs
-    /// leaves the fallbacks the rest of the attempt's time. Unset, the
-    /// primary may take the whole attempt.
+    /// Ask a decision at every fallback door first, in order, and at the
+    /// primary last: the primary becomes the final backup. Every route
+    /// other than a decision still goes to the primary alone.
+    #[must_use]
+    pub fn primary_last(mut self) -> Self {
+        self.primary_last = true;
+        self
+    }
+
+    /// How long a door that refused for its key or account is skipped
+    /// ([`BENCH`] unless set).
+    #[must_use]
+    pub fn bench(mut self, bench: Duration) -> Self {
+        self.bench = bench;
+        self
+    }
+
+    /// The refusal that benched `door`, while its bench lasts.
+    fn benched_refusal(&self, door: &str) -> Option<Reply> {
+        let mut benched = self
+            .benched
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match benched.get(door) {
+            Some(bench) if Instant::now() < bench.until => Some(bench.refusal.clone()),
+            Some(_) => {
+                benched.remove(door);
+                None
+            }
+            None => None,
+        }
+    }
+
+    /// Bench `door` when `reply` refused for its key or account; logged once
+    /// per bench.
+    fn note(&self, door: &str, reply: &Reply) {
+        if !benches(reply.status) {
+            return;
+        }
+        let mut benched = self
+            .benched
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        benched.insert(
+            door.to_string(),
+            Benched {
+                until: Instant::now() + self.bench,
+                refusal: reply.clone(),
+            },
+        );
+        tracing::warn!(
+            target: "jev",
+            door = %door,
+            status = reply.status,
+            bench_s = self.bench.as_secs(),
+            "a door refused for its key or account; skipping it until the bench ends"
+        );
+    }
+
+    /// Cap the share of an attempt the first door asked may take, so a
+    /// door that hangs leaves the doors after it the rest of the attempt's
+    /// time. Unset, the first door may take the whole attempt.
     #[must_use]
     pub fn primary_timeout(mut self, timeout: Duration) -> Self {
         self.primary_timeout = Some(timeout);
@@ -374,58 +475,82 @@ impl Failover {
         })
     }
 
+    /// The doors a decision asks, in order: the primary first, or, with
+    /// [`Failover::primary_last`], every fallback first and the primary
+    /// last.
+    fn order(&self) -> Vec<&Door> {
+        let mut order = Vec::with_capacity(self.fallbacks.len() + 1);
+        if !self.primary_last {
+            order.push(&self.primary);
+        }
+        order.extend(self.fallbacks.iter());
+        if self.primary_last {
+            order.push(&self.primary);
+        }
+        order
+    }
+
     async fn carry(&self, call: Call) -> Result<Reply, Failure> {
         let began = Instant::now();
         let decision = call.method.eq_ignore_ascii_case("POST") && call.path == SYSTEM_ONE_PATH;
-        let failing_over = decision && !self.fallbacks.is_empty();
-        let primary_timeout = match (failing_over, self.primary_timeout) {
-            (true, Some(cap)) => cap.min(call.timeout),
-            _ => call.timeout,
-        };
-        let url = format!("{}{}", self.primary.url.trim_end_matches('/'), call.path);
-        let first = self
-            .send(
-                &url,
-                &self.primary.key,
-                &call,
-                call.body.clone(),
-                primary_timeout,
-            )
-            .await;
-        if !failing_over {
-            return first;
+        let base = format!("{}{}", self.primary.url.trim_end_matches('/'), call.path);
+        if !decision || self.fallbacks.is_empty() {
+            return self
+                .send(
+                    &base,
+                    &self.primary.key,
+                    &call,
+                    call.body.clone(),
+                    call.timeout,
+                )
+                .await;
         }
-        let why = match &first {
-            Ok(reply) if (200..300).contains(&reply.status) => return first,
-            Ok(reply) => {
-                let body: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
-                if !fails_over(reply.status, error_code(&body)) {
-                    return first;
-                }
-                format!("HTTP {}", reply.status)
-            }
-            Err(Failure::Timeout) => "timeout".to_string(),
-            Err(Failure::Unreachable(_)) => "unreachable".to_string(),
-        };
         let request: Option<Value> = call
             .body
             .as_deref()
             .and_then(|body| serde_json::from_slice(body).ok());
-        for door in &self.fallbacks {
+        let order = self.order();
+        // The first door's outcome, which stands when no door answers, and
+        // why it could not answer.
+        let mut first: Option<(Result<Reply, Failure>, String)> = None;
+        let mut asked = 0usize;
+        for (at, door) in order.iter().enumerate() {
+            let is_primary = std::ptr::eq(*door, &self.primary);
             let left = call.timeout.saturating_sub(began.elapsed());
             if left.is_zero() {
                 break;
             }
-            let body = request.clone().map(|mut body| {
-                if let Some(model) = body.get("model").and_then(Value::as_str) {
-                    body["model"] = Value::String(door.naming.model(model));
-                }
-                serde_json::to_vec(&body).unwrap_or_default()
-            });
-            let answered = self.send(&door.url, &door.key, &call, body, left).await;
+            let (answered, benched) = if let Some(refusal) = self.benched_refusal(&door.door) {
+                (Ok(refusal), true)
+            } else {
+                // The first door asked keeps only its capped share, so a
+                // door that hangs leaves the others the rest.
+                let timeout = match self.primary_timeout {
+                    Some(cap) if asked == 0 && at + 1 < order.len() => cap.min(left),
+                    _ => left,
+                };
+                asked += 1;
+                let (url, body) = if is_primary {
+                    (base.clone(), call.body.clone())
+                } else {
+                    let body = request.clone().map(|mut body| {
+                        if let Some(model) = body.get("model").and_then(Value::as_str) {
+                            body["model"] = Value::String(door.naming.model(model));
+                        }
+                        serde_json::to_vec(&body).unwrap_or_default()
+                    });
+                    (door.url.clone(), body)
+                };
+                (
+                    self.send(&url, &door.key, &call, body, timeout).await,
+                    false,
+                )
+            };
             match answered {
                 Ok(mut reply) if (200..300).contains(&reply.status) => {
-                    if let Ok(mut value) = serde_json::from_slice::<Value>(&reply.body) {
+                    if !is_primary
+                        && let Ok(mut value) = serde_json::from_slice::<Value>(&reply.body)
+                    {
                         normalize_answer(&mut value);
                         if let Some(map) = value.as_object_mut() {
                             map.insert("service".to_string(), json!({"door": door.door}));
@@ -434,41 +559,60 @@ impl Failover {
                             reply.body = bytes;
                         }
                     }
-                    tracing::info!(
-                        target: "jev",
-                        primary = %self.primary.door,
-                        why = %why,
-                        door = %door.door,
-                        elapsed_ms = began.elapsed().as_millis(),
-                        "a fallback door answered"
-                    );
+                    if let Some((_, why)) = &first {
+                        tracing::info!(
+                            target: "jev",
+                            first = %order[0].door,
+                            why = %why,
+                            door = %door.door,
+                            elapsed_ms = began.elapsed().as_millis(),
+                            "a fallback door answered"
+                        );
+                    }
                     return Ok(reply);
                 }
                 Ok(reply) => {
                     let body: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
                     let code = error_code(&body).map(str::to_string);
-                    tracing::info!(
-                        target: "jev",
-                        door = %door.door,
-                        status = reply.status,
-                        code = code.as_deref().unwrap_or("-"),
-                        "a fallback door refused"
-                    );
-                    if !fails_over(reply.status, code.as_deref()) {
+                    let over = fails_over(reply.status, code.as_deref());
+                    if !benched {
+                        tracing::info!(
+                            target: "jev",
+                            door = %door.door,
+                            status = reply.status,
+                            code = code.as_deref().unwrap_or("-"),
+                            "a door refused"
+                        );
+                        if over {
+                            self.note(&door.door, &reply);
+                        }
+                    }
+                    if !over {
+                        // A refusal of the question itself: the next door
+                        // would refuse it too.
+                        if first.is_none() {
+                            return Ok(reply);
+                        }
                         break;
                     }
+                    let why = if benched {
+                        format!("HTTP {} (benched)", reply.status)
+                    } else {
+                        format!("HTTP {}", reply.status)
+                    };
+                    first.get_or_insert((Ok(reply), why));
                 }
                 Err(failure) => {
-                    tracing::info!(
-                        target: "jev",
-                        door = %door.door,
-                        failure = ?failure,
-                        "a fallback door did not answer"
-                    );
+                    let why = match &failure {
+                        Failure::Timeout => "timeout",
+                        Failure::Unreachable(_) => "unreachable",
+                    };
+                    tracing::info!(target: "jev", door = %door.door, why, "a door did not answer");
+                    first.get_or_insert((Err(failure), why.to_string()));
                 }
             }
         }
-        first
+        first.map_or(Err(Failure::Timeout), |(outcome, _)| outcome)
     }
 }
 
@@ -488,8 +632,7 @@ impl Exchange for Failover {
     }
 
     fn service(&self) -> String {
-        let mut doors = vec![self.primary.door.as_str()];
-        doors.extend(self.fallbacks.iter().map(|door| door.door.as_str()));
+        let doors: Vec<&str> = self.order().iter().map(|door| door.door.as_str()).collect();
         format!("doors {}", doors.join(" → "))
     }
 

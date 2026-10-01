@@ -237,24 +237,30 @@ string, which a reader takes as `usage.cost`. Its own errors are
 and names the dated model it served (`typesafe/jev-1.13-20260917`); a
 reader ignores fields it does not use.
 
-A server that holds door keys may keep backup doors, asked in the order
-TypeSafe → Vercel AI Gateway → OpenRouter (`jev::doors::FALLBACKS`): the
-decision worker (`decision-worker.json` `backups`) and the chat worker's
+A server that holds door keys may keep backup doors. The chat worker's
 judge (`jev::doors::Failover`, through
-`jev_hosted::resolve_with_fallbacks`). A door is asked only when every door
-before it could not answer for its own reasons
+`jev_hosted::resolve_with_fallbacks`) asks a decision in the order Vercel
+AI Gateway → OpenRouter → TypeSafe (`Failover::primary_last`): the gateway
+is the primary and routes Jev to TypeSafe itself, with the owner's key as
+its own fallback, and TypeSafe direct is the final backup; every other
+route still goes to TypeSafe. The decision worker (`decision-worker.json`
+`backups`) still asks TypeSafe → Vercel AI Gateway → OpenRouter
+(`jev::doors::FALLBACKS` after its upstream). A door is asked only when
+every door before it could not answer for its own reasons
 (`jev::doors::fails_over`): it timed out or could not be reached, answered
 `402`, `408`, `429`, or any `5xx`, or refused with one of its own codes
 (its key, its account, its model list, its quota: `unauthenticated`,
 `payment_required`, `not_admitted`, `rate_limited`, `quota_exhausted`,
 `internal`, and the `502`–`529` rows). A refusal of the question itself
 (`invalid_request` and the other `400` and `413` rows) never fails over,
-and a backup door that refuses the question ends the chain. Each is off
-unless its key (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`) is in the
-server's environment, and the server says which at start. An answer from a
-backup door names it in `service.door`, so the decision record
-(`openagents.decision-call.v1`) says which door answered; when no backup
-answers, the primary's refusal stands.
+and a door after the first that refuses the question ends the chain. Each
+backup is off unless its key (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`)
+is in the server's environment, and the server says which at start. An
+answer from any door but TypeSafe names it in `service.door`, so the
+decision record (`openagents.decision-call.v1`) says which door answered;
+when no door answers, the first door's refusal stands. The chat judge
+remembers a door that refused for its key or account (`401`, `402`) and
+skips it for `jev::doors::BENCH` (five minutes), then asks it again.
 
 A client that turns a relay refusal back into an HTTP-shaped
 error (`jev_hosted` does, so every Jev caller sees one error shape) uses the
