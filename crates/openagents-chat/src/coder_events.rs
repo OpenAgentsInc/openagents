@@ -808,13 +808,7 @@ impl Mapper {
                 if is_decision_call(call) {
                     continue;
                 }
-                let name = call["function_name"].as_str().unwrap_or("tool");
-                let arguments = match &call["arguments"] {
-                    Value::Null => String::new(),
-                    Value::String(text) => text.clone(),
-                    other => other.to_string(),
-                };
-                events.push(make(StepKind::ToolCall, &format!("{name} {arguments}")));
+                events.push(make(StepKind::ToolCall, &tool_line(call, &step["extra"])));
             }
             for result in step
                 .pointer("/observation/results")
@@ -1176,6 +1170,89 @@ fn parse_iso(text: &str) -> Option<u64> {
     u64::try_from(ms).ok()
 }
 
+/// The longest step line a tool call becomes, in characters.
+const TOOL_LINE_CHARS: usize = 120;
+
+/// A coding agent's tool call (Devin, OpenCode, Grok Build) as a readable
+/// step line, never its raw JSON (#10113): `Read README.md`, `Listed the
+/// project`, `Ran cargo test`. It reads the call's typed arguments first, by
+/// the field names the agents use, with the ACP tool kind the recorder kept
+/// (`extra.<engine>_tool.kind`), then the title the agent showed beside the
+/// call (`extra.purpose`), and else names the tool.
+fn tool_line(call: &Value, extra: &Value) -> String {
+    let arguments = &call["arguments"];
+    let field = |names: &[&str]| {
+        names
+            .iter()
+            .find_map(|name| arguments[*name].as_str())
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+    };
+    let kind = extra
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| key.ends_with("_tool"))
+        .find_map(|(_, value)| value["kind"].as_str())
+        .unwrap_or("");
+    let file = field(&["target_file", "file_path", "filePath", "path"]).map(shown);
+    let line = if let Some(dir) = field(&["target_directory", "directory", "dir_path"]) {
+        Some(match dir {
+            "." | "./" => "Listed the project".to_owned(),
+            dir => format!("Listed {}", shown(dir)),
+        })
+    } else if let Some(command) = field(&["command", "cmd"]) {
+        Some(format!("Ran {}", command.lines().next().unwrap_or(command)))
+    } else if let Some(pattern) = field(&["pattern", "query", "regex"]) {
+        Some(format!("Searched for {pattern}"))
+    } else if let Some(url) = field(&["url"]) {
+        Some(format!("Fetched {url}"))
+    } else {
+        file.map(|file| match kind {
+            "edit" => format!("Edited {file}"),
+            "delete" => format!("Deleted {file}"),
+            "move" => format!("Moved {file}"),
+            _ => format!("Read {file}"),
+        })
+    };
+    let title = extra["purpose"]
+        .as_str()
+        .and_then(|text| text.lines().next())
+        .map(|text| text.replace('`', "").trim().to_owned())
+        .filter(|text| !text.is_empty() && !text.starts_with(['{', '[']));
+    let name = call["function_name"]
+        .as_str()
+        .filter(|name| *name != "other" && !name.is_empty() && name.len() <= 40);
+    // A call whose arguments are already words (`read a.rs`) reads as is.
+    let plain = arguments
+        .as_str()
+        .and_then(|text| text.lines().next())
+        .map(str::trim)
+        .filter(|text| !text.is_empty() && !text.starts_with(['{', '[']))
+        .map(|text| format!("{} {text}", name.unwrap_or("tool")));
+    let line = line
+        .or(title)
+        .or(plain)
+        .or_else(|| name.map(|name| format!("Used {name}")))
+        .unwrap_or_else(|| "Used a tool".to_owned());
+    let line: String = line.chars().filter(|ch| !ch.is_control()).collect();
+    match line.char_indices().nth(TOOL_LINE_CHARS) {
+        Some((at, _)) => format!("{}…", &line[..at]),
+        None => line,
+    }
+}
+
+/// A path as a step line shows it: an absolute one by its last part.
+fn shown(path: &str) -> String {
+    let at = std::path::Path::new(path);
+    if at.is_absolute()
+        && let Some(name) = at.file_name()
+    {
+        return name.to_string_lossy().into_owned();
+    }
+    path.to_owned()
+}
+
 /// Whether an ATIF document's tool call is a decision-model call: its
 /// `extra` names [`atif::DECISION_CALL_SCHEMA`], as `atif::Call::is_decision`
 /// reads the log's record.
@@ -1187,6 +1264,79 @@ fn is_decision_call(call: &Value) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Grok Build's tool calls as the owner saw them on 2026-10-01
+    /// (#10113): kind `other`, its typed arguments, and its own title. Each
+    /// is a readable step line, and an unknown tool a short one, never JSON.
+    #[test]
+    fn an_agents_tool_calls_are_readable_lines() {
+        let line = |name: &str, arguments: Value, extra: Value| {
+            tool_line(
+                &json!({"tool_call_id": "c", "function_name": name, "arguments": arguments}),
+                &extra,
+            )
+        };
+        let grok = |kind: &str, title: &str| {
+            let tool = json!({"kind": kind, "status": "completed"});
+            json!({"purpose": title, "grok_tool": tool})
+        };
+        assert_eq!(
+            line(
+                "other",
+                json!({"target_directory": "."}),
+                grok("other", "List `.`")
+            ),
+            "Listed the project"
+        );
+        assert_eq!(
+            line(
+                "other",
+                json!({"target_file": "README.md"}),
+                grok("other", "Read `README.md`")
+            ),
+            "Read README.md"
+        );
+        assert_eq!(
+            line(
+                "other",
+                json!({"target_directory": "/private/var/x/scratch-1/src"}),
+                json!({})
+            ),
+            "Listed src"
+        );
+        assert_eq!(
+            line(
+                "edit",
+                json!({"file_path": "/w/src/lib.rs", "new_string": "x"}),
+                grok("edit", "")
+            ),
+            "Edited lib.rs"
+        );
+        assert_eq!(
+            line("other", json!({"command": "cargo test\n--more"}), json!({})),
+            "Ran cargo test"
+        );
+        assert_eq!(
+            line("other", json!({"pattern": "fn main"}), json!({})),
+            "Searched for fn main"
+        );
+        // No field this reads: the agent's own title, then the tool's name.
+        assert_eq!(
+            line("other", json!({"x": 1}), grok("other", "Think about `it`")),
+            "Think about it"
+        );
+        assert_eq!(
+            line("web_search", json!({"x": 1}), json!({})),
+            "Used web_search"
+        );
+        assert_eq!(
+            line("other", json!({"x": 1}), json!({"purpose": "{\"x\":1}"})),
+            "Used a tool"
+        );
+        assert_eq!(line("read", json!("a.rs"), json!({})), "read a.rs");
+        let long = line("other", json!({"command": "y".repeat(500)}), json!({}));
+        assert!(long.chars().count() <= TOOL_LINE_CHARS + 1 && long.ends_with('…'));
+    }
 
     fn step(id: u64, source: &str, message: &str, extra: Value) -> Value {
         json!({"step_id": id, "timestamp": format!("2026-09-30T12:00:{:02}.000Z", id), "source": source, "message": message, "extra": extra})
