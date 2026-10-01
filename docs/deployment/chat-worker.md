@@ -1360,3 +1360,32 @@ simulator or a device. Build 43 was uploaded with `build.sh upload` at
 2026-10-01T12:43:38-07:00 and is `VALID`, `IN_BETA_TESTING` in Internal
 Testers (which has access to every build), with test notes set from the
 entry's What to test line.
+
+Release `0a88285ec4` (2026-10-01) reads the coding agents a phone's paired
+computer names ([#10119](https://github.com/OpenAgentsInc/openagents/issues/10119)):
+`context.computer` `{place: "paired", name, engines}`, from the host's
+NIP-HOST presence, and the model is told each agent and its state, that
+each Coder run uses one of them, and that "which agents are connected / who
+can you delegate to" is answered from them. It was built with `cargo
+zigbuild` as above, installed as `/opt/coder-worker/releases/0a88285ec4`
+with `knowledge/` (107 entries, no `._*` files) and `codebase-kb.gz` copied
+from `e4c57638f9` on the VM, checked with `--check` as root with the chat
+environment sourced ("the configuration is safe to deploy"), and put live by
+moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, `coder-worker.service` and
+`/opt/coder-worker/current` were not touched, and `e4c57638f9` stays in
+`releases/` for rollback. The log names `router chat-router-v4@71bde73d1610
+(Live), bank chat-answers-v1@b08b64b48be8 with 71 answers`. With
+`live_basic_coder_streams_a_reply`, `OPENAGENTS_TEST_CHAT_PAIRED=macbook-pro-m5`,
+and `OPENAGENTS_TEST_CHAT_ENGINES=codex=ready,claude=ready,grok=ready,opencode=not_enabled,devin=not_enabled`,
+"what coding agents are connected?", "Who can you delegate to", and "What
+can CODER delegate to" each answered on the model tier (route `meta`) in
+1.5 to 2.3 s with that list, such as "The coding agents connected to Coder
+are: Codex — ready; Claude Code — ready; Grok Build — ready; OpenCode —
+installed but not enabled; Devin — installed but not enabled". Before the
+release, the same context without engines got "Coder is connected to your
+paired computer, macbook-pro-m5. No Coder session is currently running."
+The release gate's `phone-agents` passed with debug builds (`--bin-dir`)
+of `0a88285ec4`: the host's presence named Codex, Claude Code, and Grok
+Build ready and OpenCode and Devin not enabled, and the reply named each
+ready one.
