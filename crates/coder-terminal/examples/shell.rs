@@ -51,7 +51,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> 
             let log_area = Rect::new(0, 0, area.width, area.height - box_height);
             let box_area = Rect::new(0, log_area.height, area.width, box_height);
 
-            let amber = ladder.style(Intensity::Full);
+            let full = ladder.style(Intensity::Full);
             let dim = ladder.style(Intensity::Half);
             let buf = frame.buffer_mut();
             for y in log_area.top()..log_area.bottom() {
@@ -66,7 +66,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> 
             let end = lines.len().saturating_sub(scroll);
             let start = end.saturating_sub(shown);
             for (offset, line) in lines[start..end].iter().enumerate() {
-                let style = if line.dim { dim } else { amber };
+                let style = if line.dim { dim } else { full };
                 buf.set_string(
                     log_area.left() + 1,
                     log_area.top() + offset as u16,

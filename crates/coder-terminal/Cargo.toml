@@ -3,7 +3,7 @@ name = "coder-terminal"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "The Coder terminal: one amber ladder, a framed composer, and the shell they draw."
+description = "The Coder terminal: one white ladder, a framed composer, and the shell they draw."
 publish.workspace = true
 
 [dependencies]

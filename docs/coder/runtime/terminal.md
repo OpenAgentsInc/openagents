@@ -16,8 +16,8 @@ The [September 2026 audit](../../audits/2026-09-19-codebase-audit/README.md)
 read the interactive shell and found three things it did by hand. Raw
 mode was entered before fallible setup and undone only on the normal
 return, so an error between the two, or a panic anywhere in the draw
-loop, left the user's shell in raw mode on the alternate screen with an
-amber cursor. The turn's worker reported every event with `try_send` on a
+loop, left the user's shell in raw mode on the alternate screen with a
+recolored cursor. The turn's worker reported every event with `try_send` on a
 bounded channel and ignored the result, so a burst of streamed text could
 push a command's outcome, or a refusal, out of the transcript without a
 word. And every frame re-wrapped every line of an unbounded transcript.
@@ -34,7 +34,7 @@ real terminal.
 | `RawMode` | `enable_raw_mode` | `disable_raw_mode` |
 | `AlternateScreen` | `EnterAlternateScreen` | `LeaveAlternateScreen` |
 | `CursorStyle` | a blinking block | the user's shape, and `Show` |
-| `CursorColor` | OSC 12, amber | OSC 112 |
+| `CursorColor` | OSC 12, full white | OSC 112 |
 
 `Guard::enter(console, steps)` applies the steps in order and records
 each one that succeeded. If a step fails, the steps before it are undone
@@ -127,13 +127,35 @@ line, resize the window, quit once with `Ctrl-C` and once with an empty
 with echo on. The `2026-09-20-terminal-lifecycle.md` record under
 [`verification/`](../verification/) holds one such run.
 
+## Components
+
+`coder_terminal::components` holds the pieces a conversational terminal
+draws. Each is pure: no I/O, no clock, styled through a `Ladder`, so the
+same call serves truecolor, 256 colors, and `NO_COLOR`.
+
+| Component | Draws |
+| --- | --- |
+| `turn` | A finished turn (`turn`), a reply still streaming (`streaming`), and a note under a turn (`note`): a quiet label row, then the text indented two cells. A reply is Markdown. |
+| `card` | `Card`: a hairline-framed card in the transcript (welcome, pairing code, help) with label rows, prose, verbatim art, and key hints on the bottom rule. Under 20 columns it drops the frame. |
+| `run` | `RunRow` and `lines`: one row of a Coder run (start, step, command with exit and output tail, progress, provider switch, question, result, failure, stop). Progress reads "step N · ≈P% done · elapsed" and never "of N". |
+| `overlay` | `ListOverlay`: a centered framed list (threads, plugins, help) drawn into a buffer, the selected row tinted, or reversed under `NO_COLOR`, and kept in view. |
+
+Text snapshots at 80 columns and a narrow width live in
+`crates/coder-terminal/tests/snapshots/`, compared by
+`crates/coder-terminal/tests/components.rs`:
+
+```sh
+cargo test -p coder-terminal
+UPDATE_SNAPSHOTS=1 cargo test -p coder-terminal --test components  # accept an intended change
+```
+
 ## Planned evidence and task views
 
 The [TypeSafe-native roadmap](../design/typesafe-agent-roadmap.md) adds a shared
 evidence store and task-specific context to the agent. The views below are
 a product contract for #9506, not implemented terminal controls.
 
-Keep the conversation and framed composer primary. Use the existing amber
+Keep the conversation and framed composer primary. Use the existing white
 intensity ladder, frame, and rails. Secondary detail expands on demand and
 must remain readable without color. Do not require a developer to inspect
 probabilities before asking a repository question or repairing a test.

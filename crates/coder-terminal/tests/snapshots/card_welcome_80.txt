@@ -1,0 +1,9 @@
+┌─ OpenAgents ─────────────────────────────────────────────────────────────┐
+│ model    Space Bunny Alpha                                               │
+│ folder   ~/work/openagents                                               │
+│ account  signed in as a person with a long display name that wraps       │
+│                                                                          │
+│ Ask anything about this folder, or hand Coder a change to make.          │
+│                                                                          │
+│ Your threads sync with the web and mobile apps.                          │
+└─ Enter send · Ctrl+T threads · Ctrl+C quit ──────────────────────────────┘

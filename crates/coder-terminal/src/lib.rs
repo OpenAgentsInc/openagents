@@ -1,9 +1,9 @@
-//! The Coder terminal: one amber, four intensities, and the composer.
+//! The Coder terminal: one white ladder, four intensities, and the composer.
 //!
 //! The crate builds on Coder's shared application theme and owns terminal facilities:
 //!
 //! - [`Intensity`] re-exports Coder's four-step brightness scale over a
-//!   single amber hue.
+//!   single white hue.
 //!   Tone — faintest to brightest — carries every distinction the UI needs;
 //!   hue does not vary.
 //! - [`Ladder`] maps an [`Intensity`] to a concrete color for the terminal at
@@ -28,7 +28,13 @@
 //!   width.
 //! - [`native`] draws Rust Native views on the ladder and turns keyboard
 //!   focus into revision-bound activations.
+//!
+//! A conversational shell draws its transcript from [`components`]: a turn
+//! and its notes, a framed card, the rows of a Coder run, and a centered
+//! list overlay. Each is pure and styled through the [`Ladder`], with text
+//! snapshots under `tests/snapshots/`.
 
+pub mod components;
 mod composer;
 pub mod decision;
 mod editor;

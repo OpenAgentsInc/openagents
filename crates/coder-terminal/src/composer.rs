@@ -102,7 +102,7 @@ impl<'a> Composer<'a> {
     pub fn render(&mut self, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         let inner = inner_width(area.width);
         let window = self.editor.window(inner);
-        let amber = self.ladder.style(Intensity::Full);
+        let full = self.ladder.style(Intensity::Full);
         let dim = self.ladder.style(Intensity::Half);
         let bg = self.ladder.background();
         let base = Style::new().bg(bg);
@@ -118,7 +118,7 @@ impl<'a> Composer<'a> {
                 buf[(x, y)].set_style(base);
             }
         }
-        frame(area, buf, amber);
+        frame(area, buf, full);
 
         rail(
             area,
@@ -139,12 +139,12 @@ impl<'a> Composer<'a> {
         for offset in 0..window.visible as u16 {
             let y = area.top() + 1 + offset;
             let prompt = if offset == 0 { self.prompt } else { ' ' };
-            buf[(area.left() + 2, y)].set_char(prompt).set_style(amber);
+            buf[(area.left() + 2, y)].set_char(prompt).set_style(full);
             let Some(range) = window.rows.get(window.scroll + offset as usize) else {
                 continue;
             };
             let text = &self.editor.text()[range.clone()];
-            buf.set_string(area.left() + 4, y, text, amber);
+            buf.set_string(area.left() + 4, y, text, full);
         }
 
         if self.caret {
@@ -159,7 +159,7 @@ impl<'a> Composer<'a> {
             let y = area.top() + 1 + (row.saturating_sub(window.scroll) as u16).min(height - 2);
             // The cell draws nothing of its own: the terminal's hardware
             // cursor lands on `caret_at` and inverts the cell, so the block
-            // burns amber. A drawn █ would invert to near-black and cover
+            // burns full white. A drawn █ would invert to near-black and cover
             // the cell — that is what made the caret read dark.
             caret_at = (x, y);
         }

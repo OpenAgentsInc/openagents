@@ -2,7 +2,7 @@
 //!
 //! This is the build order's RN1 terminal slice: it draws the initial
 //! vocabulary (stacks, lists, text, buttons, and surfaces) as ratatui lines
-//! on the amber ladder, and it turns keyboard focus into a revision-bound
+//! on the white ladder, and it turns keyboard focus into a revision-bound
 //! [`Activation`]. It does not mount native widgets, edit text, or decide
 //! what an intent means; the application resolves the activation against
 //! its current view and checks its own authority.

@@ -7,7 +7,7 @@
 //! drawing rather than two that drift.
 //!
 //! Both take a ratatui [`Buffer`] and a [`Rect`], and both take a style per
-//! call: the frame is the geometry, and which step of the amber ladder it
+//! call: the frame is the geometry, and which step of the white ladder it
 //! burns at is the caller's decision. Neither touches a cell inside the
 //! box, so what sits in the gutter between the wall and the text — a
 //! selection cursor, say — belongs to whoever draws the content.

@@ -1,0 +1,381 @@
+//! A Coder run as the transcript shows it, one row at a time.
+//!
+//! The caller maps its run events into [`RunRow`]s; this module knows no
+//! protocol, no clock, and no budget. Progress says where the run is —
+//! the step, an estimate of how done it is, the time it has taken — and
+//! never "of N": a Coder run has no step limit to count toward.
+
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+
+use super::{INDENT, cells, clip, indent_at, sanitize, wrap_paragraphs};
+use crate::{Intensity, Ladder};
+
+/// One row of a Coder run as the transcript shows it. The caller maps its
+/// run events into these; this module knows no protocol.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RunRow {
+    /// The run started: who runs it and why. Draws
+    /// "Coder · {who} · {place}" (Full) then the reason (Half), indented.
+    Start {
+        who: String,
+        place: String,
+        why: String,
+    },
+    /// A step's text: thinking, a tool call, a note. `mark` is the one-char
+    /// lead ("·", ">", "!"). The text draws at ThreeQuarters after a Half
+    /// mark; a "!" step draws at Full.
+    Step { mark: char, text: String },
+    /// A command with its exit and the last lines of its output:
+    /// "$ {command}" (ThreeQuarters), then "  exit {n}" / "  timed out"
+    /// (Half; Full when nonzero or timed out), then the tail lines prefixed
+    /// "  │ " (Half). `exit: None` and `!timed_out` = still running or
+    /// unknown: no exit row.
+    Command {
+        command: String,
+        exit: Option<i32>,
+        timed_out: bool,
+        tail: Vec<String>,
+    },
+    /// Where the run is: "step {step}{ · ≈{percent}% done}? · {elapsed}" at
+    /// Half. Never "of N" — Coder runs have no budgets.
+    Progress {
+        step: usize,
+        percent: Option<u8>,
+        seconds: u64,
+    },
+    /// A provider switch, in words, at ThreeQuarters with a "~" lead.
+    Switched { text: String },
+    /// Coder asks the person: "Coder asks: {text}" at Full, then "{hint}" at
+    /// Half when present (how to answer).
+    Question { text: String, hint: Option<String> },
+    /// The turn finished: "Coder finished · {n} file(s) changed · +{ins}
+    /// -{del}" (Full), the summary (ThreeQuarters, wrapped), each file
+    /// "  {status} {path} (+a -r)" (Half; "?" when unknown), then
+    /// "worktree {path}" (Half).
+    Result {
+        summary: String,
+        files: Vec<FileRow>,
+        insertions: u64,
+        deletions: u64,
+        worktree: String,
+    },
+    /// The run failed, in its words (Full).
+    Failed { text: String },
+    /// The run stopped, in its words (ThreeQuarters).
+    Stopped { text: String },
+}
+
+/// One changed file in a finished run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileRow {
+    pub status: String,
+    pub path: String,
+    pub added: Option<u64>,
+    pub removed: Option<u64>,
+}
+
+/// Transcript lines for one run row at `width`, indented two cells under
+/// the turn, long text wrapped with a hanging indent, output tail lines
+/// clipped (not wrapped) with "…".
+pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
+    let block = Block {
+        width: usize::from(width),
+        ladder,
+    };
+    let half = Intensity::Half;
+    let three = Intensity::ThreeQuarters;
+    let full = Intensity::Full;
+    let mut out = Vec::new();
+    match row {
+        RunRow::Start { who, place, why } => {
+            let head = ["Coder", who, place]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            block.text(&mut out, 0, "", &head, full);
+            if !why.is_empty() {
+                block.text(&mut out, 0, "", why, half);
+            }
+        }
+        RunRow::Step { mark, text } => {
+            let (mark_at, text_at) = if *mark == '!' {
+                (full, full)
+            } else {
+                (half, three)
+            };
+            block.marked(&mut out, 0, &format!("{mark} "), mark_at, text, text_at);
+        }
+        RunRow::Command {
+            command,
+            exit,
+            timed_out,
+            tail,
+        } => {
+            block.marked(&mut out, 0, "$ ", three, command, three);
+            let status = match (timed_out, exit) {
+                (true, _) => Some(("timed out".to_owned(), full)),
+                (false, Some(0)) => Some(("exit 0".to_owned(), half)),
+                (false, Some(code)) => Some((format!("exit {code}"), full)),
+                (false, None) => None,
+            };
+            if let Some((status, intensity)) = status {
+                block.text(&mut out, INDENT, "", &status, intensity);
+            }
+            for line in tail {
+                block.clipped(&mut out, INDENT, "│ ", line, half);
+            }
+        }
+        RunRow::Progress {
+            step,
+            percent,
+            seconds,
+        } => {
+            block.text(&mut out, 0, "", &progress(*step, *percent, *seconds), half);
+        }
+        RunRow::Switched { text } => {
+            block.marked(&mut out, 0, "~ ", three, text, three);
+        }
+        RunRow::Question { text, hint } => {
+            block.text(&mut out, 0, "", &format!("Coder asks: {text}"), full);
+            if let Some(hint) = hint.as_deref().filter(|hint| !hint.is_empty()) {
+                block.text(&mut out, 0, "", hint, half);
+            }
+        }
+        RunRow::Result {
+            summary,
+            files,
+            insertions,
+            deletions,
+            worktree,
+        } => {
+            let count = files.len();
+            let noun = if count == 1 { "file" } else { "files" };
+            let head =
+                format!("Coder finished · {count} {noun} changed · +{insertions} -{deletions}");
+            block.text(&mut out, 0, "", &head, full);
+            if !summary.is_empty() {
+                block.text(&mut out, 0, "", summary, three);
+            }
+            for file in files {
+                let count = |n: Option<u64>| n.map_or_else(|| "?".to_owned(), |n| n.to_string());
+                let row = format!(
+                    "{} {} (+{} -{})",
+                    file.status,
+                    file.path,
+                    count(file.added),
+                    count(file.removed)
+                );
+                block.text(&mut out, INDENT, "", &row, half);
+            }
+            if !worktree.is_empty() {
+                block.text(&mut out, 0, "", &format!("worktree {worktree}"), half);
+            }
+        }
+        RunRow::Failed { text } => block.text(&mut out, 0, "", text, full),
+        RunRow::Stopped { text } => block.text(&mut out, 0, "", text, three),
+    }
+    out
+}
+
+/// "9s", "1m 5s", "1h 2m".
+pub fn elapsed(seconds: u64) -> String {
+    match seconds {
+        0..60 => format!("{seconds}s"),
+        60..3600 => format!("{}m {}s", seconds / 60, seconds % 60),
+        _ => format!("{}h {}m", seconds / 3600, seconds % 3600 / 60),
+    }
+}
+
+/// "step 3 · ≈40% done · 1m 5s", or without the estimate when there is none.
+fn progress(step: usize, percent: Option<u8>, seconds: u64) -> String {
+    let mut out = format!("step {step}");
+    if let Some(percent) = percent {
+        out.push_str(&format!(" · ≈{}% done", percent.min(100)));
+    }
+    out.push_str(" · ");
+    out.push_str(&elapsed(seconds));
+    out
+}
+
+/// The geometry one run row draws at.
+struct Block {
+    width: usize,
+    ladder: Ladder,
+}
+
+impl Block {
+    /// The cells left of the row's text: the turn's indent plus `extra`,
+    /// never so many that no cell is left for text.
+    fn lead(&self, extra: usize) -> usize {
+        (indent_at(self.width) + extra).min(self.width.saturating_sub(2))
+    }
+
+    fn style(&self, intensity: Intensity) -> Style {
+        self.ladder.style(intensity)
+    }
+
+    /// `text` at `intensity`, after `extra` cells beyond the indent,
+    /// wrapped with continuation rows under its first.
+    fn text(
+        &self,
+        out: &mut Vec<Line<'static>>,
+        extra: usize,
+        mark: &str,
+        text: &str,
+        intensity: Intensity,
+    ) {
+        self.marked(out, extra, mark, intensity, text, intensity);
+    }
+
+    /// A lead `mark` then `text`, wrapped with continuation rows hanging
+    /// under the text rather than the mark.
+    fn marked(
+        &self,
+        out: &mut Vec<Line<'static>>,
+        extra: usize,
+        mark: &str,
+        mark_at: Intensity,
+        text: &str,
+        text_at: Intensity,
+    ) {
+        let lead = self.lead(extra);
+        let room = self.width.saturating_sub(lead).max(1);
+        let hang = cells(mark).min(room.saturating_sub(1));
+        let rows = wrap_paragraphs(&format!("{mark}{text}"), room, hang);
+        for (index, (continued, row)) in rows.into_iter().enumerate() {
+            let mut spans = vec![Span::raw(" ".repeat(lead))];
+            if index == 0 && !mark.is_empty() && row.starts_with(mark) {
+                spans.push(Span::styled(mark.to_owned(), self.style(mark_at)));
+                spans.push(Span::styled(
+                    row[mark.len()..].to_owned(),
+                    self.style(text_at),
+                ));
+            } else {
+                let hang = if continued || index > 0 { hang } else { 0 };
+                spans.push(Span::raw(" ".repeat(hang)));
+                spans.push(Span::styled(row, self.style(text_at)));
+            }
+            out.push(Line::from(spans));
+        }
+    }
+
+    /// `mark` then `text` on one row, clipped with "…" rather than wrapped.
+    fn clipped(
+        &self,
+        out: &mut Vec<Line<'static>>,
+        extra: usize,
+        mark: &str,
+        text: &str,
+        intensity: Intensity,
+    ) {
+        let lead = self.lead(extra);
+        let room = self.width.saturating_sub(lead);
+        let row = clip(&format!("{mark}{}", sanitize(text)), room);
+        out.push(Line::from(vec![
+            Span::raw(" ".repeat(lead)),
+            Span::styled(row, self.style(intensity)),
+        ]));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(row: &RunRow, width: u16) -> Vec<String> {
+        lines(row, width, Ladder::default())
+            .iter()
+            .map(|line| line.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn progress_never_counts_toward_a_limit() {
+        for step in [0, 1, 7, 250] {
+            for percent in [None, Some(0), Some(40), Some(100), Some(255)] {
+                for seconds in [0, 59, 65, 3_725] {
+                    let row = RunRow::Progress {
+                        step,
+                        percent,
+                        seconds,
+                    };
+                    for line in text(&row, 80) {
+                        assert!(!line.contains(" of "), "{line}");
+                        assert!(!line.contains("/"), "{line}");
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            text(
+                &RunRow::Progress {
+                    step: 3,
+                    percent: Some(40),
+                    seconds: 65
+                },
+                80
+            ),
+            ["  step 3 · ≈40% done · 1m 5s"]
+        );
+    }
+
+    #[test]
+    fn elapsed_reads_in_the_largest_two_units() {
+        assert_eq!(elapsed(0), "0s");
+        assert_eq!(elapsed(9), "9s");
+        assert_eq!(elapsed(60), "1m 0s");
+        assert_eq!(elapsed(65), "1m 5s");
+        assert_eq!(elapsed(3_600), "1h 0m");
+        assert_eq!(elapsed(3_720), "1h 2m");
+        assert_eq!(elapsed(90_000), "25h 0m");
+    }
+
+    #[test]
+    fn a_step_wraps_under_its_text_not_its_mark() {
+        let row = RunRow::Step {
+            mark: '·',
+            text: "reading the file that matters".into(),
+        };
+        assert_eq!(
+            text(&row, 20),
+            ["  · reading the", "    file that", "    matters"]
+        );
+    }
+
+    #[test]
+    fn a_tail_line_clips_rather_than_wraps() {
+        let row = RunRow::Command {
+            command: "cargo test".into(),
+            exit: None,
+            timed_out: false,
+            tail: vec!["x".repeat(50)],
+        };
+        let lines = text(&row, 20);
+        assert_eq!(lines.len(), 2, "no exit row while running: {lines:?}");
+        assert!(lines[1].ends_with('…'));
+        assert_eq!(cells(&lines[1]), 20);
+    }
+
+    #[test]
+    fn nothing_is_wider_than_the_width() {
+        let row = RunRow::Result {
+            summary: "a summary of the change".into(),
+            files: vec![FileRow {
+                status: "M".into(),
+                path: "crates/a/very/long/path/to/a/file.rs".into(),
+                added: Some(3),
+                removed: None,
+            }],
+            insertions: 3,
+            deletions: 0,
+            worktree: "/tmp/worktree".into(),
+        };
+        for width in [0u16, 1, 2, 5, 12, 40] {
+            for line in lines(&row, width, Ladder::default()) {
+                assert!(line.width() <= usize::from(width).max(1), "{width}: {line}");
+            }
+        }
+    }
+}

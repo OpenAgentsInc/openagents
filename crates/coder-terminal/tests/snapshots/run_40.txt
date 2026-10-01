@@ -1,0 +1,36 @@
+  Coder · you · this Mac
+  fix the wrapping bug the parser test
+  found
+  · reading
+    crates/coder-terminal/src/wrap.rs
+    and the tests that cover it
+  $ cargo test -p coder-terminal
+    exit 0
+    │ running 138 tests
+    │ test result: ok. 138 passed; 0 fa…
+    │ Doc-tests coder_terminal
+  $ cargo clippy -p coder-terminal --
+    -D warnings
+    exit 1
+    │ error: unused variable: `row`
+  step 4 · ≈60% done · 1m 5s
+  step 5 · 1h 2m
+  ~ switched to Gemini 3.8 Flash after
+    OpenRouter timed out
+  Coder asks: keep the old test name or
+  rename it?
+  answer in the composer
+  Coder finished · 2 files changed ·
+  +40 -3
+  Fixed the wrap so a wide character
+  never splits across rows, and added a
+  regression test.
+    M crates/coder-terminal/src/wrap.rs
+    (+12 -3)
+    A
+    crates/coder-terminal/tests/wrap.rs
+    (+? -?)
+  worktree
+  /Users/me/work/openagents-coder-1
+  the provider refused the request
+  stopped at your request

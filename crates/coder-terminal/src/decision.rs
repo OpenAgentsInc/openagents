@@ -28,7 +28,7 @@
 //!
 //! The view is pure: it reads nothing, writes nothing, and holds no
 //! style. A [`Line`] is spans of text and the [`Intensity`] step each
-//! draws at; which amber a step burns is the caller's
+//! draws at; which white a step burns is the caller's
 //! [`Ladder`][crate::Ladder]'s to say, so the same lines serve a
 //! truecolor terminal, a 256-color one, and `NO_COLOR` alike.
 

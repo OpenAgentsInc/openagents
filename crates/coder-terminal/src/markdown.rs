@@ -103,7 +103,7 @@ impl Marked {
     }
 }
 
-/// One logical display line of a rendered reply: marked text, the amber
+/// One logical display line of a rendered reply: marked text, the white
 /// it draws at, and `hang` — extra cells continuation rows indent by so
 /// a list item's wraps sit under its text, not its marker.
 pub struct Rendered {

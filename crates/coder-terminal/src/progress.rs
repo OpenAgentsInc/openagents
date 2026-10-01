@@ -38,7 +38,7 @@
 //! nothing, and holds no style. Elapsed and durations are what the
 //! caller recorded — the module has no clock to measure against. A
 //! [`Line`] is spans of text and the [`Intensity`] step each draws at;
-//! which amber a step burns is the caller's [`Ladder`][crate::Ladder]'s
+//! which white a step burns is the caller's [`Ladder`][crate::Ladder]'s
 //! to say.
 
 use unicode_segmentation::UnicodeSegmentation;

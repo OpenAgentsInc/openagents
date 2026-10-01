@@ -1,0 +1,10 @@
+openagents
+  What I found
+
+  The parser drops wide characters when a row breaks mid-word. See wrap_rows
+  and the notes.
+
+  • check the grapheme width
+  • keep the caret on the later row
+  • add a test with a long list item that wraps onto a second line
+
