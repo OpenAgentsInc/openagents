@@ -294,7 +294,7 @@ fn the_page_views_carry_the_inspector_gaps_and_outline() {
     assert!(
         labels
             .iter()
-            .any(|l| l.trim_start() == "Router: OpenAgents router")
+            .any(|l| l.trim_start() == "Router: OpenAgents")
     );
     assert!(
         labels

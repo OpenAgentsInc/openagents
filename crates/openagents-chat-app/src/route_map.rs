@@ -660,7 +660,7 @@ impl Map {
         let front = b.add(
             "front".into(),
             Kind::Front,
-            "OpenAgents router",
+            "OpenAgents",
             "Reads every message first and decides, in one typed judgment, where it goes.",
             None,
         );

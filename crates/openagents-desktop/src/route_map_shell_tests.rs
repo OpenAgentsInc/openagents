@@ -186,7 +186,7 @@ fn a_screen_reader_reads_the_map_and_selects_a_node() {
             .find(|(_, node)| node.role() == role && node.label() == Some(name))
             .map(|(id, _)| *id)
     };
-    assert!(named(Role::Button, "Router: OpenAgents router").is_some());
+    assert!(named(Role::Button, "Router: OpenAgents").is_some());
     assert!(named(Role::Button, "Plugin: Project map, Adopted").is_some());
     assert!(named(Role::Button, "Fit").is_some(), "the toolbar");
     let coder = named(Role::Button, "Coder: Coder").expect("Coder is named");
