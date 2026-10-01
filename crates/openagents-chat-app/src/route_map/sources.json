@@ -1,0 +1,2592 @@
+{
+  "schema": "openagents.route-map.sources.v1",
+  "generated_by": "crates/coder/tests/route_map_sources.rs",
+  "set": "chat-router-v4@ca74e9da5045",
+  "bank": "chat-answers-v1@d3ff1e68a58a",
+  "routes": [
+    {
+      "id": "meta",
+      "family": "answers",
+      "description": "Questions about us, the assistant itself: what model or AI this is, who we are or who built us, what we can and cannot do, what it costs, message limits, privacy, whether we remember things, whether we are open source, or what Coder or Jev is",
+      "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them",
+      "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing)",
+      "examples": 11
+    },
+    {
+      "id": "smalltalk",
+      "family": "answers",
+      "description": "A greeting, thanks, praise, or a check that the chat works, with no question or request in it",
+      "what": "A greeting, thanks, praise, or a check that the chat works, with no question or request in it",
+      "not_for": "A goodbye (end); asking who we are (meta)",
+      "examples": 5
+    },
+    {
+      "id": "general",
+      "family": "answers",
+      "description": "A question about the world or programming concepts, an explanation, writing help, or advice: anything answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
+      "what": "A question about the world or programming concepts, an explanation, writing help, or advice: answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
+      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym (product.kb); work on the user's own code (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
+      "examples": 5
+    },
+    {
+      "id": "product.kb",
+      "family": "answers",
+      "description": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is (connecting a computer, the Grid, the Verse, XP, protocols such as NIP-CJ); not the wallet, and not account settings",
+      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP",
+      "not_for": "The wallet (wallet); account settings (account); questions about us as an assistant (meta); how the OpenAgents code implements something (codebase.kb); a concept not specific to OpenAgents, or what another company's product is or costs (general); what's new in the Gym (gym.news); testing, making, or checking a tool, a result, or credit (eval.run, eval.author, eval.check, eval.result, eval.credit)",
+      "examples": 12
+    },
+    {
+      "id": "codebase.kb",
+      "family": "answers",
+      "description": "How the OpenAgents software itself is built: where something lives in the OpenAgents repository, how one of its crates or protocols works, or why it was designed that way; not the user's own code",
+      "what": "How the OpenAgents software itself is built: where something lives in the OpenAgents repository, which crate or file implements it, how one of its components or protocols works inside, or why it was designed that way",
+      "not_for": "The user's own code or repository (work.dispatch); how to use a feature (product.kb)",
+      "examples": 5
+    },
+    {
+      "id": "work.dispatch",
+      "family": "work",
+      "description": "The user wants work done on code, a repository, files, or a machine: change, fix, build, test, refactor, review a pull request, look through a repository, find where something is in their code, run a command, or pick up a GitHub issue",
+      "what": "The user hands us a task on their own code, repository, files, or machine: change, fix, build, test, deploy, refactor, review a pull request, look through their repository, find something in their code, or pick up a GitHub issue; or asks us to delegate to Coder, hand the conversation to Coder, or run or start Coder now, including a trial or test delegation that names no task",
+      "not_for": "Asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing a Gym tool on Coder (eval.run); making a tool or writing a test set for a tool with us (eval.author), including tests for a Gym tool such as Project map, Code finder, or Test reader, which are Coder's tools, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing)",
+      "examples": 10
+    },
+    {
+      "id": "cli",
+      "family": "screens",
+      "description": "The user wants something an `openagents` command does for their own account or devices: list or check their computers, look up their XP or quests, search the knowledge base, or read what is published on a relay",
+      "what": "The user wants to see or do something an `openagents` command does for their own account or devices right now: which of their computers are online, list or check their computers, tasks, or sessions, their XP, quests, or who is in the Verse plaza, a knowledge base search, or capabilities, programs, or extensions published on a relay",
+      "not_for": "Changing code or files in a repository (work.dispatch); how a feature works in general (product.kb); how to add or remove a computer (account); what their tests, results, or tools earned (eval.credit)",
+      "examples": 6
+    },
+    {
+      "id": "wallet",
+      "family": "screens",
+      "description": "Questions about the OpenAgents wallet: bitcoin amounts and units, receiving or getting paid, sending, backups and recovery words, or fees, including a request to send money",
+      "what": "Questions about the OpenAgents wallet: bitcoin amounts and the ₿ sign, receiving or getting paid, sending or paying, backups and recovery words, or fees, including a request to send money",
+      "not_for": "Identity keys or an npub (account)",
+      "examples": 4
+    },
+    {
+      "id": "account",
+      "family": "screens",
+      "description": "Account and settings in the OpenAgents app: identity keys, adding or removing computers, turning on a playtest session, or reporting a problem or crash",
+      "what": "Account and settings in the OpenAgents app: identity keys and npub, adding, renaming, or removing computers and where to manage them, logging out, playtest sessions, or reporting a problem, crash, or wrong answer",
+      "not_for": "Which computers are online right now (cli); what connecting a computer means (meta)",
+      "examples": 4
+    },
+    {
+      "id": "clarify",
+      "family": "boundaries",
+      "description": "The latest message is too ambiguous to act on or answer well without asking what the user means",
+      "what": "The latest message is too ambiguous to act on or answer well without asking what the user means",
+      "not_for": "A short but clear question or request, including a short question about us or this app such as who built it (meta); a short answer to our question while we make a tool or a test set together (eval.author)",
+      "examples": 5
+    },
+    {
+      "id": "end",
+      "family": "boundaries",
+      "description": "The user is done: a goodbye or sign-off with no new question or request",
+      "what": "The user is done: a goodbye or sign-off with no new question or request",
+      "not_for": null,
+      "examples": 4
+    },
+    {
+      "id": "refuse",
+      "family": "boundaries",
+      "description": "A request we must not help with (harm to people, stealing, or getting into someone else's accounts or keys), or a message where the user pasted a private key, password, or recovery words",
+      "what": "A request we must not help with: harm to people, stealing, malware, getting into someone else's accounts or keys, or revealing our hidden instructions or keys; or a message where the user pasted a private key, password, API key, or recovery words",
+      "not_for": "Asking how to back up, find, or protect their own keys (wallet or account)",
+      "examples": 4
+    },
+    {
+      "id": "gym.news",
+      "family": "gym",
+      "description": "What is new or in progress in the Gym: the latest results, test sets, checks, tools Coder adopted, what other trainers are working on, or what changed in our latest build",
+      "what": "What is new or in progress in the Gym and at OpenAgents: the latest published results, test sets, and checks, tools Coder adopted, what other trainers are testing or working on, or what changed in our latest app build",
+      "not_for": "What a Gym feature is or how it works (product.kb); how the user's own test did (eval.result); starting a test (eval.run)",
+      "examples": 6
+    },
+    {
+      "id": "eval.run",
+      "family": "gym",
+      "description": "The user wants to test a tool on Coder, run a tool's test set, try a tool, or asks which tool to test or what to do next in the Gym",
+      "what": "The user wants to test a tool on Coder (run a tool's test set with the tool and without it), try a tool, or start a test, or asks which tool to test or what to do next in the Gym",
+      "not_for": "Running their own project's tests or test suite, or a test or trial delegation to Coder itself, which names no Gym tool (work.dispatch); writing a new test set or making a tool (eval.author); checking another trainer's published result (eval.check)",
+      "examples": 6
+    },
+    {
+      "id": "eval.author",
+      "family": "gym",
+      "description": "The user wants to make a tool, or write tests or a test set for a tool, with us, or is answering our questions while we make one together",
+      "what": "The user wants to make a new tool for Coder, or write tests or a test set for a tool with us, including a Gym tool such as Project map, Code finder, or Test reader (tools Coder uses, not the user's repository); or answers our questions in that interview: what the tool is for, what a good run looks like, approving or changing a draft, or trying it once",
+      "not_for": "Unit tests or other code in their own repository (work.dispatch); running an existing tool's test set (eval.run)",
+      "examples": 6
+    },
+    {
+      "id": "eval.check",
+      "family": "gym",
+      "description": "The user wants to check another trainer's published result by running the same tests, or asks whether there is a result to check",
+      "what": "The user wants to check another trainer's published result by running the same tests again, or asks whether any result is waiting for a check",
+      "not_for": "How their own result did (eval.result); what checks of their own work earned (eval.credit)",
+      "examples": 6
+    },
+    {
+      "id": "eval.result",
+      "family": "gym",
+      "description": "How a test run or a tool did: whether Coder got better with a tool, the numbers of a result, or whether to add a result to the Gym",
+      "what": "How a test run or a tool did: the user's own latest result, whether Coder got better or worse with a tool, a tool's published numbers, or whether to add or publish a result to the Gym",
+      "not_for": "What's new across the Gym (gym.news); checking or confirming another trainer's result (eval.check); what their work earned, or whether others checked or confirmed it (eval.credit)",
+      "examples": 5
+    },
+    {
+      "id": "eval.credit",
+      "family": "gym",
+      "description": "What the user's tests, results, and tools have earned: XP from checks and adoptions, who checked their work, or whether Coder adopted their tool",
+      "what": "What the user's tests, results, checks, and tools earned or how they earn it: XP from other trainers' checks and from Coder adopting their tool, who checked their work, pending XP, and whether it pays money",
+      "not_for": "Their XP level or quests in general (cli); how trainer XP and quests work in general (product.kb)",
+      "examples": 6
+    },
+    {
+      "id": "capability.missing",
+      "family": "boundaries",
+      "description": "The user asks us to do or reach something now that would take a capability we don't have: book, buy, or order something, send or read their email or messages, use their calendar or another account or service, browse or open a site, control a device, or fetch live data; not a question about whether we can, and not work on their code, which Coder does",
+      "what": "The user asks us to do or reach something now that would take a capability: book, buy, or order something, send or read their email, texts, or messages, use their calendar, a service, or an account of theirs, browse or open a site, control a device, play or set something on their phone, or fetch live data such as prices, weather, or traffic",
+      "not_for": "Asking whether we can do such a thing, or what we can do (meta); work on their own code, repository, files, or a computer they connected, which Coder does (work.dispatch); an openagents command for their own account or devices (cli); the wallet (wallet); advice or an explanation with nothing to do now (general); making a new capability with us (eval.author); opening, showing, or presenting one of our decks or slide presentations (presentation.open)",
+      "examples": 6
+    },
+    {
+      "id": "presentation.open",
+      "family": "screens",
+      "description": "The user wants one of our presentations or slide decks opened, shown, or presented now; not a question about what a deck or talk says, and not making a new deck",
+      "what": "The user asks us to open, show, pull up, or present a presentation, a slide deck, or a talk's slides now, whether they name one of our decks, describe it, name a deck we may not have, or name none",
+      "not_for": "Writing, outlining, or advice about a talk or slides (general); opening a site, another app, or a file, or sharing a screen (capability.missing); slides or files in the user's own repository (work.dispatch); where our deck or slide viewer code lives (codebase.kb)",
+      "examples": 6
+    }
+  ],
+  "answers": [
+    {
+      "id": "meta.who",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Who are you?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs",
+        "docs/deployment/chat-worker.md"
+      ]
+    },
+    {
+      "id": "meta.who.here",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Who are you?",
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "docs/deployment/chat-worker.md"
+      ]
+    },
+    {
+      "id": "meta.model",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What model is this?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/generate.rs",
+        "crates/coder/src/router.rs",
+        "docs/deployment/chat-worker.md"
+      ]
+    },
+    {
+      "id": "meta.jev",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What is Jev?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/router.rs",
+        "crates/jev/Cargo.toml"
+      ]
+    },
+    {
+      "id": "meta.capabilities",
+      "version": 2,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What can you do?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "meta.capabilities.here",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What can you do?",
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "meta.limits_chat",
+      "version": 2,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Can you see my files?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "meta.limits_chat.here",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Can you see my files?",
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "crates/coder-host/src/control/mod.rs"
+      ]
+    },
+    {
+      "id": "meta.web_access",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Can you browse the web?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/generate.rs"
+      ]
+    },
+    {
+      "id": "meta.coder",
+      "version": 2,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What is Coder?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs",
+        "README.md"
+      ]
+    },
+    {
+      "id": "meta.coder.here",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What is Coder?",
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "README.md"
+      ]
+    },
+    {
+      "id": "meta.github",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "How do you work with GitHub?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "meta.github.here",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "How do you work with GitHub?",
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "meta.open_source",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Are you open source?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "README.md",
+        "LICENSE"
+      ]
+    },
+    {
+      "id": "meta.pricing",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What does it cost?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/relay/quota.rs",
+        "INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "meta.quota",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "How many messages do I get?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/relay/quota.rs",
+        "INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "meta.privacy",
+      "version": 2,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What happens to my messages?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "nips/openagents/NIP-CJ.md",
+        "INVARIANTS.md",
+        "crates/coder/src/bin/coder-worker.rs"
+      ]
+    },
+    {
+      "id": "meta.data_retention",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Do you keep my chats?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/bin/coder-worker.rs",
+        "crates/openagents-mobile/src/basic_chats.rs",
+        "INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "meta.team",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Who built OpenAgents?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "README.md",
+        "LICENSE",
+        "crates/coder/src/generate.rs"
+      ]
+    },
+    {
+      "id": "meta.memory",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Do you remember past chats?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs",
+        "crates/coder/src/bin/coder-worker.rs"
+      ]
+    },
+    {
+      "id": "meta.languages",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Can we chat in another language?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/generate.rs",
+        "crates/coder/answers/chat-answers-v1.toml"
+      ]
+    },
+    {
+      "id": "smalltalk.hello",
+      "version": 1,
+      "routes": [
+        "smalltalk"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "smalltalk.how_are_you",
+      "version": 1,
+      "routes": [
+        "smalltalk"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "smalltalk.test",
+      "version": 1,
+      "routes": [
+        "smalltalk"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "smalltalk.thanks",
+      "version": 1,
+      "routes": [
+        "smalltalk"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "smalltalk.bye",
+      "version": 1,
+      "routes": [
+        "smalltalk",
+        "end"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "dispatch.stem",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": true,
+        "screen": null,
+        "label": "Run Coder"
+      },
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "dispatch.explore_stem",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": true,
+        "screen": null,
+        "label": "Run Coder"
+      },
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "dispatch.github_stem",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": true,
+        "screen": null,
+        "label": "Run Coder"
+      },
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "dispatch.capability_stem",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": {
+        "run_coder": true,
+        "screen": null,
+        "label": "Run Coder"
+      },
+      "sources": [
+        "crates/coder/src/router/capability.rs",
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "dispatch.engine_stem",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": {
+        "run_coder": true,
+        "screen": null,
+        "label": "Run Coder"
+      },
+      "sources": [
+        "crates/coder/src/router/judge.rs",
+        "crates/coder/src/task/local.rs"
+      ]
+    },
+    {
+      "id": "dispatch.no_computer",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "away",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "account.computers",
+        "label": "Connect a computer"
+      },
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "dispatch.no_computer.here",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/coder_events.rs",
+        "crates/coder/src/task/local.rs"
+      ]
+    },
+    {
+      "id": "cli.offer",
+      "version": 1,
+      "routes": [
+        "cli"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/cli/README.md"
+      ]
+    },
+    {
+      "id": "wallet.what",
+      "version": 1,
+      "routes": [
+        "wallet"
+      ],
+      "chip": "What is the wallet?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "wallet",
+        "label": "Open Wallet"
+      },
+      "sources": [
+        "docs/breez/wallet-design.md",
+        "docs/breez/README.md"
+      ]
+    },
+    {
+      "id": "wallet.receive",
+      "version": 1,
+      "routes": [
+        "wallet"
+      ],
+      "chip": "How do I get paid?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "wallet",
+        "label": "Open Wallet"
+      },
+      "sources": [
+        "docs/breez/wallet-design.md",
+        "docs/breez/paying-people.md"
+      ]
+    },
+    {
+      "id": "wallet.send",
+      "version": 1,
+      "routes": [
+        "wallet"
+      ],
+      "chip": "How do I send bitcoin?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "wallet",
+        "label": "Open Wallet"
+      },
+      "sources": [
+        "docs/breez/wallet-design.md",
+        "INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "wallet.units",
+      "version": 1,
+      "routes": [
+        "wallet"
+      ],
+      "chip": "What does ₿ mean?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "wallet",
+        "label": "Open Wallet"
+      },
+      "sources": [
+        "docs/breez/amounts.md"
+      ]
+    },
+    {
+      "id": "wallet.backup",
+      "version": 1,
+      "routes": [
+        "wallet"
+      ],
+      "chip": "How do I back up my wallet?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "wallet",
+        "label": "Open Wallet"
+      },
+      "sources": [
+        "docs/breez/wallet-design.md"
+      ]
+    },
+    {
+      "id": "wallet.never_share",
+      "version": 1,
+      "routes": [
+        "wallet"
+      ],
+      "chip": "Should I share my recovery words?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/breez/wallet-design.md"
+      ]
+    },
+    {
+      "id": "account.computers",
+      "version": 1,
+      "routes": [
+        "account"
+      ],
+      "chip": "How do I connect a computer?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "account.computers",
+        "label": "Connect a computer"
+      },
+      "sources": [
+        "docs/coder/runtime/host-service.md",
+        "crates/openagents-mobile/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "account.keys",
+      "version": 1,
+      "routes": [
+        "account"
+      ],
+      "chip": "Where are my keys?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "account.keys",
+        "label": "Identity keys"
+      },
+      "sources": [
+        "docs/game/playtesting.md"
+      ]
+    },
+    {
+      "id": "account.playtest",
+      "version": 1,
+      "routes": [
+        "account"
+      ],
+      "chip": "What does playtest logging record?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "account.playtest",
+        "label": "Open Playtest"
+      },
+      "sources": [
+        "docs/game/playtesting.md",
+        "INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "account.report_problem",
+      "version": 1,
+      "routes": [
+        "account"
+      ],
+      "chip": "How do I report a problem?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "account.report_problem",
+        "label": "Report a problem"
+      },
+      "sources": [
+        "docs/game/playtesting.md"
+      ]
+    },
+    {
+      "id": "gym.what",
+      "version": 1,
+      "routes": [
+        "product.kb",
+        "general"
+      ],
+      "chip": "What's the Gym?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "knowledge/openagents/openagents.gym-results.md",
+        "docs/verse/gym.md"
+      ]
+    },
+    {
+      "id": "gym.what_test",
+      "version": 1,
+      "routes": [
+        "product.kb",
+        "general"
+      ],
+      "chip": "What's a test?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "knowledge/openagents/openagents.tests.md"
+      ]
+    },
+    {
+      "id": "gym.what_tool",
+      "version": 1,
+      "routes": [
+        "product.kb",
+        "general"
+      ],
+      "chip": "What's a tool?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "knowledge/openagents/openagents.tools.md"
+      ]
+    },
+    {
+      "id": "eval.credit.how",
+      "version": 2,
+      "routes": [
+        "eval.credit"
+      ],
+      "chip": "How do I earn XP from tests?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "nips/openagents/NIP-XP.md",
+        "knowledge/openagents/openagents.credit.md"
+      ]
+    },
+    {
+      "id": "eval.credit.mine",
+      "version": 2,
+      "routes": [
+        "eval.credit"
+      ],
+      "chip": "What have I earned?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "docs/product/2026-09-28-app-wireframe.md"
+      ]
+    },
+    {
+      "id": "eval.author.soon",
+      "version": 2,
+      "routes": [
+        "eval.author"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md"
+      ]
+    },
+    {
+      "id": "eval.run.offer",
+      "version": 1,
+      "routes": [
+        "eval.run"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "eval.run.no_tests",
+      "version": 1,
+      "routes": [
+        "eval.run"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "eval.check.one",
+      "version": 1,
+      "routes": [
+        "eval.check"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "eval.check.none",
+      "version": 1,
+      "routes": [
+        "eval.check"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "eval.result.tool",
+      "version": 1,
+      "routes": [
+        "eval.result"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "eval.result.mine",
+      "version": 1,
+      "routes": [
+        "eval.result"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "nips/openagents/NIP-EVAL.md"
+      ]
+    },
+    {
+      "id": "gym.news_empty",
+      "version": 1,
+      "routes": [
+        "gym.news"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/extensions/evaluation.md",
+        "crates/coder/src/gym_kb.rs"
+      ]
+    },
+    {
+      "id": "gym.news.lead",
+      "version": 1,
+      "routes": [
+        "gym.news"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/router/gym.rs",
+        "crates/coder/src/gym_kb.rs"
+      ]
+    },
+    {
+      "id": "capability.missing",
+      "version": 1,
+      "routes": [
+        "capability.missing"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/router/capability.rs",
+        "docs/essays/2026-09-29-test-time-capabilities.md"
+      ]
+    },
+    {
+      "id": "capability.missing_near",
+      "version": 1,
+      "routes": [
+        "capability.missing"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/router/capability.rs",
+        "docs/essays/2026-09-29-test-time-capabilities.md"
+      ]
+    },
+    {
+      "id": "presentation.open",
+      "version": 1,
+      "routes": [
+        "presentation.open"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/openagents-deck/src/catalog.rs",
+        "crates/openagents-desktop/src/shell.rs"
+      ]
+    },
+    {
+      "id": "presentation.unknown",
+      "version": 1,
+      "routes": [
+        "presentation.open"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/openagents-deck/src/catalog.rs"
+      ]
+    },
+    {
+      "id": "presentation.elsewhere",
+      "version": 1,
+      "routes": [
+        "presentation.open"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/openagents-desktop/src/shell.rs"
+      ]
+    },
+    {
+      "id": "refuse.secret_shared",
+      "version": 1,
+      "routes": [
+        "refuse"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "warn.secret_shared",
+      "version": 1,
+      "routes": [
+        "refuse"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "refuse.asks_for_secret",
+      "version": 1,
+      "routes": [
+        "refuse"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "refuse.harmful",
+      "version": 1,
+      "routes": [
+        "refuse"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    },
+    {
+      "id": "clarify.generic",
+      "version": 1,
+      "routes": [
+        "clarify"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": []
+    }
+  ],
+  "labeled": {
+    "set": "chat-router-labeled-v4",
+    "path": "crates/coder/fixtures/chat-router/routes-v4.json",
+    "created": "2026-09-30",
+    "routes": {
+      "account": {
+        "rows": 27,
+        "held_out": 8,
+        "tune": 19,
+        "near_misses": 4
+      },
+      "capability.missing": {
+        "rows": 44,
+        "held_out": 11,
+        "tune": 33,
+        "near_misses": 4
+      },
+      "clarify": {
+        "rows": 21,
+        "held_out": 6,
+        "tune": 15,
+        "near_misses": 0
+      },
+      "cli": {
+        "rows": 36,
+        "held_out": 9,
+        "tune": 27,
+        "near_misses": 7
+      },
+      "codebase.kb": {
+        "rows": 39,
+        "held_out": 11,
+        "tune": 28,
+        "near_misses": 12
+      },
+      "end": {
+        "rows": 20,
+        "held_out": 5,
+        "tune": 15,
+        "near_misses": 1
+      },
+      "eval.author": {
+        "rows": 34,
+        "held_out": 7,
+        "tune": 27,
+        "near_misses": 2
+      },
+      "eval.check": {
+        "rows": 22,
+        "held_out": 6,
+        "tune": 16,
+        "near_misses": 0
+      },
+      "eval.credit": {
+        "rows": 29,
+        "held_out": 9,
+        "tune": 20,
+        "near_misses": 1
+      },
+      "eval.result": {
+        "rows": 30,
+        "held_out": 7,
+        "tune": 23,
+        "near_misses": 0
+      },
+      "eval.run": {
+        "rows": 35,
+        "held_out": 8,
+        "tune": 27,
+        "near_misses": 6
+      },
+      "general": {
+        "rows": 60,
+        "held_out": 14,
+        "tune": 46,
+        "near_misses": 23
+      },
+      "gym.news": {
+        "rows": 27,
+        "held_out": 7,
+        "tune": 20,
+        "near_misses": 1
+      },
+      "meta": {
+        "rows": 109,
+        "held_out": 36,
+        "tune": 73,
+        "near_misses": 18
+      },
+      "presentation.open": {
+        "rows": 31,
+        "held_out": 9,
+        "tune": 22,
+        "near_misses": 0
+      },
+      "product.kb": {
+        "rows": 51,
+        "held_out": 22,
+        "tune": 29,
+        "near_misses": 20
+      },
+      "refuse": {
+        "rows": 30,
+        "held_out": 10,
+        "tune": 20,
+        "near_misses": 3
+      },
+      "smalltalk": {
+        "rows": 32,
+        "held_out": 11,
+        "tune": 21,
+        "near_misses": 1
+      },
+      "wallet": {
+        "rows": 34,
+        "held_out": 8,
+        "tune": 26,
+        "near_misses": 5
+      },
+      "work.dispatch": {
+        "rows": 120,
+        "held_out": 42,
+        "tune": 78,
+        "near_misses": 17
+      }
+    }
+  },
+  "measurement": {
+    "record": "docs/coder/measurements/2026-09-29-chat-router-claims/report.json",
+    "page": "docs/coder/measurements/2026-09-29-chat-router-claims.md",
+    "set": "chat-router-v2@dade99e606c5",
+    "rows": 188,
+    "route_accuracy": 0.8829787234042553,
+    "ended_at": 1790703800,
+    "routes": {
+      "account": {
+        "precision": 0.75,
+        "predicted": 8,
+        "recall": 0.8571428571428571,
+        "labeled": 7
+      },
+      "clarify": {
+        "precision": 0.6,
+        "predicted": 10,
+        "recall": 1.0,
+        "labeled": 6
+      },
+      "cli": {
+        "precision": 1.0,
+        "predicted": 8,
+        "recall": 0.8888888888888888,
+        "labeled": 9
+      },
+      "codebase.kb": {
+        "precision": 1.0,
+        "predicted": 5,
+        "recall": 0.4545454545454546,
+        "labeled": 11
+      },
+      "end": {
+        "precision": 1.0,
+        "predicted": 5,
+        "recall": 1.0,
+        "labeled": 5
+      },
+      "eval.author": {
+        "precision": 1.0,
+        "predicted": 7,
+        "recall": 1.0,
+        "labeled": 7
+      },
+      "eval.check": {
+        "precision": 1.0,
+        "predicted": 5,
+        "recall": 0.8333333333333334,
+        "labeled": 6
+      },
+      "eval.credit": {
+        "precision": 0.875,
+        "predicted": 8,
+        "recall": 0.875,
+        "labeled": 8
+      },
+      "eval.result": {
+        "precision": 0.875,
+        "predicted": 8,
+        "recall": 1.0,
+        "labeled": 7
+      },
+      "eval.run": {
+        "precision": 1.0,
+        "predicted": 7,
+        "recall": 1.0,
+        "labeled": 7
+      },
+      "general": {
+        "precision": 0.5,
+        "predicted": 16,
+        "recall": 1.0,
+        "labeled": 8
+      },
+      "gym.news": {
+        "precision": 1.0,
+        "predicted": 7,
+        "recall": 1.0,
+        "labeled": 7
+      },
+      "meta": {
+        "precision": 1.0,
+        "predicted": 27,
+        "recall": 0.84375,
+        "labeled": 32
+      },
+      "product.kb": {
+        "precision": 0.8,
+        "predicted": 20,
+        "recall": 0.7619047619047619,
+        "labeled": 21
+      },
+      "refuse": {
+        "precision": 1.0,
+        "predicted": 8,
+        "recall": 0.8,
+        "labeled": 10
+      },
+      "smalltalk": {
+        "precision": 1.0,
+        "predicted": 11,
+        "recall": 1.0,
+        "labeled": 11
+      },
+      "wallet": {
+        "precision": 0.8888888888888888,
+        "predicted": 9,
+        "recall": 1.0,
+        "labeled": 8
+      },
+      "work.dispatch": {
+        "precision": 0.9473684210526316,
+        "predicted": 19,
+        "recall": 1.0,
+        "labeled": 18
+      }
+    }
+  },
+  "knowledge": {
+    "product": [
+      {
+        "id": "openagents.agent-payments",
+        "title": "Approving payments your agents ask for",
+        "path": "knowledge/openagents/openagents.agent-payments.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "agents",
+          "spending",
+          "approve",
+          "payments"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.android",
+        "title": "OpenAgents on Android",
+        "path": "knowledge/openagents/openagents.android.md",
+        "status": "admitted",
+        "tags": [
+          "android",
+          "apk",
+          "platform"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.app-tabs",
+        "title": "The app's four tabs",
+        "path": "knowledge/openagents/openagents.app-tabs.md",
+        "status": "admitted",
+        "tags": [
+          "tabs",
+          "navigation",
+          "chat",
+          "verse",
+          "wallet",
+          "account"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.auto-start",
+        "title": "When a task from the phone starts on a computer",
+        "path": "knowledge/openagents/openagents.auto-start.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "auto-start",
+          "host",
+          "permissions"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.chat-and-coder",
+        "title": "Chatting with OpenAgents and dispatching Coder",
+        "path": "knowledge/openagents/openagents.chat-and-coder.md",
+        "status": "admitted",
+        "tags": [
+          "chat",
+          "coder",
+          "dispatch",
+          "computer",
+          "off-computer"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.chat-features-later",
+        "title": "Chat features that aren't built yet",
+        "path": "knowledge/openagents/openagents.chat-features-later.md",
+        "status": "admitted",
+        "tags": [
+          "chat",
+          "roadmap",
+          "attachments",
+          "dictation",
+          "notifications",
+          "limits"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.chat-limits",
+        "title": "How many messages the chat allows",
+        "path": "knowledge/openagents/openagents.chat-limits.md",
+        "status": "admitted",
+        "tags": [
+          "chat",
+          "limits",
+          "quota",
+          "rate-limit"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.chat-privacy",
+        "title": "How chat messages travel and who sees them",
+        "path": "knowledge/openagents/openagents.chat-privacy.md",
+        "status": "admitted",
+        "tags": [
+          "privacy",
+          "encryption",
+          "chat",
+          "relay",
+          "data"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.chat-target",
+        "title": "Where a new chat goes",
+        "path": "knowledge/openagents/openagents.chat-target.md",
+        "status": "admitted",
+        "tags": [
+          "chat",
+          "selector",
+          "cloud",
+          "workspace",
+          "computer"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.checks",
+        "title": "Checking a result",
+        "path": "knowledge/openagents/openagents.checks.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "checks",
+          "results"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.cli",
+        "title": "The openagents command",
+        "path": "knowledge/openagents/openagents.cli.md",
+        "status": "admitted",
+        "tags": [
+          "cli",
+          "command-line",
+          "openagents",
+          "terminal",
+          "mcp"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.coder-chat-controls",
+        "title": "Following up, queuing, steering, and stopping Coder",
+        "path": "knowledge/openagents/openagents.coder-chat-controls.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "chat",
+          "queue",
+          "steer",
+          "stop",
+          "approve"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.coder-engines",
+        "title": "How Coder runs on your computer",
+        "path": "knowledge/openagents/openagents.coder-engines.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "engine",
+          "model",
+          "provider",
+          "capacity"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.computer-offline",
+        "title": "When your computer is offline",
+        "path": "knowledge/openagents/openagents.computer-offline.md",
+        "status": "admitted",
+        "tags": [
+          "computer",
+          "offline",
+          "outbox",
+          "reliability"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.computer-requirements",
+        "title": "What you need to use Coder",
+        "path": "knowledge/openagents/openagents.computer-requirements.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "requirements",
+          "computer",
+          "hosted"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.computers-screen",
+        "title": "Managing computers in Account",
+        "path": "knowledge/openagents/openagents.computers-screen.md",
+        "status": "admitted",
+        "tags": [
+          "computers",
+          "account",
+          "manage",
+          "remove",
+          "terminal"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.connect-computer",
+        "title": "Connecting your phone to a computer",
+        "path": "knowledge/openagents/openagents.connect-computer.md",
+        "status": "admitted",
+        "tags": [
+          "computer",
+          "connect",
+          "pair",
+          "phone",
+          "mac",
+          "qr",
+          "nearby",
+          "setup"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.credit",
+        "title": "Credit for tests and capabilities",
+        "path": "knowledge/openagents/openagents.credit.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "credit",
+          "xp",
+          "checks",
+          "adoption"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.earn-xp",
+        "title": "How to earn trainer XP",
+        "path": "knowledge/openagents/openagents.earn-xp.md",
+        "status": "admitted",
+        "tags": [
+          "xp",
+          "quests",
+          "tutorial",
+          "trainer",
+          "gym"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.get-the-app",
+        "title": "Getting the apps",
+        "path": "knowledge/openagents/openagents.get-the-app.md",
+        "status": "admitted",
+        "tags": [
+          "install",
+          "download",
+          "testflight",
+          "mac",
+          "desktop",
+          "dmg",
+          "android"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gym-news",
+        "title": "What's new in the Gym",
+        "path": "knowledge/openagents/openagents.gym-news.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "news",
+          "roadmap",
+          "evals"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.gym-results",
+        "title": "The Gym and its boards",
+        "path": "knowledge/openagents/openagents.gym-results.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "results",
+          "verse",
+          "tests",
+          "checks"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.identity-keys",
+        "title": "Your device's identity key",
+        "path": "knowledge/openagents/openagents.identity-keys.md",
+        "status": "admitted",
+        "tags": [
+          "keys",
+          "identity",
+          "nostr",
+          "npub",
+          "nsec",
+          "security"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.install-coder",
+        "title": "Getting Coder on a computer",
+        "path": "knowledge/openagents/openagents.install-coder.md",
+        "status": "admitted",
+        "tags": [
+          "install",
+          "coder",
+          "computer",
+          "setup",
+          "mac"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.instant-answers",
+        "title": "Why some answers appear instantly",
+        "path": "knowledge/openagents/openagents.instant-answers.md",
+        "status": "admitted",
+        "tags": [
+          "jev",
+          "speed",
+          "prepared-answers",
+          "chat"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.jev",
+        "title": "Jev and TypeSafe",
+        "path": "knowledge/openagents/openagents.jev.md",
+        "status": "admitted",
+        "tags": [
+          "jev",
+          "typesafe",
+          "decisions",
+          "model"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.lagrange-1",
+        "title": "Lagrange 1 in the app",
+        "path": "knowledge/openagents/openagents.lagrange-1.md",
+        "status": "admitted",
+        "tags": [
+          "verse",
+          "lagrange-1",
+          "zone",
+          "portal"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.leaving-playtest",
+        "title": "Leaving the playtest and deleting data",
+        "path": "knowledge/openagents/openagents.leaving-playtest.md",
+        "status": "admitted",
+        "tags": [
+          "playtest",
+          "privacy",
+          "delete",
+          "data"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.link-computer-key",
+        "title": "Linking a computer's key to your trainer",
+        "path": "knowledge/openagents/openagents.link-computer-key.md",
+        "status": "admitted",
+        "tags": [
+          "trainer",
+          "xp",
+          "link",
+          "keys",
+          "computer"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.microcoder",
+        "title": "Microcoder",
+        "path": "knowledge/openagents/openagents.microcoder.md",
+        "status": "admitted",
+        "tags": [
+          "microcoder",
+          "coder",
+          "agent",
+          "terminal-bench"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.nip-cj",
+        "title": "What NIP-CJ is",
+        "path": "knowledge/openagents/openagents.nip-cj.md",
+        "status": "admitted",
+        "tags": [
+          "nip-cj",
+          "protocol",
+          "nostr",
+          "chat"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.nostr-and-relay",
+        "title": "Nostr and relay.openagents.com",
+        "path": "knowledge/openagents/openagents.nostr-and-relay.md",
+        "status": "admitted",
+        "tags": [
+          "nostr",
+          "relay",
+          "protocol",
+          "account"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.open-source",
+        "title": "OpenAgents is open source",
+        "path": "knowledge/openagents/openagents.open-source.md",
+        "status": "admitted",
+        "tags": [
+          "open-source",
+          "license",
+          "github",
+          "code"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.overview",
+        "title": "What OpenAgents is",
+        "path": "knowledge/openagents/openagents.overview.md",
+        "status": "admitted",
+        "tags": [
+          "overview",
+          "app",
+          "product",
+          "off-computer"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.playtest-logging",
+        "title": "What playtest logging records",
+        "path": "knowledge/openagents/openagents.playtest-logging.md",
+        "status": "admitted",
+        "tags": [
+          "playtest",
+          "logging",
+          "privacy",
+          "analytics",
+          "telemetry"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.playtest-xp",
+        "title": "What earns playtest XP",
+        "path": "knowledge/openagents/openagents.playtest-xp.md",
+        "status": "admitted",
+        "tags": [
+          "playtest",
+          "xp",
+          "rewards",
+          "referee"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.playtesting",
+        "title": "The playtesting program",
+        "path": "knowledge/openagents/openagents.playtesting.md",
+        "status": "admitted",
+        "tags": [
+          "playtest",
+          "testing",
+          "season",
+          "beta"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.previous-chats",
+        "title": "Finding earlier chats",
+        "path": "knowledge/openagents/openagents.previous-chats.md",
+        "status": "admitted",
+        "tags": [
+          "chat",
+          "history",
+          "previous",
+          "menu"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.pricing",
+        "title": "Pricing",
+        "path": "knowledge/openagents/openagents.pricing.md",
+        "status": "admitted",
+        "tags": [
+          "pricing",
+          "cost",
+          "free",
+          "plans"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.report-a-problem",
+        "title": "Reporting a problem",
+        "path": "knowledge/openagents/openagents.report-a-problem.md",
+        "status": "admitted",
+        "tags": [
+          "report",
+          "bug",
+          "feedback",
+          "playtest"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.tailnet",
+        "title": "Tailscale and the Tailnet screen",
+        "path": "knowledge/openagents/openagents.tailnet.md",
+        "status": "admitted",
+        "tags": [
+          "tailnet",
+          "tailscale",
+          "network",
+          "security"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.tests",
+        "title": "Tests and test sets",
+        "path": "knowledge/openagents/openagents.tests.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "tests",
+          "test-sets",
+          "evals"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.tool-code-finder",
+        "title": "Code finder",
+        "path": "knowledge/openagents/openagents.tool-code-finder.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "tool",
+          "code-finder",
+          "code-search",
+          "extension"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.tool-project-map",
+        "title": "Project map",
+        "path": "knowledge/openagents/openagents.tool-project-map.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "tool",
+          "project-map",
+          "repo-map",
+          "extension"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.tool-test-reader",
+        "title": "Test reader",
+        "path": "knowledge/openagents/openagents.tool-test-reader.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "tool",
+          "test-reader",
+          "test-report",
+          "extension"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.tools",
+        "title": "Capabilities for Coder",
+        "path": "knowledge/openagents/openagents.tools.md",
+        "status": "admitted",
+        "tags": [
+          "gym",
+          "tools",
+          "extensions",
+          "plugins"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.trainer-card",
+        "title": "The trainer card and levels",
+        "path": "knowledge/openagents/openagents.trainer-card.md",
+        "status": "admitted",
+        "tags": [
+          "trainer",
+          "xp",
+          "level",
+          "account"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.verse-controls",
+        "title": "Moving around the Grid",
+        "path": "knowledge/openagents/openagents.verse-controls.md",
+        "status": "admitted",
+        "tags": [
+          "verse",
+          "grid",
+          "controls",
+          "move",
+          "camera"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.verse-grid",
+        "title": "Verse and the Grid",
+        "path": "knowledge/openagents/openagents.verse-grid.md",
+        "status": "admitted",
+        "tags": [
+          "verse",
+          "grid",
+          "world",
+          "game",
+          "physics"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.verse-presence",
+        "title": "Who sees you in the Grid",
+        "path": "knowledge/openagents/openagents.verse-presence.md",
+        "status": "admitted",
+        "tags": [
+          "verse",
+          "presence",
+          "players",
+          "privacy",
+          "multiplayer"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.version-and-changelog",
+        "title": "Finding the app's version and what changed",
+        "path": "knowledge/openagents/openagents.version-and-changelog.md",
+        "status": "admitted",
+        "tags": [
+          "version",
+          "build",
+          "changelog",
+          "account"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet",
+        "title": "The OpenAgents Wallet",
+        "path": "knowledge/openagents/openagents.wallet.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "bitcoin",
+          "spark",
+          "lightning",
+          "breez"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-amounts",
+        "title": "Why amounts show as whole ₿ numbers",
+        "path": "knowledge/openagents/openagents.wallet-amounts.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "amounts",
+          "bip177",
+          "units",
+          "btc"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-buy",
+        "title": "Buying bitcoin with dollars",
+        "path": "knowledge/openagents/openagents.wallet-buy.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "buy",
+          "moonpay",
+          "cash-app",
+          "dollars"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-exit-backup",
+        "title": "The exit backup",
+        "path": "knowledge/openagents/openagents.wallet-exit-backup.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "exit",
+          "backup",
+          "recovery"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-receive",
+        "title": "Receiving bitcoin",
+        "path": "knowledge/openagents/openagents.wallet-receive.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "receive",
+          "invoice",
+          "address",
+          "qr"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-recovery",
+        "title": "Backing up and restoring the wallet",
+        "path": "knowledge/openagents/openagents.wallet-recovery.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "backup",
+          "recovery",
+          "seed",
+          "restore",
+          "security"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-send",
+        "title": "Sending bitcoin",
+        "path": "knowledge/openagents/openagents.wallet-send.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "send",
+          "pay",
+          "invoice",
+          "scan"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.wallet-trust",
+        "title": "Who you rely on with the Spark wallet",
+        "path": "knowledge/openagents/openagents.wallet-trust.md",
+        "status": "admitted",
+        "tags": [
+          "wallet",
+          "spark",
+          "trust",
+          "custody",
+          "risk"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.world-key",
+        "title": "The world key and the trainer key",
+        "path": "knowledge/openagents/openagents.world-key.md",
+        "status": "admitted",
+        "tags": [
+          "keys",
+          "verse",
+          "trainer",
+          "world-key",
+          "privacy"
+        ],
+        "answer": true
+      }
+    ],
+    "coding": {
+      "path": "knowledge",
+      "entries": 154,
+      "admitted": 113,
+      "candidates": 41,
+      "kinds": {
+        "edge-case": 17,
+        "environment": 3,
+        "method": 86,
+        "slip": 26,
+        "tool": 22
+      }
+    }
+  },
+  "product_kb": {
+    "record": "docs/coder/measurements/2026-09-28-product-kb.json",
+    "set": "product-kb-questions-v1",
+    "questions": 110,
+    "unanswerable": [
+      {
+        "id": "q101",
+        "question": "Can I change my username in the app?"
+      },
+      {
+        "id": "q102",
+        "question": "Does OpenAgents have a web version I can use in my browser?"
+      },
+      {
+        "id": "q103",
+        "question": "How do I turn on dark mode?"
+      },
+      {
+        "id": "q104",
+        "question": "Can I invite teammates to share my computers?"
+      },
+      {
+        "id": "q105",
+        "question": "Is there an OpenAgents token or coin I can buy?"
+      },
+      {
+        "id": "q106",
+        "question": "Can the wallet hold USDT?"
+      },
+      {
+        "id": "q107",
+        "question": "What languages does the app support besides English?"
+      },
+      {
+        "id": "q108",
+        "question": "Can I sell my GPU time through OpenAgents?"
+      },
+      {
+        "id": "q109",
+        "question": "Who is the CEO of OpenAgents?"
+      },
+      {
+        "id": "q110",
+        "question": "Does the app work on iPad?"
+      }
+    ]
+  },
+  "codebase_kb": {
+    "path": "crates/coder/fixtures/chat-router/codebase-questions-v1.json",
+    "questions": 52
+  },
+  "capabilities": [
+    {
+      "id": "chat.knowledge",
+      "name": "Knowledge base",
+      "kind": "knowledge",
+      "reach": "chat",
+      "route": "product.kb",
+      "source": "crates/coder/src/router/capability.rs",
+      "line": "Answers how the OpenAgents app, its features, and its code work, from our documentation."
+    },
+    {
+      "id": "chat.coder",
+      "name": "Coder",
+      "kind": "program",
+      "reach": "chat",
+      "route": "work.dispatch",
+      "source": "crates/coder/src/router/capability.rs",
+      "line": "Works on the user's code, repository, files, or machine: changes, fixes, builds, tests, and looks through code, on a computer the user connected."
+    },
+    {
+      "id": "chat.cli",
+      "name": "Command offers",
+      "kind": "program",
+      "reach": "chat",
+      "route": "cli",
+      "source": "crates/coder/src/router/capability.rs",
+      "line": "Runs an openagents command for the user's own account or devices after they confirm it: their computers, tasks, sessions, XP, quests, the knowledge base, and what is published on a relay."
+    },
+    {
+      "id": "chat.wallet",
+      "name": "Wallet",
+      "kind": "program",
+      "reach": "chat",
+      "route": "wallet",
+      "source": "crates/coder/src/router/capability.rs",
+      "line": "Explains the user's OpenAgents wallet, bitcoin amounts, receiving, sending, and backups, and opens the wallet for them."
+    },
+    {
+      "id": "chat.account",
+      "name": "Account",
+      "kind": "program",
+      "reach": "chat",
+      "route": "account",
+      "source": "crates/coder/src/router/capability.rs",
+      "line": "Explains and opens account settings: identity keys, connecting or removing computers, playtest sessions, and reporting a problem."
+    },
+    {
+      "id": "chat.gym",
+      "name": "The Gym",
+      "kind": "program",
+      "reach": "chat",
+      "route": "eval.run",
+      "source": "crates/coder/src/router/capability.rs",
+      "line": "Tests a capability on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned."
+    },
+    {
+      "id": "openagents.tool-project-map",
+      "name": "Project map",
+      "kind": "plugin",
+      "reach": "coder",
+      "route": null,
+      "source": "knowledge/openagents/openagents.tool-project-map.md",
+      "line": "Shows Coder how a project is laid out before it starts: its files, languages, build files, and tests."
+    },
+    {
+      "id": "openagents.tool-code-finder",
+      "name": "Code finder",
+      "kind": "plugin",
+      "reach": "coder",
+      "route": null,
+      "source": "knowledge/openagents/openagents.tool-code-finder.md",
+      "line": "Finds the lines in a project that match what Coder is looking for, grouped by file."
+    },
+    {
+      "id": "openagents.tool-test-reader",
+      "name": "Test reader",
+      "kind": "plugin",
+      "reach": "coder",
+      "route": null,
+      "source": "knowledge/openagents/openagents.tool-test-reader.md",
+      "line": "Reads test reports and shows Coder each failing test with its file, line, and message."
+    }
+  ],
+  "engines": [
+    {
+      "id": "codex",
+      "name": "Codex"
+    },
+    {
+      "id": "claude_code",
+      "name": "Claude Code"
+    },
+    {
+      "id": "grok_build",
+      "name": "Grok Build"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode"
+    },
+    {
+      "id": "devin",
+      "name": "Devin"
+    }
+  ],
+  "decks": [
+    {
+      "id": "three-devdays-later",
+      "title": "Three DevDays Later"
+    },
+    {
+      "id": "test-time-capabilities",
+      "title": "Test-Time Capabilities"
+    }
+  ],
+  "screens": [
+    "account.computers",
+    "account.keys",
+    "account.playtest",
+    "account.report_problem",
+    "wallet",
+    "gym.result",
+    "gym.publish",
+    "gym.test_set",
+    "verse.gym"
+  ],
+  "plugins": [
+    {
+      "dir": "crates/plugin-code-search",
+      "slug": "code-finder",
+      "name": "Code finder",
+      "summary": "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file.",
+      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "version": "0.1.0",
+      "tools": [
+        "plugin-code-search"
+      ],
+      "workflows": [
+        "code-finder"
+      ],
+      "skills": [],
+      "knowledge": [
+        "openagents.tool-code-finder"
+      ],
+      "tests": [
+        {
+          "dir": "crates/plugin-code-search/evals",
+          "should_fire": 4,
+          "should_not_fire": 2
+        }
+      ]
+    },
+    {
+      "dir": "crates/plugin-outline",
+      "slug": null,
+      "name": "Outline",
+      "summary": "Diagnostic outline guest for the packet ABI.",
+      "publisher": null,
+      "version": null,
+      "tools": [
+        "plugin-outline"
+      ],
+      "workflows": [],
+      "skills": [],
+      "knowledge": [],
+      "tests": []
+    },
+    {
+      "dir": "crates/plugin-repo-map",
+      "slug": "project-map",
+      "name": "Project map",
+      "summary": "Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests.",
+      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "version": "0.1.0",
+      "tools": [
+        "plugin-repo-map"
+      ],
+      "workflows": [
+        "project-map"
+      ],
+      "skills": [],
+      "knowledge": [
+        "openagents.tool-project-map"
+      ],
+      "tests": [
+        {
+          "dir": "crates/plugin-repo-map/evals",
+          "should_fire": 4,
+          "should_not_fire": 2
+        },
+        {
+          "dir": "crates/plugin-repo-map/evals-validation",
+          "should_fire": 4,
+          "should_not_fire": 2
+        }
+      ]
+    },
+    {
+      "dir": "crates/plugin-test-report",
+      "slug": "test-reader",
+      "name": "Test reader",
+      "summary": "Reads the test reports in a project for Coder: which tests failed, where, and why.",
+      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "version": "0.1.0",
+      "tools": [
+        "plugin-test-report"
+      ],
+      "workflows": [
+        "test-reader"
+      ],
+      "skills": [],
+      "knowledge": [
+        "openagents.tool-test-reader"
+      ],
+      "tests": [
+        {
+          "dir": "crates/plugin-test-report/evals",
+          "should_fire": 4,
+          "should_not_fire": 2
+        }
+      ]
+    },
+    {
+      "dir": "packages/jev-probe",
+      "slug": "jev-probe",
+      "name": "Jev-probe",
+      "summary": "The Jev-probe context-construction policy as a program: probe the workspace with the read-only evidence guests, let Jev keep what the task needs, and delegate with that briefing and batch-checked directions.",
+      "publisher": "63fe2f2178a4b2b9719ca4655d7db85036f0e156d197c1652ea13eb6b73bdabc",
+      "version": "0.1.0",
+      "tools": [],
+      "workflows": [
+        "jev-probe"
+      ],
+      "skills": [
+        "directions"
+      ],
+      "knowledge": [],
+      "tests": [
+        {
+          "dir": "packages/jev-probe/evals",
+          "should_fire": 4,
+          "should_not_fire": 2
+        }
+      ]
+    }
+  ],
+  "showcase": null
+}

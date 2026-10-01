@@ -392,6 +392,74 @@ impl RouteId {
             RouteId::Unknown => "None of these fits the message",
         }
     }
+
+    /// The family the route map groups this route under (#10085): what
+    /// kind of reply it is, for a person reading how the router is put
+    /// together. `Unknown` is the `route` question's `none`, in no family.
+    /// Nothing routes on it; the judge never reads it.
+    #[must_use]
+    pub fn family(self) -> Option<RouteFamily> {
+        Some(match self {
+            RouteId::Meta
+            | RouteId::ProductKb
+            | RouteId::CodebaseKb
+            | RouteId::Smalltalk
+            | RouteId::General => RouteFamily::Answers,
+            RouteId::WorkDispatch => RouteFamily::Work,
+            RouteId::GymNews
+            | RouteId::EvalRun
+            | RouteId::EvalAuthor
+            | RouteId::EvalCheck
+            | RouteId::EvalResult
+            | RouteId::EvalCredit => RouteFamily::Gym,
+            RouteId::Cli | RouteId::Wallet | RouteId::Account | RouteId::PresentationOpen => {
+                RouteFamily::Screens
+            }
+            RouteId::Clarify | RouteId::Refuse | RouteId::End | RouteId::CapabilityMissing => {
+                RouteFamily::Boundaries
+            }
+            RouteId::Unknown => return None,
+        })
+    }
+}
+
+/// How the route map groups the router's routes (#10085). A label for
+/// people, never an input to routing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum RouteFamily {
+    /// Answered in the chat: prepared answers, knowledge, or the model.
+    Answers,
+    /// Work handed to Coder on a computer.
+    Work,
+    /// The Gym: tests, results, checks, credit, news.
+    Gym,
+    /// Screens and actions the chat opens or offers.
+    Screens,
+    /// Where the router stops: clarify, refuse, end, nothing serves it.
+    Boundaries,
+}
+
+impl RouteFamily {
+    /// Every family, in the order the map lays them out.
+    pub const ALL: [RouteFamily; 5] = [
+        RouteFamily::Answers,
+        RouteFamily::Work,
+        RouteFamily::Gym,
+        RouteFamily::Screens,
+        RouteFamily::Boundaries,
+    ];
+
+    /// The family's word in the route map's sources.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            RouteFamily::Answers => "answers",
+            RouteFamily::Work => "work",
+            RouteFamily::Gym => "gym",
+            RouteFamily::Screens => "screens",
+            RouteFamily::Boundaries => "boundaries",
+        }
+    }
 }
 
 /// What the `risk` question found, independent of the route.

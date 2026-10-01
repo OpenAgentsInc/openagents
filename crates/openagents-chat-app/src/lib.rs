@@ -15,6 +15,7 @@ pub mod host_threads;
 pub mod hosted;
 pub mod outbox;
 pub mod preferences;
+pub mod route_map;
 pub mod transcripts;
 pub mod wake;
 
