@@ -17,13 +17,13 @@ The app has four tabs, shown as icons:
   3, `SCR-01`): the trainer's name, level, and XP from the phone's own
   ledger (a gray bar until it is read, never a 0), a **Next:** line from
   the phone's state, **CHAT WITH OPENAGENTS**, the starter chips **Test a
-  tool**, **What's new**, and **Check a result** (each opens a chat with
+  plugin**, **What's new**, and **Check a result** (each opens a chat with
   that question sent), **PROFILE** (level, your results, and what you
   made), and **THE GYM IN THE VERSE**. A new install first walks **Choose
   your agent**, an end card with **LET'S GO**, and a first-run chat that
   asks for Project map's test, so a test starts on the third tap; the step
   reached survives a relaunch. In chat, the Gym's replies carry cards the
-  app draws with its own words (a tool with **Start the test**, a test-set
+  app draws with its own words (a plugin with **Start the test**, a test-set
   draft with **Looks good** and **Change it**, a run, a result with **Add
   to the Gym**, news, a result to check, and your credit), and sheets for a
   result's detail, **Add to the Gym** (exactly what becomes public, before

@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "41",
+        title: "Plugins",
+        what_to_test: "On the Chat tab's menu, the first chip should say Test a plugin; tap it and the reply should offer plugins to test, with cards that say plugin. In a new chat, ask \"Which plugins can I test?\": the reply should name all six, Project map, Code finder, Test reader, Explain this error, Release notes, and Dependency check. Ask \"Can you book me a flight to Tokyo next week?\": the reply should say there's no plugin for that yet, under NO PLUGIN FOR THAT YET with ADD A PLUGIN. With a computer paired, ask \"List my plugins\": the reply should show a card with Run, and tapping it should list the plugins on your computer.",
+        items: &[
+            Item {
+                title: "Say plugin",
+                detail: "Anything you add to OpenAgents is now called a plugin: Test a plugin on the Chat tab's menu, with and without the plugin in a test, and NO PLUGIN FOR THAT YET with ADD A PLUGIN when you ask for something nothing does yet.",
+            },
+            Item {
+                title: "Three new plugins in the Gym",
+                detail: "Explain this error finds the line behind a failing command's output and says the likely cause and fix. Release notes groups a git log into breaking changes, features, and fixes. Dependency check flags duplicate versions, loose version ranges, and licenses your project doesn't allow. You can test each one from chat like the others.",
+            },
+            Item {
+                title: "The chat knows every plugin",
+                detail: "Ask which plugins are in the Gym, or which you can test, and the reply names all six. Ask what one of them does and it answers from that plugin's own description.",
+            },
+            Item {
+                title: "List my plugins",
+                detail: "With a computer paired, asking to list your plugins offers a card that lists the plugins on that computer when you tap Run.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "40",
         title: "Coder runs the engine you asked for",
         what_to_test: "With no computer paired, send \"Do a test delegation to claude\" in a new chat: the reply should say it needs a computer and offer Connect a computer, with no Gym test. With the latest OpenAgents on a paired computer, send \"Do a test delegation to claude\" in a new chat on the phone and tap Run Coder: Coder should start on Claude Code, or its start card should say why another engine is running, and the run should do a small check of your project instead of trying to sign in to Claude. Then open one of the computer's chats from the previous chats and ask \"What's the working directory right now?\": the reply should answer it, with no Coder run starting.",
