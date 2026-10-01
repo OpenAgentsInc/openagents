@@ -87,6 +87,16 @@ kind beside `duplicate` and `unbounded`. The small TOML reader in
 manifests and lockfiles. The steps are the same as for
 [Explain this error](explain-this-error.md#copy-it).
 
+## Test result
+
+On 2026-10-01 on our computers (3 runs per arm, Gemini Flash, live Jev,
+no shell in either arm): **Better**, 6 of 6 tests with the plugin and 2 of
+6 without it. Without it Coder can't read the manifests and lockfiles at
+all. With it, one of three `python-requirements` runs looked at nothing:
+Jev didn't choose the workflow for that wording. Published as
+`49357306398ef037f72bfa7c8a98a9295a7fe0e7c59e5bf2c3c1373d2d604536` on the
+test set release `a6b800a63b4e…`; details in [the measurement](../../extensions/measurements/2026-10-01-example-plugins.md).
+
 ## Read-only run on a real repository
 
 On 2026-10-01, on scratch copies (`git archive HEAD`; the real checkouts

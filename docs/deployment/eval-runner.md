@@ -278,3 +278,12 @@ every 2700 s`, then `subscribed; requests arrive live from here` at
 probe), and `NRestarts=0`. The rebuild changed the agent's digest to
 `sha256:fbf73c42…`, so results from before it can't be checked on the
 hosted runner (see "A redeploy starts a new line of results").
+
+**`1437ede584` (2026-10-01): the example plugins.** Installed with the
+new `install.sh` (run from that commit, so it wrote `catalog.env` from
+`deploy/eval-runner/catalog`) at 06:42 UTC; `eval-runner check` and the
+journal list six catalog plugins, and the agent's digest is now
+`sha256:71e9341d…`, so results from before it can't be checked on the
+hosted runner. `eval-runner release` then released the three new plugins
+and their test sets; the runs and results are in
+[the measurement](../extensions/measurements/2026-10-01-example-plugins.md).

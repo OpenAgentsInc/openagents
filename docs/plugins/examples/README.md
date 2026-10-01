@@ -145,5 +145,10 @@ what the result names.
 
 ## What the examples measured
 
-Each page ends with its test result on our computers and a read-only run
-on a scratch copy of a real repository.
+On 2026-10-01 on our computers, each was **Better**: Explain this error
+passed 7 of 7 tests with it and 2 of 7 without, Release notes 6 of 6 and 2
+of 6, and Dependency check 6 of 6 and 2 of 6. Most of that change is
+reach (without a plugin, a run on our computers can't read the project's
+files), and [the measurement](../../extensions/measurements/2026-10-01-example-plugins.md)
+says what else the numbers do and don't show. Each page ends with its
+result and a read-only run on a scratch copy of a real repository.

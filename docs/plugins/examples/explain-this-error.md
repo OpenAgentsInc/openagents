@@ -93,6 +93,17 @@ To make a plugin of your own from this one:
 5. Write the test set, run it with `openagents plugin test run`, and publish
    the result whatever it says.
 
+## Test result
+
+On 2026-10-01 on our computers (3 runs per arm, Gemini Flash, live Jev,
+no shell in either arm): **Better**, 7 of 7 tests with the plugin and 2 of
+7 without it. Every test where it should help passed 3 of 3 with it and 0
+of 3 without, because without it Coder can't read the source the error
+points at; both tests where it should stay out of the way passed in both
+arms. Published as `9abaf9a512512062fda2c8d10317e5a94291c4c8828264e43940bcff134070f9`
+on the test set release `03a418dcb607…`; the details, and what the numbers
+don't say, are in [the measurement](../../extensions/measurements/2026-10-01-example-plugins.md).
+
 ## Read-only run on a real repository
 
 On 2026-10-01, on a scratch copy of the owner's `probe` repository

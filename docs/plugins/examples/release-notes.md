@@ -71,6 +71,18 @@ replace `render` and the groups, and keep `commits`, which reads every
 `git log` format above. The steps are the same as for
 [Explain this error](explain-this-error.md#copy-it).
 
+## Test result
+
+On 2026-10-01 on our computers (3 runs per arm, Gemini Flash, live Jev,
+no shell in either arm): **Better**, 6 of 6 tests with the plugin and 2 of
+6 without it. The two tests that save the log to a file fail without the
+plugin because Coder can't read the file. In the two that paste the log,
+Coder without the plugin wrote reasonable notes but paraphrased subjects
+and, in one, cited no commits, which the graders don't accept: part of
+that delta is how strict the graders are. Published as
+`6bedfaa6c78c04900f333b36aa2b3087e782fe9b1ed58d2140f730d0281bb0af` on the
+test set release `d53dfd6fff18…`; details in [the measurement](../../extensions/measurements/2026-10-01-example-plugins.md).
+
 ## Read-only run on a real repository
 
 On 2026-10-01, `git log --oneline 4467f24eb9..1c095e50d0` of the owner's
