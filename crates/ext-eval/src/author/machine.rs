@@ -30,7 +30,7 @@ use super::stage::{Stage, Surface};
 pub const MAX_SAY_CHARS: usize = 700;
 /// The most characters of a made tool's guidance.
 pub const MAX_SKILL_CHARS: usize = 16 * 1024;
-/// Every run the interview offers compares with and without the tool.
+/// Every run the interview offers compares with and without the plugin.
 pub const ARMS: u64 = 2;
 
 /// What the person did this turn.
@@ -148,7 +148,7 @@ impl Turn {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Refused {
     /// The interview has no tool yet; [`Interview::start`] picks one.
-    #[error("the interview has no tool yet")]
+    #[error("the interview has no plugin yet")]
     NoTool,
     /// An approval where no gate is waiting.
     #[error("there is no step waiting for approval at {0:?}")]
@@ -276,7 +276,7 @@ impl Interview {
             }
             Pick::NeedsCode => Err(Turn {
                 stage: Stage::Start,
-                say: "That tool needs new code, so we'd build it with Coder on your computer, then test it the same way. Run Coder on your connected computer?".into(),
+                say: "That plugin needs new code, so we'd build it with Coder on your computer, then test it the same way. Run Coder on your connected computer?".into(),
                 notes: Vec::new(),
                 line: None,
                 offer: Some(Planned::RunCoder),
@@ -291,7 +291,7 @@ impl Interview {
                 Err(Turn {
                     stage: Stage::Start,
                     say: format!(
-                        "Which tool should we write tests for? {listed}make a new tool with you: tell us what it should help Coder do."
+                        "Which plugin should we write tests for? {listed}make a new plugin with you: tell us what it should help Coder do."
                     ),
                     notes: Vec::new(),
                     line: None,
@@ -679,7 +679,7 @@ impl Interview {
         match self.stage {
             Stage::Quality => self.turn("Good.".into(), Vec::new(), None),
             Stage::Pilot => {
-                let say = "Next, we try it once: each test runs one time with the tool and one time without, so we can fix the tests before the full run.";
+                let say = "Next, we try it once: each test runs one time with the plugin and one time without, so we can fix the tests before the full run.";
                 self.turn(
                     say.into(),
                     Vec::new(),
@@ -689,7 +689,7 @@ impl Interview {
             Stage::Size => {
                 let size = self.size(FULL_RUNS);
                 let say = format!(
-                    "The full run is {} tests, {} runs each with the tool and {} without: {} runs in all.",
+                    "The full run is {} tests, {} runs each with the plugin and {} without: {} runs in all.",
                     size.cases,
                     size.runs,
                     size.runs,
@@ -707,7 +707,7 @@ impl Interview {
                     self.turn(say, Vec::new(), self.done_offer())
                 }
                 None => self.turn(
-                    "Done. Every test runs three times with the tool and three times without."
+                    "Done. Every test runs three times with the plugin and three times without."
                         .into(),
                     Vec::new(),
                     self.done_offer(),

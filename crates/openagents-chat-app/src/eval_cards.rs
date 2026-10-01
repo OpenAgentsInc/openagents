@@ -23,9 +23,10 @@ use serde_json::Value;
 #[cfg(any(test, feature = "test-support"))]
 /// Words that never appear on a label, button, chip, card, or sheet
 /// (`Words on screen` in the wireframe). Answers may differ; the phone's
-/// own words may not. "Tool" is banned as an umbrella word (the word is
-/// "capability", decided 2026-09-29); a model's tool call in a transcript
-/// is the model's text, not a label.
+/// own words may not. The word for anything a person adds is "plugin"
+/// (decided 2026-10-01, #10087): "capability", "extension", and "tool" are
+/// banned as names for it, and "Wasm" stays off labels. A model's tool
+/// call in a transcript is the model's text, not a label.
 pub const BANNED: &[&str] = &[
     "npub",
     "nsec",
@@ -37,7 +38,8 @@ pub const BANNED: &[&str] = &[
     "tailnet",
     "tailscale",
     "wasm",
-    "plugin",
+    "capability",
+    "capabilities",
     "extension",
     "tool",
     "benchmark",
@@ -501,14 +503,14 @@ pub fn verdict_headline(verdict: Verdict3, check: Option<Verdict3>, pilot: bool)
     match verdict {
         Verdict3::Pass => "CODER GOT BETTER".into(),
         Verdict3::Inconclusive => "NO CLEAR CHANGE".into(),
-        Verdict3::Fail => "CODER DID WORSE WITH THIS CAPABILITY".into(),
+        Verdict3::Fail => "CODER DID WORSE WITH THIS PLUGIN".into(),
     }
 }
 
 /// The tests passed without and with the tool.
 pub fn compare(claim: &Claim, tool: &str) -> Compare {
     Compare {
-        without_label: "without the capability".into(),
+        without_label: "without the plugin".into(),
         without: claim.without.map(|w| format!("{w} of {}", claim.total)),
         with_label: format!("with {tool}"),
         with: format!("{} of {}", claim.with, claim.total),
@@ -516,7 +518,7 @@ pub fn compare(claim: &Claim, tool: &str) -> Compare {
 }
 
 /// What a start_eval offer will run, in one line: "8 tests, with and
-/// without the capability."
+/// without the plugin."
 pub fn size_line(size: &Size) -> String {
     let tests = if size.cases == 1 {
         "1 test".to_owned()
@@ -524,9 +526,9 @@ pub fn size_line(size: &Size) -> String {
         format!("{} tests", size.cases)
     };
     if size.arms >= 2 {
-        format!("{tests}, with and without the capability.")
+        format!("{tests}, with and without the plugin.")
     } else {
-        format!("{tests}, with the capability.")
+        format!("{tests}, with the plugin.")
     }
 }
 
@@ -591,7 +593,7 @@ pub fn tool_card(
         }
         None => {
             lines.push(Line {
-                text: "There's no test set for this capability yet.".into(),
+                text: "There's no test set for this plugin yet.".into(),
                 tone: Tone::Quiet,
             });
             chips.push(actions.button(
@@ -658,14 +660,14 @@ pub fn draft_items(draft: &Draft, detail: bool) -> Vec<Item> {
             let detail_text = if detail {
                 let mut parts = vec![];
                 if stays_out {
-                    parts.push("The capability should stay out of the way.".to_owned());
+                    parts.push("The plugin should stay out of the way.".to_owned());
                 }
                 if !checked.is_empty() {
                     parts.push(format!("Checked: {}", checked.join(" ")));
                 }
                 (!parts.is_empty()).then(|| parts.join(" "))
             } else {
-                stays_out.then(|| "(capability should stay out of the way)".to_owned())
+                stays_out.then(|| "(plugin should stay out of the way)".to_owned())
             };
             Item {
                 marks: vec![],
@@ -693,7 +695,7 @@ pub fn draft_card(
         format!("{} (yours)", draft.tool.name)
     };
     let mut lines = vec![Line {
-        text: format!("Capability: {tool}"),
+        text: format!("Plugin: {tool}"),
         tone: Tone::Strong,
     }];
     let items = draft_items(draft, false);
@@ -783,10 +785,10 @@ pub fn news_card(
         });
         chips.push(actions.button(
             format!("{id}.test"),
-            "Test a capability",
+            "Test a plugin",
             Some("test"),
             Action::Say {
-                text: "Which tool should I try?".into(),
+                text: "Which plugin should I try?".into(),
                 fresh: false,
             },
         ));
@@ -832,7 +834,7 @@ pub fn news_card(
 
 /// The message a tap on the missing-capability card's button sends: it
 /// starts the chat's authoring interview.
-pub const ADD_CAPABILITY_MESSAGE: &str = "Help me make a capability for that";
+pub const ADD_CAPABILITY_MESSAGE: &str = "Help me make a plugin for that";
 
 /// The missing-capability card (#9960): the worker's `capability` card,
 /// which names the closest admitted capability, if any, and how to add
@@ -846,7 +848,7 @@ pub fn capability_card(
     gym: Option<Action>,
 ) -> CardView {
     let mut lines = vec![Line {
-        text: "There's no capability for that yet.".into(),
+        text: "There's no plugin for that yet.".into(),
         tone: Tone::Strong,
     }];
     match closest {
@@ -884,7 +886,7 @@ pub fn capability_card(
             }
             Some(actions.button(
                 format!("{id}.add"),
-                "ADD A CAPABILITY",
+                "ADD A PLUGIN",
                 Some("add"),
                 Action::Say {
                     text: ADD_CAPABILITY_MESSAGE.into(),
@@ -899,7 +901,7 @@ pub fn capability_card(
         kind: "capability",
         step: None,
         icon: Some("add"),
-        title: "NO CAPABILITY FOR THAT YET".into(),
+        title: "NO PLUGIN FOR THAT YET".into(),
         badge: None,
         compare: None,
         lines,
@@ -908,7 +910,7 @@ pub fn capability_card(
         primary,
         secondary,
         chips: vec![],
-        source: closest.map(|_| "From the capabilities Coder and this chat have now.".to_owned()),
+        source: closest.map(|_| "From what Coder and this chat can do now.".to_owned()),
         busy: false,
     }
 }
@@ -1004,7 +1006,7 @@ pub fn check_card(
 
 /// `CARD-04` for a published result the worker sent (a named tool's).
 pub fn published_result_card(id: &str, claim: &Claim, tool: Option<&str>) -> CardView {
-    let tool = tool.unwrap_or("the capability");
+    let tool = tool.unwrap_or("the plugin");
     CardView {
         id: id.to_owned(),
         kind: "result",
@@ -1105,8 +1107,8 @@ mod tests {
             Some(Action::VerseGym),
         );
         assert_eq!(card.kind, "capability");
-        assert_eq!(card.title, "NO CAPABILITY FOR THAT YET");
-        assert_eq!(card.lines[0].text, "There's no capability for that yet.");
+        assert_eq!(card.title, "NO PLUGIN FOR THAT YET");
+        assert_eq!(card.lines[0].text, "There's no plugin for that yet.");
         assert_eq!(
             card.lines[1].text,
             "The closest one we have is Project map: Shows Coder how a project is laid out."
@@ -1116,7 +1118,7 @@ mod tests {
             "Coder uses it on a computer you connect."
         );
         let primary = card.primary.as_ref().unwrap();
-        assert_eq!(primary.label, "ADD A CAPABILITY");
+        assert_eq!(primary.label, "ADD A PLUGIN");
         assert_eq!(
             actions.get(&primary.id),
             Some(&Action::Say {

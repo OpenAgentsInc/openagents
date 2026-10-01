@@ -1794,7 +1794,7 @@ impl CoderTab {
         self.list
             .list
             .titles
-            .insert(task.clone(), "Testing a capability".into());
+            .insert(task.clone(), "Testing a plugin".into());
         self.list.list.sent.insert(task.clone(), now);
         self.list.save();
         Ok((host, label, task))

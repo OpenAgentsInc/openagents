@@ -392,7 +392,7 @@ async fn making_a_tool_is_a_skill_and_code_goes_to_coder() {
     let mut phone = Phone::new();
     let step = phone.send(&author, "I want to test something", None).await;
     assert_eq!(step.stage, Stage::Start);
-    assert!(step.reply.contains("Which tool"));
+    assert!(step.reply.contains("Which plugin"));
     assert!(step.offers.is_empty());
 }
 

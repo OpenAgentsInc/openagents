@@ -82,7 +82,7 @@ fn script(n: usize) -> (&'static str, Vec<Value>) {
             ],
         ),
         2 => (
-            "Here are the tests we'd use: four where the tool should help, and one where it should stay out of the way.\n\nAre these the right tests? Tap Looks good, or tell us what to change.",
+            "Here are the tests we'd use: four where the plugin should help, and one where it should stay out of the way.\n\nAre these the right tests? Tap Looks good, or tell us what to change.",
             vec![
                 judgment("eval.author"),
                 card(draft()),
@@ -90,7 +90,7 @@ fn script(n: usize) -> (&'static str, Vec<Value>) {
             ],
         ),
         _ => (
-            "Tap Try it once to run each test one time with and without the tool, then tell us what to fix, or tap Looks good.",
+            "Tap Try it once to run each test one time with and without the plugin, then tell us what to fix, or tap Looks good.",
             vec![
                 judgment("eval.author"),
                 card(draft()),

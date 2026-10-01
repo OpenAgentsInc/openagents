@@ -436,7 +436,7 @@ fn limitations(plan: &Plan, scores: &Scores, identity: &Identity) -> Vec<String>
         .collect();
     if !excluded.is_empty() {
         out.push(format!(
-            "Scored with the extension only and excluded from the change: {}.",
+            "Scored with the plugin only and excluded from the change: {}.",
             excluded.join(", ")
         ));
     }

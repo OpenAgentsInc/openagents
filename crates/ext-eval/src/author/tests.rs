@@ -305,7 +305,7 @@ fn results_come_in_only_where_they_belong() {
     let turn = interview.apply(&Need::Nothing, None).unwrap();
     assert!(
         turn.say
-            .starts_with("With the tool, Coder passed 5 of 5 tests; without it, 1 of 5."),
+            .starts_with("With the plugin, Coder passed 5 of 5 tests; without it, 1 of 5."),
         "{}",
         turn.say
     );

@@ -27,7 +27,7 @@ pub const FIRST_MESSAGE: &str = "Test Project map on Coder";
 /// The Gym's starter chips on the Gym menu: `(id, label, message)`. A new
 /// chat's suggestions are [`SUGGESTIONS`].
 pub const STARTERS: &[(&str, &str, &str)] = &[
-    ("test", "Test a capability", "Which tool should I try?"),
+    ("test", "Test a plugin", "Which plugin should I try?"),
     ("news", "What's new", "What's new in the Gym?"),
     ("check", "Check a result", "Find me a result to check"),
 ];
@@ -67,8 +67,8 @@ pub const SUGGESTIONS: &[Suggestion] = &[
     },
     Suggestion {
         id: "gym.test",
-        label: "Test a capability",
-        message: "Which tool should I try?",
+        label: "Test a plugin",
+        message: "Which plugin should I try?",
     },
     Suggestion {
         id: "meta.model",
@@ -207,11 +207,11 @@ pub fn first_run(gym: &mut Gym) -> Option<FirstRunView> {
             dot: 1,
             title: "Coder is ready.".into(),
             lines: vec![
-                "Capabilities can make Coder better. Tests show whether they do.".into(),
-                "Let's see if a capability makes Coder better.".into(),
+                "Plugins can make Coder better. Tests show whether they do.".into(),
+                "Let's see if a plugin makes Coder better.".into(),
             ],
             agent: None,
-            next: "Next: we'll test a capability together in chat.".into(),
+            next: "Next: we'll test a plugin together in chat.".into(),
             primary: gym
                 .actions
                 .button("first.go", "LET'S GO", None, Action::LetsGo),
@@ -296,7 +296,7 @@ pub fn menu(gym: &mut Gym, app_build: Option<&str>) -> MenuView {
         status: "GYM OPEN".into(),
         next,
         primary,
-        primary_subtitle: "Test a capability, see what's new, earn XP".into(),
+        primary_subtitle: "Test a plugin, see what's new, earn XP".into(),
         chips,
         rows,
         footer: match app_build {
@@ -350,13 +350,10 @@ mod tests {
         assert_eq!(menu.primary.label, "CHAT WITH OPENAGENTS");
         assert_eq!(
             menu.next,
-            "Next: test a capability to see if it makes Coder better."
+            "Next: test a plugin to see if it makes Coder better."
         );
         let labels: Vec<&str> = menu.chips.iter().map(|c| c.label.as_str()).collect();
-        assert_eq!(
-            labels,
-            ["Test a capability", "What's new", "Check a result"]
-        );
+        assert_eq!(labels, ["Test a plugin", "What's new", "Check a result"]);
         assert_eq!(menu.footer, "Gym open · v1.0.0 (21) · Playtest");
     }
 }

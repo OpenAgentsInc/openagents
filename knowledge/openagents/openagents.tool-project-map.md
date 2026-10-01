@@ -1,6 +1,6 @@
 ---
 id: openagents.tool-project-map
-version: 1
+version: 2
 kind: product
 title: "Project map"
 summary: >-
@@ -25,6 +25,7 @@ provenance:
     - docs/product/2026-09-28-app-wireframe.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
+  - "2026-10-01: version 2 (#10087) says plugin, the one word for anything a person adds (skills, workflows, knowledge, Wasm, and tests); the note's id and tags stay."
 ---
 
 ## Answer
@@ -34,7 +35,7 @@ Project map shows Coder how a project is laid out before it starts: how many fil
 ## Details
 
 - Its engineering name is the `repo_map` evidence guest, operation `map`.
-- It is the Gym's default tool to test first.
+- It is a plugin, and the Gym's default plugin to test first.
 
 ## Sources
 

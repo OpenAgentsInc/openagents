@@ -1331,7 +1331,7 @@ mod tests {
         };
         assert_eq!(answer.id, "capability.missing");
         assert!(
-            text.starts_with("There's no capability for that yet."),
+            text.starts_with("There's no plugin for that yet."),
             "{text}"
         );
         assert_eq!(closest, &None);
@@ -1353,7 +1353,10 @@ mod tests {
             panic!("{:?}", router(&flight));
         };
         assert_eq!(answer.id, "capability.missing_near");
-        assert!(text.contains("The closest one we have is Coder:"), "{text}");
+        assert!(
+            text.contains("The closest thing we have is Coder:"),
+            "{text}"
+        );
         assert_eq!(closest.map(|entry| entry.id), Some(CODER.to_string()));
         flight.capability_closest = Some((coder.clone(), 0.15));
         assert!(

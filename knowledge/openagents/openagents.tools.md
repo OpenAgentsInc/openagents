@@ -1,44 +1,53 @@
 ---
 id: openagents.tools
-version: 2
+version: 3
 kind: product
-title: "Capabilities for Coder"
+title: "Plugins"
 summary: >-
-  A capability is something Coder can use while it works, such as Project
-  map; the Gym tests whether a capability makes Coder better.
+  A plugin is anything you add to OpenAgents, such as Project map, with the
+  tests that show whether it helps; the Gym tests whether a plugin makes
+  Coder better.
 tags: [gym, tools, extensions, plugins]
 applies_when: >-
-  The user asks what a capability (or a tool) is, which capabilities there
-  are, or how capabilities relate to Coder and the Gym.
+  The user asks what a plugin is (or a tool, capability, or extension), what
+  a plugin contains, which plugins there are, or how plugins relate to Coder
+  and the Gym.
 answer: >-
-  A capability is something Coder, our coding agent, can use while it works,
-  such as Project map, Code finder, or Test reader. In the Gym we test a
-  capability by running the same tests with it and without it, so you can
-  see whether Coder does better with it.
+  A plugin is anything you add to OpenAgents. It can contain skills
+  (instructions Coder reads), workflows (typed step-by-step programs),
+  knowledge (cited reference entries), Wasm (small sandboxed code), and the
+  tests that show whether it helps. Project map, Code finder, and Test reader
+  are plugins. In the Gym we test a plugin by running the same tests with it
+  and without it, so you can see whether Coder does better with it.
 status: admitted
 author: openagents
 provenance:
   written_from: [reference]
   cites:
+    - docs/plugins/README.md
     - docs/extensions/evaluation.md
     - docs/product/2026-09-28-app-wireframe.md
     - docs/extensions/plugins.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
   - "2026-09-29: version 2 (#9958) says capability, the on-screen word decided in #9957; the note's id and tags stay."
+  - "2026-10-01: version 3 (#10087) says plugin, the owner's one word for anything a person adds, and names its parts from docs/plugins/README.md; the note's id and tags stay."
 ---
 
 ## Answer
 
-A capability is something Coder, our coding agent, can use while it works, such as Project map, Code finder, or Test reader. In the Gym we test a capability by running the same tests with it and without it, so you can see whether Coder does better with it.
+A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map, Code finder, and Test reader are plugins. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether Coder does better with it.
 
 ## Details
 
-- Engineering docs call a capability an extension, shipped as a program, a plugin, a skill, or a knowledge entry; the app says capability. "Tool" is retired as the umbrella word on screen, though a model's own tool call in a transcript keeps its name.
-- A capability made in chat is a set of plain instructions Coder follows, which may turn on capabilities such as Project map; capabilities with new code are made with Coder on a connected computer.
+- Wasm is the only code a plugin can carry, and it runs in a sandbox with no network and bounded reads. Workflows and typed decisions choose when it runs; a model never calls it by name, so we don't call it a tool.
+- A plugin made in chat is a skill: plain instructions Coder follows, which may turn on plugins such as Project map. Plugins with new code are made with Coder on a connected computer.
+- Coder and the coding agents it can use (Codex, Claude Code, and others) are not plugins: they are what plugins plug into.
+- Engineering documents ship a plugin as a NIP-EXT extension package and call a measured improvement a capability; the app and this chat say plugin.
 
 ## Sources
 
+- `docs/plugins/README.md`
 - `docs/extensions/evaluation.md`
 - `docs/product/2026-09-28-app-wireframe.md`
 - `docs/extensions/plugins.md`

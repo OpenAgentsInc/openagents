@@ -510,8 +510,8 @@
   ],
   "verdict": "inconclusive",
   "limitations": {
-    "digest": "sha256:6fd160bf6112945ca2aef003a6e741a5855480f4c6d2049bb411766685bf3f00",
-    "size": 458,
+    "digest": "sha256:c97176adf1ceb66be72b4c866224a55d4e4146d8deafbfe12f5f500f10578f19",
+    "size": 455,
     "media_type": "application/json",
     "schema": "openagents.eval-limitations.v1"
   },

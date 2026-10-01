@@ -4133,13 +4133,11 @@ mod tests {
         let result = &frames.last().unwrap().1;
         let text = result["text"].as_str().unwrap();
         assert!(
-            text.starts_with(
-                "There's no capability for that yet. The closest one we have is Coder:"
-            ),
+            text.starts_with("There's no plugin for that yet. The closest thing we have is Coder:"),
             "{text}"
         );
         assert_eq!(result["tier"], "canned");
-        assert_eq!(result["answer"], "capability.missing_near@1");
+        assert_eq!(result["answer"], "capability.missing_near@2");
         assert!(result["model"].as_str().unwrap().starts_with("bank:"));
         assert_eq!(result["capability"], Value::Null);
         for (_, body) in &frames {
@@ -4895,7 +4893,7 @@ mod tests {
         )
         .await;
         let result = &soon.last().unwrap().1;
-        assert_eq!(result["answer"], "eval.author.soon@2");
+        assert_eq!(result["answer"], "eval.author.soon@3");
         assert_eq!(result["tier"], "author");
         assert!(soon.last().unwrap().0 < Duration::from_millis(1_400));
 

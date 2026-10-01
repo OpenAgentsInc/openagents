@@ -99,11 +99,11 @@ pub fn render(evaluation: &Evaluation) -> String {
         out,
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
-         <title>Extension evaluation</title>\n<style>{STYLE}</style>\n</head>\n<body>\n<main>\n"
+         <title>Plugin test</title>\n<style>{STYLE}</style>\n</head>\n<body>\n<main>\n"
     );
     let _ = write!(
         out,
-        "<h1>Extension evaluation</h1>\n<p class=\"muted\">Evaluator <code>{}</code> · suite \
+        "<h1>Plugin test</h1>\n<p class=\"muted\">Evaluator <code>{}</code> · suite \
          <code>{}</code> · report <code>{}</code></p>\n",
         escape(&evaluation.evaluator),
         escape(&evaluation.suite_ref.digest),
@@ -112,7 +112,7 @@ pub fn render(evaluation: &Evaluation) -> String {
     let _ = write!(
         out,
         "<section class=\"headline\">\n<div class=\"verdict {class}\">{word}</div>\n<p>Passes \
-         {} of {total} tests with the tool",
+         {} of {total} tests with the plugin",
         scores.subject.cases_passed
     );
     if let Some(baseline) = &scores.baseline {
@@ -139,7 +139,7 @@ pub fn render(evaluation: &Evaluation) -> String {
 
     out.push_str("<h2>Per arm</h2>\n<div class=\"wrap\"><table>\n<tr><th></th><th>Cases passed</th><th>Mean score</th><th>Cost</th><th>Time</th></tr>\n");
     for (label, summary) in [
-        ("With the tool", Some(&scores.subject)),
+        ("With the plugin", Some(&scores.subject)),
         ("Without it", scores.baseline.as_ref()),
     ] {
         let Some(summary) = summary else { continue };
@@ -177,11 +177,11 @@ pub fn render(evaluation: &Evaluation) -> String {
         let _ = write!(
             out,
             "<section class=\"case\">\n<h3>{} <span class=\"muted\">· {}{}</span></h3>\n\
-             <p>With the tool: {}<br>Without it: {}<br>Change: {}</p>\n",
+             <p>With the plugin: {}<br>Without it: {}<br>Change: {}</p>\n",
             escape(&case.id),
             case.kind,
             if case.subject_only {
-                " · scored with the tool only"
+                " · scored with the plugin only"
             } else {
                 ""
             },
@@ -207,7 +207,7 @@ pub fn render(evaluation: &Evaluation) -> String {
 
 fn render_run(out: &mut String, run: &GradedRun) {
     let arm = match run.arm {
-        Arm::Subject => "with the tool",
+        Arm::Subject => "with the plugin",
         Arm::Baseline => "without it",
     };
     let reason = crate::report::reason(run)

@@ -23,8 +23,8 @@ pub fn step_of(instructions: &str) -> &'static str {
         .and_then(|rest| rest.lines().next())
         .unwrap_or_default();
     match this {
-        t if t.starts_with("step 1, the tool we make") => "make",
-        t if t.starts_with("step 1, the tool") => "tool",
+        t if t.starts_with("step 1, the plugin we make") => "make",
+        t if t.starts_with("step 1, the plugin") => "tool",
         t if t.starts_with("step 3") => "tests",
         t if t.starts_with("step 4") => "checks",
         t if t.starts_with("step 5") => "read",

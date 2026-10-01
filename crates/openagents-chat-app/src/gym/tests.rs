@@ -493,24 +493,24 @@ fn a_missing_capability_card_offers_to_add_one() {
         &mut phone,
         &worker,
         "Book me a flight to Denver",
-        "There's no capability for that yet.",
+        "There's no plugin for that yet.",
         &[
             json!({"v": 2, "requires": [], "type": "judgment", "verdict": "respond",
-                "line": "There's no capability for that yet.", "set": "chat-router-v3",
+                "line": "There's no plugin for that yet.", "set": "chat-router-v3",
                 "route": "capability.missing", "tier": "canned"}),
             wire("card-capability"),
             json!({"v": 2, "type": "result", "model": "bank:chat-answers-v1", "tier": "canned",
-                "route": "capability.missing", "answer": "capability.missing_near@1"}),
+                "route": "capability.missing", "answer": "capability.missing_near@2"}),
         ],
     );
     let card = phone.card("capability");
-    assert_eq!(card.title, "NO CAPABILITY FOR THAT YET");
-    assert_eq!(card.lines[0].text, "There's no capability for that yet.");
+    assert_eq!(card.title, "NO PLUGIN FOR THAT YET");
+    assert_eq!(card.lines[0].text, "There's no plugin for that yet.");
     assert_eq!(
         card.lines[1].text,
         "The closest one we have is Project map: What Project map does."
     );
-    assert_eq!(card.primary.as_ref().unwrap().label, "ADD A CAPABILITY");
+    assert_eq!(card.primary.as_ref().unwrap().label, "ADD A PLUGIN");
     assert_plain(&phone.gym());
     assert!(
         !words_of(&phone.gym())
@@ -559,7 +559,7 @@ fn every_worker_card_renders_in_the_phones_words() {
     assert!(
         tool.lines
             .iter()
-            .any(|l| l.text == "8 tests, with and without the capability.")
+            .any(|l| l.text == "8 tests, with and without the plugin.")
     );
     assert_eq!(tool.primary.as_ref().unwrap().label, "START THE TEST");
     let others: Vec<&str> = tool.chips.iter().map(|c| c.label.as_str()).collect();
@@ -651,7 +651,7 @@ fn every_worker_card_renders_in_the_phones_words() {
     );
     let draft = phone.card("draft");
     assert_eq!(draft.title, "YOUR TEST SET · DRAFT");
-    assert_eq!(draft.lines[0].text, "Capability: Tidy imports (yours)");
+    assert_eq!(draft.lines[0].text, "Plugin: Tidy imports (yours)");
     assert_eq!(draft.items[0].text, "1 Clean up main.rs.");
     assert_eq!(draft.primary.as_ref().unwrap().label, "LOOKS GOOD");
     let secondary: Vec<&str> = draft.secondary.iter().map(|b| b.label.as_str()).collect();
@@ -902,7 +902,7 @@ fn the_draft_round_trips_through_the_phone_and_each_step_is_a_tap() {
     phone.tap("sheet.close");
     phone.say("Looks good");
     worker.answer(
-        "Tap Try it once to run each test one time with and without the tool, then tell us what to fix, or tap Looks good.",
+        "Tap Try it once to run each test one time with and without the plugin, then tell us what to fix, or tap Looks good.",
         &[
             judgment("eval.author"),
             wire("card-draft"),
@@ -1421,7 +1421,7 @@ fn credit_comes_from_the_phones_own_ledger() {
         card.lines[0].text,
         "Nothing yet. When another trainer checks a result you added, you earn XP here."
     );
-    assert_eq!(card.chips[0].label, "Test a capability");
+    assert_eq!(card.chips[0].label, "Test a plugin");
     gym.standing.results = vec![
         MadeRow {
             id: "a".into(),

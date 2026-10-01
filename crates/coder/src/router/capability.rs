@@ -179,7 +179,7 @@ pub fn builtin() -> Vec<Capability> {
             "chat.gym",
             Kind::Program,
             "The Gym",
-            "Tests a capability on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned.",
+            "Tests a plugin on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned.",
             RouteId::EvalRun,
         ),
     ]
@@ -223,8 +223,7 @@ pub fn of_adoption(adoption: &AdoptionRecord, tools: &[Tool]) -> Capability {
         id: format!("adopted:{}", adoption.release.id),
         kind: Kind::Plugin,
         name: adoption.tool_name.clone(),
-        line: "A capability Coder adopted for everyone, from a published extension release."
-            .to_string(),
+        line: "A plugin Coder adopted for everyone, from a published release.".to_string(),
         reach: Reach::Coder,
         route: None,
         source: adoption.release.id.clone(),

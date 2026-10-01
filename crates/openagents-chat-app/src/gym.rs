@@ -50,10 +50,10 @@ use crate::router::{Offer, Screen};
 /// a reading of the person's words. A test checks them against the
 /// interview's own source.
 pub const GATE_LINES: &[&str] = &[
-    "Is that the tool? Tap Looks good, or tell us what to change.",
+    "Is that the plugin? Tap Looks good, or tell us what to change.",
     "Are these the right tests? Tap Looks good, or tell us what to change.",
     "Are these the right checks? Tap Looks good, or tell us what to change.",
-    "Tap Try it once to run each test one time with and without the tool, then tell us what to fix, or tap Looks good.",
+    "Tap Try it once to run each test one time with and without the plugin, then tell us what to fix, or tap Looks good.",
     "Is that size right? Tap Looks good, or tell us what to change.",
 ];
 
@@ -1674,7 +1674,7 @@ impl Gym {
                         talk: talk.to_owned(),
                         turn,
                         offer: body.clone(),
-                        tool: "the capability".into(),
+                        tool: "the plugin".into(),
                         purpose: Purpose::Test,
                     },
                     &size.unwrap_or(cj::Size {
@@ -1741,10 +1741,10 @@ impl Gym {
                 secondary: vec![],
                 chips: vec![self.actions.button(
                     format!("{id}.test"),
-                    "Test a capability",
+                    "Test a plugin",
                     Some("test"),
                     Action::Say {
-                        text: "Which tool should I try?".into(),
+                        text: "Which plugin should I try?".into(),
                         fresh: false,
                     },
                 )],
@@ -1812,7 +1812,7 @@ impl Gym {
                         // it is; it never splits them by side.
                         let tests = run.cases.max(1);
                         progress.push(Progress {
-                            label: "with and without the capability".into(),
+                            label: "with and without the plugin".into(),
                             done: (*done).min(*planned) * tests / planned,
                             total: tests,
                         });
@@ -2119,10 +2119,10 @@ impl Gym {
             ));
             chips.push(self.actions.button(
                 format!("{id}.test"),
-                "Test a capability",
+                "Test a plugin",
                 Some("test"),
                 Action::Say {
-                    text: "Which tool should I try?".into(),
+                    text: "Which plugin should I try?".into(),
                     fresh: false,
                 },
             ));
@@ -2227,13 +2227,13 @@ impl Gym {
                 marks: vec![mark(case.without), mark(case.with)],
                 text: ui::humane(&case.id),
                 detail: (case.kind == CaseKind::ShouldNotFire.word())
-                    .then(|| "The capability should stay out of the way.".to_owned()),
+                    .then(|| "The plugin should stay out of the way.".to_owned()),
                 trailing: None,
             })
             .collect();
         sections.push(Section {
             heading: Some("TESTS".into()),
-            lines: vec![line("Without the capability, then with it.", Tone::Quiet)],
+            lines: vec![line("Without the plugin, then with it.", Tone::Quiet)],
             items,
         });
         let why = match (run.pilot(), outcome.claim.verdict, run.check()) {
@@ -2244,14 +2244,12 @@ impl Gym {
                 "A check shows whether a result holds up when someone else runs the same tests."
             }
             (false, Verdict3::Pass, None) => {
-                "When other trainers confirm it and it holds up on a test set someone else wrote, Coder can use this capability for everyone."
+                "When other trainers confirm it and it holds up on a test set someone else wrote, Coder can use this plugin for everyone."
             }
             (false, Verdict3::Inconclusive, None) => {
-                "That's useful too. Now everyone knows this capability doesn't help on these tests."
+                "That's useful too. Now everyone knows this plugin doesn't help on these tests."
             }
-            (false, Verdict3::Fail, None) => {
-                "That's useful too. We won't give Coder this capability."
-            }
+            (false, Verdict3::Fail, None) => "That's useful too. We won't give Coder this plugin.",
         };
         sections.push(Section {
             heading: None,
@@ -2317,10 +2315,10 @@ impl Gym {
             ),
             self.actions.button(
                 "sheet.another",
-                "Test another capability",
+                "Test another plugin",
                 Some("test"),
                 Action::Say {
-                    text: "Which tool should I try?".into(),
+                    text: "Which plugin should I try?".into(),
                     fresh: false,
                 },
             ),
@@ -2551,9 +2549,8 @@ impl Gym {
                             .map(|(n, case)| Item {
                                 marks: vec![],
                                 text: format!("{} {}", n + 1, ui::humane(&case.id)),
-                                detail: (case.kind == CaseKind::ShouldNotFire.word()).then(|| {
-                                    "The capability should stay out of the way.".to_owned()
-                                }),
+                                detail: (case.kind == CaseKind::ShouldNotFire.word())
+                                    .then(|| "The plugin should stay out of the way.".to_owned()),
                                 trailing: None,
                             })
                             .collect(),
@@ -2811,7 +2808,7 @@ pub fn next_step(gym: &Gym) -> &'static str {
     if gym.latest_result().is_some() {
         return "Next: check someone else's result for more XP.";
     }
-    "Next: test a capability to see if it makes Coder better."
+    "Next: test a plugin to see if it makes Coder better."
 }
 
 fn line(text: &str, tone: Tone) -> Line {
@@ -2959,13 +2956,15 @@ fn made_items(s: &Standing) -> Vec<Item> {
 /// the ledger.
 fn share_text(s: &Standing) -> String {
     format!(
-        "I'm {} on OpenAgents: level {}, {} XP from testing capabilities for Coder. https://openagents.com",
+        "I'm {} on OpenAgents: level {}, {} XP from testing plugins for Coder. https://openagents.com",
         s.name, s.level, s.xp
     )
 }
 
-/// What a computer run asks Coder to do: run the tool's test set with
-/// `openagents ext eval run`, and publish nothing.
+/// What a computer run asks Coder to do: run the plugin's test set with
+/// `openagents ext eval run`, and publish nothing. It names `ext eval`,
+/// the older name for `plugin test`, so a computer with an older
+/// `openagents` runs it too.
 fn computer_prompt(run: &str, tool: &str, subject: &SubjectSource, runs: u64) -> String {
     let path = format!(".openagents/phone-tests/{run}");
     let id = match subject {
@@ -2973,15 +2972,15 @@ fn computer_prompt(run: &str, tool: &str, subject: &SubjectSource, runs: u64) ->
         SubjectSource::Draft => String::new(),
     };
     format!(
-        "Run the test set for the tool {tool} ({id}) with the OpenAgents command line, and tell \
+        "Run the test set for the plugin {tool} ({id}) with the OpenAgents command line, and tell \
          us how it went. The person started this test from the OpenAgents app on their phone.\n\n\
-         Find the tool's extension directory (Project map, Code finder, and Test reader are \
+         Find the plugin's directory (Project map, Code finder, and Test reader are \
          crates/plugin-repo-map, crates/plugin-code-search, and crates/plugin-test-report in the \
          OpenAgents repository), then run:\n\n\
          openagents ext eval run DIR --trust --grant write --runs {runs} --output-dir {path} \
          --json {path}/result.json\n\n\
          Don't publish anything: the person adds the result to the Gym from their phone. When it \
-         finishes, say how many tests passed with and without the tool, and the verdict, from the \
+         finishes, say how many tests passed with and without the plugin, and the verdict, from the \
          report it wrote."
     )
 }

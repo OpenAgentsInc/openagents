@@ -15,7 +15,7 @@
 //! - Tests in the order the runner runs them: by id.
 //!
 //! The baseline arm is not a file: every run the interview offers compares
-//! with and without the tool (`arms = 2`), which [`super::machine`] checks.
+//! with and without the plugin (`arms = 2`), which [`super::machine`] checks.
 
 use std::collections::BTreeSet;
 
@@ -233,7 +233,7 @@ pub fn enforce(
         }
         if let Some(name) = forbidden.iter().find(|name| names(&parsed.prompt, name)) {
             notes.push(format!(
-                "We left out the test {} because its task names {name}; a test is a task, and whether the tool helps is what we measure.",
+                "We left out the test {} because its task names {name}; a test is a task, and whether the plugin helps is what we measure.",
                 case.id
             ));
             continue;
@@ -241,7 +241,7 @@ pub fn enforce(
         if parsed.runs < DEFAULT_RUNS {
             case.prompt = prompt_md(parsed.kind, &parsed.prompt);
             notes.push(format!(
-                "The test {} runs three times with the tool and three without, so one lucky run doesn't decide it.",
+                "The test {} runs three times with the plugin and three without, so one lucky run doesn't decide it.",
                 case.id
             ));
         }
@@ -296,7 +296,7 @@ pub fn enforce(
         let taken: BTreeSet<String> = kept.iter().map(|c| c.id.clone()).collect();
         kept.push(added_case(tool, &taken));
         notes.push(
-            "We added a test where the tool should stay out of the way: every test set needs at least one."
+            "We added a test where the plugin should stay out of the way: every test set needs at least one."
                 .into(),
         );
     }

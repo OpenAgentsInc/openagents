@@ -15,35 +15,35 @@ use super::render;
 
 /// The interview prompt, `docs/extensions/evaluation.md`, *The interview
 /// prompt*, with `${person}` and `${tool}` to substitute.
-pub const INTERVIEW: &str = r#"# Tool test-set interview
+pub const INTERVIEW: &str = r#"# Plugin test-set interview
 
-You are helping ${person} write a test set for the tool at ${tool}. You
-speak as OpenAgents ("we") in plain words: tool, test, test set, with and
-without the tool.
+You are helping ${person} write a test set for the plugin at ${tool}. You
+speak as OpenAgents ("we") in plain words: plugin, test, test set, with and
+without the plugin.
 
 ## Rules
 
-- You may read the tool. You never edit it.
-- One step per turn. At every gate (the tool's purpose, the test list, the
+- You may read the plugin. You never edit it.
+- One step per turn. At every gate (the plugin's purpose, the test list, the
   checks for each test, the size of the full run) stop and wait for an
   explicit yes. Anything else is a change request: fix and ask again.
-- Keep the floor: at least one test where the tool should stay out of the
+- Keep the floor: at least one test where the plugin should stay out of the
   way, at least one check of the outcome per test, three runs per scored
-  run, and a run without the tool to compare against.
+  run, and a run without the plugin to compare against.
 - A check describes something we can observe: Coder's last message, the
   files it made, or the steps it took. If it can't be observed, it isn't
   a check.
-- Never write a test that tells Coder which tool to use. A test is a task;
-  whether the tool helps is what we measure.
+- Never write a test that tells Coder which plugin to use. A test is a task;
+  whether the plugin helps is what we measure.
 - You propose; the app shows the draft and the person decides. Never say a
   test ran unless the app gave you its result.
 
 ## Steps
 
-0. Confirm which tool this is, or that we're making one. Stop on errors.
-1. Say what the tool is for, what it does, and what it doesn't.
+0. Confirm which plugin this is, or that we're making one. Stop on errors.
+1. Say what the plugin is for, what it does, and what it doesn't.
 2. Ask what a good run and a failed run look like.
-3. Propose 4 to 6 tests where the tool should help and 1 or 2 where it
+3. Propose 4 to 6 tests where the plugin should help and 1 or 2 where it
    shouldn't. Wait for yes.
 4. Propose the checks for each test. Wait for yes.
 5. Offer a one-run try. Read its result with the person and fix the tests.
@@ -59,7 +59,7 @@ interview reads it; the person sees only `say` and the app's cards.
 
 - Write `say` as OpenAgents: "we" and "you". Never write "I", "me", "my",
   or "mine".
-- Use plain words: tool, test, test set, check, with and without the tool.
+- Use plain words: plugin, test, test set, check, with and without the plugin.
 - Keep `say` under 600 characters. The app shows the tests and checks on a
   card, so don't list every one in `say`.
 - Don't end `say` with a question about approval; the app adds that line.
@@ -184,29 +184,29 @@ pub fn task(interview: &Interview, need: &Need) -> String {
     match need {
         Need::Nothing => String::new(),
         Need::Tool { change: asked } if interview.making => format!(
-            "## This turn: step 1, the tool we make\n\n\
-             We are making a tool with the person. A tool made in chat is a skill: \
-             plain-language guidance Coder follows, which may also turn on tools from \
+            "## This turn: step 1, the plugin we make\n\n\
+             We are making a plugin with the person. A plugin made in chat is a skill: \
+             plain-language guidance Coder follows, which may also turn on plugins from \
              `catalog` in the state. It can't contain new code.{}\n\n\
              If you know enough to propose it, answer:\n\
              {{\"say\": \"Here's what we'd make: ... (two or three sentences: what it's for, what it does, what it leaves to the person)\", \
              \"name\": \"a name of two to four words\", \"summary\": \"one sentence\", \
              \"skill\": \"the guidance Coder follows, as short direct instructions, at most 1500 characters\", \
-             \"uses\": [\"exact names of catalog tools it turns on, or none\"]}}\n\n\
-             If you don't know what the tool should do, ask one short question instead:\n\
+             \"uses\": [\"exact names of catalog plugins it turns on, or none\"]}}\n\n\
+             If you don't know what the plugin should do, ask one short question instead:\n\
              {{\"say\": \"the question\", \"asking\": true}}",
             change(asked)
         ),
         Need::Tool { change: asked } => format!(
-            "## This turn: step 1, the tool\n\n\
-             Say what the tool in the state is for, what it does on its own, and what it \
+            "## This turn: step 1, the plugin\n\n\
+             Say what the plugin in the state (`tool`) is for, what it does on its own, and what it \
              leaves to the person, in two to four plain sentences, from its own words.{}\n\n\
              Answer: {{\"say\": \"...\"}}",
             change(asked)
         ),
         Need::Tests { change: asked } => format!(
             "## This turn: step 3, the tests\n\n\
-             Propose 4 to 6 tests where the tool should help (`should-fire`) and 1 or 2 where \
+             Propose 4 to 6 tests where the plugin should help (`should-fire`) and 1 or 2 where \
              it should stay out of the way (`should-not-fire`), at most `most_tests` in all, \
              following what the person said a good and a failed run look like.\n\n\
              - Each test is a task a person would give Coder, in their words. Name each test \
@@ -214,9 +214,9 @@ pub fn task(interview: &Interview, need: &Need) -> String {
              - Each run starts in an empty folder. A task that needs code or files must include \
              them: paste a short file into the task, or ask Coder to write the files first. Coder \
              may read and write files but may not run commands, so never ask for shell commands.\n\
-             - A task never names the tool, its operations, or anything in \
-             `tasks_must_not_name`. A test is a task; whether the tool helps is what we measure.\n\
-             - A test where the tool should stay out of the way is an ordinary task the tool \
+             - A task never names the plugin, its operations, or anything in \
+             `tasks_must_not_name`. A test is a task; whether the plugin helps is what we measure.\n\
+             - A test where the plugin should stay out of the way is an ordinary task the plugin \
              can't help with.{}\n\n\
              Answer: {{\"say\": \"one or two sentences about the tests\", \"tests\": \
              [{{\"id\": \"kebab-case-name\", \"kind\": \"should-fire\", \"task\": \"...\", \
@@ -231,8 +231,8 @@ pub fn task(interview: &Interview, need: &Need) -> String {
              - Prefer a `decision` check: a yes-or-no question about the outcome that someone \
              could answer by reading it, with an optional `rubric` saying what a good outcome \
              looks like.\n\
-             - On tests where the tool should help, add an `operation_used` check that the \
-             tool ran (its operations are in the state; `min` 1). On tests where it should \
+             - On tests where the plugin should help, add an `operation_used` check that the \
+             plugin ran (its operations are in the state; `min` 1). On tests where it should \
              stay out of the way, add one with `max` 0.\n\
              - Use `regex` (`pattern`, `match`: `contains` or `not_contains`) or `file_exists` \
              (`path`, a glob) only for short, exact things.\n\
@@ -246,8 +246,8 @@ pub fn task(interview: &Interview, need: &Need) -> String {
         ),
         Need::Read => "## This turn: step 5, reading the try\n\n\
              The app gave us the result of one try: `result` in the state. Read it with the \
-             person in two to four sentences: how many tests passed with and without the tool, \
-             and what to fix. A test that passes without the tool as well as with it may be too \
+             person in two to four sentences: how many tests passed with and without the plugin, \
+             and what to fix. A test that passes without the plugin as well as with it may be too \
              easy; a check that fails on a good answer may be the wrong check. Use only the \
              numbers in `result`. Suggest at most one fix and say we can make it.\n\n\
              Answer: {\"say\": \"...\"}"
@@ -274,10 +274,10 @@ pub fn task(interview: &Interview, need: &Need) -> String {
 /// The whole instructions for one model call.
 #[must_use]
 pub fn instructions(interview: &Interview, need: &Need, person: &str) -> String {
-    let tool = interview
-        .tool
-        .as_ref()
-        .map_or_else(|| "a tool we make together".to_string(), |t| t.name.clone());
+    let tool = interview.tool.as_ref().map_or_else(
+        || "a plugin we make together".to_string(),
+        |t| t.name.clone(),
+    );
     let head = INTERVIEW
         .replace("${person}", person)
         .replace("${tool}", &tool);
@@ -300,7 +300,7 @@ mod tests {
                 .join("../../docs/extensions/evaluation.md"),
         )
         .unwrap();
-        let start = spec.find("# Tool test-set interview").unwrap();
+        let start = spec.find("# Plugin test-set interview").unwrap();
         let end = start + spec[start..].find("```").unwrap();
         assert_eq!(&spec[start..end], INTERVIEW);
     }

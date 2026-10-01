@@ -82,10 +82,10 @@ impl Stage {
         Some(match (self, surface) {
             (Stage::Start, _) => return None,
             (Stage::Tool, Surface::Chat) => {
-                "Is that the tool? Tap Looks good, or tell us what to change."
+                "Is that the plugin? Tap Looks good, or tell us what to change."
             }
             (Stage::Tool, Surface::Terminal) => {
-                "Is that the tool? Type y to go on, or tell us what to change."
+                "Is that the plugin? Type y to go on, or tell us what to change."
             }
             (Stage::Quality, _) => {
                 "What does a good run look like, and what does a failed one look like?"
@@ -103,7 +103,7 @@ impl Stage {
                 "Are these the right checks? Type y to go on, or tell us what to change."
             }
             (Stage::Pilot, Surface::Chat) => {
-                "Tap Try it once to run each test one time with and without the tool, then tell us what to fix, or tap Looks good."
+                "Tap Try it once to run each test one time with and without the plugin, then tell us what to fix, or tap Looks good."
             }
             (Stage::Pilot, Surface::Terminal) => {
                 "Type y when the tests look right, or tell us what to fix."

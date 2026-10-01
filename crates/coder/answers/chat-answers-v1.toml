@@ -524,74 +524,75 @@ sources = ["docs/game/playtesting.md"]
 # records pick. An entry with `records = true` says something about what
 # the Gym's verified records hold, so crates/coder/src/router/gym.rs picks
 # it from those records and the `answer` question never offers it; its
-# {tool} and {tests} slots are filled only from a verified record.
+# {tool} and {tests} slots are filled only from a verified record. The slot
+# and id names keep "tool"; the words people read say "plugin" (#10087).
 # ---------------------------------------------------------------------------
 
 [[answer]]
 id = "gym.what"
-version = 1
+version = 2
 routes = ["product.kb", "general"]
-when = "The user asks what the OpenAgents Gym is, what it's for, or what they can do there; not what's new in it, what a test or a tool is, or how their own test did"
-not_for = "What's new in the Gym (gym.news), or what a test or a tool is (gym.what_test, gym.what_tool)"
+when = "The user asks what the OpenAgents Gym is, what it's for, or what they can do there; not what's new in it, what a test or a plugin is, or how their own test did"
+not_for = "What's new in the Gym (gym.news), or what a test or a plugin is (gym.what_test, gym.what_tool)"
 examples = ["what is the gym for", "what do people do in the gym"]
-text = "The Gym is where we test the tools Coder, our coding agent, uses. We run the same tests with a tool and without it, so you can see whether it makes Coder better. You can start a test right here in chat, add your result to the Gym, and check other trainers' results to earn XP. The Gym in the Verse shows the results on a board."
+text = "The Gym is where we test plugins for Coder, our coding agent. We run the same tests with a plugin and without it, so you can see whether it makes Coder better. You can start a test right here in chat, add your result to the Gym, and check other trainers' results to earn XP. The Gym in the Verse shows the results on a board."
 chip = "What's the Gym?"
 sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.gym-results.md", "docs/verse/gym.md"]
 followups = ["gym.what_tool", "gym.what_test", "eval.credit.how"]
 
 [[answer]]
 id = "gym.what_test"
-version = 1
+version = 2
 routes = ["product.kb", "general"]
 when = "The user asks what a test or a test set is in the Gym, or what a test checks; not how their own test did, how to run one, or how XP from tests works"
 examples = ["what does a test check?", "what counts as a test in the gym"]
-text = "A test is one task we give Coder, with checks on how it went: its last message, the files it made, or the steps it took. A test set is the tests for one tool, and we run each test with the tool and without it to see whether Coder does better."
+text = "A test is one task we give Coder, with checks on how it went: its last message, the files it made, or the steps it took. A test set is the tests for one plugin, and we run each test with the plugin and without it to see whether Coder does better."
 chip = "What's a test?"
 sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tests.md"]
 followups = ["gym.what_tool", "eval.credit.how"]
 
 [[answer]]
 id = "gym.what_tool"
-version = 1
+version = 2
 routes = ["product.kb", "general"]
-when = "The user asks what a tool is in the Gym or for Coder, or which kinds of tools there are; not what one named tool does"
-not_for = "What one named tool such as Project map does, which our notes answer"
-examples = ["what is a tool in the gym", "What's a tool?"]
-text = "A tool is something Coder, our coding agent, can use while it works, such as Project map, Code finder, or Test reader. In the Gym we test a tool by running the same tests with it and without it, so you can see whether it makes Coder better."
-chip = "What's a tool?"
-sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md"]
+when = "The user asks what a plugin is (or a tool, capability, or extension), what a plugin contains, or which kinds of plugins there are; not what one named plugin does"
+not_for = "What one named plugin such as Project map does, which our notes answer"
+examples = ["what is a plugin", "What's a plugin?", "what is a tool in the gym"]
+text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map, Code finder, and Test reader are plugins. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
+chip = "What's a plugin?"
+sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md", "docs/plugins/README.md"]
 followups = ["gym.what_test"]
 
 [[answer]]
 id = "eval.credit.how"
-version = 2
+version = 3
 routes = ["eval.credit"]
-when = "The user asks how they earn XP or credit from tests, test sets, checks, or tools, or whether that credit pays money; not what they have earned so far"
-examples = ["How do I earn XP from tests?", "do I get paid for my tests?", "what earns xp in the gym", "what do I get when someone checks my result", "what happens when coder adopts my tool"]
-text = "You can test a tool here in chat, make your own tool and its tests with us, and add your results to the Gym. You earn XP when your work is used: when another trainer checks a result you added and gets the same verdict, when you check someone else's result, or when Coder adopts your tool for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
+when = "The user asks how they earn XP or credit from tests, test sets, checks, or plugins, or whether that credit pays money; not what they have earned so far"
+examples = ["How do I earn XP from tests?", "do I get paid for my tests?", "what earns xp in the gym", "what do I get when someone checks my result", "what happens when coder adopts my plugin"]
+text = "You can test a plugin here in chat, make your own plugin and its tests with us, and add your results to the Gym. You earn XP when your work is used: when another trainer checks a result you added and gets the same verdict, when you check someone else's result, or when Coder adopts your plugin for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
 chip = "How do I earn XP from tests?"
 sources = ["docs/extensions/evaluation.md", "nips/openagents/NIP-XP.md", "knowledge/openagents/openagents.credit.md"]
 followups = ["eval.credit.mine", "gym.what_test"]
 
 [[answer]]
 id = "eval.credit.mine"
-version = 2
+version = 3
 routes = ["eval.credit"]
-when = "The user asks what their tests, results, checks, or tools have earned so far, who checked their work, or whether Coder adopted their tool"
+when = "The user asks what their tests, results, checks, or plugins have earned so far, who checked their work, or whether Coder adopted their plugin"
 not_for = "What they would get, or how XP from tests works in general (eval.credit.how)"
-examples = ["What have I earned?", "did coder adopt my tool", "who checked my results"]
-text = "Your XP from tests comes when another trainer's check confirms a result you added to the Gym, when you check someone else's result, or when Coder adopts your tool. The menu's Profile shows what you made and what it earned, and your trainer card under Account shows your XP and level. XP can't be spent."
+examples = ["What have I earned?", "did coder adopt my plugin", "who checked my results"]
+text = "Your XP from tests comes when another trainer's check confirms a result you added to the Gym, when you check someone else's result, or when Coder adopts your plugin. The menu's Profile shows what you made and what it earned, and your trainer card under Account shows your XP and level. XP can't be spent."
 chip = "What have I earned?"
 sources = ["docs/extensions/evaluation.md", "docs/product/2026-09-28-app-wireframe.md"]
 followups = ["eval.credit.how"]
 
 [[answer]]
 id = "eval.author.soon"
-version = 2
+version = 3
 routes = ["eval.author"]
 records = true
-when = "Picked by code when the authoring interview is not wired or its step failed its checks: the user wants to make a tool or a test set with us"
-text = "We couldn't start making a tool with you this time. Ask us again in a moment. Meanwhile, we can tell you what a test is, what's new in the Gym, or how tools help Coder."
+when = "Picked by code when the authoring interview is not wired or its step failed its checks: the user wants to make a plugin or a test set with us"
+text = "We couldn't start making a plugin with you this time. Ask us again in a moment. Meanwhile, we can tell you what a test is, what's new in the Gym, or how plugins help Coder."
 sources = ["docs/extensions/evaluation.md"]
 followups = ["gym.what_test", "gym.what_tool"]
 
@@ -600,7 +601,7 @@ id = "eval.run.offer"
 version = 1
 routes = ["eval.run"]
 records = true
-when = "Picked from the Gym's records: the user wants to test a tool that has a published test set"
+when = "Picked from the Gym's records: the user wants to test a plugin that has a published test set"
 text = "We'd test {tool} with its published test set: {tests} tests, each run with {tool} and without it, so you can see whether Coder does better. Nothing runs until you start it."
 facts = { tool = "gym.tool", tests = "gym.tests" }
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
@@ -610,7 +611,7 @@ id = "eval.run.no_tests"
 version = 1
 routes = ["eval.run"]
 records = true
-when = "Picked from the Gym's records: the user wants to test a tool that has no published test set yet"
+when = "Picked from the Gym's records: the user wants to test a plugin that has no published test set yet"
 text = "{tool} doesn't have a published test set yet, so there's nothing to run. When one is added to the Gym, we'll offer to run it here."
 facts = { tool = "gym.tool" }
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
@@ -640,7 +641,7 @@ id = "eval.result.tool"
 version = 1
 routes = ["eval.result"]
 records = true
-when = "Picked from the Gym's records: the latest published result for the tool the user named"
+when = "Picked from the Gym's records: the latest published result for the plugin the user named"
 text = "Here's the latest published result for {tool}, from the Gym's records."
 facts = { tool = "gym.tool" }
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
@@ -674,29 +675,30 @@ text = "Here's what's new in the Gym."
 sources = ["crates/coder/src/router/gym.rs", "crates/coder/src/gym_kb.rs"]
 
 # ---------------------------------------------------------------------------
-# capability.missing (#9960): the user asked for something a capability
-# could do, and none of the admitted ones does it. Picked by code from the
+# capability.missing (#9960): the user asked for something a plugin could
+# do, and none of the admitted ones does it ("There's no plugin for that
+# yet", #10087; the route id keeps its name). Picked by code from the
 # `capability` reading; the {capability} and {capability_line} slots come
 # from an entry of the admitted-capability set, never from the message.
 # ---------------------------------------------------------------------------
 
 [[answer]]
 id = "capability.missing"
-version = 1
+version = 2
 routes = ["capability.missing"]
 records = true
-when = "Picked by code: the user asks us to do or reach something that would take a capability none of ours covers, and none is close"
-text = "There's no capability for that yet. Anyone can add one and test it in the Gym, so everyone can see whether it helps."
+when = "Picked by code: the user asks us to do or reach something that would take a plugin none of ours covers, and none is close"
+text = "There's no plugin for that yet. Want to make one? Anyone can make a plugin and test it in the Gym, so everyone can see whether it helps."
 sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
 followups = ["gym.what", "eval.credit.how"]
 
 [[answer]]
 id = "capability.missing_near"
-version = 1
+version = 2
 routes = ["capability.missing"]
 records = true
-when = "Picked by code: the user asks us to do or reach something that would take a capability none of ours covers, and one admitted capability is close to it"
-text = "There's no capability for that yet. The closest one we have is {capability}: {capability_line} Anyone can add one and test it in the Gym, so everyone can see whether it helps."
+when = "Picked by code: the user asks us to do or reach something that would take a plugin none of ours covers, and something we have is close to it"
+text = "There's no plugin for that yet. The closest thing we have is {capability}: {capability_line} Want to make one? Anyone can make a plugin and test it in the Gym, so everyone can see whether it helps."
 facts = { capability = "capability.name", capability_line = "capability.line" }
 sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
 followups = ["gym.what", "eval.credit.how"]

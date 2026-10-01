@@ -168,7 +168,7 @@ pub fn refused(code: &str) -> (String, bool) {
             false,
         ),
         hosted::NOT_ADMITTED => (
-            "Our test computers don't run this capability or test set.".into(),
+            "Our test computers don't run this plugin or test set.".into(),
             false,
         ),
         hosted::TOO_LARGE => (

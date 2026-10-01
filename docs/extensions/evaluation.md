@@ -139,8 +139,8 @@ changes the following.
 
 | Term | Meaning |
 | --- | --- |
-| Capability | What a person adds and a test set measures: a program, a plugin (a Wasm guest), a skill, or a knowledge entry ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). The umbrella word here and on the phone. |
-| Extension | An installed package, or a working directory with a package record, that carries a capability: a program, a Wasm guest, or a skill. The container, never the thing. |
+| Plugin | What a person adds and a test set measures: its skills, workflows (programs), knowledge, Wasm, and tests ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). The word on the phone, in chat, and in the CLI (`openagents plugin test`). In the measured sense, a test result establishes a *capability*: what admitting the plugin changed. |
+| Extension | An installed package, or a working directory with a package record, that carries a plugin's parts: a program, a Wasm guest, or a skill. The container, never the thing. |
 | Suite | Every case under the extension's eval directory. The phone calls it a **test set**. |
 | Case | A directory with `prompt.md`, optional `graders/`, and an optional `case.toml`. The phone calls it a **test**. |
 | Grader | A scored check over a run's trajectory, final message, or created files. |
@@ -155,33 +155,33 @@ changes the following.
 Engineering words stay in code, the CLI, and this page. The phone uses
 plain words (see the wireframe's
 [Words on screen](../product/2026-09-28-app-wireframe.md#words-on-screen));
-*capability* is the one umbrella on screen, decided 2026-09-29
-([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957)), and
-[#9958](https://github.com/OpenAgentsInc/openagents/issues/9958) renames
-build 21's **Tool** labels.
+*plugin* is the one word on screen, decided 2026-10-01
+([#10087](https://github.com/OpenAgentsInc/openagents/issues/10087)). It
+replaced *capability* (2026-09-29, [#9957](https://github.com/OpenAgentsInc/openagents/issues/9957)),
+which had replaced build 21's **Tool** labels.
 
 | Here | On the phone |
 | --- | --- |
-| Capability, in its extension package | **Capability** (Project map, Code finder, and Test reader keep their names) |
+| Plugin, in its extension package | **Plugin** (Project map, Code finder, and Test reader keep their names) |
 | Suite | **Test set** |
 | Case | **Test** |
-| Subject and baseline arms | **With** the capability and **without** it |
+| Subject and baseline arms | **With** the plugin and **without** it |
 | Suite score | **Passes 7 of 8 tests** |
 | Verdict `pass`, gate keep, inconclusive, reject | **Better**, **No clear change**, **Worse** |
 | Publish (`3189`) | **Add to the Gym** |
 | Check | **Check a result** |
-| `eval-check` and `eval-adopt` XP | **XP**, and "Coder has this capability now" |
+| `eval-check` and `eval-adopt` XP | **XP**, and "Coder can use this plugin for everyone" |
 
 ## Quick start
 
 ```sh
-cd my-extension                        # a directory with a package record
-openagents ext eval init               # interview: writes evals/<case>/
-openagents ext eval init smoke --bare  # or a blank single-case template
-openagents ext eval run .              # every case under ./evals/, both arms
-openagents ext eval run . --runs 1 --case smoke   # a cheap pilot
-openagents ext eval publish evals/results/<timestamp>/report.json
-openagents ext eval check <publication event id>  # rerun someone's result
+cd my-plugin                              # a directory with a package record
+openagents plugin test init               # interview: writes evals/<case>/
+openagents plugin test init smoke --bare  # or a blank single-case template
+openagents plugin test run .              # every case under ./evals/, both arms
+openagents plugin test run . --runs 1 --case smoke   # a cheap pilot
+openagents plugin test publish evals/results/<timestamp>/report.json
+openagents plugin test check <publication event id>  # rerun someone's result
 ```
 
 A run prints progress on stderr and a summary table on stdout, and writes
@@ -190,9 +190,12 @@ document), `report.html` (a self-contained view of it), and `runs/` (each
 run's ATIF log and the files it created). Nothing leaves the machine until
 `publish`.
 
-`run`, `init`, `publish`, and `check` are the commands of `openagents ext
-eval`, beside the existing `ext list`. The decision-door command
-`openagents eval run|report|compare` is unchanged.
+`run`, `init`, `release`, `publish`, and `check` are the commands of
+`openagents plugin test`, beside `plugin list` and `plugin defaults`.
+`openagents ext eval` is the older name and still works, as `ext` does for
+every `plugin` command; the rest of this page writes it that way where it
+records what ran. The decision-door command `openagents eval
+run|report|compare` is unchanged.
 
 ## Targets
 
@@ -425,7 +428,7 @@ short grace period; a second signal exits at once.
 Built ([#9934](https://github.com/OpenAgentsInc/openagents/issues/9934)):
 the runner is `ext_eval::run` (with `sandbox`, `child`, `proxy`, `arms`,
 `live`, `replay`, `publish`, `check`, and `blob` beside it) and the command
-is `openagents ext eval` ([the CLI reference](../cli/README.md#extension-evals-ext-eval)).
+is `openagents ext eval` ([the CLI reference](../cli/README.md#plugins-openagents-plugin)).
 Where v1 goes beyond or narrows this section: the child's door is a
 per-run loopback proxy with a random token, so the door key never enters
 the child at all; the child's environment is built from nothing rather
@@ -742,35 +745,35 @@ not here alone.
 ### The interview prompt
 
 ```text
-# Tool test-set interview
+# Plugin test-set interview
 
-You are helping ${person} write a test set for the tool at ${tool}. You
-speak as OpenAgents ("we") in plain words: tool, test, test set, with and
-without the tool.
+You are helping ${person} write a test set for the plugin at ${tool}. You
+speak as OpenAgents ("we") in plain words: plugin, test, test set, with and
+without the plugin.
 
 ## Rules
 
-- You may read the tool. You never edit it.
-- One step per turn. At every gate (the tool's purpose, the test list, the
+- You may read the plugin. You never edit it.
+- One step per turn. At every gate (the plugin's purpose, the test list, the
   checks for each test, the size of the full run) stop and wait for an
   explicit yes. Anything else is a change request: fix and ask again.
-- Keep the floor: at least one test where the tool should stay out of the
+- Keep the floor: at least one test where the plugin should stay out of the
   way, at least one check of the outcome per test, three runs per scored
-  run, and a run without the tool to compare against.
+  run, and a run without the plugin to compare against.
 - A check describes something we can observe: Coder's last message, the
   files it made, or the steps it took. If it can't be observed, it isn't
   a check.
-- Never write a test that tells Coder which tool to use. A test is a task;
-  whether the tool helps is what we measure.
+- Never write a test that tells Coder which plugin to use. A test is a task;
+  whether the plugin helps is what we measure.
 - You propose; the app shows the draft and the person decides. Never say a
   test ran unless the app gave you its result.
 
 ## Steps
 
-0. Confirm which tool this is, or that we're making one. Stop on errors.
-1. Say what the tool is for, what it does, and what it doesn't.
+0. Confirm which plugin this is, or that we're making one. Stop on errors.
+1. Say what the plugin is for, what it does, and what it doesn't.
 2. Ask what a good run and a failed run look like.
-3. Propose 4 to 6 tests where the tool should help and 1 or 2 where it
+3. Propose 4 to 6 tests where the plugin should help and 1 or 2 where it
    shouldn't. Wait for yes.
 4. Propose the checks for each test. Wait for yes.
 5. Offer a one-run try. Read its result with the person and fix the tests.

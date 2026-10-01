@@ -125,11 +125,11 @@ impl Tried {
     pub fn headline(&self) -> String {
         match self.without {
             Some(without) => format!(
-                "With the tool, Coder passed {} of {} tests; without it, {} of {}.",
+                "With the plugin, Coder passed {} of {} tests; without it, {} of {}.",
                 self.with, self.total, without, self.total
             ),
             None => format!(
-                "With the tool, Coder passed {} of {} tests.",
+                "With the plugin, Coder passed {} of {} tests.",
                 self.with, self.total
             ),
         }
@@ -168,7 +168,7 @@ pub struct NoRunner;
 impl Runner for NoRunner {
     fn run(&self, request: &RunRequest<'_>) -> Result<Tried, String> {
         Err(format!(
-            "this openagents can't run tests from the interview yet; after the test set is written, run `openagents ext eval run <extension> --runs {}`",
+            "this openagents can't run tests from the interview yet; after the test set is written, run `openagents plugin test run <plugin> --runs {}`",
             request.runs
         ))
     }
