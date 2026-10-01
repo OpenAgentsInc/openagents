@@ -689,16 +689,9 @@ impl Launch for Process {
             .find_map(|line| serde_json::from_str(line).ok())
             .unwrap_or_default();
         if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "the controller refused the launch: {}",
-                error
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .chars()
-                    .take(200)
-                    .collect::<String>()
+            return Err(refused(
+                &engine.controller,
+                &String::from_utf8_lossy(&output.stderr),
             ));
         }
         Ok(Launched {
@@ -708,6 +701,39 @@ impl Launch for Process {
                 .unwrap_or(0),
             grant_digest: value["grant_digest"].as_str().unwrap_or("").to_owned(),
         })
+    }
+}
+
+/// Why the engine at `controller` refused a launch, in plain words, from
+/// the first line it wrote to standard error (#10113). The engine writes
+/// `{"error": ...}`; the person sees its sentence, never the JSON. An
+/// engine that cannot read the grant's shape is older than this program,
+/// and the sentence says so and how to update it.
+fn refused(controller: &Path, stderr: &str) -> String {
+    let line = stderr
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    let said = match serde_json::from_str::<serde_json::Value>(line) {
+        Ok(value) => value["error"].as_str().map(str::to_owned),
+        Err(_) => Some(line.to_owned()).filter(|line| !line.is_empty()),
+    };
+    match said {
+        Some(error) if error == owner::GRANT_SHAPE => format!(
+            "the Coder engine at {} is older than this program; reinstall the OpenAgents app \
+             or rebuild microcoder",
+            controller.display()
+        ),
+        Some(error) => format!(
+            "the controller refused the launch: {}",
+            error
+                .chars()
+                .filter(|ch| !ch.is_control())
+                .take(200)
+                .collect::<String>()
+        ),
+        None => "the controller refused the launch without saying why".to_owned(),
     }
 }
 
@@ -4265,6 +4291,76 @@ mod tests {
                 dir.path().to_string_lossy().into_owned(),
             ]),
             2
+        );
+    }
+
+    /// #10113: a dev build ran an older `~/.openagents/bin/microcoder`
+    /// that could not read the newer grant, and the person saw the
+    /// engine's raw JSON. A refusal is a plain sentence: an older engine
+    /// is named with how to update it, and any other refusal shows the
+    /// engine's own words, never its JSON.
+    #[test]
+    #[cfg(unix)]
+    fn an_older_engine_is_named_in_plain_words() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let engine = |name: &str, stderr: &str| {
+            let path = temp.path().join(name);
+            std::fs::write(
+                &path,
+                format!("#!/bin/sh\nprintf '%s\\n' '{stderr}' >&2\nexit 2\n"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            Engine {
+                adapter: adapter::NAME.into(),
+                controller: path,
+                model: "gpt-6-luna".into(),
+                effort: None,
+                max_steps: None,
+                wall_seconds: None,
+                memory_bytes: 1 << 30,
+                write_workspace: false,
+                decision_endpoint: "https://api.typesafe.ai".into(),
+                decision_model: "jev-latest".into(),
+                routes: Vec::new(),
+                usage_probe: None,
+                access: adapter::Access::Full,
+            }
+        };
+        let grant = temp.path().join("grant.json");
+        let store = temp.path().join("tasks");
+        let older = engine(
+            "microcoder",
+            &format!(r#"{{"error":"{}"}}"#, owner::GRANT_SHAPE),
+        );
+        let said = Process.launch(&older, &grant, &store).unwrap_err();
+        assert_eq!(
+            said,
+            format!(
+                "the Coder engine at {} is older than this program; reinstall the OpenAgents \
+                 app or rebuild microcoder",
+                older.controller.display()
+            )
+        );
+        assert!(!said.contains('{'), "{said}");
+        let other = engine(
+            "other",
+            r#"{"error":"no task store path","cause":"configuration"}"#,
+        );
+        assert_eq!(
+            Process.launch(&other, &grant, &store).unwrap_err(),
+            "the controller refused the launch: no task store path"
+        );
+        let bare = engine("bare", "{}");
+        assert_eq!(
+            Process.launch(&bare, &grant, &store).unwrap_err(),
+            "the controller refused the launch without saying why"
+        );
+        let words = engine("words", "cannot open the grant");
+        assert_eq!(
+            Process.launch(&words, &grant, &store).unwrap_err(),
+            "the controller refused the launch: cannot open the grant"
         );
     }
 

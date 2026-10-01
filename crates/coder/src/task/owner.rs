@@ -21,6 +21,10 @@ pub const BOUNDED_COMMAND_STEERING: coder_delegate::steering::Steering =
     };
 
 pub const GRANT_SCHEMA: &str = "openagents.coder.task-execution-grant.v1";
+/// The refusal an engine gives a grant whose fields it cannot read: one
+/// written by a newer program, with a field the engine does not know or
+/// without one it still requires (#10113).
+pub const GRANT_SHAPE: &str = "the execution grant has an invalid shape";
 const MAX_HOST_EVENTS: usize = 8192;
 
 /// The fixed, root-owned paths `git` is taken from, in order: where
@@ -153,8 +157,8 @@ impl Grant {
         let value = parse_strict_bounded(bytes, MAX_COMMAND_BYTES).map_err(|_| {
             Error::InvalidCommand("the execution grant must be bounded strict JSON")
         })?;
-        let grant: Self = serde_json::from_value(value)
-            .map_err(|_| Error::InvalidCommand("the execution grant has an invalid shape"))?;
+        let grant: Self =
+            serde_json::from_value(value).map_err(|_| Error::InvalidCommand(GRANT_SHAPE))?;
         grant.validate()?;
         Ok(grant)
     }
