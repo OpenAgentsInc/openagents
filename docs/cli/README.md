@@ -974,13 +974,13 @@ openagents cap list --profile executor --limit 20
 openagents cap describe PUBKEY:SLUG
 openagents prg list --step delegate
 openagents prg describe --author PUBKEY SLUG
-openagents ext list                        # listings; --type release|revocation|migration|checkpoint
-openagents ext list --package ROOT_PUBKEY:SLUG
+openagents plugin list                     # listings; --type release|revocation|migration|checkpoint
+openagents plugin list --package ROOT_PUBKEY:SLUG
 openagents discover --origin https://openagents.com
 openagents discover --fetch --timeout 5    # compare what the origin serves
 ```
 
-`cap`, `prg`, and `ext` read published heads from one relay (`--relay`,
+`cap`, `prg`, and `plugin list` read published heads from one relay (`--relay`,
 `--timeout`, and `--as` for NIP-42) and never run a probe, install a
 package, or mint a grant. Every record carries `valid` and, when the
 signature, kind, marker, or body fails the contract, a `refusal`, so a
@@ -989,24 +989,35 @@ head it found is invalid. `discover` prints the agent card and agent-skills
 index this checkout serves for an origin; `--fetch` also reads both from the
 origin over HTTP and exits 1 when either differs or fails to load.
 
-## Extension evals (`ext eval`)
+## Plugins (`openagents plugin`)
+
+A plugin is anything you add to OpenAgents: skills, workflows, knowledge,
+Wasm, and the tests that show whether it helps ([plugins](../plugins/README.md)).
+`openagents plugin` lists published plugins, tests a plugin with and
+without it, publishes and checks results, and syncs the plugins Coder uses
+for everyone. `openagents ext` is the older name for the same command, and
+`ext eval` for `plugin test`; both keep working.
 
 ```sh
-cd my-extension                                  # holds package.json
-openagents ext eval init                         # the authoring interview
-openagents ext eval init smoke --bare            # a blank evals/smoke/
-openagents ext eval run . --trust                # every case, both arms
-openagents ext eval run . --runs 1 --case smoke  # a cheap pilot
-openagents ext eval run . --grant write          # cases that write files
-openagents --json ext eval run . out.json        # the report, not the table
-openagents ext eval publish evals/results/TIMESTAMP/report.json
-openagents ext eval check EVENT_ID               # rerun someone's result here
+cd my-plugin                                         # holds package.json
+openagents plugin test init                          # the authoring interview
+openagents plugin test init smoke --bare             # a blank evals/smoke/
+openagents plugin test run . --trust                 # every test, with and without
+openagents plugin test run . --runs 1 --case smoke   # a cheap try
+openagents plugin test run . --grant write           # tests that write files
+openagents --json plugin test run . out.json         # the report, not the table
+openagents plugin test release . --blobs-dir DIR     # release a test set without running it
+openagents plugin test publish evals/results/TIMESTAMP/report.json
+openagents plugin test check EVENT_ID                # rerun someone's result here
+openagents plugin defaults sync                      # the plugins Coder uses for everyone
+openagents plugin defaults show
 ```
 
-`ext eval run` measures whether an extension changes what Coder does
-([the specification](../extensions/evaluation.md)). Each case runs as one
+`plugin test run` measures whether a plugin changes what Coder does
+([the specification](../extensions/evaluation.md), which calls a plugin
+test an *extension eval* and a test a *case*). Each case runs as one
 `coder -p` turn per arm per attempt: the **subject** arm admits the
-extension's program (and the Wasm guests it carries) through
+plugin's workflow (and the Wasm it carries) through
 `CODER_PROGRAMS` and its `skills/*.md` as guidance appended to Coder's
 instructions; the **baseline** arm admits nothing. Every run gets a new
 `oa-eval-XXXXXX` directory and runs inside `coder-boundary`
@@ -1015,7 +1026,7 @@ refuses as `unconfined_host`. The child sees no variable of your shell: it
 gets a door URL and a token for a loopback proxy that holds the real key,
 so the key never reaches the child, its trajectory, or the results.
 
-An extension directory holds its package record in `package.json` (the
+A plugin directory holds its package record in `package.json` (the
 `coder::package::Package` record, with an optional `eval_dir`), the
 programs it names under `programs/`, and its skills under `skills/`. An
 installed identity `PUBKEY:SLUG@VERSION` resolves under
@@ -1044,7 +1055,7 @@ stop every live child.
 `3184` release signed by its author, and publishes the result once as a
 NIP-EVAL `3189` with the report inline, signed by the evaluator; a second
 `publish` reuses both. `check EVENT [TARGET]` fetches that result and its
-suite, verifies every byte, refuses unless TARGET is the same extension
+suite, verifies every byte, refuses unless TARGET is the same plugin
 (its package record and run lock), reruns the suite, and publishes a
 `3189` citing the original. It prints `confirm` or `dispute` and exits 0
 only on a confirm.

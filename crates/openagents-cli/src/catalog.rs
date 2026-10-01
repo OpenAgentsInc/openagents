@@ -55,29 +55,38 @@ pub(crate) const PRG_EFFECTS: &[Declared] = &[
     Declared::computer("describe", Effect::ReadOnly),
 ];
 
-pub(crate) const EXT_USAGE: &str = "usage: openagents ext COMMAND [OPTIONS]
+pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]
-        List published extension records. TYPE is listing (default),
+        List published plugin records (NIP-EXT). TYPE is listing (default),
         release, revocation, migration, or checkpoint.
-  eval run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
+  test run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH]
       [--questions DIR]
-        Run an extension's eval suite with the extension and without it.
-  eval init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]
-        Write a test set with the authoring interview for the extension at
-        TARGET, or with --bare a blank case named TARGET from the template.
-  eval publish REPORT [--blossom URL]
-        Add an eval result to the Gym: its suite release and a 3189 result.
-  eval check EVENT [TARGET] [--runs N] [--concurrency N] [--trust] [--coder PATH]
+        Run a plugin's tests with the plugin and without it.
+  test init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]
+        Write a test set with the authoring interview for the plugin at
+        TARGET, or with --bare a blank test named TARGET from the template.
+  test release TARGET [--eval-dir DIR] [--gate ID] [--blossom URL]
+        Release TARGET's test set as a NIP-EXT release without running it.
+  test publish REPORT [--blossom URL]
+        Add a test result to the Gym: its test set's release and a 3189 result.
+  test check EVENT [TARGET] [--runs N] [--concurrency N] [--trust] [--coder PATH]
       [--questions DIR] [--blossom URL]
-        Rerun a published eval result and publish a confirm or a dispute.
+        Rerun a published test result and publish a confirm or a dispute.
+  defaults sync [--root PUBKEY] [--catalog DIR]... [--into DIR]
+        Write the plugins Coder uses for everyone (the newest coder-defaults
+        release) into the directory Coder reads.
+  defaults show [--into DIR]
+        Print what the last sync wrote.
 Options for every command:
   --relay URL         Relay to read (default wss://relay.openagents.com).
   --timeout SECONDS   How long to wait for the relay (default 8).
   --as PROFILE        Verse profile key that answers a NIP-42 challenge.
 Listing a record installs nothing; a listing is discovery, not a pin.
-Run `openagents ext eval --help` for the eval commands in full.";
+`ext` is another name for `plugin`, and `eval` for `test`.
+Run `openagents plugin test --help` and `openagents plugin defaults --help`
+for those commands in full.";
 
 #[cfg(test)]
 pub(crate) const EXT_EFFECTS: &[Declared] = &[
@@ -86,6 +95,9 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     crate::ext_eval::EFFECTS[1],
     crate::ext_eval::EFFECTS[2],
     crate::ext_eval::EFFECTS[3],
+    crate::ext_eval::EFFECTS[4],
+    Declared::computer("defaults sync", Effect::LocalWrite),
+    Declared::computer("defaults show", Effect::ReadOnly),
 ];
 
 const DEFAULT_LIMIT: u64 = 100;
@@ -103,7 +115,7 @@ impl Group {
         match self {
             Self::Cap => "cap",
             Self::Prg => "prg",
-            Self::Ext => "ext",
+            Self::Ext => "plugin",
         }
     }
 
@@ -140,8 +152,13 @@ pub fn prg(output: &Output, words: &[String]) -> u8 {
     run(Group::Prg, output, words)
 }
 
+/// `openagents plugin …`, also `openagents ext …`. `test` is the plugin's
+/// with-and-without evaluation, also `eval`.
 pub fn ext(output: &Output, words: &[String]) -> u8 {
-    if words.first().is_some_and(|word| word == "eval") {
+    if words
+        .first()
+        .is_some_and(|word| word == "test" || word == "eval")
+    {
         return crate::ext_eval::run(output, &words[1..]);
     }
     if words.first().is_some_and(|word| word == "defaults") {

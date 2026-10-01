@@ -141,7 +141,7 @@ async fn the_terminal_walks_every_gate_and_never_writes_into_the_extension() {
         at += found + line.len();
     }
     assert!(
-        screen.contains("With the tool, Coder passed 5 of 5 tests; without it, 1 of 5."),
+        screen.contains("With the plugin, Coder passed 5 of 5 tests; without it, 1 of 5."),
         "{screen}"
     );
     assert!(screen.contains("we can't price that from here"), "{screen}");
@@ -187,7 +187,7 @@ async fn a_read_only_extension_without_out_writes_nothing_and_says_why() {
         panic!("the write is refused: {result:?}")
     };
     assert!(
-        message.contains("nothing was written into the extension"),
+        message.contains("nothing was written into the plugin"),
         "{message}"
     );
     assert_eq!(snapshot(ext.path()), before);
@@ -205,7 +205,7 @@ async fn a_directory_that_isnt_an_extension_stops_at_step_zero() {
         Vec::new(),
     )
     .await;
-    assert!(matches!(result, Err(Stop::Usage(message)) if message.contains("is not an extension")));
+    assert!(matches!(result, Err(Stop::Usage(message)) if message.contains("is not a plugin")));
     // A record whose pinned program bytes changed doesn't resolve.
     extension(dir.path());
     std::fs::write(

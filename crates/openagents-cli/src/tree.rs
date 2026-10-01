@@ -135,10 +135,17 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::catalog::PRG_EFFECTS,
         ),
         group(
-            "ext",
+            "plugin",
             Some(crate::catalog::EXT_USAGE),
             crate::catalog::EXT_EFFECTS,
         ),
+        // `ext` is the older name for `plugin`.
+        GroupHelp {
+            name: "ext",
+            usage: None,
+            declared: &[],
+            alias: true,
+        },
         group(
             "discover",
             Some(crate::discover::USAGE),

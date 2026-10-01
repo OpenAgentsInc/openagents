@@ -274,7 +274,7 @@
    "message": "what extensions are listed on the relay?",
    "expect": "proposal",
    "command": [
-    "ext",
+    "plugin",
     "list"
    ]
   },
@@ -284,7 +284,7 @@
    "message": "are there any extension records published?",
    "expect": "proposal",
    "command": [
-    "ext",
+    "plugin",
     "list"
    ]
   },

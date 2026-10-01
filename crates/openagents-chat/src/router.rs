@@ -389,7 +389,7 @@ pub const READ_ONLY: &[(&str, &[&str])] = &[
     ("kb", &["search"]),
     ("cap", &["list"]),
     ("prg", &["list"]),
-    ("ext", &["list"]),
+    ("plugin", &["list"]),
     ("session", &["list"]),
 ];
 

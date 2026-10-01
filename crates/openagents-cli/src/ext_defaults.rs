@@ -1,4 +1,4 @@
-//! `openagents ext defaults`: how a `coder-defaults` release reaches the
+//! `openagents plugin defaults` (also `openagents ext defaults`): how a `coder-defaults` release reaches the
 //! Coder on this computer (`packages/coder-defaults/policy.md`, "How a
 //! release reaches runtimes").
 //!
@@ -29,11 +29,11 @@ use crate::ext_eval::{Target, fetch, openagents_home, resolve};
 use crate::relay::{Client, relay_url, signer_for};
 use crate::{Args, Output};
 
-pub(crate) const USAGE: &str = "usage: openagents ext defaults COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents plugin defaults COMMAND [OPTIONS]
   sync [--relay URL] [--root PUBKEY] [--catalog DIR]... [--into DIR] [--as PROFILE]
         Read the newest coder-defaults release and the admissions it cites
-        from the relay, resolve each admitted extension against --catalog
-        directories and the extensions installed here, and write the
+        from the relay, resolve each admitted plugin against --catalog
+        directories and the plugins installed here, and write the
         defaults directory Coder admits programs from (default
         ~/.openagents/coder-defaults, or CODER_DEFAULTS).
   show [--into DIR]
@@ -41,7 +41,7 @@ pub(crate) const USAGE: &str = "usage: openagents ext defaults COMMAND [OPTIONS]
 --root is the coder-defaults package's root key (default: the package
 record's). Nothing here signs or publishes; the lock is what Coder reads.";
 
-const NAME: &str = "ext defaults";
+const NAME: &str = "plugin defaults";
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
@@ -313,7 +313,7 @@ and the defaults directory is left as it was"
             let admitted = value["admitted"].as_array().map_or(0, Vec::len);
             let held_names: Vec<String> = held.iter().map(|h| h.name.clone()).collect();
             format!(
-                "coder-defaults {} (release {}) admits {} extension(s); {} held here{}{}; wrote {}",
+                "coder-defaults {} (release {}) admits {} plugin(s); {} held here{}{}; wrote {}",
                 value["version"].as_str().unwrap_or_default(),
                 &value["release"]["id"].as_str().unwrap_or_default()[..12],
                 admitted,
@@ -404,7 +404,7 @@ fn show(output: &Output, args: &Args) -> u8 {
         Ok(None) => output.fail(
             NAME,
             &format!(
-                "{} holds no lock; run `openagents ext defaults sync`",
+                "{} holds no lock; run `openagents plugin defaults sync`",
                 dir.display()
             ),
         ),

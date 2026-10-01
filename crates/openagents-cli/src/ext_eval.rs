@@ -1,6 +1,6 @@
-//! `openagents ext eval`: run an extension's eval suite against Coder in
-//! both arms, write a starter case, publish a result to the Gym, and
-//! check someone else's.
+//! `openagents plugin test` (also `openagents ext eval`): run a plugin's
+//! eval suite against Coder in both arms, write a starter case, publish a
+//! result to the Gym, and check someone else's.
 //!
 //! The runner, the sandbox, the scoring, and the wire records live in
 //! `crates/ext-eval`; this module resolves the target (a directory with a
@@ -27,13 +27,13 @@ use crate::{Args, EXIT_FAILURE, Output};
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 
-pub(crate) const USAGE: &str = "usage: openagents ext eval COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents plugin test COMMAND [OPTIONS]
   run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp]
       [--coder PATH] [--questions DIR] [--gate ext-eval-v2|ext-eval-cost-v1]
-        Run the suite for TARGET (an extension directory, a case directory
-        in it, or an installed PUBKEY:SLUG@VERSION) with the extension and
+        Run the tests for TARGET (a plugin directory, a test directory in
+        it, or an installed PUBKEY:SLUG@VERSION) with the plugin and
         without it, and write report.json and report.html. --gate names
         the Gym gate the suite is judged by: ext-eval-v2 (correctness
         first, the default) or ext-eval-cost-v1 (cost first, correctness
@@ -41,22 +41,22 @@ pub(crate) const USAGE: &str = "usage: openagents ext eval COMMAND [OPTIONS]
   release TARGET [--eval-dir DIR] [--gate ID] [--relay URL] [--blossom URL]
       [--blobs-dir DIR] [--as PROFILE]
         Release TARGET's test set as a NIP-EXT release signed by your key
-        without running it: a second suite for someone else's tool, which
+        without running it: a second test set for someone else's plugin, which
         a hosted run can then cite. --blobs-dir writes the suite's files
         by digest for an operator to upload instead of a Blossom server.
   init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]
-        Write a test set with the authoring interview for the extension at
-        TARGET (default .), or with --bare a blank case named TARGET,
+        Write a test set with the authoring interview for the plugin at
+        TARGET (default .), or with --bare a blank test named TARGET,
         evals/TARGET/, from the template.
   publish REPORT [--relay URL] [--blossom URL] [--as PROFILE] [--validates EVENT]
         Add a result to the Gym: release its suite (once) and publish the
         3189 result signed by your world key. --validates names a
-        published result on the same tool that this result, on a second
+        published result on the same plugin that this result, on a second
         test set, externally validates.
   check EVENT [TARGET] [--runs N] [--concurrency N] [--grant read|write|exec|network]...
       [--trust] [--output-dir DIR] [--coder PATH] [--questions DIR] [--relay URL]
       [--blossom URL] [--as PROFILE]
-        Rerun someone's published result against the same extension
+        Rerun someone's published result against the same plugin
         (TARGET, default .) and publish a check that confirms or disputes it.
 Run progress goes to stderr and a summary table to stdout; --json writes
 the result document instead, to stdout or to a path given after TARGET.
@@ -68,16 +68,18 @@ and CODER_MODEL from this shell; the run's child never sees the key.
 TYPESAFE_API_KEY, when set, is the decision door for decision graders and
 the child's classifier. Nothing leaves this computer until publish.
 Exit codes: 0 Better or a clean single-arm run, 1 Worse, inconclusive, or a
-load failure, 2 partial, 64 invalid usage, 130 or 143 on a signal.";
+load failure, 2 partial, 64 invalid usage, 130 or 143 on a signal.
+`openagents ext eval` is another name for this command.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
-    Declared::computer("eval run", Effect::LongRunning),
-    Declared::computer("eval init", Effect::LocalWrite),
-    Declared::computer("eval publish", Effect::Publishes),
-    Declared::computer("eval check", Effect::LongRunning),
+    Declared::computer("test run", Effect::LongRunning),
+    Declared::computer("test init", Effect::LocalWrite),
+    Declared::computer("test publish", Effect::Publishes),
+    Declared::computer("test check", Effect::LongRunning),
+    Declared::computer("test release", Effect::Publishes),
 ];
 
 /// The package record file at an extension's root.
@@ -87,9 +89,9 @@ pub const SKILLS_DIR: &str = "skills";
 
 const SWITCHES: &[&str] = &["trust", "keep-temp", "bare"];
 
-const NAME: &str = "ext eval";
+const NAME: &str = "plugin test";
 
-/// `openagents ext eval ...`.
+/// `openagents plugin test ...` (also `openagents ext eval ...`).
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage(NAME, "a command is required", USAGE);
@@ -241,7 +243,7 @@ pub(crate) fn resolve(target: &str) -> Result<Target, String> {
                 .find(|dir| dir.join(PACKAGE_FILE).is_file())
                 .ok_or_else(|| {
                     format!(
-                        "{} is a case with no extension around it (no {PACKAGE_FILE} above it)",
+                        "{} is a test with no plugin around it (no {PACKAGE_FILE} above it)",
                         path.display()
                     )
                 })?
@@ -630,7 +632,7 @@ fn execute(
     if let Ok(now) = Package::resolve(&prepared.target.root, &prepared.target.package)
         && let Err(refusal) = held.consider(&now)
     {
-        eprintln!("warning: the extension changed during the run: {refusal}");
+        eprintln!("warning: the plugin changed during the run: {refusal}");
     }
     held.finish();
     let outcome = match outcome {
@@ -666,13 +668,13 @@ fn summary(evaluation: &ext_eval::Evaluation, results: &Path) -> String {
     let total = scores.cases.len();
     let mut lines = vec![match &scores.baseline {
         Some(baseline) => format!(
-            "{}: passes {} of {total} tests with the tool, {} without.",
+            "{}: passes {} of {total} tests with the plugin, {} without.",
             evaluation.verdict.plain(),
             scores.subject.cases_passed,
             baseline.cases_passed
         ),
         None => format!(
-            "Passes {} of {total} tests with the tool (no run without it, so no verdict).",
+            "Passes {} of {total} tests with the plugin (no run without it, so no verdict).",
             scores.subject.cases_passed
         ),
     }];
@@ -748,7 +750,7 @@ fn init(output: &Output, args: &Args) -> u8 {
     0
 }
 
-/// `openagents ext eval init NAME --bare` writes this `prompt.md`.
+/// `openagents plugin test init NAME --bare` writes this `prompt.md`.
 pub const TEMPLATE_PROMPT: &str = "+++
 v = \"openagents.eval-case.v1\"
 kind = \"should-fire\"

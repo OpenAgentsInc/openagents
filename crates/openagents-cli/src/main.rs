@@ -99,10 +99,15 @@ Keys, relays, and money:
 Playtesting:
   playtest     Triage inbox: read reports, draft and file issues, keep the triage log.
 
-Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
+Plugins (NIP-EXT, NIP-EVAL):
+  plugin       List published plugins, test a plugin with and without it,
+               add the result to the Gym, check a result, and sync Coder's
+               default plugins.
+  ext          Another name for plugin.
+
+Discovery (NIP-CAP, NIP-PRG), read-only:
   cap          List and describe published capability heads.
   prg          List and describe published program heads.
-  ext          List extension records, and run and check extension evals.
   discover     Show the well-known agent card and agent-skills index.
 
   mcp          Serve every group as an MCP tool over stdio (mcp serve).
@@ -168,7 +173,8 @@ fn main() -> ExitCode {
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
         "prg" => catalog::prg(&output, &rest),
-        "ext" => catalog::ext(&output, &rest),
+        // `ext` is the older name for `plugin`, kept working.
+        "plugin" | "plugins" | "ext" => catalog::ext(&output, &rest),
         "discover" => discover::run(&output, &rest),
         "mcp" => mcp::run(&output, &rest, USAGE),
         "completions" => mcp::completions(&output, &rest, USAGE),

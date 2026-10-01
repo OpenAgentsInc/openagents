@@ -175,12 +175,22 @@ fn the_help_names_every_quick_start_command() {
     ] {
         assert!(help.contains(form), "{form} is missing from:\n{help}");
     }
-    let ext = Command::new(OPENAGENTS)
-        .args(["ext", "--help"])
+    // `plugin test` is the name; `ext eval` stays a working alias.
+    let plugin = Command::new(OPENAGENTS)
+        .args(["plugin", "test", "--help"])
         .output()
         .unwrap();
-    let ext = String::from_utf8(ext.stdout).unwrap();
-    assert!(ext.contains("eval run TARGET"), "{ext}");
+    assert!(plugin.status.success());
+    assert_eq!(String::from_utf8(plugin.stdout).unwrap(), help);
+    for group in ["plugin", "ext"] {
+        let out = Command::new(OPENAGENTS)
+            .args([group, "--help"])
+            .output()
+            .unwrap();
+        let out = String::from_utf8(out.stdout).unwrap();
+        assert!(out.contains("test run TARGET"), "{group}: {out}");
+        assert!(out.contains("usage: openagents plugin"), "{group}: {out}");
+    }
 }
 
 #[test]
@@ -189,7 +199,7 @@ fn init_bare_writes_the_template_and_a_run_refuses_its_todo() {
     let root = extension(work.path());
     let door = door();
     let status = openagents(&work.path().join("home"), &work.path().join("verse"), &door)
-        .args(["ext", "eval", "init", "smoke", "--bare"])
+        .args(["plugin", "test", "init", "smoke", "--bare"])
         .current_dir(&root)
         .status()
         .unwrap();

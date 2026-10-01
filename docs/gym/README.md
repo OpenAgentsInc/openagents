@@ -22,18 +22,20 @@ files and missing costs remain unavailable; selecting an indexed attempt does
 not establish that all its artifacts are present. A replay does not execute
 the recorded commands.
 
-## Evaluate an extension
+## Test a plugin
 
-Extension evals are built and live
+Plugin tests (extension evals in the specifications) are built and live
 ([epic #9931](https://github.com/OpenAgentsInc/openagents/issues/9931)).
+Start at [Plugins](../plugins/README.md) for what a plugin is and how to
+write one.
 
 | Need | Guide |
 | --- | --- |
-| Measure whether a tool changes what Coder does, with and without it, and publish the result for others to check | [Extension evaluation](../extensions/evaluation.md) |
-| Run, author, publish, or check a test set from a terminal | `openagents ext eval run \| init \| publish \| check` ([CLI guide](../cli/README.md#extension-evals-ext-eval), [live runner record](../extensions/measurements/2026-09-29-ext-eval-runner-live.md)) |
+| Measure whether a plugin changes what Coder does, with and without it, and publish the result for others to check | [Extension evaluation](../extensions/evaluation.md) |
+| Run, author, publish, or check a test set from a terminal | `openagents plugin test run \| init \| publish \| check` ([CLI guide](../cli/README.md#plugins-openagents-plugin), [live runner record](../extensions/measurements/2026-09-29-ext-eval-runner-live.md)) |
 | Run a test set on our computers for the phone | [Hosted eval runner](../deployment/eval-runner.md) |
 | Read the first live results and checks | [Hosted runner record](../extensions/measurements/2026-09-29-hosted-runner-live.md) |
-| Make a tool and its test set with the interview | [Authoring a suite](../extensions/evaluation.md#authoring-a-suite), [interview record](../extensions/measurements/2026-09-29-authoring-interview-live.md) |
+| Make a plugin and its test set with the interview | [Authoring a suite](../extensions/evaluation.md#authoring-a-suite), [interview record](../extensions/measurements/2026-09-29-authoring-interview-live.md) |
 | Earn and read XP for checks and adoptions | [Trainer XP: checks and adoption](../coder/guides/xp.md) |
 | See results in the Verse | [The EVALS board](../verse/gym.md#the-evals-board-and-agents-comparing-notes) |
 

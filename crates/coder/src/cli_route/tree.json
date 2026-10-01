@@ -11067,6 +11067,751 @@
       ]
     },
     {
+      "name": "plugin",
+      "summary": "List published plugins, test a plugin with and without it, add the result to the Gym, check a result, and sync Coder's default plugins.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "plugin",
+              "list"
+            ],
+            "usage": [
+              "list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "type",
+                    "value": "TYPE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "author",
+                    "value": "PUBKEY",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "package",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "List published plugin records (NIP-EXT). TYPE is listing (default), release, revocation, migration, or checkpoint.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "test",
+          "children": [
+            {
+              "name": "run",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "run"
+                ],
+                "usage": [
+                  "test run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off] [--concurrency N] [--grant read|write|exec|network]... [--trust] [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH] [--questions DIR]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "run"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TARGET"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "runs",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "case",
+                        "value": "GLOB",
+                        "open": true,
+                        "optional": true,
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "tag",
+                        "value": "TAG",
+                        "open": true,
+                        "optional": true,
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "baseline",
+                        "value": "on|off",
+                        "choices": [
+                          "on",
+                          "off"
+                        ],
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "concurrency",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "grant",
+                        "value": "read|write|exec|network",
+                        "choices": [
+                          "read",
+                          "write",
+                          "exec",
+                          "network"
+                        ],
+                        "optional": true,
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "trust",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "door",
+                        "value": "NAME",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "eval-dir",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "output-dir",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "keep-temp",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "coder",
+                        "value": "PATH",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "questions",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Run a plugin's tests with the plugin and without it.",
+                "effect": "long_running",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "init",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "init"
+                ],
+                "usage": [
+                  "test init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "init"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TARGET",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "bare",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "out",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "eval-dir",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Write a test set with the authoring interview for the plugin at TARGET, or with --bare a blank test named TARGET from the template.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "release",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "release"
+                ],
+                "usage": [
+                  "test release TARGET [--eval-dir DIR] [--gate ID] [--blossom URL]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "release"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TARGET"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "eval-dir",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "gate",
+                        "value": "ID",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "blossom",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Release TARGET's test set as a NIP-EXT release without running it.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "publish",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "publish"
+                ],
+                "usage": [
+                  "test publish REPORT [--blossom URL]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "publish"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "REPORT"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "blossom",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Add a test result to the Gym: its test set's release and a 3189 result.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "check",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "check"
+                ],
+                "usage": [
+                  "test check EVENT [TARGET] [--runs N] [--concurrency N] [--trust] [--coder PATH] [--questions DIR] [--blossom URL]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "EVENT"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TARGET",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "runs",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "concurrency",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "trust",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "coder",
+                        "value": "PATH",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "questions",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "blossom",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Rerun a published test result and publish a confirm or a dispute.",
+                "effect": "long_running",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "defaults",
+          "children": [
+            {
+              "name": "sync",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "defaults",
+                  "sync"
+                ],
+                "usage": [
+                  "defaults sync [--root PUBKEY] [--catalog DIR]... [--into DIR]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "defaults"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "sync"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "PUBKEY",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true,
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "into",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Write the plugins Coder uses for everyone (the newest coder-defaults release) into the directory Coder reads.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "defaults",
+                  "show"
+                ],
+                "usage": [
+                  "defaults show [--into DIR]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "defaults"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "into",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Print what the last sync wrote.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "type",
+          "value": "TYPE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "author",
+          "value": "PUBKEY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "package",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "runs",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "case",
+          "value": "GLOB",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "tag",
+          "value": "TAG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "baseline",
+          "value": "on|off",
+          "choices": [
+            "on",
+            "off"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "concurrency",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "grant",
+          "value": "read|write|exec|network",
+          "choices": [
+            "read",
+            "write",
+            "exec",
+            "network"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "trust",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "door",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "eval-dir",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "output-dir",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "keep-temp",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "coder",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "questions",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "bare",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "gate",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "blossom",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "root",
+          "value": "PUBKEY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "catalog",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "into",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "relay",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "timeout",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "as",
+          "value": "PROFILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "cap",
       "summary": "List and describe published capability heads.",
       "children": [
@@ -11361,570 +12106,6 @@
           "name": "as",
           "value": "PROFILE",
           "open": true,
-          "optional": true,
-          "repeated": true
-        }
-      ]
-    },
-    {
-      "name": "ext",
-      "summary": "List extension records, and run and check extension evals.",
-      "children": [
-        {
-          "name": "list",
-          "leaf": {
-            "path": [
-              "ext",
-              "list"
-            ],
-            "usage": [
-              "list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "list"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "type",
-                    "value": "TYPE",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "author",
-                    "value": "PUBKEY",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "package",
-                    "value": "ID",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "limit",
-                    "value": "N",
-                    "open": true,
-                    "optional": true
-                  }
-                ]
-              }
-            ],
-            "summary": "List published extension records. TYPE is listing (default), release, revocation, migration, or checkpoint.",
-            "effect": "read_only",
-            "runs_on": "connected_computer"
-          }
-        },
-        {
-          "name": "eval",
-          "children": [
-            {
-              "name": "run",
-              "leaf": {
-                "path": [
-                  "ext",
-                  "eval",
-                  "run"
-                ],
-                "usage": [
-                  "eval run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off] [--concurrency N] [--grant read|write|exec|network]... [--trust] [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH] [--questions DIR]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "eval"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "run"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "TARGET"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "runs",
-                        "value": "N",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "case",
-                        "value": "GLOB",
-                        "open": true,
-                        "optional": true,
-                        "repeated": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "tag",
-                        "value": "TAG",
-                        "open": true,
-                        "optional": true,
-                        "repeated": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "baseline",
-                        "value": "on|off",
-                        "choices": [
-                          "on",
-                          "off"
-                        ],
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "concurrency",
-                        "value": "N",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "grant",
-                        "value": "read|write|exec|network",
-                        "choices": [
-                          "read",
-                          "write",
-                          "exec",
-                          "network"
-                        ],
-                        "optional": true,
-                        "repeated": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "trust",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "door",
-                        "value": "NAME",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "eval-dir",
-                        "value": "DIR",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "output-dir",
-                        "value": "DIR",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "keep-temp",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "coder",
-                        "value": "PATH",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "questions",
-                        "value": "DIR",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Run an extension's eval suite with the extension and without it.",
-                "effect": "long_running",
-                "runs_on": "connected_computer"
-              }
-            },
-            {
-              "name": "init",
-              "leaf": {
-                "path": [
-                  "ext",
-                  "eval",
-                  "init"
-                ],
-                "usage": [
-                  "eval init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "eval"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "init"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "TARGET",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "bare",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "out",
-                        "value": "DIR",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "eval-dir",
-                        "value": "DIR",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Write a test set with the authoring interview for the extension at TARGET, or with --bare a blank case named TARGET from the template.",
-                "effect": "local_write",
-                "runs_on": "connected_computer"
-              }
-            },
-            {
-              "name": "publish",
-              "leaf": {
-                "path": [
-                  "ext",
-                  "eval",
-                  "publish"
-                ],
-                "usage": [
-                  "eval publish REPORT [--blossom URL]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "eval"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "publish"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "REPORT"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "blossom",
-                        "value": "URL",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Add an eval result to the Gym: its suite release and a 3189 result.",
-                "effect": "publishes",
-                "runs_on": "connected_computer"
-              }
-            },
-            {
-              "name": "check",
-              "leaf": {
-                "path": [
-                  "ext",
-                  "eval",
-                  "check"
-                ],
-                "usage": [
-                  "eval check EVENT [TARGET] [--runs N] [--concurrency N] [--trust] [--coder PATH] [--questions DIR] [--blossom URL]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "eval"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "check"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "EVENT"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "TARGET",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "runs",
-                        "value": "N",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "concurrency",
-                        "value": "N",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "trust",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "coder",
-                        "value": "PATH",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "questions",
-                        "value": "DIR",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "blossom",
-                        "value": "URL",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Rerun a published eval result and publish a confirm or a dispute.",
-                "effect": "long_running",
-                "runs_on": "connected_computer"
-              }
-            }
-          ]
-        }
-      ],
-      "options": [
-        {
-          "kind": "option",
-          "name": "type",
-          "value": "TYPE",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "author",
-          "value": "PUBKEY",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "package",
-          "value": "ID",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "limit",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "runs",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "case",
-          "value": "GLOB",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "tag",
-          "value": "TAG",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "baseline",
-          "value": "on|off",
-          "choices": [
-            "on",
-            "off"
-          ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "concurrency",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "grant",
-          "value": "read|write|exec|network",
-          "choices": [
-            "read",
-            "write",
-            "exec",
-            "network"
-          ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "trust",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "door",
-          "value": "NAME",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "eval-dir",
-          "value": "DIR",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "output-dir",
-          "value": "DIR",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "keep-temp",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "coder",
-          "value": "PATH",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "questions",
-          "value": "DIR",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "bare",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "out",
-          "value": "DIR",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "blossom",
-          "value": "URL",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "relay",
-          "value": "URL",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "timeout",
-          "value": "SECONDS",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "as",
-          "value": "PROFILE",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "help",
           "optional": true,
           "repeated": true
         }

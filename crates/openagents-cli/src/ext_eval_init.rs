@@ -1,4 +1,4 @@
-//! `openagents ext eval init`: the authoring interview in a terminal.
+//! `openagents plugin test init` (also `openagents ext eval init`): the authoring interview in a terminal.
 //!
 //! The same typed interview the chat's `eval.author` route runs
 //! (`ext_eval::author`, driven by `coder::eval_author`), on the operator's
@@ -27,12 +27,12 @@ use crate::out::{EXIT_USAGE, Output};
 
 /// The usage line for the interview.
 pub const USAGE: &str =
-    "usage: openagents ext eval init [<extension dir>] [--out <dir>] [--eval-dir <dir>]
+    "usage: openagents plugin test init [<plugin dir>] [--out <dir>] [--eval-dir <dir>]
 
-Writes a test set for the extension with you, one step at a time: what the
-tool is for, what a good run looks like, the tests, the checks, a one-run
+Writes a test set for the plugin with you, one step at a time: what the
+plugin is for, what a good run looks like, the tests, the checks, a one-run
 try, and the full run's size. Type y at each step to go on, or type what to
-change. The extension is read, never changed; the finished tests are
+change. The plugin is read, never changed; the finished tests are
 written under its eval directory (evals/ by default), or --out.";
 
 /// The package key a local extension's definition names until it is
@@ -41,9 +41,9 @@ pub const LOCAL_KEY: &str = "000000000000000000000000000000000000000000000000000
 /// The most characters of the extension's own words the interview reads.
 pub const MAX_WORDS: usize = 6_000;
 
-/// `openagents ext eval init ...`.
+/// `openagents plugin test init ...`.
 pub fn run(output: &Output, words: &[String]) -> u8 {
-    let command = "ext eval init";
+    let command = "plugin test init";
     let mut root: Option<PathBuf> = None;
     let mut out: Option<PathBuf> = None;
     let mut eval_dir: Option<String> = None;
@@ -65,7 +65,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             "--bare" => {
                 return output.usage(
                     command,
-                    "--bare writes a blank template; it comes with `openagents ext eval` itself (#9934)",
+                    "--bare writes a blank template; it comes with `openagents plugin test` itself (#9934)",
                     USAGE,
                 );
             }
@@ -178,7 +178,7 @@ fn program_steps(root: &Path, program: &str) -> Vec<(String, Value)> {
 pub fn read_extension(root: &Path) -> Result<Tool, String> {
     let record = root.join("package.json");
     let package = Package::load(&record)
-        .map_err(|why| format!("{} is not an extension: {why}", root.display()))?;
+        .map_err(|why| format!("{} is not a plugin: {why}", root.display()))?;
     Package::resolve(root, &package)
         .map_err(|refusal| format!("{} does not resolve: {refusal}", root.display()))?;
     let bytes = std::fs::read(&record).map_err(|e| e.to_string())?;
@@ -331,7 +331,7 @@ pub async fn interview<G: Generate>(
             tried_this_draft = true;
             show(
                 &mut out,
-                "Try it once now? Type y to run each test one time with and without the tool, or press Enter to skip.",
+                "Try it once now? Type y to run each test one time with and without the plugin, or press Enter to skip.",
             );
             let Some(line) = ask_line(&mut input, &mut out) else {
                 return Err(ended());
@@ -392,14 +392,14 @@ pub async fn interview<G: Generate>(
     }
     let written = files::write(target, &interview.cases).map_err(|e| {
         Stop::Failed(format!(
-            "we couldn't write the tests to {}: {e}; nothing was written into the extension",
+            "we couldn't write the tests to {}: {e}; nothing was written into the plugin",
             target.display()
         ))
     })?;
     show(
         &mut out,
         &format!(
-            "We wrote {} tests to {}. Run them with `openagents ext eval run {}`.",
+            "We wrote {} tests to {}. Run them with `openagents plugin test run {}`.",
             interview.cases.len(),
             target.display(),
             root.display()
@@ -422,7 +422,7 @@ pub async fn interview<G: Generate>(
                 show(&mut out, &turn.say);
                 show(
                     &mut out,
-                    "To add it to the Gym, run `openagents ext eval publish` on the report the run wrote.",
+                    "To add it to the Gym, run `openagents plugin test publish` on the report the run wrote.",
                 );
             }
             Err(why) => show(&mut out, &format!("We couldn't run it: {why}")),
