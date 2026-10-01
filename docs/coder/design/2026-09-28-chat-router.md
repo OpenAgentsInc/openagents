@@ -1786,8 +1786,9 @@ Implemented in [#10085](https://github.com/OpenAgentsInc/openagents/issues/10085
   rule, which the lint checks as it checks `.here`; `Bank::placed` picks
   the desktop variant first.
 - **The wire.** NIP-CJ's `open_screen` adds `routes.map`; the desktop
-  opens its Map page on the tap; the phone never gets it and stays in the
-  chat if it did.
+  opens its Map page when a reply to its own message arrives with the
+  offer, with no tap (#10102), and **Open the map** opens it again; the
+  phone never gets it and stays in the chat if it did.
 - **The labeled set** adds 22 rows tagged `map` (14 asking to see the map,
   8 near misses), and calibration is refit for the moved bank. Numbers:
   [the route map measurement](../measurements/2026-10-01-route-map-route.md).

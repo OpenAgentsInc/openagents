@@ -1989,21 +1989,17 @@ fn route_map(gate: &mut Gate) -> Outcome {
 }
 
 /// From chat: "show me how you route things" gets the router's typed
-/// `routes.map` offer, whose tap opens the Map page (#10085).
+/// `routes.map` offer, and the Map page opens when the reply arrives, with
+/// no click on **Open the map** (#10085, #10102).
 fn route_map_chat(gate: &mut Gate) -> Outcome {
     new_chat(gate, "route-map-chat")?;
     let reply = send(gate, "show me how you route things")?;
-    gate.save_chat("route-map-chat");
-    let offered = reply.meta.as_ref().is_some_and(|meta| {
-        meta.offers.iter().any(|offer| {
-            matches!(
-                offer,
-                openagents_chat::router::Offer::OpenScreen {
-                    screen: openagents_chat::router::Screen::RoutesMap
-                }
-            )
-        })
+    // Only the window's ticks run from here: no key, no click.
+    let opened = pump(gate, Duration::from_secs(3), |gate| {
+        gate.app.map_view().is_some()
     });
+    gate.save_chat("route-map-chat");
+    let offered = openagents_desktop::chat::map_offer(reply.meta.as_ref());
     if !offered {
         return Err(format!(
             "no routes.map offer (route {:?}, answer {:?}); reply {:?}",
@@ -2012,54 +2008,23 @@ fn route_map_chat(gate: &mut Gate) -> Outcome {
             excerpt(&reply.text)
         ));
     }
-    let _ = gate.capture("route-map-chat", "offer-1200x840-1x", 1200.0, 840.0, 1.0);
-    let key = gate
-        .app
-        .chat
-        .as_ref()
-        .and_then(|panel| {
-            let mut buttons = Vec::new();
-            for row in panel.transcript_rows() {
-                text_buttons(row, &mut buttons);
-            }
-            buttons
-                .into_iter()
-                .find(|(_, label)| label == "Open the map")
-                .map(|(key, _)| key)
-        })
-        .ok_or("the offer shows no Open the map button")?;
-    gate.app.activate(
-        Intent::Chat {
-            action: openagents_desktop::chat_action::Action::Card { key },
-        },
-        Instant::now(),
-    );
-    let opened = gate.app.map_view().is_some();
     let _ = gate.capture("route-map-chat", "map-1200x840-1x", 1200.0, 840.0, 1.0);
-    gate.app.activate(
-        Intent::Navigate {
-            action: chrome::Action::Back,
-        },
-        Instant::now(),
-    );
     if opened {
+        gate.app.activate(
+            Intent::Navigate {
+                action: chrome::Action::Back,
+            },
+            Instant::now(),
+        );
         Ok(format!(
-            "typed routes.map offer on {:?}; Open the map opened the Map page",
+            "typed routes.map offer on {:?}; the Map page opened when the reply arrived, with no click",
             reply.meta.as_ref().and_then(|m| m.answer.clone())
         ))
     } else {
-        Err("the tap on Open the map did not open the Map page".into())
-    }
-}
-
-/// Every button in a transcript row: its key and label.
-fn text_buttons(node: &rust_native::Node<()>, out: &mut Vec<(String, String)>) {
-    match &node.element {
-        rust_native::Element::Button { label, .. } => out.push((node.key.clone(), label.clone())),
-        rust_native::Element::Stack { children, .. } => {
-            children.iter().for_each(|child| text_buttons(child, out));
-        }
-        _ => {}
+        Err(
+            "the typed routes.map offer arrived, but the Map page did not open without a click"
+                .into(),
+        )
     }
 }
 

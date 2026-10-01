@@ -123,6 +123,9 @@ pub struct Panel {
     /// The deck a reply's typed `open_presentation` offer names, for the
     /// shell's slide viewer.
     presentation: Option<String>,
+    /// A reply's typed `open_screen` offer for `routes.map`, for the
+    /// shell's Map page (#10102).
+    map: bool,
     sidebar_width: f32,
     notice: Option<String>,
     waker: Option<rust_native_desktop::Waker>,
@@ -227,6 +230,7 @@ impl Panel {
             navigation: None,
             desktop_navigation: None,
             presentation: None,
+            map: false,
             sidebar_width: crate::chrome::SIDEBAR_DEFAULT,
             notice: None,
             waker: None,
@@ -1459,6 +1463,11 @@ impl Panel {
             {
                 self.presentation = Some(deck);
             }
+            // Likewise the typed `open_screen` offer for `routes.map`
+            // opens the Map page when the reply arrives (#10102).
+            if reply.role == Role::Assistant && !reply.stopped && map_offer(reply.meta.as_ref()) {
+                self.map = true;
+            }
             if reply.role == Role::Assistant
                 && !reply.stopped
                 && openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer)
@@ -1506,12 +1515,22 @@ impl Panel {
         self.desktop_navigation.take()
     }
     /// Takes a finished reply's typed offers: an `open_presentation` offer
-    /// holds its deck for the shell's slide viewer, as a finished reply to
-    /// a message sent from this window does ([`presentation_offer`]).
+    /// holds its deck for the shell's slide viewer, and an `open_screen`
+    /// offer for `routes.map` holds the Map page, as a finished reply to a
+    /// message sent from this window does ([`presentation_offer`],
+    /// [`map_offer`]).
     pub fn receive_offers(&mut self, meta: Option<&openagents_chat::router::Meta>) {
         if let Some(deck) = presentation_offer(meta) {
             self.presentation = Some(deck);
         }
+        if map_offer(meta) {
+            self.map = true;
+        }
+    }
+    /// Whether a reply's typed `routes.map` offer asked for the Map page;
+    /// taken once.
+    pub fn take_map(&mut self) -> bool {
+        std::mem::take(&mut self.map)
     }
     /// The deck a reply's typed `open_presentation` offer asked for.
     pub fn take_presentation(&mut self) -> Option<String> {
@@ -4940,6 +4959,22 @@ pub fn presentation_offer(meta: Option<&openagents_chat::router::Meta>) -> Optio
     })
 }
 
+/// Whether a reply's typed offers include `open_screen` for `routes.map`
+/// (bank entry `meta.map.desktop`). Only the router's typed offer counts;
+/// the reply's words never open the Map page.
+pub fn map_offer(meta: Option<&openagents_chat::router::Meta>) -> bool {
+    meta.is_some_and(|meta| {
+        meta.offers.iter().any(|offer| {
+            matches!(
+                offer,
+                openagents_chat::router::Offer::OpenScreen {
+                    screen: openagents_chat::router::Screen::RoutesMap
+                }
+            )
+        })
+    })
+}
+
 #[cfg(test)]
 mod presentation_tests {
     use super::*;
@@ -5000,6 +5035,31 @@ mod presentation_tests {
             false,
         );
         assert_eq!(elsewhere.take_presentation(), None);
+    }
+
+    /// A finished reply's typed `open_screen` offer for `routes.map`
+    /// holds the Map page for the shell, once, only for a message sent
+    /// from this window; another screen's offer, or none, holds nothing
+    /// (#10102).
+    #[test]
+    fn a_replys_typed_routes_map_offer_holds_the_map_once() {
+        use openagents_chat::router::Screen;
+        let map = |screen| {
+            Some(Meta {
+                route: Some("meta.map".into()),
+                offers: vec![Offer::OpenScreen { screen }],
+                ..Meta::default()
+            })
+        };
+        let mut panel = replied("Here is the route map.", map(Screen::RoutesMap), true);
+        assert!(panel.take_map());
+        assert!(!panel.take_map(), "taken once");
+        let mut elsewhere = replied("Here is the route map.", map(Screen::RoutesMap), false);
+        assert!(!elsewhere.take_map(), "a reply to another device's message");
+        for meta in [None, Some(Meta::default()), map(Screen::Wallet)] {
+            let mut panel = replied("Open the map to see how we route things.", meta, true);
+            assert!(!panel.take_map());
+        }
     }
 
     /// Words never open the viewer: a reply that names a deck, with no

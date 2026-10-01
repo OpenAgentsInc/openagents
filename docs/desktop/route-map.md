@@ -11,7 +11,12 @@ gaps between them. It is the visible form of the "agent of agents" in
 a general front, specialist members, and the places where OpenAgents is
 thin. Open it from **Map** in the sidebar's footer (beside Verse), from
 the command palette (**Open the map**), from the Mac's **Window** menu, or
-from chat on the desktop.
+from chat on the desktop: ask "show me how you route things", and the Map
+page opens when the reply arrives, with no tap. Only the router's typed
+`open_screen` offer for `routes.map` (bank entry `meta.map.desktop`) opens
+it, and only for a reply to a message sent from this window; the reply's
+words never do. The reply's **Open the map** button stays, to open the page
+again. The phone and the terminal answer with a sentence and never open it.
 
 ## One graph, colored by kind
 

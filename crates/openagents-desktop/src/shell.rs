@@ -277,6 +277,20 @@ impl DesktopApp {
         }
     }
 
+    /// Opens the Map page when a chat reply's typed `open_screen` offer for
+    /// `routes.map` holds it (#10102). Desktop only; the panel holds it only
+    /// for a reply to a message this window sent.
+    fn chat_map(&mut self, now: Instant) {
+        if self.chat.as_mut().is_some_and(|chat| chat.take_map()) {
+            self.activate(
+                Intent::Navigate {
+                    action: chrome::Action::Map,
+                },
+                now,
+            );
+        }
+    }
+
     /// The slide viewer, while it shows.
     #[cfg(test)]
     pub fn presentation(&self) -> Option<&openagents_desktop::slides::Slides> {
@@ -602,11 +616,13 @@ impl DesktopApp {
         }
         self.send(requests, now);
         self.chat_presentation(now);
+        self.chat_map(now);
         if let Some(screen) = self.chat.as_mut().and_then(|chat| chat.take_navigation()) {
             use openagents_chat::router::Screen;
             let action = match screen {
                 Screen::Keys => chrome::Action::Settings,
                 Screen::Computers => chrome::Action::Computers,
+                Screen::RoutesMap => chrome::Action::Map,
                 _ => chrome::Action::Grid,
             };
             self.activate(Intent::Navigate { action }, now);
@@ -917,8 +933,10 @@ impl App for DesktopApp {
         }
         // A reply arrives here (the background worker's outcomes above, or
         // an inline `send`), not on input: open the deck its typed
-        // `open_presentation` offer holds now, not on the next key (#10082).
+        // `open_presentation` offer holds now, not on the next key (#10082),
+        // and the Map page its typed `routes.map` offer holds (#10102).
         self.chat_presentation(now);
+        self.chat_map(now);
         let slides = slides
             .or_else(|| {
                 self.slides
@@ -994,6 +1012,7 @@ impl App for DesktopApp {
             }
             self.send(requests, now);
             self.chat_presentation(now);
+            self.chat_map(now);
             if let Some(action) = self
                 .chat
                 .as_mut()

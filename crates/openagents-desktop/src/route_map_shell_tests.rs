@@ -245,3 +245,119 @@ fn keys_reach_the_map_and_reduce_motion_moves_at_once() {
     assert!(page.camera().zoom > before.zoom);
     app.reduce_motion().store(false, Ordering::Relaxed);
 }
+
+/// A worker that answers every message with the router's typed
+/// `open_screen` offer for `routes.map` (bank entry `meta.map.desktop`).
+struct MapOffering;
+
+impl openagents_chat::basic_coder::Door for MapOffering {
+    fn ask(
+        &self,
+        _: Vec<openagents_chat::basic_coder::Turn>,
+        _: openagents_chat::router::Context,
+        reply: std::sync::Arc<std::sync::Mutex<openagents_chat::basic_coder::Reply>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            let mut reply = openagents_chat::basic_coder::lock(&reply);
+            reply.text = "Here is how we route things.".into();
+            reply.meta = openagents_chat::router::Meta {
+                answer: Some("meta.map.desktop".into()),
+                route: Some("meta.map".into()),
+                offers: vec![openagents_chat::router::Offer::OpenScreen {
+                    screen: openagents_chat::router::Screen::RoutesMap,
+                }],
+                ..Default::default()
+            };
+            reply.done = true;
+        })
+    }
+}
+
+/// "show me how you route things" typed and sent: the reply carrying the
+/// typed `routes.map` offer arrives on the window's tick, from the inline
+/// and the background runner, and the Map page opens then, with no tap on
+/// **Open the map** and no other key or click. The offer is taken once:
+/// leaving the page, later ticks don't open it again (#10102).
+#[test]
+fn the_map_opens_when_the_offer_arrives_without_a_tap() {
+    use rust_native_desktop::input::TextInput;
+    use std::time::Duration;
+    for background in [false, true] {
+        let fake = FakeHost::new("Test computer", unix_now());
+        fake.answer_with(std::sync::Arc::new(MapOffering));
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            std::env::temp_dir(),
+        );
+        let now = Instant::now();
+        let mut app =
+            DesktopApp::inline_chat(Model::new(now, Screen::Home, Agent::Enabled), context);
+        if background {
+            let Runner::Inline(context) = std::mem::replace(&mut app.runner, Runner::Pending(None))
+            else {
+                unreachable!("an inline chat")
+            };
+            app.runner = Runner::Background(Worker::start(context, Waker::new(|| {})));
+        }
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::NewChat,
+            },
+            now,
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while background && app.chat.as_ref().unwrap().selected_chat().is_none() {
+            assert!(Instant::now() < deadline, "the new chat opens");
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(App::text_input(
+            &mut app,
+            TextInput::Commit("show me how you route things"),
+            now
+        ));
+        assert!(App::text_input(
+            &mut app,
+            TextInput::Key {
+                key: "Enter",
+                text: None,
+                command: false,
+                alt: false,
+                shift: false,
+            },
+            now
+        ));
+        assert!(app.map_view().is_none(), "no reply yet");
+        // From here on only the window's ticks run: no key, no click.
+        while app.map_view().is_none() {
+            assert!(
+                Instant::now() < deadline,
+                "background {background}: the offer arrived but the Map page did not open"
+            );
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            !app.chat.as_mut().unwrap().take_map(),
+            "background {background}: taken once"
+        );
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::Settings,
+            },
+            Instant::now(),
+        );
+        for _ in 0..5 {
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            app.map_view().is_none(),
+            "background {background}: the offer opened the page once"
+        );
+    }
+}

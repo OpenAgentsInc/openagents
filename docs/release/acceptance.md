@@ -155,7 +155,7 @@ conversation run in the owner's order.
 | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |
 | `ui-no-verse` | The Verse world never loads while a chat page shows, loads on the Verse page, and is released after. | #10071 |
 | `route-map` | The Map page opens from the sidebar's footer, zooms into `work.dispatch`, inspects Coder, opens the Gaps panel, and shows `capability.missing` as a gap with a next step; leaving releases the page. Offline: no chat message. | #10085 |
-| `route-map-chat` | "show me how you route things" on the desktop gets the router's typed `routes.map` offer, and its **Open the map** opens the Map page. | #10085 |
+| `route-map-chat` | "show me how you route things" on the desktop gets the router's typed `routes.map` offer, and the Map page opens when the reply arrives, with no click. | #10085, #10102 |
 | `phone-claude` | A paired phone-shaped client asks "do a test delegation to claude" and presses Run Coder; the computer's run starts on Claude Code. | #10081 |
 | `explain-error` | A gate scenario, outside the window: a Python file with a wrong dictionary key is planted in a scratch project and run, and the build's `openagents plugin run` runs the [Explain this error](../plugins/examples/explain-this-error.md) plugin's workflow on its output with reads only. The plugin names `billing.py:5`, shows the line, and suggests the key the dictionary has. | #10086 |
 | `plugins-chat` | A gate scenario, outside the window: "which plugins can I test?" through the build's `openagents chat --scratch`; the live chat's reply names every plugin in `deploy/eval-runner/catalog`, the catalog the hosted runner and the Gym's chips use. | #10090 |
