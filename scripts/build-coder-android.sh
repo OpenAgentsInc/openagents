@@ -17,7 +17,7 @@ if [[ "${CODER_ANDROID_SANITIZED:-}" != 1 ]]; then
     CODER_PUSH_RELAY_URL="${CODER_PUSH_RELAY_URL:-}" \
     CODER_PUSH_GATEWAY_URL="${CODER_PUSH_GATEWAY_URL:-}" \
     CODER_PUSH_APP_PROFILE="${CODER_PUSH_APP_PROFILE:-}" \
-    CODER_ANDROID_SANITIZED=1 /bin/bash "$root/scripts/build-coder-android.sh" "$@"
+    CODER_ANDROID_SANITIZED=1 "$BASH" "$root/scripts/build-coder-android.sh" "$@"
 fi
 
 usage() {

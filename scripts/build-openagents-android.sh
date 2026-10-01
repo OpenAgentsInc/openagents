@@ -21,7 +21,7 @@ if [[ "${OPENAGENTS_ANDROID_SANITIZED:-}" != 1 ]]; then
     OPENAGENTS_ANDROID_KEY_PASSWORD="${OPENAGENTS_ANDROID_KEY_PASSWORD:-}" \
     OPENAGENTS_ANDROID_SIGNING_ENV="${OPENAGENTS_ANDROID_SIGNING_ENV:-}" \
     OPENAGENTS_PLAYTEST_LOGGING="${OPENAGENTS_PLAYTEST_LOGGING:-on}" \
-    OPENAGENTS_ANDROID_SANITIZED=1 /bin/bash "$root/scripts/build-openagents-android.sh" "$@"
+    OPENAGENTS_ANDROID_SANITIZED=1 "$BASH" "$root/scripts/build-openagents-android.sh" "$@"
 fi
 
 usage() {
