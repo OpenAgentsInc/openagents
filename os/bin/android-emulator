@@ -77,6 +77,10 @@ create() {
   } >> "$ANDROID_AVD_HOME/$AVD.avd/config.ini"
 }
 
+# The emulator runs without audio: with it, its guest held a capture stream
+# on the desk microphone, which then kept stalling under screen-record and
+# set off its microphone warning chime (three low beeps) over and over
+# (2026-10-01).
 case "${1:-start}" in
   start)
     if running; then
@@ -95,6 +99,7 @@ case "${1:-start}" in
       -accel on \
       -no-boot-anim \
       -no-metrics \
+      -no-audio \
       "${@:2}"
     ;;
   stop)
