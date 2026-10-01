@@ -963,3 +963,30 @@ environment file and unit did not change, `coder-worker.service` and
 "Can you book me a flight to Tokyo next week?" took `capability.missing`
 and answered "There's no plugin for that yet. Want to make one? …"
 (`capability.missing@2`).
+
+Release `f04b34bad8` (2026-10-01 UTC,
+[#10085](https://github.com/OpenAgentsInc/openagents/issues/10085)) opens
+the desktop app's route map from chat: "show me how you route things" stays
+on `meta`, whose rubric now covers asking to see how we route or are put
+together, and is answered by `meta.map` off the desktop or, when the
+request's `context.surface` is `desktop`, by `meta.map.desktop` with NIP-CJ
+`open_screen` `routes.map` ("Open the map"). The question set's digest moved
+with the rubric (`chat-router-v4@398b034caf30`), the bank is
+`chat-answers-v1@8b7c39100770` with 70 answers, `calibration-v2.json` was
+refit ([measurement](../coder/measurements/2026-10-01-route-map-route.md)),
+and serving keeps calibration off. It was built with `cargo zigbuild` as
+above, installed as `/opt/coder-worker/releases/f04b34bad8` with the current
+`knowledge/openagents/` (64 entries, no `._*` files; the worker logs 63
+admitted) and `codebase-kb.gz` copied from `4bde215a83`, checked with
+`--check` under the chat environment ("the configuration is safe to
+deploy"), and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file and unit did not change,
+`coder-worker.service` and `/opt/coder-worker/current` (`0757355c1d`) were
+not touched, and `4bde215a83` stays in `releases/` for rollback. The log
+names `router chat-router-v4@398b034caf30 (Live), bank
+chat-answers-v1@8b7c39100770 with 70 answers`. `openagents chat --scratch
+--no-run --json "show me how you route things"` answered from the bank
+(`meta.map@1`, no offer, as a terminal turn should), and the release gate's
+`route-map-chat` scenario, asking as the desktop app, got
+`meta.map.desktop@1` with the `routes.map` offer, whose tap opened the Map
+page.

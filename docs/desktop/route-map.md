@@ -28,7 +28,7 @@ the legend (`openagents_chat_app::visual::map`):
 | Chat model | The general model that writes a reply when nothing prepared fits | the bank's `general` route and the router's fallback |
 | Coder | The coding agent work is handed to | the `chat.coder` capability |
 | Engine | Codex, Claude Code, Grok Build, OpenCode, Devin | NIP-CJ's `Engine::ALL`, with this computer's readiness |
-| Plugin | What a person adds: tools (Wasm), workflows (programs), skills, knowledge, and tests in one package | every `crates/plugin-*` and `packages/*` directory |
+| Plugin | What a person adds: Wasm, workflows (programs), skills, knowledge, and tests in one package | every `crates/plugin-*` and `packages/*` directory |
 | Screen or action | A screen an answer's offer opens, a deck, the command offers | the bank's `open_screen` offers, `openagents_deck::decks()` |
 
 Edges follow a request: router → family → route → what serves it → engine

@@ -433,3 +433,48 @@ fn walk(node: &Node<Intent>, visit: &mut dyn FnMut(&Node<Intent>)) {
         }
     }
 }
+
+/// How long one paint of the whole map takes at the default and minimum
+/// window sizes, 1x and 2x, fitted and zoomed in: the frame budget for
+/// panning and zooming. Run in release:
+/// `cargo test --release -p openagents-desktop --lib paint_timing -- --ignored --nocapture`.
+#[test]
+#[ignore = "a timing, not a check"]
+fn paint_timing() {
+    for (w, h) in [(1200.0_f32, 840.0_f32), (760.0, 540.0)] {
+        for scale in [1.0_f32, 2.0] {
+            for zoom in [None, Some(1.6)] {
+                let mut page = MapPage::new(build(Local::default()), true);
+                page.set_unit(scale);
+                let (sw, sh) = (w - 600.0_f32.min(w * 0.6), h - 140.0);
+                let rect = PxRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: sw * scale,
+                    h: sh * scale,
+                };
+                let mut frame =
+                    Frame::new(rect.w as usize, rect.h as usize, Color::rgb(0, 0, 0));
+                page.paint(&mut frame, rect);
+                if let Some(zoom) = zoom {
+                    let coder = node(&page, "coder");
+                    page.camera = Camera {
+                        center: page.layout.positions[coder],
+                        zoom,
+                    };
+                }
+                let frames = 30;
+                let started = Instant::now();
+                for n in 0..frames {
+                    page.camera.pan(3.0, (n % 3) as f32);
+                    page.paint(&mut frame, rect);
+                }
+                let ms = started.elapsed().as_secs_f64() * 1000.0 / f64::from(frames);
+                println!(
+                    "{w}x{h} window, map {sw}x{sh} pt at {scale}x, {}: {ms:.2} ms a frame",
+                    zoom.map_or("fitted".to_string(), |z| format!("zoom {z}"))
+                );
+            }
+        }
+    }
+}

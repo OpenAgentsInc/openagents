@@ -1305,16 +1305,20 @@ fn route_map(gate: &mut Gate) -> Outcome {
             .map(|index| (index, map.gaps[index].step.label().to_string()))
     });
     let (_, scene) = gate.capture("route-map", "gaps-1200x840-1x", 1200.0, 840.0, 1.0);
-    // Leave the map as the scenarios before found the window.
-    if let Some(page) = previous {
-        let action = match page {
-            chrome::Page::Chat(id) => chrome::Action::SelectChat { id },
-            chrome::Page::Settings => chrome::Action::Settings,
-            _ => chrome::Action::NewChat,
-        };
+    // Leave the map: back to the chat that showed, or to Phones and
+    // computers when none did.
+    let listed = |gate: &Gate, id: u64| {
         gate.app
-            .activate(Intent::Navigate { action }, Instant::now());
-    }
+            .navigation
+            .as_ref()
+            .is_some_and(|state| state.chats.iter().any(|chat| chat.id == id))
+    };
+    let action = match previous {
+        Some(chrome::Page::Chat(id)) if listed(gate, id) => chrome::Action::SelectChat { id },
+        _ => chrome::Action::Computers,
+    };
+    gate.app
+        .activate(Intent::Navigate { action }, Instant::now());
     let released = gate.app.map_view().is_none();
     let zoomed = matches!((zoom_before, zoom_after), (Some(a), Some(b)) if b > a);
     match gap {

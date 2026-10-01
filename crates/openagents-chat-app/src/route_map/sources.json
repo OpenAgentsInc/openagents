@@ -2593,7 +2593,7 @@
       "summary": "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file.",
       "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "version": "0.1.0",
-      "tools": [
+      "wasm": [
         "plugin-code-search"
       ],
       "workflows": [
@@ -2618,7 +2618,7 @@
       "summary": "Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow.",
       "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "version": "0.1.0",
-      "tools": [
+      "wasm": [
         "plugin-dependency-check"
       ],
       "workflows": [
@@ -2643,7 +2643,7 @@
       "summary": "Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix.",
       "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "version": "0.1.0",
-      "tools": [
+      "wasm": [
         "plugin-explain-error"
       ],
       "workflows": [
@@ -2668,7 +2668,7 @@
       "summary": "Diagnostic outline guest for the packet ABI.",
       "publisher": null,
       "version": null,
-      "tools": [
+      "wasm": [
         "plugin-outline"
       ],
       "workflows": [],
@@ -2683,7 +2683,7 @@
       "summary": "Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit.",
       "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "version": "0.1.0",
-      "tools": [
+      "wasm": [
         "plugin-release-notes"
       ],
       "workflows": [
@@ -2708,7 +2708,7 @@
       "summary": "Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests.",
       "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "version": "0.1.0",
-      "tools": [
+      "wasm": [
         "plugin-repo-map"
       ],
       "workflows": [
@@ -2738,7 +2738,7 @@
       "summary": "Reads the test reports in a project for Coder: which tests failed, where, and why.",
       "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
       "version": "0.1.0",
-      "tools": [
+      "wasm": [
         "plugin-test-report"
       ],
       "workflows": [
@@ -2763,7 +2763,7 @@
       "summary": "The Jev-probe context-construction policy as a program: probe the workspace with the read-only evidence guests, let Jev keep what the task needs, and delegate with that briefing and batch-checked directions.",
       "publisher": "63fe2f2178a4b2b9719ca4655d7db85036f0e156d197c1652ea13eb6b73bdabc",
       "version": "0.1.0",
-      "tools": [],
+      "wasm": [],
       "workflows": [
         "jev-probe"
       ],

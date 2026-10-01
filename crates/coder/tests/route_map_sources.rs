@@ -421,7 +421,7 @@ fn plugin(dir: &Path, product: &[KnowledgeSource]) -> PluginSource {
             .unwrap_or_default(),
         publisher: text("publisher"),
         version: text("version"),
-        tools: if wasm {
+        wasm: if wasm {
             cargo_name.into_iter().collect()
         } else {
             Vec::new()

@@ -5,7 +5,7 @@
 //! The front (the chat router) decides where each request goes; its typed
 //! routes are grouped in families; each route is served by members:
 //! prepared answers, knowledge, the general chat model, Coder and its
-//! engines, plugins (what people add: tools, workflows, skills, knowledge,
+//! engines, plugins (what people add: Wasm, workflows, skills, knowledge,
 //! and tests in one package), and screens or actions. Edges follow a
 //! request: front → route → what serves it → engine or plugin. Every node
 //! has a [`Kind`], which the map colors and its legend names, and the
@@ -896,7 +896,7 @@ impl Map {
                 Kind::Knowledge,
                 "Coding knowledge",
                 &format!(
-                    "{} cited entries (methods, edge cases, slips, environments, tools) Coder's runs retrieve; {} admitted.",
+                    "{} cited entries (methods, edge cases, slips, environments, command guides) Coder's runs retrieve; {} admitted.",
                     coding.entries, coding.admitted
                 ),
                 Some(coder),
@@ -1283,7 +1283,16 @@ impl Map {
                         path("The entries", &coding.path),
                     ));
                     for (kind, count) in &coding.kinds {
-                        fields.push(Field::new(kind, count.to_string()));
+                        let label = match kind.as_str() {
+                            "method" => "Methods",
+                            "edge-case" => "Edge cases",
+                            "slip" => "Slips",
+                            "environment" => "Environments",
+                            "tool" => "Command guides",
+                            "product" => "Product",
+                            other => other,
+                        };
+                        fields.push(Field::new(label, count.to_string()));
                     }
                 }
             }
@@ -1361,7 +1370,7 @@ impl Map {
             path("Its directory", &plugin.dir),
         ));
         let parts = [
-            ("Wasm", &plugin.tools),
+            ("Wasm", &plugin.wasm),
             ("Workflows", &plugin.workflows),
             ("Skills", &plugin.skills),
             ("Knowledge", &plugin.knowledge),
@@ -1509,8 +1518,9 @@ fn knowledge_step(topic: &str) -> NextStep {
     }
 }
 
-/// Every gap in `map`, in a stable order: routes first, then plugins,
-/// then engines.
+/// Every gap in `map`, in a stable order: by kind in [`GapKind::ALL`]'s
+/// order (requests nothing serves first), then routes, plugins, and
+/// engines in the map's order.
 fn gaps(map: &Map) -> Vec<Gap> {
     let sources = &map.sources;
     let mut out = Vec::new();
@@ -1817,6 +1827,7 @@ fn gaps(map: &Map) -> Vec<Gap> {
             EngineReading::Ready | EngineReading::Unknown => {}
         }
     }
+    out.sort_by_key(|gap| gap.kind);
     out
 }
 

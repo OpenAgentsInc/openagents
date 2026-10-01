@@ -47,7 +47,7 @@ pub struct Sources {
     /// The codebase route's question set.
     pub codebase_kb: CodebaseKb,
     /// The chat's admitted capabilities with no Gym seam: its built-ins
-    /// and the catalog tool notes.
+    /// and the catalog's plugin notes (`knowledge/openagents/openagents.tool-*.md`).
     pub capabilities: Vec<CapabilitySource>,
     /// The coding engines a dispatch may name.
     pub engines: Vec<EngineSource>,
@@ -232,7 +232,7 @@ pub struct Question {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilitySource {
-    /// `chat.coder`, or a tool note's id.
+    /// `chat.coder`, or a catalog plugin note's id.
     pub id: String,
     pub name: String,
     /// `program`, `plugin`, `skill`, or `knowledge`.
@@ -262,7 +262,7 @@ pub struct DeckSource {
     pub title: String,
 }
 
-/// One plugin: what a person adds. It bundles tools (Wasm code),
+/// One plugin: what a person adds. It bundles Wasm,
 /// workflows (programs), skills, knowledge, and tests.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -276,8 +276,8 @@ pub struct PluginSource {
     /// The key its package record names as publisher.
     pub publisher: Option<String>,
     pub version: Option<String>,
-    /// Wasm tools: the guest crates it carries.
-    pub tools: Vec<String>,
+    /// Wasm: the guest crates it carries.
+    pub wasm: Vec<String>,
     /// Workflows: its programs, by file name.
     pub workflows: Vec<String>,
     /// Skills: its guidance files, by name.

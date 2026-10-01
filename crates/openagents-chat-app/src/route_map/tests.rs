@@ -14,7 +14,7 @@ fn plugin(dir: &str, slug: Option<&str>, name: &str) -> PluginSource {
         summary: format!("{name} does one thing."),
         publisher: slug.map(|_| PUBLISHER.to_string()),
         version: slug.map(|_| "0.1.0".to_string()),
-        tools: vec![format!("{dir}-guest")],
+        wasm: vec![format!("{dir}-guest")],
         workflows: vec![name.to_lowercase()],
         skills: vec![],
         knowledge: vec![],
@@ -348,7 +348,7 @@ fn plugin_gaps_and_their_next_steps() {
     assert!(f.detail.contains("No clear change"));
 }
 
-/// A catalog plugin (one the chat's tool notes list) is tested from chat;
+/// A catalog plugin (one the chat's catalog notes list) is tested from chat;
 /// the hosted runner tests only those.
 #[test]
 fn a_catalog_plugin_is_tested_in_chat() {
