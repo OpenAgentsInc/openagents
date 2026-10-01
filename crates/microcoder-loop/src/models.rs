@@ -155,10 +155,7 @@ impl QuestionSet {
     /// mean level. A question the response left unanswered, or answered in
     /// another type, is left out.
     #[must_use]
-    pub fn answers_from(
-        &self,
-        response: &jev::SystemOneResponse,
-    ) -> (Answers, Answers) {
+    pub fn answers_from(&self, response: &jev::SystemOneResponse) -> (Answers, Answers) {
         let mut nouls = Vec::new();
         let mut scores = Vec::new();
         for question in &self.questions {
