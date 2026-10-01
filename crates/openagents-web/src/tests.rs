@@ -65,7 +65,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 14] = [
+const PAGES: [&str; 18] = [
     "/",
     "/install",
     "/terms",
@@ -77,6 +77,10 @@ const PAGES: [&str; 14] = [
     "/docs/connect-a-computer",
     "/docs/chat",
     "/docs/coder",
+    "/docs/plugins",
+    "/docs/write-a-plugin",
+    "/docs/test-a-plugin",
+    "/docs/publish-and-share",
     "/docs/verse",
     "/docs/privacy-and-security",
     "/docs/help",

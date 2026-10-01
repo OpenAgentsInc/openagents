@@ -16,7 +16,7 @@ A plugin can contain any of these parts:
 
 | Part | What it is | Where it lives in a plugin directory |
 | --- | --- | --- |
-| Skills | Instructions the agent reads before a task, as `SKILL.md` guides. A skill runs no code and grants nothing. | `skills/` |
+| Skills | Instructions the agent reads before a task, as Markdown files (`skills/<name>.md`). A skill runs no code and grants nothing. | `skills/` |
 | Workflows | Typed, step-by-step programs that a host runs: look things up, check, decide, delegate, or run Wasm. Workflows name what they use by digest. The protocol calls a workflow a *program* ([NIP-PRG](../../nips/openagents/NIP-PRG.md)). | `programs/`, pinned by `program` in `package.json` |
 | Knowledge | Cited reference entries: a method, an edge case, a common slip, or how a command is used ([NIP-KB](../../nips/openagents/NIP-KB.md)). | Published as NIP-KB entries with `openagents kb publish`, beside the plugin's release |
 | Wasm | Sandboxed WebAssembly code that performs one bounded operation, such as mapping a repository's files. It is the only executable code a plugin can carry. It runs with no network, under fuel and memory limits, and reads only what the host hands it. A workflow runs it; a model never calls it by name. | A guest crate built against [`crates/plugin-pdk`](../../crates/plugin-pdk/) |
@@ -76,7 +76,8 @@ root. The record names the plugin and pins its workflow by digest:
 
 Add the parts your plugin needs:
 
-1. Put guidance in `skills/<name>/SKILL.md`.
+1. Put guidance in `skills/<name>.md`; the test run reads every `.md`
+   file directly in `skills/`.
 1. Put the workflow in `programs/<name>.json`. The
    [workflow guide](../programs.md) covers step kinds, sources, and
    bounds.

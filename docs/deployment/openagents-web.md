@@ -30,6 +30,11 @@ These pages need nothing more than this repository and the public buckets:
 - `/connect`, `/.well-known/apple-app-site-association`, and
   `/.well-known/assetlinks.json`: the pairing link's landing page and the
   app-association files, as the `coder` repository serves them.
+- `/docs` and `/docs/{slug}`: new on 2026-09-29, short guides to the apps
+  we launch (`crates/openagents-web/content/docs/`), and on 2026-10-01
+  four guides to plugins: Plugins, Write a plugin, Test a plugin, and
+  Publish and share ([#10088](https://github.com/OpenAgentsInc/openagents/issues/10088)).
+  Committed, not deployed.
 - `/app`: the local task browser, loopback only.
 
 ## Ported, waiting on a production backend
@@ -56,8 +61,10 @@ Terminal product (installed from the private `coder` repository's bucket
 `openagentsgemini-cli-releases`) is not connected to OpenAgents: the
 `/releases/{name}` release proxy, the `/install-terminal.sh` and
 `/install-terminal.ps1` redirects, the homepage's install commands, and the
-Docs (`/docs`, `/docs/{slug}`, `/doc*`) and Blog (`/blog*`) sections, whose
-every document was about Coder Terminal. All of them answer `404`.
+old Docs (`/doc*`) and Blog (`/blog*`) sections, whose every document was
+about Coder Terminal. All of them answer `404`. The old site's `/docs`
+pages were about Coder Terminal too; this server's `/docs` is new and
+serves different guides at that path.
 
 ## Not ported
 
@@ -85,14 +92,14 @@ These need accounts, sessions, or payments, or are internal:
 4. Keep the URLs that must not move the same as the `coder` repository
    serves them: the pairing link (`/connect`) and the legal pages.
 5. Decide the old Coder Terminal's fate. This server does not serve
-   `/releases/*`, `/install-terminal.sh`, `/install-terminal.ps1`, `/docs`,
-   or `/blog`. Once DNS moves, the installed Coder Terminal's self-update
-   (which reads `/releases/`) and its published install command
-   (`curl -fsSL https://openagents.com/releases/install-terminal.sh | sh`,
+   `/releases/*`, `/install-terminal.sh`, `/install-terminal.ps1`, the old
+   `/docs` pages, or `/blog`. Once DNS moves, the installed Coder
+   Terminal's self-update (which reads `/releases/`) and its published
+   install command (`curl -fsSL https://openagents.com/releases/install-terminal.sh | sh`,
    and the PowerShell form) stop working, and old docs and blog links
    answer `404`. That is an owner decision: accept the break, or restore a
    redirect to the bucket before cutover.
-6. Update `/install` for each desktop release; it links version 0.1.0.
+6. Update `/install` for each desktop release; it links version 1.0.0.
 7. When this server serves openagents.com, update the `INVARIANTS.md` row
    for the connect link, which names `coder-serve` as the server of
    `/connect`.

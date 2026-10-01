@@ -4,7 +4,8 @@
 //! Every document is compiled into the binary, so a deploy cannot fail to
 //! copy one and leave a page answering `404`. The terms and the policy are
 //! the text openagents.com published, last updated 2026-09-03, unchanged.
-//! The docs are short guides to the apps we launch, in `content/docs/`.
+//! The docs are short guides to the apps we launch and to plugins, in
+//! `content/docs/`.
 
 use axum::Router;
 use axum::extract::Path;
@@ -23,7 +24,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 8] = [
+pub(crate) const DOCS: [(&str, &str); 12] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -35,6 +36,19 @@ pub(crate) const DOCS: [(&str, &str); 8] = [
     ),
     ("chat", include_str!("../../content/docs/chat.md")),
     ("coder", include_str!("../../content/docs/coder.md")),
+    ("plugins", include_str!("../../content/docs/plugins.md")),
+    (
+        "write-a-plugin",
+        include_str!("../../content/docs/write-a-plugin.md"),
+    ),
+    (
+        "test-a-plugin",
+        include_str!("../../content/docs/test-a-plugin.md"),
+    ),
+    (
+        "publish-and-share",
+        include_str!("../../content/docs/publish-and-share.md"),
+    ),
     ("verse", include_str!("../../content/docs/verse.md")),
     (
         "privacy-and-security",
@@ -54,7 +68,7 @@ pub(crate) fn routes() -> Router<App> {
 /// `/docs`: every guide, in reading order.
 async fn docs_index() -> Response {
     let mut body = String::from(
-        "<h1>Docs</h1><p class=\"label\">Short guides to OpenAgents for iPhone and Mac.</p>\
+        "<h1>Docs</h1><p class=\"label\">Short guides to OpenAgents for iPhone and Mac, and to plugins.</p>\
 <ol class=\"list docs\">",
     );
     for (slug, source) in DOCS {
@@ -143,6 +157,29 @@ mod tests {
         for document in [TERMS, PRIVACY] {
             assert!(document.contains("do not sell your"));
             assert!(document.contains("1101 W 34th St. #581, Austin, TX 78705"));
+        }
+    }
+
+    /// The plugin guides use the glossary's one vocabulary: a plugin's
+    /// parts are skills, workflows, knowledge, Wasm, and tests, and no
+    /// part of a plugin is ever called a tool.
+    #[test]
+    fn the_plugin_guides_use_one_vocabulary() {
+        let plugins = DOCS
+            .iter()
+            .find(|(slug, _)| *slug == "plugins")
+            .map(|(_, source)| *source)
+            .unwrap();
+        for part in ["Skills", "Workflows", "Knowledge", "Wasm", "Tests"] {
+            assert!(plugins.contains(&format!("**{part}.**")), "{part}");
+        }
+        for (slug, source) in DOCS {
+            let words = source
+                .split(|c: char| !c.is_ascii_alphabetic())
+                .map(str::to_ascii_lowercase);
+            for word in words {
+                assert!(word != "tool" && word != "tools", "{slug} says {word}");
+            }
         }
     }
 }

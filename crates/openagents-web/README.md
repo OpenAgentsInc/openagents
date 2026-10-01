@@ -42,22 +42,24 @@ everything it serves is compiled in or read from this repository.
 | `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, and a screenshot of the Verse (`static/verse-grid.jpg`, the Grid from above, captured from the live relay with `crates/verse/examples/overlook_capture.rs`) | Renders. |
 | `/install` | Everything OpenAgents is launching, in order: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by QR code, and signing in to Codex or Claude Code on the Mac so the phone can run Coder | Renders. |
 | `/desktop` | Permanent redirect to `/install` | Redirects. |
+| `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, install, connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, privacy and security, and help | Renders. |
 | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
 | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
 
-The header links only Install; the footer links the terms and the privacy
-policy.
+The header links Install and Docs; the footer links the terms and the
+privacy policy.
 
 The Forum, Gym, Traces, Earn, Weights, and QA sections of the old site are
 not served and not linked (owner-directed, 2026-09-29). Neither is anything
 for the old Coder Terminal product, which is not connected to OpenAgents:
 the `/releases/{name}` proxy to its release bucket, the
 `/install-terminal.sh` and `/install-terminal.ps1` install commands, and the
-Docs (`/docs`, `/doc`) and Blog (`/blog`) sections, whose every document was
-about it (owner-directed, 2026-09-29).
+old Docs (`/doc`) and Blog (`/blog`) sections, whose every document was
+about it (owner-directed, 2026-09-29). Today's `/docs` is new: guides to the
+apps we launch and to plugins, none about Coder Terminal.
 
 Pages that read accounts go through the
 `Backend` trait in `src/backend.rs`. The development backend is connected to
@@ -88,7 +90,9 @@ the install page and the `/desktop` redirect; that the legal pages carry the
 published text; that every color in the stylesheet is a gray and that the
 text steps meet WCAG AA; the `/connect` page's policy and the association
 files; that the removed sections, the release proxy, the Terminal install
-commands, the docs, and the blog answer `404` and are never linked; that no
-page but the published legal text names Coder Terminal or its install
-command; a connected test backend's pages and escaping; and the task
+commands, the old `/doc` pages, and the blog answer `404` and are never
+linked; that the docs list every guide and every site link in a guide
+resolves; that the plugin guides name a plugin's five parts and no guide
+says *tool*; that no page but the published legal text names Coder
+Terminal or its install command; a connected test backend's pages and escaping; and the task
 browser.
