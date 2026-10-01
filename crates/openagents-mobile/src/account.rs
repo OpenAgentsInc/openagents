@@ -36,6 +36,38 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "37",
+        title: "Words and screenshots together, and review before you publish",
+        what_to_test: "Tap the paperclip, pick a photo, type a question that isn't about code, such as \"What is OpenAgents?\", and tap Send: your words should send and get a reply, and the photo should stay above the message box with a line saying images go only to Coder. With a computer paired, attach a screenshot, ask for a code change, and tap Run Coder on the reply: the run should start with the screenshot. When a Coder run on your computer finishes, open it: its card should count the files changed and name the base and head it compares, What changed should open the diff, and Publish should make one draft pull request or commit and link it on the card. If the change moves on the computer after you open it, the card should say so and offer Refresh.",
+        items: &[
+            Item {
+                title: "Send words and photos together",
+                detail: "A message with photos now sends: its words go to chat and get a reply, and the photos stay in your draft for Coder.",
+            },
+            Item {
+                title: "Screenshots reach Coder",
+                detail: "Tap Run Coder after a coding reply and the photos in your draft go to Coder on your computer as they are, so Codex and Claude Code runs can see them.",
+            },
+            Item {
+                title: "Photos stay when a reply doesn't start Coder",
+                detail: "Images go only to Coder. If the reply doesn't lead to Coder, your photos stay in the draft with a line that says so.",
+            },
+            Item {
+                title: "Review a finished change",
+                detail: "When a Coder run on your computer finishes, its card names the exact revisions it compares, and What changed opens the diff between them. If the change moves after you open it, the card says so and offers Refresh.",
+            },
+            Item {
+                title: "Publish once",
+                detail: "On a computer you own or may operate, Publish on that card makes a draft pull request or a commit, as the project is set up, just once, and the card links to it.",
+            },
+            Item {
+                title: "Some messages still take words only",
+                detail: "A message to a running Coder task or to your computer's own thread carries words only. If your draft has photos, it stays in the message box with a line that says why.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "36",
         title: "Photos, chat menus, and a better message box",
         what_to_test: "In the message box, type an emoji and an accented letter such as é, then tap delete: each should go in one tap. Double-tap the text and choose Undo, then Redo. Tap the paperclip and pick a photo: it should show above the message box, and tapping Send should say chat takes text only while your text and photo stay in the box; remove the photo and the message should send. Touch and hold a saved chat in Chats: a menu should offer Pin and Archive, and the chat should move when you pick one; hold it again to unpin it. Ask for a short code sample: the code should be colored. Send a few messages at a normal pace: none should say you're sending too quickly.",
