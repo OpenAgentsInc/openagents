@@ -36,6 +36,9 @@ rust-version = "1.97.1"
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+# macOS ld's "__eh_frame section too large ... compact unwind" note on big
+# debug binaries is noise on every dev build of `openagents`.
+linker_messages = "allow"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
