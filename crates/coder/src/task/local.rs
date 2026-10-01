@@ -92,7 +92,8 @@ pub fn default_store() -> PathBuf {
 }
 
 /// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the
-/// `microcoder` beside the running program or in `~/.openagents/bin`.
+/// `microcoder` beside the running program, in its app bundle, or in
+/// `~/.openagents/bin` ([`autostart::default_controller`]).
 ///
 /// # Errors
 /// Names where it looked.

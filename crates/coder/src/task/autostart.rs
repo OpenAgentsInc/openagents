@@ -1987,22 +1987,46 @@ const MICROCODER: &str = if cfg!(windows) {
     "microcoder"
 };
 
-/// The engine beside the running program, else the installed one.
+/// The engine beside the running program, else the one its macOS app
+/// bundle ships, else the installed one.
 ///
 /// # Errors
 /// Names where it looked.
 pub fn default_controller() -> std::result::Result<PathBuf, String> {
-    let beside = std::env::current_exe()
+    let exe = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.canonicalize().ok())
-        .and_then(|exe| exe.parent().map(|dir| dir.join(MICROCODER)))
-        .filter(|path| path.is_file());
-    let installed = std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(".openagents/bin").join(MICROCODER))
-        .filter(|path| path.is_file());
-    beside.or(installed).ok_or_else(|| {
-        "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
-    })
+        .and_then(|exe| exe.canonicalize().ok());
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    controller_candidates(exe.as_deref(), home.as_deref())
+        .into_iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
+        })
+}
+
+/// Where [`default_controller`] looks, in order: beside `exe`; when `exe`
+/// is the `openagents` CLI in an app bundle's `Contents/Helpers`, the
+/// bundle's `Contents/MacOS` (where `scripts/desktop/package-macos.sh`
+/// puts `coder` and `microcoder`, so the CLI runs the engine it shipped
+/// with rather than an older `~/.openagents/bin` copy that refuses a
+/// newer grant's shape); then `~/.openagents/bin`.
+fn controller_candidates(exe: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(dir) = exe.and_then(Path::parent) {
+        candidates.push(dir.join(MICROCODER));
+        if dir.file_name().is_some_and(|name| name == "Helpers")
+            && let Some(contents) = dir
+                .parent()
+                .filter(|contents| contents.file_name().is_some_and(|name| name == "Contents"))
+        {
+            candidates.push(contents.join("MacOS").join(MICROCODER));
+        }
+    }
+    if let Some(home) = home {
+        candidates.push(home.join(".openagents/bin").join(MICROCODER));
+    }
+    candidates
 }
 
 #[cfg(test)]
@@ -3519,6 +3543,46 @@ mod tests {
                 dir.path().to_string_lossy().into_owned(),
             ]),
             2
+        );
+    }
+
+    /// #10074: the Mac app's `openagents` CLI lives in `Contents/Helpers`
+    /// and its `microcoder` in `Contents/MacOS`. The CLI must run that
+    /// engine, not an older `~/.openagents/bin` copy that refuses a newer
+    /// grant ("the execution grant has an invalid shape").
+    #[test]
+    fn the_app_cli_runs_the_engine_its_bundle_ships() {
+        let temp = tempfile::tempdir().unwrap();
+        let contents = temp.path().join("OpenAgents.app/Contents");
+        let home = temp.path().join("home");
+        for dir in [
+            contents.join("MacOS"),
+            contents.join("Helpers"),
+            home.join(".openagents/bin"),
+        ] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let bundled = contents.join("MacOS").join(MICROCODER);
+        let installed = home.join(".openagents/bin").join(MICROCODER);
+        std::fs::write(&bundled, b"").unwrap();
+        std::fs::write(&installed, b"").unwrap();
+        let first = |exe: &Path| {
+            controller_candidates(Some(exe), Some(&home))
+                .into_iter()
+                .find(|path| path.is_file())
+        };
+        let cli = contents.join("Helpers/openagents");
+        assert_eq!(first(&cli), Some(bundled.clone()));
+        assert_eq!(first(&contents.join("MacOS/coder")), Some(bundled.clone()));
+        // Beside the program still wins, and elsewhere the install is used.
+        let beside = contents.join("Helpers").join(MICROCODER);
+        std::fs::write(&beside, b"").unwrap();
+        assert_eq!(first(&cli), Some(beside));
+        assert_eq!(first(&temp.path().join("bin/openagents")), Some(installed));
+        // A Helpers folder outside a bundle's Contents is not a bundle.
+        assert!(
+            !controller_candidates(Some(&temp.path().join("Helpers/openagents")), None)
+                .contains(&temp.path().join("MacOS").join(MICROCODER))
         );
     }
 }

@@ -152,10 +152,14 @@ projects, and what the run's commands may reach.
   (`provider_switched`).
 - **The same run as the host's.** The task is started through the host
   auto-start's own start (`coder::task::autostart::Policy::launch`): the
-  `microcoder repository` engine beside `openagents` (or in
-  `~/.openagents/bin`; `OPENAGENTS_CODER_CONTROLLER` names another), under
-  an execution grant, in the filesystem boundary, with the same failover and
-  the same ATIF trajectory per turn. The shared code is
+  `microcoder repository` engine beside `openagents`, else the one the Mac
+  app bundles in `Contents/MacOS` when `openagents` is the app's
+  `Contents/Helpers/openagents`, else `~/.openagents/bin`'s
+  (`OPENAGENTS_CODER_CONTROLLER` names another). An older engine than the
+  CLI can refuse a newer grant with "the execution grant has an invalid
+  shape" (#10074); build or install `microcoder` with `openagents`. The
+  run is under an execution grant, in the filesystem boundary, with the
+  same failover and the same ATIF trajectory per turn. The shared code is
   [`coder::task::local`](../../crates/coder/src/task/local.rs).
 - **Where tasks live.** `~/.openagents/tasks`, the store `coder task` and a
   host on this computer use by default, so the host's devices see these
