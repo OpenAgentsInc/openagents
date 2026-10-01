@@ -35,7 +35,8 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   second, against about five and a half for Gemini 3.8 Flash at any effort.
   A turn the primary fails before its first words (an HTTP error, such as
   the 404 once OpenRouter retires the model on 2026-10-05, a 429, a failure
-  event, an empty stream, or no answer text within four seconds) goes, the
+  event, an empty stream, nothing at all within four seconds, or, while it
+  streams its reasoning, no answer text within eight) goes, the
   same turn, to `google/gemini-3.8-flash` through the Vercel AI Gateway, the
   lane the Coder terminal's chat used (`crates/coder/src/generate.rs`,
   `FallbackDoor`), so the model going away needs no deploy. The journal logs

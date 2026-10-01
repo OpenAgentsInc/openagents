@@ -148,13 +148,27 @@ pub const WORKER_PRIMARY_VAR: &str = "CODER_WORKER_PRIMARY";
 /// (#10109).
 pub const PRIMARY_EFFORT: &str = "low";
 
-/// How long the primary door has to send the first words of its answer
-/// before the turn goes to the fallback door instead.
+/// How long the primary door has to show it is working — the first event
+/// of its stream, such as the reasoning it streams before its answer — or
+/// to send the first words of its answer, before the turn goes to the
+/// fallback door instead.
 ///
-/// The primary's first token comes in about a second; the fallback's in
-/// about five and a half. Four seconds lets a slow primary answer and
-/// still leaves a turn that falls back short of ten.
+/// The primary's first token comes in about a second on a short question;
+/// the fallback's in about five and a half. Four seconds lets a slow
+/// primary start and still leaves a turn that falls back short of ten.
 pub const PRIMARY_FIRST_WORD: Duration = Duration::from_secs(4);
+
+/// How long a primary that is working (streaming its reasoning) has for
+/// the first words of its answer, from the request.
+///
+/// Measured 2026-10-01, Space Bunny Alpha's reasoning began within about
+/// a second, and a question that takes thought ("What is the capital of
+/// Australia and why was it chosen?") had its first words at 2.3 to 3.2 s
+/// under a one-line instruction and past four seconds under the chat
+/// worker's, where the first release fell back and answered in eight to
+/// nine. Past [`PRIMARY_FIRST_WORD`], a primary that is thinking is still
+/// sooner than a fallback that starts from nothing.
+pub const PRIMARY_THINKING: Duration = Duration::from_secs(8);
 
 /// The model and key the chat worker's primary door runs, from what
 /// [`WORKER_PRIMARY_VAR`] asks (`asked`) and the OpenRouter key (`key`).
@@ -869,6 +883,19 @@ impl ResponsesDoor {
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
+        self.once_watched(instructions, input, sink, None).await
+    }
+
+    /// [`ResponsesDoor::once`], setting `alive` when the stream carries
+    /// its first event of any kind, such as the reasoning a thinking model
+    /// streams before its answer: the door is working, not absent.
+    async fn once_watched(
+        &self,
+        instructions: &str,
+        input: &[Message],
+        sink: &mut (dyn FnMut(&str) + Send),
+        alive: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
         let ends = Instant::now() + self.patience.whole;
         let sent = self
             .http
@@ -931,7 +958,12 @@ impl ResponsesDoor {
             };
             match reader.push(&chunk, sink) {
                 Ok(0) => {}
-                Ok(_) => spoke = Instant::now(),
+                Ok(_) => {
+                    spoke = Instant::now();
+                    if let Some(alive) = alive {
+                        alive.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
                 Err(error) => return Err((reader.text, error)),
             }
         }
@@ -1048,8 +1080,9 @@ impl Generate for ResponsesDoor {
 /// The fallback is per turn. Every turn goes to the primary first, and a
 /// primary that fails before the first words of its answer — an HTTP
 /// error such as an unknown model's 404 or a 429, a failure event, a
-/// stream that ends empty, or no answer text within
-/// [`PRIMARY_FIRST_WORD`] — hands the same turn to the fallback, which
+/// stream that ends empty, nothing at all within [`PRIMARY_FIRST_WORD`],
+/// or a primary that is streaming its reasoning with no answer text by
+/// [`PRIMARY_THINKING`] — hands the same turn to the fallback, which
 /// runs with its own retries and bounds as it always has. Nothing has
 /// reached the caller by then, so the turn is not repeated where anyone
 /// can see it. A primary that fails after its first words has shown the
@@ -1070,19 +1103,21 @@ pub struct FallbackDoor {
     /// The door a turn the primary did not answer goes to.
     pub fallback: ResponsesDoor,
     first_word: Duration,
+    thinking: Duration,
     /// Whether the primary's last turn failed before its first words.
     down: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl FallbackDoor {
     /// `primary` first, `fallback` for any turn it does not start
-    /// answering within [`PRIMARY_FIRST_WORD`].
+    /// answering in time ([`PRIMARY_FIRST_WORD`], [`PRIMARY_THINKING`]).
     #[must_use]
     pub fn new(primary: ResponsesDoor, fallback: ResponsesDoor) -> Self {
         Self {
             primary,
             fallback,
             first_word: PRIMARY_FIRST_WORD,
+            thinking: PRIMARY_THINKING,
             down: std::sync::Arc::default(),
         }
     }
@@ -1099,11 +1134,14 @@ impl FallbackDoor {
         Self::new(primary, fallback)
     }
 
-    /// The same order with a different wait for the primary's first
-    /// words, so a test can exercise it without spending the real one.
+    /// The same order with different waits for the primary's first
+    /// event (`first_word`) and, once it is working, its first words
+    /// (`thinking`, from the request), so a test can exercise them without
+    /// spending the real ones.
     #[must_use]
-    pub fn first_word(mut self, wait: Duration) -> Self {
-        self.first_word = wait;
+    pub fn first_word(mut self, first_word: Duration, thinking: Duration) -> Self {
+        self.first_word = first_word;
+        self.thinking = thinking;
         self
     }
 
@@ -1115,6 +1153,7 @@ impl FallbackDoor {
             primary: self.primary.clone(),
             fallback,
             first_word: self.first_word,
+            thinking: self.thinking,
             down: self.down.clone(),
         }
     }
@@ -1147,18 +1186,27 @@ impl FallbackDoor {
     }
 
     /// The primary's one attempt, with the caller's sink behind it.
+    ///
+    /// It has [`PRIMARY_FIRST_WORD`] to show it is working or to start its
+    /// answer, and, once working, until [`PRIMARY_THINKING`] from the
+    /// request to start it.
     async fn first(
         &self,
         instructions: &str,
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
     ) -> First {
+        let relaxed = std::sync::atomic::Ordering::Relaxed;
+        let started = tokio::time::Instant::now();
         let spoke = std::sync::atomic::AtomicBool::new(false);
+        let alive = std::sync::atomic::AtomicBool::new(false);
         let mut forward = |delta: &str| {
-            spoke.store(true, std::sync::atomic::Ordering::Relaxed);
+            spoke.store(true, relaxed);
             sink(delta);
         };
-        let attempt = self.primary.once(instructions, input, &mut forward);
+        let attempt = self
+            .primary
+            .once_watched(instructions, input, &mut forward, Some(&alive));
         tokio::pin!(attempt);
         let deadline = tokio::time::sleep(self.first_word);
         tokio::pin!(deadline);
@@ -1167,10 +1215,7 @@ impl FallbackDoor {
                 done = &mut attempt => {
                     return match done {
                         Ok(done) => First::Answered(done),
-                        Err((partial, error))
-                            if spoke.load(std::sync::atomic::Ordering::Relaxed)
-                                || !partial.is_empty() =>
-                        {
+                        Err((partial, error)) if spoke.load(relaxed) || !partial.is_empty() => {
                             First::Failed(error)
                         }
                         Err((_, error)) => First::Missed(error),
@@ -1178,13 +1223,26 @@ impl FallbackDoor {
                 }
                 // The condition is read when the wait begins, and the
                 // first words may come while it runs: they win.
-                () = &mut deadline, if !spoke.load(std::sync::atomic::Ordering::Relaxed) => {
-                    if spoke.load(std::sync::atomic::Ordering::Relaxed) {
+                () = &mut deadline, if !spoke.load(relaxed) => {
+                    if spoke.load(relaxed) {
                         continue;
                     }
+                    let thinking = started + self.thinking;
+                    if alive.load(relaxed) && tokio::time::Instant::now() < thinking {
+                        deadline.as_mut().reset(thinking);
+                        continue;
+                    }
+                    let heard = alive.load(relaxed);
                     return First::Missed(GenerateError::Quiet {
-                        heard: false,
-                        reason: format!("no answer text in {} ms", self.first_word.as_millis()),
+                        heard,
+                        reason: if heard {
+                            format!(
+                                "working but no answer text in {} ms",
+                                started.elapsed().as_millis()
+                            )
+                        } else {
+                            format!("nothing in {} ms", self.first_word.as_millis())
+                        },
                     });
                 }
             }

@@ -248,7 +248,8 @@ agent, except for the lane: CODER_WORKER_MODEL names the model or lane
 this worker runs, and outranks CODER_MODEL. CODER_WORKER_PRIMARY names a
 model every turn asks OpenRouter (OPENROUTER_API_KEY) for first, at low
 reasoning, in front of that door, which takes any turn the primary has not
-started answering in four seconds; unset, it is Space Bunny Alpha whenever
+started in four seconds, or, while thinking, answered in eight; unset, it
+is Space Bunny Alpha whenever
 OPENROUTER_API_KEY is set, and off answers on that door alone. The worker proves its relay
 subscription live with a probe every 30 seconds and renews it on an
 overlapping connection every 45 minutes; CODER_WORKER_PROBE_MS and
@@ -489,14 +490,15 @@ async fn serve(options: &Options) -> Result<(), String> {
     match &*door {
         Door::Fallback(ordered) => eprintln!(
             "door    {} ({} at {} with reasoning {}, then {} at {} for any turn it has not \
-             started answering in {} ms)",
+             started in {} ms or, thinking, answered by {} ms)",
             door.name(),
             ordered.primary.model,
             ordered.primary.url,
             coder::generate::PRIMARY_EFFORT,
             ordered.fallback.model,
             ordered.fallback.url,
-            coder::generate::PRIMARY_FIRST_WORD.as_millis()
+            coder::generate::PRIMARY_FIRST_WORD.as_millis(),
+            coder::generate::PRIMARY_THINKING.as_millis()
         ),
         _ => match Lane::read(door.model()) {
             Some(lane) => eprintln!(
@@ -5242,7 +5244,7 @@ mod tests {
                 coder::generate::ResponsesDoor::new(url, Lane::SpaceBunny.model(), "test"),
                 fallback,
             )
-            .first_word(Duration::from_secs(2)),
+            .first_word(Duration::from_secs(2), Duration::from_secs(4)),
         ))
     }
 

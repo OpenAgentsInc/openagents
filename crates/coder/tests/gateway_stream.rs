@@ -61,6 +61,9 @@ enum Stub {
     Truncated,
     /// Send keepalive events forever, never completing.
     Endless,
+    /// Send reasoning events through this wait, then Space Bunny Alpha's
+    /// recorded answer: a model thinking before it answers.
+    Thinking(Duration),
     /// Answer with this HTTP error status and a short JSON body, as
     /// OpenRouter does for a model it no longer serves (404) or a rate
     /// limit (429).
@@ -191,6 +194,20 @@ async fn answer(mut socket: TcpStream, stub: Stub) {
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
+        }
+        Stub::Thinking(wait) => {
+            // Two reasoning events half the wait apart, so the stream is
+            // never quiet for the door's own silence bound.
+            let event = b"data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"hm\"}\n\n";
+            for _ in 0..2 {
+                if socket.write_all(event).await.is_err() {
+                    return;
+                }
+                let _ = socket.flush().await;
+                tokio::time::sleep(wait / 2).await;
+            }
+            let _ = socket.write_all(SPACE_BUNNY.as_bytes()).await;
+            let _ = socket.shutdown().await;
         }
         Stub::Mute | Stub::Deaf => forever(socket).await,
         Stub::Status(_) => {}
@@ -447,7 +464,7 @@ fn ordered(primary: &Server, fallback: &Server) -> FallbackDoor {
         primary.door(Lane::SpaceBunny.model()),
         fallback.door(Lane::Gemini.model()),
     )
-    .first_word(Duration::from_millis(300))
+    .first_word(Duration::from_millis(300), Duration::from_millis(900))
 }
 
 /// Runs a turn through a fallback door: the deltas, the outcome, and the
@@ -569,4 +586,37 @@ async fn both_doors_failing_is_the_fallbacks_failure() {
     let error = outcome.expect_err("nothing answered");
     assert!(matches!(error, GenerateError::Status(503, _)), "{error}");
     assert_eq!(named, None);
+}
+
+/// A primary streaming its reasoning past the first-word wait is working,
+/// not absent: its answer is waited for up to the thinking bound, and the
+/// fallback is not asked.
+#[tokio::test]
+async fn a_primary_that_is_thinking_is_waited_for() {
+    let primary = Server::start(Stub::Thinking(Duration::from_millis(600))).await;
+    let fallback = Server::start(Stub::Whole(GEMINI)).await;
+    let door = ordered(&primary, &fallback);
+    let (_, outcome, named) = ask_ordered(&door).await;
+    let (text, _) = outcome.expect("the primary answers after thinking");
+    assert_eq!(text, "one\ntwo\nthree\nfour\nfive");
+    assert_eq!(named.as_deref(), Some(Lane::SpaceBunny.model()));
+    assert_eq!(fallback.asked(), 0);
+}
+
+/// A primary that keeps working without an answer loses the turn at the
+/// thinking bound, not at the door's own whole-attempt bound.
+#[tokio::test]
+async fn a_primary_that_thinks_past_the_bound_falls_back() {
+    let primary = Server::start(Stub::Endless).await;
+    let fallback = Server::start(Stub::Whole(GEMINI)).await;
+    let door = ordered(&primary, &fallback);
+    let started = Instant::now();
+    let (_, outcome, named) = ask_ordered(&door).await;
+    outcome.expect("the fallback answers");
+    assert_eq!(named.as_deref(), Some(Lane::Gemini.model()));
+    let took = started.elapsed();
+    assert!(
+        took >= Duration::from_millis(900) && took < Duration::from_secs(3),
+        "{took:?}"
+    );
 }
