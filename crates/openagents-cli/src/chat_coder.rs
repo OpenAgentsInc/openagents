@@ -149,6 +149,25 @@ pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u
         }
     };
     if let Some(coder) = &thread.summary.coder {
+        // The thread's run ended, and the router judged the latest message
+        // more work for it: Coder takes it as the task's next turn, in the
+        // same worktree (#10094).
+        if coder.host == local::LOCAL_HOST
+            && result(backend, id, &coder.task).await.is_some()
+            && let Some(text) = thread
+                .turns
+                .iter()
+                .rev()
+                .find(|turn| turn.role == openagents_chat::basic_coder::Role::User)
+                .map(|turn| turn.text.clone())
+        {
+            report(
+                true,
+                &format!("Coder continues task {} with your message.", coder.task),
+                serde_json::to_value(coder).ok(),
+            );
+            return answer_task(output, backend, id, &coder.task, &text).await;
+        }
         report(
             true,
             &format!(
@@ -405,6 +424,28 @@ pub(super) async fn answer(output: &Output, backend: &mut Backend, id: &str, tex
     let Some(task) = bound(output, backend, id).await else {
         return EXIT_FAILURE;
     };
+    answer_task(output, backend, id, &task, text).await
+}
+
+/// What the thread's task's last turn did, once it ended (#10094), read
+/// from the thread's store.
+pub(super) async fn result(
+    backend: &Backend,
+    thread: &str,
+    task: &str,
+) -> Option<openagents_chat::router::CoderRun> {
+    let store = store(backend, thread);
+    let task = task.to_owned();
+    tokio::task::spawn_blocking(move || local::result_in(Some(&store), &task))
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Continue `task` with `text`, an answer or the next turn, and follow the
+/// turn it starts.
+async fn answer_task(output: &Output, backend: &Backend, id: &str, task: &str, text: &str) -> u8 {
+    let task = task.to_owned();
     let run = runner(backend, id);
     let answering = task.clone();
     let text = text.to_owned();

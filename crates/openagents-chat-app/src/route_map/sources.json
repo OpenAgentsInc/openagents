@@ -1,15 +1,15 @@
 {
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
-  "set": "chat-router-v4@4438ef518b3d",
-  "bank": "chat-answers-v1@27c9c50a7b61",
+  "set": "chat-router-v4@1d266532e7d0",
+  "bank": "chat-answers-v1@43063f287db6",
   "routes": [
     {
       "id": "meta",
       "family": "answers",
       "description": "Questions about us, the assistant itself: what model or AI this is, who we are or who built us, what we can and cannot do, what it costs, message limits, privacy, whether we remember things, whether we are open source, or what Coder or Jev is",
       "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them; and asking to see how we route or handle messages or how we are put together: our route map (also just \"the map\"), our routes, what serves each, our plugins and engines, or where we are weak",
-      "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing); testing or trying one of our plugins, such as Project map (eval.run)",
+      "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing); testing or trying one of our plugins, such as Project map (eval.run); after the line in parentheses saying Coder's run in this chat ended, a question about what that run did, changed, or ran, or why it used an engine (general)",
       "examples": 13
     },
     {
@@ -24,9 +24,9 @@
       "id": "general",
       "family": "answers",
       "description": "A question about the world or programming concepts, an explanation, writing help, or advice: anything answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
-      "what": "A question about the world or programming concepts, an explanation, writing help, or advice: answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
-      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's (product.kb); work on the user's own code (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
-      "examples": 5
+      "what": "A question about the world or programming concepts, an explanation, writing help, or advice: answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories; and, only when the conversation has the line in parentheses saying Coder's run in this chat ended, a question about that run: what happened, what it changed, found, or ran, whether it passed, which engine it used and why, or a summary or explanation of it, which we answer from its result",
+      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's (product.kb); work on the user's own code (work.dispatch), including more work on Coder's run in this chat, such as another change, a fix, a test, or the same for another place (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
+      "examples": 7
     },
     {
       "id": "product.kb",
@@ -48,9 +48,9 @@
       "id": "work.dispatch",
       "family": "work",
       "description": "The user wants work done on code, a repository, files, or a machine: change, fix, build, test, refactor, review a pull request, look through a repository, find where something is in their code, run a command, or pick up a GitHub issue",
-      "what": "The user hands us a task on their own code, repository, files, or machine: change, fix, build, test, deploy, refactor, review a pull request, look through their repository, find something in their code, or pick up a GitHub issue; or asks us to delegate to Coder, hand the conversation to Coder, or run or start Coder now, including a trial or test delegation that names no task",
-      "not_for": "Asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing one of our Gym plugins on Coder or running its tests, even when the plugin's name reads like a task, such as Explain this error or Dependency check (eval.run); making a plugin or writing a test set for a plugin with us (eval.author), including tests for one of our Gym plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing)",
-      "examples": 10
+      "what": "The user hands us a task on their own code, repository, files, or machine: change, fix, build, test, deploy, refactor, review a pull request, look through their repository, find something in their code, or pick up a GitHub issue; or asks us to delegate to Coder, hand the conversation to Coder, or run or start Coder now, including a trial or test delegation that names no task; or, when the conversation has the line in parentheses saying Coder's run in this chat ended, asks for more work on it: another change, a fix, a test, undoing or redoing a step, or the same for another place, which Coder takes as its next turn",
+      "not_for": "Asking what Coder's run in this chat did, changed, or ran, why it chose an engine, or for a summary or explanation of it (general); asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing one of our Gym plugins on Coder or running its tests, even when the plugin's name reads like a task, such as Explain this error or Dependency check (eval.run); making a plugin or writing a test set for a plugin with us (eval.author), including tests for one of our Gym plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing)",
+      "examples": 13
     },
     {
       "id": "cli",
@@ -437,7 +437,7 @@
     },
     {
       "id": "meta.privacy",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -1283,10 +1283,10 @@
         "near_misses": 0
       },
       "cli": {
-        "rows": 36,
-        "held_out": 9,
+        "rows": 37,
+        "held_out": 10,
         "tune": 27,
-        "near_misses": 7
+        "near_misses": 8
       },
       "codebase.kb": {
         "rows": 40,
@@ -1331,10 +1331,10 @@
         "near_misses": 8
       },
       "general": {
-        "rows": 63,
-        "held_out": 15,
-        "tune": 48,
-        "near_misses": 26
+        "rows": 84,
+        "held_out": 20,
+        "tune": 64,
+        "near_misses": 27
       },
       "gym.news": {
         "rows": 27,
@@ -1343,10 +1343,10 @@
         "near_misses": 1
       },
       "meta": {
-        "rows": 128,
-        "held_out": 42,
-        "tune": 86,
-        "near_misses": 20
+        "rows": 131,
+        "held_out": 43,
+        "tune": 88,
+        "near_misses": 23
       },
       "presentation.open": {
         "rows": 32,
@@ -1367,10 +1367,10 @@
         "near_misses": 3
       },
       "smalltalk": {
-        "rows": 32,
-        "held_out": 11,
+        "rows": 33,
+        "held_out": 12,
         "tune": 21,
-        "near_misses": 1
+        "near_misses": 2
       },
       "wallet": {
         "rows": 34,
@@ -1379,20 +1379,20 @@
         "near_misses": 5
       },
       "work.dispatch": {
-        "rows": 121,
-        "held_out": 42,
-        "tune": 79,
+        "rows": 141,
+        "held_out": 47,
+        "tune": 94,
         "near_misses": 18
       }
     }
   },
   "measurement": {
-    "record": "docs/coder/measurements/2026-10-01-plugin-catalog-claims/report.json",
-    "page": "docs/coder/measurements/2026-10-01-plugin-catalog-route.md",
-    "set": "chat-router-v4@4438ef518b3d",
+    "record": "docs/coder/measurements/2026-10-01-coder-followup-claims/report.json",
+    "page": "docs/coder/measurements/2026-10-01-coder-followup-route.md",
+    "set": "chat-router-v4@1d266532e7d0",
     "rows": 256,
-    "route_accuracy": 0.90625,
-    "ended_at": 1790839594,
+    "route_accuracy": 0.90234375,
+    "ended_at": 1790860224,
     "routes": {
       "account": {
         "precision": 0.7777777777777778,
@@ -1443,14 +1443,14 @@
         "labeled": 6
       },
       "eval.credit": {
-        "precision": 0.875,
-        "predicted": 8,
-        "recall": 0.7777777777777778,
+        "precision": 0.8888888888888888,
+        "predicted": 9,
+        "recall": 0.8888888888888888,
         "labeled": 9
       },
       "eval.result": {
-        "precision": 0.7777777777777778,
-        "predicted": 9,
+        "precision": 0.875,
+        "predicted": 8,
         "recall": 1.0,
         "labeled": 7
       },
@@ -1461,8 +1461,8 @@
         "labeled": 9
       },
       "general": {
-        "precision": 0.6521739130434783,
-        "predicted": 23,
+        "precision": 0.625,
+        "predicted": 24,
         "recall": 1.0,
         "labeled": 15
       },
@@ -1473,9 +1473,9 @@
         "labeled": 7
       },
       "meta": {
-        "precision": 1.0,
+        "precision": 0.9714285714285714,
         "predicted": 35,
-        "recall": 0.8333333333333334,
+        "recall": 0.8095238095238095,
         "labeled": 42
       },
       "presentation.open": {
@@ -1485,9 +1485,9 @@
         "labeled": 9
       },
       "product.kb": {
-        "precision": 0.8571428571428571,
-        "predicted": 21,
-        "recall": 0.782608695652174,
+        "precision": 0.8947368421052632,
+        "predicted": 19,
+        "recall": 0.7391304347826086,
         "labeled": 23
       },
       "refuse": {
@@ -1509,8 +1509,8 @@
         "labeled": 8
       },
       "work.dispatch": {
-        "precision": 0.9545454545454546,
-        "predicted": 44,
+        "precision": 0.9333333333333333,
+        "predicted": 45,
         "recall": 1.0,
         "labeled": 42
       }

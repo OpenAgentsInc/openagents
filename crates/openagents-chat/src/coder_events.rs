@@ -920,6 +920,85 @@ impl Mapper {
     }
 }
 
+/// The result of a task's last turn, from its events, once that turn has
+/// ended with a result, a failure, or a stop (#10094): the context a
+/// follow-up carries to the chat ([`crate::router::CoderRun`]). `None`
+/// while the turn runs, when it ended by asking the person, and for a task
+/// with no ended turn. The engine is the one the turn started on, or the
+/// one it switched to last.
+#[must_use]
+pub fn run_result(lines: &[Line]) -> Option<crate::router::CoderRun> {
+    use crate::router::{CoderRun, RunEnding, RunFile};
+    let ended = lines.iter().rposition(|line| line.event.ends_turn())?;
+    // A later start is a turn that has not ended.
+    if lines[ended + 1..]
+        .iter()
+        .any(|line| matches!(line.event, CoderEvent::CoderStarted(_)))
+    {
+        return None;
+    }
+    let (turn, ending, summary, files) = match &lines[ended].event {
+        CoderEvent::Result(result) => (
+            result.turn,
+            RunEnding::Finished,
+            result.summary.clone(),
+            result
+                .files_changed
+                .iter()
+                .map(|file| RunFile {
+                    path: file.path.clone(),
+                    status: file.status.clone(),
+                })
+                .collect(),
+        ),
+        CoderEvent::Failure(failure) => (
+            failure.turn,
+            RunEnding::Failed,
+            failure.message.clone(),
+            Vec::new(),
+        ),
+        CoderEvent::Stopped(stopped) => (
+            stopped.turn,
+            RunEnding::Stopped,
+            stopped.message.clone(),
+            Vec::new(),
+        ),
+        _ => return None,
+    };
+    let this_turn = &lines[..ended];
+    let mut engine = None;
+    let mut model = None;
+    let mut commands = Vec::new();
+    for line in this_turn {
+        match &line.event {
+            CoderEvent::CoderStarted(started) if started.turn == turn => {
+                engine = Some(started.provider.clone());
+                model = Some(started.model.clone());
+            }
+            CoderEvent::ProviderSwitched(switch) if switch.turn == turn => {
+                if let Some((provider, to)) = switch.to.as_deref().and_then(|to| to.split_once(':'))
+                {
+                    engine = Some(provider.to_owned());
+                    model = Some(to.to_owned());
+                }
+            }
+            CoderEvent::Step(step) if step.turn == turn && step.kind == StepKind::Command => {
+                commands.push(step.text.clone());
+            }
+            _ => {}
+        }
+    }
+    Some(CoderRun {
+        ending,
+        turn,
+        engine,
+        model,
+        summary,
+        files,
+        commands,
+    })
+}
+
 /// A compact line for a terminal, or `None` for an event a terminal shows
 /// no line for.
 #[must_use]
@@ -1501,5 +1580,124 @@ mod tests {
             "No coding agent signed in on this computer has room now; \
              the earliest resets 2026-10-03 18:07 UTC."
         );
+    }
+
+    fn at(seq: u64, event: CoderEvent) -> Line {
+        Line {
+            seq,
+            task: "t".into(),
+            thread: None,
+            event,
+        }
+    }
+
+    fn started(turn: usize, provider: &str, model: &str) -> CoderEvent {
+        CoderEvent::CoderStarted(Started {
+            turn,
+            project: "p".into(),
+            checkout: "/c".into(),
+            worktree: "/w".into(),
+            base: "abc".into(),
+            provider: provider.into(),
+            model: model.into(),
+            reason: "ready".into(),
+            fallbacks: vec![],
+            via: "local".into(),
+            runner: None,
+        })
+    }
+
+    fn command(turn: usize, text: &str) -> CoderEvent {
+        CoderEvent::Step(Step {
+            turn,
+            step_id: 1,
+            kind: StepKind::Command,
+            source: "agent".into(),
+            text: text.into(),
+        })
+    }
+
+    /// A follow-up after a run carries the last turn's result: how it
+    /// ended, the engine it switched to, its summary, files, and commands;
+    /// a turn that runs or asks carries none (#10094).
+    #[test]
+    fn a_run_result_is_the_last_ended_turn() {
+        use crate::router::{RunEnding, RunFile};
+        let mut lines = vec![
+            at(1, started(1, "claude", "claude-opus-5-5")),
+            at(
+                2,
+                CoderEvent::ProviderSwitched(Switched {
+                    turn: 1,
+                    step_id: 2,
+                    from: "claude:claude-opus-5-5".into(),
+                    to: Some("codex:gpt-6-luna".into()),
+                    reason: "Claude Code is at 99%".into(),
+                    resets_at: None,
+                }),
+            ),
+            at(3, command(1, "ls\nsecond line")),
+            at(
+                4,
+                CoderEvent::Result(Finished {
+                    turn: 1,
+                    summary: "I listed the files.".into(),
+                    files_changed: vec![FileChange {
+                        path: "NOTE.md".into(),
+                        status: "added".into(),
+                        added: Some(3),
+                        removed: Some(0),
+                    }],
+                    insertions: 3,
+                    deletions: 0,
+                    worktree: "/w".into(),
+                    trajectory: "/t".into(),
+                    issue: None,
+                }),
+            ),
+        ];
+        let run = run_result(&lines).unwrap();
+        assert_eq!(run.ending, RunEnding::Finished);
+        assert_eq!(run.turn, 1);
+        assert_eq!(run.engine.as_deref(), Some("codex"));
+        assert_eq!(run.model.as_deref(), Some("gpt-6-luna"));
+        assert_eq!(run.summary, "I listed the files.");
+        assert_eq!(
+            run.files,
+            vec![RunFile {
+                path: "NOTE.md".into(),
+                status: "added".into()
+            }]
+        );
+        let json = run.json();
+        assert_eq!(json["commands"], json!(["ls"]));
+        assert_eq!(json["engine"], "codex");
+        // The next turn runs: no result until it ends.
+        lines.push(at(5, started(2, "codex", "gpt-6-luna")));
+        assert!(run_result(&lines).is_none());
+        lines.push(at(
+            6,
+            CoderEvent::Question(Asked {
+                turn: 2,
+                text: "Which crate?".into(),
+                answer: None,
+            }),
+        ));
+        assert!(
+            run_result(&lines).is_none(),
+            "a question waits for an answer"
+        );
+        lines.push(at(
+            7,
+            CoderEvent::Stopped(Stopped {
+                turn: 2,
+                message: "Stopped from the desktop.".into(),
+            }),
+        ));
+        let stopped = run_result(&lines).unwrap();
+        assert_eq!(stopped.ending, RunEnding::Stopped);
+        assert_eq!(stopped.turn, 2);
+        assert!(stopped.commands.is_empty());
+        assert!(run_result(&[]).is_none());
     }
 }

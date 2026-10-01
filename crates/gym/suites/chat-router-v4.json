@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "8bceafd9a733b85f63fcc8075407e82d07736747466bb47ed1f01cd2d3b57d47",
+  "digest": "84e16e2799dfce105aa04a7840e328ee009a9d56eab8d643a9d506bdd2ed9fa2",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -15882,6 +15882,1386 @@
       },
       "truth": "general",
       "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize what happened",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "summarize what happened"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what did you change?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "what did you change?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why did it use Codex?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "why did it use Codex?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what commands did it run",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "what commands did it run"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "which files did it touch",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "which files did it touch"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "did the tests pass?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "did the tests pass?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "explain the change it made",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "explain the change it made"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "tldr?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "tldr?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "so what did coder find",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "so what did coder find"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why did it fail?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+          },
+          {
+            "role": "user",
+            "text": "why did it fail?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why did it stop?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, was stopped in this chat.)"
+          },
+          {
+            "role": "user",
+            "text": "why did it stop?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what was the result",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "what was the result"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "was that on claude or codex",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "was that on claude or codex"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how did it decide what to change",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "how did it decide what to change"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can you explain the diff in plain english",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "can you explain the diff in plain english"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what does the new function do",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "what does the new function do"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-017",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "is it done?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "is it done?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-018",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what happened",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+          },
+          {
+            "role": "user",
+            "text": "what happened"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-019",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "give me a one line summary of the run",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "give me a one line summary of the run"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-020",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "why didn't it run on claude like I asked",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "why didn't it run on claude like I asked"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "now add a test",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "now add a test"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "fix that too",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "fix that too"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do the same for the other crate",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "do the same for the other crate"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "now also list the top-level files in a note",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "now also list the top-level files in a note"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "also update the changelog",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "also update the changelog"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run the tests again",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "run the tests again"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "try again",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+          },
+          {
+            "role": "user",
+            "text": "try again"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "undo that change",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "undo that change"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "rename the function to parse_args too",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "rename the function to parse_args too"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "commit it",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "commit it"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can you also fix the lint warnings",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "can you also fix the lint warnings"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do it for the cli crate as well",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "do it for the cli crate as well"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "keep going",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, was stopped in this chat.)"
+          },
+          {
+            "role": "user",
+            "text": "keep going"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "now open a pull request",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "now open a pull request"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "add docs for the new function",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "add docs for the new function"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "now make it handle empty input",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "now make it handle empty input"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-017",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "try it again on claude",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+          },
+          {
+            "role": "user",
+            "text": "try it again on claude"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-018",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "revert the README edit",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "revert the README edit"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-019",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "finish what you started",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, was stopped in this chat.)"
+          },
+          {
+            "role": "user",
+            "text": "finish what you started"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/coder-followup-020",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "also delete the old helper",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "also delete the old helper"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/coder-followup-near-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's the difference between git merge and rebase",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the failing test in my parser crate"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "what's the difference between git merge and rebase"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/coder-followup-near-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "who are you",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "add an installation section to my README"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to add an installation section to your README."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "who are you"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/cli/coder-followup-near-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "is my laptop online right now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run cargo clippy and fix the warnings"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "is my laptop online right now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "cli",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/smalltalk/coder-followup-near-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "thank you, that helps",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "look through my repo and tell me how auth works"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "thank you, that helps"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "smalltalk",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/coder-followup-near-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is Coder?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "bump the version to 0.4.0 and update the changelog"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to bump the version and update the changelog."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "what is Coder?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/coder-followup-near-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can you write code?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation to claude"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+          },
+          {
+            "role": "assistant",
+            "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+          },
+          {
+            "role": "user",
+            "text": "can you write code?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }
   ]

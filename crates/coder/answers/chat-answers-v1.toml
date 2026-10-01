@@ -237,11 +237,11 @@ followups = ["meta.pricing"]
 
 [[answer]]
 id = "meta.privacy"
-version = 2
+version = 3
 routes = ["meta"]
 when = "The user asks what happens to their messages, who can read or see them, or whether their data is private; not whether we keep, delete, or train on their chats"
 examples = ["who can see what I type here"]
-text = "Your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. To answer, we send your messages to {recipients}. On a computer, or a phone paired with one, each message also names that computer and this chat's project folder, which only our worker and our chat model read. Our worker doesn't store your message text."
+text = "Your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. To answer, we send your messages to {recipients}. On a computer, or a phone paired with one, each message also names that computer and this chat's project folder, and after Coder runs in a chat, what it reported, the files it changed, and its commands; only our worker and our chat model read those. Our worker doesn't store your message text."
 facts = { recipients = "worker.recipients" }
 chip = "What happens to my messages?"
 sources = ["nips/openagents/NIP-CJ.md", "INVARIANTS.md", "crates/coder/src/bin/coder-worker.rs"]

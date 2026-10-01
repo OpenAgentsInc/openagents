@@ -61,6 +61,7 @@ the owner can answer.
 - [From the terminal: `openagents chat` (2026-09-30)](#from-the-terminal-openagents-chat-2026-09-30)
 - [Delegation requests (2026-09-30)](#delegation-requests-2026-09-30)
 - [Engine requests (2026-09-30)](#engine-requests-2026-09-30)
+- [Follow-ups after a Coder run (2026-10-01)](#follow-ups-after-a-coder-run-2026-10-01)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## What exists today
@@ -1668,6 +1669,55 @@ route (not signed in, refused for a limit, near its usage threshold), or
 when the settings do not allow it. The start card and the offer's
 prediction say what was asked and why another runs, from the typed
 `Runner` (`requested`, `PassedOver::NotAllowed`).
+
+## Follow-ups after a Coder run (2026-10-01)
+
+Fixed in [#10094](https://github.com/OpenAgentsInc/openagents/issues/10094);
+measured in
+[the follow-up measurement](../measurements/2026-10-01-coder-followup-route.md).
+After a Coder run finished in a chat, the desktop sent every follow-up
+straight to Coder as its next turn: "summarize what happened" started a
+second run whose answer was a summary the chat could have given, and its
+"Coder continued … (turn 2)" card showed above the person's message.
+
+**While a run works, or asks**, nothing changed: a message is queued for
+Coder's next turn, or stops it and sends, and an answer goes to Coder's
+question. **Once its turn has ended** (a result, a failure, or a stop), a
+follow-up is the router's, on every surface: the desktop's composer, the
+phone (a task chat started from a conversation sends it to that
+conversation; a computer's thread through the host), the host's threads,
+and `openagents chat --thread`. The composer says "Message OpenAgents…".
+
+**The context.** The turn carries `context.coder_run`
+(`openagents_chat::router::CoderRun`, built from the task's events by
+`coder_events::run_result`): how the turn ended, its engine and model, the
+summary Coder reported, the files it changed, and its commands, each
+bounded (NIP-CJ). The host reads it for a thread bound to a task
+(`coder_host::control::set_local_result`, `coder::task::local::result_in`);
+`openagents chat` without a host reads it from its own store; the phone
+from the task's chat. The worker (`coder::router::CoderRun`) gives the
+summary, files, and commands only to the chat model's instructions
+(`Context::note`), so the chat answers questions about the run, and puts
+one fixed line before the latest message in the transcript Jev reads,
+saying only that the run ended and how (`CoderRun::marker`,
+`Context::judged`). The privacy answer is `meta.privacy@3`.
+
+**The route.** The rubric (the set's digest moves; no route changed):
+`general` covers, when that line is present, a question about the run;
+`work.dispatch` covers, then, more work on it; `meta` and the `lane`
+rubric send a question about the run to the chat. The reply's typed
+judgment decides through #10073's precedence (`delegation::offered`): a
+reply that offers Coder continues the same task with the message as its
+next turn (`coder_run::Run::continue_with` on the desktop, `chat_coder::start`
+in the CLI, a `task.command` send on the phone), in the same worktree; a
+reply that answered continues nothing. The desktop continues at once even
+when `coder.start` is `ask_first`: the person started Coder in this chat
+already. The labeled set adds 46 rows tagged `coder_followup`.
+
+**The transcript.** Each Coder turn's rows follow the chat reply that
+handed it to Coder (`Run::rows_anchored`, by the message that started the
+turn), the person's message shows once, and a later turn's card comes after
+the message that started it.
 
 ## Open questions for the owner
 

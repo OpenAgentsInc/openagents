@@ -81,7 +81,9 @@ pub fn route(route: RouteId) -> Value {
                  use one app feature step by step (product.kb or account); asking us to do \
                  something now, such as book, send, or read their accounts, rather than whether \
                  we can (capability.missing); testing or trying one of our plugins, such as \
-                 Project map (eval.run)",
+                 Project map (eval.run); after the line in parentheses saying Coder's run in \
+                 this chat ended, a question about what that run did, changed, or ran, or why \
+                 it used an engine (general)",
             ),
             &[
                 "who r u",
@@ -108,12 +110,18 @@ pub fn route(route: RouteId) -> Value {
         RouteId::General => option(
             "A question about the world or programming concepts, an explanation, writing \
              help, or advice: answerable in a chat reply without OpenAgents product facts and \
-             without the user's own files or repositories",
+             without the user's own files or repositories; and, only when the conversation \
+             has the line in parentheses saying Coder's run in this chat ended, a question \
+             about that run: what happened, what it changed, found, or ran, whether it passed, \
+             which engine it used and why, or a summary or explanation of it, which we answer \
+             from its result",
             Some(
                 "Facts about OpenAgents or us (product.kb, meta), including what a test, a test \
                  set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
                  plugins does even when its name sounds like another product's (product.kb); work on the user's own code \
-                 (work.dispatch); asking us to do, fetch, or reach something now, such as a \
+                 (work.dispatch), including more work on Coder's run in this chat, such as \
+                 another change, a fix, a test, or the same for another place (work.dispatch); \
+                 asking us to do, fetch, or reach something now, such as a \
                  booking, their email, a site, a device, or live data (capability.missing)",
             ),
             &[
@@ -122,6 +130,8 @@ pub fn route(route: RouteId) -> Value {
                 "how much does Codex cost",
                 "what is a lightning network channel",
                 "what's the difference between git merge and rebase",
+                "summarize what happened",
+                "which files did it touch",
             ],
         ),
         RouteId::ProductKb => option(
@@ -179,9 +189,14 @@ pub fn route(route: RouteId) -> Value {
              change, fix, build, test, deploy, refactor, review a pull request, look through \
              their repository, find something in their code, or pick up a GitHub issue; or \
              asks us to delegate to Coder, hand the conversation to Coder, or run or start \
-             Coder now, including a trial or test delegation that names no task",
+             Coder now, including a trial or test delegation that names no task; or, when the \
+             conversation has the line in parentheses saying Coder's run in this chat ended, \
+             asks for more work on it: another change, a fix, a test, undoing or redoing a \
+             step, or the same for another place, which Coder takes as its next turn",
             Some(
-                "Asking whether or how we can help, or whether we can do a kind of work or \
+                "Asking what Coder's run in this chat did, changed, or ran, why it chose an \
+                 engine, or for a summary or explanation of it (general); asking whether or \
+                 how we can help, or whether we can do a kind of work or \
                  work on GitHub for them, without handing us the task itself; asking us to \
                  connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking \
                  their computers, sessions, XP, or other things an `openagents` command reads \
@@ -204,6 +219,9 @@ pub fn route(route: RouteId) -> Value {
                 "do a test delegation now",
                 "delegate this conversation to coder",
                 "run coder now",
+                "now add a test",
+                "fix that too",
+                "do the same for the other crate",
             ],
         ),
         RouteId::Cli => option(
@@ -736,12 +754,14 @@ pub fn lane(word: &str) -> Value {
         "chat" => option(
             "Answer in the chat: a question, explanation, advice, a short snippet, or a \
              question about us, our features, or how we work with GitHub, that needs none of \
-             the user's repositories, files, or commands",
+             the user's repositories, files, or commands; and a question about what Coder's \
+             run in this chat did, which its result answers",
             None,
             &[
                 "can you write code?",
                 "connect github",
                 "how do I connect my Mac",
+                "summarize what happened",
             ],
         ),
         "computer" => option(
@@ -749,12 +769,15 @@ pub fn lane(word: &str) -> Value {
              repository or files, running code, commands, or tests, or opening a pull request",
             Some(
                 "Asking us to connect or link their GitHub account, or checking which of their \
-                 computers are online (answered in the chat or by a command)",
+                 computers are online (answered in the chat or by a command); a question about \
+                 what Coder's finished run in this chat did, changed, or ran (answered in the \
+                 chat from its result)",
             ),
             &[
                 "fix the typo in my README",
                 "run the test suite on my laptop and tell me what fails",
                 "what does main.py in my repo actually do",
+                "now add a test",
             ],
         ),
         _ => Value::from("Neither fits the message"),

@@ -368,3 +368,94 @@ fn the_handoff_prompt_is_not_shown_again_under_the_chat() {
     assert!(!text.contains("do a test delegation to claude"), "{text}");
     assert!(text.contains("also cover empty input"), "{text}");
 }
+
+/// The person's message comes before the "Coder continued" card that it
+/// started, never after it (#10094).
+#[test]
+fn a_later_turns_message_comes_before_its_card() {
+    let whole = &tasks(QUESTION_THEN_RESULT)[0];
+    let mut run = fed(whole, State::Ended);
+    let text = text_of(&run.rows());
+    let message = text.find("Yes, cover it.").unwrap();
+    let card = text
+        .find("Coder continued on Claude Code · claude-opus-5-5 (turn 2)")
+        .unwrap();
+    assert!(message < card, "{text}");
+}
+
+/// Once the run's turn has ended, a message goes to OpenAgents, which
+/// answers it or hands it to Coder as the next turn; while Coder works it
+/// still waits for the next turn (#10094).
+#[test]
+fn a_finished_run_routes_followups_and_continues_on_a_dispatch() {
+    let whole = &tasks(QUESTION_THEN_RESULT)[0];
+    let task = whole[0].task.clone();
+    let mut working = fed(&whole[..8], State::Running);
+    assert!(!working.routes_followups());
+    assert_eq!(
+        working.placeholder(),
+        "Queue a message for Coder's next turn…"
+    );
+    assert!(working.result().is_none());
+    assert!(working.continue_with("now add a test").is_none());
+
+    let mut done = fed(whole, State::Ended);
+    assert!(done.routes_followups());
+    assert_eq!(done.placeholder(), "Message OpenAgents…");
+    let result = done.result().unwrap();
+    assert_eq!(result.ending, openagents_chat::router::RunEnding::Finished);
+    assert_eq!(result.turn, 2);
+    assert_eq!(result.engine.as_deref(), Some("claude"));
+    assert!(result.summary.contains("I added test_slugs.py."));
+    let (_, request) = done.continue_with("now add a test").unwrap();
+    assert_eq!(
+        request,
+        Request::Continue {
+            task,
+            text: "now add a test".into()
+        }
+    );
+    // One request at a time.
+    assert!(done.continue_with("and another").is_none());
+}
+
+/// A turn the chat's router handed to Coder follows the chat's reply that
+/// handed it, and its message is the chat's own row, not repeated; a turn
+/// with no such reply follows the turn before it (#10094).
+#[test]
+fn turns_follow_the_chat_reply_that_started_them() {
+    let whole = &tasks(QUESTION_THEN_RESULT)[0];
+    let mut run = fed(whole, State::Ended);
+    // The chat holds "add a unit test for slugify" at 0, its reply at 1,
+    // and "Yes, cover it." at 4, its reply at 5.
+    let rows = run.rows_anchored(&|text| match text {
+        "add a unit test for slugify" => Some(1),
+        "Yes, cover it." => Some(5),
+        _ => None,
+    });
+    let first = rows
+        .iter()
+        .position(|(_, row)| row.key == "coder-1")
+        .unwrap();
+    assert_eq!(rows[first].0, Some(1));
+    let second: Vec<&(Option<usize>, Node<()>)> =
+        rows.iter().filter(|(at, _)| *at == Some(5)).collect();
+    let text = text_of(
+        &second
+            .iter()
+            .map(|(_, row)| row.clone())
+            .collect::<Vec<_>>(),
+    );
+    assert!(text.starts_with("Coder continued on Claude Code"), "{text}");
+    assert!(!text.contains("Yes, cover it."), "{text}");
+    assert!(text.contains("Coder finished"), "{text}");
+    // With no anchors the rows are the plain run's.
+    let plain = run.rows();
+    assert_eq!(
+        run.rows_anchored(&|_| None)
+            .into_iter()
+            .map(|(_, row)| row)
+            .collect::<Vec<_>>(),
+        plain
+    );
+}

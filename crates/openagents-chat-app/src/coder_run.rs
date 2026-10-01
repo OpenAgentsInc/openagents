@@ -377,13 +377,52 @@ impl Run {
         }
     }
 
+    /// The composer's words: once the run's turn has ended, a message
+    /// goes to OpenAgents, whose router answers it or hands it to Coder
+    /// (#10094); while Coder works it waits for Coder's next turn.
     #[must_use]
     pub fn placeholder(&self) -> &'static str {
         match self.mode() {
-            Mode::Send => "Message Coder…",
+            Mode::Send => "Message OpenAgents…",
             Mode::Queue => "Queue a message for Coder's next turn…",
             Mode::Answer => "Answer Coder…",
         }
+    }
+
+    /// Whether the composer's message goes to the chat's router rather
+    /// than straight to Coder (#10094): the run's turn has ended, with a
+    /// result, a failure, or a stop. While Coder works the message waits
+    /// for its next turn, and a question Coder asked is answered to it.
+    #[must_use]
+    pub fn routes_followups(&self) -> bool {
+        self.mode() == Mode::Send && self.task.is_some()
+    }
+
+    /// What the run's last turn did, for a follow-up's context, once that
+    /// turn has ended ([`openagents_chat::coder_events::run_result`]).
+    #[must_use]
+    pub fn result(&self) -> Option<openagents_chat::router::CoderRun> {
+        if !self.routes_followups() {
+            return None;
+        }
+        let lines: Vec<Line> = self.lines.iter().cloned().collect();
+        coder_events::run_result(&lines)
+    }
+
+    /// Hand `text` to Coder as the next turn of this task, in the same
+    /// worktree: the router judged a follow-up is more work for it
+    /// (#10094). `None` unless the turn has ended, or while another
+    /// request is on its way.
+    pub fn continue_with(&mut self, text: &str) -> Option<(u64, Request)> {
+        let text = text.trim();
+        if text.is_empty() || text.len() > MAX_MESSAGE || !self.routes_followups() {
+            return None;
+        }
+        let task = self.task.clone()?;
+        self.request(Request::Continue {
+            task,
+            text: text.into(),
+        })
     }
 
     /// The other way to send while Coder works: stop and send.
@@ -768,14 +807,72 @@ impl Run {
 
     /// The run as transcript rows.
     pub fn rows(&mut self) -> Vec<Node<()>> {
+        self.rows_anchored(&|_| None)
+            .into_iter()
+            .map(|(_, row)| row)
+            .collect()
+    }
+
+    /// The run as transcript rows, each with the chat message it follows
+    /// (#10094): `anchor` finds, for the message that started a Coder
+    /// turn, the index of the chat's reply that handed it to Coder, and
+    /// that turn's rows follow it. The chat shows that message itself, so
+    /// the run does not repeat it. A turn with no such reply (an answer, a
+    /// queued message) follows the turn before it, and rows with no anchor
+    /// (`None`), with the run's controls, go last. Within a turn the
+    /// person's message comes before its "Coder continued" card.
+    pub fn rows_anchored(
+        &mut self,
+        anchor: &dyn Fn(&str) -> Option<usize>,
+    ) -> Vec<(Option<usize>, Node<()>)> {
         self.actions.clear();
         let mut out = Rows::default();
+        // Each turn's prompt: the last message its trajectory opens with,
+        // after the conversation it carries.
+        let mut previous = None;
+        for line in &self.lines {
+            if let CoderEvent::Step(step) = &line.event
+                && step.kind == StepKind::Message
+            {
+                out.prompts.insert(step.turn, step.text.trim().to_owned());
+            }
+        }
+        let prompts = out.prompts.clone();
+        for (turn, prompt) in &prompts {
+            let asked =
+                crate::basic_chats::handoff_request(prompt).unwrap_or_else(|| prompt.clone());
+            let found = anchor(asked.trim());
+            let at = match (found, previous) {
+                (Some(at), Some(before)) => Some(at.max(before)),
+                (Some(at), None) => Some(at),
+                (None, before) => before,
+            };
+            if let (Some(at), true) = (at, found.is_some()) {
+                out.anchored.insert(*turn, at);
+            } else if let Some(at) = at {
+                out.following.insert(*turn, at);
+            }
+            previous = at;
+        }
         for line in &self.lines {
             out.line(line);
         }
         let last_turn = self.lines.back().map(turn_of);
         out.close(self.state == State::Running && self.phase == Phase::Following);
-        let mut rows = out.rows;
+        let mut anchored: Vec<(Option<usize>, Node<()>)> = Vec::with_capacity(out.rows.len());
+        let mut bounds = out.bounds.iter().peekable();
+        let mut at = None;
+        for (index, row) in out.rows.into_iter().enumerate() {
+            while let Some((start, anchor)) = bounds.peek() {
+                if *start > index {
+                    break;
+                }
+                at = *anchor;
+                bounds.next();
+            }
+            anchored.push((at, row));
+        }
+        let mut rows = Vec::new();
         if self.state == State::Running && self.phase == Phase::Following && self.task.is_some() {
             rows.push(Node {
                 key: "coder-working".into(),
@@ -859,7 +956,8 @@ impl Run {
                 ));
             }
         }
-        rows
+        anchored.extend(rows.into_iter().map(|row| (None, row)));
+        anchored
     }
 
     /// A run's controls (Stop Coder, Approve and Deny, Retry, a queued
@@ -965,12 +1063,34 @@ struct Rows {
     shown: std::collections::BTreeSet<(bool, String)>,
     /// The reply row just drawn, which an ending that repeats it replaces.
     last_reply: Option<(usize, String)>,
+    /// Each turn's prompt, the message that started it.
+    prompts: BTreeMap<usize, String>,
+    /// The turns whose prompt the chat shows, and the chat message each
+    /// follows: their prompt is not shown again.
+    anchored: BTreeMap<usize, usize>,
+    /// The turns that follow an earlier turn's anchor.
+    following: BTreeMap<usize, usize>,
+    /// Where each turn's rows start, and the chat message they follow.
+    bounds: Vec<(usize, Option<usize>)>,
+    /// A later turn's start card, drawn after the message that started
+    /// it.
+    held: Option<Node<()>>,
 }
 
 impl Rows {
     fn line(&mut self, line: &Line) {
         let key = format!("coder-{}", line.seq);
         self.turn = turn_of(line);
+        // A later turn's trajectory opens with the conversation it
+        // carries, messages and replies, then its prompt: the card waits
+        // for the prompt, and anything else draws it.
+        let carried = matches!(
+            &line.event,
+            CoderEvent::Step(step) if matches!(step.kind, StepKind::Message | StepKind::Reply)
+        );
+        if !carried && !matches!(line.event, CoderEvent::CoderStarted(_)) {
+            self.flush_held();
+        }
         match &line.event {
             CoderEvent::Step(step) if step.kind == StepKind::Reply => {
                 match &mut self.reply {
@@ -1009,7 +1129,19 @@ impl Rows {
                         started.model, started.turn
                     )
                 };
-                self.rows.push(card(&key, &title, &lines));
+                self.flush_held();
+                let anchor = self
+                    .anchored
+                    .get(&started.turn)
+                    .or_else(|| self.following.get(&started.turn))
+                    .copied();
+                self.bounds.push((self.rows.len(), anchor));
+                // A later turn's card follows the message that started it.
+                if started.turn == 1 {
+                    self.rows.push(card(&key, &title, &lines));
+                } else {
+                    self.held = Some(card(&key, &title, &lines));
+                }
             }
             CoderEvent::Step(step) => match step.kind {
                 StepKind::Message => {
@@ -1018,11 +1150,16 @@ impl Rows {
                     // never again as "Continued from the OpenAgents app"
                     // (#10076). Its provenance stays in the task's prompt.
                     let handoff = crate::basic_chats::handoff_request(&step.text).is_some();
-                    if !handoff
-                        && (self.shown.insert((true, step.text.trim().to_owned()))
-                            || self.turn == 1)
-                    {
+                    let prompt =
+                        self.prompts.get(&step.turn).map(String::as_str) == Some(step.text.trim());
+                    // A prompt the chat already shows, above this turn.
+                    let shown_by_chat = prompt && self.anchored.contains_key(&step.turn);
+                    let new = self.shown.insert((true, step.text.trim().to_owned()));
+                    if !handoff && !shown_by_chat && (new || self.turn == 1) {
                         self.rows.push(message(&key, MessageRole::User, &step.text));
+                    }
+                    if prompt {
+                        self.flush_held();
                     }
                 }
                 StepKind::Thinking => {
@@ -1232,6 +1369,12 @@ impl Rows {
         self.tools.push(tool);
     }
 
+    fn flush_held(&mut self) {
+        if let Some(card) = self.held.take() {
+            self.rows.push(card);
+        }
+    }
+
     fn flush_reply(&mut self) {
         if let Some((key, text)) = self.reply.take()
             && !text.trim().is_empty()
@@ -1301,6 +1444,7 @@ impl Rows {
 
     /// The last line: a running turn keeps its rows open.
     fn close(&mut self, running: bool) {
+        self.flush_held();
         self.flush_reply();
         self.draw_tools();
         if !running {

@@ -194,6 +194,148 @@ impl Project {
     }
 }
 
+/// The most bytes of a finished run's summary the context carries.
+pub const MAX_RUN_SUMMARY_BYTES: usize = 4 * 1024;
+/// The most changed files the context names.
+pub const MAX_RUN_FILES: usize = 32;
+/// The longest changed file's path, in bytes.
+pub const MAX_RUN_PATH_BYTES: usize = 512;
+/// The most commands the context names, the last ones run.
+pub const MAX_RUN_COMMANDS: usize = 16;
+/// The longest command, in bytes: its first line, cut.
+pub const MAX_RUN_COMMAND_BYTES: usize = 200;
+/// The longest model name, in bytes.
+pub const MAX_RUN_MODEL_BYTES: usize = 64;
+
+/// How the chat's Coder run ended its last turn (#10094).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RunEnding {
+    /// It finished with a result.
+    Finished,
+    /// It ended without finishing.
+    Failed,
+    /// The person or the host stopped it.
+    Stopped,
+}
+
+impl RunEnding {
+    /// The word the wire carries.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Finished => "finished",
+            Self::Failed => "failed",
+            Self::Stopped => "stopped",
+        }
+    }
+}
+
+/// One file the run's last turn changed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunFile {
+    pub path: String,
+    /// `added`, `modified`, `deleted`, or `renamed`.
+    pub status: String,
+}
+
+/// The result of the chat's Coder run, once its turn has ended, as a turn
+/// tells the worker (#10094): how it ended, which engine ran it, its
+/// summary, the files it changed, and the commands it ran. The chat answers
+/// questions about the run from it, and the router decides whether a
+/// follow-up is a question for the chat or more work for Coder's next turn.
+/// These are the person's own data: the worker gives the summary, files,
+/// and commands only to the chat model's instructions; Jev reads only how
+/// the run ended. Every field is bounded ([`CoderRun::json`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CoderRun {
+    pub ending: RunEnding,
+    /// The turn that ended, from one.
+    pub turn: usize,
+    /// The engine's word, such as `codex` or `claude`.
+    pub engine: Option<String>,
+    pub model: Option<String>,
+    /// What Coder said it did, or why it failed or stopped.
+    pub summary: String,
+    pub files: Vec<RunFile>,
+    /// The turn's commands, oldest first.
+    pub commands: Vec<String>,
+}
+
+/// At most `max` bytes of `text`, cut at a character boundary.
+fn cut(text: &str, max: usize) -> String {
+    let text = text.trim();
+    if text.len() <= max {
+        return text.to_owned();
+    }
+    let mut end = max.saturating_sub('…'.len_utf8());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
+
+/// A bounded word: lowercase letters, digits, `-`, or `_`, 1 to 16 bytes.
+fn word_like(word: &str) -> bool {
+    (1..=16).contains(&word.len())
+        && word
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+}
+
+impl CoderRun {
+    /// The request's `context.coder_run`: the summary cut to
+    /// [`MAX_RUN_SUMMARY_BYTES`] (line breaks kept, other control
+    /// characters dropped), at most [`MAX_RUN_FILES`] files and the last
+    /// [`MAX_RUN_COMMANDS`] commands, each command its first line cut to
+    /// [`MAX_RUN_COMMAND_BYTES`]. A path past its bound or with a control
+    /// character, or an engine that is not a bounded word, is left out.
+    #[must_use]
+    pub fn json(&self) -> Value {
+        let summary: String = self
+            .summary
+            .chars()
+            .filter(|ch| !ch.is_control() || *ch == '\n' || *ch == '\t')
+            .collect();
+        let commands: Vec<String> = self
+            .commands
+            .iter()
+            .filter_map(|command| {
+                let line = command.lines().find(|line| !line.trim().is_empty())?;
+                let line: String = line.chars().filter(|ch| !ch.is_control()).collect();
+                (!line.trim().is_empty()).then(|| cut(&line, MAX_RUN_COMMAND_BYTES))
+            })
+            .collect();
+        let skip = commands.len().saturating_sub(MAX_RUN_COMMANDS);
+        let mut value = json!({
+            "ending": self.ending.word(),
+            "turn": self.turn.clamp(1, 9_999),
+            "summary": cut(&summary, MAX_RUN_SUMMARY_BYTES),
+            "files": self
+                .files
+                .iter()
+                .filter(|file| {
+                    plain(&file.path, MAX_RUN_PATH_BYTES, MAX_RUN_PATH_BYTES)
+                        && word_like(&file.status)
+                })
+                .take(MAX_RUN_FILES)
+                .map(|file| json!({"path": file.path, "status": file.status}))
+                .collect::<Vec<_>>(),
+            "commands": &commands[skip..],
+        });
+        if let Some(engine) = self.engine.as_deref().filter(|word| word_like(word)) {
+            value["engine"] = json!(engine);
+        }
+        if let Some(model) = self
+            .model
+            .as_deref()
+            .filter(|model| plain(model, MAX_RUN_MODEL_BYTES, MAX_RUN_MODEL_BYTES))
+        {
+            value["model"] = json!(model);
+        }
+        value
+    }
+}
+
 /// Printable, not blank, and at most `max_bytes` bytes and `max_chars`
 /// characters.
 fn plain(text: &str, max_bytes: usize, max_chars: usize) -> bool {
@@ -245,6 +387,11 @@ pub struct Context {
     /// The chat's project folder. Its path is sent only with
     /// [`Computer::Here`].
     pub project: Option<Project>,
+    /// The chat's Coder run, once its turn has ended (#10094): what it
+    /// did, for the chat to answer about and the router to decide whether
+    /// a follow-up is more work for it. `None` while it runs, while it
+    /// waits for an answer, and in a chat with no run.
+    pub coder_run: Option<CoderRun>,
     /// The conversation's open test-set draft (`openagents.eval-draft.v1`),
     /// which the phone keeps and resends each turn: the request's `draft`,
     /// beside `context`, never inside it. Data, never an instruction.
@@ -290,6 +437,9 @@ impl Context {
                 value["path"] = json!(path);
             }
             context["project"] = value;
+        }
+        if let Some(run) = &self.coder_run {
+            context["coder_run"] = run.json();
         }
         context
     }
@@ -1129,6 +1279,78 @@ mod computer_context_tests {
         assert!(
             !crate::basic_coder::INSTRUCTIONS_ON_COMPUTER.contains("a computer the user connects")
         );
+    }
+
+    /// A follow-up in a chat whose Coder run finished carries the run's
+    /// result as typed context, exactly as the worker's fixture reads it
+    /// (#10094).
+    #[test]
+    fn a_coder_run_context_matches_the_worker_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../coder/fixtures/nip-cj/router-request-coder-run.json"
+        ))
+        .unwrap();
+        let context = Context {
+            surface: Surface::Desktop,
+            computer_ready: true,
+            computer: Some(Computer::Here {
+                name: None,
+                engines: vec![Engine {
+                    engine: "codex".into(),
+                    state: EngineState::Ready,
+                }],
+            }),
+            coder_run: Some(CoderRun {
+                ending: RunEnding::Finished,
+                turn: 1,
+                engine: Some("codex".into()),
+                model: Some("gpt-6-luna".into()),
+                summary: "I looked at the project and changed nothing. It holds a Rust \
+                          workspace with 40 crates.\u{7}"
+                    .into(),
+                files: vec![
+                    RunFile {
+                        path: "NOTE.md".into(),
+                        status: "added".into(),
+                    },
+                    RunFile {
+                        path: "bad\npath".into(),
+                        status: "added".into(),
+                    },
+                ],
+                commands: vec!["ls".into(), "cargo metadata --no-deps\n--more".into()],
+            }),
+            ..Context::default()
+        };
+        let request = crate::basic_coder::payload(
+            &[
+                crate::basic_coder::Turn::user("do a test delegation to claude"),
+                crate::basic_coder::Turn::assistant(
+                    "We'll dispatch Coder, asking for Claude Code, to take this on.",
+                    None,
+                ),
+                crate::basic_coder::Turn::user("summarize what happened"),
+            ],
+            &context,
+        );
+        assert_eq!(request["context"], fixture["context"]);
+        // Every bound holds: a long summary is cut, and only the last
+        // commands are named.
+        let long = CoderRun {
+            ending: RunEnding::Failed,
+            turn: 3,
+            engine: Some("Not A Word".into()),
+            model: None,
+            summary: "é".repeat(MAX_RUN_SUMMARY_BYTES),
+            files: vec![],
+            commands: (0..40).map(|n| format!("echo {n}")).collect(),
+        }
+        .json();
+        assert!(long["summary"].as_str().unwrap().len() <= MAX_RUN_SUMMARY_BYTES);
+        assert_eq!(long["commands"].as_array().unwrap().len(), MAX_RUN_COMMANDS);
+        assert_eq!(long["commands"][0], "echo 24");
+        assert!(long.get("engine").is_none());
+        assert_eq!(long["ending"], "failed");
     }
 
     /// A phone names its paired computer and the project by name, never a

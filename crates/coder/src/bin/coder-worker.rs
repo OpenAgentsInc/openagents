@@ -1785,9 +1785,12 @@ impl Job {
         // The bank's facts for this turn: placed on a computer when the
         // turn is, with the computer's name and project folder (#10077).
         let facts = turn.context.facts(&routing.facts);
+        // Jev reads only that the chat's Coder run ended, never what it
+        // reported (#10094).
+        let judged = turn.context.judged(input);
         let request = router::request(
             &turn.message,
-            input,
+            &judged,
             bank,
             &facts,
             &groups,
@@ -5069,5 +5072,37 @@ mod tests {
         assert!(!paired.contains("/Users/someone"), "{paired}");
         let phone = instructions(json!({ "surface": "phone", "computer_ready": false })).await;
         assert_eq!(phone, "We are OpenAgents.");
+    }
+
+    /// A follow-up after Coder's run ended tells the chat model what the
+    /// run reported, so the chat answers questions about it (#10094).
+    #[tokio::test]
+    async fn the_model_is_told_what_the_finished_run_did() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../fixtures/nip-cj/router-request-coder-run.json"
+        ))
+        .unwrap();
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let (url, seen) = serve_recorded(1, Duration::ZERO, "text/event-stream", stream.into());
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let mut payload = fixture.clone();
+        payload["instructions"] = json!("We are OpenAgents.");
+        let frames = frames_through(door, None, payload).await;
+        assert_eq!(frames.last().unwrap().1["type"], "result");
+        let seen = seen.lock().unwrap();
+        let instructions = seen[0]["instructions"].as_str().unwrap();
+        for words in [
+            "Coder, our coding agent, already ran in this chat: its turn 1 finished on Codex \
+             (gpt-6-luna).",
+            "It holds a Rust workspace with 40 crates.",
+            "Files it changed: NOTE.md (added).",
+            "Commands it ran: `ls`, `cargo metadata --no-deps`.",
+            "Answer questions about that run",
+        ] {
+            assert!(instructions.contains(words), "{words} in {instructions}");
+        }
+        // The model reads the conversation as sent, without the line Jev
+        // reads.
+        assert!(!seen[0].to_string().contains(router::MARKER_FINISHED));
     }
 }

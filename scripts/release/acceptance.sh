@@ -105,7 +105,7 @@ say() { echo "==> $*" >&2; }
 
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
-desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
 gate_scenarios="explain-error plugins-chat"
 scenarios="$desktop_scenarios $gate_scenarios"
 

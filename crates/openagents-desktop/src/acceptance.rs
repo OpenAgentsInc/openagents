@@ -39,13 +39,15 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 17] = [
+pub const SCENARIOS: [&str; 19] = [
     "ui-placeholder",
     "who-are-you",
     "ui-chips",
     "ui-engines-sidebar",
     "delegate-who",
     "delegate-now",
+    "followup-chat",
+    "followup-coder",
     "working-directory",
     "delegate-claude",
     "delegate-grok",
@@ -180,6 +182,8 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "ui-engines-sidebar" => ui_engines(&mut gate),
             "delegate-who" => delegate_who(&mut gate),
             "delegate-now" => delegate_now(&mut gate),
+            "followup-chat" => followup_chat(&mut gate),
+            "followup-coder" => followup_coder(&mut gate),
             "working-directory" => working_directory(&mut gate),
             "delegate-claude" => delegate_claude(&mut gate),
             "delegate-grok" => delegate_grok(&mut gate),
@@ -979,6 +983,171 @@ fn delegate_now(gate: &mut Gate) -> Outcome {
             started.map_or("?", |s| s.provider.as_str()),
             started.map_or("?", |s| s.checkout.as_str()),
             excerpt(&seen.finished.map(|f| f.summary).unwrap_or_default())
+        ))
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
+/// The chat delegate-now's run finished in, with that run's task.
+fn finished_chat(gate: &mut Gate) -> Result<(String, String), String> {
+    let chat = gate
+        .chats
+        .get("who-are-you")
+        .map(|(chat, _)| chat.clone())
+        .ok_or("needs delegate-now's chat")?;
+    select(gate, &chat)?;
+    let finished = pump(gate, RUN_WAIT, |gate| {
+        gate.panel()
+            .coder_run(&chat)
+            .is_some_and(|run| run.routes_followups() && run.finished())
+    });
+    if !finished {
+        return Err("needs delegate-now's Coder run, finished".into());
+    }
+    let task = gate
+        .panel()
+        .coder_run(&chat)
+        .and_then(|run| run.task.clone())
+        .ok_or("the run has no task")?;
+    Ok((chat, task))
+}
+
+/// The highest turn Coder started in `chat`.
+fn last_turn(gate: &Gate, chat: &str) -> usize {
+    gate.panel().coder_run(chat).map_or(0, |run| {
+        run.lines()
+            .filter_map(|line| match &line.event {
+                CoderEvent::CoderStarted(started) => Some(started.turn),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
+    })
+}
+
+/// After delegate-now's run finished, "summarize what happened" is the
+/// router's: the composer says "Message OpenAgents…", the chat answers from
+/// the run's result, and Coder takes no new turn (#10094).
+fn followup_chat(gate: &mut Gate) -> Outcome {
+    if let Some(skip) = gate.need(true, false) {
+        return skip;
+    }
+    let (chat, _) = finished_chat(gate)?;
+    let mut problems = Vec::new();
+    let placeholder = gate.panel().composer_placeholder();
+    if placeholder != "Message OpenAgents…" {
+        problems.push(format!(
+            "the composer says {placeholder:?} after the run finished"
+        ));
+    }
+    let turns = last_turn(gate, &chat);
+    let reply = send(gate, "summarize what happened")?;
+    let meta = reply.meta.clone().unwrap_or_default();
+    if openagents_chat::delegation::offered(Some(&meta), true) {
+        problems.push(format!(
+            "the reply hands it to Coder (route {:?})",
+            meta.route
+        ));
+    }
+    let more = pump(gate, NO_START_GRACE, |gate| last_turn(gate, &chat) > turns);
+    if more {
+        problems.push("Coder took another turn for a question about its run".into());
+    }
+    gate.save_chat("followup-chat");
+    let _ = gate.capture("followup-chat", "chat-1200x840-1x", 1200.0, 840.0, 1.0);
+    if problems.is_empty() {
+        Ok(format!(
+            "answered in chat on route {:?}: {:?}; no new Coder turn",
+            meta.route.unwrap_or_default(),
+            excerpt(&reply.text)
+        ))
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
+/// Then "now also list the top-level files in a note" is more work: the
+/// router hands it to Coder, which continues the same task as its next
+/// turn and finishes, and the person's message shows before the
+/// "Coder continued" card (#10094).
+fn followup_coder(gate: &mut Gate) -> Outcome {
+    if let Some(skip) = gate.need(true, false) {
+        return skip;
+    }
+    const ASK: &str = "now also list the top-level files in a note";
+    let (chat, task) = finished_chat(gate)?;
+    let turns = last_turn(gate, &chat);
+    let reply = send(gate, ASK)?;
+    let meta = reply.meta.clone().unwrap_or_default();
+    let mut problems = Vec::new();
+    if !openagents_chat::delegation::offered(Some(&meta), true) {
+        problems.push(format!(
+            "the reply did not hand it to Coder (route {:?}): {:?}",
+            meta.route,
+            excerpt(&reply.text)
+        ));
+    }
+    let next = turns + 1;
+    let started = pump(gate, START_WAIT, |gate| last_turn(gate, &chat) >= next);
+    if !started {
+        problems.push(format!(
+            "Coder did not start turn {next} within {}s",
+            START_WAIT.as_secs()
+        ));
+    }
+    let ended = started
+        && pump(gate, RUN_WAIT, |gate| {
+            gate.panel().coder_run(&chat).is_some_and(|run| {
+                run.lines().any(|line| match &line.event {
+                    CoderEvent::Result(done) => done.turn >= next,
+                    CoderEvent::Failure(failed) => failed.turn >= next,
+                    CoderEvent::Stopped(stopped) => stopped.turn >= next,
+                    _ => false,
+                })
+            })
+        });
+    gate.app.present();
+    gate.save_chat("followup-coder");
+    let _ = gate.capture("followup-coder", "chat-1200x840-1x", 1200.0, 840.0, 1.0);
+    if started && !ended {
+        problems.push(format!(
+            "turn {next} did not end within {}s",
+            RUN_WAIT.as_secs()
+        ));
+    }
+    let run = gate.panel().coder_run(&chat);
+    if run.and_then(|run| run.task.clone()).as_deref() != Some(task.as_str()) {
+        problems.push("the follow-up started another task instead of the next turn".into());
+    }
+    let finished = run.and_then(|run| {
+        run.lines().find_map(|line| match &line.event {
+            CoderEvent::Result(done) if done.turn >= next => Some(done.clone()),
+            _ => None,
+        })
+    });
+    if ended && finished.is_none() {
+        problems.push(format!("turn {next} ended without a result"));
+    }
+    // The person's message, then the card it started.
+    let rows = gate.transcript();
+    let asked = rows.iter().position(|row| row.contains(ASK));
+    let card = rows
+        .iter()
+        .position(|row| row.contains(&format!("(turn {next})")));
+    match (asked, card) {
+        (Some(asked), Some(card)) if asked < card => {}
+        (Some(_), Some(_)) => {
+            problems.push("the \"Coder continued\" card shows above the message".into())
+        }
+        _ => problems.push(format!(
+            "the transcript lacks the message or the turn {next} card"
+        )),
+    }
+    if problems.is_empty() {
+        Ok(format!(
+            "Coder continued task {task} as turn {next} and finished: {:?}",
+            excerpt(&finished.map(|done| done.summary).unwrap_or_default())
         ))
     } else {
         Err(problems.join("; "))

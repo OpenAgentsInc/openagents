@@ -65,7 +65,19 @@ only beside `place: "here"` (a worker ignores a path from anywhere else).
 Every string is printable; a value past its bound is left out, never cut.
 The computer's name and the project folder are the person's own data: a
 worker uses them only to tell its model where the chat runs and to fill its
-own reviewed answers, and sends them to no other service. Context carries
+own reviewed answers, and sends them to no other service. Added
+2026-10-01: `coder_run`, the chat's Coder run once its turn has ended, as
+`{ending, turn, engine?, model?, summary, files, commands}`: `ending` is
+`finished`, `failed`, or `stopped`; `turn` the turn that ended; `engine` a
+word as in `engines`; `model` at most 64 bytes; `summary` what Coder
+reported, at most 4 KiB (line breaks allowed); `files` at most 32
+`{path, status}` with `path` at most 512 bytes; and `commands` the turn's
+last 16 commands, each its first line of at most 200 bytes. A client sends
+it only after the turn ended, never while Coder works or waits for an
+answer. These too are the person's own data: a worker gives the summary,
+files, and commands only to its model's instructions, so the chat can
+answer about the run, and lets its routing read only that the run ended and
+how. Context carries
 no credential, key, host address, or amount; a worker ignores fields it
 does not know and never lets context widen what it does. A request MAY also carry `draft` (added
 2026-09-28 for the

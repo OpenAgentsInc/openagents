@@ -1018,6 +1018,24 @@ pub fn set_local_runner(predict: LocalRunner) {
     let _ = LOCAL_RUNNER.set(predict);
 }
 
+/// What a chat's Coder task did in its last turn, once that turn ended:
+/// set once by the program serving the host
+/// (`coder::task::local::result_in`). The host puts it on a send in a
+/// thread bound to a Coder task here, so the chat answers about the run
+/// and the router decides whether the message is more work for it
+/// (#10094). Unset, a turn carries no run.
+static LOCAL_RESULT: std::sync::OnceLock<LocalResult> = std::sync::OnceLock::new();
+
+/// How the host reads a task's last turn: the task store (`None` for this
+/// computer's own, the store local runs use) and the task.
+pub type LocalResult = fn(Option<&Path>, &str) -> Option<openagents_chat::router::CoderRun>;
+
+/// Tell the host's chats how to read a Coder task's last turn
+/// ([`LOCAL_RESULT`]). The first call wins.
+pub fn set_local_result(read: LocalResult) {
+    let _ = LOCAL_RESULT.set(read);
+}
+
 /// Whether a coding request in a chat can run on this computer: a
 /// registered project with the host's keys, or Coder's local run.
 fn computer_ready(shared: &Shared) -> bool {
@@ -1031,7 +1049,11 @@ fn computer_ready(shared: &Shared) -> bool {
 /// the project its Coder task was bound to (`bound`, a label or a folder
 /// name), else the first project, where a new run starts. No key, address,
 /// or account.
-fn chat_context(shared: &Shared, bound: Option<&str>) -> openagents_chat::router::Context {
+fn chat_context(
+    shared: &Shared,
+    spawned: Option<&openagents_chat::basic_chats::Spawned>,
+) -> openagents_chat::router::Context {
+    let bound = spawned.and_then(|spawned| spawned.project.as_deref());
     use openagents_chat::router::{Computer, Context, Engine, Project as Folder, Surface};
     let engines = LOCAL_RUNNER
         .get()
@@ -1065,7 +1087,26 @@ fn chat_context(shared: &Shared, bound: Option<&str>) -> openagents_chat::router
         computer_ready: computer_ready(shared),
         computer: Some(Computer::Here { name, engines }),
         project: chat_project(&projects, bound).and_then(|project| Folder::at(project.shown())),
+        coder_run: spawned.and_then(|spawned| coder_result(shared, spawned)),
         ..Context::default()
+    }
+}
+
+/// The chat's Coder task's last turn, once it ended (#10094): a run this
+/// computer started for its own chat (`local`) is in this computer's
+/// store; one this host started is in the host's.
+fn coder_result(
+    shared: &Shared,
+    spawned: &openagents_chat::basic_chats::Spawned,
+) -> Option<openagents_chat::router::CoderRun> {
+    let read = LOCAL_RESULT.get()?;
+    if spawned.host == openagents_chat::thread::LOCAL_HOST {
+        read(None, &spawned.task)
+    } else if spawned.host == shared.host_key {
+        let store = shared.config.control.as_ref()?.tasks.as_path();
+        read(Some(store), &spawned.task)
+    } else {
+        None
     }
 }
 
@@ -1193,11 +1234,8 @@ pub(crate) fn apply_chat(
     };
     let context = match asking {
         Some(chat) => {
-            let bound = chats
-                .get(&chat)
-                .and_then(|summary| summary.coder.as_ref())
-                .and_then(|spawned| spawned.project.clone());
-            chat_context(shared, bound.as_deref())
+            let spawned = chats.get(&chat).and_then(|summary| summary.coder.clone());
+            chat_context(shared, spawned.as_ref())
         }
         None => openagents_chat::router::Context {
             surface: openagents_chat::router::Surface::Desktop,

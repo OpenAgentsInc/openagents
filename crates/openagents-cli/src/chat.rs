@@ -463,6 +463,34 @@ impl Backend {
         })
     }
 
+    /// Tell the router what the thread's Coder run did, once its turn has
+    /// ended (#10094), so the chat answers about it and a request for more
+    /// work continues it. The host does this for its own threads; in this
+    /// process the context says it.
+    async fn carry_run(&mut self, id: &str) {
+        if matches!(self, Self::Host { .. }) {
+            return;
+        }
+        let bound = self
+            .apply(Command::Read {
+                chat: id.to_owned(),
+                before: None,
+            })
+            .await
+            .ok()
+            .and_then(|snapshot| snapshot.coder)
+            .filter(|coder| coder.host == coder::task::local::LOCAL_HOST);
+        let run = match bound {
+            Some(coder) => coder_run::result(self, id, &coder.task).await,
+            None => None,
+        };
+        if let Self::Local { chats, .. } = self {
+            let mut context = chats.context().clone();
+            context.coder_run = run;
+            chats.set_context(context);
+        }
+    }
+
     /// The word `--json` names this backend with.
     fn name(&self) -> &'static str {
         match self {
@@ -616,6 +644,9 @@ async fn send(
             })
             .await
             .map_err(failed)?;
+    }
+    if !new {
+        backend.carry_run(id).await;
     }
     let request = new_id();
     let sent = backend

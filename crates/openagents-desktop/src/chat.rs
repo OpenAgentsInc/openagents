@@ -1424,6 +1424,9 @@ impl Panel {
             .map(|(_, request)| request.clone())
             .collect();
         let mut run = false;
+        // The message whose reply hands it to Coder: after a run's turn
+        // ended, it is Coder's next turn (#10094).
+        let mut asked = None;
         for request in sent {
             let Some(at) = snapshot
                 .turns
@@ -1449,7 +1452,27 @@ impl Panel {
                 && openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer)
             {
                 run = true;
+                asked = snapshot.turns.get(at).map(|turn| turn.text.clone());
             }
+        }
+        // A chat whose Coder run has ended: the router judged this message
+        // more work for it, so it continues the same task, in the same
+        // worktree, as its next turn. The person started Coder in this
+        // chat already, so `coder.start: ask_first` does not ask again.
+        if run
+            && let Some(text) = asked
+            && let Some(existing) = self.runs.get_mut(&chat)
+            && existing.routes_followups()
+        {
+            if let Some((ticket, request)) = existing.continue_with(&text) {
+                self.queued.push(Request::CoderRun {
+                    chat: chat.clone(),
+                    ticket,
+                    request,
+                });
+                self.rows_dirty = true;
+            }
+            return;
         }
         // `coder.start: ask_first` leaves the offer's **Run Coder** to
         // the person, as `openagents chat` leaves `run-coder`.
@@ -1743,7 +1766,10 @@ impl Panel {
                 if self.task().is_some() {
                     return self.task_action(TaskAction::Send, view, now);
                 }
-                if self.run().is_some() {
+                // While Coder works, or asks, the message is Coder's; once
+                // its turn has ended the router reads it, with the run's
+                // result as context (#10094).
+                if self.run().is_some_and(|run| !run.routes_followups()) {
                     return self.run_action(RunAction::Send, view);
                 }
                 let field = self.field()?;
@@ -3444,12 +3470,54 @@ impl Panel {
                     },
                     &appearance(),
                 );
+                // Each Coder turn follows the chat reply that handed it to
+                // Coder, by the message that asked (#10094).
+                let shown_turns = turns.len();
+                let anchor = |text: &str| {
+                    let at = turns.iter().rposition(|turn| {
+                        turn.role == Role::User && turn.text.trim() == text.trim()
+                    })?;
+                    Some(match turns.get(at + 1) {
+                        Some(reply) if reply.role == Role::Assistant => at + 1,
+                        _ => at,
+                    })
+                };
                 let run_rows = self
                     .session
                     .selected
                     .as_ref()
                     .and_then(|id| self.runs.get_mut(id))
-                    .map(Run::rows);
+                    .map(|run| run.rows_anchored(&anchor));
+                // Turns anchored before the newest message go between the
+                // chat's messages; the rest go last, as before.
+                let (between, run_rows) = match run_rows {
+                    Some(anchored) => {
+                        let (between, last): (Vec<_>, Vec<_>) = anchored
+                            .into_iter()
+                            .partition(|(at, _)| at.is_some_and(|at| at + 1 < shown_turns));
+                        (
+                            between,
+                            Some(last.into_iter().map(|(_, row)| row).collect::<Vec<_>>()),
+                        )
+                    }
+                    None => (Vec::new(), None),
+                };
+                if !between.is_empty() {
+                    let mut merged = Vec::with_capacity(rows.len() + between.len());
+                    let mut pending = between.into_iter().peekable();
+                    for (index, row) in rows.into_iter().enumerate() {
+                        merged.push(row);
+                        while pending
+                            .peek()
+                            .is_some_and(|(at, _)| at.is_some_and(|at| at <= index))
+                        {
+                            let (_, node) = pending.next().expect("peeked");
+                            merged.push(Arc::new(node));
+                        }
+                    }
+                    merged.extend(pending.map(|(_, node)| Arc::new(node)));
+                    rows = merged;
+                }
                 let busy = self.busy();
                 let fallback = Snapshot {
                     chat: self.session.selected.clone(),
@@ -3552,6 +3620,27 @@ impl Panel {
         body
     }
     /// Empty conversations keep the composer in the reading pane's center.
+    /// The open chat's composer placeholder: "Message OpenAgents…" unless
+    /// Coder works, or asks, in it (#10094).
+    #[must_use]
+    pub fn composer_placeholder(&self) -> &'static str {
+        self.session
+            .selected
+            .as_deref()
+            .map_or("Message OpenAgents…", |id| self.placeholder_of(id))
+    }
+
+    fn placeholder_of(&self, id: &str) -> &'static str {
+        self.tasks.get(id).map_or_else(
+            || {
+                self.runs
+                    .get(id)
+                    .map_or("Message OpenAgents…", Run::placeholder)
+            },
+            task_chat::Session::placeholder,
+        )
+    }
+
     pub fn composer_centered(&self) -> bool {
         !self.saved_visible
             && self.transcript_rows.is_empty()
@@ -3589,10 +3678,7 @@ impl Panel {
         let busy = self.busy();
         let task = self.tasks.get(&id);
         let run = self.runs.get(&id);
-        let placeholder = task.map_or_else(
-            || run.map_or("Message OpenAgents…", Run::placeholder),
-            task_chat::Session::placeholder,
-        );
+        let placeholder = self.placeholder_of(&id);
         // The composer always has its field, so the card never shows empty:
         // without one the surface paints nothing, not even the placeholder
         // (#10072). Every path that selects a chat should have made it.
@@ -4370,6 +4456,74 @@ mod start_setting_tests {
         assert!(asks.sent.is_empty(), "the reply was judged once");
         asks.start_run(&chat);
         assert!(asks.coder_run(&chat).is_some());
+    }
+
+    /// Once a chat's Coder run has finished, Send goes to the router
+    /// (#10094): the composer says so, and a reply that hands the next
+    /// message to Coder continues the same task with it, as its next turn;
+    /// a reply that answered continues nothing. The chat's messages and the
+    /// run's turns interleave, each turn after the reply that handed it.
+    #[test]
+    fn after_a_finished_run_the_router_decides_and_a_dispatch_continues_the_task() {
+        let fixture =
+            include_str!("../../openagents-chat/fixtures/coder-events/question-then-result.ndjson");
+        let lines: Vec<openagents_chat::coder_events::Line> = fixture
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let task = lines[0].task.clone();
+        let lines: Vec<_> = lines.into_iter().filter(|line| line.task == task).collect();
+        let finished = |route: &str| {
+            let mut panel = replied_on(|| true, openagents_chat::delegation::DISPATCH_ROUTE);
+            let chat = "c".repeat(32);
+            let now = Instant::now();
+            let mut run = Run::follow(&chat, &task, None, now);
+            let (ticket, _) = run.tick(now).unwrap();
+            run.outcome(
+                ticket,
+                Ok(coder_run::Answer::Lines {
+                    lines: lines.clone(),
+                    state: coder_run::State::Ended,
+                }),
+                now,
+            );
+            panel.runs.insert(chat.clone(), run);
+            assert_eq!(panel.composer_placeholder(), "Message OpenAgents…");
+            // The follow-up and the router's reply to it.
+            let snapshot = panel.session.states.get_mut(&chat).unwrap();
+            let mut asked = Turn::user("now add a test");
+            asked.request = Some("r2".into());
+            snapshot.turns.push(asked);
+            snapshot.turns.push(Turn::assistant(
+                "We'll dispatch Coder to add a test.",
+                Some(openagents_chat::router::Meta {
+                    route: Some(route.into()),
+                    ..Default::default()
+                }),
+            ));
+            panel.sent.insert((chat.clone(), "r2".into()));
+            panel.run_if_coding();
+            panel
+        };
+        let mut handed = finished(openagents_chat::delegation::DISPATCH_ROUTE);
+        let requests = handed.take_requests();
+        assert!(
+            requests.iter().any(|request| matches!(
+                request,
+                Request::CoderRun {
+                    request: coder_run::Request::Continue { task: t, text },
+                    ..
+                } if *t == task && text == "now add a test"
+            )),
+            "{requests:?}"
+        );
+        let mut answered = finished("general");
+        assert!(answered.take_requests().is_empty());
+        assert!(
+            answered
+                .coder_run(&"c".repeat(32))
+                .is_some_and(Run::routes_followups)
+        );
     }
 
     /// A reply that answered the question on the computer lane, such as

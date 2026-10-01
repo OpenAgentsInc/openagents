@@ -12,6 +12,7 @@ it `chat-answers-v1@DIGEST`.
 | `router-request.json` | A `25900` turn that asks for the router, with its `context`, as build 20 sends it (`chat-router-v1`). |
 | `router-request-v2.json` | A `chat-router-v2` turn with an open authoring interview's `draft`. |
 | `router-request-computer.json` | A desktop turn whose `context` says this computer is where Coder runs, with its coding agents' readiness and the chat's project folder (#10077). `openagents-chat`'s `a_computer_context_matches_the_worker_fixture` checks that the desktop writes exactly this `context`. |
+| `router-request-coder-run.json` | A desktop follow-up in a chat whose Coder run finished: its `context.coder_run` carries how the run ended, its engine and model, its summary, the files it changed, and its commands (#10094). `openagents-chat`'s `a_coder_run_context_matches_the_worker_fixture` checks that the desktop writes exactly this `context`, and `coder`'s `a_coder_run_is_bounded_and_typed` that the worker reads it. |
 | `router-judgment.json` | The `27000` `judgment` feedback for a sure "What model are you?". |
 | `router-result-canned.json` | The `26900` result of that turn, with its followup chips. |
 | `router-offer-run-coder.json` | `offer` feedback: dispatch Coder to the connected computer. |

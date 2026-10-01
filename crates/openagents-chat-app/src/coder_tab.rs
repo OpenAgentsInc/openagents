@@ -450,6 +450,9 @@ pub struct CoderTab {
     images: crate::attachments::Drafts,
     /// Whether the chat takes images ([`ATTACHMENTS_ENABLED`]).
     attachments: bool,
+    /// What each conversation's Coder task did in its last turn, read from
+    /// its chat when a follow-up left it for the conversation (#10094).
+    talk_runs: std::collections::BTreeMap<String, openagents_chat::router::CoderRun>,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -504,6 +507,7 @@ impl CoderTab {
             thread_link: None,
             thread_projection: crate::projection::Projection::default(),
             images: crate::attachments::Drafts::default(),
+            talk_runs: std::collections::BTreeMap::new(),
             attachments: ATTACHMENTS_ENABLED,
         }
     }
@@ -742,11 +746,60 @@ impl CoderTab {
                 .filter(|name| !name.trim().is_empty())
                 .map(|name| crate::router::Computer::Paired { name }),
             project,
+            coder_run: self.talk_run(computers),
             app_build: self.app_build.clone(),
             draft,
             tried,
             skip: self.gym.skip(),
         }
+    }
+
+    /// The open conversation's Coder task, once its turn has ended, as the
+    /// router's context (#10094): what the task's chat showed when the
+    /// follow-up left it, else only how it ended. `None` while it runs.
+    fn talk_run(&self, computers: Option<&Computers>) -> Option<openagents_chat::router::CoderRun> {
+        let id = self.talk.as_deref()?;
+        let spawned = self.basic.get(id)?.coder.as_ref()?;
+        let phase = Self::summary(computers?.snapshot(), &spawned.host, &spawned.task)?.phase;
+        let ending = ending_of(phase)?;
+        Some(
+            self.talk_runs
+                .get(id)
+                .filter(|run| run.ending == ending)
+                .cloned()
+                .unwrap_or(openagents_chat::router::CoderRun {
+                    ending,
+                    turn: 1,
+                    engine: None,
+                    model: None,
+                    summary: String::new(),
+                    files: Vec::new(),
+                    commands: Vec::new(),
+                }),
+        )
+    }
+
+    /// The conversation that started `task` on `host`, if this phone holds
+    /// it.
+    fn talk_of(&self, host: &str, task: &str) -> Option<String> {
+        self.basic
+            .list()
+            .iter()
+            .find(|summary| {
+                summary
+                    .coder
+                    .as_ref()
+                    .is_some_and(|spawned| spawned.host == host && spawned.task == task)
+            })
+            .map(|summary| summary.id.clone())
+    }
+
+    /// Whether `task` on `host` has ended its turn: a follow-up goes to
+    /// OpenAgents, not straight to Coder (#10094).
+    fn ended(computers: Option<&Computers>, host: &str, task: &str) -> bool {
+        computers
+            .and_then(|c| Self::summary(c.snapshot(), host, task))
+            .is_some_and(|summary| ending_of(summary.phase).is_some())
     }
 
     /// Keep basic conversations in `basic`.
@@ -1489,6 +1542,35 @@ impl CoderTab {
                 let Some((host, _)) = self.threads.opened() else {
                     return;
                 };
+                // The thread's Coder task ended its turn: the message the
+                // reply handed to Coder is that task's next turn (#10094).
+                if let Some(shown) = self.threads.shown()
+                    && let Some(coder) = shown.coder.clone()
+                    && Self::ended(computers.as_deref(), &coder.host, &coder.task)
+                {
+                    let Some(computers) = computers else { return };
+                    if !Self::operates(Some(computers), &coder.host) {
+                        self.notice = Some("This phone can only read this chat".into());
+                        return;
+                    }
+                    if let Some(text) = shown
+                        .turns
+                        .iter()
+                        .rev()
+                        .find(|turn| turn.role == crate::basic_coder::Role::User)
+                        .map(|turn| turn.text.clone())
+                    {
+                        self.command_on(
+                            &coder.host,
+                            &coder.task,
+                            CommandAction::Send,
+                            &text,
+                            false,
+                            computers,
+                        );
+                    }
+                    return;
+                }
                 let Some(link) = self.thread_link.clone() else {
                     self.notice = Some("Couldn't reach the computer.".into());
                     return;
@@ -2096,6 +2178,29 @@ impl CoderTab {
         // Text only while attachments are off: a draft that still holds
         // images sends its words alone.
         self.text_only();
+        // A Coder chat whose turn has ended, started from a conversation
+        // here: the follow-up goes to that conversation, whose router
+        // answers it from the run's result or hands it back to Coder
+        // (#10094).
+        if self.talk.is_none()
+            && self.threads.opened().is_none()
+            && let Some(open) = &self.open
+            && open.editing.is_none()
+            && Self::ended(computers.as_deref(), &open.host, &open.task)
+            && let Some(id) = self.talk_of(&open.host, &open.task)
+        {
+            let phase = computers
+                .as_deref()
+                .and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task))
+                .map(|summary| summary.phase);
+            if let Some(run) = phase.and_then(|phase| open_result(open, phase)) {
+                self.talk_runs.insert(id.clone(), run);
+            }
+            self.keep(true);
+            self.open = None;
+            self.talk_turns = TALK_TURNS;
+            self.talk = Some(id);
+        }
         // A computer's own thread and a Coder task's chat carry words
         // only: keep the images and the words rather than drop the images
         // silently. A message to OpenAgents sends its words and binds the
@@ -2218,6 +2323,39 @@ impl CoderTab {
         let Some(id) = self.talk.clone() else { return };
         // Text only while attachments are off: the task carries no images.
         self.text_only();
+        // The conversation's Coder task ended its turn, and the router
+        // judged the latest message more work for it: the same task takes
+        // it as its next turn, in the same worktree (#10094).
+        if let Some(spawned) = self
+            .basic
+            .get(&id)
+            .and_then(|summary| summary.coder.clone())
+            && Self::ended(Some(computers), &spawned.host, &spawned.task)
+        {
+            let Some(text) = self
+                .basic
+                .turns(&id)
+                .iter()
+                .rev()
+                .find(|turn| turn.role == crate::basic_coder::Role::User)
+                .map(|turn| turn.text.clone())
+            else {
+                return;
+            };
+            if self.command_on(
+                &spawned.host,
+                &spawned.task,
+                CommandAction::Send,
+                &text,
+                false,
+                computers,
+            ) {
+                self.talk_runs.remove(&id);
+                self.talk = None;
+                self.open(spawned.host, spawned.task, chats);
+            }
+            return;
+        }
         let host = match self.availability(Some(computers)) {
             Availability::Ready(host) => host.key.clone(),
             Availability::Connecting(host) => {
@@ -3081,7 +3219,13 @@ impl CoderTab {
         }
         let failed = shown.failure.is_some();
         let mut meta = crate::projection::actionable(&shown.turns, shown.busy, failed).cloned();
-        if (shown.coder.is_some() || !shown.runnable)
+        // A thread whose Coder task ended keeps the offer: it continues
+        // that task (#10094).
+        let continues = shown
+            .coder
+            .as_ref()
+            .is_some_and(|coder| Self::ended(computers, &coder.host, &coder.task));
+        if ((shown.coder.is_some() && !continues) || !shown.runnable)
             && let Some(meta) = meta.as_mut()
         {
             meta.offers
@@ -3406,7 +3550,13 @@ impl CoderTab {
         });
         let placeholder = match (editing.is_some(), mode) {
             (true, _) => "Edit your queued message".to_owned(),
-            (false, Mode::Send) => format!("Message OpenAgents on {label}"),
+            // Once the turn ended, a follow-up goes to the conversation
+            // that started it, whose router decides (#10094); without one
+            // it goes straight to Coder.
+            (false, Mode::Send) if self.talk_of(&open.host, &open.task).is_some() => {
+                "Message OpenAgents…".to_owned()
+            }
+            (false, Mode::Send) => format!("Message Coder on {label}"),
             (false, Mode::Queue) => "Queue a message for Coder's next turn".to_owned(),
             (false, Mode::Answer) => "Answer Coder".to_owned(),
         };
@@ -3699,6 +3849,90 @@ impl Mode {
             _ => Mode::Send,
         }
     }
+}
+
+/// How a task's turn ended, from its phase: `None` while it runs, waits,
+/// or is unknown (#10094).
+fn ending_of(phase: Phase) -> Option<openagents_chat::router::RunEnding> {
+    use openagents_chat::router::RunEnding;
+    match phase {
+        Phase::Completed => Some(RunEnding::Finished),
+        Phase::Failed => Some(RunEnding::Failed),
+        Phase::Cancelled => Some(RunEnding::Stopped),
+        Phase::Queued | Phase::Running | Phase::Waiting | Phase::Unknown => None,
+    }
+}
+
+/// What an ended task's chat shows of its last turn, as the router's
+/// context (#10094): its last reply, the commands after the last message
+/// the person sent, and the files its review read.
+fn open_result(open: &Open, phase: Phase) -> Option<openagents_chat::router::CoderRun> {
+    use openagents_chat::router::{CoderRun, RunFile};
+    let ending = ending_of(phase)?;
+    let rows = open
+        .conversation
+        .as_ref()
+        .map(Conversation::rows)
+        .unwrap_or_default();
+    let asked = rows
+        .iter()
+        .rposition(|row| {
+            matches!(
+                &row.entry,
+                crate::conversation::Entry::Message {
+                    role: MessageRole::User,
+                    ..
+                }
+            )
+        })
+        .map_or(0, |at| at + 1);
+    let turn = &rows[asked.min(rows.len())..];
+    let summary = turn
+        .iter()
+        .rev()
+        .find_map(|row| match &row.entry {
+            crate::conversation::Entry::Message {
+                role: MessageRole::Assistant,
+                text,
+            } => Some(text.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let commands = turn
+        .iter()
+        .filter_map(|row| match &row.entry {
+            crate::conversation::Entry::Tool { detail, .. } if !detail.trim().is_empty() => {
+                Some(detail.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    let files = open
+        .review
+        .review()
+        .map(|review| {
+            review
+                .files
+                .iter()
+                .map(|file| RunFile {
+                    path: file.path.clone(),
+                    status: serde_json::to_value(file.status)
+                        .ok()
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                        .unwrap_or_else(|| "modified".to_owned()),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(CoderRun {
+        ending,
+        turn: 1,
+        engine: None,
+        model: None,
+        summary,
+        files,
+        commands,
+    })
 }
 
 /// Whether the Coder list leaves a task out: its host's owner or a device
@@ -4493,5 +4727,24 @@ mod tests {
                 .iter()
                 .any(|text| text == "Say it shorter")
         });
+    }
+
+    /// Only a turn that ended sends a follow-up to the conversation's
+    /// router; one that runs, waits, or is unknown keeps it Coder's
+    /// (#10094).
+    #[test]
+    fn only_an_ended_turn_routes_a_follow_up() {
+        use openagents_chat::router::RunEnding;
+        assert_eq!(ending_of(Phase::Completed), Some(RunEnding::Finished));
+        assert_eq!(ending_of(Phase::Failed), Some(RunEnding::Failed));
+        assert_eq!(ending_of(Phase::Cancelled), Some(RunEnding::Stopped));
+        for phase in [
+            Phase::Queued,
+            Phase::Running,
+            Phase::Waiting,
+            Phase::Unknown,
+        ] {
+            assert_eq!(ending_of(phase), None, "{phase:?}");
+        }
     }
 }

@@ -207,6 +207,7 @@ async fn host(arguments: &[String]) -> u8 {
     );
     coder_host::control::set_local_coder(coder::task::local::ready_here);
     coder_host::control::set_local_runner(coder::task::local::runner_here);
+    coder_host::control::set_local_result(coder::task::local::result_in);
     coder_host::cli::run(arguments, open).await
 }
 

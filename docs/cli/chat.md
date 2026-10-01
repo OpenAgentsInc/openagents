@@ -190,6 +190,13 @@ projects, and what the run's commands may reach.
   `answer`, and `export` find it, and the phone and the desktop can show it.
   When this computer's host runs, the thread lives there, and the run is the
   same.
+- **A follow-up after the run.** Once the task's turn has ended (a result,
+  a failure, or a stop), `openagents chat --thread ID "..."` sends the
+  message to the router with what the run did (`context.coder_run`: how it
+  ended, its engine, its summary, the files it changed, and its commands),
+  so a question such as "summarize what happened" is answered in chat. A
+  reply that hands the message to Coder continues the same task with it as
+  its next turn, in the same worktree, and follows that turn (#10094).
 
 Text mode shows a compact live view on stderr (the provider and why, each
 step's thinking, commands, their exit and the last lines of output, progress,

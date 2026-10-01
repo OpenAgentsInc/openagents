@@ -1,0 +1,30 @@
+{
+  "v": 2,
+  "requires": [],
+  "task": "summarize what happened",
+  "transcript": [
+    { "role": "user", "content": "do a test delegation to claude" },
+    { "role": "assistant", "content": "We'll dispatch Coder, asking for Claude Code, to take this on." },
+    { "role": "user", "content": "summarize what happened" }
+  ],
+  "client": "openagents-desktop",
+  "opener": true,
+  "router": "chat-router-v2",
+  "context": {
+    "surface": "desktop",
+    "computer_ready": true,
+    "computer": {
+      "place": "here",
+      "engines": [{ "engine": "codex", "state": "ready" }]
+    },
+    "coder_run": {
+      "ending": "finished",
+      "turn": 1,
+      "engine": "codex",
+      "model": "gpt-6-luna",
+      "summary": "I looked at the project and changed nothing. It holds a Rust workspace with 40 crates.",
+      "files": [{ "path": "NOTE.md", "status": "added" }],
+      "commands": ["ls", "cargo metadata --no-deps"]
+    }
+  }
+}

@@ -399,6 +399,12 @@ impl BasicChats {
         self.context = context;
     }
 
+    /// The context the next turn carries.
+    #[must_use]
+    pub fn context(&self) -> &Context {
+        &self.context
+    }
+
     /// What the router said about the last reply of `id`: the streaming
     /// reply's, while one streams, else the last answer's.
     pub fn last_meta(&self, id: &str) -> Option<Meta> {

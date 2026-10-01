@@ -18,7 +18,10 @@
 //! `engine` (the engine requests and near misses #10076 added), or `map`
 //! (asking to see the route map, and its near misses, #10085), or
 //! `plugins` (which plugins there are, what one does, testing one, and
-//! "the map" against Project map, #10090). Every run
+//! "the map" against Project map, #10090), or `coder_followup` (a
+//! follow-up after Coder's run in the chat ended: a question about the run
+//! for the chat, or more work for Coder's next turn, and near misses,
+//! #10094). Every run
 //! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
@@ -27,7 +30,8 @@
 //! writes its JSON to `ROUTER_EVAL_OUT` (default `target/router-eval/`).
 //!
 //! `ROUTER_EVAL_PUBLISH=1` makes `live_router` the published eval (#9959):
-//! it reads the held-out rows and the calibration partition, fits the
+//! it reads the held-out rows (but the `coder_followup` ones, which would
+//! pass NIP-EVAL's 256 cases) and the calibration partition, fits the
 //! calibration maps on the latter ([`coder::router::calibration`]), scores
 //! the held-out split raw and calibrated, and writes the evidence record
 //! ([`coder::router_claim`]: `report.json` and its artifacts, an
@@ -99,6 +103,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let engine = |row: &Row| row.tags.iter().any(|tag| tag == "engine");
     let map = |row: &Row| row.tags.iter().any(|tag| tag == "map");
     let plugins = |row: &Row| row.tags.iter().any(|tag| tag == "plugins");
+    let followup = |row: &Row| row.tags.iter().any(|tag| tag == "coder_followup");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
@@ -110,6 +115,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
                         && !engine(r)
                         && !map(r)
                         && !plugins(r)
+                        && !followup(r)
                 })
                 .collect(),
             format!("{split}-v1-rows"),
@@ -125,6 +131,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "plugins" => (
             rows.into_iter().filter(|r| plugins(r)).collect(),
             format!("{split}-plugins-rows"),
+        ),
+        "coder_followup" => (
+            rows.into_iter().filter(|r| followup(r)).collect(),
+            format!("{split}-coder-followup-rows"),
         ),
         "gym" => (
             rows.into_iter().filter(|r| gym(r)).collect(),
@@ -227,6 +237,13 @@ async fn run_router(name: &str, mode: router::Mode) {
             .rows
             .iter()
             .filter(|row| matches!(partition_of(row), "locked" | "calibration"))
+            // NIP-EVAL's report names at most 256 cases, and the held-out
+            // split passed that with the follow-up rows (#10094): those are
+            // measured on their own (`ROUTER_EVAL_ROWS=coder_followup`),
+            // and their calibration-partition rows still fit the maps.
+            .filter(|row| {
+                partition_of(row) != "locked" || !row.tags.iter().any(|tag| tag == "coder_followup")
+            })
             .collect();
         (rows, "held_out+calibration".to_string())
     } else {

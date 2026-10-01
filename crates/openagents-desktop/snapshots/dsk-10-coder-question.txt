@@ -7,8 +7,6 @@ vertical stack [card]
   body "Codex is signed in and has capacity."
   status "slugs · /tmp/scratch/worktrees/slugs-4e90697d9c5f"
   status "Falls back to Claude Code (claude-opus-5-5)"
-message user
-  markdown "add a unit test for slugify"
 status "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until 2026-10-03 18:07 UTC."
 tool "Thinking" "Write the output." [done]
   code "Write the output."

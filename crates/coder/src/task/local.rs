@@ -1043,6 +1043,32 @@ fn here(requested: Option<Provider>) -> (bool, Option<Runner>) {
     (ready, runner)
 }
 
+/// What the last turn of `task` did, once it has ended, for a follow-up's
+/// context (#10094): its events read from the first over `store`, else
+/// [`default_store`], and summarized by
+/// [`openagents_chat::coder_events::run_result`]. `None` while the turn
+/// runs or waits for an answer, and for a task the store does not hold. A
+/// host's chat asks it on a send in a thread bound to a Coder task.
+#[must_use]
+pub fn result_in(store: Option<&Path>, task: &str) -> Option<openagents_chat::router::CoderRun> {
+    let store = store.map_or_else(default_store, Path::to_path_buf);
+    let mut follow = Local::new(store).follow(task, None, None);
+    let mut lines = Vec::new();
+    // Each poll reads what is recorded; a few reach a long task's end.
+    for _ in 0..64 {
+        let (more, state) = follow.poll().ok()?;
+        let caught_up = more.is_empty();
+        lines.extend(more);
+        match state {
+            State::Ended => return openagents_chat::coder_events::run_result(&lines),
+            State::Waiting => return None,
+            State::Running if caught_up => return None,
+            State::Running => {}
+        }
+    }
+    None
+}
+
 /// How long [`ready_here`] keeps its answer, in seconds.
 pub const READY_EVERY: u64 = 15;
 

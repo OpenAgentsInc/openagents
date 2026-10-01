@@ -36,8 +36,8 @@ use serde_json::Value;
 /// The latest committed per-route router record and the page that
 /// explains it.
 const MEASUREMENT: (&str, &str) = (
-    "docs/coder/measurements/2026-10-01-plugin-catalog-claims",
-    "docs/coder/measurements/2026-10-01-plugin-catalog-route.md",
+    "docs/coder/measurements/2026-10-01-coder-followup-claims",
+    "docs/coder/measurements/2026-10-01-coder-followup-route.md",
 );
 
 /// The product knowledge base's question set record.
