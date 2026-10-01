@@ -36,6 +36,26 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "39",
+        title: "Ask for Claude by name",
+        what_to_test: "With no computer paired, send \"Do a test delegation to claude\" in a new chat: the reply should say it needs a computer and offer Connect a computer, with no Gym test. With a computer paired, ask \"What can you do?\": the reply should not ask you to connect a computer. With the latest OpenAgents on that computer, open one of its chats from the previous chats, send \"Do a test delegation to claude\", and tap Run Coder: Coder should start on Claude Code, or its start card should say why another engine is running. The run should show your message once, with \"Continued from the OpenAgents app\" as a note under it.",
+        items: &[
+            Item {
+                title: "Name the engine you want",
+                detail: "When you ask to hand work to Claude, Codex, or another coding engine and a computer can take it, the reply says which one you asked for. In a computer's chat, Run Coder starts on that engine, and if it can't, because it isn't signed in or has reached a limit, the start card says so and names the one running instead. This needs the latest OpenAgents on your computer.",
+            },
+            Item {
+                title: "Your message, once",
+                detail: "When Coder starts from a chat, its run shows your message once, with where it came from as a small note, instead of repeating it as \"Continued from the OpenAgents app\".",
+            },
+            Item {
+                title: "The chat knows your computer",
+                detail: "With a computer paired, the chat knows which one, even while it is offline, so it no longer asks you to connect a computer you already have.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "38",
         title: "Coder starts on what you asked",
         what_to_test: "In a new chat, ask \"Who can you delegate to?\", then send \"Do a test delegation now\". The second reply should offer Coder (Run Coder with a computer paired, or Connect a computer without one) and should not also show a Gym test. With a computer paired, tap Run Coder: the run should be titled by \"Do a test delegation now\", not by the chat's first message, and its transcript should show no internal judge rows. On the Coder tab, chats from a task's worktree should be listed under the project's own name.",
