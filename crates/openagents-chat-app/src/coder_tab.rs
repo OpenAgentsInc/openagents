@@ -7,6 +7,9 @@
 //! to OpenAgents; there is no target to pick. Coder runs on a computer only
 //! from a router offer under the reply that warrants it (**Run Coder**, or
 //! **Connect a computer** with none), never from a control above the field.
+//! A coding reply to a message sent here starts Coder at once, with no tap,
+//! on a ready computer whose owner allows it ([`CoderTab::start_offered`],
+//! #10101), and the reply shows that start with **Stop** instead.
 //!
 //! Previous chats sit behind the menu button at the top left, newest message
 //! first: basic conversations and every Coder task on the computers, painted
@@ -465,7 +468,18 @@ pub struct CoderTab {
     /// What each conversation's Coder task did in its last turn, read from
     /// its chat when a follow-up left it for the conversation (#10094).
     talk_runs: std::collections::BTreeMap<String, openagents_chat::router::CoderRun>,
+    /// The messages this device sent whose replies it waits for: each
+    /// conversation's newest, by its user turn's index. A coding reply to
+    /// one starts Coder at once where the computer allows it (#10101); a
+    /// reply read any other way (an old chat, a relaunch) never does.
+    awaiting: Vec<(String, usize)>,
+    /// The reply in each conversation that started or continued its Coder
+    /// task, by turn index: it shows the start, never **Run Coder** again.
+    started: std::collections::BTreeMap<String, usize>,
 }
+
+/// The most sent messages whose replies the tab waits for at once.
+const MAX_AWAITING: usize = 32;
 
 /// The most turns an open basic conversation shows at first.
 const TALK_TURNS: usize = 200;
@@ -520,6 +534,8 @@ impl CoderTab {
             thread_projection: crate::projection::Projection::default(),
             images: crate::attachments::Drafts::default(),
             talk_runs: std::collections::BTreeMap::new(),
+            awaiting: Vec::new(),
+            started: std::collections::BTreeMap::new(),
             attachments: ATTACHMENTS_ENABLED,
         }
     }
@@ -1456,8 +1472,9 @@ impl CoderTab {
             Intent::Retry => {
                 let context = self.router_context(computers.as_deref());
                 self.basic.set_context(context);
-                if let Some(id) = &self.talk {
-                    self.basic.retry(id);
+                if let Some(id) = self.talk.clone() {
+                    self.basic.retry(&id);
+                    self.await_reply(&id);
                 }
             }
             Intent::ConnectComputer => self.go = Some(Go::Connect),
@@ -1524,6 +1541,7 @@ impl CoderTab {
                 let context = self.router_context(computers.as_deref());
                 self.basic.set_context(context);
                 if self.basic.send(&id, &followup.label, unix_now()) {
+                    self.await_reply(&id);
                     self.notice = None;
                 }
             }
@@ -1757,6 +1775,7 @@ impl CoderTab {
         let context = self.router_context(computers);
         self.basic.set_context(context);
         if let Some(id) = self.basic.start(text, unix_now()) {
+            self.await_reply(&id);
             self.composers += 1;
             self.notice = None;
             self.talk_turns = TALK_TURNS;
@@ -2241,6 +2260,7 @@ impl CoderTab {
                 .basic
                 .send_tagged(&id, prompt, unix_now(), Some(request.clone()))
             {
+                self.await_reply(&id);
                 self.composers += 1;
                 self.notice = self
                     .images
@@ -2257,6 +2277,7 @@ impl CoderTab {
                 .basic
                 .start_tagged(prompt, unix_now(), Some(request.clone()))
             {
+                self.await_reply(&id);
                 self.composers += 1;
                 let talk = format!("talk:{id}");
                 self.images.rebind(&key, &talk);
@@ -2333,8 +2354,23 @@ impl CoderTab {
     /// the person is sent to connect one.
     fn run_coder(&mut self, computers: &mut Computers, chats: &mut Chats) {
         let Some(id) = self.talk.clone() else { return };
+        self.run_coder_in(&id, true, computers, chats);
+    }
+
+    /// Run Coder for the conversation `id`, as **Run Coder** does; `open`
+    /// opens the Coder chat it starts, as a tap does. Returns whether a
+    /// task started or took the message.
+    fn run_coder_in(
+        &mut self,
+        id: &str,
+        open: bool,
+        computers: &mut Computers,
+        chats: &mut Chats,
+    ) -> bool {
+        let id = id.to_owned();
         // Text only while attachments are off: the task carries no images.
         self.text_only();
+        let reply = self.basic.turns(&id).len().checked_sub(1);
         // The conversation's Coder task ended its turn, and the router
         // judged the latest message more work for it: the same task takes
         // it as its next turn, in the same worktree (#10094).
@@ -2352,7 +2388,7 @@ impl CoderTab {
                 .find(|turn| turn.role == crate::basic_coder::Role::User)
                 .map(|turn| turn.text.clone())
             else {
-                return;
+                return false;
             };
             if self.command_on(
                 &spawned.host,
@@ -2363,24 +2399,30 @@ impl CoderTab {
                 computers,
             ) {
                 self.talk_runs.remove(&id);
-                self.talk = None;
-                self.open(spawned.host, spawned.task, chats);
+                if let Some(reply) = reply {
+                    self.started.insert(id.clone(), reply);
+                }
+                if open {
+                    self.talk = None;
+                    self.open(spawned.host, spawned.task, chats);
+                }
+                return true;
             }
-            return;
+            return false;
         }
         let host = match self.availability(Some(computers)) {
             Availability::Ready(host) => host.key.clone(),
             Availability::Connecting(host) => {
                 self.notice = Some(format!("Connecting to {}…", host.label));
-                return;
+                return false;
             }
             Availability::Offline(host) => {
                 self.notice = Some(format!("{} is offline.", host.label));
-                return;
+                return false;
             }
             Availability::NotConfigured => {
                 self.go = Some(Go::Connect);
-                return;
+                return false;
             }
         };
         if computers
@@ -2391,15 +2433,15 @@ impl CoderTab {
             && let Err(refusal) = computers.refresh_workspaces(&host)
         {
             self.notice = Some(refusal.reason());
-            return;
+            return false;
         }
         let Some(record) = computers.snapshot().host(&host) else {
-            return;
+            return false;
         };
         let label = record.label.clone();
         let Some(workspace) = self.workspace(record) else {
             self.notice = Some(format!("{label} lists no workspace for Coder yet."));
-            return;
+            return false;
         };
         let chat_title = self
             .basic
@@ -2419,7 +2461,7 @@ impl CoderTab {
             Ok(uploads) => uploads,
             Err(reason) => {
                 self.notice = Some(reason);
-                return;
+                return false;
             }
         };
         match computers.start_task_requesting(&host, &workspace, &prompt, &uploads, engine) {
@@ -2432,12 +2474,131 @@ impl CoderTab {
                 self.list.save();
                 self.basic
                     .spawned_in(&id, &host, &task, Some(&workspace), now);
+                if let Some(reply) = reply {
+                    self.started.insert(id.clone(), reply);
+                }
                 self.notice = None;
-                self.talk = None;
-                self.open(host, task.clone(), chats);
+                if open {
+                    self.talk = None;
+                    self.open(host, task.clone(), chats);
+                }
                 self.echo(&task, &prompt, None, false, now);
+                true
             }
-            Err(refusal) => self.notice = Some(refusal.reason()),
+            Err(refusal) => {
+                self.notice = Some(refusal.reason());
+                false
+            }
+        }
+    }
+
+    /// Wait for the reply to the message just sent in `id`: a coding reply
+    /// to it may start Coder at once ([`CoderTab::start_offered`]). A newer
+    /// message in the same conversation replaces the one it waited for.
+    fn await_reply(&mut self, id: &str) {
+        let turns = self.basic.turns(id);
+        let Some(at) = turns.len().checked_sub(1) else {
+            return;
+        };
+        if turns[at].role != crate::basic_coder::Role::User {
+            return;
+        }
+        self.awaiting.retain(|(talk, _)| talk != id);
+        if self.awaiting.len() >= MAX_AWAITING {
+            self.awaiting.remove(0);
+        }
+        self.awaiting.push((id.to_owned(), at));
+    }
+
+    /// Start Coder at once for each coding reply that just arrived to a
+    /// message this device sent (#10101), as the desktop does under
+    /// `coder.start: at_once`: the reply's typed `run_coder` offer, by the
+    /// shared precedence ([`openagents_chat::delegation::offered`]), on a
+    /// paired computer that is ready, that this device may operate, and
+    /// whose presence says its owner starts Coder at once
+    /// ([`starts_at_once`]). The start is **Run Coder**'s own (the offer's
+    /// engine, the message that asked), made once per reply and never for
+    /// a reply that answered; the conversation stays where it is and shows
+    /// the start ([`CoderTab::talk_view`]). A computer that asks first,
+    /// predates the capability, or is offline or not paired keeps the
+    /// reply's **Run Coder** or **Connect a computer**. A conversation
+    /// whose Coder task ended its turn continues it with the message, as
+    /// the desktop continues its run without asking again (#10094); one
+    /// whose task still runs starts nothing more. The app calls this each
+    /// tick, after [`CoderTab::flush`].
+    pub fn start_offered(&mut self, computers: Option<&mut Computers>, chats: &mut Chats) {
+        if self.awaiting.is_empty() {
+            return;
+        }
+        // The reply that just finished, in the same tick that saw it end.
+        self.basic.settle(unix_now());
+        let mut due = Vec::new();
+        let awaiting = std::mem::take(&mut self.awaiting);
+        for (id, at) in awaiting {
+            if self.basic.get(&id).is_none() {
+                continue;
+            }
+            let busy = self.basic.busy(&id);
+            let lane = self.basic.lane(&id) == Some(crate::basic_coder::Lane::Computer);
+            let turns = self.basic.turns(&id);
+            let Some(reply) = turns.get(at + 1).filter(|_| !busy) else {
+                // Still streaming, or failed and waiting for Try again.
+                if turns.len() > at {
+                    self.awaiting.push((id, at));
+                }
+                continue;
+            };
+            // Only the conversation's newest reply, finished, that offers
+            // Coder by the shared rule; anything else answered.
+            if at + 2 == turns.len()
+                && reply.role == crate::basic_coder::Role::Assistant
+                && !reply.stopped
+                && openagents_chat::delegation::offered(reply.meta.as_ref(), lane)
+            {
+                due.push((id, at + 1));
+            }
+        }
+        let Some(computers) = computers else { return };
+        for (id, reply) in due {
+            if self.started.get(&id) == Some(&reply) {
+                continue;
+            }
+            let spawned = self
+                .basic
+                .get(&id)
+                .and_then(|summary| summary.coder.clone());
+            let go = match &spawned {
+                // The conversation's task ended its turn: this message is
+                // its next one, on the computer the person started it on.
+                Some(spawned) if Self::ended(Some(computers), &spawned.host, &spawned.task) => {
+                    authority::check(
+                        computers.snapshot(),
+                        Capabilities {
+                            platform: Platform::Phone,
+                            camera: false,
+                        },
+                        Action::Operate {
+                            host: &spawned.host,
+                        },
+                    )
+                    .is_ok()
+                }
+                // Its task still runs: nothing more starts.
+                Some(_) => false,
+                None => match self.availability(Some(computers)) {
+                    Availability::Ready(host) => starts_at_once(host),
+                    _ => false,
+                },
+            };
+            if go {
+                // A refusal shows only in the conversation it is about.
+                let shown = self.talk.as_deref() == Some(id.as_str()) && self.open.is_none();
+                let notice = self.notice.clone();
+                self.run_coder_in(&id, false, computers, chats);
+                if !shown {
+                    self.notice = notice;
+                }
+            }
         }
     }
 
@@ -2973,6 +3134,72 @@ impl CoderTab {
 
     /// An open basic conversation: its turns, the reply as it streams, and
     /// a way to run Coder on a computer with it.
+    /// The start of the conversation's Coder task under the reply that
+    /// started it: where it runs, the computer's note (such as which engine
+    /// runs when the asked-for one can't), and **Open Coder**, with
+    /// **Stop** while it runs. Shown while the newest reply (`newest`, its
+    /// turn index) is the one that started or continued the task here, or
+    /// while the computer says the task runs.
+    fn start_card(
+        &self,
+        id: &str,
+        newest: Option<usize>,
+        computers: Option<&Computers>,
+    ) -> Option<Node<Intent>> {
+        let spawned = self.basic.get(id)?.coder.clone()?;
+        let summary =
+            computers.and_then(|c| Self::summary(c.snapshot(), &spawned.host, &spawned.task));
+        let phase = summary.map(|summary| summary.phase);
+        let running = phase.is_none_or(Self::running);
+        let started_here = newest.is_some() && self.started.get(id) == newest.as_ref();
+        if !started_here && !(running && phase.is_some()) {
+            return None;
+        }
+        let label = computers
+            .and_then(|c| c.snapshot().host(&spawned.host))
+            .map_or_else(|| "your computer".to_owned(), |host| host.label.clone());
+        let title = if running {
+            format!("Coder started on {label}")
+        } else {
+            format!("Coder on {label}: {}", phase.map_or("Unknown", phase_label))
+        };
+        let note = summary
+            .filter(|s| {
+                s.headline != nostr::activity_summary::generic_headline(SubjectKind::Task, s.phase)
+            })
+            .map(|s| s.headline.clone())
+            .unwrap_or_else(|| phase.map_or("Starting", phase_label).to_owned());
+        let mut controls = vec![button(
+            "coder-start-open",
+            "Open Coder",
+            Intent::Open {
+                host: spawned.host.clone(),
+                task: spawned.task.clone(),
+            },
+        )];
+        if running {
+            controls.push(button(
+                "coder-start-stop",
+                "Stop",
+                Intent::StopThreadCoder {
+                    host: spawned.host,
+                    task: spawned.task,
+                },
+            ));
+        }
+        Some(node(
+            "coder-start",
+            Element::Stack {
+                axis: Axis::Vertical,
+                children: vec![
+                    text("coder-start-title", &title, TextRole::Body, WHITE, true),
+                    status("coder-start-note", &note),
+                    row("coder-start-controls", controls),
+                ],
+            },
+        ))
+    }
+
     fn talk_view(&mut self, id: &str, computers: Option<&Computers>) -> Node<Intent> {
         let availability = self.availability(computers);
         let busy = self.basic.busy(id);
@@ -3071,13 +3298,26 @@ impl CoderTab {
             .unwrap_or_default();
         let computer_lane = self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer)
             && crate::projection::completed(self.basic.turns(id), busy, failed);
-        let actions = crate::cards::reply_actions(
+        let mut actions = crate::cards::reply_actions(
             meta.as_ref(),
             self.basic.used_markers(),
             computer_lane,
             &availability,
             self.gym.latest_result().is_some(),
         );
+        // The reply that started Coder, at once or from a tap, shows the
+        // start with Stop instead of offering it again (#10101).
+        let newest = self.basic.turns(id).len().checked_sub(1);
+        let start = self.start_card(id, newest, computers);
+        if start.is_some() {
+            actions.chips.retain(|chip| {
+                !matches!(
+                    chip.action,
+                    crate::cards::Action::RunCoder | crate::cards::Action::ConnectComputer
+                )
+            });
+            actions.notice = None;
+        }
         let mut agents = vec![];
         if let Some((key, value)) = &actions.notice {
             agents.push(status(key, value));
@@ -3092,6 +3332,7 @@ impl CoderTab {
         if !agents.is_empty() {
             children.push(wrap("coder-agents", agents));
         }
+        children.extend(start);
         // Proposed read-only commands, each a card with the exact command
         // and a Run button.
         for (index, offer) in offers.iter().enumerate() {
@@ -3789,6 +4030,21 @@ pub enum Availability<'a> {
     Offline(&'a HostRecord),
     /// A computer can take a chat now.
     Ready(&'a HostRecord),
+}
+
+/// Whether `host`'s owner starts Coder at once for a device's coding reply
+/// (#10101): its presence advertises
+/// [`coder_host::access::protocol::CODER_START_AT_ONCE`] (its `coder.start`
+/// is `at_once` and its auto-start policy is on). A computer that predates
+/// the capability, or sent no presence yet, asks: the reply keeps **Run
+/// Coder**. A hint for the phone's presentation only; the computer still
+/// checks the grant and decides whether and how the task runs.
+pub fn starts_at_once(host: &HostRecord) -> bool {
+    host.presence.as_ref().is_some_and(|received| {
+        received
+            .presence
+            .supports(coder_host::access::protocol::CODER_START_AT_ONCE)
+    })
 }
 
 /// Whether a new chat can start now, from the typed authority check and host

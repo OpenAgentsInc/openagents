@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 21] = [
+pub const SCENARIOS: [&str; 22] = [
     "ui-placeholder",
     "ui-starter-chips",
     "who-are-you",
@@ -61,6 +61,7 @@ pub const SCENARIOS: [&str; 21] = [
     "route-map",
     "route-map-chat",
     "phone-claude",
+    "phone-start-at-once",
 ];
 
 /// How long a reply may take.
@@ -199,6 +200,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "route-map" => route_map(&mut gate),
             "route-map-chat" => route_map_chat(&mut gate),
             "phone-claude" => phone_claude(&mut gate),
+            "phone-start-at-once" => phone_start_at_once(&mut gate),
             _ => unreachable!(),
         };
         gate.record(name, outcome);
@@ -2035,75 +2037,16 @@ fn phone_claude(gate: &mut Gate) -> Outcome {
     if let Some(skip) = gate.need(false, true) {
         return skip;
     }
-    use coder_computers::live::{FileStore, Live, Settings, load_or_create_key};
-    use coder_computers::{Capabilities, Computers, Platform};
     use openagents_chat::basic_coder::{Door, Relay, Reply};
     const ASK: &str = "do a test delegation to claude";
     let evidence = gate.evidence("phone-claude");
-    // The phone's pairing: the code the app shows, redeemed by the phone.
-    let socket = crate::platform::control_path().ok_or("no control socket")?;
-    let mut control = SocketControl::new(socket);
-    let invite = control
-        .invite()
-        .map_err(|e| format!("the host made no invitation: {e}"))?;
-    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-    let store = super::super::home().join(".openagents/acceptance-phone");
-    std::fs::create_dir_all(&store).map_err(|e| e.to_string())?;
-    let secret = load_or_create_key(&store)?;
-    let live = Live::open(
-        Settings::new(Platform::Phone),
-        secret,
-        Box::new(FileStore::open(&store)?),
-        runtime.handle().clone(),
-    )
-    .map_err(|e| e.to_string())?;
-    // The phone scans the app's code (`openagents-connect:`).
-    let paired = runtime
-        .block_on(async {
-            tokio::time::timeout(Duration::from_secs(90), live.pairing().pair(&invite.code)).await
-        })
-        .map_err(|_| "pairing timed out".to_owned())?
-        .map_err(|failure| format!("pairing failed: {failure:?}"))?;
-    let host = paired.host.clone();
-    let mut computers = Computers::new(
-        Box::new(live),
-        Capabilities {
-            platform: Platform::Phone,
-            camera: false,
-        },
-        "acceptance",
-    )
-    .map_err(|e| e.to_string())?;
-    let _ = computers.finish_first_run();
-    let deadline = Instant::now() + Duration::from_secs(90);
-    let workspace = loop {
-        // Ready as the phone's Run Coder sees it: the computer's workspaces
-        // listed and its presence (what it supports) received.
-        let listed = computers
-            .refresh_workspaces(&host)
-            .ok()
-            .and_then(|()| computers.snapshot().host(&host).cloned())
-            .filter(|record| record.presence.is_some())
-            .and_then(|record| {
-                record
-                    .workspaces
-                    .as_ref()
-                    .and_then(|listed| openagents_chat::delegation::project(listed, |_| None))
-            });
-        if let Some(workspace) = listed {
-            break workspace;
-        }
-        if Instant::now() >= deadline {
-            return Err("the paired phone never saw the computer's workspace".into());
-        }
-        let _ = computers.refresh();
-        std::thread::sleep(Duration::from_secs(2));
-    };
-    let label = computers
-        .snapshot()
-        .host(&host)
-        .map(|record| record.label.clone())
-        .unwrap_or_else(|| "Acceptance Mac".into());
+    let Phone {
+        runtime,
+        mut computers,
+        host,
+        label,
+        workspace,
+    } = pair_phone("acceptance-phone")?;
     // The phone's own chat: straight to the hosted worker, with the phone's
     // context naming its paired computer (`CoderTab::context`).
     let chat_secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
@@ -2219,6 +2162,306 @@ fn phone_claude(gate: &mut Gate) -> Outcome {
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// A phone-shaped NIP-HOST client paired with the gate's host, as the
+/// phone pairs: the computer's workspaces listed and its presence (what it
+/// supports) received.
+struct Phone {
+    runtime: tokio::runtime::Runtime,
+    computers: coder_computers::Computers,
+    host: String,
+    label: String,
+    workspace: String,
+}
+
+/// Pairs a phone whose keys and stores live in `store` under the gate's
+/// HOME with the host, by the code the app shows.
+fn pair_phone(store: &str) -> Result<Phone, String> {
+    use coder_computers::live::{FileStore, Live, Settings, load_or_create_key};
+    use coder_computers::{Capabilities, Computers, Platform};
+    // The phone's pairing: the code the app shows, redeemed by the phone.
+    let socket = crate::platform::control_path().ok_or("no control socket")?;
+    let mut control = SocketControl::new(socket);
+    let invite = control
+        .invite()
+        .map_err(|e| format!("the host made no invitation: {e}"))?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let store = super::super::home().join(".openagents").join(store);
+    std::fs::create_dir_all(&store).map_err(|e| e.to_string())?;
+    let secret = load_or_create_key(&store)?;
+    let live = Live::open(
+        Settings::new(Platform::Phone),
+        secret,
+        Box::new(FileStore::open(&store)?),
+        runtime.handle().clone(),
+    )
+    .map_err(|e| e.to_string())?;
+    // The phone scans the app's code (`openagents-connect:`).
+    let paired = runtime
+        .block_on(async {
+            tokio::time::timeout(Duration::from_secs(90), live.pairing().pair(&invite.code)).await
+        })
+        .map_err(|_| "pairing timed out".to_owned())?
+        .map_err(|failure| format!("pairing failed: {failure:?}"))?;
+    let host = paired.host.clone();
+    let mut computers = Computers::new(
+        Box::new(live),
+        Capabilities {
+            platform: Platform::Phone,
+            camera: false,
+        },
+        "acceptance",
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = computers.finish_first_run();
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let workspace = loop {
+        let listed = computers
+            .refresh_workspaces(&host)
+            .ok()
+            .and_then(|()| computers.snapshot().host(&host).cloned())
+            .filter(|record| record.presence.is_some())
+            .and_then(|record| {
+                record
+                    .workspaces
+                    .as_ref()
+                    .and_then(|listed| openagents_chat::delegation::project(listed, |_| None))
+            });
+        if let Some(workspace) = listed {
+            break workspace;
+        }
+        if Instant::now() >= deadline {
+            return Err("the paired phone never saw the computer's workspace".into());
+        }
+        let _ = computers.refresh();
+        std::thread::sleep(Duration::from_secs(2));
+    };
+    let label = computers
+        .snapshot()
+        .host(&host)
+        .map(|record| record.label.clone())
+        .unwrap_or_else(|| "Acceptance Mac".into());
+    Ok(Phone {
+        runtime,
+        computers,
+        host,
+        label,
+        workspace,
+    })
+}
+
+/// The phone's own Coder tab, the shared Rust the iOS and Android apps
+/// run, paired with the host and talking to the live chat worker: a coding
+/// question's reply must start Coder on the computer at once, with no
+/// **Run Coder** tap (#10101). The host runs under the defaults
+/// (`coder.start: at_once`, auto-start on), so its presence says it starts
+/// Coder at once; the tab sends exactly one `task.create` and shows the
+/// start with Stop instead of the offer.
+fn phone_start_at_once(gate: &mut Gate) -> Outcome {
+    if let Some(skip) = gate.need(true, false) {
+        return skip;
+    }
+    use openagents_chat::basic_coder::Relay;
+    use openagents_chat_app::coder_tab::CoderTab;
+    const ASK: &str =
+        "Can you look through the code in my project and summarize what it implements?";
+    let evidence = gate.evidence("phone-start-at-once");
+    let Phone {
+        runtime,
+        mut computers,
+        host,
+        label,
+        workspace: _,
+    } = pair_phone("acceptance-phone-at-once")?;
+    let record = computers
+        .snapshot()
+        .host(&host)
+        .cloned()
+        .ok_or("the paired computer is not listed")?;
+    if !openagents_chat_app::coder_tab::starts_at_once(&record) {
+        return Err(format!(
+            "{label}'s presence does not say it starts Coder at once ({:?})",
+            record
+                .presence
+                .as_ref()
+                .map(|received| received.presence.capabilities.clone())
+        ));
+    }
+    let root = super::super::home().join(".openagents/host");
+    let before: std::collections::BTreeSet<String> = coder::task::autostart::journal(&root)
+        .into_iter()
+        .filter_map(|entry| entry.task)
+        .collect();
+    let chat_secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+    let door = Relay::new(
+        openagents_chat::basic_coder::RELAY,
+        openagents_chat::basic_coder::WORKER,
+        chat_secret,
+    )?;
+    let basic = openagents_chat::basic_chats::BasicChats::new(
+        Some(runtime.handle().clone()),
+        Some(std::sync::Arc::new(door)),
+        None,
+    );
+    let mut tab = CoderTab::new("coder:acceptance".into()).with_basic(basic);
+    tab.prefer(host.clone());
+    let mut chats = openagents_chat_app::chats::Chats::new(
+        runtime.handle().clone(),
+        chat_secret,
+        Err("no store in the gate".into()),
+    );
+    // The app's tick: send pending commands, start what a reply offers at
+    // once, then the view.
+    let tick = |tab: &mut CoderTab,
+                computers: &mut coder_computers::Computers,
+                chats: &mut openagents_chat_app::chats::Chats| {
+        tab.flush(Some(computers));
+        tab.start_offered(Some(computers), chats);
+        tab.render(Some(computers), chats)
+    };
+    let view = tick(&mut tab, &mut computers, &mut chats).ok_or("the tab drew no view")?;
+    let token = find_composer_token(&view).ok_or("the phone's chat shows no composer")?;
+    tab.submit(&token, ASK, Some(&mut computers), &mut chats);
+    // Wait for the reply and the start it leads to, never tapping.
+    let deadline = Instant::now() + REPLY_WAIT + START_WAIT;
+    let mut last_refresh = Instant::now();
+    let mut shown: Value;
+    let started = loop {
+        let view = tick(&mut tab, &mut computers, &mut chats).unwrap_or(Value::Null);
+        let new: Vec<coder::task::autostart::Entry> = coder::task::autostart::journal(&root)
+            .into_iter()
+            .filter(|entry| {
+                entry
+                    .task
+                    .as_ref()
+                    .is_some_and(|task| !before.contains(task))
+            })
+            .collect();
+        let tasks: std::collections::BTreeSet<String> =
+            new.iter().filter_map(|entry| entry.task.clone()).collect();
+        shown = view;
+        if has_key(&shown, "coder-run") {
+            break Err("the reply offered Run Coder instead of starting Coder".to_owned());
+        }
+        if let Some(entry) = new.iter().find(|entry| entry.event == "started") {
+            // Exactly one task for the one reply, and the start shows.
+            std::thread::sleep(Duration::from_secs(3));
+            let view = tick(&mut tab, &mut computers, &mut chats).unwrap_or(Value::Null);
+            shown = view;
+            let again: std::collections::BTreeSet<String> = coder::task::autostart::journal(&root)
+                .into_iter()
+                .filter_map(|entry| entry.task)
+                .filter(|task| !before.contains(task))
+                .collect();
+            break if again.len() != 1 {
+                Err(format!(
+                    "one reply created {} tasks: {again:?}",
+                    again.len()
+                ))
+            } else if !has_key(&shown, "coder-start") || !has_key(&shown, "coder-start-stop") {
+                Err("Coder started but the chat shows no start with Stop".to_owned())
+            } else if has_key(&shown, "coder-run") {
+                Err("the chat shows Run Coder beside the start".to_owned())
+            } else {
+                Ok((
+                    entry.task.clone().unwrap_or_default(),
+                    entry.detail.clone().unwrap_or_default(),
+                ))
+            };
+        }
+        if let Some(entry) = new.iter().find(|entry| {
+            matches!(
+                entry.event.as_str(),
+                "refused" | "no_capacity" | "not_started" | "skipped"
+            )
+        }) {
+            break Err(format!(
+                "the computer did not start the task: {} {}",
+                entry.event,
+                entry.detail.clone().unwrap_or_default()
+            ));
+        }
+        if tasks.len() > 1 {
+            break Err(format!("one reply created {} tasks", tasks.len()));
+        }
+        if Instant::now() >= deadline {
+            break Err(format!(
+                "no Coder start within {}s of asking (texts: {})",
+                (REPLY_WAIT + START_WAIT).as_secs(),
+                excerpt(&view_texts(&shown).join(" | "))
+            ));
+        }
+        if last_refresh.elapsed() >= Duration::from_secs(2) {
+            let _ = computers.refresh();
+            last_refresh = Instant::now();
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    };
+    let _ = std::fs::write(
+        evidence.join("phone-view.json"),
+        serde_json::to_vec_pretty(&shown).unwrap_or_default(),
+    );
+    let journal: Vec<String> = coder::task::autostart::journal(&root)
+        .iter()
+        .filter(|entry| {
+            entry
+                .task
+                .as_ref()
+                .is_some_and(|task| !before.contains(task))
+        })
+        .map(|entry| serde_json::to_string(entry).unwrap_or_default())
+        .collect();
+    let _ = std::fs::write(evidence.join("autostart.jsonl"), journal.join("\n"));
+    let (task, detail) = started?;
+    Ok(format!(
+        "a coding reply started Coder on {label} with no tap: task {task} ({detail}); the chat shows the start with Stop"
+    ))
+}
+
+/// The token of the first composer in a phone view.
+fn find_composer_token(view: &Value) -> Option<String> {
+    let mut pending = vec![&view["root"]];
+    while let Some(node) = pending.pop() {
+        if node["element"]["kind"] == "composer" {
+            return node["element"]["props"]["token"]
+                .as_str()
+                .map(str::to_owned);
+        }
+        if let Some(children) = node["element"]["props"]["children"].as_array() {
+            pending.extend(children.iter());
+        }
+    }
+    None
+}
+
+/// Whether a phone view holds the node `key`.
+fn has_key(view: &Value, key: &str) -> bool {
+    let mut pending = vec![&view["root"]];
+    while let Some(node) = pending.pop() {
+        if node["key"] == key {
+            return true;
+        }
+        if let Some(children) = node["element"]["props"]["children"].as_array() {
+            pending.extend(children.iter());
+        }
+    }
+    false
+}
+
+/// A phone view's words, for the evidence.
+fn view_texts(view: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut pending = vec![&view["root"]];
+    while let Some(node) = pending.pop() {
+        if let Some(value) = node["element"]["props"]["value"].as_str() {
+            out.push(value.to_owned());
+        }
+        if let Some(children) = node["element"]["props"]["children"].as_array() {
+            pending.extend(children.iter().rev());
+        }
+    }
+    out
 }
 
 fn excerpt(text: &str) -> String {

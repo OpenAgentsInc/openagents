@@ -321,6 +321,17 @@ pub struct TaskCreate {
 /// accepts [`TaskCreate::engine`] (#10081).
 pub const TASK_ENGINE: &str = "task-engine";
 
+/// The presence capability a host advertises while a device's coding reply
+/// starts Coder there at once (#10101): its owner's `coder.start` setting is
+/// `at_once` and its auto-start policy is on, so a `task.create` a device
+/// sends for a chat's typed `run_coder` offer runs without anyone tapping
+/// **Run Coder**. Its absence means "ask": a host that predates it, a
+/// `coder.start: ask_first` owner, or a host whose created tasks wait inert.
+/// It is a presentation hint, never authority: the host still checks the
+/// device's grant and `operate` right, and its policy still decides whether
+/// and how the task runs.
+pub const CODER_START_AT_ONCE: &str = "coder-start-at-once";
+
 /// What a durable task command asks for. The device picks it from task
 /// state and its rights, never from the text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

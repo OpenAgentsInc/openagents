@@ -1861,6 +1861,10 @@ impl App {
         let tailnet = self.render_tailnet();
         // Chat commands that waited for their computer try again.
         self.coder.flush(self.computers.as_mut());
+        // A coding reply to a message sent here starts Coder at once where
+        // the computer allows it (#10101).
+        self.coder
+            .start_offered(self.computers.as_mut(), &mut self.chats);
         if let Some(world) = self.world {
             self.coder.gym.standing = self.trainer.standing(&world);
         }

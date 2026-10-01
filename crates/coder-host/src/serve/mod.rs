@@ -376,6 +376,21 @@ pub(crate) async fn publish_reach_to(shared: &Shared, device: &str, now: u64) {
     }
 }
 
+/// The host's own capabilities, then each one its task owner adds that is
+/// not already there ([`Tasks::capabilities`]), within the presence bound.
+fn presence_capabilities(added: Vec<String>) -> Vec<String> {
+    let mut capabilities: Vec<String> = CAPABILITIES.iter().map(|c| (*c).to_owned()).collect();
+    for capability in added {
+        if capabilities.len() >= coder_reach::presence::MAX_CAPABILITIES {
+            break;
+        }
+        if !capability.is_empty() && !capabilities.contains(&capability) {
+            capabilities.push(capability);
+        }
+    }
+    capabilities
+}
+
 /// Presence and hints sealed to one device.
 fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::domain::Event>> {
     let presence = Presence {
@@ -389,7 +404,7 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
             min: PROTOCOL_VERSION,
             max: PROTOCOL_VERSION,
         },
-        capabilities: CAPABILITIES.iter().map(|c| (*c).to_owned()).collect(),
+        capabilities: presence_capabilities(shared.tasks.capabilities()),
         observed_at: now,
         // Coarse telemetry lets placement rank this host. A value the host
         // cannot read withholds the whole sample; placement then skips it.

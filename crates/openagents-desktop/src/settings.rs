@@ -505,7 +505,7 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
         if ask_first {
             "The reply offers Run Coder, and Coder starts when you choose it."
         } else {
-            "Coder starts on this computer as soon as the reply says the message is coding work."
+            "Coder starts on this computer as soon as the reply says the message is coding work, whether you asked here or on your phone."
         },
         TextRole::Status,
     ));

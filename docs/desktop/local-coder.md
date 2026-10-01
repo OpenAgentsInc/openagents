@@ -84,6 +84,10 @@ their order, the usage threshold, the project folders (tried after the ones
 below when a chat names none, and a checkout outside them is not a project),
 and what commands may reach. With `coder.start: ask_first` a coding reply
 only offers **Run Coder**. The Settings page (#10021) edits the same file.
+The same setting decides for a paired phone (#10101): while it is `at_once`
+and **Let my phone start Coder here** is on, this computer's host advertises
+`coder-start-at-once` in its presence, and a coding reply on the phone starts
+Coder here with no tap; `ask_first` leaves the phone's **Run Coder**.
 
 Its commands can use what is installed on this computer
 ([#10045](https://github.com/OpenAgentsInc/openagents/issues/10045)): Xcode's

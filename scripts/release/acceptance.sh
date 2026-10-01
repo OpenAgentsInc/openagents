@@ -24,8 +24,10 @@
 #      desktop sends it (the host adds the desktop surface context, #10077),
 #      letting Coder start, run, and finish on real engines in the scratch
 #      project, and asserting the window's view tree and captures. The phone
-#      scenario pairs a phone-shaped NIP-HOST client with the host and
-#      presses Run Coder as the phone does.
+#      scenarios pair a phone-shaped NIP-HOST client with the host:
+#      phone-claude presses Run Coder as the phone does; phone-start-at-once
+#      runs the phone's own Coder tab and checks a coding reply starts Coder
+#      with no tap.
 #   4. The gate's own scenarios, run with the build's binaries outside the
 #      window: explain-error runs the Explain this error plugin on a planted
 #      failure through `openagents plugin run`; plugins-chat asks the live
@@ -107,7 +109,7 @@ say() { echo "==> $*" >&2; }
 
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
-desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude phone-start-at-once ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
 gate_scenarios="explain-error plugins-chat essays-chat"
 scenarios="$desktop_scenarios $gate_scenarios"
 

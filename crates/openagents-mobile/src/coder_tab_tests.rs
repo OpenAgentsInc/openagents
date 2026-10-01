@@ -67,7 +67,11 @@ impl Fixture {
         Self::new(Synthetic::fixture(Platform::Phone, now))
     }
 
+    /// The app's tick: a coding reply that just arrived may start Coder
+    /// at once (#10101), then the view.
     fn render(&mut self) -> Value {
+        self.coder
+            .start_offered(Some(&mut self.computers), &mut self.chats);
         self.coder
             .render(Some(&self.computers), &mut self.chats)
             .expect("coder view")
@@ -2803,6 +2807,8 @@ struct Delivery {
     advertise: Option<Vec<&'static str>>,
     /// The engine each accepted task asked for (#10081).
     engines: Vec<Option<nostr::cj_conversation::Engine>>,
+    /// Keep only the hosts with these tags, when set.
+    only: Option<Vec<u8>>,
 }
 
 /// The fixture's hosts, keeping image chunks as a host does, with a start
@@ -2815,6 +2821,13 @@ struct Imaging {
 impl ComputersService for Imaging {
     fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
         let mut snapshot = self.inner.snapshot()?;
+        if let Some(tags) = self.delivery.lock().unwrap().only.clone() {
+            let keys: Vec<String> = tags
+                .iter()
+                .map(|tag| coder_computers::synthetic::key(*tag))
+                .collect();
+            snapshot.hosts.retain(|host| keys.contains(&host.key));
+        }
         if let Some(capabilities) = self.delivery.lock().unwrap().advertise.clone() {
             for host in &mut snapshot.hosts {
                 host.presence = Some(coder_host::reach::presence::Received {
@@ -3003,6 +3016,161 @@ fn run_coder_asks_the_computer_for_the_engine_the_offer_named() {
         delivery.lock().unwrap().engines,
         [Some(Engine::ClaudeCode), None, None]
     );
+}
+
+/// The phone's Coder start at once (#10101): a coding reply to a message
+/// sent here, on a ready computer this phone may operate whose presence
+/// says its owner starts Coder at once, makes exactly one `task.create`
+/// with no tap, asking for the offer's engine with the message that asked;
+/// the reply then shows the start with Stop instead of **Run Coder**, and
+/// stays that way however often the tab redraws.
+#[test]
+fn a_coding_reply_starts_coder_at_once_on_a_computer_that_allows_it() {
+    use coder_host::access::protocol::{CODER_START_AT_ONCE, TASK_ENGINE};
+    use nostr::cj_conversation::Engine;
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec!["task-create", TASK_ENGINE, CODER_START_AT_ONCE]),
+        ..Delivery::default()
+    }));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.say("Can you summarize the code that implements that or doesn't?");
+    hand.route(&[json!({"v": 2, "type": "offer", "offer": "run_coder",
+        "target": "connected_computer", "label": "Run Coder", "engine": "claude_code"})]);
+    hand.say("We'll have Coder look through the code.", true);
+    let view = fixture.render();
+    assert_eq!(delivery.lock().unwrap().engines, [Some(Engine::ClaudeCode)]);
+    assert!(node(&view, "coder-run").is_none(), "{:?}", keys(&view));
+    assert!(node(&view, "coder-start").is_some(), "{:?}", keys(&view));
+    assert!(
+        node(&view, "coder-start-stop").is_some(),
+        "{:?}",
+        keys(&view)
+    );
+    assert!(
+        texts(&view)
+            .iter()
+            .any(|t| t == "Coder started on Studio Mac"),
+        "{:?}",
+        texts(&view)
+    );
+    // The conversation stays; its task is the one started.
+    assert!(fixture.coder.open_task().is_none());
+    for _ in 0..5 {
+        fixture.render();
+    }
+    assert_eq!(delivery.lock().unwrap().engines.len(), 1);
+    // **Open Coder** opens the task it started, on the ready computer.
+    fixture.tap("coder-start-open");
+    let (host, _) = fixture
+        .coder
+        .open_task()
+        .expect("Open Coder opens the task");
+    assert_eq!(host, coder_computers::synthetic::key(0xa1));
+    assert_eq!(delivery.lock().unwrap().engines.len(), 1);
+}
+
+/// A computer whose owner asks first (`coder.start: ask_first`), or one
+/// that predates the capability, advertises no
+/// `coder-start-at-once`: the coding reply keeps **Run Coder**, and
+/// nothing starts until the tap (#10101).
+#[test]
+fn a_computer_that_asks_first_keeps_run_coder() {
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec![
+            "task-create",
+            coder_host::access::protocol::TASK_ENGINE,
+        ]),
+        ..Delivery::default()
+    }));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.say("Fix the flaky test in my repo");
+    hand.judge(crate::basic_coder::Lane::Computer);
+    hand.say("Coder can take this on.", true);
+    let view = fixture.render();
+    assert!(delivery.lock().unwrap().engines.is_empty());
+    assert!(node(&view, "coder-run").is_some(), "{:?}", keys(&view));
+    assert!(node(&view, "coder-start").is_none());
+    // The tap starts it once, and the Coder chat opens as before.
+    fixture.tap("coder-run");
+    assert_eq!(delivery.lock().unwrap().engines.len(), 1);
+    assert!(fixture.coder.open_task().is_some());
+    for _ in 0..3 {
+        fixture.render();
+    }
+    assert_eq!(delivery.lock().unwrap().engines.len(), 1);
+}
+
+/// An offline computer, even one whose last presence said it starts Coder
+/// at once, starts nothing: the reply says it is offline, as before
+/// (#10101).
+#[test]
+fn an_offline_computer_leaves_the_offer_unchanged() {
+    use coder_host::access::protocol::CODER_START_AT_ONCE;
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec!["task-create", CODER_START_AT_ONCE]),
+        only: Some(vec![0xa4]),
+        ..Delivery::default()
+    }));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.say("Fix the flaky test in my repo");
+    hand.judge(crate::basic_coder::Lane::Computer);
+    hand.say("Coder can take this on.", true);
+    let view = fixture.render();
+    assert!(delivery.lock().unwrap().engines.is_empty());
+    assert!(node(&view, "coder-start").is_none());
+    assert!(
+        texts(&view).iter().any(|t| t == "Old laptop is offline."),
+        "{:?}",
+        texts(&view)
+    );
+}
+
+/// A reply that answered the question (a route other than the dispatch,
+/// with no `run_coder` offer), even on the computer lane, starts nothing,
+/// and a coding reply read back from an earlier session never starts
+/// Coder: only a reply to a message sent now does (#10101, #10079).
+#[test]
+fn an_answered_reply_starts_nothing() {
+    use coder_host::access::protocol::CODER_START_AT_ONCE;
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec!["task-create", CODER_START_AT_ONCE]),
+        ..Delivery::default()
+    }));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.say("What's my working directory?");
+    {
+        let replies = hand.replies.lock().unwrap();
+        let (_, reply) = replies.last().unwrap();
+        let mut reply = reply.lock().unwrap();
+        reply.lane = Some(crate::basic_coder::Lane::Computer);
+        reply.meta.route = Some("meta".into());
+    }
+    hand.say("Your working directory is ~/code/openagents.", true);
+    let view = fixture.render();
+    fixture.render();
+    assert!(delivery.lock().unwrap().engines.is_empty());
+    assert!(node(&view, "coder-run").is_none(), "{:?}", keys(&view));
+    assert!(node(&view, "coder-start").is_none());
 }
 
 #[test]

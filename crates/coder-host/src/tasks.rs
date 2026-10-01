@@ -332,6 +332,15 @@ pub trait Tasks: Send + Sync {
         None
     }
 
+    /// Presence capabilities this task owner adds to the host's own
+    /// ([`crate::CAPABILITIES`]), read each time presence is published, so a
+    /// change of the owner's settings reaches devices with the next
+    /// presence. Such as [`coder_access::protocol::CODER_START_AT_ONCE`]
+    /// (#10101). The default adds none.
+    fn capabilities(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// A cheap fingerprint of the task store, such as its files' lengths and
     /// modification times, that changes whenever a task or a held command
     /// may have. The host reads it often and runs [`Tasks::tick`] and

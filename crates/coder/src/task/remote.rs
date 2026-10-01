@@ -38,6 +38,10 @@ pub struct Inbox {
     /// (#10076): set only by the host itself, from its own chat's typed
     /// offer, just before it creates that task; a device never sets it.
     preferences: Arc<std::sync::Mutex<BTreeMap<String, nostr::cj_conversation::Engine>>>,
+    /// The owner's settings file, whose `coder.start` says whether a
+    /// device's coding reply starts Coder at once (#10101); `None` reads
+    /// [`super::settings::path`].
+    settings: Option<PathBuf>,
 }
 
 /// The most engine preferences an inbox holds for creates not yet made.
@@ -53,6 +57,32 @@ impl Inbox {
             workspaces,
             autostart: None,
             preferences: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
+            settings: None,
+        }
+    }
+
+    /// Read `coder.start` from `file` instead of [`super::settings::path`].
+    #[must_use]
+    pub fn with_settings(mut self, file: impl Into<PathBuf>) -> Self {
+        self.settings = Some(file.into());
+        self
+    }
+
+    /// Whether a device's coding reply starts Coder here at once (#10101):
+    /// the owner's auto-start policy is on, so a created task runs, and
+    /// their `coder.start` is `at_once`. A settings file Coder's loader
+    /// refuses asks first, as [`super::local::Local::asks_first`] does.
+    #[must_use]
+    pub fn starts_at_once(&self) -> bool {
+        let on = self
+            .autostart
+            .as_ref()
+            .and_then(|autostart| autostart.policy())
+            .is_some_and(|policy| policy.enabled);
+        on && {
+            let file = self.settings.clone().unwrap_or_else(super::settings::path);
+            super::settings::Settings::load(&file)
+                .is_ok_and(|settings| settings.coder.start == super::settings::Start::AtOnce)
         }
     }
 
@@ -105,6 +135,14 @@ impl Inbox {
 }
 
 impl Tasks for Inbox {
+    fn capabilities(&self) -> Vec<String> {
+        if self.starts_at_once() {
+            vec![coder_host::access::protocol::CODER_START_AT_ONCE.to_owned()]
+        } else {
+            Vec::new()
+        }
+    }
+
     fn prefer(&self, key: &str, engine: nostr::cj_conversation::Engine) {
         let mut preferences = self
             .preferences

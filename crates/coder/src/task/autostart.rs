@@ -2439,6 +2439,38 @@ mod tests {
             .collect()
     }
 
+    /// The host tells devices a coding reply starts Coder here at once
+    /// (#10101) only while created tasks run (the policy is on) and the
+    /// owner's `coder.start` is `at_once`; `ask_first`, a policy that is
+    /// off or missing, or a settings file Coder's loader refuses, asks.
+    #[test]
+    fn devices_hear_coder_starts_at_once_only_under_at_once_and_a_policy() {
+        use coder_host::Tasks;
+        use coder_host::access::protocol::CODER_START_AT_ONCE;
+        let s = setup();
+        let file = s.root.join("settings.json");
+        let inbox = s.inbox.clone().with_settings(&file);
+        // No policy: a created task waits inert, so the phone asks.
+        assert!(inbox.capabilities().is_empty());
+        let mut on = policy(1);
+        on.save(&s.root).unwrap();
+        // No settings file: the default, `at_once`.
+        assert_eq!(inbox.capabilities(), [CODER_START_AT_ONCE]);
+        let mut settings = super::super::settings::Settings::default();
+        settings.coder.start = super::super::settings::Start::AskFirst;
+        settings.save(&file).unwrap();
+        assert!(inbox.capabilities().is_empty());
+        settings.coder.start = super::super::settings::Start::AtOnce;
+        settings.save(&file).unwrap();
+        assert_eq!(inbox.capabilities(), [CODER_START_AT_ONCE]);
+        std::fs::write(&file, b"{not json").unwrap();
+        assert!(inbox.capabilities().is_empty());
+        settings.save(&file).unwrap();
+        on.enabled = false;
+        on.save(&s.root).unwrap();
+        assert!(inbox.capabilities().is_empty());
+    }
+
     #[test]
     fn without_a_policy_creation_is_inert_and_unchanged() {
         let s = setup();

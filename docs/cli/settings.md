@@ -31,7 +31,7 @@ default providers are Codex, then Claude Code, then Grok Build.
 | Key | Values | Default | What it changes |
 | --- | --- | --- | --- |
 | `coder.providers` | 1 to 5 of `codex`, `claude`, `grok`, `opencode:PROVIDER/MODEL`, `devin`, each optionally `NAME:MODEL` | `codex`, `claude`, `grok` | Which coding agents a run may use, first preferred. Each is still used only when it is signed in here and has capacity; one that is not is passed over with that reason ("Grok Build is not signed in here; using …"). A name alone runs `gpt-6.1-sol` at medium reasoning (Codex), `claude-opus-5-5` (Claude Code), Grok Build's own default model, or Devin's default; OpenCode always names its model. |
-| `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers it: `openagents chat run-coder --thread ID` (or `send --run-coder`) or **Run Coder** in the app starts it. |
+| `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers it: `openagents chat run-coder --thread ID` (or `send --run-coder`) or **Run Coder** in the app starts it. A host on this computer also tells its paired phones (presence capability `coder-start-at-once`, while its auto-start policy is on), so a coding reply on the phone starts Coder here at once too, or offers **Run Coder** under `ask_first` (#10101). |
 | `coder.usage_threshold_percent` | 1 to 100, or `null` (`off`) | 90 | The fresh usage reading at which a provider is passed over for a later one below it. Off: only a recorded refusal passes one over. A reading is only honored when the task store already holds one (a host's usage probe); the local run asks no provider. |
 | `coder.projects` | absolute folders | none: any Git checkout | Which checkouts count as projects: a checkout inside one of these folders. Outside them nothing runs and the command says why. The desktop also tries these folders when a chat names no project. |
 | `coder.access` | `toolchains`, `full`, `boundary` | `toolchains` | What a run's commands may reach: the filesystem boundary with this computer's developer tools (#10045), the person's full access (no sandbox, their login-shell environment and real `HOME`, credential variables still left out), or the plain boundary. |
@@ -98,4 +98,5 @@ nothing; an unknown key or command exits 64.
 
 A device's auto-start policy (`coder host autostart on`) is separate: it is
 the host owner's policy for work that phones send, and these settings do not
-widen or narrow it.
+widen or narrow it. `coder.start` only decides whether a phone sends that work
+for a coding reply without a tap (#10101).

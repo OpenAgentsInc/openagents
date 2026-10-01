@@ -698,7 +698,16 @@ allows, so Codex is running." A host whose `task.create` reads `engine`
 advertises the `task-engine` capability in its [REACH](NIP-REACH.md)
 presence. A host that predates it rejects the unknown member, so a device
 sends `engine` only to a host that advertises `task-engine`, and otherwise
-sends the request without it; that host runs its own default. `terminal.open` carries `{cols, rows}`, each
+sends the request without it; that host runs its own default. A host whose
+owner starts Coder at once for a chat's coding reply (its own `coder.start`
+setting is `at_once` and its auto-start policy is on) advertises the
+`coder-start-at-once` capability in its presence, recomputed each time it
+publishes presence. A device may then send `task.create` for its chat's
+`run_coder` offer without waiting for a tap, once per reply; without the
+capability (an older host, an owner who asks first, or a policy that is off)
+it waits for the person to choose **Run Coder**. The capability grants
+nothing: the host checks the grant and `operate` right on the request as
+always, and its policy decides whether and how the task runs. `terminal.open` carries `{cols, rows}`, each
 1–1,000; [TERM](NIP-TERM.md) defines the session and stream.
 `workspace.list` carries nothing and returns `{workspaces}`: the labels
 `task.create` accepts on this host, sorted and distinct, at most 64, each
