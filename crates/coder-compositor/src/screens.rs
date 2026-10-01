@@ -18,7 +18,7 @@
 //! them there. They live here until then, with the same three families of
 //! verbs.
 
-use coder_wm::{Dir, Manager};
+use coder_wm::{Dir, Manager, WinId};
 
 use crate::layout::{self, Fill, Placed, Screen};
 
@@ -433,6 +433,17 @@ pub fn show_desk(screens: &mut Screens, manager: &mut Manager, desk: usize) {
     } else {
         manager.switch_workspace(desk);
     }
+}
+
+/// Gives one window the focus and shows its desk the way Super and a digit
+/// does, so a launcher that finds its window on another desk brings the
+/// window into view. Answers false when no desk holds the window.
+pub fn focus_window(screens: &mut Screens, manager: &mut Manager, id: WinId) -> bool {
+    let Some(desk) = manager.desk_of(id) else {
+        return false;
+    };
+    show_desk(screens, manager, desk - 1);
+    manager.focus_id(id)
 }
 
 /// Sends the focused window to a desk, 0 through 8, and follows it, which

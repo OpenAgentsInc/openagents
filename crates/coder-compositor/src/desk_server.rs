@@ -163,7 +163,10 @@ impl Desk for Coder {
 
     fn focus(&mut self, handle: &Selector) -> Result<(), Refusal> {
         let id = self.resolve(handle)?;
-        self.manager.focus_id(id);
+        // The screen shows the window's desk too, as the protocol says; the
+        // layout's desk alone would go back to the screen's on the next
+        // layout, and the focus would sit on a window nobody can see.
+        crate::screens::focus_window(&mut self.screens, &mut self.manager, id);
         // The window named comes over the floats of its layer whether or
         // not it had the focus already, which is what a launcher that
         // finds its window open asks for.

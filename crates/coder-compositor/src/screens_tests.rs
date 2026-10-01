@@ -347,3 +347,23 @@ fn a_float_normalized_on_the_second_screen_places_where_it_was_asked() {
     };
     assert_eq!(head.place(head.normalize(asked), Fill::Tiled), asked);
 }
+
+#[test]
+fn focusing_a_window_on_a_hidden_desk_shows_that_desk() {
+    let mut screens = Screens::default();
+    screens.add("DP-2", QHD, 1.0);
+    let mut manager = Manager::new();
+    show_desk(&mut screens, &mut manager, 3);
+    let game = manager.spawn();
+    show_desk(&mut screens, &mut manager, 1);
+    manager.spawn();
+    assert_eq!(screens.heads()[0].desk, 1);
+    assert!(focus_window(&mut screens, &mut manager, game));
+    assert_eq!(
+        screens.heads()[0].desk,
+        3,
+        "the screen shows the game's desk"
+    );
+    assert_eq!(manager.workspace(), 3);
+    assert_eq!(manager.focus(), Some(game));
+}
