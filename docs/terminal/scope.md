@@ -3,8 +3,13 @@
 Status: phase 0 (groundwork) landed 2026-10-01
 ([#10108](https://github.com/OpenAgentsInc/openagents/issues/10108)): the chat
 client is the library `openagents_chat::client`, with a typed event stream,
-and a turn through the host carries the terminal surface. The screen itself
-(phase 1) is not built yet. The issues to open are listed
+and a turn through the host carries the terminal surface. Phase 1 (the
+screen) landed 2026-10-01
+([#10111](https://github.com/OpenAgentsInc/openagents/issues/10111)):
+`crates/openagents-terminal`, opened by `openagents terminal` and by bare
+`openagents` on a terminal. How to use it is the [user guide](README.md).
+Phase 2 (shipping it) is next. The open questions have answers, recorded
+[below](#decisions); the remaining issues are listed
 [at the end](#github-issues-to-open).
 
 Owner's ask (2026-10-01): scope an OpenAgents Terminal app, the same idea as
@@ -36,7 +41,7 @@ it is a screen over `openagents chat`.
    `coder::task::local`. That backend is the library
    `openagents_chat::client` (#10108), which `openagents chat` calls too.
 3. **Rendering:** build on this repo's `crates/coder-terminal` (ratatui, the
-   amber ladder, composer, markdown, scrollback, guard). It is already the
+   white ladder on near-black, composer, markdown, scrollback, guard). It is already the
    in-repo port of Coder Terminal's look. Do not port the coder repo's
    `coder-ui-core` grid.
 4. **Coder runs:** start at once by default and approve everything (#10104),
@@ -91,7 +96,9 @@ It is described here, not copied.
   proptest state machines, and `ops/tests/terminal-*.sh` live-screen
   harnesses.
 
-What carries over: the look (amber ladder, hairline frame, composer), the
+What carries over: the look (the four-step intensity ladder, here white on
+near-black as on the desktop app and the website rather than Coder
+Terminal's amber; the hairline frame; the composer), the
 alternate-screen, SSH-safe shape, approve-everything as the default, Esc to
 stop, the release channel layout, and the signing steps. What does not carry
 over: the `coder-serve` websocket, GitHub sessions, MCP run tools, the `shell`
@@ -111,7 +118,7 @@ local runs, and NIP-HOST).
 | Issue flow and queue | `coder::task::issue_run`, `openagents chat work` | `crates/openagents-cli/src/chat_work.rs` |
 | Settings (providers, `start`, access, projects) | `~/.openagents/settings.json` | `crates/coder/src/task/settings.rs`, [docs/cli/settings.md](../cli/settings.md) |
 | Chat-list ordering, commands, Coder run view state | Shared app state (no platform deps) | `crates/openagents-chat-app/src/{chat_list,commands,coder_run,task_chat}.rs` |
-| Terminal design system | Amber `Intensity` ladder, hairline frame, composer and editor, readline keys, markdown, bounded scrollback, panic-safe `Guard`, two-lane events, spinner, and a Rust Native view adapter | `crates/coder-terminal/src/*`, [docs/coder/runtime/terminal.md](../coder/runtime/terminal.md) |
+| Terminal design system | White `Intensity` ladder on near-black, hairline frame, composer and editor, readline keys, markdown, bounded scrollback, panic-safe `Guard`, two-lane events, spinner, and a Rust Native view adapter | `crates/coder-terminal/src/*`, [docs/coder/runtime/terminal.md](../coder/runtime/terminal.md) |
 | A full-screen terminal already using it | `coder` with no args: the older Coder agent shell (Classify/Generate doors, not the chat router) | `crates/coder/src/main.rs` |
 | Pairing a phone | The host's QR pairing; `coder_connect::pairing::terminal_qr` draws a QR as text; `openagents connect` | `crates/coder-connect/src/pairing.rs`, `crates/openagents-cli/src/connect.rs` |
 | Plugins | `openagents plugin list/run/test` | `crates/openagents-cli/src/catalog.rs`, [docs/plugins](../plugins/README.md) |
@@ -230,7 +237,8 @@ Recommendation: **build on this repo's `crates/coder-terminal`.** Do not port
 `coder-ui-core`.
 
 - `crates/coder-terminal` already has the parts that matter, with tests:
-  - the amber `Intensity` ladder (truecolor, 256 colors, `NO_COLOR`)
+  - the white `Intensity` ladder on near-black (truecolor, 256 colors,
+    `NO_COLOR`)
   - the hairline frame
   - the composer, `Editor`, and readline keys (wide characters, ZWJ)
   - markdown
@@ -419,6 +427,9 @@ Done 2026-10-01 in
 
 **Phase 1: the screen (v1)**
 
+Done 2026-10-01 in
+[#10111](https://github.com/OpenAgentsInc/openagents/issues/10111):
+
 - `crates/openagents-terminal`: app state, input loop, transcript rows, and
   composer, over `coder-terminal`. **L**
 - Coder run rendering (start, step, output, progress, switch, result,
@@ -459,25 +470,60 @@ Done 2026-10-01 in
 ## GitHub issues to open
 
 Proposed titles. The first three were done together as
-[#10108](https://github.com/OpenAgentsInc/openagents/issues/10108); the rest
-are not opened yet.
+[#10108](https://github.com/OpenAgentsInc/openagents/issues/10108), and 4 to
+10 and 14 as [#10111](https://github.com/OpenAgentsInc/openagents/issues/10111);
+the rest are not opened yet.
 
 1. Terminal: move the `openagents chat` backends and Coder glue into `openagents_chat::client` (no behavior change) (done, #10108)
 2. Terminal: event-stream API over the chat client (typed events on a channel) (done, #10108)
 3. Host control: carry the caller's surface so terminal sends say `terminal` (done, #10108)
-4. Terminal: `crates/openagents-terminal` v1 screen on `coder-terminal` (transcript, composer, status line)
-5. Terminal: render Coder runs inline; Esc stops; quitting leaves the run going
-6. coder-terminal: turn, card, run, and overlay components with text snapshots
-7. Terminal: thread list overlay and resume (`--thread`, last thread for this folder)
-8. Terminal: welcome card and one-key host service install for phone sync
-9. Terminal: `/connect` shows the host's pairing QR as text
-10. Terminal: bare `openagents` on a TTY opens the terminal; `openagents terminal`
+4. Terminal: `crates/openagents-terminal` v1 screen on `coder-terminal` (transcript, composer, status line) (done, #10111)
+5. Terminal: render Coder runs inline; Esc stops; quitting leaves the run going (done, #10111)
+6. coder-terminal: turn, card, run, and overlay components with text snapshots (done, #10111)
+7. Terminal: thread list overlay and resume (`--thread`, last thread for this folder) (done, #10111)
+8. Terminal: welcome card and one-key host service install for phone sync (done, #10111)
+9. Terminal: `/connect` shows the host's pairing QR as text (done, #10111)
+10. Terminal: bare `openagents` on a TTY opens the terminal; `openagents terminal` (done, #10111)
 11. Release gate: terminal acceptance mode and the `term-*` scenarios
 12. Release: `install-terminal.sh`, stable/rc channels, signed and notarized CLI builds for macOS and Linux
 13. Mac app: menu item to install the `openagents` command; `.deb` puts it on PATH
-14. Docs: OpenAgents Terminal user guide, CLI README, and glossary entry
+14. Docs: OpenAgents Terminal user guide, CLI README, and glossary entry (done, #10111)
 
-## Open questions for the owner
+## Decisions
+
+Phase 1 took each open question's recommended default (owner direction on
+#10111, 2026-10-01). The questions follow as they were asked.
+
+1. **Name and command:** "OpenAgents Terminal", opened by `openagents
+   terminal` and by bare `openagents` when stdin and stdout are a terminal
+   and `--json` is not given. Bare `openagents` piped or with `--json` still
+   prints the usage and exits 64. There is no `oa` alias, and `coder` stays
+   Coder's.
+2. **`coder` with no args:** kept as it is for v1, the older Coder agent
+   shell. What it becomes is phase 3's decision, once the terminal ships.
+3. **Sync by default:** offered, never done unasked. With no host, the
+   welcome card offers Ctrl+S, which installs the host as a user service
+   (`openagents service install`) when this computer has what that needs
+   (a staged host bundle, the `coder-service` launcher beside `openagents`,
+   and a host identity), and otherwise says the one thing to do instead
+   (open the OpenAgents app, which runs the host).
+4. **Issue flow:** it may run in the screen's process in v1. When Coder
+   takes an issue, the screen says so before anything else: keep it open
+   until the flow lands, because quitting first leaves the issue claimed
+   without its closing comment. Moving the flow under the host stays in
+   phase 3.
+5. **Distribution:** inside the app plus the `curl | sh` installer, both
+   phase 2. No Homebrew in v1. The installer reuses the
+   `openagentsgemini-cli-releases` bucket under an `openagents/` prefix.
+6. **Linux:** first class for the screen itself. It needs no GPU or
+   browser, `/connect` draws its QR as text over SSH, and the pty test runs
+   on any Unix. Packaged Linux builds come with phase 2's release script,
+   beside macOS.
+7. **Website terminal:** the same look, white on near-black, which is the
+   website's own palette (`crates/openagents-web/src/palette.rs` is the same
+   ladder). It stays a separate implementation on the `web` surface.
+
+## Open questions for the owner (answered above)
 
 1. **Name and command.** Is it "OpenAgents Terminal", opened by bare
    `openagents`? Or should the command be `oa`, or `coder`, as Coder Terminal
@@ -496,5 +542,5 @@ are not opened yet.
 6. **Linux first-class?** Is a headless Linux box (over SSH, paired by QR in
    the terminal) a v1 target, or Mac only first?
 7. **Website terminal.** #10106 brings back the homepage terminal chat as
-   orientation. Should it look like this app (same amber design), or stay
-   separate?
+   orientation. Should it look like this app (the same white-on-near-black
+   design), or stay separate?
