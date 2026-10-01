@@ -763,6 +763,15 @@ impl App for DesktopApp {
         if let Some(request) = self.chat.as_mut().and_then(|chat| chat.tick(now)) {
             self.send(vec![request], now);
         }
+        // A reply arrives here (the background worker's outcomes above, or
+        // an inline `send`), not on input: open the deck its typed
+        // `open_presentation` offer holds now, not on the next key (#10082).
+        self.chat_presentation(now);
+        let slides = slides.or_else(|| {
+            self.slides
+                .as_ref()
+                .and_then(|viewer| viewer.next_wake(now))
+        });
         self.notify();
         self.present();
         let wake = self.model.next_wake().min(

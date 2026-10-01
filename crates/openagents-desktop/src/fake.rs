@@ -130,6 +130,12 @@ impl FakeHost {
         })))
     }
 
+    /// Answers chat messages through `door` instead of the offline
+    /// fixture's reply, as a test's scripted worker does.
+    pub fn answer_with(&self, door: Arc<dyn openagents_chat::basic_coder::Door>) {
+        self.state().chats = Some(FakeChat::with_door(door));
+    }
+
     fn state(&self) -> MutexGuard<'_, State> {
         self.0.lock().unwrap_or_else(|poison| poison.into_inner())
     }
@@ -500,10 +506,13 @@ impl std::fmt::Debug for FakeChat {
 }
 impl FakeChat {
     fn new() -> Self {
+        Self::with_door(Arc::new(FixtureDoor))
+    }
+    fn with_door(door: Arc<dyn openagents_chat::basic_coder::Door>) -> Self {
         let runtime = tokio::runtime::Runtime::new().expect("fixture runtime");
         let chats = openagents_chat::basic_chats::BasicChats::new(
             Some(runtime.handle().clone()),
-            Some(Arc::new(FixtureDoor)),
+            Some(door),
             None,
         );
         Self {
