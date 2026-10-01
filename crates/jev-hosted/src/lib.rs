@@ -7,12 +7,12 @@
 //! a NIP-CJ decision job (kind `25910`, `nips/openagents/NIP-CJ.md`) to a
 //! worker on `wss://relay.openagents.com` that holds the key on the server
 //! (`docs/deployment/decision-worker.md`). The job is signed by this
-//! computer's decision key, which the worker meters per key and in total.
+//! computer's decision key, which the worker's usage log records per job.
 //!
 //! [`resolve`] is the one resolver: a local key when there is one, else
 //! the hosted service, else no Jev and the reason. A hosted call that
 //! cannot be answered fails with a message that says why — "Jev is
-//! unreachable: …" or "Jev refused: quota …" — and [`unavailable`] reads
+//! unreachable: …" or "Jev refused: busy …" — and [`unavailable`] reads
 //! that reason back out of a [`jev::Error`], so a caller can stop asking
 //! and say so once.
 //!
@@ -307,7 +307,8 @@ pub fn openagents_dir() -> Option<PathBuf> {
 
 /// Why a hosted call got no answer, when the error says Jev is
 /// unavailable rather than that one call went wrong: the service was
-/// unreachable, or it refused this computer's key its quota. A caller that
+/// unreachable, or an operator's emergency brake refused this computer's
+/// key (the shipped worker has none, #10121). A caller that
 /// gets `Some` should stop asking for the rest of its task and say so.
 #[must_use]
 pub fn unavailable(error: &jev::Error) -> Option<String> {
@@ -754,7 +755,8 @@ fn from_refusal(refusal: &decision::Refusal) -> Reply {
     let code = refusal.code.as_str();
     let status = decision::http_status(code);
     let what = match code {
-        "quota_exhausted" | "rate_limited" => "quota".to_string(),
+        // An emergency brake's refusal names no limit (#10121).
+        "quota_exhausted" | "rate_limited" => "busy".to_string(),
         other => other.to_string(),
     };
     let message = match &refusal.message {
@@ -1086,7 +1088,7 @@ mod tests {
     fn a_refusal_reads_as_jev_refused_with_its_http_status() {
         let quota = from_refusal(
             &decision::Refusal::new("quota_exhausted")
-                .message("This key used today's decision jobs on this worker.")
+                .message("This worker can't take this job right now. Try again later.")
                 .retry_after_ms(1_500),
         );
         assert_eq!(quota.status, 429);
@@ -1101,7 +1103,7 @@ mod tests {
             body["error"]["message"]
                 .as_str()
                 .unwrap()
-                .starts_with("Jev refused: quota")
+                .starts_with("Jev refused: busy")
         );
         assert_eq!(from_refusal(&decision::Refusal::new("busy")).status, 503);
     }

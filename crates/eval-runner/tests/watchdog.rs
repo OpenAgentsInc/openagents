@@ -41,8 +41,8 @@ fn an_answered_probe_pets_the_systemd_watchdog() {
                 let url = format!("ws://{}", listener.local_addr().unwrap());
                 let dir = tempfile::tempdir().unwrap();
                 let limits = Limits {
-                    runs_per_trainer: 1,
-                    turns_per_day: 10,
+                    runs_per_trainer: None,
+                    turns_per_day: None,
                     jobs: 1,
                     concurrency: 1,
                 };

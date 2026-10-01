@@ -8,13 +8,23 @@ use ext_eval::proxy::Secret;
 use ext_eval::run::{DecisionPin, Door};
 
 /// The runner's bounds beyond the hosted request's own.
+///
+/// The owner decided on 2026-10-01 (#10120, #10121) that nothing in the app
+/// has a usage limit, so neither daily count is set by default: every
+/// trainer may run as often as they like, and every job is recorded in the
+/// usage log ([`crate::usage`]) instead. The two counts stay only as an
+/// emergency brake an operator may set; the shipped configuration sets
+/// neither.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Limits {
-    /// Suite runs one trainer may ask for per UTC day. Checks don't count.
-    pub runs_per_trainer: u32,
-    /// Agent turns (cases × runs × arms) every trainer together may use
-    /// per UTC day, checks included: the spend ceiling.
-    pub turns_per_day: u64,
+    /// Emergency brake: suite runs one trainer may ask for per UTC day
+    /// (`EVAL_RUNNER_RUNS_PER_DAY`). `None`, the default, is unlimited.
+    /// Checks never count.
+    pub runs_per_trainer: Option<u32>,
+    /// Emergency brake: agent turns (cases × runs × arms) every trainer
+    /// together may use per UTC day, checks included
+    /// (`EVAL_RUNNER_TURNS_PER_DAY`). `None`, the default, is unlimited.
+    pub turns_per_day: Option<u64>,
     /// Suites run at once.
     pub jobs: usize,
     /// Runs at once inside one suite, 1 to 8.
@@ -24,8 +34,8 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            runs_per_trainer: 3,
-            turns_per_day: 2_000,
+            runs_per_trainer: None,
+            turns_per_day: None,
             jobs: 2,
             concurrency: 4,
         }
@@ -45,7 +55,8 @@ pub struct Config {
     pub bucket: Option<(String, PathBuf)>,
     /// The file holding the runner's secret key, 64 hex.
     pub key_file: PathBuf,
-    /// Where the runner keeps its ledger, quota, jobs, and results.
+    /// Where the runner keeps its ledger, counts, jobs, results, and
+    /// usage log (`usage/`).
     pub state: PathBuf,
     /// The catalog: extension directories with a package record.
     pub catalog: Vec<PathBuf>,
@@ -88,6 +99,20 @@ fn number<T: std::str::FromStr>(name: &str, default: T) -> Result<T, String> {
     }
 }
 
+/// An emergency brake: unset is `None` (unlimited); set, a positive whole
+/// number. A zero or a typo stops the runner rather than closing it.
+fn brake<T: std::str::FromStr + PartialEq + Default>(name: &str) -> Result<Option<T>, String> {
+    match var(name) {
+        None => Ok(None),
+        Some(text) => match text.parse::<T>() {
+            Ok(value) if value != T::default() => Ok(Some(value)),
+            _ => Err(format!(
+                "{name} is an emergency brake: leave it unset for no limit, or set a positive number, not {text:?}"
+            )),
+        },
+    }
+}
+
 fn home() -> PathBuf {
     std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from)
 }
@@ -124,8 +149,8 @@ impl Config {
             key: Secret::new(key),
         });
         let limits = Limits {
-            runs_per_trainer: number("EVAL_RUNNER_RUNS_PER_DAY", 3)?,
-            turns_per_day: number("EVAL_RUNNER_TURNS_PER_DAY", 2_000)?,
+            runs_per_trainer: brake("EVAL_RUNNER_RUNS_PER_DAY")?,
+            turns_per_day: brake("EVAL_RUNNER_TURNS_PER_DAY")?,
             jobs: number("EVAL_RUNNER_JOBS", 2)?,
             concurrency: number("EVAL_RUNNER_CONCURRENCY", 4)?,
         };
@@ -181,6 +206,12 @@ impl Config {
     #[must_use]
     pub fn closed_flag(&self) -> PathBuf {
         self.state.join("closed")
+    }
+
+    /// The usage log's directory: `usage/` in the state directory.
+    #[must_use]
+    pub fn usage_dir(&self) -> PathBuf {
+        self.state.join("usage")
     }
 
     /// Whether admission is closed.

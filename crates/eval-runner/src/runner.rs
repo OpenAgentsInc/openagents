@@ -38,6 +38,7 @@ use crate::catalog::{self, Catalog};
 use crate::config::Config;
 use crate::quota::{Quota, Ticket};
 use crate::store::{Job, Store};
+use crate::usage::{self, Record};
 use crate::wire::{Blobs, Wire};
 use crate::{Refusal, unix_now};
 
@@ -69,6 +70,8 @@ pub struct Runner {
     wire: Arc<dyn Wire>,
     blobs: Arc<dyn Blobs>,
     store: Store,
+    /// Every job, one line each (#10121).
+    usage: usage::Log,
     state: Mutex<State>,
     suites: tokio::sync::Semaphore,
     /// Each catalog tool's NIP-EXT release, by its definition ID, once
@@ -164,6 +167,7 @@ impl Runner {
         }
         let quota = Quota::open(config.state.join("quota.json"));
         let jobs = config.limits.jobs;
+        let usage = usage::Log::new(config.usage_dir());
         Ok(Arc::new(Self {
             config,
             identity: Arc::new(identity),
@@ -172,6 +176,7 @@ impl Runner {
             wire,
             blobs,
             store,
+            usage,
             state: Mutex::new(State {
                 service,
                 quota,
@@ -293,12 +298,30 @@ impl Runner {
         }
     }
 
-    async fn refuse(&self, opened: &Opened, execute: &Execute, refusal: &Refusal) {
+    /// Appends `record` to the usage log; a write that fails is logged
+    /// and never stops a job.
+    fn record(&self, record: &Record) {
+        if let Err(error) = self.usage.append(record) {
+            log(&format!("usage log: {error}"));
+        }
+    }
+
+    async fn refuse(
+        &self,
+        arrived: Arrived,
+        opened: &Opened,
+        execute: &Execute,
+        refusal: &Refusal,
+    ) {
         log(&format!(
             "refused {} from {}: {refusal}",
             short(&opened.event_id),
             short(&opened.principal)
         ));
+        let mut record = arrived.record(opened, "refused");
+        described(&mut record, &execute.input);
+        record.code = Some(refusal.code.clone());
+        self.record(&record);
         let payload = execution::refusal_result(
             &execute.request,
             execute.attempt,
@@ -390,6 +413,10 @@ impl Runner {
     }
 
     async fn execute(self: &Arc<Self>, event: Event, opened: Opened, execute: Execute) {
+        let arrived = Arrived {
+            unix_ms: usage::unix_ms(),
+            bytes: event.content.len(),
+        };
         // A retransmission: the recorded answer, bound to this event.
         let known = {
             let mut state = self.state();
@@ -411,7 +438,7 @@ impl Runner {
             })
         };
         match known {
-            Some(Err(refusal)) => return self.refuse(&opened, &execute, &refusal).await,
+            Some(Err(refusal)) => return self.refuse(arrived, &opened, &execute, &refusal).await,
             Some(Ok(Some(result))) => {
                 return self
                     .answer(
@@ -428,7 +455,7 @@ impl Runner {
         }
         let admitted = match self.admit(&opened, &execute).await {
             Ok(admitted) => admitted,
-            Err(refusal) => return self.refuse(&opened, &execute, &refusal).await,
+            Err(refusal) => return self.refuse(arrived, &opened, &execute, &refusal).await,
         };
         let now = unix_now();
         let mut ticket: Option<Ticket> = None;
@@ -442,7 +469,7 @@ impl Runner {
             );
             match taken {
                 Ok(taken) => ticket = Some(taken),
-                Err(refusal) => return self.refuse(&opened, &execute, &refusal).await,
+                Err(refusal) => return self.refuse(arrived, &opened, &execute, &refusal).await,
             }
         }
         let mailbox = random_hex();
@@ -460,7 +487,7 @@ impl Runner {
                 }
                 let refusal =
                     Refusal::new(error.code().unwrap_or("malformed"), format!("{error:?}"));
-                return self.refuse(&opened, &execute, &refusal).await;
+                return self.refuse(arrived, &opened, &execute, &refusal).await;
             }
         };
         let key = claim.key.clone();
@@ -494,7 +521,12 @@ impl Runner {
                     self.state().quota.give_back(ticket);
                 }
                 return self
-                    .refuse(&opened, &execute, &Refusal::new("unavailable", why))
+                    .refuse(
+                        arrived,
+                        &opened,
+                        &execute,
+                        &Refusal::new("unavailable", why),
+                    )
                     .await;
             }
         };
@@ -508,8 +540,10 @@ impl Runner {
         let this = Arc::clone(self);
         tokio::spawn(async move {
             match admitted {
-                Admitted::Run(plan) => this.run(event, opened, key, *plan, ticket).await,
-                Admitted::Publish(job) => this.publish(event, opened, key, *job).await,
+                Admitted::Run(plan) => {
+                    this.run(event, opened, key, *plan, ticket, arrived).await;
+                }
+                Admitted::Publish(job) => this.publish(event, opened, key, *job, arrived).await,
             }
         });
     }
@@ -818,8 +852,22 @@ impl Runner {
         key: String,
         plan: Plan,
         ticket: Option<Ticket>,
+        arrived: Arrived,
     ) {
         let principal = opened.principal.clone();
+        let mut record = arrived.record(&opened, "failed");
+        record.action = action(plan.check.is_some(), plan.validates.is_some()).into();
+        record.subject = plan.subject.definition["id"].as_str().map(str::to_string);
+        record.suite = Some(
+            plan.suite_release
+                .as_ref()
+                .and_then(|release| release["id"].as_str())
+                .unwrap_or("draft")
+                .to_string(),
+        );
+        record.tests = Some(plan.suite.cases.len() as u64);
+        record.runs = Some(plan.runs);
+        record.turns = Some(plan.turns);
         let cancel = Cancel::new();
         self.state().running.insert(key.clone(), cancel.clone());
         let mut job = Job {
@@ -907,6 +955,9 @@ impl Runner {
                     job.results = Some(finished.results.clone());
                     job.report = Some(finished.report_ref.clone());
                     job.sealed = Some(sealed.to_value());
+                    record.verdict = Some(finished.verdict.word().to_string());
+                    record.subject_passed = Some(finished.headline.subject_passed);
+                    record.baseline_passed = finished.headline.baseline_passed;
                     log(&format!(
                         "finished {}: {} of {} with the tool, {:?} without, {}",
                         crate::store::key_name(&key),
@@ -946,6 +997,10 @@ impl Runner {
             }
         };
         let _ = self.store.save_job(&job);
+        record.outcome = report.outcome.to_string();
+        record.code.clone_from(&report.code);
+        record.total_ms = usage::unix_ms().saturating_sub(arrived.unix_ms);
+        self.record(&record);
         self.finish(&principal, &key, report).await;
     }
 
@@ -1069,10 +1124,20 @@ impl Runner {
         })
     }
 
-    async fn publish(self: Arc<Self>, _event: Event, opened: Opened, key: String, mut run: Job) {
+    async fn publish(
+        self: Arc<Self>,
+        _event: Event,
+        opened: Opened,
+        key: String,
+        mut run: Job,
+        arrived: Arrived,
+    ) {
         let principal = opened.principal.clone();
+        let mut record = arrived.record(&opened, "failed");
+        record.action = "publish".into();
         let report = match self.publish_run(&mut run).await {
             Ok(output) => {
+                record.result = Some(output.result.id.clone());
                 log(&format!(
                     "published {} for {}: result {}",
                     crate::store::key_name(&run.key),
@@ -1111,6 +1176,10 @@ impl Runner {
                 }
             }
         };
+        record.outcome = report.outcome.to_string();
+        record.code.clone_from(&report.code);
+        record.total_ms = usage::unix_ms().saturating_sub(arrived.unix_ms);
+        self.record(&record);
         self.finish(&principal, &key, report).await;
     }
 
@@ -1327,6 +1396,57 @@ impl Runner {
 }
 
 /// A finished run's report and what the result names.
+/// When a request arrived and how long its ciphertext was, for its usage
+/// record.
+#[derive(Clone, Copy)]
+struct Arrived {
+    unix_ms: u64,
+    bytes: usize,
+}
+
+impl Arrived {
+    fn record(self, opened: &Opened, outcome: &str) -> Record {
+        let mut record = Record::new(
+            &opened.principal,
+            &opened.event_id,
+            self.bytes,
+            self.unix_ms,
+            outcome,
+        );
+        record.total_ms = usage::unix_ms().saturating_sub(self.unix_ms);
+        record
+    }
+}
+
+/// The usage log's word for a run: a check, a validation, or a run.
+fn action(check: bool, validates: bool) -> &'static str {
+    match (check, validates) {
+        (true, _) => "check",
+        (false, true) => "validation",
+        (false, false) => "run",
+    }
+}
+
+/// Fills in what a request asked, from its input, for a refusal's record.
+fn described(record: &mut Record, input: &Value) {
+    match hosted::parse_input(input) {
+        Ok(Input::Publish { .. }) => record.action = "publish".into(),
+        Ok(Input::Run(run)) => {
+            record.action = action(run.check.is_some(), run.validates.is_some()).into();
+            record.suite = Some(match &run.suite {
+                SuiteSource::Published(release) => release.id.clone(),
+                SuiteSource::Draft => "draft".into(),
+            });
+            record.subject = match &run.subject {
+                SubjectSource::Definition(definition) => Some(definition.id.clone()),
+                SubjectSource::Draft => None,
+            };
+            record.runs = u32::try_from(run.runs).ok();
+        }
+        Err(_) => {}
+    }
+}
+
 struct Finished {
     results: PathBuf,
     report_ref: Value,

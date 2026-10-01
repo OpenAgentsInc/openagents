@@ -4,7 +4,7 @@ Coder asks Jev, TypeSafe's System One model, for its judgments. A computer
 with a TypeSafe key asks TypeSafe directly. Every other computer asks the
 *hosted decision service*: one `decision-worker` that holds the TypeSafe key
 on the server and answers NIP-CJ decision jobs on `wss://relay.openagents.com`.
-This page is the serving path, its limits, and the runbook.
+This page is the serving path, its bounds, its usage log, and the runbook.
 
 ## The serving path
 
@@ -92,8 +92,8 @@ backups after it.
   `provider_metadata.gateway.cost`, OpenRouter's own). A client's
   decision record (`openagents.decision-call.v1`) keeps that `service`. If
   no door answers, the caller gets the first door's refusal.
-- Every answer counts against the open lane like any other; the lane's
-  daily total still bounds the day's spend on all doors together.
+- Every answer, from any door, is one line in the usage log with the door
+  that answered and its cost when the door priced it.
 
 The chat worker's router judge asks the same doors, in the same order,
 with its own keys ([chat worker](chat-worker.md)).
@@ -131,7 +131,8 @@ or off. It never touches `coder-worker.service` or `/opt/coder-worker/current`.
 
 A hosted call that cannot be answered fails with a sentence that says why:
 `Jev is unreachable: the hosted decision service on wss://relay.openagents.com …`
-or `Jev refused: quota (This key used today's decision jobs on this worker.)`.
+or, only under an operator's emergency brake, `Jev refused: busy (This
+worker can't take this job right now. Try again later.)`.
 `jev_hosted::unavailable` reads that reason back, and a repository turn then
 stops asking for the rest of its task and records `decision_unavailable`
 once with the reason, instead of waiting on every step.
@@ -160,29 +161,58 @@ names its door, `via`, the worker's `service`, and its milliseconds.
 `OPENAGENTS_JEV_RELAY` and `OPENAGENTS_JEV_WORKER` point clients at another
 relay and worker, for a fixture or staging.
 
-## Limits
+## Bounds and usage
 
-The worker answers keys nobody provisioned, so its open lane is metered
-(`gateway::open_quota`), the chat worker's design:
+The open lane has no usage limit. The owner decided on 2026-10-01
+("ensure no such limits anywhere in the app, I never want to see a limit
+again … just record all the info so later we can pull usage stats
+easily"; [#10120](https://github.com/OpenAgentsInc/openagents/issues/10120),
+[#10121](https://github.com/OpenAgentsInc/openagents/issues/10121)), so it
+answers every caller key with no per-minute, per-day, or total count, the
+chat worker's design. What bounds a job is its shape:
 
-| Limit | Deployed value | Refusal |
+| Bound | Deployed value | Refusal |
 | --- | --- | --- |
-| Jobs per caller key in any 60 seconds | 60 | `rate_limited`, with `retry_after_ms` |
-| Jobs per caller key per UTC day | 2,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
-| Jobs for every caller together per UTC day | 20,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Request ciphertext | 256 KiB | `limit_exceeded` |
 | Models | `jev-1.13.0`, `jev-latest`, and the alias `typesafe/jev-1.13` | `not_admitted` |
 | Jobs at once | 8 | `busy` |
 
-- The total is the spend bound: a caller can mint any number of keys. At
-  Jev's list price ($0.042 per million input tokens) a 10,000-token
-  judgment costs about $0.0004, so the daily total bounds the day near $8.
-- A job counts when it is admitted, whether or not the door answers; a
-  refused job counts nothing and reaches no door. The day's counts are in
-  `/var/lib/decision-worker/quota.json`, so a restart keeps the day; a file
-  that exists but does not read stops the worker.
+- **The emergency brake.** For an abuse emergency only, an operator may
+  add `per_key_minute`, `per_key_day`, or `total_day` to `open.quota` in
+  the release's `decision-worker.json` and restart. The deployed config
+  names none, and the journal's start line says `open lane under
+  $TYPESAFE_API_KEY, models jev-1.13.0,jev-latest, no usage limit`. A set
+  count refuses `rate_limited` or `quota_exhausted` with `retry_after_ms`
+  and a message that names no count ("This worker can't take this job
+  right now. Try again later."); the day's counts are in
+  `/var/lib/decision-worker/quota.json`, so a restart keeps the day, and a
+  file that exists but does not read stops the worker.
+- The dollar bound is on the door keys themselves (the AI Gateway key's
+  cap, `NEEDS_OWNER.md`), not on callers. At Jev's list price ($0.042 per
+  million input tokens) a 10,000-token judgment costs about $0.0004.
 - A redelivery of a settled `(request, attempt)` pair republishes the
-  recorded result from `jobs.jsonl` and is not counted again.
+  recorded result from `jobs.jsonl` and is not a new job.
+
+**The usage log.** Every decision job the worker reads, answered or
+refused, is one JSON line in `/var/lib/decision-worker/usage/YYYY-MM-DD.jsonl`
+(the UTC day it arrived): time, caller key, lane (`open`, `principal`,
+`anonymous`), request id and attempt, the model asked and the model that
+answered, the door that answered, the doors' and the whole job's time,
+tokens and cost when the door reported them, outcome and code, and the
+request's size. No state, question, or key. On `oa-coder-worker-1`:
+
+```sh
+sudo /opt/decision-worker/current/decision-worker usage                 # by day
+sudo /opt/decision-worker/current/decision-worker usage --by key        # per caller key
+sudo /opt/decision-worker/current/decision-worker usage --by door --since 2026-10-01
+sudo /opt/decision-worker/current/decision-worker usage --by outcome --json
+sudo sh -c 'cat /var/lib/decision-worker/usage/*.jsonl' | jq -s 'map(.cost_usd // 0) | add'
+```
+
+`--by` takes `key`, `lane`, `model`, `door`, `day`, or `outcome`; each
+row has jobs, answered, refused, failed, distinct keys, input tokens,
+cost, and the median time of an answered job. `--dir` or
+`DECISION_WORKER_USAGE_DIR` reads another directory.
 
 `INVARIANTS.md` (Hosted decision service) records these with their tests.
 
@@ -191,8 +221,9 @@ The worker answers keys nobody provisioned, so its open lane is metered
 The worker is `decision-worker <config.json>` from `crates/gateway`
 ([operator's guide](../decision-models/service/decision-worker.md)). The
 deployed config is [`deploy/decision-worker/decision-worker.json`](../../deploy/decision-worker/decision-worker.json):
-`open` is the metered lane (`key_env` names the variable holding the door
-key; `models`; `quota`), `service` is what each answer names, and
+`open` is the open lane (`key_env` names the variable holding the door
+key; `models`; `quota`, the request size and an emergency brake that is
+off), `service` is what each answer names, and
 `probe_secs` is the liveness probe: a `REQ` with `limit` 0 every 30 seconds,
 and one still unanswered at the next ends the session, which reconnects.
 The environment file ([example](../../deploy/decision-worker/decision-worker.env.example))
@@ -237,7 +268,8 @@ sudo journalctl -u decision-worker -n 20 --no-pager
 ```
 
 The first lines must name the pubkey `ad6b4d91…`, the upstream
-`https://api.typesafe.ai`, the open lane's quota, and its door order. The worker secret is
+`https://api.typesafe.ai`, the open lane's `no usage limit`, its door
+order, and the usage log. The worker secret is
 kept with the owner's secrets as `decision-worker.env`; the TypeSafe key is
 the owner's (`typesafe.env`).
 
@@ -277,8 +309,9 @@ answering. On `oa-coder-worker-1`:
    Run request timeout drops every connection within the hour). Check the
    relay (`openagents-nostr-relay`, [runbook-cloud-run.md](runbook-cloud-run.md))
    if they repeat.
-2. `open lane refused … quota_exhausted` lines mean callers are spending
-   the day; the transcript says `Jev refused: quota`.
+2. `open lane refused … quota_exhausted` lines appear only when an
+   operator set an emergency brake; the transcript says `Jev refused:
+   busy`. Take the counts out of `open.quota` and restart to lift it.
 3. `sudo systemctl restart decision-worker` and run the live check.
 
 ## Deploy record

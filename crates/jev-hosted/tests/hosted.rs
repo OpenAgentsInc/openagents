@@ -265,8 +265,9 @@ async fn a_computer_with_no_key_is_answered_by_the_hosted_worker_until_its_quota
         )
         .await
         .expect_err("the key's day is used");
-    let why = jev_hosted::unavailable(&refused).expect("a quota refusal says Jev is unavailable");
-    assert!(why.starts_with("Jev refused: quota"), "{why}");
+    let why = jev_hosted::unavailable(&refused).expect("a brake's refusal says Jev is unavailable");
+    assert!(why.starts_with("Jev refused: busy"), "{why}");
+    assert!(!why.contains("today") && !why.contains("quota"), "{why}");
     assert_eq!(
         answered.load(Ordering::SeqCst),
         2,

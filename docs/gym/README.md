@@ -48,7 +48,8 @@ What is live:
   runs `chat-router-v2`
   ([measurement](../coder/measurements/2026-09-29-chat-router-v2.md)).
 - **The hosted runner** on `coderos-4080` runs up to 8 tests, 3 runs, and 2
-  sides per request, 3 runs per trainer per UTC day (checks don't count).
+  sides per request, as often as a trainer likes (no daily count since
+  [#10121](https://github.com/OpenAgentsInc/openagents/issues/10121)).
 - **The first results**: each starter test set of six tests went from 2 of
   6 without its tool to 5 (Project map), 4 (Code finder), and 5 (Test
   reader) of 6 with it, **Better**, and another trainer's check confirmed

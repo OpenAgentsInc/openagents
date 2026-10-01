@@ -7,6 +7,9 @@
 //! eval-runner pubkey           print the runner's public key
 //! eval-runner release DIR...   release each catalog extension's test set
 //!                              (its evals/) as the runner, once
+//! eval-runner usage [--since YYYY-MM-DD] [--by key|action|subject|day|outcome]
+//!                   [--json] [--dir DIR]
+//!                              summarize the usage log (one line per job)
 //! ```
 //!
 //! The configuration is the environment (`deploy/eval-runner/`); read
@@ -21,7 +24,7 @@ use eval_runner::config::{Config, load_identity};
 use eval_runner::runner::{PROBE_VAR, RENEW_VAR, Runner};
 use eval_runner::wire::{Blobs, Blossom, Bucket, Relay, Wire};
 
-const USAGE: &str = "usage: eval-runner serve | check | pubkey | release DIR...";
+const USAGE: &str = "usage: eval-runner serve | check | pubkey | release DIR... | usage [--since YYYY-MM-DD] [--by key|action|subject|day|outcome] [--json] [--dir DIR]";
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -31,6 +34,7 @@ async fn main() -> ExitCode {
         Some("check") => check().map(|()| ExitCode::SUCCESS),
         Some("pubkey") => pubkey(),
         Some("release") => release(&args[1..]).await,
+        Some("usage") => usage(&args[1..]),
         Some("--help" | "-h" | "help") => {
             println!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -116,13 +120,8 @@ fn check() -> Result<(), String> {
     for tool in &runner.catalog().tools {
         println!("catalog  {} {}", tool.name, tool.definition.id);
     }
-    println!(
-        "limits   {} runs per trainer per day, {} turns per day, {} suites and {} runs at once",
-        config.limits.runs_per_trainer,
-        config.limits.turns_per_day,
-        config.limits.jobs,
-        config.limits.concurrency
-    );
+    println!("limits   {}", limits_line(&config.limits));
+    println!("usage    {}", config.usage_dir().display());
     println!(
         "admission {}",
         if config.closed() {
@@ -132,6 +131,68 @@ fn check() -> Result<(), String> {
         }
     );
     Ok(())
+}
+
+/// The startup line for the runner's bounds: no usage limit unless an
+/// operator set an emergency brake.
+fn limits_line(limits: &eval_runner::config::Limits) -> String {
+    let brake = match (limits.runs_per_trainer, limits.turns_per_day) {
+        (None, None) => "no usage limit".to_string(),
+        (runs, turns) => format!(
+            "emergency brake on: {} runs per trainer per day, {} turns per day",
+            runs.map_or_else(|| "any".to_string(), |n| n.to_string()),
+            turns.map_or_else(|| "any".to_string(), |n| n.to_string()),
+        ),
+    };
+    format!(
+        "{brake}; {} suites and {} runs at once",
+        limits.jobs, limits.concurrency
+    )
+}
+
+/// `eval-runner usage`: the usage log, grouped. It reads the log only, so
+/// it needs no key or catalog.
+fn usage(args: &[String]) -> Result<ExitCode, String> {
+    use eval_runner::usage::{By, read, stats, table};
+    let mut since = None;
+    let mut by = By::Day;
+    let mut json = false;
+    let mut dir = std::env::var_os("EVAL_RUNNER_STATE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                .join(".openagents/eval-runner")
+        })
+        .join("usage");
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let mut value = || {
+            args.next()
+                .cloned()
+                .ok_or_else(|| format!("{arg} needs a value"))
+        };
+        match arg.as_str() {
+            "--since" => since = Some(value()?),
+            "--by" => by = By::parse(&value()?)?,
+            "--dir" => dir = std::path::PathBuf::from(value()?),
+            "--json" => json = true,
+            other => return Err(format!("usage: unknown argument {other}")),
+        }
+    }
+    let found = read(&dir, since.as_deref())?;
+    let rows = stats(&found.records, by);
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rows).map_err(|e| e.to_string())?
+        );
+    } else {
+        print!("{}", table(&rows, by));
+    }
+    if found.unreadable > 0 {
+        eprintln!("{} lines did not read as records", found.unreadable);
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 async fn release(dirs: &[String]) -> Result<ExitCode, String> {
@@ -183,6 +244,8 @@ async fn serve() -> Result<ExitCode, String> {
             .join(", ")
     );
     eprintln!("agent   {}", runner.agent().digest);
+    eprintln!("limits  {}", limits_line(&config.limits));
+    eprintln!("usage   {}", config.usage_dir().display());
     eprintln!(
         "liveness a probe every {} s; the subscription is renewed every {} s",
         liveness.probe.as_secs_f64(),

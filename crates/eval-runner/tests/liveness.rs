@@ -42,8 +42,8 @@ async fn bounded<T>(test: impl Future<Output = T>) -> T {
 
 fn limits() -> Limits {
     Limits {
-        runs_per_trainer: 3,
-        turns_per_day: 500,
+        runs_per_trainer: None,
+        turns_per_day: None,
         jobs: 2,
         concurrency: 2,
     }

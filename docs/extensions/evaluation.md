@@ -446,7 +446,7 @@ grader replays. See [the live run](measurements/2026-09-29-ext-eval-runner-live.
 | --- | --- | --- | --- |
 | The operator's computer, `openagents ext eval run` | The operator in a terminal | Any extension the operator trusts, with any grant they pass | The operator's Verse world key |
 | A connected computer, from chat | A tap on **Run on Studio Mac** in chat, which sends Coder a NIP-HOST task that runs `openagents ext eval run` | The same as the operator's computer; the grant is read and write in the sandbox only, never `exec` or `network`, unless the person approves it on the computer | The computer's world key |
-| The hosted runner, from chat | A tap on **Start the test** in chat, which sends a NIP-CJ execution job | Only catalog capabilities (those in the OpenAgents catalog or in Coder defaults) and chat-made capabilities whose components are skills and choices of catalog capabilities. No setup programs, no `exec` or `network`, at most 8 cases, 3 runs, and a daily quota per trainer. Both arms admit the current `coder-defaults`, so a report is marginal. | The hosted runner's key, with the requesting trainer named |
+| The hosted runner, from chat | A tap on **Start the test** in chat, which sends a NIP-CJ execution job | Only catalog capabilities (those in the OpenAgents catalog or in Coder defaults) and chat-made capabilities whose components are skills and choices of catalog capabilities. No setup programs, no `exec` or `network`, at most 8 cases and 3 runs per request, and no daily count. Both arms admit the current `coder-defaults`, so a report is marginal. | The hosted runner's key, with the requesting trainer named |
 
 Every path runs the same crate (`crates/ext-eval`), writes the same
 report, and publishes the same way. A chat request never runs anything
@@ -460,8 +460,10 @@ evidence guests as extensions (`crates/plugin-repo-map`,
 `crates/plugin-code-search`, and `crates/plugin-test-report`, each a
 package record, one program, and a starter test set under `evals/`). A
 request names a catalog capability by its extension's DefinitionRef or by the
-DefinitionRef of the guest it runs. Limits: 3 runs per trainer per UTC day
-(a check doesn't count) and a turn ceiling for everyone per day. A hosted
+DefinitionRef of the guest it runs. There is no usage limit (owner
+decision, 2026-10-01, [#10121](https://github.com/OpenAgentsInc/openagents/issues/10121)):
+a trainer runs as often as they like, and every job is a line in the
+runner's usage log. A hosted
 result is published only on the trainer's publish request, signed by the
 runner, and carries the trainer's signed request inline
 (`meta.ext_eval_request`), because relays keep no `25920`.

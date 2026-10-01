@@ -3,9 +3,10 @@
 //! sealed to the trainer, and published on the trainer's publish request
 //! with the trainer's signed request inline; refusals for an unsigned or
 //! rebound request, a tool outside the catalog, a draft that asks for
-//! `exec`, an oversize request, and a trainer over quota (a check is
-//! never counted); a cancel that stops a live run; and no door key in any
-//! event or file.
+//! `exec`, an oversize request, and a trainer over an operator's emergency
+//! brake (a check is never counted); no daily count by default, so a
+//! trainer's fourth run of a day runs; every job in the usage log; a
+//! cancel that stops a live run; and no door key in any event or file.
 
 mod support;
 
@@ -38,10 +39,11 @@ fn pointer(value: &Value) -> EventPointer {
     }
 }
 
-fn limits(runs_per_trainer: u32) -> Limits {
+/// The shipped bounds (`None`: no daily count) or an emergency brake.
+fn limits(runs_per_trainer: Option<u32>) -> Limits {
     Limits {
         runs_per_trainer,
-        turns_per_day: 500,
+        turns_per_day: runs_per_trainer.map(|_| 500),
         jobs: 2,
         concurrency: 2,
     }
@@ -70,7 +72,7 @@ fn draft(tool_uses: &str, prompt_run: &str, cases: usize) -> Value {
 async fn a_hosted_run_is_streamed_sealed_and_published_only_on_request() {
     let dir = tempfile::tempdir().unwrap();
     let door = door();
-    let (runner, memory, _) = memory_runner(dir.path(), &door, limits(3));
+    let (runner, memory, _) = memory_runner(dir.path(), &door, limits(None));
     let runner_key = runner.pubkey().to_string();
     let tool = runner.catalog().tools[0].clone();
     let release = runner
@@ -189,6 +191,40 @@ async fn a_hosted_run_is_streamed_sealed_and_published_only_on_request() {
         1
     );
 
+    // The usage log has one line per job, retransmissions aside: the run,
+    // the stranger's refused publish, and the trainer's two publishes.
+    let logged = eval_runner::usage::read(&dir.path().join("state/usage"), None).unwrap();
+    assert_eq!(logged.unreadable, 0);
+    let jobs: Vec<(&str, &str, Option<&str>)> = logged
+        .records
+        .iter()
+        .map(|r| (r.action.as_str(), r.outcome.as_str(), r.code.as_deref()))
+        .collect();
+    assert_eq!(
+        jobs,
+        [
+            ("run", "completed", None),
+            ("publish", "refused", Some("not_admitted")),
+            ("publish", "completed", None),
+            ("publish", "completed", None),
+        ]
+    );
+    let run = &logged.records[0];
+    assert_eq!(run.key, phone.pubkey());
+    assert_eq!(run.request, request.id);
+    assert_eq!(run.subject.as_deref(), Some(tool.definition.id.as_str()));
+    assert_eq!(run.suite.as_deref(), release["id"].as_str());
+    assert_eq!(
+        (run.tests, run.runs, run.turns),
+        (Some(2), Some(2), Some(8))
+    );
+    assert_eq!(run.subject_passed, Some(output.headline.subject_passed));
+    assert!(run.verdict.is_some() && run.bytes_in > 0);
+    assert_eq!(
+        logged.records[2].result.as_deref(),
+        Some(out.result.id.as_str())
+    );
+
     // Every run had read and sandbox write, and nothing more.
     let runs: Vec<Value> = support::files_named(&dir.path().join("state/jobs"), "run.json")
         .iter()
@@ -212,11 +248,54 @@ async fn a_hosted_run_is_streamed_sealed_and_published_only_on_request() {
     );
 }
 
+/// No usage limit (owner decision, 2026-10-01, #10121): with the shipped
+/// bounds one trainer's fourth run of a UTC day runs like the first, and
+/// each is a line in the usage log.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_trainers_fourth_run_of_the_day_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let door = door();
+    let (runner, memory, _) = memory_runner(dir.path(), &door, Limits::default());
+    let runner_key = runner.pubkey().to_string();
+    let tool = runner.catalog().tools[0].clone();
+    let release = runner
+        .release_extension_suite(Path::new(FIXTURE), "repo-map-brief-tests")
+        .await
+        .unwrap();
+    let phone = Phone::new();
+    let input = hosted::run_input(
+        &SuiteSource::Published(pointer(&release)),
+        &SubjectSource::Definition(Box::new(tool.definition.clone())),
+        None,
+        1,
+        None,
+    )
+    .unwrap();
+    for _ in 0..4 {
+        let (request, body) = phone.request(&runner_key, &input);
+        runner.handle(request.clone()).await;
+        let done = until(Duration::from_secs(120), || {
+            let events = memory.events.lock().unwrap().clone();
+            result_of(&phone.answers(&runner_key, &request, &body, &events))
+        })
+        .await
+        .expect("the run finished");
+        assert_eq!(done["outcome"], "completed", "{done:#}");
+    }
+    let logged = eval_runner::usage::read(&dir.path().join("state/usage"), None).unwrap();
+    let rows = eval_runner::usage::stats(&logged.records, eval_runner::usage::By::Key);
+    assert_eq!(rows[0].group, phone.pubkey());
+    assert_eq!(
+        (rows[0].jobs, rows[0].completed, rows[0].refused),
+        (4, 4, 0)
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bad_requests_are_dropped_or_refused_and_the_quota_holds() {
     let dir = tempfile::tempdir().unwrap();
     let door = door();
-    let (runner, memory, _) = memory_runner(dir.path(), &door, limits(1));
+    let (runner, memory, _) = memory_runner(dir.path(), &door, limits(Some(1)));
     let runner_key = runner.pubkey().to_string();
     let tool = runner.catalog().tools[0].clone();
     let release = runner
@@ -330,7 +409,8 @@ async fn bad_requests_are_dropped_or_refused_and_the_quota_holds() {
     runner.handle(request.clone()).await;
     assert_eq!(refusal(&request, &body).unwrap()["code"], "too_large");
 
-    // The quota: one run a day here. The first runs; the second is over.
+    // An operator's emergency brake: one run a day here. The first runs;
+    // the second is refused, and the refusal names no count.
     let (first, first_body) = ask(&published_input(1, None));
     runner.handle(first.clone()).await;
     let done = until(Duration::from_secs(120), || refusal(&first, &first_body))
@@ -339,9 +419,14 @@ async fn bad_requests_are_dropped_or_refused_and_the_quota_holds() {
     assert_eq!(done["outcome"], "completed", "{done:#}");
     let (second, second_body) = ask(&published_input(1, None));
     runner.handle(second.clone()).await;
+    let braked = refusal(&second, &second_body).unwrap();
+    assert_eq!(braked["code"], "over_quota");
     assert_eq!(
-        refusal(&second, &second_body).unwrap()["code"],
-        "over_quota"
+        braked["error"]["message"]
+            .as_str()
+            .or(braked["message"].as_str()),
+        Some(eval_runner::quota::BRAKED),
+        "{braked:#}"
     );
 
     // Publish the first, then another trainer's check of it runs even
@@ -408,7 +493,7 @@ async fn bad_requests_are_dropped_or_refused_and_the_quota_holds() {
 async fn a_cancel_stops_a_live_run_and_an_admission_switch_closes_the_door() {
     let dir = tempfile::tempdir().unwrap();
     let door = door();
-    let (runner, memory, _) = memory_runner(dir.path(), &door, limits(3));
+    let (runner, memory, _) = memory_runner(dir.path(), &door, limits(None));
     let runner_key = runner.pubkey().to_string();
     let tool = runner.catalog().tools[0].clone();
     let events = || memory.events.lock().unwrap().clone();
@@ -465,7 +550,7 @@ async fn a_cancel_stops_a_live_run_and_an_admission_switch_closes_the_door() {
 async fn a_run_interrupted_by_a_restart_answers_unknown_and_never_reruns() {
     let dir = tempfile::tempdir().unwrap();
     let door = door();
-    let (runner, memory, key) = memory_runner(dir.path(), &door, limits(3));
+    let (runner, memory, key) = memory_runner(dir.path(), &door, limits(None));
     let runner_key = runner.pubkey().to_string();
     let tool = runner.catalog().tools[0].clone();
     let release = runner
@@ -507,7 +592,7 @@ async fn a_run_interrupted_by_a_restart_answers_unknown_and_never_reruns() {
 
     let identity = coder::relay::Identity::from_text(&support::hex(&key), "key").unwrap();
     let restarted = eval_runner::runner::Runner::new(
-        support::config(dir.path(), &door, limits(3)),
+        support::config(dir.path(), &door, limits(None)),
         identity,
         memory.clone(),
         memory.clone(),

@@ -568,10 +568,12 @@ headline, verdict, notes}` or `{v, action: "publish", suite_release,
 result}`. It refuses `not_admitted` (not a catalog or chat-made capability, a
 suite asking for `exec` or `network`, a check of a result not on the
 relay, another trainer's report, or admission switched off),
-`over_quota` (the trainer's runs for the UTC day, or the day's turns),
-and `too_large` (over 8 cases, 3 runs, 2 arms, a 64 KiB draft, or a
-result the relay can't hold), each before anything runs. A check doesn't
-count against the trainer's runs.
+`over_quota` (only when the operator has set an emergency brake on runs
+per trainer or turns per day; OpenAgents' runner sets none, and a client
+shows it as "try again later" without naming a count), and `too_large`
+(over 8 cases, 3 runs, 2 arms, a 64 KiB draft, or a result the relay
+can't hold), each before anything runs. A check never counts against a
+brake on the trainer's runs.
 
 ### Adoption
 

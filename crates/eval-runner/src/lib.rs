@@ -8,10 +8,11 @@
 //! after a tap on **Start the test**; the runner verifies the signature and
 //! binding, admits only catalog tools and chat-made tools whose parts are
 //! skills and catalog tools ([`catalog`]), holds the request to the hosted
-//! bounds and the trainer's daily quota ([`quota`]), refuses everything
-//! else with a typed reason, and runs the suite through `crates/ext-eval`
-//! with the fixed hosted grant: read and sandbox write, never `exec` or
-//! `network`. It streams progress, seals the report to the requester as a
+//! bounds (with no usage limit; [`quota`] keeps an off-by-default
+//! emergency brake), records every job in the usage log ([`usage`]),
+//! refuses everything else with a typed reason, and runs the suite
+//! through `crates/ext-eval` with the fixed hosted grant: read and sandbox
+//! write, never `exec` or `network`. It streams progress, seals the report to the requester as a
 //! `3188`, and publishes only when the requester sends a publish request
 //! naming that report: the suite's release (once) and a `3189` signed by
 //! the runner's key, naming the requester and carrying their signed
@@ -26,6 +27,7 @@ pub mod defaults;
 pub mod quota;
 pub mod runner;
 pub mod store;
+pub mod usage;
 pub mod wire;
 
 /// A refusal the runner answers with: a typed code and a plain message.

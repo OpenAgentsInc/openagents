@@ -4885,7 +4885,7 @@ pub(crate) fn now_utc() -> String {
 }
 
 /// Days since the epoch to a calendar date, by Howard Hinnant's algorithm.
-fn civil_from_days(days: i64) -> (i64, u64, u64) {
+pub(crate) fn civil_from_days(days: i64) -> (i64, u64, u64) {
     let days = days + 719_468;
     let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
     let day_of_era = (days - era * 146_097) as u64;

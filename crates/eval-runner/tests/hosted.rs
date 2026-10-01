@@ -168,8 +168,8 @@ async fn a_hosted_run_over_a_local_relay_credits_its_trainer() {
         work.path(),
         &door,
         Limits {
-            runs_per_trainer: 3,
-            turns_per_day: 500,
+            runs_per_trainer: None,
+            turns_per_day: None,
             jobs: 2,
             concurrency: 2,
         },

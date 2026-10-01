@@ -1293,7 +1293,9 @@ async fn keyed_door(bearer: &'static str) -> (String, Arc<AtomicUsize>) {
 
 /// A caller no operator provisioned reaches the door under the worker's
 /// own key, gets the `service` it was answered by, is held to the models
-/// the lane names, and is refused `quota_exhausted` once its day is used.
+/// the lane names, and, under an operator's emergency brake, is refused
+/// `quota_exhausted` once its day is used, with a message that names no
+/// count. Every job is a line in the usage log.
 #[tokio::test]
 async fn open_lane_answers_unprovisioned_keys_under_quota() {
     const KEY_ENV: &str = "DECISION_WORKER_TEST_OPEN_LANE_KEY";
@@ -1365,8 +1367,86 @@ async fn open_lane_answers_unprovisioned_keys_under_quota() {
     assert!(result.is_none());
     let refusal = statuses.last().unwrap().refusal.clone().unwrap();
     assert_eq!(refusal.code, "quota_exhausted");
+    assert_eq!(
+        refusal.message.as_deref(),
+        Some(gateway::open_quota::BRAKED)
+    );
     assert!(refusal.retry_after_ms.is_some());
     assert_eq!(answered.load(Ordering::SeqCst), 2);
+
+    let logged = gateway::decision_usage::read(&jobs_dir.path().join("usage"), None).unwrap();
+    let jobs: Vec<(&str, &str, Option<&str>)> = logged
+        .records
+        .iter()
+        .map(|r| (r.lane.as_str(), r.outcome.as_str(), r.code.as_deref()))
+        .collect();
+    assert_eq!(
+        jobs,
+        [
+            ("open", "answered", None),
+            ("open", "answered", None),
+            ("open", "refused", Some("not_admitted")),
+            ("open", "refused", Some("quota_exhausted")),
+        ]
+    );
+    let first = &logged.records[0];
+    assert_eq!(first.request.as_deref(), Some("open-1"));
+    assert_eq!(first.door.as_deref(), Some("https://api.typesafe.ai"));
+    assert_eq!(first.served_model.as_deref(), Some("jev-1.13.0"));
+    assert_eq!(first.tokens_in, Some(12));
+    assert!(first.bytes_in > 0);
+}
+
+/// No usage limit (owner decision, 2026-10-01, #10121): an open lane with
+/// no `quota` answers one key's jobs past the old 60 a minute, and records
+/// each one in the usage log.
+#[tokio::test]
+async fn with_no_brake_the_open_lane_answers_every_job_and_records_it() {
+    const KEY_ENV: &str = "DECISION_WORKER_TEST_UNLIMITED_KEY";
+    const DOOR_KEY: &str = "ts-test-door-key";
+    // SAFETY: this test binary reads this variable nowhere else, and no
+    // other test sets it.
+    unsafe { std::env::set_var(KEY_ENV, DOOR_KEY) };
+    let (relay_url, conns) = relay().await;
+    let (door, answered) = keyed_door(DOOR_KEY).await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let config: WorkerConfig = serde_json::from_value(json!({
+        "relay": relay_url,
+        "worker_secret": hex_secret(WORKER_BYTE),
+        "upstream": door,
+        "jobs_dir": jobs_dir.path(),
+        "probe_secs": 0,
+        "open": {"key_env": KEY_ENV, "models": ["jev-1.13.0"]},
+        "service": {"door": "https://api.typesafe.ai", "version": "decision-worker/test"},
+    }))
+    .unwrap();
+    assert!(!config.open.as_ref().unwrap().quota.counts());
+    let worker = Worker::open(config).unwrap();
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+    const JOBS: usize = 65;
+    for n in 0..JOBS {
+        let body = body(&format!("unlimited-{n}"), 1, "jev-1.13.0");
+        let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+        let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 10).await;
+        assert_eq!(
+            result.expect("answered").outcome,
+            decision::Outcome::Answered,
+            "job {n}"
+        );
+    }
+    assert_eq!(answered.load(Ordering::SeqCst), JOBS);
+    let logged = gateway::decision_usage::read(&jobs_dir.path().join("usage"), None).unwrap();
+    let rows = gateway::decision_usage::stats(&logged.records, gateway::decision_usage::By::Key);
+    assert_eq!(rows[0].jobs, JOBS as u64);
+    assert_eq!((rows[0].answered, rows[0].refused), (JOBS as u64, 0));
 }
 
 /// A relay that authenticates the worker and then goes silent, as the
@@ -2124,6 +2204,10 @@ fn the_deployed_config_names_the_fallback_doors_in_order() {
         .expect("the deployed worker has an open lane");
     assert_eq!(open.key_env, "TYPESAFE_API_KEY");
     assert!(open.upstream_last, "the open lane asks TypeSafe last");
+    // No usage limit (owner decision, 2026-10-01, #10121): the shipped
+    // lane names no count, only the request size.
+    assert!(!open.quota.counts(), "{:?}", open.quota);
+    assert_eq!(open.quota.describe(), "no usage limit");
     assert_eq!(config.bench_secs, None);
     let doors = config.backup_doors();
     assert_eq!(doors.len(), jev::doors::FALLBACKS.len());

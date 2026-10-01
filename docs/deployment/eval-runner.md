@@ -4,7 +4,7 @@ The hosted eval runner runs extension test sets for people chatting with
 OpenAgents on the phone, on our computers, so a first run needs no
 computer of their own. It's `crates/eval-runner`, a NIP-CJ execution
 worker whose one target is the `ext-eval` program. This page is the
-serving decision, its limits, and the runbook. The wire is
+serving decision, its bounds, its usage log, and the runbook. The wire is
 [NIP-EVAL, Hosted runs](../../nips/openagents/NIP-EVAL.md#hosted-runs);
 the product rules are
 [Where runs execute](../extensions/evaluation.md#where-runs-execute).
@@ -77,7 +77,7 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   the result with the `validates` marker. It refuses `not_admitted` a
   validation of a result that isn't on the relay, that ran the same test
   set (that would be a check), or that tested another tool. A validation
-  is a run for the quota. `crates/eval-runner/examples/trainer.rs` sends
+  is a run like any other. `crates/eval-runner/examples/trainer.rs` sends
   one with `--validates RESULT_ID`, with `SUITE_AUTHOR` naming the second
   test set's signer.
 - **Coder's defaults.** At each admitted run the runner reads the
@@ -122,21 +122,56 @@ user services outlive a logout. The Coder worker VM has no toolchain and
 no sandbox backend, and its chat worker must not share a host process
 with runs.
 
-## Limits
+## Bounds and usage
 
-| Limit | Deployed value | Refusal |
+There is no usage limit. The owner decided on 2026-10-01 ("ensure no such
+limits anywhere in the app, I never want to see a limit again … just
+record all the info so later we can pull usage stats easily";
+[#10120](https://github.com/OpenAgentsInc/openagents/issues/10120),
+[#10121](https://github.com/OpenAgentsInc/openagents/issues/10121)): a
+trainer runs as often as they like, and nobody has a daily count. What
+bounds a request is its own shape:
+
+| Bound | Deployed value | Refusal |
 | --- | --- | --- |
 | Tests, runs per arm, arms per request | 8, 3, 2 | `too_large` |
 | Draft size | 64 KiB | `too_large` |
-| Runs per trainer per UTC day | 3 (`EVAL_RUNNER_RUNS_PER_DAY`); a check doesn't count | `over_quota` |
-| Agent turns per UTC day, everyone together | 2,000 (`EVAL_RUNNER_TURNS_PER_DAY`) | `over_quota` |
 | Suites at once, runs at once in a suite | 2, 4 (`EVAL_RUNNER_JOBS`, `EVAL_RUNNER_CONCURRENCY`) | queued, not refused |
 | A request's deadline | 1 hour after signing | `stale` |
 
-The turn ceiling is the spend bound: one turn is one `coder -p` turn on
-the Gemini Flash lane plus its Jev calls. The owner sets the dollar cap on
-the AI Gateway key itself (`NEEDS_OWNER.md`); the runner can't see the
-gateway's charges, so it counts turns.
+**The emergency brake.** For an abuse emergency only, an operator may set
+`EVAL_RUNNER_RUNS_PER_DAY` (runs per trainer per UTC day; a check never
+counts) or `EVAL_RUNNER_TURNS_PER_DAY` (agent turns, tests × runs × 2
+arms, per UTC day for everyone) in the environment file and restart. Both
+are unset in the example and on the host, and the journal's start lines
+and `eval-runner check` say `limits   no usage limit; 2 suites and 4 runs
+at once`. A set brake refuses `over_quota` with a message that names no
+count ("the hosted runner can't take this run right now; try again
+later"), and the phone shows it as "Our test computers can't take this run
+right now. Try again later." The dollar cap stays where it was: on the AI
+Gateway key itself (`NEEDS_OWNER.md`).
+
+**The usage log.** Every request the runner answers, admitted or refused,
+is one JSON line in `~/.openagents/eval-runner/usage/YYYY-MM-DD.jsonl`
+(the UTC day it arrived): time, trainer key, request id, action (`run`,
+`check`, `validation`, `publish`), the tool's DefinitionRef id, the test
+set (release id or `draft`), tests, runs per arm, turns, outcome and
+code, verdict and passes with and without the tool, the published
+result's id, the time to the end, and the request's size. No test text
+and no key. On `coderos-4080`:
+
+```sh
+~/.local/libexec/openagents-eval-runner/eval-runner usage                # by day
+~/.local/libexec/openagents-eval-runner/eval-runner usage --by key       # per trainer
+~/.local/libexec/openagents-eval-runner/eval-runner usage --by subject --since 2026-10-01
+~/.local/libexec/openagents-eval-runner/eval-runner usage --by outcome --json
+jq -s 'group_by(.key) | map({key: .[0].key, runs: length})' ~/.openagents/eval-runner/usage/*.jsonl
+```
+
+`--by` takes `key`, `action`, `subject`, `day`, or `outcome`; each row
+has jobs, completed, failed, refused, distinct keys, turns, and the median
+time of a completed job. `quota.json` still counts runs and turns per day,
+so a brake set mid-day starts from the day's real counts.
 
 **The admission switch.** `touch ~/.openagents/eval-runner/closed` refuses
 every new run `not_admitted` at once, without a restart; runs already

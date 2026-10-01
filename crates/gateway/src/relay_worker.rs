@@ -226,7 +226,10 @@ pub struct OpenLane {
     /// The models an open-lane job may name; any other is refused
     /// `not_admitted` before anything is counted.
     pub models: Vec<String>,
-    /// The per-key and daily limits.
+    /// The lane's bounds: the request size, and an emergency brake that
+    /// is off unless an operator names a count (`crate::open_quota`).
+    /// Absent, no count at all.
+    #[serde(default)]
     pub quota: crate::open_quota::Policy,
     /// Ask the backup doors first, in order, and the upstream last, as the
     /// chat judge does (`jev::doors::Failover::primary_last`): the Vercel AI
@@ -635,6 +638,16 @@ pub struct Worker {
     benched: Mutex<HashMap<String, (Instant, Settled)>>,
     /// How long a bench lasts.
     bench: Duration,
+    /// Every job, one line each (`usage/` under `jobs_dir`, #10121).
+    usage: crate::decision_usage::Log,
+}
+
+/// When a job arrived and how long its ciphertext was, for its usage
+/// record.
+#[derive(Clone, Copy)]
+struct Arrived {
+    unix_ms: u64,
+    bytes: usize,
 }
 
 impl Worker {
@@ -671,6 +684,7 @@ impl Worker {
                 .map_err(|_| Trouble::Config(format!("principal {key} is not a public key")))?;
         }
         let jobs = Jobs::open(&config.jobs_dir)?;
+        let config_usage_dir = config.jobs_dir.join("usage");
         let (open_key, quota) = match &config.open {
             Some(open) => {
                 let key = std::env::var(&open.key_env)
@@ -737,6 +751,7 @@ impl Worker {
             backups,
             benched: Mutex::new(HashMap::new()),
             bench: Duration::from_secs(bench_secs),
+            usage: crate::decision_usage::Log::new(config_usage_dir),
         }))
     }
 
@@ -883,8 +898,12 @@ impl Worker {
         if !self.fresh(&event.id) {
             return;
         }
+        let arrived = Arrived {
+            unix_ms: crate::decision_usage::unix_ms_now(),
+            bytes: event.content.len(),
+        };
         match decision::admit(&event, &self.pubkey, &self.secret, unix_now(), self.window) {
-            Ok(Admitted::Call(call)) => self.on_call(*call, event.content.len()),
+            Ok(Admitted::Call(call)) => self.on_call(*call, arrived),
             Ok(Admitted::Cancel(cancel)) => self.on_cancel(cancel),
             Err(error) => {
                 let Some(refusal) = Refusal::from_error(&error) else {
@@ -899,6 +918,11 @@ impl Worker {
                 let Some((request, attempt)) = decision::payload_correlation(&payload) else {
                     return;
                 };
+                let mut record = self.usage_record(&event.pubkey, arrived, "refused");
+                record.request = Some(request.clone());
+                record.attempt = Some(attempt);
+                record.code = Some(refusal.code.clone());
+                self.record_usage(&record);
                 if let Ok(event) = decision::answer_event(
                     self.seal(&event.pubkey),
                     decision::FEEDBACK_KIND,
@@ -915,12 +939,23 @@ impl Worker {
     /// One admitted decision call: resolve the principal, dedupe the
     /// pair against the ledger, then answer, join the in-flight run,
     /// or start one.
-    fn on_call(self: &Arc<Self>, call: AdmittedCall, bytes: usize) {
+    fn on_call(self: &Arc<Self>, call: AdmittedCall, arrived: Arrived) {
+        let bytes = arrived.bytes;
         let delivery = Delivery {
             attempt_id: call.attempt_id.clone(),
             principal: call.principal.clone(),
         };
+        let refused = |lane: &str, code: &str| {
+            let mut record = self.usage_record(&call.principal, arrived, "refused");
+            record.lane = lane.to_string();
+            record.request = Some(call.body.request.clone());
+            record.attempt = Some(call.body.attempt);
+            record.model = Some(call.body.model.clone());
+            record.code = Some(code.to_string());
+            self.record_usage(&record);
+        };
         let Some(binding) = self.binding(&call.principal) else {
+            refused("-", "not_admitted");
             self.refuse(
                 &delivery,
                 &call.body.request,
@@ -944,6 +979,7 @@ impl Worker {
 
         match self.jobs.lookup(&key) {
             Some(record) if record.request_digest != call.request_digest => {
+                refused(self.lane(&call.principal, &binding), "idempotency_conflict");
                 self.refuse(
                     &delivery,
                     &call.body.request,
@@ -983,6 +1019,7 @@ impl Worker {
             }
             None => {
                 if let Some(refusal) = self.meter(&call, &binding, bytes) {
+                    refused(self.lane(&call.principal, &binding), &refusal.code);
                     self.refuse(&delivery, &call.body.request, call.body.attempt, refusal);
                     return;
                 }
@@ -998,6 +1035,7 @@ impl Worker {
             settled: None,
         };
         if let Err(error) = self.jobs.admit(&key, &scope, &record) {
+            refused(self.lane(&call.principal, &binding), "internal");
             self.refuse(
                 &delivery,
                 &call.body.request,
@@ -1006,6 +1044,11 @@ impl Worker {
             );
             return;
         }
+        let mut usage = self.usage_record(&call.principal, arrived, "unknown");
+        usage.lane = self.lane(&call.principal, &binding).to_string();
+        usage.request = Some(call.body.request.clone());
+        usage.attempt = Some(call.body.attempt);
+        usage.model = Some(call.body.model.clone());
         self.start_job(
             &key,
             scope,
@@ -1013,11 +1056,44 @@ impl Worker {
             call.body,
             call.request_digest,
             delivery,
+            (arrived, usage),
         );
+    }
+
+    /// The usage log's word for a caller's lane.
+    fn lane(&self, principal: &str, binding: &Binding) -> &'static str {
+        if self.config.principals.contains_key(principal) {
+            "principal"
+        } else if binding.open {
+            "open"
+        } else {
+            "anonymous"
+        }
+    }
+
+    /// A usage record of a job from `key` that arrived as `arrived`.
+    fn usage_record(
+        &self,
+        key: &str,
+        arrived: Arrived,
+        outcome: &str,
+    ) -> crate::decision_usage::Record {
+        crate::decision_usage::Record::new(key, arrived.bytes, arrived.unix_ms, outcome)
+    }
+
+    /// Appends `record` to the usage log; a write that fails is logged and
+    /// never stops a job.
+    fn record_usage(&self, record: &crate::decision_usage::Record) {
+        if let Err(error) = self.usage.append(record) {
+            eprintln!("decision-worker: usage log: {error}");
+        }
     }
 
     /// Registers the run and spawns it. The register-then-spawn order
     /// keeps `run_job`'s first `deliveries()` read nonempty.
+    // The job's identity, its envelope, its first delivery, and its usage
+    // record travel together into the spawned run.
+    #[allow(clippy::too_many_arguments)]
     fn start_job(
         self: &Arc<Self>,
         key: &str,
@@ -1026,6 +1102,7 @@ impl Worker {
         body: RequestBody,
         request_digest: String,
         delivery: Delivery,
+        usage: (Arrived, crate::decision_usage::Record),
     ) {
         {
             let mut running = self.running.lock().expect("running");
@@ -1042,7 +1119,7 @@ impl Worker {
         let task_key = key.to_string();
         let task = tokio::spawn(async move {
             worker
-                .run_job(task_key, scope, binding, body, request_digest)
+                .run_job(task_key, scope, binding, body, request_digest, usage)
                 .await;
         });
         if let Some(entry) = self.running.lock().expect("running").get_mut(key) {
@@ -1060,6 +1137,7 @@ impl Worker {
         binding: Binding,
         body: RequestBody,
         request_digest: String,
+        (arrived, mut usage): (Arrived, crate::decision_usage::Record),
     ) {
         let deliveries = || {
             self.running
@@ -1075,6 +1153,11 @@ impl Worker {
         let permit = match self.slots.try_acquire() {
             Ok(permit) => permit,
             Err(_) => {
+                usage.outcome = "refused".into();
+                usage.code = Some("busy".into());
+                usage.total_ms =
+                    crate::decision_usage::unix_ms_now().saturating_sub(arrived.unix_ms);
+                self.record_usage(&usage);
                 for delivery in deliveries() {
                     self.refuse(
                         &delivery,
@@ -1104,6 +1187,15 @@ impl Worker {
         let started = Instant::now();
         let settled = self.dispatch(&binding, &body, started).await;
         drop(permit);
+        usage.outcome.clone_from(&settled.outcome);
+        usage.code.clone_from(&settled.code);
+        usage.served_model.clone_from(&settled.served_model);
+        usage.door_ms = settled.latency_ms;
+        if let Some(response) = &settled.response {
+            usage.answer(response);
+        }
+        usage.total_ms = crate::decision_usage::unix_ms_now().saturating_sub(arrived.unix_ms);
+        self.record_usage(&usage);
         let settled = match self.jobs.settle(&key, &scope, settled.clone()) {
             Ok(true) => settled,
             Ok(false) | Err(_) => {
@@ -1957,12 +2049,10 @@ pub async fn run(config: WorkerConfig) -> Result<(), Trouble> {
     eprintln!("decision-worker: relay {}", worker.config.relay);
     match &worker.config.open {
         Some(open) => eprintln!(
-            "decision-worker: open lane under ${}, models {}, quota {}/key/day {}/key/min {}/day total",
+            "decision-worker: open lane under ${}, models {}, {}",
             open.key_env,
             open.models.join(","),
-            open.quota.per_key_day,
-            open.quota.per_key_minute,
-            open.quota.total_day
+            open.quota.describe()
         ),
         None => eprintln!("decision-worker: no open lane"),
     }
@@ -1972,6 +2062,10 @@ pub async fn run(config: WorkerConfig) -> Result<(), Trouble> {
             worker.open_lane_doors().join(" → ")
         );
     }
+    eprintln!(
+        "decision-worker: usage log {}",
+        worker.usage.dir().display()
+    );
     let backups = worker.config.backup_doors();
     if backups.is_empty() {
         eprintln!("decision-worker: no backup door");

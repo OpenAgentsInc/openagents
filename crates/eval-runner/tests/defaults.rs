@@ -86,8 +86,8 @@ impl World {
             dir,
             door,
             Limits {
-                runs_per_trainer: 9,
-                turns_per_day: 500,
+                runs_per_trainer: None,
+                turns_per_day: None,
                 jobs: 2,
                 concurrency: 2,
             },
