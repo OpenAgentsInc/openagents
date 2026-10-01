@@ -151,6 +151,21 @@ fn labeled() -> Labeled {
     }
 }
 
+/// A precision or recall the record wrote as `count / denominator`, as
+/// that exact quotient. `serde_json` parses a float to within one unit in
+/// the last place unless something in the build enables its
+/// `float_roundtrip` feature, as the desktop's dependencies do, so the
+/// parsed value depends on which crates one `cargo test` builds; the
+/// count does not, and dividing it again is exact (#10085, #10089).
+#[allow(clippy::cast_precision_loss)]
+fn exact_ratio(value: f64, denominator: u64) -> f64 {
+    if denominator == 0 || !value.is_finite() {
+        return value;
+    }
+    let count = (value * denominator as f64).round();
+    count / denominator as f64
+}
+
 fn measurement() -> Measurement {
     let (dir, page) = MEASUREMENT;
     let report = json(&format!("{dir}/report.json"));
@@ -160,11 +175,12 @@ fn measurement() -> Measurement {
         if m["arm"] != "subject" {
             continue;
         }
+        let denominator = m["denominator"].as_u64().unwrap_or_default();
         metrics.insert(
             m["metric"].as_str().unwrap_or_default().to_string(),
             (
-                m["value"].as_f64().unwrap_or_default(),
-                m["denominator"].as_u64().unwrap_or_default(),
+                exact_ratio(m["value"].as_f64().unwrap_or_default(), denominator),
+                denominator,
             ),
         );
     }

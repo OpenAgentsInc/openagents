@@ -1365,7 +1365,7 @@
       "codebase.kb": {
         "precision": 1.0,
         "predicted": 5,
-        "recall": 0.4545454545454546,
+        "recall": 0.45454545454545453,
         "labeled": 11
       },
       "end": {
@@ -1447,7 +1447,7 @@
         "labeled": 8
       },
       "work.dispatch": {
-        "precision": 0.9473684210526316,
+        "precision": 0.9473684210526315,
         "predicted": 19,
         "recall": 1.0,
         "labeled": 18
