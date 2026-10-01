@@ -122,7 +122,29 @@ pub struct List {
     /// suggested workspaces follow it.
     #[serde(default)]
     pub used: BTreeMap<String, u64>,
+    /// The reply in each conversation that started or continued a Coder
+    /// task, by conversation ID, so the conversation still shows its start
+    /// card after a relaunch.
+    #[serde(default)]
+    pub started: BTreeMap<String, Started>,
 }
+
+/// The reply that started or continued a conversation's Coder task.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Started {
+    /// The reply's turn index in the conversation.
+    pub reply: usize,
+    /// The task it started or continued.
+    pub task: String,
+    /// Unix seconds when it did.
+    pub at: u64,
+    /// One short line of how the task's turn ended, once read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+}
+
+/// The most conversations whose start is kept; the oldest go first.
+pub const MAX_STARTED: usize = 512;
 
 /// The list and the store it lives in. Without a store it lasts only as
 /// long as the app.
@@ -159,6 +181,18 @@ impl Store {
                 self.list.rows.iter().map(|row| row.task.clone()).collect();
             self.list.titles.retain(|task, _| listed.contains(task));
             self.list.sent.retain(|task, _| listed.contains(task));
+        }
+        while self.list.started.len() > MAX_STARTED {
+            let Some(oldest) = self
+                .list
+                .started
+                .iter()
+                .min_by_key(|(_, started)| started.at)
+                .map(|(id, _)| id.clone())
+            else {
+                break;
+            };
+            self.list.started.remove(&oldest);
         }
         if let Some(cache) = &self.cache
             && cache.write(KEY, &self.list).is_ok()

@@ -2809,6 +2809,13 @@ struct Delivery {
     engines: Vec<Option<nostr::cj_conversation::Engine>>,
     /// Keep only the hosts with these tags, when set.
     only: Option<Vec<u8>>,
+    /// The clock the snapshot carries, when set.
+    now: Option<u64>,
+    /// The phase every accepted task's newest summary says, when set,
+    /// with the generic headline.
+    phase: Option<nostr::activity_summary::Phase>,
+    /// Each accepted task, by host and task ID.
+    tasks: Vec<(String, String)>,
 }
 
 /// The fixture's hosts, keeping image chunks as a host does, with a start
@@ -2820,7 +2827,42 @@ struct Imaging {
 
 impl ComputersService for Imaging {
     fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
+        use nostr::activity_summary::{ActivitySummary, Attention, SubjectKind, generic_headline};
         let mut snapshot = self.inner.snapshot()?;
+        {
+            let delivery = self.delivery.lock().unwrap();
+            if let Some(now) = delivery.now {
+                snapshot.now = now;
+            }
+            if let Some(phase) = delivery.phase {
+                // A relaunched fixture never made the task: its summary
+                // comes as the host republishes it.
+                for (host, task) in &delivery.tasks {
+                    if !snapshot.activity.iter().any(|s| s.subject == *task) {
+                        snapshot.activity.push(ActivitySummary {
+                            host: host.clone(),
+                            subject_kind: SubjectKind::Task,
+                            subject: task.clone(),
+                            sequence: 1,
+                            phase,
+                            headline: String::new(),
+                            attention: Attention::None,
+                            updated_at: snapshot.now,
+                        });
+                    }
+                }
+                for summary in &mut snapshot.activity {
+                    if delivery
+                        .tasks
+                        .iter()
+                        .any(|(_, task)| *task == summary.subject)
+                    {
+                        summary.phase = phase;
+                        summary.headline = generic_headline(SubjectKind::Task, phase).into();
+                    }
+                }
+            }
+        }
         if let Some(tags) = self.delivery.lock().unwrap().only.clone() {
             let keys: Vec<String> = tags
                 .iter()
@@ -2883,6 +2925,7 @@ impl ComputersService for Imaging {
             .created
             .push(self.inner.task_images.get(&id).cloned().unwrap_or_default());
         delivery.engines.push(task.engine);
+        delivery.tasks.push((host.to_owned(), id.clone()));
         Ok(id)
     }
     fn nudge_host(&mut self, host: &str) -> Answer<()> {
@@ -3108,6 +3151,168 @@ fn a_computer_that_asks_first_keeps_run_coder() {
         fixture.render();
     }
     assert_eq!(delivery.lock().unwrap().engines.len(), 1);
+}
+
+/// The phone's start card, after a coding reply started Coder at once on
+/// a computer whose start `delivery` records.
+fn started_at_once(fixture: &mut Fixture, hand: &Hand) -> Value {
+    fixture.say("Archive the iOS app and upload it to TestFlight");
+    hand.route(&[json!({"v": 2, "type": "offer", "offer": "run_coder",
+        "target": "connected_computer", "label": "Run Coder"})]);
+    hand.say("We'll have Coder archive and upload it.", true);
+    fixture.render()
+}
+
+fn at_once() -> std::sync::Arc<std::sync::Mutex<Delivery>> {
+    use coder_host::access::protocol::{CODER_START_AT_ONCE, TASK_ENGINE};
+    std::sync::Arc::new(std::sync::Mutex::new(Delivery {
+        advertise: Some(vec!["task-create", TASK_ENGINE, CODER_START_AT_ONCE]),
+        phase: Some(nostr::activity_summary::Phase::Running),
+        ..Delivery::default()
+    }))
+}
+
+/// The first conversation row of the chats list.
+fn conversation_row(list: &Value) -> String {
+    keys(list)
+        .into_iter()
+        .find(|key| key.starts_with("talk-") && key.matches('-').count() == 1)
+        .unwrap_or_else(|| panic!("no conversation in {:?}", keys(list)))
+}
+
+/// The start card's note.
+fn start_note(view: &Value) -> String {
+    node(view, "coder-start-note")
+        .and_then(|note| note["element"]["props"]["value"].as_str())
+        .unwrap_or_else(|| panic!("no start note in {:?}", keys(view)))
+        .to_owned()
+}
+
+/// A run started from the phone can take many minutes, such as an iOS
+/// archive: while it runs, its card says how long Coder has worked
+/// (#10118).
+#[test]
+fn a_running_start_says_how_long_coder_has_worked() {
+    let delivery = at_once();
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    let view = started_at_once(&mut fixture, &hand);
+    assert_eq!(start_note(&view), "Working");
+    for (later, shown) in [
+        (12 * 60 + 30, "Working · 12 min"),
+        (3_600 + 5 * 60, "Working · 1 h 5 min"),
+    ] {
+        delivery.lock().unwrap().now = Some(NOW + later);
+        fixture.computers.refresh().expect("refresh");
+        assert_eq!(start_note(&fixture.render()), shown);
+    }
+}
+
+/// The conversation that started a run still shows its card after a
+/// relaunch, once the run is done, with the outcome the phone read
+/// (#10118).
+#[test]
+fn the_chat_that_started_coder_keeps_its_card_after_a_relaunch() {
+    use nostr::activity_summary::Phase;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let kept = dir.path().join("basic");
+    let delivery = at_once();
+    let hand = Hand::default();
+    let mut first = Fixture::in_dir(
+        Imaging {
+            inner: Synthetic::fixture(Platform::Phone, now),
+            delivery: delivery.clone(),
+        },
+        dir,
+    )
+    .answered_and_kept(&hand, &kept);
+    started_at_once(&mut first, &hand);
+    delivery.lock().unwrap().phase = Some(Phase::Completed);
+    first.computers.refresh().expect("refresh");
+    let view = first.render();
+    assert!(
+        texts(&view)
+            .iter()
+            .any(|t| t == "Coder on Studio Mac: Done"),
+        "{:?}",
+        texts(&view)
+    );
+    // The app ends; its stores stay.
+    let Fixture { _dir: dir, .. } = first;
+    let mut again = Fixture::in_dir(
+        Imaging {
+            inner: Synthetic::fixture(Platform::Phone, now),
+            delivery: delivery.clone(),
+        },
+        dir,
+    )
+    .answered_and_kept(&Hand::default(), &kept);
+    let list = again.list();
+    let talk = conversation_row(&list);
+    let view = again.tap(&talk);
+    assert!(node(&view, "coder-start").is_some(), "{:?}", keys(&view));
+    assert!(
+        texts(&view)
+            .iter()
+            .any(|t| t == "Coder on Studio Mac: Done"),
+        "{:?}",
+        texts(&view)
+    );
+    assert!(node(&view, "coder-start-stop").is_none());
+}
+
+/// A finished run's card says what Coder did in one line, as the phone
+/// read it from the task's chat, and still does after a relaunch
+/// (#10118).
+#[test]
+fn a_finished_start_shows_its_outcome() {
+    use nostr::activity_summary::Phase;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let kept = dir.path().join("basic");
+    let list = dir.path().join("coder-list");
+    let delivery = at_once();
+    let hand = Hand::default();
+    let mut first = Fixture::in_dir(
+        Imaging {
+            inner: Synthetic::fixture(Platform::Phone, now),
+            delivery: delivery.clone(),
+        },
+        dir,
+    )
+    .answered_and_kept(&hand, &kept);
+    started_at_once(&mut first, &hand);
+    delivery.lock().unwrap().phase = Some(Phase::Completed);
+    first.computers.refresh().expect("refresh");
+    first.render();
+    let Fixture { _dir: dir, .. } = first;
+    // The outcome the phone read from the task's chat, as it keeps it.
+    let secret = secp256k1::SecretKey::from_byte_array([0x11; 32]).expect("key");
+    let mut store = Store::open(Cache::open(&list, &secret).ok());
+    let started = store
+        .list
+        .started
+        .values_mut()
+        .next()
+        .expect("the start is kept");
+    started.outcome = Some("Uploaded build 42 to TestFlight.".into());
+    store.save();
+    drop(store);
+    let mut again = Fixture::in_dir(
+        Imaging {
+            inner: Synthetic::fixture(Platform::Phone, now),
+            delivery: delivery.clone(),
+        },
+        dir,
+    )
+    .answered_and_kept(&Hand::default(), &kept);
+    let list = again.list();
+    let talk = conversation_row(&list);
+    let view = again.tap(&talk);
+    assert_eq!(start_note(&view), "Uploaded build 42 to TestFlight.");
 }
 
 /// An offline computer, even one whose last presence said it starts Coder

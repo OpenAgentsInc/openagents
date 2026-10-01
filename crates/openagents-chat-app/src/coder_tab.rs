@@ -473,9 +473,24 @@ pub struct CoderTab {
     /// one starts Coder at once where the computer allows it (#10101); a
     /// reply read any other way (an old chat, a relaunch) never does.
     awaiting: Vec<(String, usize)>,
-    /// The reply in each conversation that started or continued its Coder
-    /// task, by turn index: it shows the start, never **Run Coder** again.
-    started: std::collections::BTreeMap<String, usize>,
+    /// The read of the shown conversation's ended Coder task for the
+    /// outcome its start card shows, and each ended summary already read,
+    /// by task and sequence, so each is read once.
+    outcome_read: Option<OutcomeRead>,
+    outcome_tried: std::collections::BTreeSet<(String, u64)>,
+}
+
+/// A read of an ended Coder task's chat for the one line its start card
+/// shows: the computer's newest chats, then the task's transcript, as an
+/// opened Coder chat reads them.
+struct OutcomeRead {
+    talk: String,
+    host: String,
+    task: String,
+    sequence: u64,
+    phase: Phase,
+    round: Option<u64>,
+    conversation: Option<Conversation>,
 }
 
 /// The most sent messages whose replies the tab waits for at once.
@@ -535,7 +550,8 @@ impl CoderTab {
             images: crate::attachments::Drafts::default(),
             talk_runs: std::collections::BTreeMap::new(),
             awaiting: Vec::new(),
-            started: std::collections::BTreeMap::new(),
+            outcome_read: None,
+            outcome_tried: std::collections::BTreeSet::new(),
             attachments: ATTACHMENTS_ENABLED,
         }
     }
@@ -1340,6 +1356,107 @@ impl CoderTab {
     /// When this device last started a chat in `workspace` on `host`.
     fn used(&self, host: &str, workspace: &str) -> Option<u64> {
         self.list.list.used.get(&used_key(host, workspace)).copied()
+    }
+
+    /// Remember, across a relaunch, that reply `reply` of conversation `id`
+    /// started or continued Coder task `task` at `now`.
+    fn mark_started(&mut self, id: &str, reply: usize, task: &str, now: u64) {
+        self.list.list.started.insert(
+            id.to_owned(),
+            crate::coder_list::Started {
+                reply,
+                task: task.to_owned(),
+                at: now,
+                outcome: None,
+            },
+        );
+        self.list.save();
+    }
+
+    /// The reply in conversation `id` that started or continued its Coder
+    /// task, by turn index.
+    fn started_reply(&self, id: &str) -> Option<usize> {
+        self.list.list.started.get(id).map(|started| started.reply)
+    }
+
+    /// Read the outcome of the shown conversation's Coder task once its turn
+    /// ends, for its start card: the computer's newest chats, then the
+    /// task's transcript, once per ended summary.
+    fn read_outcome(&mut self, computers: Option<&Computers>, chats: &mut Chats) {
+        let wanted = self.talk.as_deref().and_then(|id| {
+            let spawned = self.basic.get(id)?.coder.as_ref()?;
+            let started = self.list.list.started.get(id)?;
+            if started.task != spawned.task || started.outcome.is_some() {
+                return None;
+            }
+            let summary = Self::summary(computers?.snapshot(), &spawned.host, &spawned.task)?;
+            matches!(summary.phase, Phase::Completed | Phase::Failed).then(|| {
+                (
+                    id.to_owned(),
+                    spawned.host.clone(),
+                    spawned.task.clone(),
+                    summary.sequence,
+                    summary.phase,
+                )
+            })
+        });
+        let Some((talk, host, task, sequence, phase)) = wanted else {
+            self.outcome_read = None;
+            return;
+        };
+        let current = self.outcome_read.as_ref().is_some_and(|read| {
+            read.talk == talk && read.task == task && read.sequence == sequence
+        });
+        if !current {
+            if !self.outcome_tried.insert((task.clone(), sequence)) {
+                self.outcome_read = None;
+                return;
+            }
+            let round = chats.refresh_head(&host);
+            self.outcome_read = Some(OutcomeRead {
+                talk,
+                host,
+                task,
+                sequence,
+                phase,
+                round,
+                conversation: None,
+            });
+        }
+        let Some(read) = self.outcome_read.as_mut() else {
+            return;
+        };
+        let Some(conversation) = &read.conversation else {
+            if read
+                .round
+                .is_some_and(|round| chats.head(&read.host, round) == Head::Running)
+            {
+                return;
+            }
+            match chats.coder_chat(&read.host, &read.task) {
+                Some((_, client, chat)) => {
+                    read.conversation = Some(Conversation::open(chats.runtime(), client, chat));
+                }
+                None => self.outcome_read = None,
+            }
+            return;
+        };
+        if conversation.failed() {
+            self.outcome_read = None;
+            return;
+        }
+        if !conversation.read_since(0) {
+            return;
+        }
+        let line = outcome(&conversation.rows(), read.phase);
+        let talk = read.talk.clone();
+        self.outcome_read = None;
+        if let Some(line) = line
+            && let Some(started) = self.list.list.started.get_mut(&talk)
+        {
+            started.outcome = Some(line);
+            self.list.save();
+        }
     }
 
     /// The newest summary of `task` on `host`.
@@ -2401,7 +2518,8 @@ impl CoderTab {
             ) {
                 self.talk_runs.remove(&id);
                 if let Some(reply) = reply {
-                    self.started.insert(id.clone(), reply);
+                    let now = computers.snapshot().now;
+                    self.mark_started(&id, reply, &spawned.task, now);
                 }
                 if open {
                     self.talk = None;
@@ -2476,7 +2594,7 @@ impl CoderTab {
                 self.basic
                     .spawned_in(&id, &host, &task, Some(&workspace), now);
                 if let Some(reply) = reply {
-                    self.started.insert(id.clone(), reply);
+                    self.mark_started(&id, reply, &task, now);
                 }
                 self.notice = None;
                 if open {
@@ -2561,7 +2679,7 @@ impl CoderTab {
         }
         let Some(computers) = computers else { return };
         for (id, reply) in due {
-            if self.started.get(&id) == Some(&reply) {
+            if self.started_reply(&id) == Some(reply) {
                 continue;
             }
             let spawned = self
@@ -2685,6 +2803,7 @@ impl CoderTab {
         if let Some(computers) = computers {
             self.remember(computers, chats);
         }
+        self.read_outcome(computers, chats);
         self.basic.settle(unix_now());
         self.settle_images();
         self.poll_threads(computers);
@@ -3152,7 +3271,13 @@ impl CoderTab {
             computers.and_then(|c| Self::summary(c.snapshot(), &spawned.host, &spawned.task));
         let phase = summary.map(|summary| summary.phase);
         let running = phase.is_none_or(Self::running);
-        let started_here = newest.is_some() && self.started.get(id) == newest.as_ref();
+        let started = self
+            .list
+            .list
+            .started
+            .get(id)
+            .filter(|started| started.task == spawned.task);
+        let started_here = newest.is_some() && started.map(|s| s.reply) == newest;
         if !started_here && !(running && phase.is_some()) {
             return None;
         }
@@ -3164,12 +3289,25 @@ impl CoderTab {
         } else {
             format!("Coder on {label}: {}", phase.map_or("Unknown", phase_label))
         };
-        let note = summary
+        let mut note = summary
             .filter(|s| {
                 s.headline != nostr::activity_summary::generic_headline(SubjectKind::Task, s.phase)
             })
             .map(|s| s.headline.clone())
             .unwrap_or_else(|| phase.map_or("Starting", phase_label).to_owned());
+        if running {
+            // A run can take many minutes, such as an iOS archive.
+            let now = computers.map_or_else(unix_now, |c| c.snapshot().now);
+            if let Some(worked) = started
+                .map(|s| s.at)
+                .or(spawned.at)
+                .and_then(|at| worked(now.saturating_sub(at)))
+            {
+                note = format!("{note} · {worked}");
+            }
+        } else if let Some(outcome) = started.and_then(|s| s.outcome.clone()) {
+            note = outcome;
+        }
         let mut controls = vec![button(
             "coder-start-open",
             "Open Coder",
@@ -4394,6 +4532,60 @@ fn unix_now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
+/// How long Coder has worked, `seconds`, as its start card says it while
+/// it runs: `12 min`, `1 h 5 min`. Nothing under a minute.
+fn worked(seconds: u64) -> Option<String> {
+    let minutes = seconds / 60;
+    match minutes {
+        0 => None,
+        1..=59 => Some(format!("{minutes} min")),
+        _ if minutes.is_multiple_of(60) => Some(format!("{} h", minutes / 60)),
+        _ => Some(format!("{} h {} min", minutes / 60, minutes % 60)),
+    }
+}
+
+/// The most characters of an outcome a start card shows.
+const OUTCOME_CHARS: usize = 140;
+
+/// One short line of how a Coder task's turn ended, from its chat's rows:
+/// the first line of its last reply when it finished, or of the last
+/// system message when it failed. Bounded to [`OUTCOME_CHARS`].
+fn outcome(rows: &[crate::conversation::Row], phase: Phase) -> Option<String> {
+    let role = match phase {
+        Phase::Completed => MessageRole::Assistant,
+        Phase::Failed => MessageRole::System,
+        _ => return None,
+    };
+    let text = rows.iter().rev().find_map(|row| match &row.entry {
+        crate::conversation::Entry::Message { role: shown, text }
+            if *shown == role && !text.trim().is_empty() =>
+        {
+            Some(text.as_str())
+        }
+        _ => None,
+    })?;
+    let line = text
+        .lines()
+        .map(|line| {
+            line.trim()
+                .trim_start_matches(['#', '*', '-', '>', ' '])
+                .trim()
+        })
+        .find(|line| !line.is_empty())?;
+    let mut line = line.trim_matches('*').trim();
+    // A long line keeps its first sentence.
+    if line.chars().count() > OUTCOME_CHARS
+        && let Some(end) = line.find(". ")
+    {
+        line = &line[..=end];
+    }
+    if line.chars().count() <= OUTCOME_CHARS {
+        return Some(line.to_owned());
+    }
+    let cut: String = line.chars().take(OUTCOME_CHARS - 1).collect();
+    Some(format!("{}…", cut.trim_end()))
+}
+
 fn ago(now: u64, then: u64) -> String {
     let seconds = now.saturating_sub(then);
     match seconds {
@@ -5034,6 +5226,68 @@ mod tests {
     /// Only a turn that ended sends a follow-up to the conversation's
     /// router; one that runs, waits, or is unknown keeps it Coder's
     /// (#10094).
+    /// A start card says how long Coder has worked in short words (#10118).
+    #[test]
+    fn a_running_start_says_how_long_in_short_words() {
+        assert_eq!(worked(59), None);
+        assert_eq!(worked(60).as_deref(), Some("1 min"));
+        assert_eq!(worked(12 * 60 + 59).as_deref(), Some("12 min"));
+        assert_eq!(worked(2 * 3_600).as_deref(), Some("2 h"));
+        assert_eq!(worked(3_600 + 5 * 60).as_deref(), Some("1 h 5 min"));
+    }
+
+    /// The outcome a finished start card shows is one bounded line of the
+    /// task's last reply; a failed one, of the failure's message (#10118).
+    #[test]
+    fn an_ended_run_shows_one_line_of_how_it_ended() {
+        use crate::conversation::Entry;
+        let row = |role: MessageRole, text: &str| crate::conversation::Row {
+            segment: 0,
+            offset: 0,
+            end: 0,
+            part: 0,
+            carried: false,
+            entry: Entry::Message {
+                role,
+                text: text.into(),
+            },
+            blocks: vec![],
+        };
+        let rows = vec![
+            row(MessageRole::User, "Archive the app and upload it"),
+            row(MessageRole::Assistant, "Archiving now."),
+            row(
+                MessageRole::Assistant,
+                "\n## Uploaded build 42 to TestFlight\n\nIt took 21 minutes.",
+            ),
+        ];
+        assert_eq!(
+            outcome(&rows, Phase::Completed).as_deref(),
+            Some("Uploaded build 42 to TestFlight")
+        );
+        assert_eq!(outcome(&rows, Phase::Failed), None);
+        assert_eq!(outcome(&rows, Phase::Running), None);
+        let mut failed = rows.clone();
+        failed.push(row(
+            MessageRole::System,
+            "xcodebuild exited with code 65\nsee the log",
+        ));
+        assert_eq!(
+            outcome(&failed, Phase::Failed).as_deref(),
+            Some("xcodebuild exited with code 65")
+        );
+        let long = format!("{}. {}", "a".repeat(60), "b".repeat(200));
+        let shown = outcome(&[row(MessageRole::Assistant, &long)], Phase::Completed).unwrap();
+        assert_eq!(shown, format!("{}.", "a".repeat(60)));
+        let shown = outcome(
+            &[row(MessageRole::Assistant, &"c".repeat(400))],
+            Phase::Completed,
+        )
+        .unwrap();
+        assert_eq!(shown.chars().count(), OUTCOME_CHARS);
+        assert!(shown.ends_with('…'));
+    }
+
     #[test]
     fn only_an_ended_turn_routes_a_follow_up() {
         use openagents_chat::router::RunEnding;
