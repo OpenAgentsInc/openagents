@@ -7354,7 +7354,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-cli"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 dependencies = [
  "atif",
  "base64 0.22.1",
@@ -7485,7 +7485,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-terminal"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 dependencies = [
  "atif",
  "coder-terminal",
