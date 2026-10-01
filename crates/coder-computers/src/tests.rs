@@ -1961,3 +1961,31 @@ fn a_native_control_runs_an_intent_through_the_same_check() {
         Err(Refusal::Stale)
     );
 }
+
+/// Reading a task's change needs `observe`; publishing it is a mutation
+/// that needs `operate`, checked before anything reaches the computer
+/// (#10067, #10068).
+#[test]
+fn publishing_a_change_needs_operate_and_reading_it_needs_observe() {
+    let mut snapshot = Synthetic::fixture(Platform::Phone, now).snapshot().unwrap();
+    let online = snapshot.hosts[0].key.clone();
+    let Enrollment::Enrolled { rights, .. } = &mut snapshot.hosts[0].enrollment else {
+        panic!("the first host is enrolled");
+    };
+    *rights = Rights::new([Right::Observe]).unwrap();
+    let fixed = Fixed::new(snapshot);
+    let mut computers =
+        Computers::new(Box::new(fixed.clone()), caps(Platform::Phone), "c:review").unwrap();
+    let (task, revision) = ("f".repeat(64), "1".repeat(40));
+    assert_eq!(
+        computers.publish_task(&online, &task, &revision, &revision, &revision),
+        Err(Refusal::Denied(Denial::MissingRight(Right::Operate)))
+    );
+    // The read passes the grant check and reaches the service, which here
+    // reviews nothing.
+    assert!(matches!(
+        computers.review_task(&online, &task),
+        Err(Refusal::Failed(_))
+    ));
+    assert!(fixed.calls().is_empty(), "nothing was published");
+}

@@ -693,3 +693,48 @@ async fn spend_lists_carry_the_senders_own_grant_and_need_operate() {
         .unwrap_err();
     assert_eq!(refused.code, Code::MissingRight);
 }
+
+/// `task.review` is a read under `observe`; `task.publish` is a mutation
+/// under `operate`. A device holding only `observe` is refused a
+/// publication before the task owner sees it (#10067, #10068).
+#[tokio::test]
+async fn publishing_a_reviewed_change_needs_operate() {
+    let f = Fixture::served(0, false).await;
+    let (_, observer) = f.enroll("observe").await;
+    let task = "a".repeat(64);
+    let revision = "b".repeat(40);
+    let publish = Operation::PublishTask {
+        task: task.clone(),
+        base: revision.clone(),
+        head_commit: revision.clone(),
+        head: revision.clone(),
+    };
+    let error = observer.call(publish.clone()).await.unwrap_err();
+    assert_eq!(
+        (error.code, error.missing),
+        (Code::MissingRight, Some(Right::Operate))
+    );
+    // The read passes the grant check; this task owner reviews nothing.
+    let error = observer
+        .call(Operation::ReviewTask { task: task.clone() })
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, Code::Unsupported);
+    // With `operate`, the publication reaches the task owner, which here
+    // publishes nothing.
+    let (_, operator) = f.enroll("standard").await;
+    let error = operator.call(publish).await.unwrap_err();
+    assert_eq!(error.code, Code::Unsupported);
+    assert_eq!(f.recorder.count(), 0);
+    // A revision that is not a Git object ID is malformed.
+    assert!(
+        Operation::PublishTask {
+            task,
+            base: "main".into(),
+            head_commit: revision.clone(),
+            head: revision,
+        }
+        .validate()
+        .is_err()
+    );
+}

@@ -426,6 +426,36 @@ impl Tasks for Inbox {
     /// A local run lives in this store when the store holds its task and
     /// the run's own record beside it (`local/<task>.json`), made for that
     /// thread or for none.
+    /// A local run's change at its exact revisions, sized for the wire.
+    /// A task this store did not start with a worktree of its own has no
+    /// change to review here.
+    fn review(&self, task: &str) -> Result<coder_host::access::review::TaskReview, Code> {
+        let record = super::local::record(&self.store, task).ok_or(Code::Unsupported)?;
+        super::review::read_for_wire(&self.store, task, Path::new(&record.worktree), &record.base)
+            .map_err(|_| Code::Unavailable)
+    }
+
+    /// Publish a local run's reviewed change through GitHub's CLI, once per
+    /// review identity.
+    fn publish(
+        &self,
+        _principal: &Principal,
+        task: &str,
+        reviewed: &coder_host::Reviewed,
+    ) -> Result<coder_host::access::review::Publication, Code> {
+        let reviewed = super::publish::Reviewed {
+            base: reviewed.base.clone(),
+            head_commit: reviewed.head_commit.clone(),
+            head: reviewed.head.clone(),
+        };
+        super::publish::Publisher::new(&self.store, &super::publish::GhForge)
+            .publish(task, &reviewed)
+            .map_err(|refusal| match refusal {
+                super::publish::Refusal::NoWorktree => Code::Unsupported,
+                super::publish::Refusal::Store(_) => Code::Unavailable,
+            })
+    }
+
     fn local_run(&self, task: &str, thread: &str) -> bool {
         let Some(record) = super::local::record(&self.store, task) else {
             return false;

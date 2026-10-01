@@ -102,6 +102,35 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::thread::ThreadPage, Code> {
         Err(Code::Unavailable)
     }
+    /// What `task` changed, for `device`, which holds `observe`
+    /// (`task.review`). A host without a task owner, or a task with no
+    /// worktree of its own, has none to offer.
+    fn review(
+        &mut self,
+        _device: &str,
+        _task: &str,
+    ) -> std::result::Result<crate::review::TaskReview, Code> {
+        Err(Code::Unsupported)
+    }
+    /// Publish the change of `task` that `device`, which holds `operate`,
+    /// reviewed at `base`, `head_commit`, and `head` (`task.publish`),
+    /// admitted under `grant` (`None` for the owner). The task owner keys
+    /// the operation by the task and those revisions, so a retry is the
+    /// same operation. A refusal the owner decided, such as a stale head,
+    /// is a publication in state `refused`, not an error.
+    #[allow(clippy::too_many_arguments)]
+    fn publish(
+        &mut self,
+        _request: &str,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _task: &str,
+        _base: &str,
+        _head_commit: &str,
+        _head: &str,
+    ) -> std::result::Result<crate::review::Publication, Code> {
+        Err(Code::Unsupported)
+    }
 }
 /// Where the host keeps agent spend requests (phase 1 agent spending). The
 /// host has checked the sender's `operate` right, and for `spend.list` that
@@ -794,6 +823,65 @@ impl Host {
                         }
                     }
                     Err(code) => Err(Error::new(code, "the host could not read the thread")),
+                }
+            }
+            Operation::ReviewTask { task } => match dispatch.review(&p.key, task) {
+                Ok(review) => {
+                    let outcome = Outcome::Review {
+                        review: Box::new(review),
+                    };
+                    match outcome.validate() {
+                        Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                        _ => Err(Error::new(Code::Unavailable, "the task review is invalid")),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host could not review the task")),
+            },
+            Operation::PublishTask {
+                task,
+                base,
+                head_commit,
+                head,
+            } => {
+                // Record the admitted intent before the effect, as for any
+                // dispatched operation; the task owner's own record keys
+                // the publication by its review identity.
+                if book.replies.len() >= MAX_REPLIES {
+                    return fail(Code::Bounds, "retained reply limit reached");
+                }
+                book.replies.insert(
+                    request.request.clone(),
+                    Retained {
+                        request_event: event.id.clone(),
+                        signer: event.pubkey.clone(),
+                        expires_at: request.expires_at,
+                        reply: None,
+                    },
+                );
+                store.save(book)?;
+                let grant = p.grant.as_deref().zip(request.epoch);
+                match dispatch.publish(
+                    &request.request,
+                    &p.key,
+                    grant,
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                ) {
+                    Ok(publication) => {
+                        let outcome = Outcome::Published {
+                            publication: Box::new(publication),
+                        };
+                        match outcome.validate() {
+                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                            _ => Err(Error::new(
+                                Code::Unavailable,
+                                "the publication record is invalid",
+                            )),
+                        }
+                    }
+                    Err(code) => Err(Error::new(code, "the host refused the publication")),
                 }
             }
             Operation::SettleSpend { receipt } => {

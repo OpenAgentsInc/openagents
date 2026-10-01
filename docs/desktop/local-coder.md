@@ -116,7 +116,7 @@ prints:
 | `progress` | The working line: step, bound, Jev's done estimate, and time. |
 | `question` | A **Coder asks** card; the composer answers it. |
 | `approval` | A **Coder asks to go ahead** card with **Approve** and **Deny**; the composer answers in words. |
-| `result` | **Coder finished**: the summary, files changed with `+`/`−` lines, and the worktree, after a "Worked for …" line. The worktree's diff against the run's base (`coder::task::local::unified_diff`) opens in the **What changed** pane. |
+| `result` | **Coder finished**: the summary, files changed with `+`/`−` lines, and the worktree, after a "Worked for …" line. The worktree's change against the run's base, at exact revisions (`coder::task::review`), opens in the **What changed** pane. |
 | `failure` | **Coder didn't finish** and why. |
 | `stopped` | The stop, in a line. |
 
@@ -193,4 +193,32 @@ The shared parser in `openagents-chat-app` keeps the lines. The desktop paints
 only the lines that fit in the pane, one line at a time, and applies syntax
 spans as color. Spans do not change the line height. The card and the pane
 reimplement Zeron's unified diff pane (public MIT zeronsh/zeron) in Rust
-Native. No phone screen mounts the card yet.
+Native.
+
+The card names the exact revisions it shows (#10067): the run's base commit,
+the worktree's `HEAD`, and the tree of the worktree's content when it was read
+(`coder::task::review`, written through a private index, so the worktree, its
+index, and its refs stay as they were). The file and line counts are Git's
+for that base and tree, so they stay whole when the diff is cut. A cut diff
+says how much it shows; a diff Git could not write says why; binary files
+count as "not counted", never zero. While the card shows, the change is read
+again every ten seconds; a read that names another head marks the view stale,
+keeps it on screen, holds back **Publish**, and offers **Refresh**.
+
+**Publish** (#10068) commits exactly the reviewed tree on the worktree's
+`HEAD` and pushes it as the repository's `.openagents/coder-issues.json` says:
+onto its branch, fast-forward only, for `"land": "main"`; otherwise, and by
+default, to `coder/review-…` with a draft pull request through `gh`. It is
+the host's operation (`coder::task::publish`), keyed by the task and the
+reviewed revisions, recorded beside the task before each effect, and refused
+for a head the worktree has moved past. A push whose result is unknown is
+recorded as uncertain; publishing again reads the remote first and pushes
+only if the commit is not there. The card then links the pull request or the
+commit.
+
+The phone shows the same card from the same shared reviewer
+(`openagents_chat_app::changes::Reviewer`) through NIP-HOST `task.review`
+(`observe`) and `task.publish` (`operate`), with the diff line by line up to
+160 lines. A computer that reviews no change for a task shows no card on the
+phone and the transcript's diff, without revisions or **Publish**, on the
+desktop.

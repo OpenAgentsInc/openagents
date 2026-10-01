@@ -33,6 +33,9 @@ pub enum Answer {
     Activity(ActivitySummary),
     History(Observation),
     Operation(Outcome),
+    /// The computer does not know the operation, as an older host asked
+    /// for `task.review`.
+    Unsupported,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -105,6 +108,10 @@ pub struct Session {
     pending: BTreeMap<u64, Request>,
     failed: Option<Request>,
     next_ticket: u64,
+    /// The finished task's change for the "What changed" card.
+    reviewer: crate::changes::Reviewer,
+    /// The completed summary's sequence the reviewer follows.
+    reviewed: Option<u64>,
 }
 impl Session {
     pub fn new(binding: Spawned, now: Instant) -> Self {
@@ -131,6 +138,8 @@ impl Session {
             pending: BTreeMap::new(),
             failed: None,
             next_ticket: 1,
+            reviewer: crate::changes::Reviewer::new(),
+            reviewed: None,
         }
     }
     pub fn busy(&self) -> bool {
@@ -197,8 +206,51 @@ impl Session {
         Some((ticket, request))
     }
     pub fn tick(&mut self, now: Instant) -> Option<(u64, Request)> {
-        if self.busy() || self.pending.values().any(|pending| !mutation(pending)) || now < self.poll
-        {
+        if self.busy() || self.pending.values().any(|pending| !mutation(pending)) {
+            return None;
+        }
+        // A finished task's change: read once, again now and then to notice
+        // a moved worktree, and published when the person asks.
+        let completed = self
+            .summary
+            .as_ref()
+            .filter(|summary| summary.phase == Phase::Completed)
+            .map(|summary| summary.sequence);
+        if completed.is_some() && completed != self.reviewed {
+            self.reviewed = completed;
+            self.reviewer.reset(Some(&self.binding.task));
+            self.revision += 1;
+        }
+        if completed.is_some() && self.reviewer.unsupported() {
+            let diff = self.unified_diff().map(str::to_owned);
+            let before = self.reviewer.revision();
+            self.reviewer.set_legacy(diff.as_deref());
+            if self.reviewer.revision() != before {
+                self.revision += 1;
+            }
+        }
+        if let Some(need) = self.reviewer.tick(now, completed.is_some(), true) {
+            let operation = match need {
+                crate::changes::Need::Read { task } => Operation::ReviewTask { task },
+                crate::changes::Need::Publish {
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                } => Operation::PublishTask {
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                },
+            };
+            self.revision += 1;
+            return self.request(Request::Operation {
+                request: coder_host::access::protocol::random_id(),
+                operation,
+            });
+        }
+        if now < self.poll {
             return None;
         }
         self.poll = now
@@ -482,6 +534,65 @@ impl Session {
         if mutation(&request) {
             self.revision += 1;
         }
+        // The change's reads and publications answer the reviewer, which
+        // says what failed on the card.
+        if let Request::Operation { operation, .. } = &request {
+            match (operation, &result) {
+                (
+                    Operation::ReviewTask { .. },
+                    Ok(Answer::Operation(Outcome::Review { review })),
+                ) if Outcome::Review {
+                    review: review.clone(),
+                }
+                .answers(operation) =>
+                {
+                    self.reviewer.read(Ok((**review).clone()), Instant::now());
+                    self.revision += 1;
+                    return false;
+                }
+                (Operation::ReviewTask { .. }, Ok(Answer::Unsupported)) => {
+                    self.reviewer.read(
+                        Err(crate::changes::ReadFailure::Unsupported),
+                        Instant::now(),
+                    );
+                    self.revision += 1;
+                    return false;
+                }
+                (Operation::ReviewTask { .. }, _) => {
+                    let why = match &result {
+                        Err(error) => error.clone(),
+                        _ => "The computer answered another request.".into(),
+                    };
+                    self.reviewer.read(
+                        Err(crate::changes::ReadFailure::Failed(why)),
+                        Instant::now(),
+                    );
+                    self.revision += 1;
+                    return false;
+                }
+                (
+                    Operation::PublishTask { .. },
+                    Ok(Answer::Operation(Outcome::Published { publication })),
+                ) if Outcome::Published {
+                    publication: publication.clone(),
+                }
+                .answers(operation) =>
+                {
+                    self.reviewer.published(Ok((**publication).clone()));
+                    self.revision += 1;
+                    return false;
+                }
+                (Operation::PublishTask { .. }, _) => {
+                    self.reviewer.published(Err(match &result {
+                        Err(error) => error.clone(),
+                        _ => "The computer did not publish the change.".into(),
+                    }));
+                    self.revision += 1;
+                    return false;
+                }
+                _ => {}
+            }
+        }
         let answer = match result {
             Ok(answer) => answer,
             Err(error) => {
@@ -682,6 +793,22 @@ impl Session {
             self.revision += 1;
         }
     }
+    /// The finished task's change, for the "What changed" card. A computer
+    /// that reviews no change gets the last diff its transcript recorded,
+    /// with no revisions.
+    #[must_use]
+    pub fn reviewer(&self) -> Option<&crate::changes::Reviewer> {
+        self.finished().then_some(&self.reviewer)
+    }
+
+    /// The same, to fill syntax spans, refresh, or ask to publish.
+    pub fn reviewer_mut(&mut self) -> Option<&mut crate::changes::Reviewer> {
+        if !self.finished() {
+            return None;
+        }
+        Some(&mut self.reviewer)
+    }
+
     /// The last unified diff in this task's loaded rows, when one was recorded.
     #[must_use]
     pub fn unified_diff(&self) -> Option<&str> {
@@ -870,7 +997,14 @@ fn row_bytes(row: &Row) -> usize {
 }
 
 fn mutation(request: &Request) -> bool {
-    matches!(request, Request::Operation { operation, .. } if !matches!(operation, Operation::QueueTask { edit: QueueEdit::List {}, .. }))
+    // A review and a publication belong to the change card, which keeps
+    // its own state; they never hold the composer.
+    matches!(request, Request::Operation { operation, .. } if !matches!(
+        operation,
+        Operation::QueueTask { edit: QueueEdit::List {}, .. }
+            | Operation::ReviewTask { .. }
+            | Operation::PublishTask { .. }
+    ))
 }
 pub fn unix_now() -> u64 {
     std::time::SystemTime::now()

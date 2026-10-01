@@ -212,6 +212,31 @@ pub trait ComputersService {
             "this client can't edit queued messages",
         ))
     }
+    /// Read what a task changed (`task.review`): its exact revisions, file
+    /// counts, and diff as far as it fits.
+    fn review_task(&mut self, host: &str, task: &str) -> Result<coder_access::review::TaskReview> {
+        let _ = (host, task);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't read changes",
+        ))
+    }
+    /// Publish a reviewed change once (`task.publish`), naming the
+    /// revisions the person reviewed.
+    fn publish_task(
+        &mut self,
+        host: &str,
+        task: &str,
+        base: &str,
+        head_commit: &str,
+        head: &str,
+    ) -> Result<coder_access::review::Publication> {
+        let _ = (host, task, base, head_commit, head);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't publish changes",
+        ))
+    }
     /// Leave a nudge for a host this device could not reach: a stored note
     /// that commands wait, which the host answers with fresh presence when
     /// it reads it. Best effort; the default does nothing.

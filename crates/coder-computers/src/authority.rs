@@ -80,6 +80,11 @@ pub enum Action<'a> {
     Terminal {
         host: &'a str,
     },
+    /// Read what a task changed (`task.review`), which needs `observe`.
+    /// Publishing it is [`Action::Operate`].
+    Review {
+        host: &'a str,
+    },
 }
 
 /// Why a control is unavailable.
@@ -279,6 +284,7 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
         Action::ReadDevices { host: key } => live(snapshot, key, Right::AccessRead).map(|_| ()),
         Action::Operate { host: key } => live(snapshot, key, Right::Operate).map(|_| ()),
         Action::Terminal { host: key } => live(snapshot, key, Right::Terminal).map(|_| ()),
+        Action::Review { host: key } => live(snapshot, key, Right::Observe).map(|_| ()),
         Action::IncludeRight { host: key, right } => {
             let held = live(snapshot, key, Right::AccessAdmin)?;
             if held.contains(right) {

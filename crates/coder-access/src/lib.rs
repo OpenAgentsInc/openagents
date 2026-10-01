@@ -11,6 +11,7 @@ pub mod client;
 #[cfg(feature = "host")]
 pub mod host;
 pub mod protocol;
+pub mod review;
 pub mod rights;
 pub mod spend;
 pub mod thread;

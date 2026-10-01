@@ -477,13 +477,31 @@ impl HostControl for SocketControl {
                 _ => unexpected(),
             },
             Request::History { query } => self.task_history(query).map(Answer::History),
-            Request::Operation { request, operation } => self
-                .task_operation(&request, operation)
-                .map(Answer::Operation)
-                .map_err(|error| ControlError::Refused {
-                    code: format!("{:?}", error.code),
-                    message: error.message,
-                }),
+            Request::Operation { request, operation } => {
+                // An older host does not know `task.review`, or reviews no
+                // change for this task: the card then shows the
+                // transcript's diff, with no revisions.
+                let review = matches!(
+                    operation,
+                    coder_access::protocol::Operation::ReviewTask { .. }
+                );
+                match self.task_operation(&request, operation) {
+                    Ok(outcome) => Ok(Answer::Operation(outcome)),
+                    Err(error)
+                        if review
+                            && matches!(
+                                error.code,
+                                coder_access::Code::Unsupported | coder_access::Code::Malformed
+                            ) =>
+                    {
+                        Ok(Answer::Unsupported)
+                    }
+                    Err(error) => Err(ControlError::Refused {
+                        code: format!("{:?}", error.code),
+                        message: error.message,
+                    }),
+                }
+            }
         }
     }
 

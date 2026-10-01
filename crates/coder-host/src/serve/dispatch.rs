@@ -125,6 +125,38 @@ impl Dispatch for Dispatcher {
         Ok(queue)
     }
 
+    /// What a task changed, for a device holding `observe`.
+    fn review(
+        &mut self,
+        _device: &str,
+        task: &str,
+    ) -> Result<coder_access::review::TaskReview, Code> {
+        self.shared.tasks.review(task)
+    }
+
+    /// Publish a reviewed change for a device holding `operate`. The task
+    /// owner keys it by its review identity, so the request ID's retry and
+    /// a new request for the same review are the same operation.
+    #[allow(clippy::too_many_arguments)]
+    fn publish(
+        &mut self,
+        _request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        task: &str,
+        base: &str,
+        head_commit: &str,
+        head: &str,
+    ) -> Result<coder_access::review::Publication, Code> {
+        let principal = principal(device, grant);
+        let reviewed = crate::tasks::Reviewed {
+            base: base.into(),
+            head_commit: head_commit.into(),
+            head: head.into(),
+        };
+        self.shared.tasks.publish(&principal, task, &reviewed)
+    }
+
     fn dispatch_as(
         &mut self,
         request: &str,

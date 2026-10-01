@@ -60,8 +60,16 @@ pub enum Request {
     Continue { task: String, text: String },
     /// Ask the person for a project folder.
     Choose,
-    /// What the finished turn changed, as a unified diff.
-    Diff { task: String },
+    /// What the finished turn changed, at exact revisions
+    /// ([`crate::changes::Need::Read`]).
+    Review { task: String },
+    /// Publish the reviewed change once ([`crate::changes::Need::Publish`]).
+    Publish {
+        task: String,
+        base: String,
+        head_commit: String,
+        head: String,
+    },
 }
 
 /// Where a task is, as the runner's follower says.
@@ -94,8 +102,11 @@ pub enum Answer {
     Continued,
     /// The folder the person chose, or `None` when they cancelled.
     Folder(Option<String>),
-    /// The unified diff of what the task changed.
-    Diff(String),
+    /// What the task changed, at exact revisions.
+    Review(Box<coder_host::access::review::TaskReview>),
+    /// The publication of the reviewed change, including a refused or
+    /// uncertain one.
+    Published(Box<coder_host::access::review::Publication>),
 }
 
 // Outcomes compare whole; a line's seconds are never NaN.
@@ -187,10 +198,10 @@ pub struct Run {
     due: Option<Request>,
     /// The task started here and its thread should record it.
     bind: Option<(String, String)>,
-    /// What the last finished turn changed, and the `seq` of its result.
-    diff: Option<(u64, String)>,
-    /// The result a diff was asked for.
-    diff_asked: Option<u64>,
+    /// What the last finished turn changed, and its publication.
+    reviewer: crate::changes::Reviewer,
+    /// The result the reviewer follows.
+    reviewed_seq: Option<u64>,
 }
 
 impl Run {
@@ -239,8 +250,8 @@ impl Run {
             poll: now,
             due: None,
             bind: None,
-            diff: None,
-            diff_asked: None,
+            reviewer: crate::changes::Reviewer::new(),
+            reviewed_seq: None,
         }
     }
 
@@ -380,13 +391,31 @@ impl Run {
                 return self.request(Request::Continue { task, text });
             }
         }
-        // A finished turn's change, once, for the "What changed" pane.
-        if let Some(seq) = self.result_seq()
-            && self.diff_asked != Some(seq)
-            && !self.pending.values().any(|p| !mutation(p))
+        // A finished turn's change for the "What changed" card: read once,
+        // then again now and then to notice a moved worktree, and
+        // published when the person asks.
+        let seq = self.result_seq();
+        if seq.is_some() && seq != self.reviewed_seq {
+            self.reviewed_seq = seq;
+            self.reviewer.reset(Some(&task));
+        }
+        if !self.pending.values().any(|p| !mutation(p))
+            && let Some(need) = self.reviewer.tick(now, seq.is_some(), true)
         {
-            self.diff_asked = Some(seq);
-            return self.request(Request::Diff { task });
+            return self.request(match need {
+                crate::changes::Need::Read { task } => Request::Review { task },
+                crate::changes::Need::Publish {
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                } => Request::Publish {
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                },
+            });
         }
         if now < self.poll {
             return None;
@@ -413,14 +442,22 @@ impl Run {
         self.result_seq().is_some()
     }
 
-    /// The unified diff of what the finished turn changed, once read.
+    /// What the finished turn changed, once read: the card's state.
     #[must_use]
-    pub fn unified_diff(&self) -> Option<&str> {
+    pub fn reviewer(&self) -> Option<&crate::changes::Reviewer> {
         let seq = self.result_seq()?;
-        self.diff
-            .as_ref()
-            .filter(|(at, _)| *at == seq)
-            .map(|(_, text)| text.as_str())
+        (self.reviewed_seq == Some(seq)).then_some(&self.reviewer)
+    }
+
+    /// The same, to fill the pane's syntax spans, refresh a stale view, or
+    /// ask to publish.
+    pub fn reviewer_mut(&mut self) -> Option<&mut crate::changes::Reviewer> {
+        let seq = self.result_seq()?;
+        if self.reviewed_seq == Some(seq) {
+            Some(&mut self.reviewer)
+        } else {
+            None
+        }
     }
 
     /// When the run next wants a tick.
@@ -445,10 +482,21 @@ impl Run {
         let answer = match result {
             Ok(answer) => answer,
             Err(error) => {
-                if matches!(request, Request::Diff { .. }) {
-                    // The pane stays closed; the result card still names
-                    // every file.
-                    return false;
+                match &request {
+                    // The card says why; the result card still names every
+                    // file.
+                    Request::Review { .. } => {
+                        self.reviewer
+                            .read(Err(crate::changes::ReadFailure::Failed(error)), now);
+                        self.revision += 1;
+                        return false;
+                    }
+                    Request::Publish { .. } => {
+                        self.reviewer.published(Err(error));
+                        self.revision += 1;
+                        return false;
+                    }
+                    _ => {}
                 }
                 if matches!(request, Request::Poll { .. }) {
                     // A read that failed is read again.
@@ -543,10 +591,11 @@ impl Run {
                 self.due = Some(self.start_request());
             }
             (Request::Choose, Answer::Folder(None)) => {}
-            (Request::Diff { .. }, Answer::Diff(text)) => {
-                if let Some(seq) = self.result_seq() {
-                    self.diff = Some((seq, text));
-                }
+            (Request::Review { .. }, Answer::Review(review)) => {
+                self.reviewer.read(Ok(*review), now);
+            }
+            (Request::Publish { .. }, Answer::Published(publication)) => {
+                self.reviewer.published(Ok(*publication));
             }
             _ => {
                 self.error = Some("Coder answered another request.".into());
@@ -801,7 +850,7 @@ impl Run {
 fn mutation(request: &Request) -> bool {
     !matches!(
         request,
-        Request::Poll { .. } | Request::Choose | Request::Diff { .. }
+        Request::Poll { .. } | Request::Choose | Request::Review { .. } | Request::Publish { .. }
     )
 }
 

@@ -278,6 +278,40 @@ pub trait Tasks: Send + Sync {
     fn local_run(&self, _task: &str, _thread: &str) -> bool {
         false
     }
+
+    /// What `task` changed between its base and its worktree's content now
+    /// (`task.review`). The default, and a task with no worktree of its
+    /// own, refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn review(&self, _task: &str) -> Result<coder_access::review::TaskReview, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Publish the reviewed change of `task` for `principal`, whose
+    /// `operate` right the host checked (`task.publish`). The operation is
+    /// keyed by the task and the reviewed revisions. The default refuses as
+    /// `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn publish(
+        &self,
+        _principal: &Principal,
+        _task: &str,
+        _reviewed: &Reviewed,
+    ) -> Result<coder_access::review::Publication, Code> {
+        Err(Code::Unsupported)
+    }
+}
+
+/// The revisions a device reviewed: the identity a publication carries.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reviewed {
+    pub base: String,
+    pub head_commit: String,
+    pub head: String,
 }
 
 /// A host without a task owner. Every task operation refuses as

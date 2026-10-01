@@ -4820,16 +4820,33 @@ mod coder_events {
             if let Some(Request::CoderRun {
                 chat,
                 ticket,
-                request: RunRequest::Diff { task },
+                request: RunRequest::Review { task },
             }) = panel.tick(now + std::time::Duration::from_millis(step * 10))
             {
                 assert_eq!(task, whole[0].task);
+                let diff = "diff --git a/test_slugs.py b/test_slugs.py\n--- /dev/null\n+++ b/test_slugs.py\n@@ -0,0 +1,2 @@\n+import unittest\n+x = 1\n";
                 panel.run_outcome(
                     chat,
                     ticket,
-                    Ok(Answer::Diff(
-                        "diff --git a/test_slugs.py b/test_slugs.py\n--- /dev/null\n+++ b/test_slugs.py\n@@ -0,0 +1,2 @@\n+import unittest\n+x = 1\n".into(),
-                    )),
+                    Ok(Answer::Review(Box::new(coder_access::review::TaskReview {
+                        task: task.clone(),
+                        base: "1".repeat(40),
+                        head_commit: "1".repeat(40),
+                        head: "2".repeat(40),
+                        files: vec![coder_access::review::FileCount {
+                            path: "test_slugs.py".into(),
+                            status: coder_access::review::FileStatus::Added,
+                            added: Some(2),
+                            removed: Some(0),
+                        }],
+                        files_total: 1,
+                        added: 2,
+                        removed: 0,
+                        uncounted: 0,
+                        diff: diff.into(),
+                        completeness: coder_access::review::Completeness::Complete,
+                        publication: None,
+                    }))),
                 );
                 asked = true;
                 break;
@@ -4845,6 +4862,218 @@ mod coder_events {
         }
         let body = panel.body();
         assert!(has(&body, "changes-card"), "the What changed card shows");
+    }
+
+    fn change(task: &str, head: char, diff: &str) -> coder_access::review::TaskReview {
+        coder_access::review::TaskReview {
+            task: task.into(),
+            base: "1a2b3c4d5e".repeat(4),
+            head_commit: "1a2b3c4d5e".repeat(4),
+            head: head.to_string().repeat(40),
+            files: vec![
+                coder_access::review::FileCount {
+                    path: "src/slug.rs".into(),
+                    status: coder_access::review::FileStatus::Modified,
+                    added: Some(3),
+                    removed: Some(1),
+                },
+                coder_access::review::FileCount {
+                    path: "test_slugs.py".into(),
+                    status: coder_access::review::FileStatus::Added,
+                    added: Some(2),
+                    removed: Some(0),
+                },
+            ],
+            files_total: 2,
+            added: 5,
+            removed: 1,
+            uncounted: 0,
+            diff: diff.into(),
+            completeness: coder_access::review::Completeness::Complete,
+            publication: None,
+        }
+    }
+
+    const TWO_FILES: &str = "diff --git a/src/slug.rs b/src/slug.rs\n--- a/src/slug.rs\n+++ b/src/slug.rs\n@@ -1,2 +1,4 @@\n-pub fn slug(s: &str) -> String { s.into() }\n+pub fn slug(s: &str) -> String {\n+    s.trim().to_lowercase().replace(' ', \"-\")\n+}\n fn keep() {}\ndiff --git a/test_slugs.py b/test_slugs.py\n--- /dev/null\n+++ b/test_slugs.py\n@@ -0,0 +1,2 @@\n+import unittest\n+x = 1\n";
+
+    /// A finished run's change shows its exact revisions; a moved worktree
+    /// makes the view stale and holds back Publish until a refresh; the
+    /// refreshed head publishes once and the card links the pull request
+    /// (#10067, #10068). With `OPENAGENTS_CHANGES_CAPTURE_DIR` set, each
+    /// state is captured.
+    #[test]
+    fn a_reviewed_run_goes_stale_refreshes_and_publishes_once() {
+        let whole = tasks(QUESTION_THEN_RESULT).remove(0);
+        let task = whole[0].task.clone();
+        let mut app = window(&whole, RunState::Ended);
+        let captures =
+            std::env::var_os("OPENAGENTS_CHANGES_CAPTURE_DIR").map(std::path::PathBuf::from);
+        let capture = |app: &mut DesktopApp, name: &str| {
+            app.present();
+            let (frame, _) = rust_native_desktop::capture(app, 1400.0, 900.0, 2.0);
+            if let Some(directory) = &captures {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap())
+                    .unwrap();
+            }
+        };
+        let start = Instant::now();
+        let next = |app: &mut DesktopApp, at: Instant| -> Option<(String, u64, RunRequest)> {
+            let panel = app.chat.as_mut().unwrap();
+            for step in 0..40 {
+                match panel.tick(at + std::time::Duration::from_millis(step * 10)) {
+                    Some(Request::CoderRun {
+                        chat,
+                        ticket,
+                        request: request @ (RunRequest::Review { .. } | RunRequest::Publish { .. }),
+                    }) => return Some((chat, ticket, request)),
+                    Some(Request::CoderRun { chat, ticket, .. }) => {
+                        panel.run_outcome(
+                            chat,
+                            ticket,
+                            Ok(Answer::Lines {
+                                lines: vec![],
+                                state: RunState::Ended,
+                            }),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            None
+        };
+        fn keys(node: &Node<openagents_desktop::model::Intent>, out: &mut Vec<String>) {
+            out.push(node.key.clone());
+            if let Element::Stack { children, .. } = &node.element {
+                for child in children {
+                    keys(child, out);
+                }
+            }
+        }
+        let shown = |app: &mut DesktopApp| {
+            let mut out = vec![];
+            keys(&app.chat.as_mut().unwrap().body(), &mut out);
+            out
+        };
+        let click = |app: &mut DesktopApp, key: &str| {
+            app.present();
+            let view = app.view().clone();
+            app.chat.as_mut().unwrap().action(
+                openagents_desktop::chat_action::Action::Card { key: key.into() },
+                &view,
+                Instant::now(),
+            )
+        };
+        // The first read names the base and the head.
+        let (chat, ticket, request) = next(&mut app, start).expect("a review");
+        assert_eq!(request, RunRequest::Review { task: task.clone() });
+        app.chat.as_mut().unwrap().run_outcome(
+            chat,
+            ticket,
+            Ok(Answer::Review(Box::new(change(&task, '2', TWO_FILES)))),
+        );
+        let card = shown(&mut app);
+        assert!(
+            card.iter().any(|key| key == "changes-revisions"),
+            "{card:?}"
+        );
+        assert!(card.iter().any(|key| key == "changes-publish"));
+        capture(&mut app, "card");
+        assert!(click(&mut app, "changes-open").is_none());
+        app.present();
+        let mut all = vec![];
+        keys(&app.view().view().root, &mut all);
+        assert!(all.iter().any(|key| key == "changes-pane"), "{all:?}");
+        capture(&mut app, "pane");
+        assert!(click(&mut app, "changes-close").is_none());
+        // The worktree moves: the next read names another head.
+        let later = start + openagents_chat_app::changes::CHECK_EVERY * 2;
+        let (chat, ticket, request) = next(&mut app, later).expect("a check");
+        assert_eq!(request, RunRequest::Review { task: task.clone() });
+        app.chat.as_mut().unwrap().run_outcome(
+            chat,
+            ticket,
+            Ok(Answer::Review(Box::new(change(&task, '3', TWO_FILES)))),
+        );
+        let stale = shown(&mut app);
+        assert!(
+            stale.iter().any(|key| key == "changes-note-stale"),
+            "{stale:?}"
+        );
+        assert!(stale.iter().any(|key| key == "changes-refresh"));
+        assert!(!stale.iter().any(|key| key == "changes-publish"));
+        capture(&mut app, "stale");
+        // A publish of the stale view is refused before anything is asked.
+        assert!(click(&mut app, "changes-publish").is_none());
+        if let Some((chat, ticket, request)) = next(&mut app, later) {
+            assert!(matches!(request, RunRequest::Review { .. }), "{request:?}");
+            app.chat.as_mut().unwrap().run_outcome(
+                chat,
+                ticket,
+                Ok(Answer::Review(Box::new(change(&task, '3', TWO_FILES)))),
+            );
+        }
+        assert!(click(&mut app, "changes-refresh").is_none());
+        assert!(click(&mut app, "changes-publish").is_none());
+        let (chat, ticket, request) = next(&mut app, later).expect("a publish");
+        let RunRequest::Publish {
+            task: published,
+            base,
+            head_commit,
+            head,
+        } = request
+        else {
+            panic!("publish");
+        };
+        assert_eq!(
+            (published.as_str(), head.as_str()),
+            (task.as_str(), "3".repeat(40).as_str())
+        );
+        capture(&mut app, "publishing");
+        app.chat.as_mut().unwrap().run_outcome(
+            chat,
+            ticket,
+            Ok(Answer::Published(Box::new(
+                coder_access::review::Publication {
+                    operation: "9".repeat(64),
+                    task: task.clone(),
+                    base,
+                    head_commit,
+                    head,
+                    landing: coder_access::review::Landing::DraftPullRequest,
+                    state: coder_access::review::PublishState::Published,
+                    branch: Some(format!("coder/review-{}-99999999", &task[..8])),
+                    commit: Some("4".repeat(40)),
+                    url: Some("https://github.com/example/scratch/pull/7".into()),
+                    note: "Pushed 4444444444 and opened a draft pull request.".into(),
+                },
+            ))),
+        );
+        let published = shown(&mut app);
+        assert!(
+            published.iter().any(|key| key == "changes-link"),
+            "{published:?}"
+        );
+        assert!(!published.iter().any(|key| key == "changes-publish"));
+        capture(&mut app, "published");
+        // A cut diff says so on the card.
+        let mut cut = change(&task, '5', TWO_FILES);
+        cut.diff
+            .truncate(TWO_FILES.find("diff --git a/test").unwrap());
+        cut.completeness = coder_access::review::Completeness::Truncated {
+            shown: cut.diff.len() as u64,
+            total: Some(TWO_FILES.len() as u64 + 400_000),
+        };
+        app.chat.as_mut().unwrap().bind_changes(cut);
+        assert!(click(&mut app, "changes-open").is_none());
+        let truncated = shown(&mut app);
+        assert!(
+            truncated
+                .iter()
+                .any(|key| key == "changes-pane-note-truncated"),
+            "{truncated:?}"
+        );
+        capture(&mut app, "truncated");
     }
 
     #[test]

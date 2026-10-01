@@ -524,6 +524,41 @@ struct Script {
     /// Queue edits, by action name.
     edits: Vec<String>,
     nudges: usize,
+    /// The task's head as the computer reads it now, if it reviews one.
+    head: Option<char>,
+    /// The heads publications named, in order.
+    published: Vec<String>,
+}
+
+fn scripted_review(head: char) -> coder_host::access::review::TaskReview {
+    let diff = "diff --git a/src/slug.rs b/src/slug.rs\n--- a/src/slug.rs\n+++ b/src/slug.rs\n@@ -1 +1,2 @@\n-fn slug() {}\n+fn slug() {}\n+fn more() {}\ndiff --git a/notes.md b/notes.md\n--- a/notes.md\n+++ b/notes.md\n@@ -1 +1 @@\n-old\n+new\n";
+    coder_host::access::review::TaskReview {
+        task: "f".repeat(64),
+        base: "1".repeat(40),
+        head_commit: "1".repeat(40),
+        head: head.to_string().repeat(40),
+        files: vec![
+            coder_host::access::review::FileCount {
+                path: "notes.md".into(),
+                status: coder_host::access::review::FileStatus::Modified,
+                added: Some(1),
+                removed: Some(1),
+            },
+            coder_host::access::review::FileCount {
+                path: "src/slug.rs".into(),
+                status: coder_host::access::review::FileStatus::Modified,
+                added: Some(2),
+                removed: Some(1),
+            },
+        ],
+        files_total: 2,
+        added: 3,
+        removed: 2,
+        uncounted: 0,
+        diff: diff.into(),
+        completeness: coder_host::access::review::Completeness::Complete,
+        publication: None,
+    }
 }
 
 /// The fixture's hosts with the first task's summary set by the test, and
@@ -581,6 +616,57 @@ impl ComputersService for Scripted {
             .to_owned();
         self.script.lock().unwrap().edits.push(name);
         self.inner.queue_task(host, task, edit)
+    }
+    fn review_task(
+        &mut self,
+        _host: &str,
+        task: &str,
+    ) -> Answer<coder_host::access::review::TaskReview> {
+        match self.script.lock().unwrap().head {
+            Some(head) if task == "f".repeat(64) => Ok(scripted_review(head)),
+            _ => Err(coder_host::access::Error::new(
+                coder_host::Code::Unsupported,
+                "no change",
+            )),
+        }
+    }
+    /// As the host's task owner: a head the worktree moved past is
+    /// refused; the current one publishes as a draft pull request.
+    fn publish_task(
+        &mut self,
+        _host: &str,
+        task: &str,
+        base: &str,
+        head_commit: &str,
+        head: &str,
+    ) -> Answer<coder_host::access::review::Publication> {
+        let mut script = self.script.lock().unwrap();
+        script.published.push(head.to_owned());
+        let current = script.head.map(|head| head.to_string().repeat(40));
+        let fresh = current.as_deref() == Some(head);
+        Ok(coder_host::access::review::Publication {
+            operation: "9".repeat(64),
+            task: task.into(),
+            base: base.into(),
+            head_commit: head_commit.into(),
+            head: head.into(),
+            landing: coder_host::access::review::Landing::DraftPullRequest,
+            state: if fresh {
+                coder_host::access::review::PublishState::Published
+            } else {
+                coder_host::access::review::PublishState::Refused
+            },
+            branch: fresh.then(|| "coder/review-ffffffff-99999999".into()),
+            commit: fresh.then(|| "4".repeat(40)),
+            url: fresh.then(|| "https://github.com/example/scratch/pull/7".into()),
+            note: if fresh {
+                "Pushed 4444444444 and opened a draft pull request.".into()
+            } else {
+                "Nothing was published: the change moved since it was reviewed. Refresh and \
+                 review it again."
+                    .into()
+            },
+        })
     }
     fn nudge_host(&mut self, host: &str) -> Answer<()> {
         self.script.lock().unwrap().nudges += 1;
@@ -2579,4 +2665,87 @@ fn attached_images_show_as_shared_image_nodes_and_are_not_dropped() {
     assert!(fixture.coder.image(&resource).is_none());
     fixture.say("Look at this");
     assert_eq!(hand.asked().len(), 1);
+}
+
+/// A finished chat on the phone shows the change at its exact revisions
+/// and offers Publish under `operate`. A publication of a head the
+/// computer moved past is refused, the card then reads the change again
+/// and says it is stale, and the refreshed head publishes once and links
+/// its pull request (#10067, #10068).
+#[test]
+fn a_phone_reviews_a_change_refreshes_a_stale_view_and_publishes_once() {
+    use nostr::activity_summary::{Attention, Phase};
+    let (mut fixture, script, _) = Fixture::scripted(Phase::Completed, Attention::Completed);
+    script.lock().unwrap().head = Some('c');
+    fixture.coder.flush(Some(&mut fixture.computers));
+    let card = fixture.render();
+    let shown = texts(&card);
+    assert!(shown.iter().any(|t| t == "2 files, +3, −2"), "{shown:?}");
+    assert!(
+        shown
+            .iter()
+            .any(|t| t == "Base 1111111111 · head cccccccccc"),
+        "{shown:?}"
+    );
+    assert!(node(&card, "coder-changes-publish").is_some());
+    // The diff shows line by line.
+    let open = fixture.tap("coder-changes-open");
+    assert!(
+        node(&open, "coder-changes-line-0").is_some(),
+        "{:?}",
+        keys(&open)
+    );
+    assert!(texts(&open).iter().any(|t| t == "+fn more() {}"));
+    // The worktree moves on the computer before the person publishes.
+    script.lock().unwrap().head = Some('d');
+    let refused = fixture.tap("coder-changes-publish");
+    assert_eq!(script.lock().unwrap().published, vec!["c".repeat(40)]);
+    assert!(
+        node(&refused, "coder-changes-note-publication").is_some(),
+        "{:?}",
+        keys(&refused)
+    );
+    // The refusal reads the change again: the view is stale, Publish is
+    // held back, and Refresh shows the new head.
+    fixture.coder.flush(Some(&mut fixture.computers));
+    let stale = fixture.render();
+    assert!(
+        node(&stale, "coder-changes-note-stale").is_some(),
+        "{:?}",
+        keys(&stale)
+    );
+    assert!(node(&stale, "coder-changes-publish").is_none());
+    let fresh = fixture.tap("coder-changes-refresh");
+    assert!(
+        texts(&fresh)
+            .iter()
+            .any(|t| t == "Base 1111111111 · head dddddddddd")
+    );
+    let published = fixture.tap("coder-changes-publish");
+    assert_eq!(
+        script.lock().unwrap().published,
+        vec!["c".repeat(40), "d".repeat(40)]
+    );
+    assert!(
+        node(&published, "coder-changes-link").is_some(),
+        "{:?}",
+        keys(&published)
+    );
+    assert!(
+        node(&published, "coder-changes-publish").is_none(),
+        "published once"
+    );
+    // Reading again keeps the link and offers nothing more to publish.
+    fixture.coder.flush(Some(&mut fixture.computers));
+    assert!(node(&fixture.render(), "coder-changes-publish").is_none());
+    assert_eq!(script.lock().unwrap().published.len(), 2);
+}
+
+/// A computer that reviews no change for a task shows no card.
+#[test]
+fn a_computer_that_reviews_nothing_shows_no_change_card() {
+    use nostr::activity_summary::{Attention, Phase};
+    let (mut fixture, _script, _) = Fixture::scripted(Phase::Completed, Attention::Completed);
+    fixture.coder.flush(Some(&mut fixture.computers));
+    assert!(node(&fixture.render(), "coder-changes").is_none());
 }

@@ -126,11 +126,11 @@ pub struct Panel {
     )>,
     /// Dropped files waiting for the one being read ([`MAX_PENDING_DROPS`]).
     pending_drops: std::collections::VecDeque<std::path::PathBuf>,
-    changes: Option<openagents_chat_app::changes::Document>,
-    changes_bound: bool,
+    /// A change bound by hand, as a fixture does; otherwise the selected
+    /// task's or run's reviewer shows.
+    changes_bound: Option<openagents_chat_app::changes::Reviewer>,
     changes_open: bool,
     changes_scroll: f32,
-    changes_revision: u64,
     changes_highlighter: Option<rust_native::syntax::Highlighter>,
     /// The Gym's trainer key, being read (`chat_gym`).
     #[cfg(not(windows))]
@@ -218,11 +218,9 @@ impl Panel {
             waker: None,
             image_input: None,
             pending_drops: std::collections::VecDeque::new(),
-            changes: None,
-            changes_bound: false,
+            changes_bound: None,
             changes_open: false,
             changes_scroll: 0.0,
-            changes_revision: 0,
             changes_highlighter: None,
             #[cfg(not(windows))]
             gym_loading: None,
@@ -1095,11 +1093,9 @@ impl Panel {
         self.transcript_size = (0.0, 0.0);
         self.rows_dirty = true;
         self.notice = None;
-        self.changes = None;
-        self.changes_bound = false;
+        self.changes_bound = None;
         self.changes_open = false;
         self.changes_scroll = 0.0;
-        self.changes_revision = 0;
     }
     pub fn select_numeric(&mut self, id: u64) -> Option<Request> {
         let id = self
@@ -1495,6 +1491,25 @@ impl Panel {
             }
             Action::Card { key } if key == "changes-close" => {
                 self.changes_open = false;
+                None
+            }
+            Action::Card { key } if key == "changes-refresh" => {
+                if let Some(reviewer) = self.reviewer_mut() {
+                    reviewer.refresh();
+                    self.changes_scroll = 0.0;
+                }
+                None
+            }
+            Action::Card { key } if key == "changes-publish" => {
+                if let Some(reviewer) = self.reviewer_mut() {
+                    reviewer.publish();
+                }
+                None
+            }
+            Action::Card { key } if key == "changes-link" => {
+                if let Some((_, url)) = self.reviewer().and_then(|r| r.card(true)?.link) {
+                    open_link(&url);
+                }
                 None
             }
             Action::Card { key } => {
@@ -2397,26 +2412,7 @@ impl Panel {
                     rust_native_desktop::transcript::Action::Earlier => return true,
                 };
                 // Only an explicit pointer release opens an HTTP(S) destination.
-                if destination.starts_with("https://") || destination.starts_with("http://") {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let _ = std::process::Command::new("/usr/bin/open")
-                            .arg(&destination)
-                            .spawn();
-                    }
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = std::process::Command::new("xdg-open")
-                            .arg(&destination)
-                            .spawn();
-                    }
-                    #[cfg(target_os = "windows")]
-                    {
-                        let _ = std::process::Command::new("rundll32.exe")
-                            .args(["url.dll,FileProtocolHandler", &destination])
-                            .spawn();
-                    }
-                }
+                open_link(&destination);
             }
             // A press on a button remembers what it did and to what.
             if matches!(event, SurfaceInput::Down { .. }) {
@@ -2465,8 +2461,8 @@ impl Panel {
             if let SurfaceInput::Wheel { dy, .. } = event {
                 let viewport = self.changes_viewport();
                 let limit = self
-                    .changes
-                    .as_ref()
+                    .reviewer()
+                    .and_then(openagents_chat_app::changes::Reviewer::document)
                     .map_or(0.0, |doc| doc.scroll_limit(viewport, CHANGES_LINE));
                 self.changes_scroll = (self.changes_scroll - dy).clamp(0.0, limit);
             }
@@ -2509,7 +2505,10 @@ impl Panel {
             CHANGES => Some(
                 (self.changes_scroll.to_bits() as u64)
                     ^ u64::from(u8::from(self.changes_open))
-                    ^ self.changes.as_ref().map_or(0, |doc| doc.len() as u64),
+                    ^ self.reviewer().map_or(0, |reviewer| {
+                        reviewer.revision()
+                            ^ reviewer.document().map_or(0, |doc| doc.len() as u64) << 32
+                    }),
             ),
             COMPOSER => self
                 .session
@@ -3640,70 +3639,50 @@ impl Panel {
         self.changes_open && self.show_changes()
     }
 
-    /// Bind a finished task's unified diff. The card stays hidden until the
-    /// task's summary says the work is finished.
-    pub fn bind_changes(&mut self, diff: &str) {
-        self.changes = Some(openagents_chat_app::changes::parse(diff));
-        self.changes_bound = true;
+    /// Bind a change by hand, as a fixture does. The card stays hidden
+    /// until the task's summary says the work is finished.
+    pub fn bind_changes(&mut self, review: coder_access::review::TaskReview) {
+        self.changes_bound = Some(openagents_chat_app::changes::Reviewer::showing(
+            review,
+            Instant::now(),
+        ));
         self.changes_open = false;
         self.changes_scroll = 0.0;
     }
 
+    /// The selected chat's change: one bound by hand, the host task's, or
+    /// the run's on this computer, once its turn finished.
+    fn reviewer(&self) -> Option<&openagents_chat_app::changes::Reviewer> {
+        let finished = self.task().is_some_and(task_chat::Session::finished)
+            || self.run().is_some_and(Run::finished);
+        if let Some(bound) = &self.changes_bound {
+            return finished.then_some(bound);
+        }
+        match self.task() {
+            Some(task) => task.reviewer(),
+            None => self.run().and_then(Run::reviewer),
+        }
+    }
+
+    fn reviewer_mut(&mut self) -> Option<&mut openagents_chat_app::changes::Reviewer> {
+        if self.changes_bound.is_some() {
+            return self.changes_bound.as_mut();
+        }
+        let id = self.session.selected.clone()?;
+        if self.tasks.contains_key(&id) {
+            return self.tasks.get_mut(&id)?.reviewer_mut();
+        }
+        self.runs.get_mut(&id)?.reviewer_mut()
+    }
+
     fn show_changes(&self) -> bool {
-        self.changes.as_ref().is_some_and(|doc| !doc.is_empty())
-            && (self.task().is_some_and(task_chat::Session::finished)
-                || self.run().is_some_and(Run::finished))
+        self.reviewer()
+            .is_some_and(openagents_chat_app::changes::Reviewer::has_change)
     }
 
     fn ensure_changes(&mut self) {
-        if self.changes_bound {
-            return;
-        }
-        enum Next {
-            Clear,
-            Unchanged,
-            Replace(u64, Option<String>),
-        }
-        let next = match self.task() {
-            // A run on this computer: the diff of its worktree, read once
-            // the turn finished.
-            None if let Some(run) = self.run() => {
-                if !run.finished() || run.unified_diff().is_none() {
-                    Next::Clear
-                } else if self.changes.is_some() && self.changes_revision == run.revision {
-                    Next::Unchanged
-                } else {
-                    Next::Replace(run.revision, run.unified_diff().map(str::to_owned))
-                }
-            }
-            None => Next::Clear,
-            Some(task) => {
-                if !task.finished() {
-                    Next::Clear
-                } else if self.changes.is_some() && self.changes_revision == task.revision {
-                    Next::Unchanged
-                } else {
-                    Next::Replace(task.revision, task.unified_diff().map(str::to_owned))
-                }
-            }
-        };
-        match next {
-            Next::Unchanged => {}
-            Next::Clear => {
-                self.changes = None;
-                self.changes_open = false;
-            }
-            Next::Replace(revision, text) => {
-                self.changes_revision = revision;
-                self.changes = text.as_deref().map(openagents_chat_app::changes::parse);
-                if self
-                    .changes
-                    .as_ref()
-                    .is_none_or(openagents_chat_app::changes::Document::is_empty)
-                {
-                    self.changes_open = false;
-                }
-            }
+        if !self.show_changes() {
+            self.changes_open = false;
         }
     }
 
@@ -3711,27 +3690,84 @@ impl Panel {
         (self.viewport.1 - 180.0).max(40.0)
     }
 
+    /// The card: what changed, at which revisions, how complete the diff
+    /// is, whether the view is stale, the publication, and the controls,
+    /// all from the shared reviewer.
+    fn changes_lines(&self, prefix: &str) -> Vec<Node<Intent>> {
+        let Some(card) = self.reviewer().and_then(|reviewer| reviewer.card(true)) else {
+            return Vec::new();
+        };
+        let mut lines = vec![
+            text(
+                &format!("{prefix}-title"),
+                "What changed",
+                TextRole::Heading,
+            ),
+            text(&format!("{prefix}-summary"), card.summary, TextRole::Status),
+        ];
+        if let Some(revisions) = card.revisions {
+            lines.push(text(
+                &format!("{prefix}-revisions"),
+                revisions,
+                TextRole::Status,
+            ));
+        }
+        for note in card.notes {
+            let mut line = text(
+                &format!("{prefix}-note-{}", note.key),
+                note.text,
+                TextRole::Status,
+            );
+            if note.tone == openagents_chat_app::changes::Tone::Warning {
+                line.style.foreground = Some(Color::rgb(229, 192, 123));
+            }
+            lines.push(line);
+        }
+        if let Some((label, url)) = card.link {
+            lines.push(text(&format!("{prefix}-link-url"), url, TextRole::Status));
+            lines.push(button(
+                &format!("{prefix}-link"),
+                &format!("Open {}", label.to_lowercase()),
+                Action::Card {
+                    key: "changes-link".into(),
+                },
+                true,
+            ));
+        }
+        let mut buttons = Vec::new();
+        for (action, label) in card.actions {
+            // The card and the pane show the same controls under their own
+            // node keys; each runs the one card action.
+            let name = match action {
+                openagents_chat_app::changes::CardAction::Open if prefix == "changes" => "open",
+                openagents_chat_app::changes::CardAction::Open => continue,
+                openagents_chat_app::changes::CardAction::Refresh => "refresh",
+                openagents_chat_app::changes::CardAction::Publish => "publish",
+            };
+            buttons.push(button(
+                &format!("{prefix}-{name}"),
+                label,
+                Action::Card {
+                    key: format!("changes-{name}"),
+                },
+                true,
+            ));
+        }
+        if !buttons.is_empty() {
+            lines.push(stack(
+                &format!("{prefix}-buttons"),
+                Axis::Horizontal,
+                buttons,
+            ));
+        }
+        lines
+    }
+
     fn changes_card(&self) -> Node<Intent> {
-        let summary = self
-            .changes
-            .as_ref()
-            .map(openagents_chat_app::changes::Document::summary)
-            .unwrap_or_default();
         let mut card = stack(
             "changes-card",
             Axis::Vertical,
-            vec![
-                text("changes-title", "What changed", TextRole::Heading),
-                text("changes-summary", summary, TextRole::Status),
-                button(
-                    "changes-open",
-                    "What changed",
-                    Action::Card {
-                        key: "changes-open".into(),
-                    },
-                    true,
-                ),
-            ],
+            self.changes_lines("changes"),
         );
         card.style.background = Some(openagents_chat_app::visual::SELECTED);
         card.style.padding_top = Some(Space::Sm);
@@ -3743,38 +3779,27 @@ impl Panel {
     }
 
     fn changes_pane(&self) -> Node<Intent> {
-        let summary = self
-            .changes
-            .as_ref()
-            .map(openagents_chat_app::changes::Document::summary)
-            .unwrap_or_default();
-        let mut pane = stack(
-            "changes-pane",
-            Axis::Vertical,
-            vec![
-                text("changes-pane-title", "What changed", TextRole::Heading),
-                text("changes-pane-summary", summary, TextRole::Status),
-                button(
-                    "changes-close",
-                    "Close",
-                    Action::Card {
-                        key: "changes-close".into(),
-                    },
-                    true,
-                ),
-                Node {
-                    key: "changes-lines".into(),
-                    style: Style {
-                        fill_height: Some(true),
-                        ..Style::default()
-                    },
-                    element: Element::Surface {
-                        label: "What changed".into(),
-                        resource: CHANGES.into(),
-                    },
-                },
-            ],
-        );
+        let mut children = self.changes_lines("changes-pane");
+        children.push(button(
+            "changes-close",
+            "Close",
+            Action::Card {
+                key: "changes-close".into(),
+            },
+            true,
+        ));
+        children.push(Node {
+            key: "changes-lines".into(),
+            style: Style {
+                fill_height: Some(true),
+                ..Style::default()
+            },
+            element: Element::Surface {
+                label: "What changed".into(),
+                resource: CHANGES.into(),
+            },
+        });
+        let mut pane = stack("changes-pane", Axis::Vertical, children);
         pane.style.background = Some(openagents_chat_app::visual::CANVAS);
         pane.style.fill_height = Some(true);
         pane.style.min_height = Some(200);
@@ -3783,9 +3808,12 @@ impl Panel {
 
     fn paint_changes(&mut self, frame: &mut Frame, rect: PxRect, scale: f32) {
         let viewport = rect.h / scale.max(0.01);
-        let (first, count) = self.changes.as_ref().map_or((0, 0), |doc| {
-            doc.window(self.changes_scroll, viewport, CHANGES_LINE)
-        });
+        let (first, count) = self
+            .reviewer()
+            .and_then(openagents_chat_app::changes::Reviewer::document)
+            .map_or((0, 0), |doc| {
+                doc.window(self.changes_scroll, viewport, CHANGES_LINE)
+            });
         if count == 0 {
             return;
         }
@@ -3795,13 +3823,16 @@ impl Panel {
             ));
         }
         let highlighter = self.changes_highlighter.take().expect("highlighter");
-        if let Some(doc) = self.changes.as_mut() {
+        if let Some(doc) = self
+            .reviewer_mut()
+            .and_then(openagents_chat_app::changes::Reviewer::document_mut)
+        {
             doc.ensure_spans(first, count, &highlighter);
         }
         self.changes_highlighter = Some(highlighter);
         let visible: Vec<_> = self
-            .changes
-            .as_ref()
+            .reviewer()
+            .and_then(openagents_chat_app::changes::Reviewer::document)
             .map(|doc| {
                 doc.lines()
                     .iter()
@@ -3866,6 +3897,32 @@ impl Panel {
         }
     }
 }
+/// Open an `http(s)` link in the person's browser. Anything else is
+/// ignored.
+fn open_link(destination: &str) {
+    if !destination.starts_with("https://") && !destination.starts_with("http://") {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("/usr/bin/open")
+            .arg(destination)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(destination)
+            .spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", destination])
+            .spawn();
+    }
+}
+
 fn chat_transcript() -> Transcript {
     let mut transcript = Transcript::default();
     transcript.set_font_family(rust_native::layout::display::FontFamily::Geist);
@@ -4372,6 +4429,43 @@ mod task_tests {
         diff
     }
 
+    /// A finished change of `diff` at exact revisions, as a computer reads
+    /// it.
+    fn review_of(diff: &str) -> coder_access::review::TaskReview {
+        let doc = openagents_chat_app::changes::parse(diff);
+        let added = doc
+            .lines()
+            .iter()
+            .filter(|line| line.kind == openagents_chat_app::changes::Kind::Add)
+            .count() as u64;
+        coder_access::review::TaskReview {
+            task: "b".repeat(64),
+            base: "1".repeat(40),
+            head_commit: "1".repeat(40),
+            head: "2".repeat(40),
+            files: vec![coder_access::review::FileCount {
+                path: "src/answer.rs".into(),
+                status: coder_access::review::FileStatus::Modified,
+                added: Some(added),
+                removed: Some(0),
+            }],
+            files_total: 1,
+            added,
+            removed: 0,
+            uncounted: 0,
+            diff: diff.into(),
+            completeness: coder_access::review::Completeness::Complete,
+            publication: None,
+        }
+    }
+
+    fn document(panel: &Panel) -> &openagents_chat_app::changes::Document {
+        panel
+            .reviewer()
+            .and_then(openagents_chat_app::changes::Reviewer::document)
+            .expect("diff")
+    }
+
     fn walk(node: &Node<Intent>, visit: &mut impl FnMut(&Node<Intent>)) {
         visit(node);
         if let Element::Stack { children, .. } = &node.element {
@@ -4381,10 +4475,97 @@ mod task_tests {
         }
     }
 
+    /// A finished host task's change is read with `task.review` and
+    /// published with `task.publish` naming the reviewed head; an older host
+    /// that knows no review shows the transcript's diff with no revisions
+    /// and no Publish (#10067, #10068).
+    #[test]
+    fn a_host_task_change_is_reviewed_and_published_through_the_host() {
+        let (mut panel, now) = panel();
+        finish(&mut panel);
+        let next = |panel: &mut Panel, at: Instant| {
+            for step in 0..20 {
+                if let Some(Request::TaskChat {
+                    chat,
+                    ticket,
+                    request: task_chat::Request::Operation { operation, .. },
+                }) = panel.tick(at + std::time::Duration::from_millis(step * 10))
+                    && matches!(
+                        operation,
+                        coder_access::protocol::Operation::ReviewTask { .. }
+                            | coder_access::protocol::Operation::PublishTask { .. }
+                    )
+                {
+                    return (chat, ticket, operation);
+                }
+            }
+            panic!("no review or publish asked");
+        };
+        let (chat, ticket, operation) = next(&mut panel, now);
+        assert_eq!(
+            operation,
+            coder_access::protocol::Operation::ReviewTask {
+                task: "b".repeat(64)
+            }
+        );
+        panel.task_outcome(
+            chat,
+            ticket,
+            Ok(task_chat::Answer::Operation(
+                coder_access::protocol::Outcome::Review {
+                    review: Box::new(review_of(&five_thousand_lines())),
+                },
+            )),
+        );
+        let mut keys = Vec::new();
+        walk(&panel.body(), &mut |node| keys.push(node.key.clone()));
+        assert!(
+            keys.iter().any(|key| key == "changes-revisions"),
+            "{keys:?}"
+        );
+        let view = mount(&mut panel, 9);
+        panel.action(
+            Action::Card {
+                key: "changes-publish".into(),
+            },
+            &view,
+            now,
+        );
+        let (_, _, operation) = next(&mut panel, now);
+        assert_eq!(
+            operation,
+            coder_access::protocol::Operation::PublishTask {
+                task: "b".repeat(64),
+                base: "1".repeat(40),
+                head_commit: "1".repeat(40),
+                head: "2".repeat(40),
+            }
+        );
+        // An older host: no revisions, no Publish.
+        let (mut older, now) = panel_finished();
+        let (chat, ticket, _) = next(&mut older, now);
+        older.task_outcome(chat, ticket, Ok(task_chat::Answer::Unsupported));
+        let reviewer = older.reviewer().expect("a reviewer");
+        assert!(reviewer.unsupported());
+        assert!(reviewer.card(true).is_none_or(|card| {
+            card.revisions.is_none()
+                && !card
+                    .actions
+                    .iter()
+                    .any(|(action, _)| *action == openagents_chat_app::changes::CardAction::Publish)
+        }));
+    }
+
+    fn panel_finished() -> (Panel, Instant) {
+        let (mut panel, now) = panel();
+        finish(&mut panel);
+        (panel, now)
+    }
+
     #[test]
     fn a_finished_task_diff_opens_in_a_read_only_pane_and_scrolls_by_line() {
         let (mut panel, now) = panel();
-        panel.bind_changes(&five_thousand_lines());
+        panel.bind_changes(review_of(&five_thousand_lines()));
         let hidden = panel.body();
         let mut keys = Vec::new();
         walk(&hidden, &mut |node| keys.push(node.key.clone()));
@@ -4431,7 +4612,7 @@ mod task_tests {
         assert!(keys.iter().any(|key| key == "changes-close"));
         assert!(!composer);
         assert!(nodes < 40, "{nodes}");
-        let doc = panel.changes.as_ref().expect("diff");
+        let doc = document(&panel);
         assert_eq!(doc.len(), 5_000);
         let (first, count) =
             doc.window(panel.changes_scroll, panel.changes_viewport(), CHANGES_LINE);
@@ -4448,18 +4629,11 @@ mod task_tests {
             },
             now,
         );
-        let (next, shown) = panel.changes.as_ref().unwrap().window(
-            panel.changes_scroll,
-            panel.changes_viewport(),
-            CHANGES_LINE,
-        );
+        let (next, shown) =
+            document(&panel).window(panel.changes_scroll, panel.changes_viewport(), CHANGES_LINE);
         assert!(next > first);
         assert!(shown < 80);
-        let limit = panel
-            .changes
-            .as_ref()
-            .unwrap()
-            .scroll_limit(panel.changes_viewport(), CHANGES_LINE);
+        let limit = document(&panel).scroll_limit(panel.changes_viewport(), CHANGES_LINE);
         panel.surface(
             CHANGES,
             SurfaceInput::Wheel {
@@ -4470,11 +4644,8 @@ mod task_tests {
             },
             now,
         );
-        let (last, shown) = panel.changes.as_ref().unwrap().window(
-            panel.changes_scroll,
-            panel.changes_viewport(),
-            CHANGES_LINE,
-        );
+        let (last, shown) =
+            document(&panel).window(panel.changes_scroll, panel.changes_viewport(), CHANGES_LINE);
         assert_eq!(last + shown, 5_000);
         let mut frame = Frame::new(320, 96, Color::rgb(6, 6, 6));
         assert!(panel.paint(
@@ -4494,10 +4665,7 @@ mod task_tests {
                 .any(|pixel| pixel[0] != 6 || pixel[1] != 6 || pixel[2] != 6),
             "the visible lines paint"
         );
-        let colored = panel
-            .changes
-            .as_ref()
-            .unwrap()
+        let colored = document(&panel)
             .lines()
             .iter()
             .any(|line| line.spans.as_ref().is_some_and(|spans| !spans.is_empty()));

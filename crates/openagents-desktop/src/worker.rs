@@ -580,14 +580,47 @@ impl CoderLane {
             Request::Continue { task, text } => {
                 self.local().answer(&task, &text).map(|_| Answer::Continued)
             }
-            Request::Diff { task } => {
-                let record = run::record(self.local().store(), &task)
+            // What the run changed, at exact revisions, up to the pane's
+            // bound, with the task's last publication.
+            Request::Review { task } => {
+                let store = self.local().store().to_path_buf();
+                let record = run::record(&store, &task)
                     .ok_or("This task was not started on this computer from a chat.")?;
-                Ok(Answer::Diff(run::unified_diff(
+                let mut review = coder::task::review::read(
+                    &task,
                     std::path::Path::new(&record.worktree),
                     &record.base,
                     openagents_chat_app::changes::MAX_BYTES,
-                )))
+                )?;
+                review.publication = coder::task::publish::last(&store, &task);
+                Ok(Answer::Review(Box::new(review)))
+            }
+            // The person at this computer publishes their own run's change:
+            // the same once-only publication a granted device asks the host
+            // for.
+            Request::Publish {
+                task,
+                base,
+                head_commit,
+                head,
+            } => {
+                let store = self.local().store().to_path_buf();
+                let reviewed = coder::task::publish::Reviewed {
+                    base,
+                    head_commit,
+                    head,
+                };
+                coder::task::publish::Publisher::new(&store, &coder::task::publish::GhForge)
+                    .publish(&task, &reviewed)
+                    .map(|publication| Answer::Published(Box::new(publication)))
+                    .map_err(|refusal| match refusal {
+                        coder::task::publish::Refusal::NoWorktree => {
+                            "This task has no worktree on this computer.".to_owned()
+                        }
+                        coder::task::publish::Refusal::Store(why) => {
+                            format!("Coder could not keep the publication's record: {why}")
+                        }
+                    })
             }
             Request::Choose => unreachable!("the folder chooser runs on the local lane"),
         }

@@ -180,6 +180,13 @@ pub enum Intent {
     RemoveImage {
         id: String,
     },
+    /// Show the open chat's change line by line.
+    OpenChanges,
+    CloseChanges,
+    /// Show the change as it is now, after the view went stale.
+    RefreshChanges,
+    /// Publish the reviewed change on the computer (`task.publish`).
+    PublishChanges,
 }
 
 /// The chat card menu's choices the phone carries out. Rename needs a text
@@ -345,6 +352,13 @@ struct Open {
     /// A reader for each delegate session the transcript's notes name, by
     /// session: its rows show under the note, read-only.
     delegates: std::collections::BTreeMap<String, Conversation>,
+    /// The finished task's change, its staleness, and its publication, as
+    /// the computer reads it (`task.review`).
+    review: crate::changes::Reviewer,
+    /// The completed summary sequence the review follows.
+    reviewed: Option<u64>,
+    /// The change shows line by line.
+    changes_open: bool,
 }
 
 /// A message this device sent, shown in its chat until the transcript
@@ -877,6 +891,62 @@ impl CoderTab {
             let _ = computers.nudge_host(&host);
         }
         self.keep_queue(computers, now);
+        self.keep_review(computers);
+    }
+
+    /// Read the open chat's change once its task completed, again now and
+    /// then while it shows, and publish it when asked, all through the
+    /// computer under this device's grant: `observe` to read, `operate` to
+    /// publish.
+    fn keep_review(&mut self, computers: &mut Computers) {
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        let completed = Self::summary(computers.snapshot(), &open.host, &open.task)
+            .filter(|summary| summary.phase == Phase::Completed)
+            .map(|summary| summary.sequence);
+        if completed.is_some() && completed != open.reviewed {
+            open.reviewed = completed;
+            open.review.reset(Some(&open.task));
+        }
+        let Some(need) = open
+            .review
+            .tick(std::time::Instant::now(), completed.is_some(), true)
+        else {
+            return;
+        };
+        let (host, task) = (open.host.clone(), open.task.clone());
+        match need {
+            crate::changes::Need::Read { .. } => {
+                let result = computers.review_task(&host, &task);
+                let Some(open) = self.open.as_mut().filter(|open| open.task == task) else {
+                    return;
+                };
+                open.review.read(
+                    result.map_err(|refusal| match refusal_code(&refusal) {
+                        // An older computer, or a task with no worktree of
+                        // its own there: no card.
+                        Some(coder_host::Code::Unsupported | coder_host::Code::Malformed) => {
+                            crate::changes::ReadFailure::Unsupported
+                        }
+                        _ => crate::changes::ReadFailure::Failed(refusal.reason()),
+                    }),
+                    std::time::Instant::now(),
+                );
+            }
+            crate::changes::Need::Publish {
+                base,
+                head_commit,
+                head,
+                ..
+            } => {
+                let result = computers.publish_task(&host, &task, &base, &head_commit, &head);
+                if let Some(open) = self.open.as_mut().filter(|open| open.task == task) {
+                    open.review
+                        .published(result.map_err(|refusal| refusal.reason()));
+                }
+            }
+        }
     }
 
     /// Read the open chat's queue when its summary moved or it is old, and
@@ -1405,6 +1475,25 @@ impl CoderTab {
                 };
                 self.command(CommandAction::Answer, answer, false, computers);
             }
+            Intent::OpenChanges | Intent::CloseChanges => {
+                if let Some(open) = self.open.as_mut() {
+                    open.changes_open = intent == Intent::OpenChanges;
+                }
+            }
+            Intent::RefreshChanges => {
+                if let Some(open) = self.open.as_mut() {
+                    open.review.refresh();
+                }
+            }
+            Intent::PublishChanges => {
+                if let Some(open) = self.open.as_mut() {
+                    open.review.publish();
+                }
+                // Publish at once rather than at the next flush.
+                if let Some(computers) = computers {
+                    self.keep_review(computers);
+                }
+            }
             Intent::EditQueue => {
                 let Some(computers) = computers else { return };
                 self.edit_queue(QueueEdit::Lease {}, computers);
@@ -1753,6 +1842,9 @@ impl CoderTab {
             settle_read: None,
             kept: (0, 0),
             delegates: std::collections::BTreeMap::new(),
+            review: crate::changes::Reviewer::new(),
+            reviewed: None,
+            changes_open: false,
         });
         self.attach(chats);
     }
@@ -3177,6 +3269,9 @@ impl CoderTab {
             Vec::new()
         };
         let allowed = computers.is_some_and(|c| c.can_operate(&open.host));
+        if !running {
+            children.extend(changes_view(open, allowed));
+        }
         children.push(self.composer_with(placeholder, allowed, false, &choices, editing, false));
         page(children)
     }
@@ -3251,6 +3346,108 @@ impl CoderTab {
         }
         children
     }
+}
+
+/// The most diff lines the phone shows at once; the rest stays on the
+/// computer, and the card says the change is longer.
+const CHANGE_LINES: usize = 160;
+
+/// The open chat's "What changed" card from the shared reviewer, and, when
+/// opened, its diff line by line. `allowed` is this device's `operate`
+/// right on the computer; without it no Publish shows.
+fn changes_view(open: &Open, allowed: bool) -> Vec<Node<Intent>> {
+    let Some(card) = open.review.card(allowed) else {
+        return Vec::new();
+    };
+    let mut lines = vec![
+        heading("coder-changes-title", "What changed"),
+        status("coder-changes-summary", &card.summary),
+    ];
+    if let Some(revisions) = &card.revisions {
+        lines.push(status("coder-changes-revisions", revisions));
+    }
+    for note in &card.notes {
+        let color = match note.tone {
+            crate::changes::Tone::Warning => Color::rgb(229, 192, 123),
+            crate::changes::Tone::Plain => GRAY,
+        };
+        lines.push(text(
+            &format!("coder-changes-note-{}", note.key),
+            &note.text,
+            TextRole::Status,
+            color,
+            false,
+        ));
+    }
+    if let Some((label, url)) = &card.link {
+        lines.push(node(
+            "coder-changes-link",
+            Element::Markdown {
+                blocks: rust_native::markdown::parse(&format!("[{label}]({url})")),
+            },
+        ));
+    }
+    let mut buttons = Vec::new();
+    for (action, label) in &card.actions {
+        let (key, intent) = match action {
+            crate::changes::CardAction::Open if open.changes_open => {
+                ("coder-changes-close", Intent::CloseChanges)
+            }
+            crate::changes::CardAction::Open => ("coder-changes-open", Intent::OpenChanges),
+            crate::changes::CardAction::Refresh => {
+                ("coder-changes-refresh", Intent::RefreshChanges)
+            }
+            crate::changes::CardAction::Publish => {
+                ("coder-changes-publish", Intent::PublishChanges)
+            }
+        };
+        let label = if *action == crate::changes::CardAction::Open && open.changes_open {
+            "Hide changes"
+        } else {
+            label
+        };
+        buttons.push(button(key, label, intent));
+    }
+    lines.push(row("coder-changes-buttons", buttons));
+    if open.changes_open
+        && let Some(document) = open.review.document()
+    {
+        for (index, line) in document.lines().iter().take(CHANGE_LINES).enumerate() {
+            let color = match line.kind {
+                crate::changes::Kind::Add => Color::rgb(163, 190, 140),
+                crate::changes::Kind::Remove => Color::rgb(191, 120, 120),
+                crate::changes::Kind::Hunk | crate::changes::Kind::Meta => GRAY,
+                crate::changes::Kind::File | crate::changes::Kind::Context => WHITE,
+            };
+            // A long line is cut for the phone's view bound.
+            let clipped: String = line.text.chars().take(240).collect();
+            let mut shown = text(
+                &format!("coder-changes-line-{index}"),
+                if clipped.is_empty() { " " } else { &clipped },
+                TextRole::Body,
+                color,
+                line.kind == crate::changes::Kind::File,
+            );
+            shown.style.monospace = Some(true);
+            lines.push(shown);
+        }
+        if document.len() > CHANGE_LINES {
+            lines.push(status(
+                "coder-changes-more",
+                &format!(
+                    "{} more lines. Open the chat on the computer to read the rest.",
+                    document.len() - CHANGE_LINES
+                ),
+            ));
+        }
+    }
+    vec![node(
+        "coder-changes",
+        Element::Stack {
+            axis: Axis::Vertical,
+            children: lines,
+        },
+    )]
 }
 
 /// Whether a refusal means the computer was not reached, so the command

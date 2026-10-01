@@ -569,13 +569,33 @@ pub enum Operation {
     /// keeps a second request from starting another task.
     #[serde(rename = "thread.run")]
     RunThread { thread: String },
+    /// Read what a Coder task changed: the exact base and head revisions,
+    /// the changed-file counts, and the diff as far as it fits
+    /// ([`crate::review::TaskReview`]). A read with no effect.
+    #[serde(rename = "task.review")]
+    ReviewTask { task: String },
+    /// Publish the reviewed change: commit exactly the reviewed tree and
+    /// push it as the repository's policy says (onto its branch, or to a
+    /// branch of its own with a draft pull request). `base`, `head_commit`,
+    /// and `head` are the revisions the device reviewed; the host refuses a
+    /// head the worktree has moved past. A retry is the same operation.
+    #[serde(rename = "task.publish")]
+    PublishTask {
+        task: String,
+        base: String,
+        head_commit: String,
+        head: String,
+    },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
     /// exact retry reads again. Its answer changes as the thread does.
     #[must_use]
     pub fn reads_only(&self) -> bool {
-        matches!(self, Self::ListThreads {} | Self::ReadThread { .. })
+        matches!(
+            self,
+            Self::ListThreads {} | Self::ReadThread { .. } | Self::ReviewTask { .. }
+        )
     }
     pub fn name(&self) -> &'static str {
         match self {
@@ -602,6 +622,8 @@ impl Operation {
             Self::SendThread { .. } => "thread.send",
             Self::StopThread { .. } => "thread.stop",
             Self::RunThread { .. } => "thread.run",
+            Self::ReviewTask { .. } => "task.review",
+            Self::PublishTask { .. } => "task.publish",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -615,9 +637,10 @@ impl Operation {
             | Self::CancelInvite { .. }
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
-            Self::InviteChats {} | Self::ListThreads {} | Self::ReadThread { .. } => {
-                Some(Right::Observe)
-            }
+            Self::InviteChats {}
+            | Self::ListThreads {}
+            | Self::ReadThread { .. }
+            | Self::ReviewTask { .. } => Some(Right::Observe),
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -629,7 +652,8 @@ impl Operation {
             | Self::SettleSpend { .. }
             | Self::SendThread { .. }
             | Self::StopThread { .. }
-            | Self::RunThread { .. } => Some(Right::Operate),
+            | Self::RunThread { .. }
+            | Self::PublishTask { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -695,6 +719,18 @@ impl Operation {
                 }
             }
             Self::RunThread { thread } => crate::thread::id(thread)?,
+            Self::ReviewTask { task } => identity(task).map_err(Error::from)?,
+            Self::PublishTask {
+                task,
+                base,
+                head_commit,
+                head,
+            } => {
+                identity(task).map_err(Error::from)?;
+                crate::review::revision(base)?;
+                crate::review::revision(head_commit)?;
+                crate::review::revision(head)?;
+            }
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
                 text(&task.title, 200)?;
@@ -871,6 +907,15 @@ pub enum Outcome {
     Thread {
         thread: Box<crate::thread::ThreadPage>,
     },
+    /// What a task changed (`task.review`).
+    Review {
+        review: Box<crate::review::TaskReview>,
+    },
+    /// A publication of a reviewed change (`task.publish`), including one
+    /// that was refused or whose push is uncertain.
+    Published {
+        publication: Box<crate::review::Publication>,
+    },
 }
 
 /// The longest `coder-pair:` invitation a `chats` outcome carries.
@@ -946,6 +991,17 @@ impl Outcome {
         {
             return fail(Code::Bounds, "thread answer exceeds its bound");
         }
+        if let Self::Review { review } = self {
+            review.validate()?;
+            if serde_json::to_vec(self).map_or(true, |bytes| {
+                bytes.len() > crate::review::MAX_REVIEW_BYTES + 1024
+            }) {
+                return fail(Code::Bounds, "review exceeds its bound");
+            }
+        }
+        if let Self::Published { publication } = self {
+            publication.validate()?;
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -976,6 +1032,21 @@ impl Outcome {
             | (Operation::ListThreads {}, Self::Threads { .. }) => true,
             (Operation::ReadThread { thread, .. }, Self::Thread { thread: page }) => {
                 page.thread == *thread
+            }
+            (Operation::ReviewTask { task }, Self::Review { review }) => review.task == *task,
+            (
+                Operation::PublishTask {
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                },
+                Self::Published { publication },
+            ) => {
+                publication.task == *task
+                    && publication.base == *base
+                    && publication.head_commit == *head_commit
+                    && publication.head == *head
             }
             (Operation::SettleSpend { receipt }, Self::Settled { receipt: recorded }) => {
                 recorded.request == receipt.request && recorded.grant == receipt.grant

@@ -424,6 +424,36 @@ impl Computers {
         Ok(queue)
     }
 
+    /// Read what `task` on `host` changed (`task.review`), which needs
+    /// `observe`.
+    pub fn review_task(
+        &mut self,
+        host: &str,
+        task: &str,
+    ) -> Result<coder_access::review::TaskReview, Refusal> {
+        self.allow(Action::Review { host })?;
+        self.service
+            .review_task(host, task)
+            .map_err(Refusal::Failed)
+    }
+
+    /// Publish the reviewed change of `task` on `host` once
+    /// (`task.publish`), which needs `operate`: a mutation, under the same
+    /// grant check as ordering work.
+    pub fn publish_task(
+        &mut self,
+        host: &str,
+        task: &str,
+        base: &str,
+        head_commit: &str,
+        head: &str,
+    ) -> Result<coder_access::review::Publication, Refusal> {
+        self.allow(Action::Operate { host })?;
+        self.service
+            .publish_task(host, task, base, head_commit, head)
+            .map_err(Refusal::Failed)
+    }
+
     /// Leave a nudge for `host`, which this device could not reach with a
     /// waiting command. It carries nothing and grants nothing.
     pub fn nudge_host(&mut self, host: &str) -> Result<(), Refusal> {

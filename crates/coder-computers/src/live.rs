@@ -2008,6 +2008,50 @@ impl ComputersService for Live {
             .map(|_| ())
     }
 
+    fn review_task(&mut self, host: &str, task: &str) -> Result<coder_access::review::TaskReview> {
+        let op = Operation::ReviewTask { task: task.into() };
+        match self.call(host, op)? {
+            Outcome::Review { review } if review.task == task => Ok(*review),
+            _ => Err(Error::new(
+                Code::Malformed,
+                "the host did not answer with the change",
+            )),
+        }
+    }
+
+    fn publish_task(
+        &mut self,
+        host: &str,
+        task: &str,
+        base: &str,
+        head_commit: &str,
+        head: &str,
+    ) -> Result<coder_access::review::Publication> {
+        let op = Operation::PublishTask {
+            task: task.into(),
+            base: base.into(),
+            head_commit: head_commit.into(),
+            head: head.into(),
+        };
+        match self.call(host, op.clone())? {
+            Outcome::Published { publication }
+                if Outcome::Published {
+                    publication: publication.clone(),
+                }
+                .answers(&op) =>
+            {
+                if let Some(live) = lock(&self.shared.state).hosts.get_mut(host) {
+                    live.nudged = true;
+                }
+                Ok(*publication)
+            }
+            _ => Err(Error::new(
+                Code::Malformed,
+                "the host did not answer with the publication",
+            )),
+        }
+    }
+
     fn queue_task(&mut self, host: &str, task: &str, edit: &QueueEdit) -> Result<TaskQueue> {
         let op = Operation::QueueTask {
             task: task.into(),

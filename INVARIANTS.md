@@ -44,6 +44,17 @@ update this file in the same change and name the test that checks it.
 
 See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 
+## Coder change review and publication
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A Coder task's change is shown at exact revisions: its base commit, its worktree's `HEAD`, and the tree of the worktree's content when read, written through a private index so the worktree, its index, and its refs never change. File and line counts are Git's for that base and tree; a binary file's counts are unknown, never zero. A diff cut at its bound, or one Git could not write, says so (`Completeness`), and the diff is read with bounded memory. | New on 2026-09-30 ([#10067](https://github.com/OpenAgentsInc/openagents/issues/10067)). | `a_review_names_exact_revisions_and_counts_on_a_scratch_repository`, `a_cut_diff_says_so_and_keeps_whole_counts` in `crates/coder`; `a_cut_or_unreadable_diff_never_reads_as_complete`, `the_card_names_exact_revisions_and_whole_counts` in `crates/openagents-chat-app` |
+| A read naming another head than the shown one marks the view stale; the stale view stays on screen, cannot publish, and is replaced only by **Refresh**. | New on 2026-09-30 ([#10067](https://github.com/OpenAgentsInc/openagents/issues/10067)). | `a_moved_worktree_makes_the_view_stale` in `crates/coder`; `a_moved_head_makes_the_view_stale_and_refuses_to_publish_it` in `crates/openagents-chat-app`; `a_reviewed_run_goes_stale_refreshes_and_publishes_once` in `crates/openagents-desktop`; `a_phone_reviews_a_change_refreshes_a_stale_view_and_publishes_once` in `crates/openagents-mobile` |
+| Reading a change (`task.review`) needs `observe` and is never retained; publishing it (`task.publish`) is a mutation that needs `operate`, checked by the device and again by the host before the task owner sees it. Reading or opening a diff grants nothing. | New on 2026-09-30 ([#10068](https://github.com/OpenAgentsInc/openagents/issues/10068)). | `publishing_a_reviewed_change_needs_operate` in `crates/coder-access`; `publishing_a_change_needs_operate_and_reading_it_needs_observe` in `crates/coder-computers` |
+| A publication commits exactly the reviewed tree on the reviewed `HEAD` and pushes it once: fast-forward onto the repository's branch only when `.openagents/coder-issues.json` lands on `main`, otherwise to a branch of its own with a draft pull request. It never rebases, force-pushes, or changes the worktree. Its identity is the task and the reviewed revisions; a head the worktree has moved past is refused with nothing pushed; progress is recorded before each effect; an uncertain push is reconciled by reading the remote before any second push, and a pull request is looked up by branch before one is opened. | New on 2026-09-30 ([#10068](https://github.com/OpenAgentsInc/openagents/issues/10068)). | `a_reviewed_change_publishes_once_as_a_draft_pull_request`, `a_policy_that_lands_on_main_pushes_onto_it_fast_forward_only`, `an_uncertain_push_reconciles_by_reading_the_remote_without_pushing_twice`, `an_uncertain_push_that_did_not_land_is_pushed_once_on_retry`, `a_stale_review_is_refused_and_nothing_is_pushed`, `a_forge_that_fails_leaves_the_branch_pushed_and_a_retry_opens_it_without_pushing` in `crates/coder` |
+
+See [Coder on this computer](docs/desktop/local-coder.md#what-changed).
+
 ## Relay notification delivery
 
 | Invariant | Status | Checked by |
