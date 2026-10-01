@@ -102,6 +102,7 @@ fn engine_database(variables: &[(String, String)]) -> Option<PathBuf> {
 pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
     let mut ended = Ended {
         engine: ENGINE,
+        agent: "OpenCode",
         ..Ended::default()
     };
     let model = match Model::parse(&route.model) {
@@ -212,6 +213,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         .await;
     recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
+    ended.refused = recorder.refused.take();
     ended.tool_calls = recorder.tool_calls;
     ended.cost_usd = recorder.cost_usd;
     let stderr = session.stderr_tail();

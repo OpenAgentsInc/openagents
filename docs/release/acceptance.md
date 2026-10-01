@@ -75,7 +75,9 @@ or the owner's host.
      the owner's refresh token, so the gate copies the login only while it
      has more than an hour left (a full run takes under half that). With
      less, run `grok` once to refresh it, then run the gate. The real file is
-     only read.
+     only read. At the default `toolchains` access, Coder runs Grok Build
+     inside its own boundary with another copy of that login in the turn's
+     scratch, removed when the turn ends (#10092).
 
    Only the Codex and Grok Build login files are copied, and nothing is
    printed. A missing login is a FAIL unless you pass
@@ -138,7 +140,7 @@ conversation run in the owner's order.
 | `delegate-now` | "do a test delegation now", in the same chat: Coder starts, runs, and finishes in the linked-worktree project; the prompt Coder received is that message; the reply carries no Gym card; and no decision-call row shows in the transcript. | #10073, #10078 |
 | `working-directory` | "What's the working directory right now?" names the project folder, never says to connect a computer, and starts no Coder. | #10077, #10079 |
 | `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |
-| `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091 (fails on #10092 until it is fixed) |
+| `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091, #10092 (Grok Build runs inside Coder's toolchains boundary) |
 | `ui-stop-coder` | While Coder runs, the transcript's **Stop Coder** is as wide as its words (under 160 points and a third of the transcript), as the phone draws it. Measured during the first run an earlier scenario followed; run alone, it starts one. | #10091, #10075 |
 | `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. | #10066, #10070 |
 | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |

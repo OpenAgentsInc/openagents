@@ -17,9 +17,17 @@
 //! - **Login**: Grok Build uses its stored `auth.json` or `XAI_API_KEY`.
 //!   The process gets no other variable named `*_API_KEY`, `*_TOKEN`, or
 //!   `*_SECRET`.
-//! - **Access**: full access passes `--always-approve`. Under the boundary
-//!   and under toolchains that flag is omitted, and the host answers every
-//!   permission request with the agent's reject option.
+//! - **Access**: full access passes `--always-approve`. Under toolchains
+//!   the flag is omitted and the whole Grok Build process runs inside the
+//!   host's own operating-system boundary, the one the loop's commands get
+//!   (`Host::engine_boundary`): it and every tool it runs write only the
+//!   workspace and a private scratch, read only the workspace, the system,
+//!   this computer's toolchains, and the `grok` program, with the network.
+//!   `HOME` and the Grok home are in that scratch, and the Grok home holds
+//!   a copy of the login. The host allows what Grok Build asks, since the
+//!   boundary holds it, but refuses a file-writing tool that names a path
+//!   outside the workspace. Under the boundary (no network) Grok Build
+//!   cannot reach xAI, so the turn is refused before it starts.
 //! - **Cancellation**: a cancelled task, or one at its wall deadline, sends
 //!   `session/cancel`, waits a grace, and stops the agent's process group.
 
@@ -30,7 +38,7 @@ use atif::{Source, Step};
 use coder::task::adapter::{Access, Host, Route as GrantRoute};
 use serde_json::{Value, json};
 
-use super::devin::{CANCEL_GRACE, Ended, Recorder, SILENCE, STOP_GRACE, Turn};
+use super::devin::{Answering, CANCEL_GRACE, Ended, Recorder, SILENCE, STOP_GRACE, Turn};
 
 /// The step extension that names the Grok Build session a turn used, which
 /// the next turn of the task reattaches.
@@ -69,10 +77,155 @@ async fn grok_environment(host: &Host) -> Vec<(String, String)> {
     variables
 }
 
+/// A Grok Build process held in the host's boundary: the boundary (held
+/// until the process is reaped), the wrapped program and arguments, the
+/// process's environment, and what the evidence records.
+struct Contained {
+    boundary: coder_boundary::Boundary,
+    program: PathBuf,
+    arguments: Vec<String>,
+    environment: Vec<(String, String)>,
+    record: Value,
+}
+
+/// Put Grok Build (`program arguments`) inside this run's boundary, with a
+/// private Grok home in the boundary's scratch that holds a copy of the
+/// login, or `XAI_API_KEY` when this process has it.
+fn contain(
+    host: &Host,
+    program: &std::path::Path,
+    arguments: &[String],
+) -> Result<Contained, String> {
+    if host.configuration().access == Access::Boundary {
+        return Err(
+            "Grok Build reaches xAI from its own process, and this run's access \
+            (boundary) allows no network; run it with this computer's toolchains or full access"
+                .to_owned(),
+        );
+    }
+    let program = program
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve {}: {error}", program.display()))?;
+    let boundary = host
+        .engine_boundary(std::slice::from_ref(&program))
+        .map_err(|error| error.to_string())?;
+    let scratch = boundary
+        .scratch()
+        .ok_or("the engine boundary has no scratch")?
+        .to_path_buf();
+    let home = scratch.join(".grok");
+    std::fs::create_dir(&home).map_err(|error| format!("cannot make the Grok home: {error}"))?;
+    let variable = login_variable;
+    let key = variable(acp_client::grok::API_KEY_VAR)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.into_string().ok());
+    let login = if key.is_some() {
+        "XAI_API_KEY"
+    } else {
+        let source = acp_client::grok::auth_path(&variable)
+            .filter(|path| {
+                path.metadata()
+                    .is_ok_and(|meta| meta.is_file() && meta.len() > 0)
+            })
+            .ok_or("Grok Build is not signed in on this computer (run grok and log in)")?;
+        let bytes = std::fs::read(&source)
+            .map_err(|error| format!("cannot read the Grok Build login: {error}"))?;
+        let now = i64::try_from(coder::task::autostart::unix_now()).unwrap_or(i64::MAX);
+        let needed = i64::try_from(host.wall_seconds())
+            .unwrap_or(i64::MAX)
+            .saturating_add(acp_client::grok::LOGIN_MARGIN_SECONDS);
+        if let Some(left) = acp_client::grok::login_seconds_left(&bytes, now)
+            && left < needed
+        {
+            return Err(format!(
+                "Grok Build's sign-in expires in {} minutes, sooner than this turn may run, and a \
+                 sandboxed turn uses a copy it must not refresh; run grok once to refresh the \
+                 sign-in, then try again",
+                left.max(0) / 60
+            ));
+        }
+        write_private(&home.join("auth.json"), &bytes)
+            .map_err(|error| format!("cannot copy the Grok Build login: {error}"))?;
+        "copy"
+    };
+    let mut environment: Vec<(String, String)> = host
+        .bounded_environment(&boundary)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
+        .collect();
+    environment.push((
+        acp_client::grok::HOME_VAR.to_owned(),
+        home.to_string_lossy().into_owned(),
+    ));
+    if let Some(key) = key {
+        environment.push((acp_client::grok::API_KEY_VAR.to_owned(), key));
+    }
+    let wrapped = boundary
+        .command(&program, arguments)
+        .map_err(|error| error.to_string())?;
+    let wrapped_program = PathBuf::from(wrapped.get_program());
+    let wrapped_arguments = wrapped
+        .get_args()
+        .map(|argument| {
+            argument
+                .to_str()
+                .map(str::to_owned)
+                .ok_or("a boundary argument is not UTF-8")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let record = json!({"backend": boundary.backend(), "checkout": boundary.checkout(),
+        "writable": boundary.writable(), "reads": boundary.readable().len(),
+        "offline": boundary.offline(), "grok_home": home, "login": login, "program": program});
+    Ok(Contained {
+        boundary,
+        program: wrapped_program,
+        arguments: wrapped_arguments,
+        environment,
+        record,
+    })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The variables a test's login lookup reads, in place of this
+    /// process's: tests never read the real home.
+    static LOGIN_VARIABLES: std::cell::RefCell<Vec<(String, std::ffi::OsString)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A variable the login lookup reads: `HOME`, `GROK_HOME`, `XAI_API_KEY`.
+fn login_variable(name: &str) -> Option<std::ffi::OsString> {
+    #[cfg(test)]
+    return LOGIN_VARIABLES.with(|variables| {
+        variables
+            .borrow()
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.clone())
+    });
+    #[cfg(not(test))]
+    std::env::var_os(name)
+}
+
+/// Write `bytes` to a new file only this user can read.
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)?.write_all(bytes)
+}
+
 /// Run one turn on `route` with the Grok Build binary `program`.
 pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
     let mut ended = Ended {
         engine: ENGINE,
+        agent: "Grok Build",
         ..Ended::default()
     };
     if let Err(why) = acp_client::grok::parse_model(&route.model) {
@@ -82,18 +235,43 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     let access = host.configuration().access;
     let approve = access == Access::Full;
     let arguments = acp_client::grok::arguments(&route.model, approve);
-    let resume = host.earlier_note(SESSION_NOTE).and_then(|note| {
+    let earlier = host.earlier_note(SESSION_NOTE).and_then(|note| {
         note.get("session")
             .and_then(Value::as_str)
             .map(str::to_owned)
     });
-    let opening = Opening {
-        spec: acp_client::process::Spec {
+    // Outside full access the whole process runs in the host's boundary,
+    // with a Grok home of its own that lasts one turn, so an earlier turn's
+    // session is not there to reattach: the new session is told the
+    // earlier turns instead.
+    let contained = if approve {
+        None
+    } else {
+        match contain(host, &program, &arguments) {
+            Ok(contained) => Some(contained),
+            Err(why) => {
+                ended.error = Some(why);
+                return Turn::Ended(ended);
+            }
+        }
+    };
+    let resume = if contained.is_none() { earlier } else { None };
+    let spec = match &contained {
+        Some(contained) => acp_client::process::Spec {
+            program: contained.program.clone(),
+            arguments: contained.arguments.clone(),
+            cwd: host.workspace().to_path_buf(),
+            environment: contained.environment.clone(),
+        },
+        None => acp_client::process::Spec {
             program: program.clone(),
             arguments: arguments.clone(),
             cwd: host.workspace().to_path_buf(),
             environment: grok_environment(host).await,
         },
+    };
+    let opening = Opening {
+        spec,
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history::engine::MARK)),
         mode: None,
@@ -101,7 +279,8 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     let sequence = match host.effect(
         "grok_session",
         json!({"program": program, "arguments": arguments, "cwd": host.workspace(),
-            "approve": approve, "resume": resume, "model": route.model}),
+            "approve": approve, "resume": resume, "model": route.model,
+            "boundary": contained.as_ref().map(|contained| &contained.record)}),
     ) {
         Ok(sequence) => sequence,
         Err(error) => {
@@ -169,12 +348,26 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         }
     };
     let mut recorder = Recorder::new(host, "Grok Build", "grok", route.model.clone(), access);
+    if let Some(contained) = &contained {
+        let roots = contained
+            .boundary
+            .checkout()
+            .into_iter()
+            .chain(contained.boundary.writable().iter().map(PathBuf::as_path))
+            .map(std::path::Path::to_path_buf)
+            .collect();
+        recorder = recorder.answering(Answering::Contained {
+            base: host.workspace().to_path_buf(),
+            roots,
+        });
+    }
     let silence = SILENCE.min(std::time::Duration::from_secs(host.wall_seconds().max(1)));
     let result = session
         .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
         .await;
     recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
+    ended.refused = recorder.refused.take();
     ended.tool_calls = recorder.tool_calls;
     ended.cost_usd = recorder.cost_usd;
     ended.input_tokens = recorder.input_tokens;
@@ -205,6 +398,8 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     if let Err(error) = host.result(prompted, "grok_prompt", observation) {
         ended.error = Some(error.to_string());
     }
+    // The boundary's profile and scratch outlive the process group.
+    drop(contained);
     Turn::Ended(ended)
 }
 
@@ -363,37 +558,193 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_boundary_omits_always_approve_and_refuses_what_it_asks() {
+    async fn the_boundary_refuses_a_grok_turn_before_it_starts() {
         let (_root, store, grant) = fixture_with(acp_client::grok::DEFAULT_MODEL, |c| {
             grok_route(c, Access::Boundary, acp_client::grok::DEFAULT_MODEL)
         });
         let agent_dir = tempfile::tempdir().unwrap();
-        let mut blocks = replay::blocks(replay::GROK_TURN);
-        let ask = json!({"jsonrpc":"2.0","id":"ask-1","method":"session/request_permission",
-            "params":{"sessionId":SESSION,"toolCall":{"toolCallId":"tool-ask","kind":"execute","title":"bash"},
-            "options":[{"optionId":"allow","kind":"allow_once","name":"Allow"},
-                {"optionId":"reject","kind":"reject_once","name":"Reject"}]}});
-        blocks[2].insert(0, ask);
-        let agent = agent(agent_dir.path(), &blocks);
+        let agent = agent(agent_dir.path(), &replay::blocks(replay::GROK_TURN));
         let task = run_turn(&store, &grant, acp_client::grok::DEFAULT_MODEL, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(result.ending, "engine_incomplete");
+        assert!(replay::arguments(agent_dir.path()).is_empty());
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert!(trace.contains("allows no network"), "{trace}");
+        assert!(trace.contains("\"stopped\":\"Grok Build could not finish the turn"));
+    }
+
+    /// A Grok Build login in a temporary Grok home, for the turn's lookup,
+    /// valid for a day after now.
+    fn signed_in(dir: &std::path::Path) -> String {
+        let expires = std::time::SystemTime::now() + std::time::Duration::from_secs(86_400);
+        let at = expires
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let (days, seconds) = (at / 86_400, at % 86_400);
+        // Civil date from days (Howard Hinnant's algorithm).
+        let z = days as i64 + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let day = doy - (153 * mp + 2) / 5 + 1;
+        let month = if mp < 10 { mp + 3 } else { mp - 9 };
+        let year = yoe + era * 400 + i64::from(month <= 2);
+        let login = format!(
+            r#"{{"https://auth.x.ai":{{"key":"fixture-login","expires_at":"{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z"}}}}"#,
+            seconds / 3600,
+            seconds % 3600 / 60,
+            seconds % 60
+        );
+        std::fs::write(dir.join("auth.json"), &login).unwrap();
+        LOGIN_VARIABLES.with(|variables| {
+            *variables.borrow_mut() = vec![(
+                acp_client::grok::HOME_VAR.to_owned(),
+                dir.as_os_str().to_owned(),
+            )];
+        });
+        login
+    }
+
+    fn ask(id: &str, kind: &str, title: &str, path: Option<&str>) -> Value {
+        let mut tool = json!({"toolCallId": format!("tool-{id}"), "kind": kind, "title": title});
+        if let Some(path) = path {
+            tool["locations"] = json!([{"path": path}]);
+            tool["rawInput"] = json!({"path": path, "content": "x"});
+        }
+        json!({"jsonrpc":"2.0","id":id,"method":"session/request_permission",
+            "params":{"sessionId":SESSION,"toolCall":tool,
+            "options":[{"optionId":"always","kind":"allow_always","name":"Always"},
+                {"optionId":"allow","kind":"allow_once","name":"Allow"},
+                {"optionId":"reject","kind":"reject_once","name":"Reject"}]}})
+    }
+
+    /// At this computer's toolchains (a person's default local access,
+    /// #10092), the whole Grok Build process runs inside the host's own
+    /// boundary: it cannot write outside the workspace, its `HOME` and Grok
+    /// home are the boundary's scratch with a copy of the login, and the
+    /// host allows the commands it asks for but refuses a file write that
+    /// names a path outside the workspace.
+    #[tokio::test]
+    async fn toolchains_runs_grok_inside_the_boundary_and_allows_what_it_holds() {
+        let (root, store, grant) = fixture_with(acp_client::grok::DEFAULT_MODEL, |c| {
+            grok_route(c, Access::Toolchains, acp_client::grok::DEFAULT_MODEL)
+        });
+        let login_dir = tempfile::tempdir().unwrap();
+        let login = signed_in(login_dir.path());
+        let elsewhere = tempfile::tempdir_in("/var/tmp").unwrap();
+        let outside = elsewhere.path().join("outside.txt");
+        // The stand-in keeps its records in the workspace, the one place
+        // it may write.
+        let agent_dir = root.path().join("checkout/.agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let mut blocks = replay::blocks(replay::GROK_TURN);
+        blocks[2].insert(0, ask("ask-run", "execute", "Run ls && git status", None));
+        blocks[2].insert(
+            1,
+            ask(
+                "ask-out",
+                "edit",
+                "Write outside",
+                Some(outside.to_str().unwrap()),
+            ),
+        );
+        blocks[2].insert(
+            2,
+            ask("ask-in", "edit", "Write notes", Some("notes/plan.md")),
+        );
+        let agent = agent(&agent_dir, &blocks);
+        let body = std::fs::read_to_string(&agent).unwrap().replacen(
+            "#!/bin/sh\n",
+            &format!(
+                "#!/bin/sh\ncp \"$GROK_HOME/auth.json\" '{dir}/login'\n\
+                 if printf x > '{out}' 2>/dev/null; then echo written > '{dir}/outside'; else echo denied > '{dir}/outside'; fi\n",
+                dir = agent_dir.display(),
+                out = outside.display()
+            ),
+            1,
+        );
+        std::fs::write(&agent, body).unwrap();
+        let task = run_turn(&store, &grant, acp_client::grok::DEFAULT_MODEL, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert_eq!(result.ending, "model_finished", "{trace}");
+        // The OS boundary held the agent process itself.
+        assert!(!outside.exists());
         assert_eq!(
-            task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
-            "model_finished"
+            std::fs::read_to_string(agent_dir.join("outside")).unwrap(),
+            "denied\n"
         );
         assert_eq!(
-            replay::arguments(agent_dir.path()),
+            replay::arguments(&agent_dir),
             vec!["agent", "--no-leader", "stdio"]
         );
-        let sent = replay::received(agent_dir.path());
-        let answer = sent
-            .iter()
-            .find(|line| line["id"] == "ask-1")
-            .expect("the permission answer");
-        assert_eq!(answer["result"]["outcome"]["optionId"], "reject");
+        // A copy of the login, in a Grok home inside the scratch.
+        assert_eq!(
+            std::fs::read_to_string(agent_dir.join("login")).unwrap(),
+            login
+        );
+        let environment = std::fs::read_to_string(agent_dir.join("environment")).unwrap();
+        let value = |name: &str| {
+            environment
+                .lines()
+                .find_map(|line| line.strip_prefix(&format!("{name}=")))
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let home = value("HOME");
+        assert!(!home.is_empty());
+        assert_eq!(value("GROK_HOME"), format!("{home}/.grok"));
+        assert_ne!(home, std::env::var("HOME").unwrap_or_default());
+        assert!(
+            !std::path::Path::new(&home).exists(),
+            "the scratch is removed"
+        );
+        let sent = replay::received(&agent_dir);
+        let answer = |id: &str| {
+            sent.iter()
+                .find(|line| line["id"] == id)
+                .unwrap_or_else(|| panic!("no answer to {id}"))["result"]["outcome"]["optionId"]
+                .clone()
+        };
+        assert_eq!(answer("ask-run"), "allow");
+        assert_eq!(answer("ask-out"), "reject");
+        assert_eq!(answer("ask-in"), "allow");
+        assert!(trace.contains("outside the workspace"), "{trace}");
+        assert!(trace.contains("\"login\":\"copy\""), "{trace}");
+        assert!(leaked_credential_names(&agent_dir).is_empty());
+    }
+
+    /// A Grok Build turn the agent ended itself after the host refused a
+    /// tool says so, never "cancelled or reached its time limit".
+    #[tokio::test]
+    async fn a_turn_grok_ended_after_a_refusal_says_so() {
+        let (root, store, grant) = fixture_with(acp_client::grok::DEFAULT_MODEL, |c| {
+            grok_route(c, Access::Toolchains, acp_client::grok::DEFAULT_MODEL)
+        });
+        let login_dir = tempfile::tempdir().unwrap();
+        signed_in(login_dir.path());
+        let agent_dir = root.path().join("checkout/.agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let mut blocks = replay::blocks(replay::GROK_TURN);
+        blocks[2] = vec![
+            ask("ask-out", "edit", "Write /etc/hosts", Some("/etc/hosts")),
+            json!({"jsonrpc":"2.0","id":3,"result":{"stopReason":"cancelled"}}),
+        ];
+        let agent = agent(&agent_dir, &blocks);
+        let task = run_turn(&store, &grant, acp_client::grok::DEFAULT_MODEL, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(result.ending, "engine_stopped_after_refusal");
+        assert!(!result.stop_requested);
         let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
-        assert!(trace.contains("grok_permission"));
-        let leaked = leaked_credential_names(agent_dir.path());
-        assert!(leaked.is_empty(), "{leaked:?}");
+        assert!(
+            trace.contains(
+                "Grok Build stopped after the host refused a tool it asked to run (Write /etc/hosts: it would write /etc/hosts, outside the workspace)."
+            ),
+            "{trace}"
+        );
     }
 
     #[tokio::test]
@@ -485,6 +836,54 @@ mod tests {
         let written = std::fs::read_to_string(root.path().join("checkout/result.txt")).unwrap();
         assert!(written.contains("output"), "{written}");
         assert!(trace.contains("\"kind\":\"grok_prompt\""));
+    }
+
+    /// The live boundary check (#10092): the installed Grok Build CLI, at
+    /// this computer's toolchains, runs a shell command that writes outside
+    /// the workspace; the host allows the command, the operating-system
+    /// boundary refuses the write, and the turn still finishes. The login
+    /// is only read and copied into the turn's scratch. Run with
+    /// `cargo test -p microcoder --lib live_grok -- --ignored`.
+    #[tokio::test]
+    #[ignore = "runs the installed Grok Build CLI with the owner's login and spends a model request"]
+    async fn live_grok_at_toolchains_writes_only_the_workspace() {
+        let agent = binary().expect("grok binary");
+        LOGIN_VARIABLES.with(|variables| {
+            *variables.borrow_mut() = [
+                "HOME",
+                acp_client::grok::HOME_VAR,
+                acp_client::grok::API_KEY_VAR,
+            ]
+            .into_iter()
+            .filter_map(|name| Some((name.to_owned(), std::env::var_os(name)?)))
+            .collect();
+        });
+        let elsewhere = tempfile::tempdir_in("/var/tmp").unwrap();
+        let outside = elsewhere.path().join("grok-outside.txt");
+        let prompt = format!(
+            "Run exactly this shell command once: printf x > {} ; then write result.txt \
+             in the repository containing the word output, and say whether the first \
+             command succeeded.",
+            outside.display()
+        );
+        let (root, store, grant) = super::super::tests::fixture_images(
+            acp_client::grok::DEFAULT_MODEL,
+            |c| grok_route(c, Access::Toolchains, acp_client::grok::DEFAULT_MODEL),
+            &[],
+            &prompt,
+        );
+        let mut grant: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+        grant.wall_seconds = 300;
+        let grant = serde_json::to_vec(&grant).unwrap();
+        let task = run_turn(&store, &grant, acp_client::grok::DEFAULT_MODEL, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert_eq!(result.ending, "model_finished", "{result:?}\n{trace}");
+        assert!(!outside.exists(), "the write outside the workspace landed");
+        let written = std::fs::read_to_string(root.path().join("checkout/result.txt")).unwrap();
+        assert!(written.contains("output"), "{written}");
+        assert!(trace.contains("\"login\":"), "{trace}");
+        assert!(trace.contains("grok_permission"), "{trace}");
     }
 
     #[test]

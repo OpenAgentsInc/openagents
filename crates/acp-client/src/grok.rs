@@ -2,9 +2,12 @@
 //!
 //! Grok Build's agent mode is an ACP server on standard input and output.
 //! Full access starts it with `--always-approve`. A bounded turn omits that
-//! flag, and the host rejects each permission request. `--no-leader` keeps
-//! the process off the operator's interactive leader. The design follows
-//! Grok Build's published agent-mode contract and is reimplemented here.
+//! flag and runs the whole process inside the host's own operating-system
+//! boundary, with a private Grok home that holds a copy of the login
+//! ([`login_seconds_left`] says whether a copy is safe to use); the host
+//! then answers its permission requests. `--no-leader` keeps the process
+//! off the operator's interactive leader. The design follows Grok Build's
+//! published agent-mode contract and is reimplemented here.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -86,7 +89,7 @@ pub fn parse_model(model: &str) -> Result<(), String> {
 /// The arguments that start Grok Build as an ACP agent with `model`.
 ///
 /// `approve` adds `--always-approve`, which is full access. A bounded turn
-/// leaves it off so the agent asks, and the host rejects each ask.
+/// leaves it off so the agent asks, and the host answers each ask.
 #[must_use]
 pub fn arguments(model: &str, approve: bool) -> Vec<String> {
     let mut arguments = vec!["agent".to_string()];
@@ -107,6 +110,78 @@ pub fn arguments(model: &str, approve: bool) -> Vec<String> {
 #[must_use]
 pub fn admits(route_model: &str, reported: Option<&str>) -> bool {
     route_model == DEFAULT_MODEL || reported == Some(route_model)
+}
+
+/// The least a login copied into a bounded turn's private Grok home must
+/// have left beyond the turn's time limit. Grok Build refreshes its sign-in
+/// only near its expiry, and a refresh inside the copy could retire the
+/// refresh token the person's own login still holds.
+pub const LOGIN_MARGIN_SECONDS: i64 = 600;
+
+/// The seconds until the earliest `expires_at` in a Grok Build `auth.json`
+/// (`bytes`), at the Unix time `now`; `None` when the file names no
+/// expiry this can read. Only the `expires_at` values are read.
+#[must_use]
+pub fn login_seconds_left(bytes: &[u8], now: i64) -> Option<i64> {
+    let logins: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(bytes).ok()?;
+    logins
+        .values()
+        .filter_map(|login| login.get("expires_at")?.as_str())
+        .filter_map(unix_seconds)
+        .map(|at| at - now)
+        .min()
+}
+
+/// An RFC 3339 time, such as `2026-10-01T14:09:41.808793Z` or
+/// `2026-10-01T14:09:41+02:00`, as Unix seconds.
+fn unix_seconds(text: &str) -> Option<i64> {
+    let bytes = text.as_bytes();
+    if bytes.len() < 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[13] != b':' {
+        return None;
+    }
+    if !matches!(bytes[10], b'T' | b't' | b' ') || bytes[16] != b':' {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| -> Option<i64> {
+        let part = text.get(range)?;
+        part.bytes()
+            .all(|byte| byte.is_ascii_digit())
+            .then(|| part.parse().ok())?
+    };
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
+        return None;
+    }
+    let mut rest = &text[19..];
+    if let Some(fraction) = rest.strip_prefix('.') {
+        let digits = fraction.bytes().take_while(u8::is_ascii_digit).count();
+        rest = &fraction[digits..];
+    }
+    let offset = match rest {
+        "Z" | "z" => 0,
+        _ => {
+            let sign = match rest.as_bytes().first()? {
+                b'+' => 1,
+                b'-' => -1,
+                _ => return None,
+            };
+            if rest.len() != 6 || rest.as_bytes()[3] != b':' {
+                return None;
+            }
+            let hours: i64 = rest[1..3].parse().ok()?;
+            let minutes: i64 = rest[4..6].parse().ok()?;
+            sign * (hours * 3600 + minutes * 60)
+        }
+    };
+    // Days from the civil date (Howard Hinnant's algorithm).
+    let shifted = if month <= 2 { year - 1 } else { year };
+    let era = shifted.div_euclid(400);
+    let year_of_era = shifted - era * 400;
+    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    Some(days * 86_400 + hour * 3600 + minute * 60 + second - offset)
 }
 
 #[cfg(test)]
@@ -159,6 +234,28 @@ mod tests {
         };
         assert!(signed_in(&env));
         assert!(!empty.join(".grok").exists());
+    }
+
+    #[test]
+    fn the_login_expiry_is_read_and_nothing_else() {
+        // 2026-10-01T14:09:41Z is 1 790 863 781.
+        let at = 1_790_863_781;
+        let bytes = br#"{"https://auth.x.ai":{"key":"unread","refresh_token":"unread",
+            "expires_at":"2026-10-01T14:09:41.808793Z"},
+            "other":{"expires_at":"2026-10-01T16:09:41+02:00"}}"#;
+        assert_eq!(login_seconds_left(bytes, at - 100), Some(100));
+        assert_eq!(
+            login_seconds_left(br#"{"a":{"expires_at":"2026-10-01T15:09:41Z"}}"#, at),
+            Some(3600)
+        );
+        assert_eq!(login_seconds_left(br#"{"a":{"key":"k"}}"#, at), None);
+        assert_eq!(login_seconds_left(b"not json", at), None);
+        assert_eq!(
+            login_seconds_left(br#"{"a":{"expires_at":"tomorrow"}}"#, at),
+            None
+        );
+        assert_eq!(unix_seconds("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(unix_seconds("2000-03-01T00:00:00Z"), Some(951_868_800));
     }
 
     #[test]

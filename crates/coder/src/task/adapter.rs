@@ -484,6 +484,57 @@ fn command_path(
     boundary.search_path(&std::env::join_paths(entries).unwrap_or_default())
 }
 
+/// What a run's command boundary is built from at admission.
+#[derive(Clone, Debug)]
+struct CommandPolicy {
+    workspace: PathBuf,
+    write_workspace: bool,
+    program: PathBuf,
+    store: PathBuf,
+    git_directory: PathBuf,
+    access: Access,
+}
+
+impl CommandPolicy {
+    /// The boundary's policy: writes only to the workspace (when the grant
+    /// writes it) and a private scratch, the task store and the common Git
+    /// directory sealed, reads confined to the workspace, the system, the
+    /// granted shell, `reads`, and, under [`Access::Toolchains`], this
+    /// computer's toolchains and the Git directory; no network under
+    /// [`Access::Boundary`].
+    fn spec(
+        &self,
+        toolchains: Option<&coder_boundary::Toolchains>,
+        reads: &[PathBuf],
+    ) -> coder_boundary::Spec {
+        let mut spec = if self.write_workspace {
+            Boundary::writing(&self.workspace)
+        } else {
+            Boundary::readonly()
+        }
+        .readable(&self.workspace)
+        .readable(&self.program)
+        .sealed(&self.store)
+        .sealed(&self.git_directory)
+        .owned_scratch_under(std::env::temp_dir());
+        for read in toolchains.iter().flat_map(|toolchains| &toolchains.reads) {
+            spec = spec.readable(&read.path);
+        }
+        // Git in the worktree reads the common Git directory; it stays
+        // sealed against writes.
+        if toolchains.is_some() {
+            spec = spec.readable(&self.git_directory);
+        }
+        for read in reads {
+            spec = spec.readable(read);
+        }
+        if self.access != Access::Toolchains {
+            spec = spec.offline();
+        }
+        spec
+    }
+}
+
 /// Full bounded process observation; prompt summaries are a caller's projection.
 #[derive(Debug)]
 pub struct CommandObservation {
@@ -503,6 +554,9 @@ pub struct Host {
     /// The command boundary, for a run under it; a full-access run has
     /// none, since its commands run as the owner with no sandbox.
     boundary: Option<Boundary>,
+    /// What the command boundary was built from, so a whole coding
+    /// agent's own process gets the same policy ([`Host::engine_boundary`]).
+    policy: CommandPolicy,
     /// This computer's toolchains, for a run with [`Access::Toolchains`]:
     /// what its boundary reads, and its commands' `PATH` and variables.
     toolchains: Option<coder_boundary::Toolchains>,
@@ -651,11 +705,6 @@ impl Host {
         {
             return Err(Error::SourceSnapshot(refusal));
         }
-        let spec = if grant.write_workspace {
-            Boundary::writing(&workspace)
-        } else {
-            Boundary::readonly()
-        };
         // A full-access run's commands run with no sandbox. Unix builds the
         // boundary for it anyway, as it always has; Windows builds none, so
         // a computer there that cannot make an AppContainer still runs the
@@ -666,26 +715,17 @@ impl Host {
             coder_boundary::Toolchains::derive(&coder_boundary::toolchains::Host::this_computer())
                 .clear_of(&[owner.dir.clone(), git_directory.clone()])
         });
+        let policy = CommandPolicy {
+            workspace: workspace.clone(),
+            write_workspace: grant.write_workspace,
+            program: program.clone(),
+            store: owner.dir.clone(),
+            git_directory: git_directory.clone(),
+            access: configuration.access,
+        };
         let boundary =
             if configuration.access != Access::Full || cfg!(unix) {
-                let mut spec = spec
-                    .readable(&workspace)
-                    .readable(&program)
-                    .sealed(&owner.dir)
-                    .sealed(&git_directory)
-                    .owned_scratch_under(std::env::temp_dir());
-                for read in toolchains.iter().flat_map(|toolchains| &toolchains.reads) {
-                    spec = spec.readable(&read.path);
-                }
-                // Git in the worktree reads the common Git directory; it stays
-                // sealed against writes.
-                if toolchains.is_some() {
-                    spec = spec.readable(&git_directory);
-                }
-                if configuration.access != Access::Toolchains {
-                    spec = spec.offline();
-                }
-                Some(spec.build().map_err(|_| {
+                Some(policy.spec(toolchains.as_ref(), &[]).build().map_err(|_| {
                     Error::InvalidCommand("the repository boundary cannot be enforced")
                 })?)
             } else {
@@ -805,6 +845,7 @@ impl Host {
             admission,
             before,
             boundary,
+            policy,
             toolchains,
             login: if login_reading.is_some() {
                 tokio::sync::OnceCell::new()
@@ -1092,6 +1133,77 @@ impl Host {
         Ok(result.map(|(bytes, _)| bytes))
     }
 
+    /// The whole environment of a process inside `boundary` (this run's
+    /// command boundary, or one from [`Host::engine_boundary`]): the
+    /// system `PATH` (under [`Access::Toolchains`], this computer's tools
+    /// first, and its toolchain variables), and `HOME` and the temporary
+    /// directory in the boundary's private scratch. Nothing else of this
+    /// process's environment is passed.
+    ///
+    /// # Errors
+    /// The boundary owns no scratch.
+    pub fn bounded_environment(
+        &self,
+        boundary: &Boundary,
+    ) -> Result<Vec<(std::ffi::OsString, std::ffi::OsString)>, Error> {
+        let scratch = boundary.scratch().ok_or(Error::UnsafePath)?;
+        let mut variables: Vec<(std::ffi::OsString, std::ffi::OsString)> =
+            owner::base_environment()
+                .into_iter()
+                .map(|(name, value)| (name.into(), value))
+                .collect();
+        let path = match &self.toolchains {
+            Some(toolchains) => command_path(boundary, toolchains),
+            None => owner::SYSTEM_PATH.into(),
+        };
+        variables.push(("PATH".into(), path));
+        for name in ["HOME", "TMPDIR", "TMP", "TEMP"] {
+            variables.push((name.into(), scratch.into()));
+        }
+        if let Some(toolchains) = &self.toolchains {
+            variables.extend(
+                toolchains
+                    .environment
+                    .iter()
+                    .map(|(name, value)| (name.into(), value.clone().into())),
+            );
+            // `xcrun` keeps its lookup cache in the user's own temporary
+            // directory, not `TMPDIR`; the scratch holds it.
+            if cfg!(target_os = "macos") {
+                variables.push(("xcrun_db".into(), scratch.join("xcrun_db").into()));
+            }
+        }
+        if cfg!(windows) {
+            variables.push(("USERPROFILE".into(), scratch.into()));
+        }
+        Ok(variables)
+    }
+
+    /// A boundary for a whole coding agent's own process (Grok Build),
+    /// so the agent and every tool it runs are held to this run's access
+    /// as the loop's commands are: writes only to the workspace (when the
+    /// grant writes it) and a private scratch of its own, the task store
+    /// and the common Git directory sealed, reads confined to the
+    /// workspace, the system, this computer's toolchains under
+    /// [`Access::Toolchains`], and `reads` (the agent's own program), and
+    /// no network under [`Access::Boundary`]. The caller holds it until
+    /// the process is reaped.
+    ///
+    /// # Errors
+    /// The run has full access or a container (neither has this
+    /// boundary), or the boundary cannot be enforced here.
+    pub fn engine_boundary(&self, reads: &[PathBuf]) -> Result<Boundary, Error> {
+        if self.configuration().access == Access::Full || self.configuration().container.is_some() {
+            return Err(Error::InvalidCommand(
+                "an engine boundary is for a run under the boundary or this computer's toolchains",
+            ));
+        }
+        self.policy
+            .spec(self.toolchains.as_ref(), reads)
+            .build()
+            .map_err(|_| Error::InvalidCommand("the engine boundary cannot be enforced"))
+    }
+
     /// Commands retain bounded full streams separately from the loop's prompt cut.
     pub async fn command(
         &self,
@@ -1136,30 +1248,11 @@ impl Host {
                 let mut command = boundary
                     .command(&self.admission.grant.program, &arguments)
                     .map_err(|_| Error::UnsafePath)?;
-                let scratch = self.scratch()?;
                 command
                     .current_dir(&directory)
                     .env_clear()
-                    .envs(owner::base_environment())
-                    .env("PATH", owner::SYSTEM_PATH)
-                    .env("HOME", scratch)
-                    .env("TMPDIR", scratch)
-                    .env("TMP", scratch)
-                    .env("TEMP", scratch);
-                if let Some(toolchains) = &self.toolchains {
-                    command
-                        .env("PATH", command_path(boundary, toolchains))
-                        .envs(toolchains.environment.iter().map(|(k, v)| (k, v)));
-                    // `xcrun` keeps its lookup cache in the user's own
-                    // temporary directory, not `TMPDIR`; the scratch holds it.
-                    if cfg!(target_os = "macos") {
-                        command.env("xcrun_db", scratch.join("xcrun_db"));
-                    }
-                }
-                command.envs(script_variables);
-                if cfg!(windows) {
-                    command.env("USERPROFILE", scratch);
-                }
+                    .envs(self.bounded_environment(boundary)?)
+                    .envs(script_variables);
                 command
             }
         };

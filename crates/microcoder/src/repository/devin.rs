@@ -30,7 +30,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use acp_client::wire::Update;
@@ -69,6 +69,11 @@ pub(crate) enum Turn {
 pub(crate) struct Ended {
     /// The engine, such as `devin-acp` or `opencode-acp`.
     pub engine: &'static str,
+    /// The agent in the transcript's own words, such as `Grok Build`.
+    pub agent: &'static str,
+    /// The first tool the host refused this turn, and why, when it
+    /// refused one.
+    pub refused: Option<String>,
     pub session: Option<String>,
     pub resumed: bool,
     pub model: Option<String>,
@@ -85,12 +90,48 @@ pub(crate) struct Ended {
 
 impl Ended {
     /// The task's result ending and whether the turn completed.
+    ///
+    /// `cancelled_or_host_refusal` is the host's own stop: the task was
+    /// cancelled, reached its time limit, or the host refused the turn. An
+    /// agent that ended the turn itself after the host refused a tool it
+    /// asked for is `engine_stopped_after_refusal`; one that reported
+    /// `cancelled` with no stop from the host is `engine_cancelled`.
     pub fn ending(&self, cancelled: bool) -> (&'static str, bool) {
         match self.stop {
             _ if cancelled => ("cancelled_or_host_refusal", false),
             Some(StopReason::EndTurn) => ("model_finished", true),
-            Some(StopReason::Cancelled) => ("cancelled_or_host_refusal", false),
+            _ if self.refused.is_some() && self.error.is_none() => {
+                ("engine_stopped_after_refusal", false)
+            }
+            Some(StopReason::Cancelled) => ("engine_cancelled", false),
             _ => ("engine_incomplete", false),
+        }
+    }
+
+    /// What a person reads when the turn stopped without finishing, in
+    /// plain words, for an ending the agent caused; `None` otherwise.
+    pub fn stop_message(&self, cancelled: bool) -> Option<String> {
+        let agent = if self.agent.is_empty() {
+            "The coding agent"
+        } else {
+            self.agent
+        };
+        match self.ending(cancelled).0 {
+            "engine_stopped_after_refusal" => Some(format!(
+                "{agent} stopped after the host refused a tool it asked to run ({}).",
+                self.refused.as_deref().unwrap_or("no detail")
+            )),
+            "engine_cancelled" => Some(format!(
+                "{agent} ended the turn as cancelled on its own; nobody stopped the task and it did not reach its time limit."
+            )),
+            "engine_incomplete" => Some(match &self.error {
+                Some(error) => format!("{agent} could not finish the turn: {error}"),
+                None => format!(
+                    "{agent} stopped before finishing ({}).",
+                    self.stop.map_or("no stop reason", StopReason::as_str)
+                ),
+            }),
+            _ => None,
         }
     }
 
@@ -102,6 +143,7 @@ impl Ended {
             "model": self.model,
             "stop_reason": self.stop.map(StopReason::as_str),
             "error": self.error,
+            "refused": self.refused,
             "tool_calls": self.tool_calls,
             "usage": {
                 "input_tokens": self.input_tokens,
@@ -130,6 +172,84 @@ struct Pending {
     started: std::time::Instant,
 }
 
+/// How the host answers an agent's `session/request_permission`.
+#[derive(Clone, Debug)]
+pub(super) enum Answering {
+    /// Full access: every ask is allowed.
+    Allow,
+    /// The agent runs its own tools outside the host's boundary (Devin,
+    /// OpenCode under the boundary): every ask is refused.
+    Reject,
+    /// The agent's whole process runs inside the host's operating-system
+    /// boundary (Grok Build under the boundary or toolchains), which holds
+    /// whatever it runs: an ask is allowed, except a tool that writes
+    /// files and names one outside `roots` (the workspace and the
+    /// boundary's scratch), relative names read against `base`.
+    Contained { base: PathBuf, roots: Vec<PathBuf> },
+}
+
+/// `path` as an absolute, resolved name: relative to `base`, `.` and `..`
+/// taken lexically, and the longest part that exists resolved through its
+/// symbolic links, so `/tmp` and `/private/tmp` compare equal.
+pub(super) fn resolved(base: &Path, path: &str) -> PathBuf {
+    let mut lexical = PathBuf::new();
+    for component in base.join(path).components() {
+        match component {
+            std::path::Component::ParentDir => {
+                lexical.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => lexical.push(other),
+        }
+    }
+    let mut existing = lexical.as_path();
+    let mut rest = Vec::new();
+    loop {
+        if let Ok(real) = existing.canonicalize() {
+            let mut out = real;
+            for part in rest.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                existing = parent;
+            }
+            _ => return lexical,
+        }
+    }
+}
+
+impl Answering {
+    /// The answer to `request`: the option chosen, and, for a refusal under
+    /// [`Answering::Contained`], why.
+    fn answer<'r>(&self, request: &'r PermissionRequest) -> (Option<&'r str>, Option<String>) {
+        match self {
+            Answering::Allow => (request.allow(), None),
+            Answering::Reject => (
+                request.reject(),
+                Some("this run's access refuses every tool the agent asks for".to_owned()),
+            ),
+            Answering::Contained { base, roots } => {
+                let outside = request.tool_call.written_paths().into_iter().find(|path| {
+                    let path = resolved(base, path);
+                    !roots.iter().any(|root| path.starts_with(root))
+                });
+                match outside {
+                    Some(path) => (
+                        request.reject(),
+                        Some(format!("it would write {path}, outside the workspace")),
+                    ),
+                    // Once, so the agent asks again for its next tool.
+                    None => (request.allow_once(), None),
+                }
+            }
+        }
+    }
+}
+
 /// The handler that turns an ACP agent's stream (Devin's, or OpenCode's)
 /// into transcript steps.
 pub(super) struct Recorder<'a> {
@@ -140,6 +260,10 @@ pub(super) struct Recorder<'a> {
     note: &'static str,
     model: String,
     access: Access,
+    /// How the host answers the agent's permission requests.
+    answering: Answering,
+    /// The first tool the host refused, and why.
+    pub(super) refused: Option<String>,
     text: String,
     thought: String,
     tools: BTreeMap<String, Pending>,
@@ -179,6 +303,11 @@ impl<'a> Recorder<'a> {
             note,
             model,
             access,
+            answering: match access {
+                Access::Full => Answering::Allow,
+                Access::Boundary | Access::Toolchains => Answering::Reject,
+            },
+            refused: None,
             text: String::new(),
             thought: String::new(),
             tools: BTreeMap::new(),
@@ -189,6 +318,13 @@ impl<'a> Recorder<'a> {
             cost_usd: None,
             reply: String::new(),
         }
+    }
+
+    /// Answer permission requests as `answering` says, rather than by the
+    /// access alone.
+    pub(super) fn answering(mut self, answering: Answering) -> Self {
+        self.answering = answering;
+        self
     }
 
     /// Write what is still gathered and close the tool calls still open
@@ -344,12 +480,23 @@ impl Handler for Recorder<'_> {
 
     fn permission(&mut self, request: &PermissionRequest) -> PermissionAnswer {
         // Full access asks nothing (Devin's bypass mode, OpenCode's allow
-        // rule); anything still asked is allowed. Under the boundary,
-        // nothing is.
-        let chosen = match self.access {
-            Access::Full => request.allow(),
-            Access::Boundary | Access::Toolchains => request.reject(),
-        };
+        // rule, Grok Build's `--always-approve`); anything still asked is
+        // allowed. Under the boundary, Devin and OpenCode get nothing; Grok
+        // Build, inside the host's own boundary, gets what that holds.
+        let (chosen, why) = self.answering.answer(request);
+        let refused = why.is_some() || chosen.is_none();
+        if refused && self.refused.is_none() {
+            let tool = request
+                .tool_call
+                .title
+                .clone()
+                .or_else(|| request.tool_call.kind.clone())
+                .unwrap_or_else(|| "a tool".to_owned());
+            self.refused = Some(match &why {
+                Some(why) => format!("{}: {why}", bounded(&tool, 200)),
+                None => bounded(&tool, 200),
+            });
+        }
         self.append(
             &Step::said(
                 Source::System,
@@ -358,7 +505,7 @@ impl Handler for Recorder<'_> {
             .noting(
                 &format!("{}_permission", self.note),
                 json!({"kind": request.tool_call.kind, "title": request.tool_call.title,
-                    "answer": chosen, "access": self.access.as_str()}),
+                    "answer": chosen, "access": self.access.as_str(), "refused": why}),
             ),
         );
         chosen.map_or(PermissionAnswer::Cancelled, |option| {
@@ -473,6 +620,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     };
     let mut ended = Ended {
         engine: ENGINE,
+        agent: "Devin",
         ..Ended::default()
     };
     let sequence = match host.effect(
@@ -554,6 +702,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         .await;
     recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
+    ended.refused = recorder.refused.take();
     ended.input_tokens = recorder.input_tokens;
     ended.output_tokens = recorder.output_tokens;
     ended.stats = std::mem::take(&mut recorder.stats);

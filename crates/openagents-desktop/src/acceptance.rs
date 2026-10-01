@@ -1138,16 +1138,24 @@ fn delegate_grok(gate: &mut Gate) -> Outcome {
             ));
         }
     }
+    let mut commands = 0;
     if let Some(done) = &seen.finished {
         let _ = std::fs::copy(
             &done.trajectory,
             gate.evidence("delegate-grok").join("turn.atif.jsonl"),
         );
+        // At the default access Grok Build runs inside Coder's boundary,
+        // and the host allows the commands it asks for (#10092): the turn
+        // ran at least one.
+        commands = ran_commands(&std::fs::read_to_string(&done.trajectory).unwrap_or_default());
+        if commands == 0 {
+            problems.push("Grok Build ran no shell command".into());
+        }
     }
     if problems.is_empty() {
         let started = seen.started.as_ref();
         Ok(format!(
-            "Coder {} started on Grok Build ({}, {:?}) and finished: {:?}",
+            "Coder {} started on Grok Build ({}, {:?}), ran {commands} command(s), and finished: {:?}",
             seen.task.unwrap_or_default(),
             started.map_or("?", |s| s.model.as_str()),
             started.map(|s| s.reason.clone()).unwrap_or_default(),
@@ -1156,6 +1164,19 @@ fn delegate_grok(gate: &mut Gate) -> Outcome {
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// The shell commands a Grok Build turn's trajectory shows completed: tool
+/// calls with a `command` argument. Grok Build runs a read-only command
+/// such as `ls` without asking, and asks for the rest, which the host
+/// allows inside its boundary.
+fn ran_commands(trajectory: &str) -> usize {
+    trajectory
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|line| line.pointer("/step/call").cloned())
+        .filter(|call| call["arguments"]["command"].is_string() && call["outcome"] == "Completed")
+        .count()
 }
 
 /// While Coder runs, the transcript's **Stop Coder** is as wide as its

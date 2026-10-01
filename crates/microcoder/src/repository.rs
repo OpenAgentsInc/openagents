@@ -973,7 +973,8 @@ async fn run_stages<T: codex_transport::Transport>(
                 }
                 match engine.turn(&host, &route, program).await {
                     devin::Turn::Ended(ended) => {
-                        let (ending, completed) = ended.ending(host.cancelled());
+                        let cancelled = host.cancelled();
+                        let (ending, completed) = ended.ending(cancelled);
                         if let Some(error) = &ended.error {
                             let _ = host.append(
                                 &Step::said(
@@ -983,8 +984,12 @@ async fn run_stages<T: codex_transport::Transport>(
                                 .noting(&format!("{note}_error"), json!({"error": error})),
                             );
                         }
+                        let mut agent = ended.summary();
+                        if let Some(message) = ended.stop_message(cancelled) {
+                            agent["stopped"] = json!(message);
+                        }
                         let summary = json!({"configuration":host.configuration(),"route":route,
-                            note:ended.summary(),"independent_checks":"not_run",
+                            note:agent,"independent_checks":"not_run",
                             "billing":"unknown","automatic_crash_resume":false});
                         return host.finish(ending, completed, summary);
                     }

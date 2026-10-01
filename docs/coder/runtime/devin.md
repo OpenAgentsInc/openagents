@@ -73,8 +73,13 @@ before dispatch (`devin_session`, `devin_prompt`), with their observations
 after. The task's result ending is `model_finished` when Devin ends the turn
 (`end_turn`), `cancelled_or_host_refusal` when the task was cancelled or
 reached its deadline, `no_capacity` when Devin refused for a limit and no
-later route had capacity, and `engine_incomplete` otherwise; an error names
-itself in a System step.
+later route had capacity, `engine_stopped_after_refusal` when Devin ended
+the turn itself after the host refused a tool it asked for,
+`engine_cancelled` when Devin reported `cancelled` with no stop from the
+host, and `engine_incomplete` otherwise; an error names itself in a System
+step. The adapter summary's `stopped` field says in plain words how a turn
+Devin ended stopped, and the chat shows it
+([#10092](https://github.com/OpenAgentsInc/openagents/issues/10092)).
 
 ## Access
 

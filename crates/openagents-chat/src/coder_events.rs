@@ -524,6 +524,9 @@ pub struct Mapper {
     reply: String,
     /// The last loop ending the transcript named, with its detail.
     ending: Option<(String, Option<String>)>,
+    /// What a whole coding agent's turn (Devin, OpenCode, Grok Build) says
+    /// about how it stopped, from the adapter's summary.
+    stopped: Option<String>,
     started: Option<u64>,
 }
 
@@ -606,6 +609,14 @@ impl Mapper {
             self.max_steps = configuration["max_steps"]
                 .as_u64()
                 .and_then(|n| usize::try_from(n).ok());
+            return events;
+        }
+        if let Some(summary) = extra.get("adapter_summary").and_then(Value::as_object) {
+            self.stopped = summary
+                .values()
+                .filter(|agent| agent.get("engine").is_some())
+                .find_map(|agent| agent.get("stopped").and_then(Value::as_str))
+                .map(str::to_owned);
             return events;
         }
         if source == "user" {
@@ -858,6 +869,22 @@ impl Mapper {
                 turn,
                 message: "Coder stopped: the task was cancelled or reached its time limit.".into(),
             }),
+            // The agent ended the turn itself: after the host refused a
+            // tool it asked for, or reporting `cancelled` with no stop from
+            // the host. Neither is a cancel or a time limit (#10092).
+            "engine_stopped_after_refusal" | "engine_cancelled" => CoderEvent::Stopped(Stopped {
+                turn,
+                message: format!(
+                    "Coder stopped: {}",
+                    self.stopped.clone().unwrap_or_else(|| if ending
+                        == "engine_cancelled"
+                    {
+                        "the coding agent ended the turn as cancelled on its own; nobody stopped the task and it did not reach its time limit.".to_owned()
+                    } else {
+                        "the coding agent stopped after the host refused a tool it asked to run.".to_owned()
+                    })
+                ),
+            }),
             "no_capacity" => CoderEvent::Failure(Failure {
                 turn,
                 message: format!(
@@ -876,7 +903,10 @@ impl Mapper {
                         format!("{} ({})", reason.replace('_', " "), bounded(detail, 300).0)
                     }
                     Some((reason, None)) => reason.replace('_', " "),
-                    None => other.replace('_', " "),
+                    None => match &self.stopped {
+                        Some(stopped) => stopped.trim_end_matches('.').to_owned(),
+                        None => other.replace('_', " "),
+                    },
                 };
                 CoderEvent::Failure(Failure {
                     turn,
@@ -1208,6 +1238,47 @@ mod tests {
             panic!()
         };
         assert_eq!(asked.answer.as_deref(), Some("answer here"));
+        let CoderEvent::Stopped(stopped) = end("engine_cancelled") else {
+            panic!()
+        };
+        assert!(
+            !stopped.message.contains("cancelled or reached"),
+            "{}",
+            stopped.message
+        );
+        assert!(stopped.message.contains("on its own"));
+    }
+
+    /// A whole coding agent's turn that the agent ended after the host
+    /// refused a tool says what happened, never "cancelled or reached its
+    /// time limit" (#10092).
+    #[test]
+    fn an_agent_that_stopped_after_a_refusal_says_so() {
+        let mut mapper = Mapper::new(1, None);
+        let summary = json!({"step_id": 9, "source": "system", "message": "Repository adapter ended; independent checks are separate.",
+            "extensions": {"adapter_summary": {"configuration": {"provider": "grok"},
+                "grok": {"engine": "grok-acp", "stop_reason": "cancelled",
+                    "stopped": "Grok Build stopped after the host refused a tool it asked to run (Write /etc/hosts: it would write /etc/hosts, outside the workspace)."}}}});
+        assert!(mapper.step(&summary).is_empty());
+        let CoderEvent::Stopped(stopped) =
+            mapper.end("engine_stopped_after_refusal", vec![], "/w", "/t", None)
+        else {
+            panic!()
+        };
+        assert_eq!(
+            stopped.message,
+            "Coder stopped: Grok Build stopped after the host refused a tool it asked to run (Write /etc/hosts: it would write /etc/hosts, outside the workspace)."
+        );
+        let CoderEvent::Failure(failure) =
+            mapper.end("engine_incomplete", vec![], "/w", "/t", None)
+        else {
+            panic!()
+        };
+        assert!(
+            failure.message.contains("Grok Build stopped after"),
+            "{}",
+            failure.message
+        );
     }
 
     #[test]

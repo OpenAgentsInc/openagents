@@ -86,7 +86,8 @@ workspace, lease, journal, ATIF transcript, and retained artifacts), then:
 Starting the session and the prompt are effect intents the task owner retains
 before dispatch (`opencode_session`, `opencode_prompt`), with their
 observations after. The endings are the Devin route's: `model_finished`,
-`cancelled_or_host_refusal`, `no_capacity`, or `engine_incomplete`.
+`cancelled_or_host_refusal`, `no_capacity`, `engine_stopped_after_refusal`,
+`engine_cancelled`, or `engine_incomplete`.
 
 ## Access
 

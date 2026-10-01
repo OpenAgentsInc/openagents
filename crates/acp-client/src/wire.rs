@@ -606,6 +606,64 @@ pub struct PermissionTool {
     pub title: Option<String>,
     #[serde(default)]
     pub raw_input: Option<Value>,
+    /// The files the tool says it touches.
+    #[serde(default)]
+    pub locations: Vec<PermissionLocation>,
+}
+
+/// A file a permission request's tool names.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct PermissionLocation {
+    #[serde(default)]
+    pub path: String,
+}
+
+/// The `rawInput` fields that name a file a tool writes, in the spellings
+/// the agents use.
+const WRITTEN_FIELDS: [&str; 6] = [
+    "path",
+    "file_path",
+    "filePath",
+    "target_file",
+    "destination",
+    "new_path",
+];
+
+impl PermissionTool {
+    /// Whether the tool changes files by its kind: `edit`, `delete`, or
+    /// `move`. A command (`execute`) is not: what it writes is up to the
+    /// command, and only an operating-system boundary can hold it.
+    #[must_use]
+    pub fn writes(&self) -> bool {
+        matches!(self.kind.as_deref(), Some("edit" | "delete" | "move"))
+    }
+
+    /// The paths a writing tool ([`PermissionTool::writes`]) names, as
+    /// written: its `locations`, then the file fields of its `rawInput`.
+    /// Empty for any other tool, or when the request names none.
+    #[must_use]
+    pub fn written_paths(&self) -> Vec<String> {
+        if !self.writes() {
+            return Vec::new();
+        }
+        let mut paths: Vec<String> = self
+            .locations
+            .iter()
+            .map(|location| location.path.clone())
+            .filter(|path| !path.is_empty())
+            .collect();
+        if let Some(input) = self.raw_input.as_ref().and_then(Value::as_object) {
+            for field in WRITTEN_FIELDS {
+                if let Some(path) = input.get(field).and_then(Value::as_str)
+                    && !path.is_empty()
+                    && !paths.iter().any(|known| known == path)
+                {
+                    paths.push(path.to_owned());
+                }
+            }
+        }
+        paths
+    }
 }
 
 /// A `session/request_permission` request's parameters.
@@ -626,6 +684,18 @@ impl PermissionRequest {
             .iter()
             .find(|option| option.allows())
             .map(|option| option.option_id.as_str())
+    }
+
+    /// The option that allows only this call (`allow_once`), else the
+    /// first that allows it. A host that judges each ask picks this, so
+    /// the agent keeps asking.
+    #[must_use]
+    pub fn allow_once(&self) -> Option<&str> {
+        self.options
+            .iter()
+            .find(|option| option.kind.as_deref() == Some("allow_once"))
+            .map(|option| option.option_id.as_str())
+            .or_else(|| self.allow())
     }
 
     /// The first option that refuses it.
@@ -813,6 +883,28 @@ mod tests {
     }
 
     #[test]
+    fn a_writing_tool_names_its_paths_and_a_command_names_none() {
+        let edit: PermissionRequest = serde_json::from_value(json!({"toolCall":{"kind":"edit",
+            "title":"Write notes","locations":[{"path":"/w/notes.md"}],
+            "rawInput":{"file_path":"/elsewhere/x","path":"/w/notes.md","content":"hi"}}}))
+        .unwrap();
+        assert!(edit.tool_call.writes());
+        assert_eq!(
+            edit.tool_call.written_paths(),
+            vec!["/w/notes.md".to_owned(), "/elsewhere/x".to_owned()]
+        );
+        let command: PermissionRequest =
+            serde_json::from_value(json!({"toolCall":{"kind":"execute",
+            "title":"run","rawInput":{"command":"echo > /etc/x","path":"/etc/x"}}}))
+            .unwrap();
+        assert!(!command.tool_call.writes());
+        assert!(command.tool_call.written_paths().is_empty());
+        let bare: PermissionRequest =
+            serde_json::from_value(json!({"toolCall":{"kind":"delete"}})).unwrap();
+        assert!(bare.tool_call.written_paths().is_empty());
+    }
+
+    #[test]
     fn permission_options_are_read_by_kind() {
         let request: PermissionRequest = serde_json::from_value(json!({"toolCall":{"kind":"execute","title":"run ls","rawInput":{"command":"ls"}},"options":[
             {"optionId":"deny-1","kind":"reject_once"},
@@ -821,6 +913,12 @@ mod tests {
         assert_eq!(request.allow(), Some("ok-1"));
         assert_eq!(request.reject(), Some("deny-1"));
         assert_eq!(request.tool_call.kind.as_deref(), Some("execute"));
+        let session: PermissionRequest = serde_json::from_value(json!({"options":[
+            {"optionId":"always","kind":"allow_always"},
+            {"optionId":"once","kind":"allow_once"}]}))
+        .unwrap();
+        assert_eq!(session.allow(), Some("always"));
+        assert_eq!(session.allow_once(), Some("once"));
         assert_eq!(
             PermissionAnswer::Selected("ok-1".into()).to_value()["outcome"]["optionId"],
             "ok-1"
