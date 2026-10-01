@@ -525,7 +525,6 @@ mod tests {
         crate::router::worker_facts(
             crate::generate::Lane::Gemini.model(),
             Some(crate::generate::DEFAULT_DOOR_URL),
-            Some((6, 40)),
             &crate::router::Seams::default(),
         )
     }
@@ -631,8 +630,9 @@ mod tests {
         assert!(here["criteria"].get("meta.limits_chat.here").is_none());
         assert!(answer["criteria"].get("eval.check.none").is_none());
         // An entry whose slot the worker cannot fill is not offered.
-        let bare = serde_json::to_value(questions_without_quota().get("answer")).unwrap();
-        assert!(bare["criteria"].get("meta.pricing").is_none());
+        let bare = serde_json::to_value(questions_without_a_door().get("answer")).unwrap();
+        assert!(bare["criteria"].get("meta.privacy").is_none());
+        assert!(bare["criteria"].get("meta.pricing").is_some());
         assert!(bare["criteria"].get("meta.who").is_some());
 
         let groups = [CliGroup {
@@ -660,10 +660,9 @@ mod tests {
         );
     }
 
-    fn questions_without_quota() -> Questions {
+    fn questions_without_a_door() -> Questions {
         let facts = crate::router::worker_facts(
             crate::generate::Lane::Gemini.model(),
-            Some(crate::generate::DEFAULT_DOOR_URL),
             None,
             &crate::router::Seams::default(),
         );
@@ -807,8 +806,8 @@ mod tests {
         // An answer whose slots this worker cannot fill reads as none.
         let unfilled = reading(
             &response(json!({
-                "answer": { "type": "choice", "choice": "meta.pricing", "confidence": 0.9,
-                    "probabilities": { "meta.pricing": 0.9, "none": 0.1 } },
+                "answer": { "type": "choice", "choice": "meta.privacy", "confidence": 0.9,
+                    "probabilities": { "meta.privacy": 0.9, "none": 0.1 } },
                 "capability": { "type": "choice", "choice": "chat.wallet", "confidence": 0.8,
                     "probabilities": { "chat.wallet": 0.8, "none": 0.1,
                     "not-a-capability-request": 0.1 } },
@@ -926,7 +925,6 @@ mod tests {
         let facts = crate::router::worker_facts(
             crate::generate::Lane::Gemini.model(),
             Some(crate::generate::DEFAULT_DOOR_URL),
-            Some((6, 40)),
             &crate::router::Seams::default(),
         );
         let groups = [

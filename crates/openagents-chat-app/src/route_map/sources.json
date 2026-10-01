@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v4@71bde73d1610",
-  "bank": "chat-answers-v1@b08b64b48be8",
+  "bank": "chat-answers-v1@5f34ebd34f0a",
   "routes": [
     {
       "id": "meta",
@@ -407,7 +407,7 @@
     },
     {
       "id": "meta.pricing",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -416,13 +416,13 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/relay/quota.rs",
+        "docs/deployment/chat-worker-usage.md",
         "INVARIANTS.md"
       ]
     },
     {
       "id": "meta.quota",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -431,7 +431,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/relay/quota.rs",
+        "docs/deployment/chat-worker-usage.md",
         "INVARIANTS.md"
       ]
     },

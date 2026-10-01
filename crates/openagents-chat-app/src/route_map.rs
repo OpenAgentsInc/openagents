@@ -1051,7 +1051,7 @@ impl Map {
                 match engine_reading(&self.local, &n.label) {
                     EngineReading::Ready => "Ready",
                     EngineReading::SignedOut => "Not signed in",
-                    EngineReading::AtLimit => "At its limit",
+                    EngineReading::AtLimit => "Used up for now",
                     EngineReading::Unknown => "No reading",
                 }
                 .to_string(),
@@ -1303,7 +1303,7 @@ impl Map {
                     match reading {
                         EngineReading::Ready => "Signed in, with capacity",
                         EngineReading::SignedOut => "Not signed in",
-                        EngineReading::AtLimit => "At its usage limit",
+                        EngineReading::AtLimit => "Used up for now; another engine runs",
                         EngineReading::Unknown => "No reading from this computer's Coder",
                     },
                 ));
@@ -1816,8 +1816,8 @@ fn gaps(map: &Map) -> Vec<Gap> {
             EngineReading::AtLimit => out.push(Gap {
                 kind: GapKind::EngineAtLimit,
                 node,
-                title: format!("{} is at its usage limit", engine.name),
-                detail: "This computer's Coder runs another engine until it resets.".into(),
+                title: format!("{} is used up for now", engine.name),
+                detail: "This computer's Coder runs another engine until it's back.".into(),
                 evidence: vec![],
                 step: NextStep::SignIn {
                     label: "See usage".into(),

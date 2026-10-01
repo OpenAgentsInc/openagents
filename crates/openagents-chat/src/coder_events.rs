@@ -180,37 +180,54 @@ pub enum PassedOver {
     NotAllowed,
 }
 
+impl PassedOver {
+    /// Whether this is a provider's own usage window (a refusal or a
+    /// reading near it). Those are the provider's, not ours: a run fails
+    /// over past them silently, and no surface names them (#10120). The
+    /// record keeps them.
+    #[must_use]
+    pub fn capacity(&self) -> bool {
+        matches!(
+            self,
+            PassedOver::Refused { .. } | PassedOver::NearLimit { .. }
+        )
+    }
+}
+
 impl Passed {
-    /// `Codex is at 92% of its window`, without a full stop.
+    /// `Codex is not signed in here`, without a full stop.
     #[must_use]
     pub fn text(&self) -> String {
         let who = provider_name(&Value::String(self.provider.clone()));
         format!("{who} {}", self.clause())
     }
 
-    /// Why it was passed over, without its name: `is at 92% of its
-    /// window`.
+    /// Why it was passed over, without its name: `is not signed in here`.
+    /// A provider's usage window is never named: it `isn't available right
+    /// now` (#10120).
     #[must_use]
     pub fn clause(&self) -> String {
         match &self.why {
             PassedOver::NotSignedIn => "is not signed in here".into(),
-            PassedOver::Refused { kind, until } => format!(
-                "reached its {} until {}",
-                kind.replace('_', " "),
-                utc(*until)
-            ),
-            PassedOver::NearLimit { used_percent } => {
-                format!("is at {used_percent}% of its window")
+            PassedOver::Refused { .. } | PassedOver::NearLimit { .. } => {
+                "isn't available right now".into()
             }
             PassedOver::NotAllowed => "is not one of the engines your Coder settings allow".into(),
         }
     }
+
+    /// Whether a surface says why this route was passed over: not for a
+    /// provider's usage window, which a run fails over past silently.
+    #[must_use]
+    pub fn shown(&self) -> bool {
+        !self.why.capacity()
+    }
 }
 
 /// The reason a run names when the person asked for an engine (#10076):
-/// "You asked for Claude Code; it reached its usage limit until …, so
-/// Codex {then}" when it does not run, "You asked for Claude Code; it
-/// {then}" when it does. `None` when they asked for none. `then` is the
+/// "You asked for Claude Code; it isn't available right now, so Codex
+/// {then}" when it does not run, "You asked for Claude Code; it {runs}"
+/// when it does. No provider's usage window is named (#10120). `None` when they asked for none. `then` is the
 /// verb phrase of the surface: "will do this." on an offer, "is running."
 /// on a start.
 #[must_use]
@@ -235,7 +252,7 @@ pub fn requested_reason(
     why.extend(
         passed
             .iter()
-            .filter(|p| p.provider != requested)
+            .filter(|p| p.provider != requested && p.shown())
             .map(Passed::text),
     );
     Some(format!(
@@ -254,14 +271,17 @@ impl Started {
     }
 
     /// Why this engine runs, only when that says something new: another
-    /// engine than the one asked for, or one passed over ([`Runner::plain`]).
+    /// engine than the one asked for, or one passed over for a reason a
+    /// surface names ([`Runner::plain`]). It is drawn from the typed
+    /// prediction, never the host's `reason` text, which a host from
+    /// before #10120 wrote with a provider's usage limit in it.
     #[must_use]
-    pub fn news(&self) -> Option<&str> {
+    pub fn news(&self) -> Option<String> {
         self.runner
             .as_ref()
             .filter(|runner| !runner.plain())
-            .map(|_| self.reason.as_str())
-            .filter(|reason| !reason.is_empty())
+            .map(|runner| runner.started("is running."))
+            .filter(|news| !news.is_empty())
     }
 }
 
@@ -295,8 +315,45 @@ impl Runner {
                 passed,
                 requested,
                 ..
-            } => passed.is_empty() && requested.as_ref().is_none_or(|asked| asked == provider),
+            } => {
+                passed.iter().all(|p| !p.shown())
+                    && requested.as_ref().is_none_or(|asked| asked == provider)
+            }
             _ => false,
+        }
+    }
+
+    /// Why a run started where it did: "Codex {plain}" when nothing was
+    /// passed over that a surface names, "Codex is not signed in here;
+    /// using Claude Code." when something was, or the person's request
+    /// ([`requested_reason`]). A provider's usage window is never named:
+    /// the run fails over past it silently (#10120).
+    #[must_use]
+    pub fn started(&self, plain: &str) -> String {
+        let Runner::Runs {
+            provider,
+            passed,
+            requested,
+            ..
+        } = self
+        else {
+            return self.text();
+        };
+        if let Some(reason) =
+            requested_reason(provider, passed, requested.as_deref(), plain, "is running.")
+        {
+            return reason;
+        }
+        let name = provider_name(&Value::String(provider.clone()));
+        let why: Vec<String> = passed
+            .iter()
+            .filter(|p| p.shown())
+            .map(Passed::text)
+            .collect();
+        if why.is_empty() {
+            format!("{name} {plain}")
+        } else {
+            format!("{}; using {name}.", why.join("; "))
         }
     }
 
@@ -310,8 +367,8 @@ impl Runner {
     }
 
     /// The sentence every surface shows: "Codex will do this.", "Codex is
-    /// at 92% of its window; Claude Code will do this.", or why nothing
-    /// can run here.
+    /// not signed in here; Claude Code will do this.", or why nothing can
+    /// run here. A provider's usage window is never named (#10120).
     #[must_use]
     pub fn text(&self) -> String {
         match self {
@@ -331,10 +388,14 @@ impl Runner {
                     return text;
                 }
                 let who = provider_name(&Value::String(provider.clone()));
-                if passed.is_empty() {
+                let why: Vec<String> = passed
+                    .iter()
+                    .filter(|p| p.shown())
+                    .map(Passed::text)
+                    .collect();
+                if why.is_empty() {
                     format!("{who} will do this.")
                 } else {
-                    let why: Vec<String> = passed.iter().map(Passed::text).collect();
                     format!("{}; {who} will do this.", why.join("; "))
                 }
             }
@@ -361,9 +422,9 @@ impl Runner {
                 }
             }
             Runner::NoCapacity { until } => format!(
-                "No coding agent signed in on this computer has room now{}.",
+                "No coding agent signed in on this computer is available right now{}.",
                 until
-                    .map(|at| format!("; the earliest resets {}", utc(at)))
+                    .map(|at| format!("; try again after {}", utc(at)))
                     .unwrap_or_default()
             ),
         }
@@ -467,6 +528,35 @@ pub struct Switched {
     pub reason: String,
     /// When the refusing provider said its limit resets, Unix seconds.
     pub resets_at: Option<u64>,
+}
+
+impl Switched {
+    /// What a surface shows: only which engine runs now, "Claude Code is
+    /// working.", or that none is available. The provider's refusal stays
+    /// in `reason` and the record, never on screen (#10120).
+    #[must_use]
+    pub fn line(&self) -> String {
+        match &self.to {
+            Some(to) => working(
+                to.split_once(':')
+                    .map_or(to.as_str(), |(provider, _)| provider),
+            ),
+            None => unavailable(self.resets_at),
+        }
+    }
+}
+
+/// "No coding agent is available right now; try again after …": every
+/// engine a run may use is out of its provider's window. It names no
+/// limit (#10120).
+#[must_use]
+pub fn unavailable(until: Option<u64>) -> String {
+    format!(
+        "No coding agent is available right now{}.",
+        until
+            .map(|at| format!("; try again after {}", utc(at)))
+            .unwrap_or_default()
+    )
 }
 
 /// Coder asked the person and waits. `answer` is how to reply from the
@@ -603,6 +693,20 @@ pub struct Failure {
     /// The GitHub issue the run worked, when the run was the issue flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<IssueLink>,
+}
+
+impl Failure {
+    /// What a surface shows: for `no_capacity`, only that no coding agent
+    /// is available, whatever words a host from before #10120 recorded;
+    /// otherwise the message.
+    #[must_use]
+    pub fn shown(&self) -> String {
+        if self.ending.as_deref() == Some("no_capacity") {
+            unavailable(self.resets_at)
+        } else {
+            self.message.clone()
+        }
+    }
 }
 
 /// The turn was stopped, by the person or the host's deadline.
@@ -1022,12 +1126,7 @@ impl Mapper {
             }),
             "no_capacity" => CoderEvent::Failure(Failure {
                 turn,
-                message: format!(
-                    "No admitted provider has capacity{}.",
-                    resets_at
-                        .map(|at| format!("; the earliest resets {}", utc(at)))
-                        .unwrap_or_default()
-                ),
+                message: unavailable(resets_at),
                 ending: Some(ending.into()),
                 resets_at,
                 issue: None,
@@ -1086,12 +1185,9 @@ pub fn run_result(lines: &[Line]) -> Option<crate::router::CoderRun> {
                 })
                 .collect(),
         ),
-        CoderEvent::Failure(failure) => (
-            failure.turn,
-            RunEnding::Failed,
-            failure.message.clone(),
-            Vec::new(),
-        ),
+        CoderEvent::Failure(failure) => {
+            (failure.turn, RunEnding::Failed, failure.shown(), Vec::new())
+        }
         CoderEvent::Stopped(stopped) => (
             stopped.turn,
             RunEnding::Stopped,
@@ -1165,10 +1261,7 @@ pub fn text(event: &CoderEvent) -> Option<String> {
                 .collect::<Vec<_>>()
                 .join("\n")
         }
-        CoderEvent::ProviderSwitched(s) => match &s.to {
-            Some(to) => format!("  ~ {}; switching from {} to {to}", s.reason, s.from),
-            None => format!("  ~ {}; no other provider has capacity", s.reason),
-        },
+        CoderEvent::ProviderSwitched(s) => format!("  ~ {}", s.line()),
         CoderEvent::Progress(p) => format!(
             "  [step {}{}, {:.0}s]",
             p.step,
@@ -1210,8 +1303,8 @@ pub fn text(event: &CoderEvent) -> Option<String> {
             out
         }
         CoderEvent::Failure(f) => match &f.issue {
-            Some(issue) => format!("{}\n{}", f.message, issue.line()),
-            None => f.message.clone(),
+            Some(issue) => format!("{}\n{}", f.shown(), issue.line()),
+            None => f.shown(),
         },
         CoderEvent::Stopped(s) => s.message.clone(),
     })
@@ -1931,10 +2024,10 @@ mod tests {
             }],
             requested: Some("claude".into()),
         };
+        // The provider's window is never named (#10120).
         assert_eq!(
             limited.text(),
-            "You asked for Claude Code; it reached its usage limit until 2026-10-03 18:07 UTC, \
-             so Codex will do this."
+            "You asked for Claude Code; it isn't available right now, so Codex will do this."
         );
         for (why, clause) in [
             (PassedOver::NotSignedIn, "it is not signed in here"),
@@ -1944,7 +2037,7 @@ mod tests {
             ),
             (
                 PassedOver::NearLimit { used_percent: 95 },
-                "it is at 95% of its window",
+                "it isn't available right now",
             ),
         ] {
             let runner = Runner::Runs {
@@ -2051,10 +2144,11 @@ mod tests {
             }],
             requested: None,
         };
-        assert_eq!(
-            claude.text(),
-            "Codex is at 92% of its window; Claude Code will do this."
-        );
+        // A run fails over past a provider's window silently: the offer
+        // says only who runs, and the record keeps why (#10120).
+        assert_eq!(claude.text(), "Claude Code will do this.");
+        assert!(claude.plain());
+        assert_eq!(claude.started("is running."), "Claude Code is running.");
         let wire = serde_json::to_value(&claude).unwrap();
         assert_eq!(
             wire["passed"],
@@ -2073,9 +2167,23 @@ mod tests {
             }],
             requested: None,
         };
+        assert_eq!(refused.text(), "Claude Code will do this.");
+        let signed_out = Runner::Runs {
+            provider: "claude".into(),
+            model: "claude-opus-5-5".into(),
+            passed: vec![Passed {
+                provider: "codex".into(),
+                why: PassedOver::NotSignedIn,
+            }],
+            requested: None,
+        };
         assert_eq!(
-            refused.text(),
-            "Codex reached its usage limit until 2026-10-03 18:07 UTC; Claude Code will do this."
+            signed_out.text(),
+            "Codex is not signed in here; Claude Code will do this."
+        );
+        assert_eq!(
+            signed_out.started("is running."),
+            "Codex is not signed in here; using Claude Code."
         );
 
         let nobody = Runner::NotSignedIn {
@@ -2103,8 +2211,8 @@ mod tests {
                 until: Some(1_791_050_823)
             }
             .text(),
-            "No coding agent signed in on this computer has room now; \
-             the earliest resets 2026-10-03 18:07 UTC."
+            "No coding agent signed in on this computer is available right now; \
+             try again after 2026-10-03 18:07 UTC."
         );
     }
 

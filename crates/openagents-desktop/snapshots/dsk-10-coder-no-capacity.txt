@@ -6,9 +6,9 @@ vertical stack [card]
   body "Codex is working."
 message user
   markdown "tidy up"
-status "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until 2026-10-03 18:07 UTC."
-status "Claude Code refused for a rate limit until 2026-09-28 05:40 UTC; no other provider has capacity."
+status "Claude Code is working."
+status "No coding agent is available right now; try again after 2026-09-28 05:40 UTC."
 status "Worked for 0s"
 vertical stack [card]
   body "Coder didn't finish"
-  body "No admitted provider has capacity."
+  body "No coding agent is available right now."

@@ -145,8 +145,8 @@ fn route_card<I>(index: usize, route: &openagents_connect::control::EngineRoute)
 #[must_use]
 pub fn usage_sentence(usage: &RouteUsage) -> String {
     match usage {
-        RouteUsage::Off => "Usage limits aren't being read.".into(),
-        RouteUsage::Unsupported => "Usage limits aren't available.".into(),
+        RouteUsage::Off => "Usage isn't being read.".into(),
+        RouteUsage::Unsupported => "Usage isn't available.".into(),
         RouteUsage::Unknown { reason } => reason_sentence(reason).into(),
         RouteUsage::Windows {
             windows,
@@ -166,7 +166,7 @@ pub fn usage_sentence(usage: &RouteUsage) -> String {
                 })
                 .collect();
             if *limit_reached {
-                parts.push("Limit reached".into());
+                parts.push("Used up".into());
             }
             if parts.is_empty() {
                 format!("{used_percent}%")
@@ -179,12 +179,12 @@ pub fn usage_sentence(usage: &RouteUsage) -> String {
 
 fn reason_sentence(reason: &str) -> &'static str {
     match reason {
-        "not_probed" => "Reading usage limits…",
+        "not_probed" => "Reading usage…",
         "no_credential" => "No sign-in to read",
         "expired" => "The sign-in has expired",
         "unauthorized" => "The sign-in was refused",
-        "rate_limited" | "status" | "malformed" => "Usage limits are temporarily unavailable",
-        "network" => "Usage limits can't be reached right now",
+        "rate_limited" | "status" | "malformed" => "Usage is temporarily unavailable",
+        "network" => "Usage can't be read right now",
         _ => "Usage unavailable",
     }
 }
@@ -358,7 +358,7 @@ mod tests {
         assert!(words.contains("Signed in"));
         assert!(words.contains("Not signed in"));
         assert!(words.contains("Primary 100%"));
-        assert!(words.contains("Limit reached"));
+        assert!(words.contains("Used up"));
         assert!(words.contains("5 hours 4%"));
         assert!(words.contains("7 days 66%"));
         assert!(!words.contains("microcoder"));
@@ -419,15 +419,12 @@ mod tests {
 
     #[test]
     fn usage_sentences_stay_inside_a_closed_set() {
-        assert_eq!(
-            usage_sentence(&RouteUsage::Off),
-            "Usage limits aren't being read."
-        );
+        assert_eq!(usage_sentence(&RouteUsage::Off), "Usage isn't being read.");
         assert_eq!(
             usage_sentence(&RouteUsage::Unknown {
                 reason: "not_probed".into()
             }),
-            "Reading usage limits…"
+            "Reading usage…"
         );
         assert_eq!(
             usage_sentence(&RouteUsage::Unknown {
@@ -451,7 +448,7 @@ mod tests {
             usage_sentence(&RouteUsage::Unknown {
                 reason: "network".into()
             }),
-            "Usage limits can't be reached right now"
+            "Usage can't be read right now"
         );
         assert_eq!(
             usage_sentence(&RouteUsage::Unknown {

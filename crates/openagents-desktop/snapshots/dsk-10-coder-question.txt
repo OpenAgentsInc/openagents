@@ -4,7 +4,7 @@ message assistant
   markdown "We'll dispatch Coder to add a unit test for slugify."
 vertical stack [card]
   body "Codex is working."
-status "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until 2026-10-03 18:07 UTC."
+status "Claude Code is working."
 tool "Thinking" "Write the output." [done]
   code "Write the output."
 tool "Run" "printf 'import unittest\\n' > test_slugs.py" [done]

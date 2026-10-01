@@ -103,7 +103,8 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
     let text = text_of(&run.rows());
     for expected in [
         "Codex is working.",
-        "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until",
+        // A switch says only who runs now (#10120).
+        "Claude Code is working.",
         "Thinking Write the output.",
         // A command is one line, as Grok Build draws it (#10117); its
         // exit shows only when it failed.
@@ -123,6 +124,8 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
             "{expected:?} missing from:\n{text}"
         );
     }
+    // The fixture's provider refused for a usage limit; no row says so.
+    assert!(!text.to_lowercase().contains("limit"), "{text}");
     // The carried conversation and a reply the ending repeats show once.
     assert_eq!(
         text.matches("Should the test cover empty input too?")
@@ -146,11 +149,11 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
     assert_eq!(approval.mode(), Mode::Answer);
 
     let text = text_of(&fed(&all[2], State::Ended).rows());
-    assert!(text.contains("no other provider has capacity"), "{text}");
     assert!(
-        text.contains("Coder didn't finish\nNo admitted provider has capacity"),
+        text.contains("Coder didn't finish\nNo coding agent is available right now"),
         "{text}"
     );
+    assert!(!text.to_lowercase().contains("limit"), "{text}");
     let text = text_of(&fed(&all[3], State::Ended).rows());
     assert!(
         text.contains("Coder stopped before the turn started."),

@@ -33,8 +33,9 @@ SyslogIdentifier=coder-worker-chat
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
 
-# The state directory holds the quota file (CODER_WORKER_QUOTA_FILE), the
-# day's admitted jobs per caller key, so a restart does not reset the day.
+# The state directory holds the usage log (usage/YYYY-MM-DD.jsonl, one line
+# per job; docs/deployment/chat-worker-usage.md). systemd passes it to the
+# worker as STATE_DIRECTORY, which is where the log goes by default.
 StateDirectory=coder-worker-chat
 StateDirectoryMode=0750
 ReadWritePaths=/var/lib/coder-worker-chat

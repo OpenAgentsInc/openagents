@@ -162,9 +162,9 @@ fn logical_of(event: &Event, world: &SecretKey, runner: &str) -> Option<String> 
 /// A refusal in the app's words, and whether it was on our side.
 pub fn refused(code: &str) -> (String, bool) {
     match code {
+        // An old runner's count: no surface names a limit (#10120).
         hosted::OVER_QUOTA => (
-            "You've used today's test runs. You can run more tomorrow, and checks don't use a run."
-                .into(),
+            "Our test computers can't take this run right now. Try again later.".into(),
             false,
         ),
         hosted::NOT_ADMITTED => (
@@ -691,7 +691,8 @@ mod tests {
     #[test]
     fn refusals_read_plainly() {
         assert!(!refused(hosted::OVER_QUOTA).1);
-        assert!(refused(hosted::OVER_QUOTA).0.contains("today's test runs"));
+        let over = refused(hosted::OVER_QUOTA).0.to_lowercase();
+        assert!(!over.contains("limit") && !over.contains("today"), "{over}");
         assert!(refused("failed").1);
         for code in [
             hosted::OVER_QUOTA,

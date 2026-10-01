@@ -1047,7 +1047,6 @@ impl DelegateDoor {
             providers,
             script: self.script.clone(),
             cloud: self.cloud.clone(),
-            max_usd: microcoder::MAX_USD,
             ask: true,
             // The issue flow works in a checkout of its own and opens a
             // draft pull request, so the operator's permit governs it, not
@@ -1146,7 +1145,7 @@ fn delegated(answer: &terminal::Answer, commands: usize) -> Delegated {
         }),
         DelegateStatus::TimedOut => Some(GenerateError::Quiet {
             heard: summary.result.is_some(),
-            reason: format!("{agent} did not finish before its time limit"),
+            reason: format!("{agent} went quiet, so the host ended its session"),
         }),
         DelegateStatus::Failed(code) => Some(GenerateError::Stream(format!(
             "{agent} exited with code {code}: {}",
@@ -1298,11 +1297,11 @@ impl Generate for DelegateDoor {
     }
 }
 
-/// How long a turn may take before the executor's own deadline stops it:
-/// the reference policy's, for `coder doctor` to state.
+/// How long a CLI session may stay silent before the stuck guard stops
+/// it, for `coder doctor` to state. A turn has no deadline (#10120).
 #[must_use]
-pub fn deadline() -> Duration {
-    Duration::from_secs(terminal::policy().executor.deadline_sec)
+pub fn quiet() -> Duration {
+    terminal::TURN_QUIET
 }
 
 /// Whether this host can enforce the boundary a delegated turn runs in.
@@ -2239,7 +2238,6 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
                     })
                     .collect(),
             ),
-            max_usd: microcoder::ISSUE_MAX_USD,
             ask: false,
             issues: true,
             cloud: None,

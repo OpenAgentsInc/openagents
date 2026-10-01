@@ -911,7 +911,6 @@ mod tests {
         crate::router::worker_facts(
             crate::generate::Lane::Gemini.model(),
             Some(crate::generate::DEFAULT_DOOR_URL),
-            Some((6, 40)),
             &crate::router::Seams::default(),
         )
     }

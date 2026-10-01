@@ -1,20 +1,20 @@
 ---
 id: openagents.chat-limits
-version: 1
+version: 2
 kind: product
 title: "How many messages the chat allows"
 summary: >-
-  The chat worker allows each device key 6 messages in any minute and 40 a
-  day, with a shared daily total, and the app says how long to wait.
+  The chat has no message limit: no per-minute, per-day, or shared cap. Only
+  one request's size is bounded.
 tags: [chat, limits, quota, rate-limit]
 applies_when: >-
   The user asks how many messages they can send, why the chat says to wait or
   that it's done for today, or what the chat's limits are; not what OpenAgents
   costs.
 answer: >-
-  Our chat allows each device key up to 6 messages in any minute and 40 a day,
-  and the day resets at midnight UTC. There's also a total for everyone
-  together each day. When you reach a limit, the app says how long to wait.
+  Send us as many messages as you like: we don't cap how many you send in a
+  minute or in a day. If you ever see "Couldn't reach OpenAgents; try again.",
+  send the message again.
 status: admitted
 author: openagents
 provenance:
@@ -24,17 +24,18 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-01: the owner removed every usage limit (#10120); rewritten from the cited documents."
 ---
 
 ## Answer
 
-Our chat allows each device key up to 6 messages in any minute and 40 a day, and the day resets at midnight UTC. There's also a total for everyone together each day. When you reach a limit, the app says how long to wait.
+Send us as many messages as you like: we don't cap how many you send in a minute or in a day. If you ever see "Couldn't reach OpenAgents; try again.", send the message again.
 
 ## Details
 
-- The deployed limits, as documented on 2026-09-28: 6 jobs per key in any 60 seconds, 40 per key per UTC day, 3,000 for every caller together per UTC day, 96 KiB per request.
-- A refusal counts nothing and carries the wait when waiting helps.
-- The phone sends at most the newest 48 KiB of the conversation.
+- Since 2026-10-01 the chat worker counts no messages per device key, per minute, per day, or for everyone together (#10120).
+- One request is at most 96 KiB; the phone sends at most the newest 48 KiB of the conversation, so a long chat stays inside it.
+- The worker records each job's time, key, surface, route, model, and timings for usage stats, never the message text.
 
 ## Sources
 

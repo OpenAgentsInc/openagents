@@ -46,8 +46,6 @@ pub const MAX_TEXT_CHARS: usize = 600;
 pub const FACT_KEYS: &[&str] = &[
     "worker.lane.display",
     "worker.door.display",
-    "worker.quota.day",
-    "worker.quota.minute",
     "worker.recipients",
     "gym.tool",
     "gym.tests",
@@ -757,7 +755,7 @@ version = 1
 routes = ["meta", "weather"]
 when = "anything"
 text = "I can help. Tap Run Coder. {price} {model}"
-facts = { model = "worker.nope", unused = "worker.quota.day" }
+facts = { model = "worker.nope", unused = "worker.lane.display" }
 sources = ["no/such/file.md"]
 followups = ["meta.missing", "meta.nochip"]
 offer = { screen = "nowhere", label = "Go" }
@@ -803,15 +801,24 @@ when = "x"
     #[test]
     fn unfilled_slots_make_an_entry_ineligible() {
         let bank = Bank::builtin();
-        let pricing = bank.entry("meta.pricing").unwrap();
-        assert!(!pricing.eligible(&Facts::default()));
-        let facts = Facts::default().set("worker.quota.day", "40");
+        let privacy = bank.entry("meta.privacy").unwrap();
+        assert!(!privacy.eligible(&Facts::default()));
+        let facts = Facts::default().set("worker.recipients", "Example for a model");
         assert!(
-            pricing
+            privacy
                 .render(&facts)
                 .unwrap()
-                .starts_with("Chatting with us is free right now, up to 40 messages a day.")
+                .contains("we send your messages to Example for a model.")
         );
+        // No entry names a message limit: there is none (#10120).
+        for entry in &bank.answers {
+            let text = entry.text.as_deref().unwrap_or_default().to_lowercase();
+            assert!(
+                !text.contains("limit") && !text.contains("a day") && !text.contains("quota"),
+                "{}: {text}",
+                entry.id
+            );
+        }
         // Followups skip entries whose slots are unfilled.
         let who = bank.entry("meta.who").unwrap();
         let chips: Vec<String> = bank
@@ -819,7 +826,7 @@ when = "x"
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        assert_eq!(chips, ["meta.capabilities"]);
+        assert_eq!(chips, ["meta.capabilities", "meta.pricing"]);
     }
 
     /// An entry whose words assume the chat is not on a computer has a

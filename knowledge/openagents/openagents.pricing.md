@@ -1,11 +1,12 @@
 ---
 id: openagents.pricing
-version: 1
+version: 2
 kind: product
 title: "Pricing"
 summary: >-
-  OpenAgents hasn't published pricing; the documented facts are the chat's
-  daily limits and that Coder runs on the user's own computer.
+  OpenAgents hasn't published pricing; the documented facts are that the chat
+  is free with no message cap and that Coder runs on the user's own
+  computer.
 tags: [pricing, cost, free, plans]
 applies_when: >-
   The user asks what OpenAgents costs, whether it's free, or about plans,
@@ -13,7 +14,7 @@ applies_when: >-
   message limits alone.
 answer: >-
   We haven't published pricing yet, and we'll answer this when we do. What our
-  docs say today: the chat has daily message limits per device, and Coder runs
+  docs say today: chatting with us is free with no message cap, and Coder runs
   on your own computer, with the model providers connected there.
 status: admitted
 author: openagents
@@ -24,11 +25,12 @@ provenance:
     - docs/roadmap/2026-09-29-launch-roadmap.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-01: the chat's message limits are gone (#10120); the answer says so."
 ---
 
 ## Answer
 
-We haven't published pricing yet, and we'll answer this when we do. What our docs say today: the chat has daily message limits per device, and Coder runs on your own computer, with the model providers connected there.
+We haven't published pricing yet, and we'll answer this when we do. What our docs say today: chatting with us is free with no message cap, and Coder runs on your own computer, with the model providers connected there.
 
 ## Details
 

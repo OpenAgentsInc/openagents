@@ -50,7 +50,7 @@ pub fn routing(requested: Option<nostr::cj_conversation::Engine>) -> String {
                 "The person asked for this to run on {name}. OpenAgents has already started \
                  this run on the engine it chose, so that request is done: if you are {name}, \
                  you are the engine they asked for; if you are another engine, {name} could not \
-                 run on this computer now (it is not signed in here, it is at its usage limit, \
+                 run on this computer now (it is not signed in here, it is unavailable right now, \
                  or this computer's Coder settings do not allow it), and OpenAgents has already \
                  told the person why and which engine runs instead. "
             )

@@ -47,7 +47,7 @@ use openagents_chat::coder_events::{
     self, CoderEvent, FileChange, Line, Mapper, Passed, PassedOver, Runner, Started,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::autostart::{self, Choice, Engine, Launch, Policy, Route, UsageProbe};
 use super::capacity::{self, Connection, Provider};
@@ -780,12 +780,7 @@ impl Local {
     ) -> Result<(Vec<Route>, Runner), String> {
         match self.forecast(policy, asked) {
             (runner, Some(order)) => Ok((order, runner)),
-            (Runner::NoCapacity { until }, None) => Err(format!(
-                "No coding agent signed in here has capacity{}.",
-                until
-                    .map(|at| format!("; the earliest resets {}", coder_events::utc(at)))
-                    .unwrap_or_default()
-            )),
+            (Runner::NoCapacity { until }, None) => Err(coder_events::unavailable(until)),
             (_, None) => Err(unconnected(&names(policy))),
         }
     }
@@ -1451,34 +1446,12 @@ fn runner(
 }
 
 /// Why the run started where it did, in the sentence `coder_started`
-/// has always carried: "Codex is signed in and has capacity." or
-/// "Codex reached its usage limit until …; using Claude Code."
+/// has always carried: "Codex is signed in and has capacity." or "Codex
+/// is not signed in here; using Claude Code." A provider's usage window
+/// is never named (#10120): the run fails over past it silently, and
+/// the passed-over routes keep it for the record.
 fn started_reason(runner: &Runner) -> String {
-    let Runner::Runs {
-        provider,
-        passed,
-        requested,
-        ..
-    } = runner
-    else {
-        return runner.text();
-    };
-    if let Some(reason) = coder_events::requested_reason(
-        provider,
-        passed,
-        requested.as_deref(),
-        "is signed in and has capacity.",
-        "is running.",
-    ) {
-        return reason;
-    }
-    let name = coder_events::provider_name(&json!(provider));
-    if passed.is_empty() {
-        format!("{name} is signed in and has capacity.")
-    } else {
-        let why: Vec<String> = passed.iter().map(Passed::text).collect();
-        format!("{}; using {name}.", why.join("; "))
-    }
+    runner.started("is signed in and has capacity.")
 }
 
 /// The fallbacks a start card names: the order after the first route,
@@ -2467,11 +2440,14 @@ mod tests {
         let (order, runner) = run.choose(&policy).unwrap();
         let why = started_reason(&runner);
         assert_eq!(order[0].provider, Provider::Claude);
-        assert!(
-            why.starts_with("Codex reached its usage limit until "),
-            "{why}"
-        );
-        assert!(why.ends_with("; using Claude Code."), "{why}");
+        // The provider's refusal is the record's, never the sentence's
+        // (#10120): the run fails over to Claude Code silently.
+        assert_eq!(why, "Claude Code is signed in and has capacity.");
+        assert!(matches!(
+            &runner,
+            Runner::Runs { passed, .. } if passed.iter().any(|p| p.provider == "codex"
+                && matches!(p.why, PassedOver::Refused { .. }))
+        ));
         // The card does not also say it falls back to Codex (#10073); Grok
         // Build, signed in here, is the fallback after Claude Code (#10091).
         assert_eq!(
@@ -2758,7 +2734,7 @@ mod tests {
         assert_eq!(first(Some(90)).0, Provider::Codex);
         let (provider, reason) = first(Some(75));
         assert_eq!(provider, Provider::Claude);
-        assert_eq!(reason, "Codex is at 80% of its window; using Claude Code.");
+        assert_eq!(reason, "Claude Code is signed in and has capacity.");
         assert_eq!(first(None).0, Provider::Codex);
     }
 
@@ -2933,10 +2909,9 @@ mod tests {
 
         reading(run.store(), Provider::Codex, 0.92);
         let runner = run.predict(None).unwrap();
-        assert_eq!(
-            runner.text(),
-            "Codex is at 92% of its window; Claude Code will do this."
-        );
+        // Codex's window is its provider's: the offer names only who runs
+        // (#10120).
+        assert_eq!(runner.text(), "Claude Code will do this.");
         assert_eq!(runner.provider(), Some("claude"));
 
         let none = local(dir.path(), nobody);
@@ -3047,7 +3022,7 @@ mod tests {
                 true,
                 Provider::Claude,
                 "codex",
-                "You asked for Claude Code; it reached its usage limit until",
+                "You asked for Claude Code; it isn't available right now, so Codex is running.",
             ),
             (
                 only_codex,

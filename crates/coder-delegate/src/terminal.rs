@@ -637,6 +637,18 @@ pub async fn answer_in<X, E: Engine<X>>(
     cli.env
         .push((NO_CONNECTORS.0.to_string(), NO_CONNECTORS.1.to_string()));
     cli.control.recorder = Some(recorder.clone());
+    // No deadline (#10120): the policy's wall is for benchmarks. A turn a
+    // person watches runs until it finishes or is stopped, with a stuck
+    // guard for a session that goes silent, kept unless the policy states
+    // a stop rule of its own.
+    cli.deadline = TURN_WALL;
+    let mut controls = cli.control.controls.clone().unwrap_or_default();
+    controls
+        .stop_when
+        .get_or_insert(crate::session::Trigger::Quiet {
+            ms: u64::try_from(TURN_QUIET.as_millis()).unwrap_or(u64::MAX),
+        });
+    cli.control.controls = Some(controls);
 
     let boundary_words = if request.read_only {
         "read-only"
@@ -736,6 +748,17 @@ pub const DECISIVE: &str = "When the request leaves a choice open, such as \
 say which you chose, and answer; ask back only when no reasonable choice \
 exists. Use the command-line tools the machine has, such as `gh` for GitHub \
 issues and pull requests, and `git` for history.";
+
+/// A terminal turn's wall: none in practice (#10120). The owner removed
+/// every limit a person could see; a CLI session runs until it finishes,
+/// is stopped, or goes quiet for [`TURN_QUIET`]. Thirty days only keeps
+/// the supervisor's clock arithmetic finite.
+pub const TURN_WALL: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
+
+/// The stuck guard a terminal turn keeps instead of a deadline: a CLI
+/// session that has written nothing for this long is stopped. Long builds
+/// and test runs write as they go; thirty silent minutes is a hung session.
+pub const TURN_QUIET: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// The Noul that sends a terminal turn down the fast path.
 pub const ASKS_ONLY: &str = "Does the request in `request` only ask for information, an \

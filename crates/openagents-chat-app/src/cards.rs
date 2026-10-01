@@ -883,7 +883,8 @@ mod tests {
                     }],
                     requested: None,
                 },
-                "Codex is at 92% of its window; Claude Code will do this.",
+                // A provider's window is never named (#10120).
+                "Claude Code will do this.",
             ),
             (
                 Runner::NotSignedIn { providers: vec![] },

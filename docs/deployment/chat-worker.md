@@ -2,10 +2,11 @@
 
 A new OpenAgents app user can chat with OpenAgents before connecting a
 computer; work for a computer is dispatched to Coder there. That chat,
-*OpenAgents chat*, is served by one `coder-worker` running in
-quota mode, answering on Space Bunny Alpha through OpenRouter first and the
-gateway door's Gemini Flash lane after. This page is the serving decision,
-its limits, and the runbook.
+*OpenAgents chat*, is served by one `coder-worker` running open,
+with no usage limit, answering on Space Bunny Alpha through OpenRouter first
+and the gateway door's Gemini Flash lane after. This page is the serving
+decision, its admission rules, and the runbook. Every job is recorded in the
+usage log; [chat-worker-usage.md](chat-worker-usage.md) shows how to read it.
 
 ## The serving path
 
@@ -244,38 +245,37 @@ new credential flow for the phone. The relay door already authenticates by
 the device key, already streams, and already has a deployed worker and
 runbook, so OpenAgents chat reuses it.
 
-## Limits
+## Admission: no usage limits
 
-An allowlisted worker answers only keys an operator named. The chat worker
-has to answer a key nobody has seen, so it is open under a quota instead
-(`coder::relay::quota`, `CODER_WORKER_QUOTA`):
+The owner decided on 2026-10-01
+([#10120](https://github.com/OpenAgentsInc/openagents/issues/10120)): no
+usage limit anywhere in the app. The chat worker has to answer a key nobody
+has seen, so it runs open (`CODER_WORKER_OPEN=1`) and counts nothing.
+Instead, it records every job in its usage log
+([chat-worker-usage.md](chat-worker-usage.md)).
 
-| Limit | Deployed value | Refusal |
+| Bound | Deployed value | Refusal |
 | --- | --- | --- |
-| Jobs per caller key in any 60 seconds | 40, equal to the day so it never binds first (`minute=600` once the release after `7ae2a4dd41` is live) | `rate_limited`, with `retry_after_ms` |
-| Jobs per caller key per UTC day | 40 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
-| Jobs for every caller together per UTC day | 3,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
-| Request ciphertext | 96 KiB | `limit_exceeded` |
-| Jobs at once | 8 | `busy` |
+| Jobs per caller key, per minute or per day | None | Never |
+| Jobs for every caller together per day | None | Never |
+| Request ciphertext | 96 KiB, the size of a request a relay event holds | `limit_exceeded` ("This conversation is too long for us to answer here. Start a new chat.") |
+| Jobs at once | 64 | `busy` ("We're busy right now. Try again in a moment.") |
 
-- The total is the spend bound. A caller can mint any number of Nostr keys,
-  so the per-key limits keep one person from using the day, and the total
-  caps the day's cost however many keys arrive.
-- The minute limit is only a flood guard. One message can take several jobs
-  (chat, rank, judge), so a tight per-minute limit refused people typing at
-  a normal pace; the day limits bound the spend, and nobody short of a
-  flood sees "You're sending messages quickly".
-- A metered caller gets conversation jobs only: a delegation is refused
+- An open caller gets conversation jobs only: a delegation is refused
   `not_admitted`, and execution requests are ignored. Keys on
-  `CODER_WORKER_ALLOW` are not metered.
-- The day's counts are written to `CODER_WORKER_QUOTA_FILE` after every
-  admission, so a restart does not start a second day. The per-minute window
-  is kept in memory; a restart resets at most one minute. A file that exists
-  but does not read stops the worker.
-- A job counts when it is admitted, whether or not the door answers.
-- The phone sends at most the newest 48 KiB of the conversation and shows
-  each refusal from its code: "You're sending messages quickly. Try again in
-  40 seconds." or "We've answered all the messages we can for you today…".
+  `CODER_WORKER_ALLOW` (the owner's) get everything.
+- `CODER_WORKER_QUOTA` is an abuse brake for emergencies only, off in the
+  shipped configuration and in `deploy/coder-worker-chat.env.example`.
+  Unset is unlimited, and each part is unlimited unless named:
+  `minute=N`, `day=N` (per caller key), `total=N` (every caller together
+  per UTC day), `bytes=N` (the size bound). Setting it also opens the
+  worker. Its refusals are `rate_limited` and `quota_exhausted`; the day's
+  counts go to `CODER_WORKER_QUOTA_FILE` when a day count is set.
+- No surface shows a limit. The phone, the desktop app, the terminal, and
+  the website show an old worker's `rate_limited` or `quota_exhausted` as
+  "Couldn't reach OpenAgents; try again." (`basic_coder::Failure::describe`).
+- The phone sends at most the newest 48 KiB of the conversation, so it stays
+  inside the size bound.
 
 `INVARIANTS.md` (Basic chat) records these as invariants with their tests.
 
@@ -337,7 +337,8 @@ that does, or systemd restarts it every two minutes.
 
 The first log line must be `worker  32c07895…` (the key the app carries),
 the judge line must name the doors in order, the Vercel AI Gateway first and
-`https://api.typesafe.ai` last, and the admits line must name the quota. The worker secret is kept with the
+`https://api.typesafe.ai` last, the admits line must say `every caller with no usage
+limit`, and the usage line must name the log's directory. The worker secret is kept with the
 owner's secrets as `coder-chat-worker.env`; the gateway key is the owner's
 AI Gateway key.
 

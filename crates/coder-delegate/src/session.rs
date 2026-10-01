@@ -518,10 +518,15 @@ pub enum Trigger {
     Artifact { path: String },
     /// This many milliseconds after start.
     After { ms: u64 },
+    /// No event for this many milliseconds: a session that has gone
+    /// quiet, the stuck guard a run with no deadline keeps (#10120).
+    Quiet { ms: u64 },
 }
 
 impl Trigger {
-    fn fires(&self, event: Option<&Event>, now_ms: u64) -> bool {
+    /// Whether the rule fires on `event` (or on the clock, for `None`) at
+    /// `now_ms`, the session's last event having arrived at `heard_ms`.
+    fn fires(&self, event: Option<&Event>, now_ms: u64, heard_ms: u64) -> bool {
         match (self, event.map(|e| &e.kind)) {
             (Trigger::Claim { contains }, Some(Kind::AssistantClaim { text })) => {
                 text.contains(contains.as_str())
@@ -533,6 +538,7 @@ impl Trigger {
                 changed.ends_with(path.as_str())
             }
             (Trigger::After { ms }, None) => now_ms >= *ms,
+            (Trigger::Quiet { ms }, None) => now_ms.saturating_sub(heard_ms) >= *ms,
             _ => false,
         }
     }
@@ -770,6 +776,8 @@ pub async fn drive_watched<S: Session>(
     let mut observe_refused = false;
     let mut stop_refused = false;
     let tick = controls.tick_ms.max(1);
+    // When the session last said anything, for a `Quiet` rule.
+    let mut heard = now;
     for _ in 0..MAX_TICKS {
         now += tick;
         let running = session.advance(now).await;
@@ -797,6 +805,9 @@ pub async fn drive_watched<S: Session>(
         for observation in &observed {
             recorder.push(observation_step(&adapter, observation));
         }
+        if !observed.is_empty() {
+            heard = now;
+        }
         // A rule looks at each new observation, and at the clock. What it
         // proposes carries the version it saw.
         let mut fire_steer = None;
@@ -811,16 +822,22 @@ pub async fn drive_watched<S: Session>(
             if let Some(rule) = &controls.steer
                 && !steered
                 && fire_steer.is_none()
-                && rule.when.fires(event, now)
+                && rule.when.fires(event, now, heard)
             {
                 fire_steer = Some(version.clone());
             }
             if let Some(rule) = &controls.stop_when
                 && !stop_ruled
                 && fire_stop.is_none()
-                && rule.fires(event, now)
+                && rule.fires(event, now, heard)
             {
-                fire_stop = Some(("a stop rule fired".to_string(), version));
+                let reason = match rule {
+                    Trigger::Quiet { ms } => {
+                        format!("the session was silent for {} s", ms / 1_000)
+                    }
+                    _ => "a stop rule fired".to_string(),
+                };
+                fire_stop = Some((reason, version));
             }
         }
         // An observer sees the same observations and submits versioned
@@ -1087,11 +1104,16 @@ mod tests {
             Trigger::Claim {
                 contains: "tests pass".to_string()
             }
-            .fires(Some(&claim), 0)
+            .fires(Some(&claim), 0, 0)
         );
-        assert!(!Trigger::CommandFailed.fires(Some(&claim), 0));
-        assert!(Trigger::After { ms: 5 }.fires(None, 5));
-        assert!(!Trigger::After { ms: 5 }.fires(Some(&claim), 5));
+        assert!(!Trigger::CommandFailed.fires(Some(&claim), 0, 0));
+        assert!(Trigger::After { ms: 5 }.fires(None, 5, 0));
+        assert!(!Trigger::After { ms: 5 }.fires(Some(&claim), 5, 0));
+        // Quiet fires on the clock only, counted from the last event.
+        let quiet = Trigger::Quiet { ms: 100 };
+        assert!(!quiet.fires(None, 150, 60));
+        assert!(quiet.fires(None, 160, 60));
+        assert!(!quiet.fires(Some(&claim), 500, 0));
     }
 
     fn event(seq: u64, kind: Kind) -> Event {

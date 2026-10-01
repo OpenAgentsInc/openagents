@@ -90,7 +90,7 @@ The tests check that every public page answers `200` on a development
 server with the header, the footer's links to the terms and the policy, and
 no script except the homepage terminal's; the homepage's single install
 link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
-bounds, and limits, against an in-process door;
+bounds, and one-at-a-time rule, against an in-process door;
 the install page and the `/desktop` redirect; that the legal pages carry the
 published text; that every color in the stylesheet is a gray and that the
 text steps meet WCAG AA; the `/connect` page's policy and the association

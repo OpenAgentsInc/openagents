@@ -80,7 +80,7 @@ pub(crate) struct App(Arc<Inner>);
 
 pub(crate) struct Inner {
     pub config: Config,
-    pub limits: Arc<ask::Limits>,
+    pub answering: Arc<ask::Answering>,
 }
 
 impl std::ops::Deref for App {
@@ -94,7 +94,7 @@ impl std::ops::Deref for App {
 pub fn router(config: Config) -> Router {
     let app = App(Arc::new(Inner {
         config,
-        limits: Arc::default(),
+        answering: Arc::default(),
     }));
     let hosts = Hosts {
         port: app.config.port,

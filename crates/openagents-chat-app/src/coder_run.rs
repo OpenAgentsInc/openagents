@@ -1220,17 +1220,10 @@ impl Rows {
                     },
                 }));
             }
+            // Only which engine runs now (#10120): the provider's refusal
+            // stays in the record.
             CoderEvent::ProviderSwitched(switch) => {
-                let text = match &switch.to {
-                    Some(to) => format!(
-                        "Switched from {} to {}: {}.",
-                        route_name(&switch.from),
-                        route_name(to),
-                        switch.reason
-                    ),
-                    None => format!("{}; no other provider has capacity.", switch.reason),
-                };
-                self.rows.push(notice(&key, &text));
+                self.rows.push(notice(&key, &switch.line()));
             }
             CoderEvent::Progress(progress) => {
                 self.seconds = progress.seconds;
@@ -1303,7 +1296,7 @@ impl Rows {
             }
             CoderEvent::Failure(failure) => {
                 self.close_turn();
-                let mut lines = vec![(failure.message.clone(), false)];
+                let mut lines = vec![(failure.shown(), false)];
                 if let Some(issue) = &failure.issue {
                     lines.push((issue.line(), false));
                 }
@@ -1678,17 +1671,6 @@ fn asked_card(key: &str, title: &str, text: &str, hint: &str) -> Node<()> {
         children.push(status(&format!("{key}-hint"), hint));
     }
     node
-}
-
-/// `codex:gpt-6-luna` as "Codex (gpt-6-luna)".
-fn route_name(route: &str) -> String {
-    match route.split_once(':') {
-        Some((provider, model)) => format!(
-            "{} ({model})",
-            coder_events::provider_name(&serde_json::json!(provider))
-        ),
-        None => coder_events::provider_name(&serde_json::json!(route)),
-    }
 }
 
 fn first_line(text: &str) -> String {

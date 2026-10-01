@@ -78,16 +78,18 @@
 //! stated minutes is refused `timed_out`, so no request is left without
 //! an answer. Read [`docs/coder/guides/worker-executor.md`] for that path.
 //!
-//! `CODER_WORKER_QUOTA` opens a worker to callers it has never met, as
-//! the OpenAgents app's chat needs, and meters them instead
-//! ([`coder::relay::quota`]): each caller key gets a few jobs a minute and
-//! a day, every caller together gets a day's total, and a request past its
-//! byte bound is refused. A refused job carries `rate_limited`,
-//! `quota_exhausted`, or `limit_exceeded` and, where waiting helps,
-//! `retry_after_ms`. Keys on `CODER_WORKER_ALLOW` are not metered. A
-//! metered caller gets conversation jobs only: no delegation and no
-//! execution. `CODER_WORKER_QUOTA_FILE` keeps the day's counts across a
-//! restart.
+//! `CODER_WORKER_OPEN=1` opens a worker to callers it has never met, as
+//! the OpenAgents app's chat needs, with no usage limit (#10120): an open
+//! caller gets conversation jobs only (no delegation and no execution),
+//! and a request past the byte bound is refused `limit_exceeded`. Keys on
+//! `CODER_WORKER_ALLOW` get everything. `CODER_WORKER_QUOTA` is an abuse
+//! brake for emergencies only, off in the shipped configuration
+//! ([`coder::relay::quota`]): unset is unlimited, and each of its counts
+//! is unlimited unless named. Setting it also opens the worker.
+//!
+//! Every job is recorded: one JSON line per job in the usage log
+//! ([`coder::relay::usage`]), `CODER_WORKER_USAGE_DIR` or, under systemd,
+//! `usage/` in the unit's state directory. `coder-worker usage` reads it.
 //!
 //! One request is answered once. An event whose ID the worker has already
 //! seen is set aside, and a request whose `created_at` is more than ten
@@ -215,22 +217,34 @@ const USAGE: &str = "\
 coder-worker — answer NIP-CJ job requests from a relay.
 
 Usage: coder-worker [--once] [--decline <CODE>] [--check]
+       coder-worker usage [--since YYYY-MM-DD] [--by key|surface|route|model|day|kind|outcome]
+                          [--json] [--dir DIR]
 
   --once             Answer one job, then exit.
   --decline <CODE>   Refuse every job with this NIP-CJ error code.
   --check            Read the configuration, print what the worker would
                      run as, and exit: 0 when it is safe to deploy, 78
-                     when it is not. An open worker (CODER_WORKER_ALLOW
-                     unset) on a relay that is not loopback is not.
+                     when it is not. A worker that names no customers
+                     (CODER_WORKER_ALLOW unset) and is not open on a relay
+                     that is not loopback is not.
   -h, --help         Print this text.
+
+usage prints totals from the usage log, grouped by --by (day unless
+named), from --since on; --json prints the rows as JSON. Its directory is
+--dir, else CODER_WORKER_USAGE_DIR, else usage/ in STATE_DIRECTORY, else
+/var/lib/coder-worker-chat/usage.
 
 CODER_WORKER_SECRET names the worker identity, 64 hex or an nsec.
 CODER_RELAY picks the relay. CODER_WORKER_ALLOW, when set, lists the
 customer pubkeys (npub or hex, comma-separated) this worker answers; any
-other request is refused with code not_admitted. CODER_WORKER_QUOTA
-(day=N,minute=N,total=N[,bytes=N]) answers every other caller too, under
-those per-key and total limits; CODER_WORKER_QUOTA_FILE keeps the day's
-counts across a restart. CODER_WORKER_JOBS bounds
+other request is refused with code not_admitted. CODER_WORKER_OPEN=1
+answers every other caller too, with no usage limit: conversation jobs
+only, each request at most 96 KiB. CODER_WORKER_QUOTA
+([day=N][,minute=N][,total=N][,bytes=N]) is an emergency brake, off unless
+set; each count left out is unlimited, and setting it also opens the
+worker. CODER_WORKER_QUOTA_FILE keeps its day's counts across a restart.
+Every job is appended to the usage log (CODER_WORKER_USAGE_DIR, else
+usage/ in systemd's STATE_DIRECTORY; off says off). CODER_WORKER_JOBS bounds
 how many jobs run at once; the rest are refused busy. The first-response
 judge answers a turn that asks for it (opener or judge in the request)
 through the decision profile the agent resolves (TYPESAFE_API_KEY or
@@ -263,15 +277,106 @@ struct Options {
     decline: Option<String>,
     /// Customers this worker answers; `None` admits everyone.
     allow: Option<Vec<String>>,
-    /// The limits every caller off the allowlist is admitted under.
+    /// Whether callers off the allowlist are answered (`CODER_WORKER_OPEN`).
+    open: bool,
+    /// The emergency brake every caller off the allowlist is admitted
+    /// under, when an operator set one. Setting it also opens the worker.
     quota: Option<Policy>,
+}
+
+impl Options {
+    /// Whether this worker answers callers off its allowlist.
+    fn opens(&self) -> bool {
+        self.open || self.quota.is_some()
+    }
 }
 
 /// The environment variable that lists admitted customers.
 const ALLOW_VAR: &str = "CODER_WORKER_ALLOW";
 
-/// The environment variable that opens the worker under a quota.
+/// The environment variable that opens the worker to every caller.
+const OPEN_VAR: &str = "CODER_WORKER_OPEN";
+
+/// The environment variable that sets the emergency brake.
 const QUOTA_VAR: &str = "CODER_WORKER_QUOTA";
+
+/// The environment variable naming the usage log's directory, or `off`.
+const USAGE_DIR_VAR: &str = "CODER_WORKER_USAGE_DIR";
+
+/// Where `coder-worker usage` reads when nothing else names a directory.
+const DEFAULT_USAGE_DIR: &str = "/var/lib/coder-worker-chat/usage";
+
+/// Reads `CODER_WORKER_OPEN`: `1`, `true`, `on`, or `yes` opens.
+fn open_from_env() -> Result<bool, String> {
+    match env::var(OPEN_VAR).as_deref().map(str::trim) {
+        Err(_) | Ok("" | "0" | "false" | "off" | "no") => Ok(false),
+        Ok("1" | "true" | "on" | "yes") => Ok(true),
+        Ok(other) => Err(format!("{OPEN_VAR} is 1 or 0, not `{other}`")),
+    }
+}
+
+/// The usage log's directory: `CODER_WORKER_USAGE_DIR`, else `usage/` in
+/// the systemd unit's state directory; `None` when it is `off` or neither
+/// is set.
+fn usage_dir_from_env() -> Option<PathBuf> {
+    match env::var(USAGE_DIR_VAR).as_deref().map(str::trim) {
+        Ok("off") => None,
+        Ok(dir) if !dir.is_empty() => Some(PathBuf::from(dir)),
+        _ => env::var("STATE_DIRECTORY")
+            .ok()
+            .and_then(|dirs| dirs.split(':').next().map(str::to_string))
+            .filter(|dir| !dir.is_empty())
+            .map(|dir| PathBuf::from(dir).join("usage")),
+    }
+}
+
+/// `coder-worker usage ...`: totals from the usage log.
+fn usage_command(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    use coder::relay::usage;
+    let mut since = None;
+    let mut by = usage::By::Day;
+    let mut as_json = false;
+    let mut dir = None;
+    let mut arguments = arguments;
+    while let Some(argument) = arguments.next() {
+        let mut value = |name: &str| {
+            arguments
+                .next()
+                .ok_or_else(|| format!("{name} needs a value"))
+        };
+        match argument.as_str() {
+            "--since" => since = Some(value("--since")?),
+            "--by" => by = usage::By::parse(&value("--by")?)?,
+            "--dir" => dir = Some(PathBuf::from(value("--dir")?)),
+            "--json" => as_json = true,
+            other => return Err(format!("unknown argument {other}")),
+        }
+    }
+    let dir = dir
+        .or_else(usage_dir_from_env)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_USAGE_DIR));
+    let read = usage::read(&dir, since.as_deref())?;
+    let rows = usage::stats(&read.records, by);
+    if as_json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "dir": dir.display().to_string(),
+                "since": since,
+                "by": by.word(),
+                "rows": rows,
+                "unreadable_lines": read.unreadable,
+            }))
+            .map_err(|error| error.to_string())?
+        );
+    } else {
+        print!("{}", usage::table(&rows, by));
+        if read.unreadable > 0 {
+            eprintln!("{} line(s) did not read as records", read.unreadable);
+        }
+    }
+    Ok(())
+}
 
 /// The environment variable naming the file that keeps the day's counts.
 const QUOTA_FILE_VAR: &str = "CODER_WORKER_QUOTA_FILE";
@@ -331,7 +436,15 @@ fn options() -> Result<Options, String> {
     let mut once = false;
     let mut check = false;
     let mut decline = None;
-    let mut arguments = env::args().skip(1);
+    let mut arguments = env::args().skip(1).peekable();
+    if arguments.peek().map(String::as_str) == Some("usage") {
+        arguments.next();
+        if let Err(why) = usage_command(arguments) {
+            eprintln!("coder-worker usage: {why}");
+            std::process::exit(64);
+        }
+        std::process::exit(0);
+    }
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--once" => once = true,
@@ -355,6 +468,7 @@ fn options() -> Result<Options, String> {
         check,
         decline,
         allow: allowed_from_env()?,
+        open: open_from_env()?,
         quota: quota_from_env()?,
     })
 }
@@ -389,14 +503,17 @@ fn is_loopback(url: &str) -> bool {
             .is_ok_and(|address| address.is_loopback())
 }
 
-/// Whether this configuration may be deployed. A worker off loopback needs
-/// an allowlist or a quota: one of them is its spend control.
-fn deployable(allow: Option<&[String]>, quota: Option<&Policy>, url: &str) -> Result<(), String> {
-    if allow.is_none() && quota.is_none() && !is_loopback(url) {
+/// Whether this configuration may be deployed. A worker off loopback
+/// either names its customers or is opened on purpose: an accidental
+/// open worker would hand delegation and execution to whoever finds its
+/// key, where an opened one gives strangers conversation jobs only.
+fn deployable(allow: Option<&[String]>, opens: bool, url: &str) -> Result<(), String> {
+    if allow.is_none() && !opens && !is_loopback(url) {
         return Err(format!(
-            "{ALLOW_VAR} is unset and {url} is not a loopback relay: an open worker on a \
-             shared relay answers whoever finds its key. Set {ALLOW_VAR} to the customer \
-             pubkeys this worker serves, or {QUOTA_VAR} to meter every caller."
+            "{ALLOW_VAR} is unset and {url} is not a loopback relay: a worker on a shared \
+             relay that names no customers answers whoever finds its key with everything. \
+             Set {ALLOW_VAR} to the customer pubkeys this worker serves, or {OPEN_VAR}=1 to \
+             answer every caller with conversation jobs only."
         ));
     }
     Ok(())
@@ -633,7 +750,6 @@ async fn serve(options: &Options) -> Result<(), String> {
             router_from_env()?,
             seams,
             &door,
-            options.quota.as_ref(),
             news.as_deref(),
             &jev_fallbacks,
         )
@@ -672,28 +788,45 @@ async fn serve(options: &Options) -> Result<(), String> {
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
     }
-    match (&options.allow, &options.quota) {
-        (Some(keys), None) => eprintln!("admits  {} customer(s)", keys.len()),
-        (allow, Some(quota)) => eprintln!(
-            "admits  every caller under a quota: {} a minute and {} a day per key, {} a day \
-             in all, {} bytes a request; {} key(s) unmetered",
-            quota.per_key_minute,
-            quota.per_key_day,
-            quota.total_day,
+    let count =
+        |count: Option<u32>| count.map_or_else(|| "unlimited".to_string(), |n| n.to_string());
+    match (&options.allow, options.opens(), &options.quota) {
+        (Some(keys), false, _) => eprintln!("admits  {} customer(s)", keys.len()),
+        (allow, true, None) => eprintln!(
+            "admits  every caller with no usage limit: conversation jobs, {} bytes a request; \
+             {} customer key(s) get everything",
+            Policy::UNLIMITED.max_request_bytes,
+            allow.as_ref().map_or(0, Vec::len)
+        ),
+        (allow, true, Some(quota)) => eprintln!(
+            "admits  every caller under the emergency brake {QUOTA_VAR}: {} a minute and {} a \
+             day per key, {} a day in all, {} bytes a request; {} customer key(s) unbraked",
+            count(quota.per_key_minute),
+            count(quota.per_key_day),
+            count(quota.total_day),
             quota.max_request_bytes,
             allow.as_ref().map_or(0, Vec::len)
         ),
-        (None, None) => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
+        (None, false, _) => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
     }
-    let ledger = match options.quota {
-        Some(policy) => {
-            let path = env::var(QUOTA_FILE_VAR).ok().map(PathBuf::from);
-            let ledger = Ledger::open(policy, path, unix_now())?;
+    let ledger = if options.opens() {
+        let policy = options.quota.unwrap_or(Policy::UNLIMITED);
+        let path = env::var(QUOTA_FILE_VAR).ok().map(PathBuf::from);
+        let ledger = Ledger::open(policy, path, unix_now())?;
+        if policy.counts() {
             eprintln!("quota   {} job(s) admitted today", ledger.total());
-            Some(Arc::new(std::sync::Mutex::new(ledger)))
         }
-        None => None,
+        Some(Arc::new(std::sync::Mutex::new(ledger)))
+    } else {
+        None
     };
+    let usage = usage_dir_from_env().map(|dir| {
+        eprintln!("usage   one line per job in {}", dir.display());
+        Arc::new(coder::relay::usage::Log::new(dir))
+    });
+    if usage.is_none() {
+        eprintln!("usage   log off ({USAGE_DIR_VAR} is off, or unset outside systemd)");
+    }
     let liveness = Liveness::from_env(PROBE_VAR, RENEW_VAR)?;
     eprintln!(
         "liveness a probe every {} s; the subscription is renewed every {} s",
@@ -701,7 +834,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         liveness.renew.as_secs_f64()
     );
     if options.check {
-        deployable(options.allow.as_deref(), options.quota.as_ref(), &url)?;
+        deployable(options.allow.as_deref(), options.opens(), &url)?;
         eprintln!("the configuration is safe to deploy");
         return Ok(());
     }
@@ -731,6 +864,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         answered: 0,
         seen: VecDeque::with_capacity(SEEN_REQUESTS),
         ledger,
+        usage,
         routing,
     };
     let mut backoff = RECONNECT_FLOOR;
@@ -809,8 +943,11 @@ struct Worker<'a> {
     answered: usize,
     /// IDs of the last [`SEEN_REQUESTS`] requests, oldest first.
     seen: VecDeque<String>,
-    /// The day's counts, when the worker is open under a quota.
+    /// The open lane's admission (size bound, and the emergency brake
+    /// when one is set), when the worker is open.
     ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
+    /// The usage log, when it is on.
+    usage: Option<Arc<coder::relay::usage::Log>>,
     /// The chat router's configuration.
     routing: Arc<RouterConfig>,
 }
@@ -1050,6 +1187,7 @@ impl Worker<'_> {
             decline: self.options.decline.clone(),
             allow: self.options.allow.clone(),
             ledger: self.ledger.clone(),
+            usage: self.usage.clone(),
             publish: self.outgoing.clone(),
             permit,
             waits: WAITS,
@@ -1134,9 +1272,9 @@ fn answer_execution(
 }
 
 /// Whether this worker takes execution requests from `caller`: an open
-/// worker's metered callers get conversation jobs only.
+/// worker's callers off its allowlist get conversation jobs only.
 fn execution_admitted(options: &Options, caller: &str) -> bool {
-    options.quota.is_none()
+    !options.opens()
         || options
             .allow
             .as_ref()
@@ -1225,9 +1363,11 @@ struct Job {
     judge: Option<Arc<jev::Client>>,
     decline: Option<String>,
     allow: Option<Vec<String>>,
-    /// The quota a caller off the allowlist is admitted under, when the
-    /// worker is open.
+    /// The admission a caller off the allowlist goes through, when the
+    /// worker is open: the size bound, and the emergency brake when set.
     ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
+    /// The usage log every job is recorded in, when it is on.
+    usage: Option<Arc<coder::relay::usage::Log>>,
     /// Frames for the serving loop to write to the socket, in order.
     publish: mpsc::UnboundedSender<Value>,
     /// A slot under the concurrency bound, or `None` when every slot was
@@ -1269,22 +1409,16 @@ impl RouterConfig {
     }
 
     #[cfg(test)]
-    fn new(setting: RouterSetting, seams: Seams, door: &Door, quota: Option<&Policy>) -> Self {
-        Self::with_news(setting, seams, door, quota, Some(router::gym::NEWS_MODEL))
+    fn new(setting: RouterSetting, seams: Seams, door: &Door) -> Self {
+        Self::with_news(setting, seams, door, Some(router::gym::NEWS_MODEL))
     }
 
     /// The configuration with grounded `gym.news` replies on `news` (a
     /// model id), when the door is a live gateway door and the Gym's
     /// records are here; `None` keeps them on the chat door.
     #[cfg(test)]
-    fn with_news(
-        setting: RouterSetting,
-        seams: Seams,
-        door: &Door,
-        quota: Option<&Policy>,
-        news: Option<&str>,
-    ) -> Self {
-        Self::with_news_and_jev(setting, seams, door, quota, news, &[])
+    fn with_news(setting: RouterSetting, seams: Seams, door: &Door, news: Option<&str>) -> Self {
+        Self::with_news_and_jev(setting, seams, door, news, &[])
     }
 
     /// [`RouterConfig::with_news`] for a judge that falls back to
@@ -1294,11 +1428,9 @@ impl RouterConfig {
         setting: RouterSetting,
         seams: Seams,
         door: &Door,
-        quota: Option<&Policy>,
         news: Option<&str>,
         jev_fallbacks: &[&str],
     ) -> Self {
-        let quota = quota.map(|quota| (quota.per_key_minute, quota.per_key_day));
         // The news lane is the gateway door's, with its reasoning off; a
         // worker with a primary asks the primary first there too (#10109).
         let news = match (door.gateway(), news) {
@@ -1326,7 +1458,6 @@ impl RouterConfig {
                 Some((&ordered.primary.model, &ordered.primary.url)),
                 &ordered.fallback.model,
                 Some(&ordered.fallback.url),
-                quota,
                 &seams,
                 news_name,
                 jev_fallbacks,
@@ -1334,12 +1465,11 @@ impl RouterConfig {
             Door::Live(live) => router::worker_facts_with_jev(
                 &live.model,
                 Some(&live.url),
-                quota,
                 &seams,
                 news_name,
                 jev_fallbacks,
             ),
-            door => router::worker_facts(door.model(), None, quota, &seams),
+            door => router::worker_facts(door.model(), None, &seams),
         };
         // While the primary is missing its turns, our model is the
         // fallback, and a reply that names our model names it.
@@ -1514,7 +1644,42 @@ impl Job {
     /// unreadable, and that is answered, not dropped: the customer proved
     /// who they are, so a typed `malformed` tells them what to fix,
     /// where a silence would tell them the worker is down.
+    ///
+    /// Whatever happens, the job is recorded in the usage log afterwards
+    /// (#10120): who asked, from where, how it was answered, and how long
+    /// it took, never its text.
     async fn answer(self, request: &Event) -> Result<(), String> {
+        let arrived = Instant::now();
+        let observed = std::sync::Mutex::new(coder::relay::usage::Observed::new(
+            &request.pubkey,
+            request.content.len(),
+            unix_now_ms(),
+        ));
+        let served = self.serve(request, &observed, arrived).await;
+        if let Some(log) = &self.usage {
+            let observed = observed
+                .into_inner()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let door = observed
+                .record
+                .model
+                .as_deref()
+                .map(|model| answering_door(&self.door, model));
+            let elapsed = u64::try_from(arrived.elapsed().as_millis()).unwrap_or(u64::MAX);
+            if let Err(why) = log.append(&observed.finish(elapsed, door)) {
+                eprintln!("usage: not recorded: {why}");
+            }
+        }
+        served
+    }
+
+    /// [`Job::answer`]'s work, noting each published body in `observed`.
+    async fn serve(
+        &self,
+        request: &Event,
+        observed: &std::sync::Mutex<coder::relay::usage::Observed>,
+        arrived: Instant,
+    ) -> Result<(), String> {
         let customer = parse_hex(&request.pubkey)
             .and_then(|bytes| XOnlyPublicKey::from_byte_array(bytes).ok())
             .ok_or("the request's pubkey does not parse")?;
@@ -1539,7 +1704,12 @@ impl Job {
             );
             self.publish
                 .send(json!(["EVENT", event]))
-                .map_err(|_| "the serving loop is gone".to_string())
+                .map_err(|_| "the serving loop is gone".to_string())?;
+            if let Ok(mut observed) = observed.lock() {
+                let elapsed = u64::try_from(arrived.elapsed().as_millis()).unwrap_or(u64::MAX);
+                observed.saw(&content, elapsed);
+            }
+            Ok(())
         };
         let refuse_after = |version: u64,
                             code: &str,
@@ -1570,7 +1740,12 @@ impl Job {
                 serde_json::from_str::<Value>(&plaintext)
                     .map_err(|error| format!("the payload is not JSON: {error}"))
             }) {
-            Ok(payload) if payload.is_object() => payload,
+            Ok(payload) if payload.is_object() => {
+                if let Ok(mut observed) = observed.lock() {
+                    observed.request(&payload);
+                }
+                payload
+            }
             Ok(_) => {
                 return refuse(
                     PAYLOAD_VERSION,
@@ -1598,9 +1773,9 @@ impl Job {
             .allow
             .as_ref()
             .is_some_and(|keys| keys.contains(&request.pubkey));
-        // A quota admits callers off the list, metered below.
-        let metered = !listed && self.ledger.is_some();
-        if self.allow.is_some() && !listed && !metered {
+        // An open worker admits callers off the list, below.
+        let open_caller = !listed && self.ledger.is_some();
+        if self.allow.is_some() && !listed && !open_caller {
             return refuse(
                 version,
                 "not_admitted",
@@ -1659,8 +1834,8 @@ impl Job {
             );
         }
 
-        if metered {
-            // A metered caller gets a conversation: a delegation is a
+        if open_caller {
+            // An open caller gets a conversation: a delegation is a
             // bounded task for the operator's own terminal.
             if !payload["delegation"].is_null() {
                 return refuse(
@@ -1672,7 +1847,7 @@ impl Job {
             let admitted = self.ledger.as_ref().map(|ledger| {
                 ledger
                     .lock()
-                    .map_err(|_| "the quota ledger is poisoned".to_string())
+                    .map_err(|_| "the admission ledger is poisoned".to_string())
                     .map(|mut ledger| {
                         ledger.admit(&request.pubkey, request.content.len(), unix_now())
                     })
@@ -1692,7 +1867,7 @@ impl Job {
         }
 
         // A ranking of the caller's suggestions: one System One call, no
-        // generation. Admitted and metered exactly as a turn is, above.
+        // generation. Admitted exactly as a turn is, above.
         if payload["type"].as_str() == Some("rank") {
             return self.rank(version, &payload, &publish, &refuse).await;
         }
@@ -3126,6 +3301,35 @@ fn unix_now() -> u64 {
         .unwrap_or(0)
 }
 
+fn unix_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
+/// The door that wrote a reply `model` names, for the usage log: `bank`
+/// for a prepared answer, the host of the gateway that served the model,
+/// or the door's own name.
+fn answering_door(door: &Door, model: &str) -> String {
+    if model.starts_with("bank:") {
+        return "bank".to_string();
+    }
+    let host = |url: &str| {
+        let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+        rest.split(['/', '?', '#'])
+            .next()
+            .unwrap_or(rest)
+            .to_string()
+    };
+    match door {
+        Door::Fallback(ordered) if model == ordered.primary.model => host(&ordered.primary.url),
+        Door::Fallback(ordered) => host(&ordered.fallback.url),
+        Door::Live(live) => host(&live.url),
+        other => other.name().to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3197,6 +3401,24 @@ mod tests {
         admitted: bool,
         ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
     ) -> Value {
+        response_logged(
+            door, content, created_at, decline, allow, admitted, ledger, None,
+        )
+        .await
+    }
+
+    /// [`response_metered`] for a worker that records its jobs in `usage`.
+    #[allow(clippy::too_many_arguments)]
+    async fn response_logged(
+        door: Door,
+        content: String,
+        created_at: u64,
+        decline: Option<&str>,
+        allow: Option<Vec<String>>,
+        admitted: bool,
+        ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
+        usage: Option<Arc<coder::relay::usage::Log>>,
+    ) -> Value {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let (worker, client, conversation) = identities();
             let request = client.signer().sign(
@@ -3212,7 +3434,6 @@ mod tests {
                 RouterSetting::Live,
                 Seams::default(),
                 &door,
-                None,
             ));
             let job = Job {
                 routing,
@@ -3223,6 +3444,7 @@ mod tests {
                 decline: decline.map(str::to_owned),
                 allow,
                 ledger,
+                usage,
                 publish,
                 permit,
                 waits: Waits {
@@ -3280,7 +3502,7 @@ mod tests {
             "127.0.0.1:7777",
         ] {
             assert!(is_loopback(url), "{url}");
-            assert!(deployable(None, None, url).is_ok(), "{url}");
+            assert!(deployable(None, false, url).is_ok(), "{url}");
         }
         for url in [
             "wss://relay.openagents.com",
@@ -3290,15 +3512,15 @@ mod tests {
             "wss://relay.example/127.0.0.1",
         ] {
             assert!(!is_loopback(url), "{url}");
-            let why = deployable(None, None, url).unwrap_err();
+            let why = deployable(None, false, url).unwrap_err();
             assert!(why.contains(ALLOW_VAR) && why.contains(url), "{why}");
-            assert!(why.contains(QUOTA_VAR), "{why}");
+            assert!(why.contains(OPEN_VAR), "{why}");
             assert!(
-                deployable(Some(&["ab".to_string()]), None, url).is_ok(),
+                deployable(Some(&["ab".to_string()]), false, url).is_ok(),
                 "{url}"
             );
-            let quota = Policy::parse("day=5,minute=2,total=10").unwrap();
-            assert!(deployable(None, Some(&quota), url).is_ok(), "{url}");
+            // Opened on purpose, with no quota at all (#10120).
+            assert!(deployable(None, true, url).is_ok(), "{url}");
         }
     }
 
@@ -3519,13 +3741,47 @@ mod tests {
         }
     }
 
-    /// An open worker answers a caller it has never met, under the quota:
-    /// a key past its minute hears `rate_limited` with the wait, a
-    /// delegation is refused, and a key on the allowlist is not counted.
+    /// An open worker answers a caller it has never met with no usage
+    /// limit (#10120): many turns in the same minute are all answered, a
+    /// delegation is refused, and a key on the allowlist gets everything.
     #[tokio::test]
-    async fn a_quota_meters_callers_off_the_allowlist() {
+    async fn an_open_worker_answers_every_caller_with_no_limit() {
         let (_, client, conversation) = identities();
-        let policy = Policy::parse("day=5,minute=2,total=10").unwrap();
+        let ledger = Arc::new(std::sync::Mutex::new(
+            Ledger::open(Policy::UNLIMITED, None, unix_now()).unwrap(),
+        ));
+        let ask = |payload: Value, allow: Option<Vec<String>>| {
+            let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+            response_metered(
+                Door::Stub(StubGenerate::default()),
+                content,
+                unix_now(),
+                None,
+                allow,
+                true,
+                Some(ledger.clone()),
+            )
+        };
+        let turn = json!({"v":2,"task":"hello"});
+        for _ in 0..12 {
+            assert_eq!(ask(turn.clone(), None).await["type"], "result");
+        }
+        // The allowlist names someone else; the open worker still answers.
+        let other = vec!["ab".repeat(32)];
+        assert_eq!(ask(turn.clone(), Some(other)).await["type"], "result");
+        let listed = Some(vec![client.pubkey().to_string()]);
+        assert_eq!(ask(turn.clone(), listed).await["type"], "result");
+        let delegation = json!({"v":2,"task":"x","delegation":{"writes":false,"minutes":1}});
+        assert_eq!(ask(delegation, None).await["code"], "not_admitted");
+    }
+
+    /// The emergency brake still works when an operator sets it: a key
+    /// past its minute hears `rate_limited` with the wait, and a key on
+    /// the allowlist is not counted.
+    #[tokio::test]
+    async fn an_emergency_brake_meters_callers_off_the_allowlist() {
+        let (_, client, conversation) = identities();
+        let policy = Policy::parse("minute=2").unwrap();
         let ledger = Arc::new(std::sync::Mutex::new(
             Ledger::open(policy, None, unix_now()).unwrap(),
         ));
@@ -3543,18 +3799,60 @@ mod tests {
         };
         let turn = json!({"v":2,"task":"hello"});
         assert_eq!(ask(turn.clone(), None).await["type"], "result");
-        // The allowlist names someone else; the quota still admits this key.
-        let other = vec!["ab".repeat(32)];
-        assert_eq!(ask(turn.clone(), Some(other)).await["type"], "result");
+        assert_eq!(ask(turn.clone(), None).await["type"], "result");
         let limited = ask(turn.clone(), None).await;
         assert_eq!(limited["code"], "rate_limited");
         assert!(limited["retry_after_ms"].as_u64().unwrap() > 0, "{limited}");
-        // A listed key is not metered at all.
         let listed = Some(vec![client.pubkey().to_string()]);
         assert_eq!(ask(turn.clone(), listed).await["type"], "result");
         assert_eq!(ledger.lock().unwrap().total(), 2);
-        let delegation = json!({"v":2,"task":"x","delegation":{"writes":false,"minutes":1}});
-        assert_eq!(ask(delegation, None).await["code"], "not_admitted");
+    }
+
+    /// Every job lands in the usage log as one line, answered or refused,
+    /// with the caller's surface and client, and never the message text.
+    #[tokio::test]
+    async fn every_job_is_recorded_in_the_usage_log_without_its_text() {
+        let (_, client, conversation) = identities();
+        let dir = tempfile::tempdir().unwrap();
+        let log = Arc::new(coder::relay::usage::Log::new(dir.path().join("usage")));
+        let ask = |payload: Value, admitted: bool| {
+            let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+            response_logged(
+                Door::Stub(StubGenerate::default()),
+                content,
+                unix_now(),
+                None,
+                None,
+                admitted,
+                None,
+                Some(log.clone()),
+            )
+        };
+        let turn = json!({"v":2,"task":"a private question","client":"openagents-mobile",
+            "context":{"surface":"phone"}});
+        assert_eq!(ask(turn.clone(), true).await["type"], "result");
+        assert_eq!(ask(turn, false).await["code"], "busy");
+        let read = coder::relay::usage::read(log.dir(), None).unwrap();
+        assert_eq!(read.records.len(), 2);
+        let answered = &read.records[0];
+        assert_eq!(answered.key, client.pubkey());
+        assert_eq!(answered.surface.as_deref(), Some("phone"));
+        assert_eq!(answered.client.as_deref(), Some("openagents-mobile"));
+        assert_eq!(answered.kind, "turn");
+        assert_eq!(answered.outcome, coder::relay::usage::Outcome::Answered);
+        assert!(answered.model.is_some() && answered.door.is_some());
+        assert!(answered.bytes_in > 0 && answered.bytes_out > 0);
+        assert_eq!(
+            read.records[1].outcome,
+            coder::relay::usage::Outcome::Refused
+        );
+        assert_eq!(read.records[1].code.as_deref(), Some("busy"));
+        let rows = coder::relay::usage::stats(&read.records, coder::relay::usage::By::Surface);
+        assert_eq!((rows[0].group.as_str(), rows[0].jobs), ("phone", 2));
+        for entry in std::fs::read_dir(log.dir()).unwrap() {
+            let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            assert!(!text.contains("private question"), "{text}");
+        }
     }
 
     /// A request past the quota's byte bound is refused `limit_exceeded`
@@ -3584,24 +3882,27 @@ mod tests {
     }
 
     #[test]
-    fn a_metered_caller_gets_no_execution() {
-        let options = |allow: Option<Vec<String>>, quota: Option<Policy>| Options {
+    fn an_open_caller_gets_no_execution() {
+        let options = |allow: Option<Vec<String>>, open: bool, quota: Option<Policy>| Options {
             once: false,
             check: false,
             decline: None,
             allow,
+            open,
             quota,
         };
-        let quota = Policy::parse("day=5,minute=2,total=10").ok();
         let owner = "ab".repeat(32);
-        assert!(execution_admitted(&options(None, None), &owner));
-        assert!(!execution_admitted(&options(None, quota), &owner));
+        assert!(execution_admitted(&options(None, false, None), &owner));
+        assert!(!execution_admitted(&options(None, true, None), &owner));
+        // A brake set alone opens the worker too.
+        let brake = Policy::parse("minute=2").ok();
+        assert!(!execution_admitted(&options(None, false, brake), &owner));
         assert!(execution_admitted(
-            &options(Some(vec![owner.clone()]), quota),
+            &options(Some(vec![owner.clone()]), true, None),
             &owner
         ));
         assert!(!execution_admitted(
-            &options(Some(vec![owner.clone()]), quota),
+            &options(Some(vec![owner.clone()]), true, None),
             &"cd".repeat(32)
         ));
     }
@@ -3755,12 +4056,10 @@ mod tests {
             .map(|opener| opener.id.as_str())
             .chain(["none"])
             .collect();
-        // The loopback door is no gateway and the test worker has no
-        // quota, so the answers that need either are not offered, and the
-        // judge answers only the rest.
+        // The loopback door is no gateway, so the answers that need one
+        // are not offered, and the judge answers only the rest.
         let facts = router::Context::of(context).facts(&router::worker_facts(
             GEMINI,
-            None,
             None,
             &Seams::default(),
         ));
@@ -3853,7 +4152,7 @@ mod tests {
         );
         let (publish, mut frames) = mpsc::unbounded_channel();
         let slots = Arc::new(Semaphore::new(1));
-        let routing = Arc::new(RouterConfig::new(setting, seams, &door, None));
+        let routing = Arc::new(RouterConfig::new(setting, seams, &door));
         let job = Job {
             identity: Arc::new(worker),
             door: Arc::new(door),
@@ -3862,6 +4161,7 @@ mod tests {
             decline: None,
             allow: None,
             ledger: None,
+            usage: None,
             publish,
             permit: slots.clone().try_acquire_owned().ok(),
             waits: WAITS,
@@ -4589,11 +4889,14 @@ mod tests {
         .await;
         let result = &frames.last().unwrap().1;
         assert_eq!(result["tier"], "canned");
-        // meta.model needs the gateway and meta.pricing a quota; this test
-        // worker has neither.
+        // meta.model needs the gateway, which this test worker lacks;
+        // meta.pricing needs nothing since it names no quota (#10120).
         assert_eq!(
             result["followups"],
-            json!([{ "id": "meta.capabilities", "label": "What can you do?" }])
+            json!([
+                { "id": "meta.capabilities", "label": "What can you do?" },
+                { "id": "meta.pricing", "label": "What does it cost?" }
+            ])
         );
     }
 
@@ -5312,7 +5615,7 @@ mod tests {
             "test",
             coder::generate::ResponsesDoor::new(coder::generate::DEFAULT_DOOR_URL, GEMINI, "test"),
         )));
-        let config = RouterConfig::new(RouterSetting::Live, Seams::default(), &door, None);
+        let config = RouterConfig::new(RouterSetting::Live, Seams::default(), &door);
         let render = |facts: &router::Facts, id: &str| {
             Bank::builtin()
                 .entry(id)
@@ -5367,7 +5670,6 @@ mod tests {
                 Seams::default(),
                 &door,
                 None,
-                None,
                 fallbacks,
             );
             Bank::builtin()
@@ -5398,7 +5700,7 @@ mod tests {
             GEMINI,
             "test",
         ));
-        let on = RouterConfig::new(RouterSetting::Live, seams(), &door, None);
+        let on = RouterConfig::new(RouterSetting::Live, seams(), &door);
         assert_eq!(
             on.news.as_ref().map(|news| news.model()),
             Some(router::gym::NEWS_MODEL)
@@ -5414,10 +5716,10 @@ mod tests {
             "{}",
             recipients(&on)
         );
-        let off = RouterConfig::with_news(RouterSetting::Live, seams(), &door, None, None);
+        let off = RouterConfig::with_news(RouterSetting::Live, seams(), &door, None);
         assert!(off.news.is_none());
         assert!(!recipients(&off).contains(router::gym::NEWS_MODEL_NAME));
-        let no_gym = RouterConfig::new(RouterSetting::Live, Seams::default(), &door, None);
+        let no_gym = RouterConfig::new(RouterSetting::Live, Seams::default(), &door);
         assert!(no_gym.news.is_none());
     }
 

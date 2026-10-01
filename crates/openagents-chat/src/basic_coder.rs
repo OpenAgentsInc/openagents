@@ -6,11 +6,10 @@
 //! encrypted (NIP-44) to the OpenAgents chat worker, through
 //! `relay.openagents.com`. The worker is `coder-worker`, answering on
 //! Space Bunny Alpha through OpenRouter first and the gateway door's Gemini
-//! Flash lane after, open to every caller under a per-key quota
-//! (`coder::relay::quota`); it streams the reply back as `27000` partial
-//! feedback and one `26900` result. The relay sees ciphertext and routing
-//! tags only. Read `docs/deployment/chat-worker.md` for the serving path and
-//! its limits.
+//! Flash lane after, open to every caller with no usage limit (#10120); it
+//! streams the reply back as `27000` partial feedback and one `26900`
+//! result. The relay sees ciphertext and routing tags only. Read
+//! `docs/deployment/chat-worker.md` for the serving path.
 //!
 //! [`Reading`] checks every answer before it is shown: signed by the worker,
 //! addressed to this device, bound to the request, decrypted, and, for a
@@ -37,7 +36,7 @@ pub const RELAY: &str = "wss://relay.openagents.com";
 /// secret, and the model key it spends, stay on the worker's host.
 pub const WORKER: &str = "32c078952ff8b1f1d6f431e30fb240b0d1f91e30f977844557e8267390e3599b";
 
-/// What the basic Coder is told about itself. The worker's own limits
+/// What the basic Coder is told about itself. The worker's own rules
 /// outrank it; it grants nothing.
 pub const INSTRUCTIONS: &str = "We are OpenAgents, chatting with the user in \
 the OpenAgents app. Always speak as \"we\" and \"us\", never \"I\" or \
@@ -188,29 +187,26 @@ pub enum Failure {
     Transport(String),
 }
 
+/// What the chat says when an older worker still refuses for a usage
+/// count: there is no usage limit (#10120), so no surface ever names one.
+pub const UNREACHED: &str = "Couldn't reach OpenAgents; try again.";
+
 impl Failure {
-    /// What the chat says, from the refusal's code, never its words alone.
+    /// What the chat says, from the refusal's code, never its words: a
+    /// worker's own message can name a provider's or an old quota's limit,
+    /// and no surface shows a limit (#10120). The message stays in the
+    /// failure for logs and records.
     pub fn describe(&self) -> String {
         match self {
-            Failure::Refused {
-                code,
-                retry_after_ms,
-                message,
-            } => match code.as_str() {
-                "rate_limited" => format!(
-                    "You're sending messages quickly. Try again in {}.",
-                    wait(retry_after_ms.unwrap_or(60_000))
-                ),
-                "quota_exhausted" => format!(
-                    "We've answered all the messages we can for you today. Try again in {}, \
-                     or run Coder on your computer.",
-                    wait(retry_after_ms.unwrap_or(3_600_000))
-                ),
+            Failure::Refused { code, .. } => match code.as_str() {
+                // Only a worker from before #10120, or one under an
+                // operator's emergency brake, sends these.
+                "rate_limited" | "quota_exhausted" => UNREACHED.into(),
                 "limit_exceeded" => {
                     "This conversation is too long for us to answer here. Start a new chat.".into()
                 }
                 "busy" => "We're busy right now. Try again in a moment.".into(),
-                _ => format!("We couldn't answer ({code}): {message}"),
+                _ => format!("We couldn't answer this time ({code}). Try again."),
             },
             Failure::Silent => "We couldn't reply this time. Try again.".into(),
             Failure::Transport(_) => "We couldn't reach the chat. Check your connection.".into(),
@@ -319,17 +315,6 @@ pub fn without_citations(text: &str, streaming: bool) -> String {
         out.push_str(end);
     }
     out
-}
-
-/// A wait in words: seconds under two minutes, else minutes, else hours.
-fn wait(ms: u64) -> String {
-    let seconds = ms.div_ceil(1_000).max(1);
-    match seconds {
-        1 => "a second".into(),
-        2..=119 => format!("{seconds} seconds"),
-        120..=7_199 => format!("{} minutes", seconds.div_ceil(60)),
-        _ => format!("{} hours", seconds.div_ceil(3_600)),
-    }
 }
 
 /// A reply as it arrives.
@@ -965,33 +950,49 @@ mod tests {
         assert!(!reply.ended() && reply.text.is_empty() && !reply.heard);
     }
 
+    /// An old worker's quota refusal is read with its code and wait, but
+    /// the chat never shows a limit (#10120): only that OpenAgents could
+    /// not be reached.
     #[test]
-    fn a_refusal_carries_its_code_and_wait() {
+    fn a_quota_refusal_never_shows_a_limit() {
         let (me, me_hex, worker, worker_public) = keys();
         let request = "ab".repeat(32);
         let reading = Reading::new(&me, &me_hex, &worker_public, &request);
         let mut reply = Reply::default();
         let status = json!({"v": 2, "type": "status", "status": "error",
-            "code": "rate_limited", "message": "slow down", "retry_after_ms": 40_000});
+            "code": "rate_limited", "message": "this key sent too many requests in the last minute",
+            "retry_after_ms": 40_000});
         reading.take(
             &answer(&worker, &me_hex, &request, CJ_CONVERSATION_FEEDBACK, status),
             &mut reply,
         );
         let failure = reply.failure.clone().expect("refused");
         assert_eq!(
-            failure.describe(),
-            "You're sending messages quickly. Try again in 40 seconds."
+            failure,
+            Failure::Refused {
+                code: "rate_limited".into(),
+                message: "this key sent too many requests in the last minute".into(),
+                retry_after_ms: Some(40_000),
+            }
         );
-        let exhausted = Failure::Refused {
-            code: "quota_exhausted".into(),
-            message: String::new(),
-            retry_after_ms: Some(5 * 3_600_000),
-        };
-        assert_eq!(
-            exhausted.describe(),
-            "We've answered all the messages we can for you today. Try again in 5 hours, \
-             or run Coder on your computer."
-        );
+        assert_eq!(failure.describe(), UNREACHED);
+        for code in [
+            "quota_exhausted",
+            "rate_limited",
+            "internal",
+            "not_admitted",
+        ] {
+            let said = Failure::Refused {
+                code: code.into(),
+                message: "this key used today's requests on this worker; usage limit".into(),
+                retry_after_ms: Some(5 * 3_600_000),
+            }
+            .describe();
+            let lower = said.to_lowercase();
+            for word in ["limit", "quota", "try again in", "messages we can", "today"] {
+                assert!(!lower.contains(word), "{code}: {said}");
+            }
+        }
         // The chat speaks as OpenAgents, in the plural.
         let busy = Failure::Refused {
             code: "busy".into(),

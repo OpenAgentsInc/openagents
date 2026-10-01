@@ -2411,11 +2411,16 @@ impl Cli {
             return harness(why);
         }
         crate::say::say!(
-            "  delegate ▸ {} ({}) takes over with a {}-character briefing and {} s to finish",
+            "  delegate ▸ {} ({}) takes over with a {}-character briefing{}",
             self.agent(),
             self.model,
             crate::say::count(briefing.chars() as u64),
-            deadline.as_secs()
+            // A day or more is no deadline a person waits on (#10120).
+            if deadline.as_secs() < 86_400 {
+                format!(" and {} s to finish", deadline.as_secs())
+            } else {
+                String::new()
+            }
         );
         crate::say::say!(
             "  delegate ▸ writing its output to {}",

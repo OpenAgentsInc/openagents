@@ -122,7 +122,8 @@ chat home, and the command's public identity (never the key).
 
 The in-process and scratch modes talk to the public chat worker on
 `wss://relay.openagents.com` as a NIP-CJ client signed by their own key, so
-they are admitted under the worker's per-key quota like a fresh phone.
+they are answered like a fresh phone, with no usage limit, and recorded in
+the worker's usage log.
 `OPENAGENTS_CHAT_RELAY` and `OPENAGENTS_CHAT_WORKER` point them at another
 relay and worker (the fixture tests use a local relay). The request says
 `surface: "terminal"` and `client: "openagents-cli"`, and so it does through

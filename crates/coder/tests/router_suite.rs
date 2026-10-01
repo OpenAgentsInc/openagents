@@ -237,7 +237,6 @@ fn the_gym_question_is_the_production_route_question() {
     let facts = coder::router::worker_facts(
         coder::generate::DEFAULT_MODEL,
         Some(coder::generate::DEFAULT_DOOR_URL),
-        Some((6, 40)),
         &coder::router::Seams::default(),
     );
     let production = coder::router::judge::questions(

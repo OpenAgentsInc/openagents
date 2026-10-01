@@ -206,12 +206,7 @@ async fn run_router(name: &str, mode: router::Mode) {
             std::sync::Arc::new(coder::cli_route::NoFill),
         ));
     }
-    let facts = router::worker_facts(
-        "google/gemini-3.8-flash",
-        Some(DEFAULT_DOOR_URL),
-        Some((6, 40)),
-        &seams,
-    );
+    let facts = router::worker_facts("google/gemini-3.8-flash", Some(DEFAULT_DOOR_URL), &seams);
     let tools = if std::env::var("ROUTER_EVAL_GYM").as_deref() == Ok("off") {
         Vec::new()
     } else {

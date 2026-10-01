@@ -1323,9 +1323,12 @@ fn a_failed_reply_offers_to_try_again() {
         });
     }
     let chat = fixture.render();
+    // An old worker's rate refusal never reads as a limit (#10120).
+    assert!(texts(&chat).contains(&"Couldn't reach OpenAgents; try again.".to_owned()));
     assert!(
-        texts(&chat)
-            .contains(&"You're sending messages quickly. Try again in 9 seconds.".to_owned())
+        !texts(&chat)
+            .iter()
+            .any(|text| text.to_lowercase().contains("limit") || text.contains("Try again in"))
     );
     let chat = fixture.tap("talk-retry");
     assert_eq!(hand.asked().len(), 2);

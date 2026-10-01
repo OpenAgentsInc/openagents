@@ -215,24 +215,22 @@ followups = ["meta.who", "meta.model"]
 
 [[answer]]
 id = "meta.pricing"
-version = 1
+version = 2
 routes = ["meta"]
 when = "The user asks what this chat or OpenAgents costs, or whether it is free; not what the user's own coding agents or model providers charge them"
-text = "Chatting with us is free right now, up to {day_quota} messages a day. Coder runs on your own computer with the coding agents you already use there, so it doesn't bill you through us."
-facts = { day_quota = "worker.quota.day" }
+text = "Chatting with us is free right now. Coder runs on your own computer with the coding agents you already use there, so it doesn't bill you through us."
 chip = "What does it cost?"
-sources = ["crates/coder/src/relay/quota.rs", "INVARIANTS.md"]
+sources = ["docs/deployment/chat-worker-usage.md", "INVARIANTS.md"]
 followups = ["meta.quota", "meta.privacy"]
 
 [[answer]]
 id = "meta.quota"
-version = 1
+version = 2
 routes = ["meta"]
 when = "The user asks how many messages they can send, what the message limit is, or why they were told to wait"
-text = "You can send us up to {minute_quota} messages a minute and {day_quota} a day. Every message counts, including ones we answer with a prepared reply like this one."
-facts = { minute_quota = "worker.quota.minute", day_quota = "worker.quota.day" }
+text = "Send us as many messages as you like: we don't cap how many you send."
 chip = "How many messages do I get?"
-sources = ["crates/coder/src/relay/quota.rs", "INVARIANTS.md"]
+sources = ["docs/deployment/chat-worker-usage.md", "INVARIANTS.md"]
 followups = ["meta.pricing"]
 
 [[answer]]

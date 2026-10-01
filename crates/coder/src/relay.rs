@@ -49,8 +49,11 @@
 pub mod artifacts;
 /// Probing and renewing a long-lived relay subscription (#9946).
 pub mod liveness;
-/// An open conversation worker's per-caller quota.
+/// An open conversation worker's request-size bound and its optional,
+/// off-by-default abuse brake.
 pub mod quota;
+/// The worker's per-job usage log and the stats read from it (#10120).
+pub mod usage;
 
 use std::collections::HashSet;
 use std::env;

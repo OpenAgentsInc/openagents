@@ -1611,17 +1611,11 @@ pub fn validate_continuation(continuation: &str, message: &str) -> Result<String
 
 /// The facts a worker fills the bank's slots from: its model and door
 /// (`model` served at `url`, `None` for a door that is not a gateway
-/// door), its quota as `(per minute, per day)` for a metered worker, and
-/// every service its seams send text to. A value this cannot name is left
+/// door), and every service its seams send text to. A value this cannot name is left
 /// out, and the entries that need it with it.
 #[must_use]
-pub fn worker_facts(
-    model: &str,
-    url: Option<&str>,
-    quota: Option<(u32, u32)>,
-    seams: &Seams,
-) -> Facts {
-    worker_facts_with_news(model, url, quota, seams, None)
+pub fn worker_facts(model: &str, url: Option<&str>, seams: &Seams) -> Facts {
+    worker_facts_with_news(model, url, seams, None)
 }
 
 /// [`worker_facts`] for a worker whose grounded `gym.news` replies run on
@@ -1631,11 +1625,10 @@ pub fn worker_facts(
 pub fn worker_facts_with_news(
     model: &str,
     url: Option<&str>,
-    quota: Option<(u32, u32)>,
     seams: &Seams,
     news: Option<&str>,
 ) -> Facts {
-    worker_facts_with_jev(model, url, quota, seams, news, &[])
+    worker_facts_with_jev(model, url, seams, news, &[])
 }
 
 /// [`worker_facts_with_news`] for a worker whose Jev judge falls back to
@@ -1648,12 +1641,11 @@ pub fn worker_facts_with_news(
 pub fn worker_facts_with_jev(
     model: &str,
     url: Option<&str>,
-    quota: Option<(u32, u32)>,
     seams: &Seams,
     news: Option<&str>,
     jev_fallbacks: &[&str],
 ) -> Facts {
-    worker_facts_ordered(None, model, url, quota, seams, news, jev_fallbacks)
+    worker_facts_ordered(None, model, url, seams, news, jev_fallbacks)
 }
 
 /// [`worker_facts_with_jev`] for a worker whose chat door asks `primary`
@@ -1669,7 +1661,6 @@ pub fn worker_facts_ordered(
     primary: Option<(&str, &str)>,
     model: &str,
     url: Option<&str>,
-    quota: Option<(u32, u32)>,
     seams: &Seams,
     news: Option<&str>,
     jev_fallbacks: &[&str],
@@ -1728,11 +1719,6 @@ pub fn worker_facts_ordered(
             said = format!("{said}. {keeps}");
         }
         facts = facts.set("worker.recipients", said);
-    }
-    if let Some((minute, day)) = quota {
-        facts = facts
-            .set("worker.quota.minute", minute.to_string())
-            .set("worker.quota.day", day.to_string());
     }
     facts
 }

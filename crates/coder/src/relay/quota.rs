@@ -1,24 +1,27 @@
-//! A conversation worker's per-caller quota: how an open worker spends its
-//! door key on callers it has never met.
+//! A conversation worker's optional abuse brake: how an open worker can be
+//! slowed in an emergency, and the one bound it always keeps.
 //!
-//! A worker with an allowlist answers only the keys on it. The OpenAgents
-//! app's chat needs the other shape: a fresh install has a device key that
-//! no operator has seen, and it must be answered at once. A worker that
-//! admits every key spends its one door key on whoever finds its public
-//! key, so an open worker is metered instead:
+//! The OpenAgents app's chat is open: a fresh install has a device key no
+//! operator has seen, and it is answered at once, with no daily or
+//! per-minute allowance. The owner decided on 2026-10-01 (#10120) that the
+//! product shows no usage limit anywhere, so the shipped configuration sets
+//! no count at all; every job is recorded in the usage log instead
+//! ([`super::usage`]).
 //!
-//! - each caller key gets at most [`Policy::per_key_minute`] jobs in any
-//!   sixty seconds and [`Policy::per_key_day`] jobs in a UTC day;
-//! - every caller together gets at most [`Policy::total_day`] jobs in a UTC
-//!   day, which bounds the day's spend however many keys a caller mints;
+//! What stays is a size bound and an off-by-default brake:
+//!
 //! - a request whose ciphertext is longer than [`Policy::max_request_bytes`]
-//!   is refused before anything is counted.
+//!   is refused before anything is counted (it would not fit a relay event
+//!   anyway);
+//! - for an abuse emergency only, an operator may set any of
+//!   [`Policy::per_key_minute`], [`Policy::per_key_day`], and
+//!   [`Policy::total_day`]. Each is `None` (unlimited) unless named.
 //!
 //! A refusal carries the typed code and the wait until a job would be
-//! admitted, so the app can say when to try again. The day's counts are
-//! written to a file after every admission when one is named, so a restart
-//! does not hand out a second day's budget. The per-minute window is kept
-//! in memory only: a restart can at most reset one minute.
+//! admitted. Clients never show a limit for it: they say only that
+//! OpenAgents could not be reached. The day's counts are written to a file
+//! after every admission when one is named and a day count is set, so a
+//! restart does not reset an emergency brake.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
@@ -31,30 +34,48 @@ const DAY: u64 = 86_400;
 /// The per-key rate window, in seconds.
 const MINUTE: u64 = 60;
 
-/// An open worker's limits.
+/// An open worker's bounds: the request size always, and counts only when
+/// an operator names them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Policy {
-    /// Jobs one caller key may start in a UTC day.
-    pub per_key_day: u32,
-    /// Jobs one caller key may start in any sixty seconds.
-    pub per_key_minute: u32,
-    /// Jobs every caller together may start in a UTC day.
-    pub total_day: u32,
+    /// Jobs one caller key may start in a UTC day; `None` is unlimited.
+    pub per_key_day: Option<u32>,
+    /// Jobs one caller key may start in any sixty seconds; `None` is
+    /// unlimited.
+    pub per_key_minute: Option<u32>,
+    /// Jobs every caller together may start in a UTC day; `None` is
+    /// unlimited.
+    pub total_day: Option<u32>,
     /// The longest request content, in bytes of NIP-44 ciphertext.
     pub max_request_bytes: usize,
 }
 
 impl Policy {
-    /// The largest content a metered request may carry when the
-    /// configuration does not say: room for a long conversation, far below
-    /// the relay's own event bound.
+    /// The largest content a request may carry when the configuration
+    /// does not say: room for a long conversation, far below the relay's
+    /// own event bound.
     pub const DEFAULT_REQUEST_BYTES: usize = 96 * 1024;
 
-    /// Reads `day=40,minute=600,total=3000[,bytes=98304]`. Every limit but
-    /// `bytes` is required and must be positive, and a key's day cannot
-    /// exceed the total. A minute above the day is allowed: the day then
-    /// binds first, and the minute only stops a flood: a typo in the one setting that bounds an open
-    /// worker's spend must stop the worker, not loosen it.
+    /// No count at all: the shipped behavior. Only the size bound holds.
+    pub const UNLIMITED: Policy = Policy {
+        per_key_day: None,
+        per_key_minute: None,
+        total_day: None,
+        max_request_bytes: Self::DEFAULT_REQUEST_BYTES,
+    };
+
+    /// Whether any job count is set (an emergency brake is on).
+    #[must_use]
+    pub fn counts(&self) -> bool {
+        self.per_key_day.is_some() || self.per_key_minute.is_some() || self.total_day.is_some()
+    }
+
+    /// Reads `[day=N][,minute=N][,total=N][,bytes=N]`. Every part is
+    /// optional; a part left out is unlimited (`bytes` defaults to
+    /// [`Policy::DEFAULT_REQUEST_BYTES`]), and an empty text is
+    /// [`Policy::UNLIMITED`]. A part that is named must be a positive whole
+    /// number, and a key's day cannot exceed the total when both are set:
+    /// a typo in an emergency brake must stop the worker, not loosen it.
     ///
     /// # Errors
     ///
@@ -68,7 +89,7 @@ impl Policy {
             let name = name.trim();
             if !matches!(name, "day" | "minute" | "total" | "bytes") {
                 return Err(format!(
-                    "{name} is not a quota limit (day, minute, total, bytes)"
+                    "{name} is not a quota part (day, minute, total, bytes)"
                 ));
             }
             let value: u64 = value
@@ -81,16 +102,16 @@ impl Policy {
                 return Err(format!("{name} is given twice"));
             }
         }
-        let limit = |name: &str| -> Result<u32, String> {
-            let value = fields
+        let count = |name: &str| -> Result<Option<u32>, String> {
+            fields
                 .get(name)
-                .ok_or_else(|| format!("the quota needs {name}="))?;
-            u32::try_from(*value).map_err(|_| format!("{name} is too large"))
+                .map(|value| u32::try_from(*value).map_err(|_| format!("{name} is too large")))
+                .transpose()
         };
         let policy = Policy {
-            per_key_day: limit("day")?,
-            per_key_minute: limit("minute")?,
-            total_day: limit("total")?,
+            per_key_day: count("day")?,
+            per_key_minute: count("minute")?,
+            total_day: count("total")?,
             max_request_bytes: match fields.get("bytes") {
                 Some(bytes) => {
                     usize::try_from(*bytes).map_err(|_| "bytes is too large".to_string())?
@@ -98,7 +119,9 @@ impl Policy {
                 None => Self::DEFAULT_REQUEST_BYTES,
             },
         };
-        if policy.per_key_day > policy.total_day {
+        if let (Some(day), Some(total)) = (policy.per_key_day, policy.total_day)
+            && day > total
+        {
             return Err("day cannot exceed total".into());
         }
         Ok(policy)
@@ -244,13 +267,21 @@ impl Ledger {
             self.per_day.clear();
         }
         let until_tomorrow = ((day + 1) * DAY).saturating_sub(now).max(1) * 1_000;
-        if self.total >= self.policy.total_day {
+        if self
+            .policy
+            .total_day
+            .is_some_and(|total| self.total >= total)
+        {
             return Err(Refusal::Exhausted {
                 retry_after_ms: until_tomorrow,
                 everyone: true,
             });
         }
-        if self.per_day.get(key).copied().unwrap_or(0) >= self.policy.per_key_day {
+        if self
+            .policy
+            .per_key_day
+            .is_some_and(|day| self.per_day.get(key).copied().unwrap_or(0) >= day)
+        {
             return Err(Refusal::Exhausted {
                 retry_after_ms: until_tomorrow,
                 everyone: false,
@@ -263,7 +294,9 @@ impl Ledger {
         {
             window.pop_front();
         }
-        if window.len() >= self.policy.per_key_minute as usize {
+        if let Some(minute) = self.policy.per_key_minute
+            && window.len() >= minute as usize
+        {
             let oldest = window.front().copied().unwrap_or(now);
             let wait = (oldest + MINUTE).saturating_sub(now).max(1);
             return Err(Refusal::RateLimited {
@@ -287,6 +320,9 @@ impl Ledger {
     /// the counts in memory still bound this process.
     fn save(&self) {
         let Some(path) = &self.path else { return };
+        if self.policy.per_key_day.is_none() && self.policy.total_day.is_none() {
+            return;
+        }
         let saved = Saved {
             day: self.day,
             total: self.total,
@@ -314,9 +350,9 @@ mod tests {
     use super::*;
 
     const POLICY: Policy = Policy {
-        per_key_day: 5,
-        per_key_minute: 2,
-        total_day: 7,
+        per_key_day: Some(5),
+        per_key_minute: Some(2),
+        total_day: Some(7),
         max_request_bytes: 100,
     };
 
@@ -324,13 +360,13 @@ mod tests {
     const NOON: u64 = 20_000 * DAY + DAY / 2;
 
     #[test]
-    fn the_policy_reads_every_limit_and_refuses_loose_ones() {
+    fn the_policy_reads_each_part_and_refuses_loose_ones() {
         assert_eq!(
             Policy::parse("day=40, minute=6,total=3000").unwrap(),
             Policy {
-                per_key_day: 40,
-                per_key_minute: 6,
-                total_day: 3000,
+                per_key_day: Some(40),
+                per_key_minute: Some(6),
+                total_day: Some(3000),
                 max_request_bytes: Policy::DEFAULT_REQUEST_BYTES,
             }
         );
@@ -345,11 +381,22 @@ mod tests {
             Policy::parse("day=40,minute=600,total=3000")
                 .unwrap()
                 .per_key_minute,
-            600
+            Some(600)
+        );
+        // Every part is optional: nothing named is unlimited (#10120).
+        assert_eq!(Policy::parse("").unwrap(), Policy::UNLIMITED);
+        assert!(!Policy::UNLIMITED.counts());
+        let bytes_only = Policy::parse("bytes=98304").unwrap();
+        assert!(!bytes_only.counts());
+        assert_eq!(bytes_only.max_request_bytes, 98_304);
+        assert_eq!(
+            Policy::parse("minute=6").unwrap(),
+            Policy {
+                per_key_minute: Some(6),
+                ..Policy::UNLIMITED
+            }
         );
         for bad in [
-            "",
-            "day=40,minute=6",
             "day=40,minute=6,total=0",
             "day=40,minute=6,total=-1",
             "day=40,minute=6,total=10",
@@ -359,6 +406,28 @@ mod tests {
         ] {
             assert!(Policy::parse(bad).is_err(), "{bad:?}");
         }
+    }
+
+    /// The shipped policy counts nothing: a key sends as many jobs as it
+    /// likes, in any minute and any day; only the size bound holds.
+    #[test]
+    fn the_unlimited_policy_admits_every_job_but_an_oversized_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("quota.json");
+        let mut ledger = Ledger::open(Policy::UNLIMITED, Some(path.clone()), NOON).unwrap();
+        for at in 0..2_000 {
+            assert_eq!(ledger.admit("a", 10, NOON + at / 100), Ok(()));
+        }
+        assert_eq!(ledger.total(), 2_000);
+        assert_eq!(
+            ledger
+                .admit("a", Policy::DEFAULT_REQUEST_BYTES + 1, NOON)
+                .unwrap_err()
+                .code(),
+            "limit_exceeded"
+        );
+        // Nothing to keep across a restart when nothing is counted.
+        assert!(!path.exists());
     }
 
     #[test]

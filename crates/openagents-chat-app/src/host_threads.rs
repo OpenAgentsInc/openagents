@@ -1863,7 +1863,7 @@ mod tests {
         );
         assert_eq!(
             meta.runner.as_ref().map(|runner| runner.text()).as_deref(),
-            Some("Codex is at 92% of its window; Claude Code will do this.")
+            Some("Claude Code will do this.")
         );
         assert_eq!(meta.followups[0].label, "Say it shorter");
         assert_eq!(meta.cards[0]["card"], "news");

@@ -11,19 +11,18 @@
 //!
 //! The site signs each visitor's jobs with a key it derives from the
 //! visitor's cookie and a secret only the server holds, so the worker's
-//! per-key quota counts each visitor apart and no key is ever sent to the
-//! browser. On top of the worker's quotas the site holds each visitor to
-//! one question at a time and [`PER_MINUTE`] a minute, and every visitor
-//! together to [`IN_FLIGHT`] at once, in process memory.
+//! usage log records each visitor apart and no key is ever sent to the
+//! browser. There is no usage limit (#10120): the site answers a visitor's
+//! questions one at a time, so a double send does not ask twice, and has
+//! no per-minute or waiting cap.
 //!
 //! The reply streams back as newline-delimited JSON: `{"html": …}` as the
 //! answer grows, drawn by [`crate::markdown::render`] (raw HTML shows as
 //! text), then `{"done": true, "text": …}` or `{"error": …}`.
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, Bytes};
@@ -47,16 +46,10 @@ pub const COOKIE: &str = "oa_visitor";
 pub const MAX_TURNS: usize = 8;
 /// The longest turn, in characters.
 pub const MAX_TURN_CHARS: usize = 4_000;
-/// Questions one visitor may ask in a rolling minute.
-pub const PER_MINUTE: usize = 6;
-/// Questions every visitor together may have waiting at once.
-pub const IN_FLIGHT: usize = 32;
 /// The largest request body.
 const MAX_BODY_BYTES: usize = 64 * 1024;
 /// How often a waiting answer is read for new words.
 const POLL: Duration = Duration::from_millis(100);
-/// The most visitors the limiter remembers before it forgets idle ones.
-const REMEMBERED: usize = 10_000;
 
 /// Where questions are answered: the relay to the chat worker in
 /// production, an in-process door in tests.
@@ -78,79 +71,33 @@ impl Chat for Worker {
     }
 }
 
-/// The site's side of the limits.
+/// The visitors with a question being answered now: one at a time each,
+/// so a second send of the same question does not ask twice. Nothing is
+/// counted (#10120).
 #[derive(Default)]
-pub(crate) struct Limits {
-    visitors: Mutex<HashMap<String, Visitor>>,
-    waiting: AtomicUsize,
+pub(crate) struct Answering {
+    visitors: Mutex<HashSet<String>>,
 }
 
-#[derive(Default)]
-struct Visitor {
-    asking: bool,
-    asked: VecDeque<Instant>,
-}
-
-/// Why a question was not taken.
+/// A visitor's second question while the first is being answered.
 #[derive(Debug, PartialEq, Eq)]
-enum Busy {
-    Asking,
-    Minute,
-    Everyone,
+struct StillAnswering;
+
+impl StillAnswering {
+    const MESSAGE: &'static str = "We're still answering your last question.";
 }
 
-impl Busy {
-    fn message(&self) -> &'static str {
-        match self {
-            Busy::Asking => "We're still answering your last question.",
-            Busy::Minute => "That's a lot of questions at once; try again in a minute.",
-            Busy::Everyone => "We're answering many visitors right now; try again in a moment.",
-        }
-    }
-}
-
-impl Limits {
-    fn take(self: &Arc<Self>, visitor: &str, now: Instant) -> Result<Held, Busy> {
+impl Answering {
+    fn take(self: &Arc<Self>, visitor: &str) -> Result<Held, StillAnswering> {
         let mut visitors = self
             .visitors
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if visitors.len() >= REMEMBERED {
-            visitors.retain(|_, seen| {
-                seen.asking
-                    || seen
-                        .asked
-                        .back()
-                        .is_some_and(|at| now.duration_since(*at) < Duration::from_secs(60))
-            });
+        if !visitors.insert(visitor.to_string()) {
+            return Err(StillAnswering);
         }
-        let seen = visitors.entry(visitor.to_string()).or_default();
-        while seen
-            .asked
-            .front()
-            .is_some_and(|at| now.duration_since(*at) >= Duration::from_secs(60))
-        {
-            seen.asked.pop_front();
-        }
-        if seen.asking {
-            return Err(Busy::Asking);
-        }
-        if seen.asked.len() >= PER_MINUTE {
-            return Err(Busy::Minute);
-        }
-        if self
-            .waiting
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |waiting| {
-                (waiting < IN_FLIGHT).then_some(waiting + 1)
-            })
-            .is_err()
-        {
-            return Err(Busy::Everyone);
-        }
-        seen.asking = true;
-        seen.asked.push_back(now);
         Ok(Held {
-            limits: self.clone(),
+            answering: self.clone(),
             visitor: visitor.to_string(),
         })
     }
@@ -158,22 +105,17 @@ impl Limits {
 
 /// A question being answered; dropping it frees the visitor's turn.
 struct Held {
-    limits: Arc<Limits>,
+    answering: Arc<Answering>,
     visitor: String,
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
-        self.limits.waiting.fetch_sub(1, Ordering::SeqCst);
-        if let Some(seen) = self
-            .limits
+        self.answering
             .visitors
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get_mut(&self.visitor)
-        {
-            seen.asking = false;
-        }
+            .remove(&self.visitor);
     }
 }
 
@@ -276,9 +218,9 @@ async fn ask(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respons
             (visitor, Some(cookie))
         }
     };
-    let held = match app.limits.take(&visitor, Instant::now()) {
+    let held = match app.answering.take(&visitor) {
         Ok(held) => held,
-        Err(busy) => return refusal(StatusCode::TOO_MANY_REQUESTS, busy.message()),
+        Err(StillAnswering) => return refusal(StatusCode::CONFLICT, StillAnswering::MESSAGE),
     };
     let door = match app.config.chat.door(key(&app.config.ask_salt, &visitor)) {
         Ok(door) => door,
@@ -366,33 +308,25 @@ async fn answer(
 mod tests {
     use super::*;
 
+    /// One question at a time per visitor, and as many as they like:
+    /// no per-minute or waiting cap (#10120).
     #[test]
-    fn a_visitor_asks_one_question_at_a_time_and_six_a_minute() {
-        let limits = Arc::new(Limits::default());
-        let start = Instant::now();
-        let first = limits.take("a", start).unwrap();
-        assert_eq!(limits.take("a", start).err(), Some(Busy::Asking));
-        let other = limits.take("b", start).unwrap();
+    fn a_visitor_asks_one_question_at_a_time_and_as_many_as_they_like() {
+        let answering = Arc::new(Answering::default());
+        let first = answering.take("a").unwrap();
+        assert_eq!(answering.take("a").err(), Some(StillAnswering));
+        let other = answering.take("b").unwrap();
         drop(first);
-        for _ in 1..PER_MINUTE {
-            drop(limits.take("a", start).unwrap());
+        for _ in 0..100 {
+            drop(answering.take("a").unwrap());
         }
-        assert_eq!(limits.take("a", start).err(), Some(Busy::Minute));
-        drop(limits.take("a", start + Duration::from_secs(61)).unwrap());
-        drop(other);
-        assert_eq!(limits.waiting.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn everyone_together_waits_on_at_most_the_in_flight_bound() {
-        let limits = Arc::new(Limits::default());
-        let now = Instant::now();
-        let held: Vec<Held> = (0..IN_FLIGHT)
-            .map(|n| limits.take(&n.to_string(), now).unwrap())
+        let many: Vec<Held> = (0..1_000)
+            .map(|n| answering.take(&n.to_string()).unwrap())
             .collect();
-        assert_eq!(limits.take("late", now).err(), Some(Busy::Everyone));
-        drop(held);
-        assert!(limits.take("late", now).is_ok());
+        drop(many);
+        drop(other);
+        assert!(answering.visitors.lock().unwrap().is_empty());
+        assert!(!StillAnswering::MESSAGE.to_lowercase().contains("limit"));
     }
 
     #[test]

@@ -126,9 +126,8 @@ fn report() -> (Vec<String>, bool) {
                 (state.provider.as_str(), state.model.as_str())
             });
             lines.push(format!(
-                "{:<10} microcoder runs {model} on {provider} in this process · no step or time limit · up to ${:.2} a turn · ends when stuck repeating without progress",
+                "{:<10} microcoder runs {model} on {provider} in this process · runs until done · ends when stuck repeating without progress",
                 "executor",
-                delegate_door::microcoder::MAX_USD,
             ));
         }
         _ => {
@@ -137,13 +136,13 @@ fn report() -> (Vec<String>, bool) {
                 .clone()
                 .unwrap_or_else(|| executor.model.clone());
             lines.push(format!(
-                "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · stops after {}s",
+                "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · runs until done · stops after {} min silent",
                 "executor",
                 executor.agent.agent().word(),
                 executor.effort.as_deref().unwrap_or("default"),
                 executor.tools.as_deref().unwrap_or("default"),
                 executor.prompt_cache_ttl.as_deref().unwrap_or("default"),
-                delegate_door::deadline().as_secs(),
+                delegate_door::quiet().as_secs() / 60,
             ));
             lines.push(format!(
                 "{:<10} {} ({}), sha256 {}",
