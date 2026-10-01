@@ -61,6 +61,10 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
             Some(("kicker", value)) => slide.kicker = Some(value.to_string()),
             Some(("corner", value)) => slide.corner = Some(value.to_string()),
             Some(("subtitle", value)) => slide.subtitle = Some(value.to_string()),
+            Some(("scene", "grid")) => slide.scene = Some("grid".to_string()),
+            Some(("scene", value)) => {
+                return Err(format!("slide {number} names no scene: {value}"));
+            }
             Some(("kicker_scale", value)) => {
                 slide.kicker_scale = Some(
                     value
@@ -151,6 +155,7 @@ const KEYS: &[&str] = &[
     "corner",
     "subtitle",
     "kicker_scale",
+    "scene",
 ];
 
 /// The key and the value of a directive line, when the line is one. A key

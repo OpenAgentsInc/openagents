@@ -56,6 +56,10 @@ pub struct Viewer {
     /// clicks arrive in the same units.
     area: PxRect,
     fonts: Fonts,
+    /// The host draws a slide's live scene behind it ([`Viewer::scene`]),
+    /// so the viewer leaves that slide's area clear instead of painting
+    /// the background.
+    live_scene: bool,
 }
 
 impl Viewer {
@@ -95,6 +99,7 @@ impl Viewer {
                 h: HEIGHT,
             },
             fonts: Fonts::new(),
+            live_scene: false,
         }
     }
 
@@ -112,6 +117,25 @@ impl Viewer {
     /// The area the viewer is laid out in.
     pub fn area(&self) -> PxRect {
         self.area
+    }
+
+    /// The live scene the showing slide asks for behind it (`scene: grid`),
+    /// while the slide itself shows: not in the overview or a black screen.
+    pub fn scene(&self) -> Option<&str> {
+        if self.overview || self.black {
+            return None;
+        }
+        self.deck.slide(self.index)?.scene.as_deref()
+    }
+
+    /// Whether the host draws [`Viewer::scene`] behind the slide. While it
+    /// does, the viewer clears the slide's area (a transparent hole the
+    /// host's picture shows through) instead of painting the background.
+    pub fn set_live_scene(&mut self, on: bool) {
+        if self.live_scene != on {
+            self.live_scene = on;
+            self.changed();
+        }
     }
 
     /// Shows the presenter's notes under the slide, or hides them.
@@ -271,7 +295,11 @@ impl Viewer {
     pub fn paint(&mut self, frame: &mut Frame, rect: PxRect) {
         let previous = frame.clip_to(rect);
         let theme = Theme::openagents();
-        frame.fill(rect, 0.0, theme.background);
+        if self.live_scene && self.scene().is_some() {
+            frame.cut(rect);
+        } else {
+            frame.fill(rect, 0.0, theme.background);
+        }
         if self.black {
             frame.fill(rect, 0.0, Color::rgb(0, 0, 0));
         } else if self.overview {
@@ -525,6 +553,33 @@ mod tests {
         viewer.click(area.x + third.x + 2.0, area.y + third.y + 2.0);
         assert_eq!(viewer.index(), 2);
         assert!(!viewer.overview());
+    }
+
+    /// A slide that asks for a scene names it; a host that draws it gets
+    /// a clear hole there, and the plain background otherwise.
+    #[test]
+    fn a_scene_slide_is_clear_only_while_the_host_draws_it() {
+        let mut viewer = Viewer::open("episode-289").expect("the deck opens");
+        assert_eq!(viewer.scene(), Some("grid"));
+        let area = PxRect {
+            x: 0.0,
+            y: 0.0,
+            w: 160.0,
+            h: 90.0,
+        };
+        let alpha = |frame: &Frame| frame.pixels[(5 * 160 + 5) * 4 + 3];
+        let mut frame = Frame::transparent(160, 90);
+        viewer.paint(&mut frame, area);
+        assert_eq!(alpha(&frame), 255, "no host scene: the background");
+        viewer.set_live_scene(true);
+        let mut frame = Frame::new(160, 90, Color::rgb(255, 0, 0));
+        viewer.paint(&mut frame, area);
+        assert_eq!(alpha(&frame), 0, "the host's scene shows through");
+        viewer.key("o", false);
+        assert_eq!(viewer.scene(), None, "the overview has no scene");
+        viewer.key("Escape", false);
+        viewer.key("ArrowRight", false);
+        assert_eq!(viewer.scene(), None);
     }
 
     /// The deck list comes from the shipped scripts, the default first,

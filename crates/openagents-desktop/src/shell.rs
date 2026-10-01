@@ -316,6 +316,12 @@ impl DesktopApp {
     /// Advances the slide viewer's animation to `now`, drops it once it
     /// has closed, and says when it next wants a frame.
     fn tick_slides(&mut self, now: Instant) -> Option<Instant> {
+        let wake = self.tick_viewer(now);
+        self.deck_scene();
+        wake
+    }
+
+    fn tick_viewer(&mut self, now: Instant) -> Option<Instant> {
         let slides = self.slides.as_mut()?;
         slides.tick(now);
         if slides.closed() {
@@ -324,6 +330,23 @@ impl DesktopApp {
             return None;
         }
         slides.next_wake(now)
+    }
+
+    /// Tells the window's Grid layer where the showing slide wants the
+    /// Grid drawn behind it (the Episode 289 title slide), or that none
+    /// does. Windows has no Grid layer, and its slides keep the plain
+    /// background.
+    fn deck_scene(&mut self) {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            let scene = self.slides.as_mut().and_then(|slides| {
+                slides.set_scene_host(true);
+                slides.scene()
+            });
+            if grid.borrow().deck != scene {
+                grid.borrow_mut().deck = scene;
+            }
+        }
     }
 
     /// Shows a desktop notification for each chat whose Coder now asks
@@ -1399,6 +1422,7 @@ impl App for DesktopApp {
                 return true;
             };
             let taken = slides.key(key, command, now);
+            self.deck_scene();
             self.present();
             return taken;
         }
@@ -1598,6 +1622,7 @@ impl App for DesktopApp {
                 .slides
                 .as_mut()
                 .is_some_and(|slides| slides.input(event, now));
+            self.deck_scene();
             self.present();
             return handled;
         }
@@ -1732,6 +1757,7 @@ impl App for DesktopApp {
             if let Some(slides) = &mut self.slides {
                 slides.paint(frame, rect);
             }
+            self.deck_scene();
             return;
         }
         if resource == openagents_desktop::route_map::RESOURCE {

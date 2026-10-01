@@ -306,6 +306,98 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
     assert!(!home.path().join(".openagents").exists());
 }
 
+/// The Episode 289 deck's title slide over the live Grid, as the window
+/// composites it: the slide viewer's views over the real GPU layer, which
+/// tours the plaza behind the slide. Two frames twenty seconds apart show
+/// the camera moving.
+#[test]
+#[ignore = "requires a GPU; run with OPENAGENTS_GRID_EVIDENCE to retain captures"]
+fn episode_289_title_slide_over_the_grid() {
+    let evidence = std::env::var_os("OPENAGENTS_GRID_EVIDENCE").map(std::path::PathBuf::from);
+    if let Some(dir) = &evidence {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let home = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let (mut app, _) = DesktopApp::performance_fixture(0, 0, start);
+    let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+    app.set_grid(grid.clone());
+    app.open_presentation("episode-289", start).unwrap();
+    let open = start + Duration::from_millis(400);
+    app.tick(open);
+    let watcher: openagents_desktop::grid::Watcher = Box::new(|| {
+        openagents_desktop::backdrop::GridBackdrop::new("ws://127.0.0.1:1", Box::new(|| false))
+    });
+    let mut layer = Layer::new(grid.clone(), Some(watcher));
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .unwrap();
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+    let gpu = Gpu {
+        adapter: &adapter,
+        device: &device,
+        queue: &queue,
+    };
+    let (width, height, scale) = (1280.0, 800.0, 2.0);
+    let (views, _) = rust_native_desktop::capture_views(&mut app, width, height, scale);
+    let rect = layer.rect().expect("the title slide asks for the Grid");
+    assert!(rect.w > 600.0 && rect.h > 300.0, "{rect:?}");
+    let first = layer
+        .next_frame(open)
+        .expect("the layer draws the slide's Grid");
+    let look = layer.look().unwrap();
+    assert!(look.dim < 0.5, "{look:?}");
+    layer.viewport(rect, scale);
+    let size = (
+        (rect.w * scale).round() as u32,
+        (rect.h * scale).round() as u32,
+    );
+    let mut frames = Vec::new();
+    for (name, at) in [("a", first), ("b", first + Duration::from_secs(20))] {
+        let world = render(&mut layer, &gpu, size, at);
+        let out = composite(
+            &views,
+            &world,
+            rect,
+            scale,
+            app.theme().background,
+            look.dim,
+        );
+        if let Some(dir) = &evidence {
+            std::fs::write(
+                dir.join(format!("episode-289-title-{name}.png")),
+                out.png().unwrap(),
+            )
+            .unwrap();
+        }
+        frames.push(world);
+    }
+    let moved = frames[0]
+        .pixels
+        .iter()
+        .zip(&frames[1].pixels)
+        .filter(|(a, b)| a.abs_diff(**b) > 24)
+        .count();
+    assert!(
+        moved > frames[0].pixels.len() / 50,
+        "the camera moved: {moved}"
+    );
+    // The next slide has no scene: the layer lets go of the slide's place.
+    app.text_input(
+        rust_native_desktop::input::TextInput::Key {
+            key: "ArrowRight",
+            text: None,
+            command: false,
+            alt: false,
+            shift: false,
+        },
+        open,
+    );
+    assert!(layer.rect().is_none());
+}
+
 fn texture(device: &wgpu::Device, size: (u32, u32)) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Grid acceptance"),

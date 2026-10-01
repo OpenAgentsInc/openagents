@@ -953,9 +953,11 @@ impl<A: App> Shell<A> {
             .as_ref()
             .and_then(|backdrop| backdrop.surface())
             .map(str::to_owned);
-        let region = match surface {
-            Some(resource) => self.scene().backdrop_rect(&resource).unwrap_or_default(),
-            None => crate::Rect {
+        let placed = self.backdrop.as_ref().and_then(|backdrop| backdrop.rect());
+        let region = match (placed, surface) {
+            (Some(rect), _) => rect,
+            (None, Some(resource)) => self.scene().backdrop_rect(&resource).unwrap_or_default(),
+            (None, None) => crate::Rect {
                 x: 0.0,
                 y: 0.0,
                 w: width as f32 / scale,

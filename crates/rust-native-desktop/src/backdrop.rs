@@ -41,6 +41,13 @@ pub trait Backdrop {
         None
     }
 
+    /// Where to draw, in logical points, when the application placed the
+    /// picture itself (such as behind one slide of an overlay); it wins
+    /// over [`Backdrop::surface`]. `None` defers to the surface.
+    fn rect(&self) -> Option<crate::Rect> {
+        None
+    }
+
     /// The current destination in logical points and pixels per point.
     fn viewport(&mut self, rect: crate::Rect, scale: f32) {
         let _ = (rect, scale);

@@ -81,6 +81,10 @@ pub struct Slides {
     size: (f32, f32),
     /// Pixels a point.
     unit: f32,
+    /// The host can draw a slide's live scene (the Grid) behind it.
+    scene_host: bool,
+    /// The slide's place in the window as last painted, in points.
+    slide_at: Option<PxRect>,
 }
 
 /// Ease-out: fast at first, settling at the end.
@@ -112,6 +116,8 @@ impl Slides {
             controls: Vec::new(),
             size: (0.0, 0.0),
             unit: 1.0,
+            scene_host: false,
+            slide_at: None,
         })
     }
 
@@ -136,6 +142,29 @@ impl Slides {
             self.unit = unit;
             self.changed();
         }
+    }
+
+    /// Says the host can draw a slide's live scene behind it
+    /// ([`Slides::scene`]).
+    pub fn set_scene_host(&mut self, on: bool) {
+        if self.scene_host != on {
+            self.scene_host = on;
+            self.changed();
+        }
+    }
+
+    /// Where the host draws the showing slide's live scene, in the
+    /// window's points: the slide's place while it is fully open and asks
+    /// for one (the Episode 289 title slide asks for the Grid).
+    pub fn scene(&self) -> Option<rust_native_desktop::Rect> {
+        let live = self.scene_host && self.phase == Phase::Open && self.viewer.scene().is_some();
+        let at = self.slide_at.filter(|_| live)?;
+        Some(rust_native_desktop::Rect {
+            x: at.x,
+            y: at.y,
+            w: at.w,
+            h: at.h,
+        })
     }
 
     /// When the host should next call [`Slides::tick`]: a frame from
@@ -409,6 +438,14 @@ impl Slides {
             frame.fill(px(layout.card), 14.0 * unit * scale, tone(14));
             frame.stroke(px(layout.card), 14.0 * unit * scale, unit, tone(46));
         }
+        self.slide_at = Some(PxRect {
+            x: rect.x / unit + layout.slide.x,
+            y: rect.y / unit + layout.slide.y,
+            w: layout.slide.w,
+            h: layout.slide.h,
+        });
+        let live = self.scene_host && self.phase == Phase::Open;
+        self.viewer.set_live_scene(live);
         self.viewer.layout(px(layout.slide));
         self.viewer.paint(frame, px(layout.slide));
         self.controls.clear();

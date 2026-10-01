@@ -73,6 +73,24 @@ impl Frame {
         }
     }
 
+    /// Makes `rect` (within the clip) transparent black, so a window's
+    /// backdrop shows through it: a hole a view cuts for a live picture.
+    pub fn cut(&mut self, rect: PxRect) {
+        let area = match self.clip {
+            Some(clip) => rect.intersection(clip),
+            None => rect,
+        };
+        let x0 = area.x.max(0.0).round() as usize;
+        let y0 = area.y.max(0.0).round() as usize;
+        let x1 = ((area.x + area.w).round().max(0.0) as usize).min(self.width);
+        let y1 = ((area.y + area.h).round().max(0.0) as usize).min(self.height);
+        for y in y0..y1 {
+            if x0 < x1 {
+                self.pixels[(y * self.width + x0) * 4..(y * self.width + x1) * 4].fill(0);
+            }
+        }
+    }
+
     /// The color at `x`, `y`.
     pub fn pixel(&self, x: usize, y: usize) -> [u8; 3] {
         let at = (y * self.width + x) * 4;
@@ -434,6 +452,30 @@ fn repeat_pixel(row: &mut [u8], pixel: [u8; 4]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Clearing cuts a transparent hole, inside the clip only.
+    #[test]
+    fn cut_makes_a_transparent_hole_inside_the_clip() {
+        let mut frame = Frame::new(10, 10, Color::rgb(9, 9, 9));
+        let previous = frame.clip_to(PxRect {
+            x: 0.0,
+            y: 0.0,
+            w: 5.0,
+            h: 10.0,
+        });
+        frame.cut(PxRect {
+            x: 2.0,
+            y: 2.0,
+            w: 6.0,
+            h: 6.0,
+        });
+        frame.restore_clip(previous);
+        let alpha = |x: usize, y: usize| frame.pixels[(y * 10 + x) * 4 + 3];
+        assert_eq!(alpha(3, 3), 0);
+        assert_eq!(frame.pixel(3, 3), [0, 0, 0]);
+        assert_eq!(alpha(6, 3), 255, "outside the clip stays");
+        assert_eq!(alpha(1, 1), 255, "outside the rect stays");
+    }
 
     /// A table header rounds only its top corners: its bottom corners
     /// are square and filled to the edge, and each pixel is painted once.

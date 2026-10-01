@@ -55,6 +55,10 @@ pub struct Grid {
     pub full: bool,
     /// How far an open board is scrolled, in points.
     panel_scroll: f32,
+    /// Where a deck's slide shows the Grid behind it, in points (the
+    /// Episode 289 title slide): the layer draws the world there, touring
+    /// the plaza, whatever page is under the slide viewer.
+    pub deck: Option<Rect>,
 }
 
 impl Grid {
@@ -84,6 +88,7 @@ impl Grid {
             viewport: (1200.0, 840.0, 1.0),
             full: false,
             panel_scroll: 0.0,
+            deck: None,
         }))
     }
 
@@ -774,7 +779,10 @@ impl Layer {
     /// Follows the page: loads the spectator when the Verse page opens and
     /// releases everything when it closes.
     fn follow(&mut self, now: Instant) {
-        let open = self.grid.borrow().open;
+        let open = {
+            let grid = self.grid.borrow();
+            grid.open || grid.deck.is_some()
+        };
         if open == self.open {
             return;
         }
@@ -784,12 +792,20 @@ impl Layer {
         self.playing = false;
         if open {
             self.watch = self.watcher.as_mut().map(|watcher| watcher());
+            let shown = self.visible && !self.playing();
             if let Some(watch) = &mut self.watch {
-                watch.shown(self.visible && !self.grid.borrow().playing, now);
+                watch.shown(shown, now);
             }
         } else {
             self.watch = None;
         }
+    }
+
+    /// Whether Play draws: the person plays and no deck slide shows the
+    /// Grid over the page (the slide viewer then takes every key).
+    fn playing(&self) -> bool {
+        let grid = self.grid.borrow();
+        grid.playing && grid.deck.is_none()
     }
 }
 impl Backdrop for Layer {
@@ -799,7 +815,27 @@ impl Backdrop for Layer {
         let grid = self.grid.borrow();
         (grid.open && !grid.full).then_some(WORLD)
     }
+    /// A deck slide's place, when one shows the Grid behind it.
+    fn rect(&self) -> Option<Rect> {
+        self.grid.borrow().deck
+    }
     fn look(&self) -> Option<Look> {
+        if self.grid.borrow().deck.is_some() {
+            // Behind a slide: sharp, a little dimmed so the title reads.
+            return Some(if self.watch.is_some() {
+                Look {
+                    dim: 0.3,
+                    blur: 0.0,
+                    scale: 1.0,
+                }
+            } else {
+                Look {
+                    dim: 1.0,
+                    blur: 0.0,
+                    scale: 0.25,
+                }
+            });
+        }
         if !self.grid.borrow().open {
             // Another page: the plain background, as a window without a
             // backdrop has, with the smallest texture.
@@ -827,6 +863,10 @@ impl Backdrop for Layer {
     }
     fn viewport(&mut self, rect: Rect, scale: f32) {
         let mut grid = self.grid.borrow_mut();
+        if grid.deck.is_some() {
+            // A slide's place, not the Verse page's.
+            return;
+        }
         grid.rect = rect;
         if rect.w <= 0.0 || rect.h <= 0.0 {
             return;
@@ -851,8 +891,9 @@ impl Backdrop for Layer {
         self.visible = visible;
         self.last = None;
         self.grid.borrow_mut().visible(visible);
+        let playing = self.playing();
         if let Some(watch) = &mut self.watch {
-            watch.shown(visible && !self.grid.borrow().playing, now);
+            watch.shown(visible && !playing, now);
         }
     }
     fn next_frame(&mut self, now: Instant) -> Option<Instant> {
@@ -860,7 +901,10 @@ impl Backdrop for Layer {
         if !self.open {
             return None;
         }
-        let playing = self.grid.borrow().playing;
+        let playing = self.playing();
+        if let Some(watch) = &mut self.watch {
+            watch.set_tour(self.grid.borrow().deck.is_some());
+        }
         if playing != self.playing {
             self.playing = playing;
             self.player = None;
@@ -893,8 +937,9 @@ impl Backdrop for Layer {
             // Hidden under the plain background (`look`); nothing to draw.
             return Ok(());
         }
+        let playing = self.playing();
         let mut grid = self.grid.borrow_mut();
-        if grid.playing && grid.surface.is_some() {
+        if playing && grid.surface.is_some() {
             let input = grid.controls.input();
             let surface = grid.surface.as_mut().expect("a player surface");
             let dt = surface
@@ -936,9 +981,8 @@ impl Backdrop for Layer {
             )?;
             self.last = Some(now);
             Ok(())
-        } else if !grid.playing
-            && let Some(watch) = &mut self.watch
-        {
+        } else if !playing && let Some(watch) = &mut self.watch {
+            watch.set_tour(grid.deck.is_some());
             drop(grid);
             watch.draw(gpu, encoder, target, size, now)
         } else {

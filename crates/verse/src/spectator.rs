@@ -49,6 +49,12 @@ pub const SWAY_PERIOD: f32 = 240.0;
 pub const SWAY: f32 = 0.45;
 /// Vertical field of view, radians.
 const FOV_Y: f32 = 0.9;
+/// One full turn of the deck's tour camera ([`Overlook::tour`]), s.
+pub const TOUR_PERIOD: f32 = 120.0;
+/// The tour camera's distance from [`CENTER`] along the ground, m.
+pub const TOUR_RADIUS: f32 = 46.0;
+/// The tour camera's mean height, m; it rises and falls a little.
+pub const TOUR_HEIGHT: f32 = 20.0;
 
 /// A subscribe-only view of one world's presence. It has no publish method
 /// and signs nothing but a relay's NIP-42 challenge.
@@ -355,6 +361,33 @@ impl Overlook {
         }
     }
 
+    /// The camera `seconds` into a slow, low orbit all the way round the
+    /// plaza, rising and falling a little: the Grid as a title slide's
+    /// background (the Episode 289 deck).
+    #[must_use]
+    pub fn tour(aspect: f32, seconds: f32) -> View {
+        let aspect = if aspect.is_finite() {
+            aspect.clamp(0.1, 10.0)
+        } else {
+            1.0
+        };
+        let seconds = if seconds.is_finite() { seconds } else { 0.0 };
+        let turn = (seconds / TOUR_PERIOD).fract() * std::f32::consts::TAU;
+        let bob = (seconds / TOUR_PERIOD * 3.0 * std::f32::consts::TAU).sin();
+        let eye = CENTER
+            + Vec3::new(
+                turn.sin() * TOUR_RADIUS,
+                TOUR_HEIGHT + 4.0 * bob,
+                -turn.cos() * TOUR_RADIUS,
+            );
+        let view = Mat4::look_at_rh(eye, CENTER + Vec3::Y * 3.0, Vec3::Y);
+        let proj = Mat4::perspective_rh(FOV_Y * 0.8, aspect, 0.5, 600.0);
+        View {
+            view_proj: proj * view,
+            eye,
+        }
+    }
+
     /// The Grid's fog pushed out for a camera this high, so the plaza stays
     /// clear and only the far grid fades.
     #[must_use]
@@ -399,6 +432,29 @@ mod tests {
                     "{point} at {ndc}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_tour_circles_the_plaza_low_and_keeps_it_in_frame() {
+        let start = Overlook::tour(16.0 / 9.0, 0.0);
+        let quarter = Overlook::tour(16.0 / 9.0, TOUR_PERIOD / 4.0);
+        assert!(start.eye.distance(quarter.eye) > TOUR_RADIUS);
+        assert!(
+            start
+                .eye
+                .distance(Overlook::tour(16.0 / 9.0, TOUR_PERIOD).eye)
+                < 0.01
+        );
+        for step in 0..12 {
+            let view = Overlook::tour(16.0 / 9.0, TOUR_PERIOD * step as f32 / 12.0);
+            assert!(view.eye.y > 10.0 && view.eye.y < 30.0, "{}", view.eye);
+            let clip = view.view_proj * CENTER.extend(1.0);
+            let ndc = clip.truncate() / clip.w;
+            assert!(
+                clip.w > 0.0 && ndc.x.abs() < 0.2 && ndc.y.abs() < 0.5,
+                "{ndc}"
+            );
         }
     }
 

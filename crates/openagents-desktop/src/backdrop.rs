@@ -132,6 +132,9 @@ pub struct GridBackdrop {
     system: bool,
     /// The app's own "Reduce motion" (Settings, #10021), followed live.
     preference: Option<Arc<AtomicBool>>,
+    /// The camera tours the plaza ([`Overlook::tour`]) instead of looking
+    /// down on it: behind a deck's title slide.
+    tour: bool,
 }
 
 impl GridBackdrop {
@@ -149,7 +152,14 @@ impl GridBackdrop {
             reduce_motion,
             system,
             preference: None,
+            tour: false,
         }
+    }
+
+    /// Flies the camera round the plaza ([`Overlook::tour`]), as behind a
+    /// deck's title slide, or back to the overlook.
+    pub fn set_tour(&mut self, on: bool) {
+        self.tour = on;
     }
 
     /// Also keeps the picture still while `preference` is set, and follows
@@ -237,7 +247,12 @@ impl Backdrop for GridBackdrop {
         } else {
             now.saturating_duration_since(self.started).as_secs_f32()
         };
-        let view = Overlook::view(size.0 as f32 / size.1.max(1) as f32, seconds);
+        let aspect = size.0 as f32 / size.1.max(1) as f32;
+        let view = if self.tour {
+            Overlook::tour(aspect, seconds)
+        } else {
+            Overlook::view(aspect, seconds)
+        };
         layer.encode(
             gpu.device,
             gpu.queue,
@@ -247,7 +262,8 @@ impl Backdrop for GridBackdrop {
             &mesh,
             &verse::ui::UiBatch::default(),
         )?;
-        self.pace.drawn(now, self.overlook.lively(now));
+        // The tour's camera moves fast enough to need every frame.
+        self.pace.drawn(now, self.tour || self.overlook.lively(now));
         Ok(())
     }
 }

@@ -154,6 +154,10 @@ pub struct Slide {
     /// How many times its native size an image slide's image may grow,
     /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
     pub scale: Option<u8>,
+    /// A live scene a host may draw behind the slide (`scene: grid`, the
+    /// Verse's Grid). A host with no scene, and every capture, paints the
+    /// plain background instead.
+    pub scene: Option<String>,
 }
 
 /// An image a slide shows: `![alt](path)` in the script, on a line by
@@ -263,6 +267,7 @@ pub const SCRIPTS: &[(&str, &str)] = &[
         "test-time-capabilities",
         include_str!("../decks/test-time-capabilities.md"),
     ),
+    ("episode-289", include_str!("../decks/episode-289.md")),
 ];
 
 /// The deck the window opens when none is named.
