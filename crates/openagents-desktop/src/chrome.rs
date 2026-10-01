@@ -1,7 +1,9 @@
-//! Desktop navigation and sample sidebar content, projected as semantic views.
+//! Desktop navigation and the sidebar, projected as semantic views.
 //!
-//! The layout reimplements Zeron's shell and sidebar design. Sample chats
-//! exist only for this window and never create a task or a saved conversation.
+//! The layout reimplements Zeron's shell and sidebar design. A live window
+//! lists the host's saved chats (`chat::Panel::sync_sidebar`); the example
+//! chats in [`State::default`] are only for windows without a host
+//! (captures and tests) and never create a task or a saved conversation.
 
 use crate::model::{Intent, Model};
 use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
@@ -990,11 +992,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         Space::Sm,
         vec![text(
             "shell-content-note",
-            if matches!(state.page, Page::Chat(_)) {
-                "Sample conversation"
-            } else {
-                "OpenAgents"
-            },
+            "OpenAgents",
             TextRole::Status,
         )],
     );
