@@ -7482,6 +7482,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-terminal"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "coder-terminal",
+ "crossterm",
+ "futures-util",
+ "libc",
+ "nostr",
+ "openagents-chat",
+ "openagents-chat-app",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "openagents-wallet"
 version = "0.1.0"
 dependencies = [

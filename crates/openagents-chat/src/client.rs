@@ -484,6 +484,26 @@ pub enum Start {
     Now,
 }
 
+/// Stops one thread's Coder task from outside the operation following it
+/// ([`Client::stopper`]).
+#[derive(Clone)]
+pub struct Stopper {
+    coder: Arc<dyn Coder>,
+    store: PathBuf,
+}
+
+impl Stopper {
+    /// Ask `task` to stop, in the words `chat stop` uses. Blocking.
+    ///
+    /// # Errors
+    /// Why it could not be asked.
+    pub fn stop(&self, task: &str) -> Result<String, String> {
+        self.coder
+            .stop(&self.store, task)
+            .map(|()| format!("Asked Coder to stop task {task}. Its turn ends as stopped."))
+    }
+}
+
 /// One operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Op {
@@ -686,6 +706,17 @@ impl Client {
         match &self.backend {
             Backend::Local { scratch: true, .. } => scratch_dir(thread).join("tasks"),
             _ => self.coder.default_store(),
+        }
+    }
+
+    /// What stops the thread's Coder task while another operation follows
+    /// it: OpenAgents Terminal's Esc during a run, which stops the run
+    /// rather than the following (#10111). The follow then reads the
+    /// task's `stopped` event and ends.
+    pub fn stopper(&self, thread: &str) -> Stopper {
+        Stopper {
+            coder: self.coder.clone(),
+            store: self.store(thread),
         }
     }
 

@@ -1,0 +1,645 @@
+//! OpenAgents Terminal end to end, in a real pseudo-terminal.
+//!
+//! The test re-runs its own binary as the screen's process (the
+//! `screen_process` test, which does nothing unless the parent set
+//! `OA_TERMINAL_E2E`), on the slave side of a pseudo-terminal, and reads
+//! the master side through a small terminal emulator. The screen runs the
+//! real input loop, guard, and drawing over the shared chat client with
+//! the in-process backend; behind it are a scripted chat worker and a fake
+//! Coder engine that works in a worktree of a scratch Git repository and
+//! runs until it is stopped. Nothing reaches a relay, a model, a coding
+//! agent, or the real home.
+//!
+//! The scenario: send a question and watch the answer stream; send a
+//! coding message, which starts a Coder run at once; stop it with Esc;
+//! start a second thread; open the first again from the thread list, which
+//! shows its turns and its run up to the stop; quit with Ctrl+C twice.
+//!
+//! ```sh
+//! cargo test -p openagents-terminal --test pty -- --nocapture
+//! ```
+//! prints the screens it checked.
+
+#![cfg(unix)]
+
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::os::fd::FromRawFd;
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use openagents_chat::basic_chats::BasicChats;
+use openagents_chat::basic_coder::{Door, Reply, Turn, lock};
+use openagents_chat::client::{
+    self, Client, Coder, Follow, Issue, Kind, Options, Place, Progress, Started,
+};
+use openagents_chat::coder_events::{self, CoderEvent, Line, Output, Runner, Step, StepKind};
+use openagents_chat::router::{
+    Caller, CoderRun, Computer, Context, Engine, EngineState, Meta, Offer, Project,
+};
+use openagents_terminal::{Interrupter, Launch, NoExtras, Resume};
+use serde_json::Value;
+
+#[path = "support/vt.rs"]
+mod vt;
+
+const ROWS: u16 = 40;
+const COLS: u16 = 100;
+const ENV: &str = "OA_TERMINAL_E2E";
+
+// ---------------------------------------------------------------- the child
+
+/// A chat worker that streams its answer in three pieces; a message that
+/// asks for a fix gets a `run_coder` offer, the router's typed judgment
+/// that it is coding work. (Only this fixture reads the words.)
+struct Worker;
+
+impl Door for Worker {
+    fn ask(
+        &self,
+        turns: Vec<Turn>,
+        _: Context,
+        reply: Arc<Mutex<Reply>>,
+    ) -> client::BoxFuture<'static, ()> {
+        Box::pin(async move {
+            let asked = turns
+                .last()
+                .map(|turn| turn.text.clone())
+                .unwrap_or_default();
+            if asked.contains("fix") {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                let mut reply = lock(&reply);
+                reply.text = "Coder can fix that on this computer.".into();
+                reply.meta = Meta {
+                    offers: vec![Offer::RunCoder],
+                    ..Meta::default()
+                };
+                reply.done = true;
+                return;
+            }
+            for piece in ["Rain ", "on the ", "roof."] {
+                tokio::time::sleep(Duration::from_millis(700)).await;
+                lock(&reply).text.push_str(piece);
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let mut reply = lock(&reply);
+            reply.text = format!("Rain on the roof. You asked: {asked}");
+            reply.done = true;
+        })
+    }
+}
+
+/// One fake task: its events so far, and whether it was asked to stop.
+#[derive(Default)]
+struct Task {
+    lines: Mutex<Vec<Line>>,
+    stop: AtomicBool,
+    ended: AtomicBool,
+}
+
+/// A fake coding engine over a scratch Git repository: a run starts in a
+/// real worktree, reports a start, a thought, a failing command, and
+/// progress every 300 ms, and works until it is asked to stop.
+struct FakeCoder {
+    store: PathBuf,
+    tasks: Mutex<HashMap<String, Arc<Task>>>,
+}
+
+impl FakeCoder {
+    fn task(&self, id: &str) -> Option<Arc<Task>> {
+        self.tasks.lock().unwrap().get(id).cloned()
+    }
+}
+
+fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+    }
+}
+
+impl Coder for FakeCoder {
+    fn default_store(&self) -> PathBuf {
+        self.store.clone()
+    }
+    fn context(&self, _: &Path, dir: Option<&Path>) -> Context {
+        Context {
+            computer_ready: true,
+            computer: Some(Computer::Here {
+                name: None,
+                engines: vec![Engine {
+                    engine: "codex".into(),
+                    state: EngineState::Ready,
+                }],
+            }),
+            project: dir.and_then(|dir| Project::at(&dir.display().to_string())),
+            ..Context::default()
+        }
+    }
+    fn predict(&self, _: &Path, _: Option<nostr::cj_conversation::Engine>) -> Option<Runner> {
+        None
+    }
+    fn asks_first(&self) -> bool {
+        false
+    }
+    fn checkout(&self, dir: &Path) -> Result<(), String> {
+        git(dir, &["rev-parse", "--show-toplevel"]).map(|_| ())
+    }
+    fn start(
+        &self,
+        _: &Path,
+        dir: &Path,
+        _: &str,
+        _: &str,
+        chat: &str,
+        _: Option<nostr::cj_conversation::Engine>,
+    ) -> Result<Started, String> {
+        let id = format!("t{}", self.tasks.lock().unwrap().len() + 1);
+        let top = PathBuf::from(git(dir, &["rev-parse", "--show-toplevel"])?);
+        let worktree = self.store.join("worktrees").join(&id);
+        git(
+            &top,
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                &worktree.display().to_string(),
+            ],
+        )?;
+        let base = git(&worktree, &["rev-parse", "HEAD"])?;
+        let task = Arc::new(Task::default());
+        self.tasks.lock().unwrap().insert(id.clone(), task.clone());
+        let (task_id, chat) = (id.clone(), chat.to_owned());
+        let project = top
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let (checkout, place) = (top.display().to_string(), worktree.display().to_string());
+        std::thread::spawn(move || {
+            let mut seq = 0;
+            let mut emit = |event: CoderEvent| {
+                seq += 1;
+                task.lines.lock().unwrap().push(Line {
+                    seq,
+                    task: task_id.clone(),
+                    thread: Some(chat.clone()),
+                    event,
+                });
+            };
+            emit(CoderEvent::CoderStarted(coder_events::Started {
+                turn: 1,
+                project,
+                checkout,
+                worktree: place,
+                base,
+                provider: "codex".into(),
+                model: "fake-engine".into(),
+                reason: "Codex is signed in and has capacity.".into(),
+                fallbacks: Vec::new(),
+                via: "local".into(),
+                runner: None,
+            }));
+            emit(CoderEvent::Step(Step {
+                turn: 1,
+                step_id: 1,
+                kind: StepKind::Thinking,
+                source: "agent".into(),
+                text: "Reading the failing test.".into(),
+            }));
+            emit(CoderEvent::Output(Output {
+                turn: 1,
+                step_id: 2,
+                command: "cargo test".into(),
+                exit: Some(101),
+                timed_out: false,
+                seconds: 1.5,
+                text: "running 1 test\ntest adds ... FAILED\nerror: test failed".into(),
+                truncated: false,
+            }));
+            let mut step = 2;
+            while !task.stop.load(Ordering::SeqCst) {
+                step += 1;
+                emit(CoderEvent::Progress(coder_events::Progress {
+                    turn: 1,
+                    step,
+                    seconds: step as f64,
+                    done: None,
+                    complete: Some(0.4),
+                }));
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            emit(CoderEvent::Stopped(coder_events::Stopped {
+                turn: 1,
+                message: "Coder stopped this turn because you asked.".into(),
+            }));
+            task.ended.store(true, Ordering::SeqCst);
+        });
+        Ok(Started {
+            task: id,
+            project: top
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            worktree: worktree.display().to_string(),
+        })
+    }
+    fn issue(&self, _: &str, _: &str, _: &Path) -> Option<Box<dyn Issue>> {
+        None
+    }
+    fn follow(&self, _: &Path, task: &str, _: &str, _: Option<String>) -> Box<dyn Follow> {
+        struct Following {
+            task: Option<Arc<Task>>,
+            at: usize,
+        }
+        impl Follow for Following {
+            fn poll(&mut self) -> Result<(Vec<Line>, Progress), String> {
+                let Some(task) = &self.task else {
+                    return Err("no such task".into());
+                };
+                let ended = task.ended.load(Ordering::SeqCst);
+                let lines = task.lines.lock().unwrap()[self.at..].to_vec();
+                self.at += lines.len();
+                let progress = if ended {
+                    Progress::Ended
+                } else {
+                    Progress::Running
+                };
+                Ok((lines, progress))
+            }
+        }
+        Box::new(Following {
+            task: self.task(task),
+            at: 0,
+        })
+    }
+    fn stop(&self, _: &Path, task: &str) -> Result<(), String> {
+        let task = self.task(task).ok_or("no such task")?;
+        task.stop.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+    fn answer(&self, _: &Path, _: &str, _: &str) -> Result<usize, String> {
+        Err("the fake engine takes no answers".into())
+    }
+    fn result(&self, _: &Path, _: &str) -> Option<CoderRun> {
+        None
+    }
+    fn trajectories(&self, _: &Path, _: &str) -> Vec<Value> {
+        Vec::new()
+    }
+}
+
+/// The screen's process: runs only when the parent test started it.
+#[test]
+fn screen_process() {
+    let Ok(dir) = std::env::var(ENV) else {
+        return;
+    };
+    let dir = PathBuf::from(dir);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .enable_all()
+        .build()
+        .unwrap();
+    let exit = runtime.block_on(async {
+        let repo = dir.join("demo");
+        let home = dir.join("home");
+        let coder: Arc<dyn Coder> = Arc::new(FakeCoder {
+            store: dir.join("tasks"),
+            tasks: Mutex::default(),
+        });
+        let interrupter = Interrupter::new();
+        let options = Options {
+            place: Place::Local,
+            caller: Caller::TERMINAL,
+            dir: Some(repo.clone()),
+            home: home.clone(),
+            interrupt: interrupter.interrupt(),
+            hint: Some(|_: Kind, _: &str| "Type your answer and press Enter.".to_owned()),
+        };
+        let chats = BasicChats::new(
+            Some(tokio::runtime::Handle::current()),
+            Some(Arc::new(Worker)),
+            None,
+        );
+        let client = Client::in_process(chats, home.clone(), false, options, coder.clone());
+        openagents_terminal::run(Launch {
+            client,
+            coder,
+            interrupter,
+            extras: Arc::new(NoExtras),
+            resume: Resume::New(None),
+            folder: Some(repo),
+            home,
+            notices: Vec::new(),
+            version: "openagents-terminal e2e".into(),
+        })
+        .await
+    });
+    match exit {
+        Ok(exit) => println!(
+            "SCREEN CLOSED thread={} running={}",
+            exit.thread.unwrap_or_default(),
+            exit.running
+        ),
+        Err(error) => println!("SCREEN FAILED {error}"),
+    }
+}
+
+// --------------------------------------------------------------- the parent
+
+/// The master side of a pseudo-terminal and the slave's path.
+fn pty() -> (File, PathBuf) {
+    // SAFETY: plain libc calls on a descriptor this function owns; the
+    // returned name is copied before any other PTY call.
+    unsafe {
+        let master = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(master >= 0, "posix_openpt");
+        assert_eq!(libc::grantpt(master), 0, "grantpt");
+        assert_eq!(libc::unlockpt(master), 0, "unlockpt");
+        let name = libc::ptsname(master);
+        assert!(!name.is_null(), "ptsname");
+        let path = std::ffi::CStr::from_ptr(name)
+            .to_string_lossy()
+            .into_owned();
+        let size = libc::winsize {
+            ws_row: ROWS,
+            ws_col: COLS,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        libc::ioctl(master, libc::TIOCSWINSZ as _, &raw const size);
+        (File::from_raw_fd(master), PathBuf::from(path))
+    }
+}
+
+struct Session {
+    master: File,
+    grid: Arc<Mutex<vt::Grid>>,
+    child: std::process::Child,
+}
+
+impl Session {
+    fn screen(&self) -> String {
+        self.grid.lock().unwrap().text()
+    }
+
+    fn send(&mut self, bytes: &[u8]) {
+        self.master.write_all(bytes).unwrap();
+        self.master.flush().unwrap();
+        // Let the key land before the next one: a lone Esc is told apart
+        // from an escape sequence by the pause after it.
+        std::thread::sleep(Duration::from_millis(150));
+    }
+
+    fn typed(&mut self, text: &str) {
+        for c in text.chars() {
+            let mut buffer = [0; 4];
+            self.master
+                .write_all(c.encode_utf8(&mut buffer).as_bytes())
+                .unwrap();
+        }
+        self.master.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        self.send(b"\r");
+    }
+
+    /// Wait until the screen shows every one of `texts`.
+    fn wait(&mut self, what: &str, texts: &[&str]) -> String {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let screen = self.screen();
+            if texts.iter().all(|text| screen.contains(text)) {
+                eprintln!("---- {what} ----\n{screen}\n");
+                return screen;
+            }
+            if Instant::now() > deadline {
+                let _ = self.child.kill();
+                panic!("timed out waiting for {what} ({texts:?}); the screen:\n{screen}");
+            }
+            std::thread::sleep(Duration::from_millis(40));
+        }
+    }
+}
+
+#[test]
+fn the_screen_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("demo");
+    std::fs::create_dir_all(&repo).unwrap();
+    for args in [
+        &["init", "-q", "-b", "main"][..],
+        &["config", "user.email", "test@example.com"],
+        &["config", "user.name", "Test"],
+    ] {
+        git(&repo, args).unwrap();
+    }
+    std::fs::write(repo.join("lib.rs"), "pub fn adds() -> u8 { 1 + 1 }\n").unwrap();
+    git(&repo, &["add", "."]).unwrap();
+    git(&repo, &["commit", "-q", "-m", "first"]).unwrap();
+
+    let (master, slave) = pty();
+    let open = || {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&slave)
+            .unwrap()
+    };
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "screen_process",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(ENV, dir.path())
+        .env("HOME", dir.path().join("home"))
+        .env("TERM", "xterm-256color")
+        .env("COLORTERM", "truecolor")
+        .env_remove("NO_COLOR")
+        .stdin(Stdio::from(open()))
+        .stdout(Stdio::from(open()))
+        .stderr(Stdio::from(open()));
+    // SAFETY: only async-signal-safe calls between fork and exec: a new
+    // session, with the pseudo-terminal on standard input as its
+    // controlling terminal.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    // The size goes on the slave too: some systems keep it per side.
+    {
+        let slave = open();
+        let size = libc::winsize {
+            ws_row: ROWS,
+            ws_col: COLS,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        // SAFETY: TIOCSWINSZ reads the winsize passed and nothing else.
+        unsafe {
+            libc::ioctl(
+                std::os::fd::AsRawFd::as_raw_fd(&slave),
+                libc::TIOCSWINSZ as _,
+                &raw const size,
+            )
+        };
+    }
+    let child = command.spawn().unwrap();
+    let grid = Arc::new(Mutex::new(vt::Grid::new(
+        usize::from(ROWS),
+        usize::from(COLS),
+    )));
+    let mut reader = master.try_clone().unwrap();
+    let feed = grid.clone();
+    std::thread::spawn(move || {
+        let mut buffer = [0; 8192];
+        while let Ok(read) = reader.read(&mut buffer) {
+            if read == 0 {
+                break;
+            }
+            feed.lock().unwrap().feed(&buffer[..read]);
+        }
+    });
+    let mut session = Session {
+        master,
+        grid,
+        child,
+    };
+
+    // The welcome card: the backend, the project, and the engine.
+    session.wait(
+        "the welcome card",
+        &[
+            "OpenAgents Terminal",
+            "this terminal",
+            "demo",
+            "Codex ready",
+        ],
+    );
+
+    // A question streams its answer, then the whole reply shows.
+    session.typed("what is the weather like");
+    let streaming = session.wait("the reply streaming", &["Rain on the"]);
+    assert!(
+        !streaming.contains("You asked:"),
+        "the screen showed the reply before it finished:\n{streaming}"
+    );
+    session.wait(
+        "the finished reply",
+        &[
+            "Rain on the roof. You asked: what is the weather like",
+            "ready",
+        ],
+    );
+
+    // A coding message: the router's offer starts Coder at once, in a
+    // worktree of the scratch repository, and its steps stream in.
+    session.typed("please fix the failing test");
+    let run = session.wait(
+        "the Coder run",
+        &[
+            "Coder can fix that on this computer.",
+            "Coder · Codex",
+            "Reading the failing test.",
+            "$ cargo test",
+            "exit 101",
+            "≈40% done",
+        ],
+    );
+    // Progress is Jev's estimate, never a step budget.
+    for line in run.lines().filter(|line| line.contains("% done")) {
+        assert!(!line.contains(" of "), "a budget in {line:?}");
+    }
+    assert!(!run.contains("could not record"), "{run}");
+    assert!(
+        dir.path().join("tasks/worktrees/t1/lib.rs").exists(),
+        "the run works in a worktree of the scratch repository"
+    );
+
+    // Esc stops the run, not the screen.
+    session.send(b"\x1b");
+    session.wait(
+        "the run stopped",
+        &[
+            "Asked Coder to stop task t1",
+            "Coder stopped this turn because you asked.",
+            "ready",
+        ],
+    );
+
+    // A second thread.
+    session.typed("/new");
+    session.wait("a new thread", &["New thread.", "new thread"]);
+    session.typed("is it still raining");
+    session.wait(
+        "the second thread's reply",
+        &["You asked: is it still raining", "ready"],
+    );
+
+    // The thread list resumes the first thread: its turns and its run.
+    session.send(b"\x14");
+    let list = session.wait("the thread list", &["Threads", "Coder in", "Enter open"]);
+    assert!(list.contains("open"), "{list}");
+    session.send(b"\x1b[B");
+    session.send(b"\r");
+    let resumed = session.wait(
+        "the first thread again",
+        &[
+            "Opened",
+            "please fix the failing test",
+            "Coder can fix that on this computer.",
+            "Coder stopped this turn because you asked.",
+        ],
+    );
+    assert!(!resumed.contains("is it still raining"), "{resumed}");
+
+    // Ctrl+C twice quits; the terminal comes back.
+    session.send(b"\x03");
+    session.wait("the quit prompt", &["Press Ctrl+C again to quit."]);
+    session.send(b"\x03");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let status = loop {
+        if let Some(status) = session.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(Instant::now() < deadline, "the screen did not close");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    std::thread::sleep(Duration::from_millis(200));
+    let grid = session.grid.lock().unwrap();
+    let raw = String::from_utf8_lossy(&grid.raw);
+    assert!(status.success(), "{raw}");
+    assert!(raw.contains("SCREEN CLOSED thread="), "{raw}");
+    // The look: white on near-black, never amber; the cursor is white and
+    // its color is handed back, and the alternate screen is left.
+    assert!(raw.contains("\x1b]12;#FFFFFF\x07"), "a white cursor");
+    assert!(
+        raw.contains("\x1b]112\x07"),
+        "the cursor color is handed back"
+    );
+    assert!(!raw.contains("255;176;0"), "no amber anywhere");
+    assert!(raw.contains("48;2;10;10;10"), "the near-black field");
+    assert!(raw.contains("38;2;255;255;255"), "full white text");
+    assert!(raw.contains("\x1b[?1049l"), "the alternate screen is left");
+}
