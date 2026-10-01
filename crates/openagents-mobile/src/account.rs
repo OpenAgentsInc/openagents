@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "40",
+        title: "Coder runs the engine you asked for",
+        what_to_test: "With no computer paired, send \"Do a test delegation to claude\" in a new chat: the reply should say it needs a computer and offer Connect a computer, with no Gym test. With the latest OpenAgents on a paired computer, send \"Do a test delegation to claude\" in a new chat on the phone and tap Run Coder: Coder should start on Claude Code, or its start card should say why another engine is running, and the run should do a small check of your project instead of trying to sign in to Claude. Then open one of the computer's chats from the previous chats and ask \"What's the working directory right now?\": the reply should answer it, with no Coder run starting.",
+        items: &[
+            Item {
+                title: "Your engine, from any chat",
+                detail: "When you ask for Claude, Codex, or another coding engine and tap Run Coder in a chat on the phone, your computer now starts that engine, not only in the computer's own chats. If it can't, because your computer's Coder settings don't allow it, it isn't signed in, or it has reached a limit, the start card says so and names the one running instead. This needs the latest OpenAgents on your computer.",
+            },
+            Item {
+                title: "Delegations do the work",
+                detail: "When you hand a task to Claude or another engine, the run does your task. It no longer treats the request itself as the work and gets stuck trying to sign in to that engine; a request with nothing more to do gets a small, harmless check of your project.",
+            },
+            Item {
+                title: "Answers stay answers",
+                detail: "When a reply already answers your question, Coder no longer starts on your computer as well, and the reply no longer offers Run Coder.",
+            },
+            Item {
+                title: "Big projects start",
+                detail: "Coder now starts in projects with many folders. Before, your computer could refuse every start with \"the granted source snapshot is unavailable or changed\". This needs the latest OpenAgents on your computer.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "39",
         title: "Ask for Claude by name",
         what_to_test: "With no computer paired, send \"Do a test delegation to claude\" in a new chat: the reply should say it needs a computer and offer Connect a computer, with no Gym test. With a computer paired, ask \"What can you do?\": the reply should not ask you to connect a computer. With the latest OpenAgents on that computer, open one of its chats from the previous chats, send \"Do a test delegation to claude\", and tap Run Coder: Coder should start on Claude Code, or its start card should say why another engine is running. The run should show your message once, with \"Continued from the OpenAgents app\" as a note under it.",
