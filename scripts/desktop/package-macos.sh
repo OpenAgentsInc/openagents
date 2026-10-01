@@ -135,6 +135,9 @@ if [[ $notarize -eq 1 ]]; then
 fi
 
 # ------------------------------------------------------------ entitlements
+# Plugins run as Wasm under wasmtime, which makes compiled code executable at
+# run time; the hardened runtime kills that without
+# allow-unsigned-executable-memory, so every binary holds it.
 # Outside the App Sandbox the network and the login keychain need no
 # entitlement; the network keys below are declared so the app keeps working
 # if it is ever sandboxed. No `keychain-access-groups`: that key needs a
@@ -147,6 +150,8 @@ default_entitlements() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>

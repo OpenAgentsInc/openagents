@@ -7,8 +7,17 @@
   that key needs a provisioning profile, and a Developer ID app with it and
   none would not launch (docs/desktop/release.md).
 -->
+<!--
+  Plugins run as Wasm under wasmtime, which compiles to native code at run
+  time and makes those pages executable. The hardened runtime kills a
+  process that does that unless it holds
+  com.apple.security.cs.allow-unsigned-executable-memory (found by the
+  release acceptance gate: `explain-error` exited 137 in the signed app).
+-->
 <plist version="1.0">
 <dict>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>

@@ -130,12 +130,16 @@ The app and the embedded host get the same small set by default:
 | --- | --- |
 | `com.apple.security.network.client` | The host dials the iroh relay and the Nostr relay; the app talks to the host. |
 | `com.apple.security.network.server` | The host accepts phones on its iroh and direct listeners. |
+| `com.apple.security.cs.allow-unsigned-executable-memory` | Plugins run as Wasm under wasmtime, which compiles each module to native code at run time and makes those pages executable. Without this key the hardened runtime kills the process (exit 137) the first time a plugin runs. Every binary in the bundle links wasmtime. |
 
-Outside the App Sandbox neither key is enforced; they are there so the
-bundle keeps working if it is ever sandboxed. The hardened runtime needs no
-exception (`allow-jit`, `disable-library-validation`, and so on): the binaries
-are plain Rust with no JIT and no third-party dylibs. Add one only with a
-reason in the entitlements file.
+Outside the App Sandbox the network keys are not enforced; they are there so
+the bundle keeps working if it is ever sandboxed. The executable-memory key is
+the one hardened-runtime exception, and it is enforced: it was missing until
+2026-10-01, when the release acceptance gate's `explain-error` scenario
+caught a signed app that could not run any plugin (debug builds aren't
+hardened, so no earlier test saw it). `allow-jit` alone does not help;
+wasmtime does not use `MAP_JIT`. Add any other exception only with a reason
+in the entitlements file.
 
 **Keychain.** The login keychain (`keyring` with service
 `com.openagents.desktop`) needs no entitlement for a Developer ID app that is
