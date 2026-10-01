@@ -1,35 +1,34 @@
 //! `openagents chat`: talk to OpenAgents, the chat router, from a terminal.
 //!
-//! This is a thin front over the shared chat service
-//! ([`openagents_chat::service`]): every operation is a
-//! [`Command`] and every answer a [`Snapshot`], the same ones the phone and
-//! the desktop use. There is no chat logic here. When this computer's host
-//! runs, the commands go to its control socket, so the threads are the
-//! desktop app's threads and a Coder offer is accepted through the host's
-//! own handoff. Otherwise the service runs in this process, with this
-//! command's own device key and encrypted store. The worker's router decides
-//! every route; this command only shows what it said.
+//! This is a thin front over the shared chat client
+//! ([`openagents_chat::client`]), which OpenAgents Terminal uses too: every
+//! operation is a service [`Command`] and every answer a typed client
+//! [`Event`], printed here as text or `--json` NDJSON. There is no chat
+//! logic here. When this computer's host runs, the commands go to its
+//! control socket, so the threads are the desktop app's threads and a Coder
+//! offer is accepted through the host's own handoff. Otherwise the service
+//! runs in this process, with this command's own device key and encrypted
+//! store. The worker's router decides every route; this command only shows
+//! what it said. Coder runs on this computer through
+//! [`coder::task::chat_client::Here`].
 //!
 //! The user-facing unit is the **thread** (`docs/glossary.md`); the shared
 //! code calls it a chat. [`openagents_chat::thread`] renders a thread as its
 //! ATIF trajectory.
 
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
-use openagents_chat::basic_chats::{BasicChats, Summary};
-use openagents_chat::basic_coder::{self, Role, Turn};
-use openagents_chat::cache::Cache;
-use openagents_chat::router::{Context, Meta, Offer};
-use openagents_chat::service::{self, Command, Snapshot};
-use openagents_connect::control::{self, Op, Reply, Request};
-use secp256k1::SecretKey;
+use coder::task::chat_client::{Control, Here};
+use openagents_chat::basic_coder::Turn;
+use openagents_chat::client::{self, Client, Ended, Event, Kind, Op, Place, Start};
+use openagents_chat::router::{Caller, Meta, Offer};
+use openagents_connect::control;
 use serde_json::{Value, json};
-use tokio::net::UnixStream;
 
 use crate::out::{Output, table};
 use crate::{Args, EXIT_FAILURE, runtime};
@@ -112,23 +111,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("work", Effect::Publishes),
 ];
 
-/// How long a reply is waited for by default: the chat worker's own limit.
-const DEFAULT_TIMEOUT: u64 = 120;
-/// How often a streaming reply is read.
-const POLL: Duration = Duration::from_millis(80);
-/// The message the apps show when a person stops a reply.
-const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
 const OPTIONS: &[&str] = &[
     "thread", "timeout", "limit", "socket", "issues", "parallel", "land",
 ];
 const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder", "no-run"];
-
-/// What `send` does when OpenAgents judges the message is coding work.
-#[derive(Clone, Copy, Debug)]
-struct Run {
-    /// Only show the offer (`--no-run`).
-    no_run: bool,
-}
 
 pub(crate) enum Failure {
     Usage(String),
@@ -137,6 +123,15 @@ pub(crate) enum Failure {
 
 fn failed(message: impl Into<String>) -> Failure {
     Failure::Failed(message.into())
+}
+
+impl From<client::Error> for Failure {
+    fn from(error: client::Error) -> Self {
+        match error {
+            client::Error::Usage(message) => Self::Usage(message),
+            client::Error::Failed(message) => Self::Failed(message),
+        }
+    }
 }
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -175,7 +170,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Failure> {
     let thread = args.option("thread").map(str::to_owned);
     if let Some(id) = &thread
-        && !thread_id(id)
+        && !client::thread_id(id)
     {
         return Err(Failure::Usage(
             "a thread ID is 32 lowercase hex characters".into(),
@@ -186,6 +181,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             .clone()
             .ok_or_else(|| Failure::Usage(format!("`chat {command}` needs --thread ID")))
     };
+    let mut printer = Printer::new(output);
     match command {
         "work" => {
             no_positional(args)?;
@@ -193,7 +189,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
         }
         "send" => {
             let message = message(args.positional())?;
-            let timeout = match args.number("timeout", DEFAULT_TIMEOUT) {
+            let timeout = match args.number("timeout", client::DEFAULT_TIMEOUT.as_secs()) {
                 Ok(timeout) if timeout > 0 => Duration::from_secs(timeout),
                 _ => {
                     return Err(Failure::Usage(
@@ -203,24 +199,34 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             };
             let (id, new) = match thread {
                 Some(id) => (id, false),
-                None => (new_id(), true),
+                None => (client::new_id(), true),
             };
-            let mut backend = Backend::open(args, Some(&id), new).await?;
-            send(
-                output,
-                &mut backend,
-                &id,
+            let mut client = open(args, Some(&id), new, &mut printer).await?;
+            // `--no-run`, or `coder.start: ask_first` in the settings, keeps
+            // only the offer; `--run-coder` runs.
+            let start = if args.switch("run-coder") {
+                Start::Now
+            } else if args.switch("no-run") {
+                Start::OfferOnly
+            } else {
+                Start::Settings
+            };
+            let op = Op::Send {
+                thread: id.clone(),
                 new,
-                &message,
-                Run {
-                    // `--no-run`, or `coder.start: ask_first` in the
-                    // settings, keeps only the offer; `--run-coder` runs.
-                    no_run: (args.switch("no-run") || coder_run::asks_first())
-                        && !args.switch("run-coder"),
-                },
+                text: message,
+                start,
                 timeout,
-            )
-            .await
+            };
+            let ended = client.run(op, &mut |event| printer.print(event)).await?;
+            if ended == Ended::Refused {
+                eprintln!("thread {id}");
+                return Ok(EXIT_FAILURE);
+            }
+            if !output.json() {
+                eprintln!("thread {id}");
+            }
+            Ok(code(ended))
         }
         "threads" => {
             no_positional(args)?;
@@ -231,18 +237,18 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
                 ));
             }
             let limit: usize = args.number("limit", 50).map_err(Failure::Usage)?;
-            let mut backend = Backend::open(args, None, false).await?;
-            threads(output, &mut backend, args.switch("all"), limit).await
+            let mut client = open(args, None, false, &mut printer).await?;
+            threads(output, &mut client, args.switch("all"), limit).await
         }
         "read" | "export" => {
             no_positional(args)?;
             let id = needs_thread(&thread)?;
-            let mut backend = Backend::open(args, Some(&id), false).await?;
-            let whole = backend.collect(&id).await?;
+            let mut client = open(args, Some(&id), false, &mut printer).await?;
+            let whole = client.collect(&id).await?;
             if command == "read" {
-                read(output, &backend, &whole);
+                read(output, &client, &whole);
             } else {
-                let tasks = task_trajectories(&backend, &id, &whole);
+                let tasks = client.trajectories(&id, &whole);
                 let document =
                     openagents_chat::thread::trajectory_with(&whole, &crate::version_line(), tasks);
                 // Only a document `crates/atif` reads back leaves this command.
@@ -258,32 +264,76 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             }
             Ok(0)
         }
-        "run-coder" | "follow" | "stop" => {
-            no_positional(args)?;
+        "run-coder" | "follow" | "stop" | "answer" => {
+            if command != "answer" {
+                no_positional(args)?;
+            }
             let id = needs_thread(&thread)?;
-            let mut backend = Backend::open(args, Some(&id), false).await?;
-            let code = match command {
-                "run-coder" => run_coder(output, &mut backend, &id).await,
-                "follow" => coder_run::follow(output, &mut backend, &id).await,
-                _ => coder_run::stop(output, &mut backend, &id).await,
+            let op = match command {
+                "answer" => Op::Answer {
+                    thread: id.clone(),
+                    text: message(args.positional())?,
+                },
+                "run-coder" => Op::RunCoder { thread: id.clone() },
+                "follow" => Op::Follow { thread: id.clone() },
+                _ => Op::Stop { thread: id.clone() },
             };
+            let mut client = open(args, Some(&id), false, &mut printer).await?;
+            let ended = client.run(op, &mut |event| printer.print(event)).await?;
             if !output.json() {
                 eprintln!("thread {id}");
             }
-            Ok(code)
-        }
-        "answer" => {
-            let id = needs_thread(&thread)?;
-            let text = message(args.positional())?;
-            let mut backend = Backend::open(args, Some(&id), false).await?;
-            let code = coder_run::answer(output, &mut backend, &id, &text).await;
-            if !output.json() {
-                eprintln!("thread {id}");
-            }
-            Ok(code)
+            Ok(code(ended))
         }
         _ => Err(Failure::Usage(format!("unknown command `{command}`"))),
     }
+}
+
+/// The exit code an operation ends with.
+fn code(ended: Ended) -> u8 {
+    match ended {
+        Ended::Done => 0,
+        Ended::Failed | Ended::Refused => EXIT_FAILURE,
+    }
+}
+
+/// The client `args` choose: `--scratch`, `--local`, or this computer's
+/// host when one answers (`--socket` names another). `thread` names the
+/// scratch store; `new` creates one.
+pub(crate) async fn open(
+    args: &Args,
+    thread: Option<&str>,
+    new: bool,
+    printer: &mut Printer<'_>,
+) -> Result<Client, Failure> {
+    let place = if args.switch("scratch") {
+        Place::Scratch
+    } else if args.switch("local") {
+        Place::Local
+    } else {
+        Place::Auto {
+            socket: args.option("socket").map(PathBuf::from),
+        }
+    };
+    let mut options = client::Options::new(Caller::CLI);
+    options.place = place;
+    options.interrupt = Arc::new(|| {
+        Box::pin(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+    });
+    options.hint = Some(coder_run::answer_hint);
+    let client = Client::open(
+        options,
+        &Control,
+        Arc::new(Here),
+        thread,
+        new,
+        &mut |event| printer.print(event),
+    )
+    .await?;
+    printer.kind = client.kind();
+    Ok(client)
 }
 
 fn no_positional(args: &Args) -> Result<(), Failure> {
@@ -315,288 +365,6 @@ fn message(words: &[String]) -> Result<String, Failure> {
     Ok(text)
 }
 
-/// A thread or send ID: 32 lowercase hex characters, as the service admits.
-fn thread_id(id: &str) -> bool {
-    id.len() == 32
-        && id
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn new_id() -> String {
-    hex(&secp256k1::rand::random::<[u8; 16]>())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs())
-}
-
-/// Where threads live for this run.
-pub(crate) enum Backend {
-    /// This computer's host, over its control socket: the desktop app's
-    /// threads.
-    Host {
-        stream: UnixStream,
-        next: u64,
-        socket: PathBuf,
-    },
-    /// The chat service in this process.
-    Local {
-        chats: Box<BasicChats>,
-        scratch: bool,
-        home: PathBuf,
-    },
-}
-
-impl Backend {
-    /// The backend `args` choose. `thread` names the scratch store;
-    /// `new` creates one.
-    async fn open(args: &Args, thread: Option<&str>, new: bool) -> Result<Self, Failure> {
-        if args.switch("scratch") {
-            let id = thread.ok_or_else(|| Failure::Usage("--scratch needs a thread".into()))?;
-            let home = scratch_dir(id);
-            if !new && !home.join("device.key").exists() {
-                return Err(failed(format!(
-                    "no scratch thread {id} on this computer ({} is gone)",
-                    home.display()
-                )));
-            }
-            let context = coder_run::context(home.join("tasks"));
-            return Self::local(home, true, context);
-        }
-        let named = args.option("socket").map(PathBuf::from);
-        if !args.switch("local")
-            && let Some(socket) = named.clone().or_else(control::socket_path)
-        {
-            match UnixStream::connect(&socket).await {
-                Ok(stream) => {
-                    let host = Self::Host {
-                        stream,
-                        next: 1,
-                        socket,
-                    };
-                    host.migrate(&home()).await;
-                    return Ok(host);
-                }
-                Err(_) if named.is_some() => {
-                    return Err(failed(format!(
-                        "no host answers at {}; start it with `openagents host serve --control` \
-                         or open the OpenAgents app",
-                        socket.display()
-                    )));
-                }
-                Err(_) => {}
-            }
-        }
-        let context = coder_run::context(coder::task::local::default_store());
-        Self::local(home(), false, context)
-    }
-
-    /// Ask the host to take in the threads this command kept without one
-    /// in `home` (`openagents_chat::migrate`), when there are any. The host
-    /// reads them with this command's device key and re-encrypts them in
-    /// its own store, keeping every ID; a second ask is a no-op. An older
-    /// host, or a refusal, leaves them where they are, still readable with
-    /// `--local`.
-    ///
-    /// It asks on a connection of its own: an older host ends a connection
-    /// that carried an operation it doesn't know.
-    async fn migrate(&self, home: &Path) {
-        let Self::Host { socket, .. } = self else {
-            return;
-        };
-        if !openagents_chat::migrate::pending(home) || openagents_chat::migrate::scratch(home) {
-            return;
-        }
-        let (Ok(home), Ok(mut stream)) = (home.canonicalize(), UnixStream::connect(socket).await)
-        else {
-            return;
-        };
-        let op = Op::ChatMigrate {
-            home: home.display().to_string(),
-        };
-        match control::call(&mut stream, &Request::new(1, op)).await {
-            Ok(Reply::ChatMigrated { moved, .. }) if moved > 0 => eprintln!(
-                "moved {moved} thread{} kept without a host into this computer's host",
-                if moved == 1 { "" } else { "s" }
-            ),
-            Ok(Reply::Refused { code, message }) if code != "malformed" => {
-                eprintln!(
-                    "threads in {} stay there for now: {message}",
-                    home.display()
-                );
-            }
-            _ => {}
-        }
-    }
-
-    /// The service in this process. `context` says whether Coder can run
-    /// on this computer for this thread now, and that this computer and
-    /// its checkout are where it runs, which the router is told.
-    fn local(home: PathBuf, scratch: bool, context: Context) -> Result<Self, Failure> {
-        let secret = device_key(&home, true).map_err(failed)?;
-        let store = Cache::open(&home.join("threads"), &secret)
-            .map_err(|error| failed(format!("cannot open the chat store: {error}")))?;
-        let relay = std::env::var("OPENAGENTS_CHAT_RELAY")
-            .unwrap_or_else(|_| basic_coder::RELAY.to_owned());
-        let worker = std::env::var("OPENAGENTS_CHAT_WORKER")
-            .unwrap_or_else(|_| basic_coder::WORKER.to_owned());
-        let door = basic_coder::Relay::new(&relay, &worker, secret).map_err(failed)?;
-        let mut chats = BasicChats::new(
-            Some(tokio::runtime::Handle::current()),
-            Some(Arc::new(door)),
-            Some(store),
-        );
-        // Coder runs on this computer when it is in a checkout and a coding
-        // agent is signed in here with capacity.
-        chats.set_context(context);
-        Ok(Self::Local {
-            chats: Box::new(chats),
-            scratch,
-            home,
-        })
-    }
-
-    /// Tell the router what the thread's Coder run did, once its turn has
-    /// ended (#10094), so the chat answers about it and a request for more
-    /// work continues it. The host does this for its own threads; in this
-    /// process the context says it.
-    async fn carry_run(&mut self, id: &str) {
-        if matches!(self, Self::Host { .. }) {
-            return;
-        }
-        let bound = self
-            .apply(Command::Read {
-                chat: id.to_owned(),
-                before: None,
-            })
-            .await
-            .ok()
-            .and_then(|snapshot| snapshot.coder)
-            .filter(|coder| coder.host == coder::task::local::LOCAL_HOST);
-        let run = match bound {
-            Some(coder) => coder_run::result(self, id, &coder.task).await,
-            None => None,
-        };
-        if let Self::Local { chats, .. } = self {
-            let mut context = chats.context().clone();
-            context.coder_run = run;
-            chats.set_context(context);
-        }
-    }
-
-    /// The word `--json` names this backend with.
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Host { .. } => "host",
-            Self::Local { scratch: true, .. } => "scratch",
-            Self::Local { .. } => "in_process",
-        }
-    }
-
-    fn place(&self) -> String {
-        match self {
-            Self::Host { socket, .. } => socket.display().to_string(),
-            Self::Local { home, .. } => home.display().to_string(),
-        }
-    }
-
-    pub(crate) async fn apply(&mut self, command: Command) -> Result<Snapshot, String> {
-        match self {
-            Self::Host { stream, next, .. } => {
-                let id = *next;
-                *next += 1;
-                match control::call(stream, &Request::new(id, Op::Chat { command })).await {
-                    Ok(Reply::Chat { snapshot }) => Ok(snapshot),
-                    Ok(Reply::Refused { message, .. }) => Err(message),
-                    Ok(_) => Err("the host answered another question".into()),
-                    Err(error) => Err(format!("the host did not answer: {error}")),
-                }
-            }
-            Self::Local { chats, .. } => service::apply(chats, command, now()),
-        }
-    }
-
-    /// The whole thread, read page by page through the shared reader.
-    pub(crate) async fn collect(
-        &mut self,
-        id: &str,
-    ) -> Result<openagents_chat::thread::Thread, Failure> {
-        let handle = tokio::runtime::Handle::current();
-        tokio::task::block_in_place(|| {
-            openagents_chat::thread::collect(id, |command| handle.block_on(self.apply(command)))
-        })
-        .map_err(failed)
-    }
-}
-
-/// `~/.openagents/chat`, or `OPENAGENTS_CHAT_HOME`.
-pub fn home() -> PathBuf {
-    if let Some(dir) = std::env::var_os("OPENAGENTS_CHAT_HOME") {
-        return dir.into();
-    }
-    std::env::var_os("HOME")
-        .map_or_else(|| PathBuf::from("."), PathBuf::from)
-        .join(".openagents/chat")
-}
-
-/// The throwaway home of one scratch thread.
-pub(crate) fn scratch_dir(id: &str) -> PathBuf {
-    std::env::temp_dir()
-        .join("openagents-chat-scratch")
-        .join(id)
-}
-
-/// This command's device key in `home`, created on first use (`0600`).
-/// It is never printed.
-fn device_key(home: &Path, create: bool) -> Result<SecretKey, String> {
-    let path = home.join("device.key");
-    match std::fs::read_to_string(&path) {
-        Ok(text) => {
-            let bytes: Vec<u8> = (0..text.trim().len())
-                .step_by(2)
-                .filter_map(|at| text.trim().get(at..at + 2))
-                .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
-                .collect();
-            let bytes: [u8; 32] = bytes
-                .try_into()
-                .map_err(|_| format!("{} is not a chat device key", path.display()))?;
-            SecretKey::from_byte_array(bytes)
-                .map_err(|_| format!("{} is not a chat device key", path.display()))
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {
-            std::fs::create_dir_all(home)
-                .map_err(|error| format!("cannot create {}: {error}", home.display()))?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(home, std::fs::Permissions::from_mode(0o700));
-            }
-            let secret = SecretKey::new(&mut secp256k1::rand::rng());
-            let mut options = std::fs::OpenOptions::new();
-            options.write(true).create_new(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
-            let mut file = options
-                .open(&path)
-                .map_err(|error| format!("cannot create {}: {error}", path.display()))?;
-            file.write_all(hex(&secret.secret_bytes()).as_bytes())
-                .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
-            Ok(secret)
-        }
-        Err(error) => Err(format!("cannot read {}: {error}", path.display())),
-    }
-}
-
 /// What `doctor` says about chat: where threads would live, and this
 /// command's public identity when it has one. Reads only.
 pub fn doctor() -> Value {
@@ -604,18 +372,14 @@ pub fn doctor() -> Value {
     let running = socket
         .as_ref()
         .is_some_and(|socket| std::os::unix::net::UnixStream::connect(socket).is_ok());
-    let home = home();
-    let identity = device_key(&home, false).ok().map(|secret| {
-        let key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
-        hex(&key.x_only_public_key().0.serialize())
-    });
+    let home = client::home();
     json!({
         "backend": if running { "host" } else { "in_process" },
         "host_socket": socket.map(|socket| socket.display().to_string()),
         "host_running": running,
         "home": home.display().to_string(),
         "store_exists": home.join("threads").exists(),
-        "identity": identity,
+        "identity": client::identity(&home),
     })
 }
 
@@ -627,182 +391,190 @@ pub(crate) fn event(output: &Output, value: Value) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn send(
-    output: &Output,
-    backend: &mut Backend,
-    id: &str,
-    new: bool,
-    text: &str,
-    run: Run,
-    timeout: Duration,
-) -> Result<u8, Failure> {
-    if new {
-        backend
-            .apply(Command::Create {
-                chat: id.to_owned(),
-            })
-            .await
-            .map_err(failed)?;
-    }
-    if !new {
-        backend.carry_run(id).await;
-    }
-    let request = new_id();
-    let sent = backend
-        .apply(Command::Send {
-            chat: id.to_owned(),
-            request: request.clone(),
-            text: text.to_owned(),
-        })
-        .await;
-    let sent = match sent {
-        Ok(sent) => sent,
-        Err(message) => {
-            event(
-                output,
-                json!({"event": "failure", "thread": id, "message": message, "stopped": false}),
-            );
-            eprintln!("openagents chat: {message}");
-            eprintln!("thread {id}");
-            return Ok(EXIT_FAILURE);
-        }
-    };
-    event(
-        output,
-        json!({
-            "event": "accepted",
-            "thread": id,
-            "request": request,
-            "new": new,
-            "backend": backend.name(),
-            "at": backend.place(),
-        }),
-    );
-    let deadline = tokio::time::Instant::now() + timeout;
-    let mut shown = String::new();
-    let mut printed = String::new();
-    let mut diverged = false;
-    let mut snapshot = sent;
-    let mut stopped = false;
-    let interrupt = tokio::signal::ctrl_c();
-    tokio::pin!(interrupt);
-    while snapshot.busy {
-        tokio::select! {
-            () = tokio::time::sleep_until(deadline) => { stopped = true; }
-            _ = &mut interrupt => { stopped = true; }
-            () = tokio::time::sleep(POLL) => {}
-        }
-        if stopped {
-            snapshot = backend
-                .apply(Command::Stop {
-                    chat: id.to_owned(),
-                })
-                .await
-                .map_err(failed)?;
-            break;
-        }
-        snapshot = backend
-            .apply(Command::Read {
-                chat: id.to_owned(),
-                before: None,
-            })
-            .await
-            .map_err(failed)?;
-        if snapshot.busy && snapshot.partial != shown {
-            let delta = snapshot
-                .partial
-                .strip_prefix(shown.as_str())
-                .map(str::to_owned);
-            event(
-                output,
-                json!({"event": "partial", "thread": id, "text": snapshot.partial, "delta": delta}),
-            );
-            shown.clone_from(&snapshot.partial);
-            if !output.json() && !diverged {
-                match shown.strip_prefix(printed.as_str()) {
-                    Some(more) => {
-                        print!("{more}");
-                        let _ = std::io::stdout().flush();
-                        printed.clone_from(&shown);
-                    }
-                    None => diverged = true,
-                }
-            }
+/// Prints a client's events: text on stdout and stderr, or NDJSON under
+/// `--json` (`docs/cli/chat.md`).
+pub(crate) struct Printer<'a> {
+    output: &'a Output,
+    /// The backend, once open: it names the switch that reaches a thread
+    /// again.
+    kind: Kind,
+    /// The reply text printed so far.
+    printed: String,
+    /// The finished reply replaced the preview.
+    diverged: bool,
+}
+
+impl<'a> Printer<'a> {
+    pub(crate) fn new(output: &'a Output) -> Self {
+        Self {
+            output,
+            kind: Kind::InProcess,
+            printed: String::new(),
+            diverged: false,
         }
     }
-    // The reply to this message: the turn after it, when one came.
-    let at = snapshot
-        .turns
-        .iter()
-        .rposition(|turn| turn.request.as_deref() == Some(request.as_str()));
-    let reply = at
-        .and_then(|at| snapshot.turns.get(at + 1))
-        .filter(|turn| turn.role == Role::Assistant)
-        .cloned();
-    let mut coding = false;
-    let mut code = match reply {
-        Some(reply) if !reply.stopped => {
-            // The router judged this is coding: Coder runs here at once,
-            // unless the person asked only for the offer.
-            coding = openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer);
-            // Say who will run it, from what the run itself reads here.
-            let mut turns = [reply];
-            openagents_chat::delegation::attach_runner(&mut turns, snapshot.computer, |engine| {
-                coder_run::predict(backend, id, engine)
-            });
-            let [reply] = turns;
-            finish(
-                output,
-                id,
-                &reply,
-                snapshot.computer,
-                &mut printed,
-                diverged,
-                coding && !run.no_run,
-            );
-            0
-        }
-        reply => {
-            let message = if stopped || reply.is_some() {
-                STOPPED.to_owned()
-            } else {
-                snapshot
-                    .failure
-                    .clone()
-                    .unwrap_or_else(|| basic_coder::Failure::Silent.describe())
-            };
-            if let Some(reply) = &reply
-                && !output.json()
-                && reply.text.starts_with(printed.as_str())
-            {
-                print!("{}", &reply.text[printed.len()..]);
-            }
-            if !output.json() && !printed.is_empty() {
-                println!();
-            }
-            event(
+
+    pub(crate) fn print(&mut self, happened: Event) {
+        let output = self.output;
+        match happened {
+            Event::Migrated { moved } => eprintln!(
+                "moved {moved} thread{} kept without a host into this computer's host",
+                if moved == 1 { "" } else { "s" }
+            ),
+            Event::Kept { home, message } => eprintln!(
+                "threads in {} stay there for now: {message}",
+                home.display()
+            ),
+            Event::Accepted {
+                thread,
+                request,
+                new,
+                backend,
+                at,
+            } => event(
                 output,
                 json!({
-                    "event": "failure",
-                    "thread": id,
-                    "message": message,
-                    "stopped": stopped || reply.is_some(),
-                    "partial": reply.map(|reply| reply.text),
+                    "event": "accepted",
+                    "thread": thread,
+                    "request": request,
+                    "new": new,
+                    "backend": backend.word(),
+                    "at": at,
                 }),
-            );
-            eprintln!("openagents chat: {message}");
-            EXIT_FAILURE
+            ),
+            Event::Partial {
+                thread,
+                text,
+                delta,
+            } => {
+                event(
+                    output,
+                    json!({"event": "partial", "thread": thread, "text": text, "delta": delta}),
+                );
+                if !output.json() && !self.diverged {
+                    match text.strip_prefix(self.printed.as_str()) {
+                        Some(more) => {
+                            print!("{more}");
+                            let _ = std::io::stdout().flush();
+                            self.printed = text;
+                        }
+                        None => self.diverged = true,
+                    }
+                }
+            }
+            Event::Reply {
+                thread,
+                reply,
+                computer,
+                running,
+            } => finish(
+                output,
+                &thread,
+                &reply,
+                computer,
+                &mut self.printed,
+                self.diverged,
+                running,
+            ),
+            Event::ReplyFailed {
+                thread,
+                message,
+                stopped,
+                partial,
+            } => {
+                if let Some(text) = &partial
+                    && !output.json()
+                    && text.starts_with(self.printed.as_str())
+                {
+                    print!("{}", &text[self.printed.len()..]);
+                }
+                if !output.json() && !self.printed.is_empty() {
+                    println!();
+                }
+                event(
+                    output,
+                    json!({
+                        "event": "failure",
+                        "thread": thread,
+                        "message": message,
+                        "stopped": stopped,
+                        "partial": partial,
+                    }),
+                );
+                eprintln!("openagents chat: {message}");
+            }
+            Event::Failure { thread, message } => {
+                event(
+                    output,
+                    json!({"event": "failure", "thread": thread, "message": message, "stopped": false}),
+                );
+                eprintln!("openagents chat: {message}");
+            }
+            Event::Coder {
+                thread,
+                accepted,
+                message,
+                task,
+            } => {
+                event(
+                    output,
+                    json!({"event": "coder", "thread": thread, "accepted": accepted, "message": message, "task": task}),
+                );
+                if !output.json() {
+                    eprintln!("{message}");
+                }
+            }
+            Event::Unbound {
+                thread,
+                why,
+                issue: false,
+            } => eprintln!(
+                "openagents chat: Coder started, but the thread could not record its task ({why}); \
+                 follow it with `openagents chat follow --thread {thread}` from this store."
+            ),
+            Event::Unbound { why, .. } => eprintln!(
+                "openagents chat: Coder started, but the thread could not record its task ({why})."
+            ),
+            Event::Line(line) => coder_run::show(output, &line),
+            Event::TaskUnreadable {
+                thread,
+                task,
+                message,
+            } => {
+                event(
+                    output,
+                    json!({"event": "failure", "thread": thread, "task": task, "message": message, "stopped": false}),
+                );
+                eprintln!("openagents chat: cannot read task {task}: {message}");
+            }
+            Event::Lost => eprintln!("openagents chat: the task could not be read"),
+            Event::Stop {
+                thread,
+                task,
+                requested,
+                message,
+            } => {
+                event(
+                    output,
+                    json!({"event": "stop", "thread": thread, "task": task, "requested": requested, "message": message}),
+                );
+                if !output.json() {
+                    eprintln!("{message}");
+                }
+            }
+            Event::Stopping { why } => eprintln!(
+                "Stopping: Coder ends the issue flow at its next step and says so on the \
+                 issue.{}",
+                why.map(|why| format!(" ({why})")).unwrap_or_default()
+            ),
+            Event::Detached { thread } => {
+                let flag = coder_run::flag(self.kind);
+                eprintln!(
+                    "Stopped following. Coder keeps working: follow it with `openagents chat follow{flag} --thread {thread}`, or stop it with `openagents chat stop{flag} --thread {thread}`."
+                );
+            }
         }
-    };
-    // The reply arrived; a coding reply then succeeds only if Coder does.
-    if code == 0 && coding && !run.no_run {
-        code = run_coder(output, backend, id).await;
     }
-    if !output.json() {
-        eprintln!("thread {id}");
-    }
-    Ok(code)
 }
 
 /// Print the finished reply and what the router said beside it.
@@ -934,151 +706,15 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
     }
 }
 
-/// Accept the thread's offer to run Coder through the host's own handoff,
-/// the one the desktop's Run Coder uses.
-async fn run_coder(output: &Output, backend: &mut Backend, id: &str) -> u8 {
-    let report = |accepted: bool, message: &str, coder: Option<Value>| {
-        event(
-            output,
-            json!({"event": "coder", "thread": id, "accepted": accepted, "message": message, "task": coder}),
-        );
-        if !output.json() {
-            eprintln!("{message}");
-        }
-    };
-    let snapshot = match backend
-        .apply(Command::Read {
-            chat: id.to_owned(),
-            before: None,
-        })
-        .await
-    {
-        Ok(snapshot) => snapshot,
-        Err(message) => {
-            report(false, &message, None);
-            return EXIT_FAILURE;
-        }
-    };
-    if let Some(coder) = &snapshot.coder {
-        report(
-            true,
-            &format!(
-                "Coder already started task {} for this thread; following it.",
-                coder.task
-            ),
-            serde_json::to_value(coder).ok(),
-        );
-        return coder_run::follow(output, backend, id).await;
-    }
-    let meta = snapshot
-        .turns
-        .iter()
-        .rev()
-        .find(|turn| turn.role == Role::Assistant)
-        .and_then(|turn| turn.meta.as_ref());
-    if !openagents_chat::delegation::offered(meta, snapshot.computer) {
-        report(
-            false,
-            "OpenAgents has not offered to run Coder for this thread's last reply.",
-            None,
-        );
-        return EXIT_FAILURE;
-    }
-    // The project is the checkout this command runs in: Coder runs here,
-    // with or without a host.
-    let here = std::env::current_dir().ok();
-    let checkout = here
-        .as_deref()
-        .map(coder::task::local::checkout)
-        .unwrap_or_else(|| Err("This command has no working directory.".into()));
-    let why = match checkout {
-        Ok(_) => return coder_run::start(output, backend, id).await,
-        Err(why) => why,
-    };
-    // Outside a checkout, a host with a project of its own still can.
-    if let Backend::Local { .. } = backend {
-        report(false, &why, None);
-        return EXIT_FAILURE;
-    }
-    match backend
-        .apply(Command::RunCoder {
-            chat: id.to_owned(),
-        })
-        .await
-    {
-        Ok(snapshot) => match snapshot.coder {
-            Some(coder) => {
-                report(
-                    true,
-                    &format!("Coder started task {} on {}.", coder.task, coder.host),
-                    serde_json::to_value(&coder).ok(),
-                );
-                0
-            }
-            None => {
-                report(false, "The host did not start a Coder task.", None);
-                EXIT_FAILURE
-            }
-        },
-        Err(message) => {
-            report(false, &message, None);
-            EXIT_FAILURE
-        }
-    }
-}
-
-/// The thread's Coder task, every turn's trajectory, when its task store
-/// on this computer holds it: carried inside the thread's export.
-fn task_trajectories(
-    backend: &Backend,
-    id: &str,
-    thread: &openagents_chat::thread::Thread,
-) -> Vec<Value> {
-    let Some(coder) = &thread.summary.coder else {
-        return Vec::new();
-    };
-    let store = coder_run::store(backend, id);
-    let Ok(task) = coder::task::Store::open(&store).and_then(|tasks| tasks.show(&coder.task))
-    else {
-        return Vec::new();
-    };
-    task.earlier
-        .iter()
-        .chain(task.run.iter())
-        .filter_map(|run| atif::log::read(&store.join(&run.admission.trace_file)).ok())
-        .map(|recording| recording.document())
-        .filter(|document| atif::validate(document).is_empty())
-        .collect()
-}
-
 async fn threads(
     output: &Output,
-    backend: &mut Backend,
+    client: &mut Client,
     all: bool,
     limit: usize,
 ) -> Result<u8, Failure> {
-    let first = backend.apply(Command::List {}).await.map_err(failed)?;
-    let mut rows: Vec<Summary> = first.chats.clone();
-    let mut after = first.list_start + first.chats.len();
-    while rows.iter().filter(|row| all || !row.archived).count() < limit && after < first.list_total
-    {
-        let page = backend
-            .apply(Command::ListMore {
-                after,
-                version: first.list_version,
-            })
-            .await
-            .map_err(failed)?;
-        if page.chats.is_empty() {
-            break;
-        }
-        after += page.chats.len();
-        rows.extend(page.chats);
-    }
+    let (rows, total) = client.threads(all, limit).await?;
     let rows: Vec<Value> = rows
         .into_iter()
-        .filter(|row| all || !row.archived)
-        .take(limit)
         .map(|row| {
             json!({
                 "thread": row.id,
@@ -1093,9 +729,9 @@ async fn threads(
         .collect();
     output.emit(
         &json!({
-            "backend": backend.name(),
-            "at": backend.place(),
-            "total": first.list_total,
+            "backend": client.kind().word(),
+            "at": client.place(),
+            "total": total,
             "threads": rows,
         }),
         |value| {
@@ -1126,12 +762,12 @@ async fn threads(
     Ok(0)
 }
 
-fn read(output: &Output, backend: &Backend, thread: &openagents_chat::thread::Thread) {
+fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thread) {
     output.emit(
         &json!({
             "thread": thread.summary.id,
             "title": thread.summary.title,
-            "backend": backend.name(),
+            "backend": client.kind().word(),
             "busy": thread.busy,
             "failure": thread.failure,
             "coder": thread.summary.coder,
@@ -1173,31 +809,6 @@ fn read(output: &Output, backend: &Backend, thread: &openagents_chat::thread::Th
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn thread_ids_are_the_services_ids() {
-        assert!(thread_id(&new_id()));
-        assert!(!thread_id(&"A".repeat(32)));
-        assert!(!thread_id("abc"));
-    }
-
-    #[test]
-    fn a_device_key_is_created_once_private_and_never_printed() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(device_key(dir.path(), false).is_err());
-        let first = device_key(dir.path(), true).unwrap();
-        let again = device_key(dir.path(), false).unwrap();
-        assert_eq!(first, again);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(dir.path().join("device.key"))
-                .unwrap()
-                .permissions()
-                .mode();
-            assert_eq!(mode & 0o777, 0o600);
-        }
-    }
 
     #[test]
     fn messages_come_from_words_and_are_bounded() {

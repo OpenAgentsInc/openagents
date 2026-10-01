@@ -15,6 +15,15 @@ stop, list, run Coder) and every answer is its `Snapshot`, the types the phone
 and the desktop's host already use. The chat worker's router decides every
 route; the command only shows what it said.
 
+The backends, their selection, the move of threads into the host, and the
+Coder handoff live in the shared chat client, `openagents_chat::client`
+([#10108](https://github.com/OpenAgentsInc/openagents/issues/10108)), which
+OpenAgents Terminal ([docs/terminal](../terminal/README.md)) uses too. Each
+operation reports typed events (`client::Event`) to a sink, or on a channel
+(`Client::stream`); this command prints them as text or as the NDJSON below.
+Coder runs on this computer through `coder::task::chat_client::Here`, and the
+host is reached through `coder::task::chat_client::Control`.
+
 The unit is the **thread** ([glossary](../glossary.md)): one conversation
 with OpenAgents, one row of the chat list. Every run prints the thread ID it
 used, so a script can continue it.
@@ -116,8 +125,13 @@ The in-process and scratch modes talk to the public chat worker on
 they are admitted under the worker's per-key quota like a fresh phone.
 `OPENAGENTS_CHAT_RELAY` and `OPENAGENTS_CHAT_WORKER` point them at another
 relay and worker (the fixture tests use a local relay). The request says
-`surface: "terminal"` and `client: "openagents-cli"`; through the host it
-says what the host says (`desktop`). No model key is needed.
+`surface: "terminal"` and `client: "openagents-cli"`, and so it does through
+the host: the control socket's `chat` operation carries the caller, and the
+host puts it on the turn
+([#10108](https://github.com/OpenAgentsInc/openagents/issues/10108)). A host
+older than that refuses the field, and the command asks again without it, so
+the turn says `desktop`. OpenAgents Terminal sends the same surface with
+`client: "openagents-terminal"`. No model key is needed.
 
 Each turn also tells the worker that this computer is where Coder runs
 (`context.computer`, with its coding agents' readiness, under `--no-run`
@@ -177,7 +191,8 @@ projects, and what the run's commands may reach.
   (`OPENAGENTS_CODER_CONTROLLER` names another). An older engine than the
   CLI can refuse a newer grant with "the execution grant has an invalid
   shape" (#10074); build or install `microcoder` with `openagents`. The
-  run is under an execution grant, in the filesystem boundary, with the
+  run is under an execution grant, reaching what `coder.access` allows
+  (`full` by default: no sandbox, and every step approved, #10104), with the
   same failover and the same ATIF trajectory per turn. The shared code is
   [`coder::task::local`](../../crates/coder/src/task/local.rs).
 - **No step or time budget.** A run ends only when Coder finishes (or asks
@@ -470,15 +485,22 @@ form.
   local run each setting changes that a terminal can observe.
 - `crates/openagents-chat/src/thread.rs` tests the ATIF mapping and the
   paged reader.
+- `crates/openagents-chat/src/client_tests.rs` runs the client's event
+  stream against the in-process service with a scripted door and against a
+  fake host: the turn's surface and client word, a coding reply starting
+  Coder at once and its events, `ask_first`, a stop, and backend selection.
+  `a_terminal_turn_through_the_host_says_terminal` in
+  `crates/coder-host/tests/threads.rs` checks that a terminal's turn through
+  a real host reaches the worker as `terminal`.
 
 ## Not supported yet
 
 - Rename, pin, archive, restore, and retry have service commands but no
   `chat` subcommands.
-- A thread in the in-process or scratch store is not moved into the host
-  when one starts later.
-- Local runs use the filesystem boundary, as the desktop's auto-start does.
-  On macOS the boundary cannot load Xcode's `xcrun`, so `/usr/bin/python3`
+- A scratch thread is never moved into the host.
+- Local runs reach what `coder.access` allows: `full` by default (no
+  sandbox, every step approved, #10104). Under `boundary` or `toolchains`,
+  on macOS the boundary cannot load Xcode's `xcrun`, so `/usr/bin/python3`
   (the Xcode shim) fails inside it; Coder finds another interpreter, such as
   `/Library/Developer/CommandLineTools/usr/bin/python3`, or says it could
   not run the tests.

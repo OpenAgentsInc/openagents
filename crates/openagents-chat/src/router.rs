@@ -40,12 +40,15 @@ const MAX_ARG_BYTES: usize = 200;
 const MAX_JUDGMENT_BYTES: usize = playtest::report::MAX_JUDGMENT_BYTES;
 
 /// The native surface that sends this hosted conversation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Surface {
     #[default]
     Phone,
     Desktop,
-    /// The `openagents chat` command running without a host.
+    /// A terminal on this computer: the `openagents chat` command and
+    /// OpenAgents Terminal, with or without a host between them and the
+    /// worker ([`Caller`]).
     Terminal,
     /// The terminal on the openagents.com homepage (#10106): answers and
     /// knowledge only, never Coder, a computer, or an offer.
@@ -61,14 +64,96 @@ impl Surface {
         }
     }
 
-    /// The request's `client` word for this surface.
+    /// The request's `client` word for this surface, when the caller names
+    /// no program of its own ([`Context::client`]).
     pub fn client(self) -> &'static str {
+        self.program().word()
+    }
+
+    /// The program that sends this surface's requests by default.
+    pub fn program(self) -> ClientWord {
         match self {
-            Self::Phone => "openagents-mobile",
+            Self::Phone => ClientWord::Mobile,
+            Self::Desktop => ClientWord::Desktop,
+            Self::Terminal => ClientWord::Cli,
+            Self::Web => ClientWord::Web,
+        }
+    }
+}
+
+/// The program that sends a request: the request's `client` word. Two
+/// programs share the terminal surface: `openagents chat` (scripts and
+/// one-shot commands) and OpenAgents Terminal (the full-screen chat), so
+/// worker logs can tell them apart. A closed list; the router never reads
+/// it to choose a route.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClientWord {
+    #[serde(rename = "openagents-mobile")]
+    Mobile,
+    #[serde(rename = "openagents-desktop")]
+    Desktop,
+    /// The `openagents chat` command.
+    #[serde(rename = "openagents-cli")]
+    Cli,
+    /// OpenAgents Terminal (`docs/terminal`).
+    #[serde(rename = "openagents-terminal")]
+    Terminal,
+    #[serde(rename = "openagents-web")]
+    Web,
+}
+
+impl ClientWord {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Mobile => "openagents-mobile",
             Self::Desktop => "openagents-desktop",
-            Self::Terminal => "openagents-cli",
+            Self::Cli => "openagents-cli",
+            Self::Terminal => "openagents-terminal",
             Self::Web => "openagents-web",
         }
+    }
+}
+
+/// Who asks through a host (#10108): the surface a turn comes from and the
+/// program that sends it, carried over the host's control socket so the
+/// router sees `terminal` for a terminal's message whichever backend carries
+/// it. A host admits only the surfaces of its own computer
+/// ([`Caller::local`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Caller {
+    pub surface: Surface,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<ClientWord>,
+}
+
+impl Caller {
+    /// The `openagents chat` command.
+    pub const CLI: Self = Self {
+        surface: Surface::Terminal,
+        client: Some(ClientWord::Cli),
+    };
+    /// OpenAgents Terminal.
+    pub const TERMINAL: Self = Self {
+        surface: Surface::Terminal,
+        client: Some(ClientWord::Terminal),
+    };
+    /// The desktop app, the host's own default.
+    pub const DESKTOP: Self = Self {
+        surface: Surface::Desktop,
+        client: None,
+    };
+
+    /// Whether a program on the host's own computer can be this caller: the
+    /// desktop or a terminal, never a phone or the website, which reach a
+    /// host only through their own doors.
+    pub fn local(self) -> bool {
+        matches!(self.surface, Surface::Desktop | Surface::Terminal)
+    }
+
+    /// The request's `client` word.
+    pub fn client_word(self) -> &'static str {
+        self.client.unwrap_or(self.surface.program()).word()
     }
 }
 
@@ -381,6 +466,10 @@ impl Computer {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Context {
     pub surface: Surface,
+    /// The program that sends the request, when it is not the surface's
+    /// default ([`Surface::program`]): OpenAgents Terminal on the terminal
+    /// surface. Never part of the context the router reads.
+    pub client: Option<ClientWord>,
     /// A computer this device may operate is ready, so dispatching Coder
     /// is one tap.
     pub computer_ready: bool,
@@ -410,6 +499,15 @@ pub struct Context {
 }
 
 impl Context {
+    /// The request's `client` word.
+    pub fn client_word(&self) -> &'static str {
+        Caller {
+            surface: self.surface,
+            client: self.client,
+        }
+        .client_word()
+    }
+
     /// The request's `context` object: bounded, and without a key, host
     /// address, or amount. A computer's name and the project folder are
     /// the person's own words and paths, each within its bound or left out.

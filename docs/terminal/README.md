@@ -1,7 +1,11 @@
 # OpenAgents Terminal: scope
 
-Status: scoping, 2026-10-01. Nothing here is built yet. The issues to open
-are listed [at the end](#github-issues-to-open).
+Status: phase 0 (groundwork) landed 2026-10-01
+([#10108](https://github.com/OpenAgentsInc/openagents/issues/10108)): the chat
+client is the library `openagents_chat::client`, with a typed event stream,
+and a turn through the host carries the terminal surface. The screen itself
+(phase 1) is not built yet. The issues to open are listed
+[at the end](#github-issues-to-open).
 
 Owner's ask (2026-10-01): scope an OpenAgents Terminal app, the same idea as
 Coder Terminal, kept simple, and tied into OpenAgents and everything we have
@@ -29,8 +33,8 @@ it is a screen over `openagents chat`.
 2. **Backend:** what `openagents chat` already does. It uses the host's
    control socket when a host runs, so threads sync with the desktop and the
    phone. Otherwise it runs the chat service in process. Coder runs through
-   `coder::task::local`. First, the backend code moves out of
-   `crates/openagents-cli/src/chat.rs` into a library.
+   `coder::task::local`. That backend is the library
+   `openagents_chat::client` (#10108), which `openagents chat` calls too.
 3. **Rendering:** build on this repo's `crates/coder-terminal` (ratatui, the
    amber ladder, composer, markdown, scrollback, guard). It is already the
    in-repo port of Coder Terminal's look. Do not port the coder repo's
@@ -100,9 +104,9 @@ local runs, and NIP-HOST).
 | Need | Exists now | Path |
 | --- | --- | --- |
 | Talk to the router, threads, stop, list, read, export | The chat service `Command`/`Snapshot`, used by phone, desktop, and CLI | `crates/openagents-chat/src/service.rs`, `basic_chats.rs`, `thread.rs` |
-| Surface on the wire | `router::Surface::Terminal` (`surface: "terminal"`, `client: "openagents-cli"`) | `crates/openagents-chat/src/router.rs` |
-| Three backends: host socket, in process, scratch | `Backend` in the CLI (crate-private) | `crates/openagents-cli/src/chat.rs` |
-| Coder on this computer from a chat, with engine choice and failover | `coder::task::local`, wired up by the CLI | `crates/coder/src/task/local.rs`, `crates/openagents-cli/src/chat_coder.rs` |
+| Surface on the wire | `router::Surface::Terminal` (`surface: "terminal"`), with the client word `openagents-cli` or `openagents-terminal` (`router::ClientWord`), carried through the host as `router::Caller` | `crates/openagents-chat/src/router.rs` |
+| Three backends: host socket, in process, scratch; their selection; moving threads into the host; the Coder handoff; typed events on a sink or a channel | `openagents_chat::client` (`Client::open`, `Client::run`, `Client::stream`) | `crates/openagents-chat/src/client.rs` |
+| Coder on this computer from a chat, with engine choice and failover; the host's control socket | `coder::task::chat_client::{Here, Control}` over `coder::task::local` | `crates/coder/src/task/chat_client.rs`, `crates/coder/src/task/local.rs` |
 | Coder event stream (started, step, output, progress, question, approval, result, failure, stopped) | `coder_events` + `Mapper` | `crates/openagents-chat/src/coder_events.rs` |
 | Issue flow and queue | `coder::task::issue_run`, `openagents chat work` | `crates/openagents-cli/src/chat_work.rs` |
 | Settings (providers, `start`, access, projects) | `~/.openagents/settings.json` | `crates/coder/src/task/settings.rs`, [docs/cli/settings.md](../cli/settings.md) |
@@ -190,22 +194,27 @@ library crate `crates/openagents-terminal`.**
 
 New work:
 
-1. **Extract the chat client.** Move `Backend` (host / in-process / scratch),
-   backend selection, `chat_migrate`, and the Coder run glue from
-   `crates/openagents-cli/src/chat.rs` and `chat_coder.rs` into a library
-   both the command and the screen call. The best home is a `client` module
-   in `crates/openagents-chat`, behind a feature so phones do not link the
-   Unix socket code. `openagents chat` must behave byte for byte the same,
-   and its tests are the guard.
-2. **Make it event-driven.** The CLI today blocks and prints. The screen
-   needs the same operations as a stream of typed events (`partial`, `route`,
-   `offer`, `result`, `coder`, the Coder events) on a channel. That is the
-   `--json` NDJSON stream as Rust values, not text.
-3. **Surface over the host.** Through the host, a request says `desktop`
-   (the host adds the desktop context, #10077). A host control op must carry
-   the caller's surface, so the router sees `terminal` for terminal sends
-   whichever backend carries them. That is a small change in
-   `crates/coder-host` (control) and in `openagents_chat` (`Context`).
+1. **Extract the chat client.** Done (#10108): the backends (host / in
+   process / scratch), their selection, `chat_migrate`, and the Coder run
+   glue are `openagents_chat::client`, which `openagents chat` and the
+   screen both call. `coder` and the control protocol depend on
+   `openagents-chat`, so the client reaches them through two traits it
+   defines, `client::Coder` and `client::Dial`/`client::Host`, implemented
+   by `coder::task::chat_client::{Here, Control}`. No Unix socket or Coder
+   code links into the phone, so no feature gate is needed. `openagents
+   chat` prints the same bytes; its tests and the release gate's chat
+   scenarios are the guard.
+2. **Make it event-driven.** Done (#10108): every operation reports typed
+   `client::Event`s (accepted, partial, reply with its offers and router
+   judgment, failures, Coder start, each Coder event, stop, detach) to a
+   sink (`Client::run`) or on a channel (`Client::stream`). The `--json`
+   NDJSON stream is a rendering of them.
+3. **Surface over the host.** Done (#10108): the control socket's `chat`
+   operation carries an optional `caller` (`router::Caller`: surface and
+   client word), and the host puts it on the turn's context, so the router
+   sees `terminal` whichever backend carries a terminal's message. A host
+   admits only a local caller (desktop or terminal); an older host refuses
+   the field and the client asks again without it.
 4. **The screen.** In `crates/openagents-terminal`: app state (transcript of
    typed rows, composer, overlay, run state reusing `openagents_chat_app::
    coder_run`'s view model where it is platform-free), keymap, slash command
@@ -393,16 +402,20 @@ time or step limits on Coder runs; sizes are only for planning.
 
 **Phase 0: groundwork**
 
+Done 2026-10-01 in
+[#10108](https://github.com/OpenAgentsInc/openagents/issues/10108):
+
 - Extract the chat client (backends, selection, migration, and Coder glue)
   from `openagents-cli` into `openagents_chat::client`. `openagents chat`
-  output must be unchanged. **M**
+  output is unchanged. **M**
 - Add an event stream API over it (typed events on a channel) alongside the
   existing blocking calls. **M**
 - Carry the caller's surface through the host control socket. Add the
-  `openagents-terminal` client word. Update the INVARIANTS row on surfaces
-  if one applies. **S**
-- Land #10104 (approve everything), which the terminal depends on. **M**
-  (already open)
+  `openagents-terminal` client word. The INVARIANTS rows on the chat job's
+  context and on the client say so. **S**
+- #10104 (approve everything) landed first; the client starts a coding
+  reply at once under the default settings and never prompts for an
+  approval. **M**
 
 **Phase 1: the screen (v1)**
 
@@ -445,11 +458,13 @@ time or step limits on Coder runs; sizes are only for planning.
 
 ## GitHub issues to open
 
-Not opened. Proposed titles:
+Proposed titles. The first three were done together as
+[#10108](https://github.com/OpenAgentsInc/openagents/issues/10108); the rest
+are not opened yet.
 
-1. Terminal: move the `openagents chat` backends and Coder glue into `openagents_chat::client` (no behavior change)
-2. Terminal: event-stream API over the chat client (typed events on a channel)
-3. Host control: carry the caller's surface so terminal sends say `terminal`
+1. Terminal: move the `openagents chat` backends and Coder glue into `openagents_chat::client` (no behavior change) (done, #10108)
+2. Terminal: event-stream API over the chat client (typed events on a channel) (done, #10108)
+3. Host control: carry the caller's surface so terminal sends say `terminal` (done, #10108)
 4. Terminal: `crates/openagents-terminal` v1 screen on `coder-terminal` (transcript, composer, status line)
 5. Terminal: render Coder runs inline; Esc stops; quitting leaves the run going
 6. coder-terminal: turn, card, run, and overlay components with text snapshots

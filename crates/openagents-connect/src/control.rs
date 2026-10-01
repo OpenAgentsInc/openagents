@@ -93,8 +93,16 @@ pub enum Op {
     /// The same task activity a paired phone receives, over the local socket.
     TaskActivity { task: String },
     /// Hosted chat; admitted only as this machine's local operator.
+    /// `caller` is who sends the turn (#10108): a terminal says
+    /// `terminal`, so the router hears that surface through the host too.
+    /// Absent, the turn is the desktop's. A host refuses a caller that is
+    /// not of its own computer (`Caller::local`). A host older than the
+    /// field refuses it as `malformed`, and the client asks again without
+    /// it.
     Chat {
         command: openagents_chat::service::Command,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        caller: Option<openagents_chat::router::Caller>,
     },
     /// Move the threads `openagents chat` kept without a host, in the chat
     /// home `home` (`<home>/threads`), into the host's own store, once

@@ -235,6 +235,7 @@ async fn handle(shared: &Arc<Shared>, request: Request) -> Response {
     }
     if let Op::Chat {
         command: openagents_chat::service::Command::RunCoder { chat },
+        ..
     } = op
     {
         return Response::new(id, tasks::handoff(shared.clone(), chat).await);
@@ -285,7 +286,7 @@ fn host_refused(error: &Error) -> Reply {
 /// store's lock and may wait briefly for another local process.
 fn answer(shared: &Shared, op: Op) -> Reply {
     match op {
-        Op::Chat { command } => chat(shared, command),
+        Op::Chat { command, caller } => chat_as(shared, command, caller),
         Op::ChatMigrate { home } => match migrate_chats(shared, std::path::Path::new(&home)) {
             Ok(report) => Reply::ChatMigrated {
                 moved: u32::try_from(report.moved).unwrap_or(u32::MAX),
@@ -1045,7 +1046,26 @@ fn hex(bytes: &[u8]) -> String {
 
 /// A hosted chat is local data and grants no computer execution authority.
 fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
-    match apply_chat(shared, command) {
+    chat_as(shared, command, None)
+}
+
+/// One chat command from the local operator, sent as `caller` (#10108):
+/// the desktop when it names none. A caller from off this computer (a
+/// phone, the website) is refused; those reach the host through their own
+/// doors.
+fn chat_as(
+    shared: &Shared,
+    command: openagents_chat::service::Command,
+    caller: Option<openagents_chat::router::Caller>,
+) -> Reply {
+    let caller = caller.unwrap_or(openagents_chat::router::Caller::DESKTOP);
+    if !caller.local() {
+        return refused(
+            "malformed",
+            "a local chat caller is the desktop or a terminal on this computer",
+        );
+    }
+    match apply_chat_as(shared, command, caller) {
         Ok(snapshot) => Reply::Chat { snapshot },
         Err(ChatRefusal::Unavailable(message)) => refused("unavailable", message),
         Err(ChatRefusal::Chat(message)) => refused("chat", message),
@@ -1116,7 +1136,7 @@ fn computer_ready(shared: &Shared) -> bool {
 }
 
 /// What a hosted chat turn on this computer tells the chat worker
-/// (#10077): the desktop surface, that this computer is where Coder runs,
+/// (#10077): the caller's surface (the desktop, or a terminal, #10108), that this computer is where Coder runs,
 /// its label and coding agents' readiness, and the chat's project folder:
 /// the project its Coder task was bound to (`bound`, a label or a folder
 /// name), else the first project, where a new run starts. No key, address,
@@ -1124,9 +1144,10 @@ fn computer_ready(shared: &Shared) -> bool {
 fn chat_context(
     shared: &Shared,
     spawned: Option<&openagents_chat::basic_chats::Spawned>,
+    caller: openagents_chat::router::Caller,
 ) -> openagents_chat::router::Context {
     let bound = spawned.and_then(|spawned| spawned.project.as_deref());
-    use openagents_chat::router::{Computer, Context, Engine, Project as Folder, Surface};
+    use openagents_chat::router::{Computer, Context, Engine, Project as Folder};
     let engines = LOCAL_RUNNER
         .get()
         .and_then(|predict| predict(None))
@@ -1155,7 +1176,8 @@ fn chat_context(
                 .collect()
         });
     Context {
-        surface: Surface::Desktop,
+        surface: caller.surface,
+        client: caller.client,
         computer_ready: computer_ready(shared),
         computer: Some(Computer::Here { name, engines }),
         project: chat_project(&projects, bound).and_then(|project| Folder::at(project.shown())),
@@ -1291,6 +1313,16 @@ pub(crate) fn apply_chat(
     shared: &Shared,
     command: openagents_chat::service::Command,
 ) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
+    apply_chat_as(shared, command, openagents_chat::router::Caller::DESKTOP)
+}
+
+/// [`apply_chat`] for a turn `caller` sends: the context the worker hears
+/// names its surface and program.
+pub(crate) fn apply_chat_as(
+    shared: &Shared,
+    command: openagents_chat::service::Command,
+    caller: openagents_chat::router::Caller,
+) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
     let mut state = shared
         .chats
         .lock()
@@ -1307,10 +1339,11 @@ pub(crate) fn apply_chat(
     let context = match asking {
         Some(chat) => {
             let spawned = chats.get(&chat).and_then(|summary| summary.coder.clone());
-            chat_context(shared, spawned.as_ref())
+            chat_context(shared, spawned.as_ref(), caller)
         }
         None => openagents_chat::router::Context {
-            surface: openagents_chat::router::Surface::Desktop,
+            surface: caller.surface,
+            client: caller.client,
             computer_ready: computer_ready(shared),
             ..openagents_chat::router::Context::default()
         },

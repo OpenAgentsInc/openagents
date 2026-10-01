@@ -26,6 +26,7 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
         &host.socket,
         Op::Chat {
             command: Command::Create { chat: id.clone() },
+            caller: None,
         },
     )
     .await
@@ -78,6 +79,7 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
                 chat: id.clone(),
                 before: None,
             },
+            caller: None,
         },
     )
     .await
@@ -92,6 +94,7 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
         &host.socket,
         Op::Chat {
             command: Command::Archive { chat: id.clone() },
+            caller: None,
         },
     )
     .await
@@ -103,6 +106,7 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
         &host.socket,
         Op::Chat {
             command: Command::Restore { chat: id },
+            caller: None,
         },
     )
     .await
@@ -150,6 +154,7 @@ async fn read_thread(socket: &std::path::Path, id: &str) -> openagents_chat::ser
                 chat: id.to_owned(),
                 before: None,
             },
+            caller: None,
         },
     )
     .await

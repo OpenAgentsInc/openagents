@@ -22,7 +22,9 @@ use openagents_chat::service::Command;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use super::{Backend, Failure, event, failed, new_id};
+use openagents_chat::client::{Client, new_id};
+
+use super::{Failure, Printer, event, failed};
 use crate::out::Output;
 use crate::{Args, EXIT_FAILURE};
 
@@ -87,7 +89,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             "No open issue in {repository} matches `{spec}`."
         )));
     }
-    let mut backend = Backend::open(args, None, false).await?;
+    let mut backend = super::open(args, None, false, &mut Printer::new(output)).await?;
     let store = local::default_store();
     event(
         output,
@@ -231,7 +233,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
 }
 
 /// Names the issue's thread and binds its task, so the apps show the run.
-async fn bind(backend: &mut Backend, thread: &str, task: &str, project: &str, issue: u64) {
+async fn bind(backend: &mut Client, thread: &str, task: &str, project: &str, issue: u64) {
     let steps = [
         Command::Create {
             chat: thread.to_owned(),

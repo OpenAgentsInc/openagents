@@ -29,6 +29,7 @@ pub mod autostart;
 /// login they were about.
 pub use microcoder_loop::account;
 pub mod capacity;
+pub mod chat_client;
 pub mod checks;
 pub mod cli;
 pub mod commands;

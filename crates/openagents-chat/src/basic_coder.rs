@@ -435,7 +435,7 @@ pub fn payload(turns: &[Turn], context: &Context) -> Value {
             }))
             .collect::<Vec<_>>(),
         "instructions": instructions(context),
-        "client": context.surface.client(),
+        "client": context.client_word(),
         "opener": true,
         "router": ROUTER,
         "context": context.json(),

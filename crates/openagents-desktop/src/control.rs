@@ -515,7 +515,10 @@ impl HostControl for SocketControl {
         &mut self,
         command: openagents_chat::service::Command,
     ) -> ControlResult<openagents_chat::service::Snapshot> {
-        match self.call(Op::Chat { command })? {
+        match self.call(Op::Chat {
+            command,
+            caller: None,
+        })? {
             Reply::Chat { snapshot } => Ok(snapshot),
             _ => unexpected(),
         }

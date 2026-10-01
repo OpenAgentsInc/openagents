@@ -769,6 +769,7 @@ impl CoderTab {
             .map(|name| crate::router::Project { name, path: None });
         Context {
             surface: crate::router::Surface::Phone,
+            client: None,
             computer_ready: ready,
             computer: paired
                 .filter(|name| !name.trim().is_empty())

@@ -30,7 +30,16 @@ mod chat_worker;
 use support::{Options, Phone, call, host_with, now};
 
 async fn chat(host: &support::Host, command: Command) -> Snapshot {
-    match call(&host.socket, Op::Chat { command }).await.unwrap() {
+    match call(
+        &host.socket,
+        Op::Chat {
+            command,
+            caller: None,
+        },
+    )
+    .await
+    .unwrap()
+    {
         Reply::Chat { snapshot } => snapshot,
         other => panic!("not a chat answer: {other:?}"),
     }
@@ -938,4 +947,65 @@ async fn a_local_run_on_the_hosts_store_is_visible_and_stoppable_from_a_phone() 
     assert_eq!(outside.task, elsewhere);
     assert_eq!(outside.project.as_deref(), Some("proj"));
     host.running.shutdown().await;
+}
+
+/// A terminal's turn through the host says `terminal` (#10108): the caller
+/// rides on the control socket's `chat` operation, the worker hears the
+/// terminal surface and OpenAgents Terminal's client word, and a caller
+/// from off this computer is refused.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_terminal_turn_through_the_host_says_terminal() {
+    use openagents_chat::router::{Caller, Surface};
+    let worker = support::key();
+    let (door, payloads) = chat_worker::start(worker).await;
+    let host = host_with(Options {
+        chat_door: Some(ChatDoor {
+            relay: door,
+            worker: chat_worker::worker_key(&worker),
+        }),
+        ..Options::default()
+    })
+    .await;
+    let as_terminal = |command| Op::Chat {
+        command,
+        caller: Some(Caller::TERMINAL),
+    };
+    let thread = "5b".repeat(16);
+    for command in [
+        Command::Create {
+            chat: thread.clone(),
+        },
+        Command::Send {
+            chat: thread.clone(),
+            request: "33".repeat(16),
+            text: "Write a haiku about rain".into(),
+        },
+    ] {
+        assert!(matches!(
+            call(&host.socket, as_terminal(command)).await.unwrap(),
+            Reply::Chat { .. }
+        ));
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while payloads.lock().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "the worker never heard the turn");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let first = payloads.lock().unwrap()[0].clone();
+    assert_eq!(first["context"]["surface"], "terminal");
+    assert_eq!(first["client"], "openagents-terminal");
+    // This computer is still where Coder runs.
+    assert_eq!(first["context"]["computer"]["place"], "here");
+
+    let phone = Op::Chat {
+        command: Command::List {},
+        caller: Some(Caller {
+            surface: Surface::Phone,
+            client: None,
+        }),
+    };
+    let Reply::Refused { code, .. } = call(&host.socket, phone).await.unwrap() else {
+        panic!("a phone caller over the local socket is refused")
+    };
+    assert_eq!(code, "malformed");
 }
