@@ -1141,7 +1141,10 @@ mod tests {
 /// at another relay and worker. `OPENAGENTS_TEST_CHAT_LEGACY=1` sends what
 /// builds 19 and earlier send, `opener` without `router` or `context`, to
 /// check that old phones still get a reply; `OPENAGENTS_TEST_CHAT_COMPUTER_READY=1`
-/// says a computer is ready, as a phone with one connected does.
+/// says a computer is ready, as a phone with one connected does;
+/// `OPENAGENTS_TEST_CHAT_SURFACE=desktop` (or `terminal`) asks as that
+/// surface does, so "open the Test-Time Capabilities deck" gets the
+/// desktop's `open_presentation` offer.
 #[cfg(test)]
 #[test]
 #[ignore = "network: needs the chat worker on the relay"]
@@ -1159,6 +1162,11 @@ fn live_basic_coder_streams_a_reply() {
             .unwrap_or_else(|_| "In three short sentences, what does a Nostr relay do?".into()),
     )];
     let context = Context {
+        surface: match std::env::var("OPENAGENTS_TEST_CHAT_SURFACE").as_deref() {
+            Ok("desktop") => crate::router::Surface::Desktop,
+            Ok("terminal") => crate::router::Surface::Terminal,
+            _ => Context::default().surface,
+        },
         computer_ready: std::env::var("OPENAGENTS_TEST_CHAT_COMPUTER_READY").as_deref() == Ok("1"),
         ..Context::default()
     };

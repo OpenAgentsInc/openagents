@@ -688,3 +688,29 @@ delete and Undo, card menu Pin and Unpin with an attached image, code
 colors) passed on the same simulator against the chat fixture. Build 36 was
 uploaded with `build.sh upload` at 2026-09-30T15:21:03-07:00 and is
 `VALID`, in Internal Testers (`IN_BETA_TESTING`).
+
+Release `110e98d76b` (2026-09-30) puts `chat-router-v4` live: the
+`presentation.open` route and, on a desktop turn, the `deck` question over
+the decks the desktop app ships, so a desktop chat that asks to open a deck
+gets "Opening {deck}." and an `open_presentation` offer, and the phone and
+the terminal get "Decks open in the OpenAgents desktop app, so we can't
+show one here." ([#10058](https://github.com/OpenAgentsInc/openagents/issues/10058),
+[the measurement](../coder/measurements/2026-09-30-presentation-route.md)).
+It was built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/110e98d76b` with `knowledge/` and
+`codebase-kb.gz` copied from `7ae2a4dd41` (`knowledge/openagents/` is
+unchanged since), checked with `--check` under the chat environment ("the
+configuration is safe to deploy"), and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; the environment file and unit
+did not change, `coder-worker.service` and `/opt/coder-worker/current` were
+not touched, and `7ae2a4dd41` stays in `releases/` for rollback. The log
+names `router chat-router-v4@12ea6aac036f (Live), bank
+chat-answers-v1@f1b498639ec6 with 61 answers` and `calibration off`.
+The live check could not reach the router: from 23:41 UTC, before this
+release went live, every Jev call returned HTTP 402 (the TypeSafe
+organization has no credits), so `live_basic_coder_streams_a_reply` with
+`OPENAGENTS_TEST_CHAT_SURFACE=desktop` and "open the Test-Time
+Capabilities deck" got a model reply with no judgment. Every turn is the
+model's alone until credit is added (`NEEDS_OWNER.md`); the router's
+readings on the new rows are in the measurement, from the hosted Jev eval
+run before the credits ran out.
