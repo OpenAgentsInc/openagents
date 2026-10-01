@@ -1405,7 +1405,7 @@
       "codebase.kb": {
         "precision": 1.0,
         "predicted": 5,
-        "recall": 0.4545454545454546,
+        "recall": 0.45454545454545453,
         "labeled": 11
       },
       "end": {

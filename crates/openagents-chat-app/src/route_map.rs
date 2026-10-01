@@ -1717,7 +1717,7 @@ fn gaps(map: &Map) -> Vec<Gap> {
             )),
             Stage::Result(Verdict::Better) => out.push(gap(
                 GapKind::NeedsCheck,
-                format!("Check {}'s result", plugin.name),
+                format!("Check the {} result", plugin.name),
                 "A Better result nobody else has rerun yet.".into(),
                 NextStep::Chat {
                     label: "Check it in chat".into(),

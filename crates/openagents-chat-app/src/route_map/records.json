@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.records.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs (live_route_map_records)",
   "relay": "wss://relay.openagents.com",
-  "fetched_at": 1790837387,
+  "fetched_at": 1790837556,
   "releases": [
     {
       "id": "03a418dcb60731756f55d0e2a64ae82371d009e6f829937ac0177d7b33077ac2",
@@ -132,6 +132,57 @@
     }
   ],
   "results": [
+    {
+      "id": "49357306398ef037f72bfa7c8a98a9295a7fe0e7c59e5bf2c3c1373d2d604536",
+      "created_at": 1790837416,
+      "evaluator": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "trainer": "287008f05fe5af19fc231dc7b2157f37a38f652b39f39ecf1f27c21f97153929",
+      "subject": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:dependency-check/dependency-check",
+      "subject_release": "15c8f23584b4d5cc5d860dc1c70435daca3bbfad8784199badeca7f57f708180",
+      "suite_release": "a6b800a63b4e463695a0da9bfff7194f21fe385994b6988f8199a7a1310a2b7c",
+      "verdict": "better",
+      "with": 6,
+      "without": 2,
+      "total": 6,
+      "checks": null,
+      "validates": null,
+      "confirmed": 0,
+      "disputed": 0
+    },
+    {
+      "id": "6bedfaa6c78c04900f333b36aa2b3087e782fe9b1ed58d2140f730d0281bb0af",
+      "created_at": 1790837414,
+      "evaluator": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "trainer": "0aabc492e5d028b9731000e0aaab916c1e55e2736d775c46606adc74efd2c82c",
+      "subject": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:release-notes/release-notes",
+      "subject_release": "378df8f45de57c4097bd477f7b915789ee21ab0405e6b395bce0560e0b89334f",
+      "suite_release": "d53dfd6fff1857689146a23d05519963dc5c0f984798f145fe82eaab9f452cb5",
+      "verdict": "better",
+      "with": 6,
+      "without": 2,
+      "total": 6,
+      "checks": null,
+      "validates": null,
+      "confirmed": 0,
+      "disputed": 0
+    },
+    {
+      "id": "9abaf9a512512062fda2c8d10317e5a94291c4c8828264e43940bcff134070f9",
+      "created_at": 1790837412,
+      "evaluator": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "trainer": "d23f91fc8ec5dcd1d491129fab495e5621135200165955a2010b4e9e759ce51f",
+      "subject": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:explain-error/explain-error",
+      "subject_release": "667af97ebd6c466b69078f34060fb06562a1e3542a6f2e5e4e4101f753b0eab0",
+      "suite_release": "03a418dcb60731756f55d0e2a64ae82371d009e6f829937ac0177d7b33077ac2",
+      "verdict": "better",
+      "with": 7,
+      "without": 2,
+      "total": 7,
+      "checks": null,
+      "validates": null,
+      "confirmed": 0,
+      "disputed": 0
+    },
     {
       "id": "581a1a9472e57c4092f09ae8528af97b430468cb2571dd2ddacc59601594bc69",
       "created_at": 1790706105,
