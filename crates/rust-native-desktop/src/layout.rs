@@ -177,6 +177,14 @@ impl Scene {
         }
         None
     }
+    /// Where a backdrop named `name` draws: the visible rectangle of the
+    /// surface `name`, or else the bounds of the node keyed `name`, so a
+    /// page can fill its pane with the picture and lay its own controls
+    /// over it (#10116).
+    pub fn backdrop_rect(&self, name: &str) -> Option<Rect> {
+        self.surface_rect(name)
+            .or_else(|| self.bounds.get(name).copied())
+    }
     /// The registered surface that takes the pointer at `x`, `y`: the
     /// last one drawn under the point, inside every clip around it, and
     /// with its visible rectangle. A button drawn after that surface and
@@ -291,6 +299,13 @@ mod gpu_surface_tests {
             })
         );
         assert_eq!(scene.surface_rect("absent"), None);
+        // A backdrop names a surface first, and otherwise a laid-out node:
+        // a page it fills while that page's views lie over it (#10116).
+        assert_eq!(scene.backdrop_rect("world"), scene.surface_rect("world"));
+        let mut scene = scene;
+        scene.bounds.insert("page".into(), clip);
+        assert_eq!(scene.backdrop_rect("page"), Some(clip));
+        assert_eq!(scene.backdrop_rect("absent"), None);
     }
 
     /// A button drawn over a surface takes the pointer there; a surface

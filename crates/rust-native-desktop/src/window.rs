@@ -954,7 +954,7 @@ impl<A: App> Shell<A> {
             .and_then(|backdrop| backdrop.surface())
             .map(str::to_owned);
         let region = match surface {
-            Some(resource) => self.scene().surface_rect(&resource).unwrap_or_default(),
+            Some(resource) => self.scene().backdrop_rect(&resource).unwrap_or_default(),
             None => crate::Rect {
                 x: 0.0,
                 y: 0.0,
@@ -1408,6 +1408,8 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     repeat: event.repeat,
                     command: self.modifiers.super_key() || self.modifiers.control_key(),
                     alt: self.modifiers.alt_key(),
+                    control: self.modifiers.control_key(),
+                    logo: self.modifiers.super_key(),
                 })
             }
             WindowEvent::MouseInput { state, button, .. } => Some(NativeInput::Button {

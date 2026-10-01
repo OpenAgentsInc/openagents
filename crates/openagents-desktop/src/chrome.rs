@@ -1179,11 +1179,17 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             ),
         }
     };
+    // The Verse page is the world, edge to edge, with nothing under it
+    // (#10116).
     let footer = stack(
         "shell-content-footer",
         Axis::Horizontal,
         Space::Sm,
-        vec![text("shell-content-note", "OpenAgents", TextRole::Status)],
+        if state.page == Page::Grid && !prompt {
+            vec![]
+        } else {
+            vec![text("shell-content-note", "OpenAgents", TextRole::Status)]
+        },
     );
     let mut content = stack(
         "shell-content",

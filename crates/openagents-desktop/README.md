@@ -59,7 +59,7 @@ Rust Native elements; desktop layout stays in the adapter.
   Recent.
 - **Map**, beside Verse in the footer, opens the route map
   ([design](../../docs/desktop/route-map.md)).
-- **The Grid** opens the world view. **Phones and computers** opens the
+- **Verse** opens the world view. **Phones and computers** opens the
   computer controls, and **Settings** its six pages. Opening a chat cancels any
   displayed pairing code.
 
@@ -93,9 +93,9 @@ When a code shows, rotates, and is cancelled is [`src/codes.rs`](src/codes.rs);
 
 ## Play the Grid
 
-On macOS and Linux, open **The Grid** and choose **Play** to join the same
+On macOS and Linux, open **Verse** and choose **Play** to join the same
 `verse-bare` world as the phone. **Watch** returns to the spectator. Opening the
-app or selecting the Grid starts no player. Leaving the Grid ends Play and
+app or the Verse page starts no player. Leaving the page ends Play and
 preserves your chat drafts and sidebar state.
 
 - W/S move forward and back; A/D and Q/E strafe. Space jumps once per press;
@@ -190,14 +190,22 @@ invented.
   presence, no input to the world, no chat, no name. If the relay asks for
   authentication it answers with a fresh key kept in memory for that one
   connection. Nobody sees the desktop or counts it.
-- **Under the page's views.** The world is drawn by the Verse renderer on the
-  window's own `wgpu` device, at half the window's pixels, then blurred a
-  little and covered by the window's black at 55 percent
-  (`rust_native_desktop::backdrop`). The views are painted over it
-  unchanged, so the QR code's white square and every word keep full
-  contrast. Tests read the code back from a frame over an all-white,
-  a finely lined, and a noisy backdrop, and from the committed window
-  capture.
+- **The page is the world** ([#10116](https://github.com/OpenAgentsInc/openagents/issues/10116)).
+  The world fills the whole content area, right of the sidebar and from
+  the title bar to the bottom, and resizes with the window; Watch and Play
+  draw it sharp, at the window's pixels, on the window's own `wgpu` device
+  (`rust_native_desktop::backdrop`, which draws into the page's node by
+  its key, `Scene::backdrop_rect`). The controls lie over it in small dark
+  chips: **Watch**, **Play**, the status line, and **Full screen** at the
+  top, an open board as a card in the middle (the wheel scrolls it), and
+  the key hint, dim, at the bottom.
+- **Full screen.** **Full screen**, Ctrl+Cmd+F (macOS's full-screen
+  shortcut), or F11 hides the sidebar and title bar, lets the world cover
+  the window, and puts the window in full screen; the window's own
+  full-screen control on the Verse page does the same. Esc leaves once
+  the world has no use for it: it first closes an open board, then
+  releases a held mouse, and the next Esc leaves full screen. Leaving the
+  page leaves full screen too. Play keeps the mouse in full screen.
 - **Cost.** Nothing on any other page. On the Verse page, 30 frames a
   second while someone is in the Grid or the ball or a block moves, 10 while
   it is empty and settled, none while the window is hidden or minimized;

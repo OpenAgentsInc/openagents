@@ -34,7 +34,9 @@ pub struct Gpu<'a> {
 
 /// A picture the window draws behind its views.
 pub trait Backdrop {
-    /// A registered surface to draw into, or the whole window for a backdrop.
+    /// Where to draw: a registered surface, or else the laid-out node with
+    /// this key (a page the picture fills while its views lie over it,
+    /// [`crate::layout::Scene::backdrop_rect`]); `None` is the whole window.
     fn surface(&self) -> Option<&str> {
         None
     }

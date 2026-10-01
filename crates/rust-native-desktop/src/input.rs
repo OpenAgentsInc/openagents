@@ -8,8 +8,13 @@ pub enum NativeInput<'a> {
         code: &'a str,
         pressed: bool,
         repeat: bool,
+        /// Command on macOS, or Control elsewhere: either is held.
         command: bool,
         alt: bool,
+        /// The Control key itself is held, on every platform.
+        control: bool,
+        /// The Command key (macOS) or the Super/Windows key is held.
+        logo: bool,
     },
     Button {
         button: u16,

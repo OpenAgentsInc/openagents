@@ -2,7 +2,7 @@
 use crate::shell::DesktopApp;
 use openagents_desktop::{
     chrome,
-    grid::{Grid, Layer, WORLD},
+    grid::{Grid, Layer},
     model::Intent,
 };
 use rust_native_desktop::{
@@ -90,6 +90,8 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                     repeat: false,
                     command: false,
                     alt: false,
+                    control: false,
+                    logo: false,
                 },
                 Instant::now(),
             );
@@ -118,6 +120,8 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                     repeat: false,
                     command: false,
                     alt: false,
+                    control: false,
+                    logo: false,
                 },
                 Instant::now(),
             );
@@ -146,6 +150,9 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                 app.tick(Instant::now());
                 std::thread::sleep(Duration::from_millis(16));
             }
+            // The open board is laid over the world (#10116).
+            let (_, scene) = rust_native_desktop::capture_views(&mut app, 1280.0, 800.0, 1.0);
+            assert!(scene.bounds.contains_key("grid-board"));
             if mode == "results" {
                 let state = grid.borrow();
                 let view = state.surface.as_ref().unwrap().results().unwrap();
@@ -156,21 +163,34 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                 ));
             }
         }
-        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
-            for scale in [1.0, 2.0] {
+        // 1280×800, 1920×1080, and a narrow window (#10116), then the
+        // Verse in full screen.
+        let mut sizes = vec![
+            ("", 1280.0, 800.0, 1.0),
+            ("", 1280.0, 800.0, 2.0),
+            ("", 1920.0, 1080.0, 1.0),
+            ("", 760.0, 540.0, 1.0),
+            ("", 760.0, 540.0, 2.0),
+        ];
+        if matches!(mode, "watch" | "play") {
+            sizes.push(("full-", 1280.0, 800.0, 1.0));
+            sizes.push(("full-", 1920.0, 1080.0, 1.0));
+        }
+        for (prefix, width, height, scale) in sizes {
+            if prefix == "full-" && !grid.borrow().full {
+                app.activate(Intent::Grid { key: "full".into() }, start);
+                assert!(grid.borrow().full);
+            }
+            {
                 let (views, scene) =
                     rust_native_desktop::capture_views(&mut app, width, height, scale);
                 assert!(scene.unsupported.is_empty());
-                let rect = scene
-                    .ops
-                    .iter()
-                    .find_map(|op| match op {
-                        rust_native_desktop::layout::Op::Surface { resource, rect, .. }
-                            if resource == WORLD =>
-                        {
-                            Some(*rect)
-                        }
-                        _ => None,
+                let rect = layer
+                    .surface()
+                    .map(|name| {
+                        scene
+                            .backdrop_rect(name)
+                            .expect("the Verse page is laid out")
                     })
                     .unwrap_or(Rect {
                         x: 0.0,
@@ -185,18 +205,11 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                     (rect.h * scale).round() as u32,
                 );
                 let world = render(&mut layer, &gpu, size, Instant::now());
-                let out = composite(
-                    &views,
-                    &world,
-                    rect,
-                    scale,
-                    app.theme().background,
-                    if mode == "watch" { 0.55 } else { 0.0 },
-                );
+                let out = composite(&views, &world, rect, scale, app.theme().background, 0.0);
                 if let Some(dir) = &evidence {
                     std::fs::write(
                         dir.join(format!(
-                            "{mode}-{}x{}-{}x.png",
+                            "{prefix}{mode}-{}x{}-{}x.png",
                             width as u32, height as u32, scale as u32
                         )),
                         out.png().unwrap(),
@@ -204,6 +217,10 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                     .unwrap();
                 }
             }
+        }
+        if grid.borrow().full {
+            app.activate(Intent::Grid { key: "full".into() }, start);
+            assert!(!grid.borrow().full);
         }
         if mode == "play" {
             let rect = grid.borrow().rect;
@@ -223,6 +240,8 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
                 repeat: false,
                 command: false,
                 alt: false,
+                control: false,
+                logo: false,
             };
             let began = Instant::now();
             app.native_input(key, start);

@@ -77,6 +77,7 @@ impl Controls {
                 repeat,
                 command,
                 alt,
+                ..
             } => {
                 let known = matches!(
                     code,
@@ -193,6 +194,8 @@ mod tests {
             repeat,
             command: false,
             alt: false,
+            control: false,
+            logo: false,
         }
     }
 

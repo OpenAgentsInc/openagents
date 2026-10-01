@@ -63,6 +63,14 @@ pub struct DesktopApp {
     map: Option<openagents_desktop::route_map::MapPage>,
     /// The window's size in points and its scale.
     viewport: (f32, f32, f32),
+    /// A full-screen change for the window to make (`fullscreen_request`).
+    fullscreen_want: Option<bool>,
+    /// Whether the window was full screen at the last look.
+    window_fullscreen: bool,
+    /// The Verse's full screen put the window in full screen, so leaving
+    /// it takes the window out again (#10116).
+    #[cfg(not(windows))]
+    verse_entered: bool,
 }
 
 pub fn unix_now() -> u64 {
@@ -236,6 +244,10 @@ impl DesktopApp {
             slides: None,
             map: None,
             viewport: (1200.0, 840.0, 1.0),
+            fullscreen_want: None,
+            window_fullscreen: false,
+            #[cfg(not(windows))]
+            verse_entered: false,
         };
         app.present();
         app
@@ -352,6 +364,52 @@ impl DesktopApp {
                 .chat
                 .as_ref()
                 .is_some_and(|chat| chat.modal() || chat.aux_focused())
+    }
+
+    /// Whether the Verse page shows: it is the page and no phone prompt
+    /// covers it.
+    #[cfg(not(windows))]
+    fn verse_page(&self) -> bool {
+        self.navigation
+            .as_ref()
+            .is_some_and(|state| state.page == Page::Grid)
+            && self.model.nearby().is_none()
+    }
+
+    /// Whether the Verse covers the window (#10116).
+    fn verse_full(&self) -> bool {
+        #[cfg(not(windows))]
+        return self.verse_page() && self.grid.as_ref().is_some_and(|grid| grid.borrow().full);
+        #[cfg(windows)]
+        false
+    }
+
+    /// Puts the Verse in full screen or takes it out (#10116): the sidebar
+    /// and title bar step aside and the world covers the window, which goes
+    /// full screen with it; leaving takes the window out of full screen
+    /// only when the Verse put it there.
+    #[cfg(not(windows))]
+    fn set_verse_full(&mut self, on: bool) {
+        let Some(grid) = &self.grid else {
+            return;
+        };
+        if grid.borrow().full == on {
+            return;
+        }
+        grid.borrow_mut().full = on;
+        if on {
+            if !self.window_fullscreen {
+                self.fullscreen_want = Some(true);
+                self.verse_entered = true;
+            }
+        } else {
+            if std::mem::take(&mut self.verse_entered) && self.window_fullscreen {
+                self.fullscreen_want = Some(false);
+            }
+            if self.fullscreen_want == Some(true) {
+                self.fullscreen_want = None;
+            }
+        }
     }
 
     /// Whether "Reduce motion" is on: the system's or the person's.
@@ -498,6 +556,11 @@ impl DesktopApp {
                 );
             }
         }
+        // Leaving the Verse page leaves its full screen (#10116).
+        #[cfg(not(windows))]
+        if !self.verse_page() {
+            self.set_verse_full(false);
+        }
         if let (Some(chat), Some(state)) = (&mut self.chat, &mut self.navigation) {
             let leading = if state.collapsed {
                 0.0
@@ -523,16 +586,33 @@ impl DesktopApp {
             || root(&self.model, unix_now()),
             |state| chrome::root(state, &self.model, unix_now()),
         );
+        // The Verse page shows the world and its controls whenever it is
+        // the page, so the world keeps its place under a palette (#10116).
         #[cfg(not(windows))]
-        if self.grid_active()
+        if self.verse_page()
             && let Some(grid) = &self.grid
             && let rust_native::Element::Stack { children, .. } = &mut root.element
-            && let Some(panes) = children.get_mut(1)
-            && let rust_native::Element::Stack { children, .. } = &mut panes.element
-            && let Some(content) = children.get_mut(1)
-            && let rust_native::Element::Stack { children, .. } = &mut content.element
         {
-            children[1] = grid.borrow_mut().view();
+            if grid.borrow().full
+                && let Some(header) = children.get_mut(0)
+            {
+                // Full screen: no title bar over the world.
+                *header = rust_native::Node {
+                    key: "shell-titlebar".into(),
+                    style: rust_native::style::Style::default(),
+                    element: rust_native::Element::Stack {
+                        axis: rust_native::Axis::Horizontal,
+                        children: vec![],
+                    },
+                };
+            }
+            if let Some(panes) = children.get_mut(1)
+                && let rust_native::Element::Stack { children, .. } = &mut panes.element
+                && let Some(content) = children.get_mut(1)
+                && let rust_native::Element::Stack { children, .. } = &mut content.element
+            {
+                children[1] = grid.borrow_mut().view();
+            }
         }
         if self.model.nearby().is_none()
             && (self
@@ -783,15 +863,18 @@ impl App for DesktopApp {
         self.navigation
             .as_ref()
             .map_or(WindowLayout::Column, |state| WindowLayout::HeaderSplit {
-                header_height: 38,
+                // The Verse in full screen covers the window: no title bar
+                // and no sidebar (#10116).
+                header_height: if self.verse_full() { 1 } else { 38 },
                 split: SplitLayout {
                     leading_width: state.sidebar_width,
                     min_leading_width: chrome::SIDEBAR_MIN,
                     max_leading_width: chrome::SIDEBAR_MAX,
                     min_content_width: 360.0,
-                    collapsed: state.collapsed,
-                    // The Map page takes the whole pane (#10085).
-                    center_content: state.page != Page::Map,
+                    collapsed: state.collapsed || self.verse_full(),
+                    // The Map and Verse pages take the whole pane (#10085,
+                    // #10116).
+                    center_content: !matches!(state.page, Page::Map | Page::Grid),
                     center_footer: matches!(state.page, Page::Chat(_))
                         && self.model.nearby().is_none()
                         && self
@@ -991,7 +1074,12 @@ impl App for DesktopApp {
             if self.grid_active()
                 && let Some(grid) = &self.grid
             {
-                grid.borrow_mut().activate(&key);
+                if key == "full" {
+                    let on = !grid.borrow().full;
+                    self.set_verse_full(on);
+                } else {
+                    grid.borrow_mut().activate(&key);
+                }
             }
             #[cfg(windows)]
             let _ = key;
@@ -1217,6 +1305,27 @@ impl App for DesktopApp {
             }
             return true;
         }
+        // Full screen on the Verse page (#10116): Ctrl+Cmd+F, as macOS
+        // names it, or F11; Esc leaves once the world has no use for it
+        // (an open board closes and a held mouse is released first).
+        #[cfg(not(windows))]
+        if self.grid_active()
+            && let rust_native_desktop::input::NativeInput::Key {
+                code,
+                pressed: true,
+                repeat: false,
+                control,
+                logo,
+                ..
+            } = event
+            && ((code == "KeyF" && control && logo) || code == "F11")
+            && let Some(grid) = &self.grid
+        {
+            let on = !grid.borrow().full;
+            self.set_verse_full(on);
+            self.present();
+            return true;
+        }
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             let active = self.grid_active();
@@ -1228,6 +1337,19 @@ impl App for DesktopApp {
                 },
                 now,
             );
+            if !consumed
+                && active
+                && grid.borrow().full
+                && let rust_native_desktop::input::NativeInput::Key {
+                    code: "Escape",
+                    pressed: true,
+                    ..
+                } = event
+            {
+                self.set_verse_full(false);
+                self.present();
+                return true;
+            }
             let changed = grid.borrow_mut().poll();
             if changed {
                 self.present();
@@ -1459,10 +1581,6 @@ impl App for DesktopApp {
         if let Some(percent) = parse_ring(resource).or_else(|| parse_meter(resource)) {
             return Some(u64::from(percent));
         }
-        #[cfg(not(windows))]
-        if resource == openagents_desktop::grid::WORLD {
-            return Some(0);
-        }
         if resource == chrome::MARK {
             return Some(0);
         }
@@ -1511,12 +1629,35 @@ impl App for DesktopApp {
     }
 
     fn fullscreen_changed(&mut self, fullscreen: bool) {
+        let was = std::mem::replace(&mut self.window_fullscreen, fullscreen);
+        // The window went full screen on the Verse page, by its green
+        // button or the system's shortcut: the Verse covers it. It left
+        // full screen: so does the Verse (#10116).
+        #[cfg(not(windows))]
+        if was != fullscreen && self.verse_page() && self.grid_active() {
+            if let Some(grid) = &self.grid
+                && grid.borrow().full != fullscreen
+            {
+                grid.borrow_mut().full = fullscreen;
+                self.verse_entered = fullscreen;
+                self.fullscreen_want = None;
+                self.present();
+            } else if !fullscreen {
+                self.verse_entered = false;
+            }
+        }
+        let _ = was;
         if let Some(state) = &mut self.navigation
             && state.fullscreen != fullscreen
         {
             state.fullscreen = fullscreen;
             self.present();
         }
+    }
+
+    fn fullscreen_request(&mut self, fullscreen: bool) -> Option<bool> {
+        let want = self.fullscreen_want.take()?;
+        (want != fullscreen).then_some(want)
     }
 
     fn viewport(&mut self, width: f32, height: f32, scale: f32) {
@@ -1563,12 +1704,6 @@ impl App for DesktopApp {
         }
         if resource == openagents_desktop::route_map::RESOURCE {
             return self.map.as_ref().map(|page| page.surface_size(available));
-        }
-        #[cfg(not(windows))]
-        if resource == openagents_desktop::grid::WORLD
-            && let Some(grid) = &self.grid
-        {
-            return Some((available, grid.borrow().surface_height()));
         }
         if let Some(size) = self
             .chat
@@ -1822,16 +1957,7 @@ mod tests {
             let (frame, scene) = rust_native_desktop::capture_views(&mut app, width, height, scale);
             assert!(scene.unsupported.is_empty());
             let rect = scene
-                .ops
-                .iter()
-                .find_map(|op| match op {
-                    rust_native_desktop::layout::Op::Surface { resource, rect, .. }
-                        if resource == WORLD =>
-                    {
-                        Some(*rect)
-                    }
-                    _ => None,
-                })
+                .backdrop_rect(WORLD)
                 .expect("the playable viewport is mounted");
             assert!(
                 rect.x >= 0.0
@@ -1867,7 +1993,9 @@ mod tests {
                 pressed: true,
                 repeat: false,
                 command: false,
-                alt: false
+                alt: false,
+                control: false,
+                logo: false
             },
             now
         ));
@@ -1878,7 +2006,9 @@ mod tests {
                 pressed: true,
                 repeat: false,
                 command: false,
-                alt: false
+                alt: false,
+                control: false,
+                logo: false
             },
             now
         ));
@@ -1898,7 +2028,9 @@ mod tests {
                 pressed: true,
                 repeat: false,
                 command: false,
-                alt: false
+                alt: false,
+                control: false,
+                logo: false
             },
             now
         ));
@@ -1932,12 +2064,163 @@ mod tests {
                 pressed: true,
                 repeat: false,
                 command: false,
-                alt: false
+                alt: false,
+                control: false,
+                logo: false
             },
             now
         ));
         assert!(!home.path().join(".openagents").exists());
         assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this Grid draft");
+    }
+
+    /// The Verse page is the world, edge to edge across the content pane,
+    /// with its controls over it, at every window size; full screen (its
+    /// button, Ctrl+Cmd+F, F11, or the window's own) covers the window and
+    /// Esc leaves it once the world has no use for Esc (#10116).
+    #[cfg(not(windows))]
+    #[test]
+    fn the_verse_fills_its_pane_and_goes_full_screen() {
+        use openagents_desktop::grid::{Grid, WORLD};
+        use rust_native_desktop::input::NativeInput;
+        let key = |code: &'static str, control: bool, logo: bool| NativeInput::Key {
+            code,
+            pressed: true,
+            repeat: false,
+            command: control || logo,
+            alt: false,
+            control,
+            logo,
+        };
+        let now = Instant::now();
+        let (mut app, _) = DesktopApp::performance_fixture(0, 1, now);
+        let home = tempfile::tempdir().unwrap();
+        let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+        app.set_grid(grid.clone());
+        app.activate(
+            Intent::Navigate {
+                action: Action::Grid,
+            },
+            now,
+        );
+        for (width, height) in [(1280.0, 800.0), (1920.0, 1080.0), (760.0, 540.0)] {
+            let (_, scene) = rust_native_desktop::capture_views(&mut app, width, height, 1.0);
+            assert!(scene.unsupported.is_empty());
+            let page = scene.backdrop_rect(WORLD).expect("the Verse page");
+            let divider = scene.split.as_ref().unwrap().divider.expect("a sidebar");
+            // Right of the sidebar to the pane's edge, title bar to bottom.
+            assert_eq!(page.x, divider.x + 4.0 + 8.0, "{page:?}");
+            assert_eq!(page.y, 38.0);
+            assert_eq!(page.x + page.w, width - 8.0, "{page:?}");
+            assert_eq!(page.y + page.h, height - 8.0, "{page:?}");
+            // The controls lie over the world: top left, and the hint at
+            // the bottom; no label under it.
+            for control in ["grid-watch", "grid-play", "grid-full"] {
+                let rect = scene.bounds[control];
+                assert!(
+                    rect.y < page.y + 40.0 && rect.x < page.x + page.w,
+                    "{control}"
+                );
+            }
+            assert!(scene.bounds["grid-watch"].x < page.x + 20.0);
+            let hint = scene.bounds["grid-controls"];
+            assert!(hint.y + hint.h > page.y + page.h - 30.0, "{hint:?}");
+            assert!(!scene.texts().contains(&"OpenAgents"));
+        }
+        assert_eq!(app.fullscreen_request(false), None);
+        // The toggle: the window goes full screen and the Verse covers it.
+        app.activate(Intent::Grid { key: "full".into() }, now);
+        assert!(grid.borrow().full);
+        assert_eq!(app.fullscreen_request(false), Some(true));
+        assert_eq!(app.fullscreen_request(false), None, "asked once");
+        app.fullscreen_changed(true);
+        assert!(grid.borrow().full);
+        for (width, height) in [(1280.0, 800.0), (760.0, 540.0)] {
+            let (_, scene) = rust_native_desktop::capture_views(&mut app, width, height, 1.0);
+            assert!(!scene.bounds.contains_key("sidebar-verse"), "no sidebar");
+            assert!(
+                !scene.bounds.contains_key("shell-page-title"),
+                "no title bar"
+            );
+            let page = scene.bounds[WORLD];
+            assert!(page.y <= 1.0 && page.x <= 8.0 && page.w >= width - 16.0);
+            assert_eq!(
+                rust_native_desktop::App::window_layout(&app).header_height(),
+                Some(1.0)
+            );
+        }
+        // Esc leaves, and takes the window out of full screen.
+        assert!(app.native_input(key("Escape", false, false), now));
+        assert!(!grid.borrow().full);
+        assert_eq!(app.fullscreen_request(true), Some(false));
+        app.fullscreen_changed(false);
+        // Ctrl+Cmd+F and F11 toggle; Cmd+F alone does not.
+        assert!(!app.native_input(key("KeyF", false, true), now));
+        assert!(!grid.borrow().full);
+        assert!(app.native_input(key("KeyF", true, true), now));
+        assert!(grid.borrow().full);
+        assert!(app.native_input(key("KeyF", true, true), now));
+        assert!(!grid.borrow().full);
+        assert!(app.native_input(key("F11", false, false), now));
+        assert!(grid.borrow().full);
+        app.fullscreen_changed(true);
+        // Leaving the page leaves full screen.
+        app.activate(
+            Intent::Navigate {
+                action: Action::Computers,
+            },
+            now,
+        );
+        assert!(!grid.borrow().full);
+        assert_eq!(app.fullscreen_request(true), Some(false));
+        app.fullscreen_changed(false);
+        // The window's own full screen (its green button) on the Verse
+        // page covers the window too, and ends with it.
+        app.activate(
+            Intent::Navigate {
+                action: Action::Grid,
+            },
+            now,
+        );
+        app.fullscreen_changed(true);
+        assert!(grid.borrow().full);
+        assert_eq!(app.fullscreen_request(true), None);
+        app.fullscreen_changed(false);
+        assert!(!grid.borrow().full);
+        // Play in full screen: the mouse is held, Esc releases it and
+        // keeps full screen, and the next Esc leaves.
+        app.activate(Intent::Grid { key: "full".into() }, now);
+        app.fullscreen_changed(true);
+        app.activate(Intent::Grid { key: "play".into() }, now);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while grid.borrow().surface.is_none() && Instant::now() < deadline {
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(grid.borrow().surface.is_some());
+        grid.borrow_mut().rect = rust_native_desktop::Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1280.0,
+            h: 800.0,
+        };
+        assert!(app.native_input(
+            NativeInput::Button {
+                button: 1,
+                pressed: true,
+                x: 640.0,
+                y: 400.0
+            },
+            now
+        ));
+        assert!(app.cursor_capture());
+        assert!(app.native_input(key("Escape", false, false), now));
+        assert!(!app.cursor_capture());
+        assert!(grid.borrow().full && grid.borrow().playing);
+        assert!(app.native_input(key("Escape", false, false), now));
+        assert!(!grid.borrow().full && grid.borrow().playing);
+        assert_eq!(app.fullscreen_request(true), Some(false));
+        assert!(!home.path().join(".openagents").exists());
     }
 
     /// The window as `--fake-host` runs it (worker threads, the shell,

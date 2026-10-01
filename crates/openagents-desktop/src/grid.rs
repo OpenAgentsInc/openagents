@@ -8,7 +8,7 @@ pub(crate) mod store;
 use crate::model::Intent;
 use coder_mobile::verse_surface::{Command, GridSurface, Panel};
 use controls::{Controls, Effect};
-use rust_native::style::{Space, Style};
+use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
 use rust_native::surface::Viewport;
 use rust_native::{Axis, Element, Node, TextRole};
 use rust_native_desktop::backdrop::{Backdrop, Gpu, Look};
@@ -21,6 +21,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
+/// The Verse page's node, which the world fills (#10116).
 pub const WORLD: &str = "grid-world";
 pub const FRAME: Duration = Duration::from_nanos(1_000_000_000 / 60);
 pub type Shared = Rc<RefCell<Grid>>;
@@ -49,6 +50,11 @@ pub struct Grid {
     notice: Option<String>,
     pub graphics_available: bool,
     pub viewport: (f32, f32, f32),
+    /// The Verse covers the whole window: no sidebar or title bar (#10116).
+    /// The window sets it ([`crate::grid`]'s page offers the toggle).
+    pub full: bool,
+    /// How far an open board is scrolled, in points.
+    panel_scroll: f32,
 }
 
 impl Grid {
@@ -76,6 +82,8 @@ impl Grid {
             notice: None,
             graphics_available: true,
             viewport: (1200.0, 840.0, 1.0),
+            full: false,
+            panel_scroll: 0.0,
         }))
     }
 
@@ -182,6 +190,8 @@ impl Grid {
         self.notice.hash(&mut state);
         self.controls.focused.hash(&mut state);
         self.panel_page.hash(&mut state);
+        self.panel_scroll.to_bits().hash(&mut state);
+        self.full.hash(&mut state);
         if let Some(surface) = &self.surface {
             surface.status().hash(&mut state);
             surface.view_revision().hash(&mut state);
@@ -238,6 +248,7 @@ impl Grid {
         self.controls.clear();
         self.panel_commands.clear();
         self.panel_page = 0;
+        self.panel_scroll = 0.0;
     }
 
     pub fn visible(&mut self, visible: bool) {
@@ -306,10 +317,19 @@ impl Grid {
         {
             let _ = surface.command(Command::Close);
             self.controls.clear();
+            self.panel_scroll = 0.0;
             return true;
         }
         if self.surface.as_ref().is_some_and(|s| s.panel().is_some()) {
             self.controls.clear();
+            // The wheel over the world scrolls the open board.
+            if let NativeInput::Wheel { lines, x, y } = event
+                && self.rect.contains(x, y)
+                && lines.is_finite()
+            {
+                self.panel_scroll = (self.panel_scroll - lines * 40.0).clamp(0.0, 4000.0);
+                return true;
+            }
             return false;
         }
         let inside = match event {
@@ -350,9 +370,16 @@ impl Grid {
                 }
                 self.controls.clear();
                 self.panel_page = 0;
+                self.panel_scroll = 0.0;
             }
-            "panel-next" => self.panel_page = self.panel_page.saturating_add(1),
-            "panel-previous" => self.panel_page = self.panel_page.saturating_sub(1),
+            "panel-next" => {
+                self.panel_page = self.panel_page.saturating_add(1);
+                self.panel_scroll = 0.0;
+            }
+            "panel-previous" => {
+                self.panel_page = self.panel_page.saturating_sub(1);
+                self.panel_scroll = 0.0;
+            }
             "play" => self.start(),
             "watch" => self.stop(),
             "connect"
@@ -408,6 +435,7 @@ impl Grid {
                             )
                     ) {
                         self.panel_page = 0;
+                        self.panel_scroll = 0.0;
                     }
                     let notes = match command {
                         Command::Notes(on) => Some(on),
@@ -433,54 +461,74 @@ impl Grid {
         }
     }
 
+    /// The Verse page (#10116): the world fills the whole page, which the
+    /// window's GPU layer draws behind it ([`Layer`] names this node), and
+    /// the controls lie over it: Watch, Play, the status line, and Full
+    /// screen at the top left, an open board in the middle, and the key
+    /// hint, dim, at the bottom.
     pub fn view(&mut self) -> Node<Intent> {
-        let mut play = control("play", "Play");
+        let mut watch = chip_button("watch", "Watch", !self.playing);
+        let mut play = chip_button("play", "Play", self.playing);
+        for button in [&mut watch, &mut play] {
+            button.style.radius = Some(6);
+        }
         if let Element::Button { enabled, .. } = &mut play.element {
             *enabled = self.graphics_available;
         }
-        let mut children = vec![row("grid-modes", vec![control("watch", "Watch"), play])];
-        if !self.graphics_available {
-            children.push(text(
-                "grid-unavailable",
-                "Play is unavailable on this graphics device.",
-                TextRole::Status,
-            ));
+        let status = if !self.graphics_available {
+            Some("Play is unavailable on this graphics device.".to_owned())
+        } else if !self.playing {
+            Some("Watching the shared Grid".to_owned())
+        } else if let Some(surface) = &self.surface {
+            Some(format!(
+                "{} · {}",
+                surface.status(),
+                if self.controls.focused {
+                    "World controls active"
+                } else {
+                    "Click the world to move"
+                }
+            ))
+        } else {
+            Some("Starting the Grid…".to_owned())
+        };
+        let mut top = vec![watch, play];
+        if let Some(status) = status {
+            top.push(chip("grid-status", status, 0.9));
         }
+        let mut gap = column("grid-top-gap", vec![]);
+        gap.style.gap = None;
+        top.push(gap);
+        top.push(chip_button(
+            "full",
+            if self.full {
+                "Exit full screen"
+            } else {
+                "Full screen"
+            },
+            false,
+        ));
+        let mut top = row("grid-top", top);
+        if let Element::Stack { axis, .. } = &mut top.element {
+            *axis = Axis::Horizontal;
+        }
+        top.style.gap = None;
+        top.style.gap_points = Some(6);
+        let mut children = vec![top];
         if let Some(notice) = &self.notice {
-            children.push(text("grid-notice", notice, TextRole::Status));
+            children.push(alone(chip("grid-notice", notice.clone(), 1.0)));
         }
         self.panel_commands.clear();
+        let mut middle = column("grid-middle", vec![]);
+        let mut hint = None;
         if !self.playing {
-            children.push(text(
-                "grid-watch-help",
-                "Watch the shared Grid from above. Choose Play to join it.",
-                TextRole::Body,
-            ));
+            hint = Some("Watch the shared Grid from above. Choose Play to join it.");
         } else if let Some(surface) = &self.surface {
             let panel = surface.panel();
-            children.push(text(
-                "grid-status",
-                format!(
-                    "{} · {}",
-                    surface.status(),
-                    if self.controls.focused {
-                        "World controls active"
-                    } else {
-                        "Click the world to move"
-                    }
-                ),
-                TextRole::Status,
-            ));
-            children.push(Node {
-                key: "grid-viewport".into(),
-                style: Style::default(),
-                element: Element::Surface {
-                    resource: WORLD.into(),
-                    label: "Playable Grid".into(),
-                },
-            });
             if panel.is_none() {
-                children.push(text("grid-controls", "WASD move · right-drag look · left-drag orbit · Space jump · Shift sprint · wheel zoom and first person · Esc release mouse", TextRole::Status));
+                hint = Some(
+                    "WASD move · right-drag look · left-drag orbit · Space jump · Shift sprint · wheel zoom and first person · Esc release mouse",
+                );
             } else {
                 let mut projection = panels::Projection::default();
                 match panel {
@@ -506,6 +554,7 @@ impl Grid {
                 const PAGE: usize = 24;
                 let pages = projection.nodes.len().div_ceil(PAGE).max(1);
                 self.panel_page = self.panel_page.min(pages - 1);
+                let mut board = Vec::new();
                 if pages > 1 {
                     let mut navigation = vec![text(
                         "grid-panel-page",
@@ -519,9 +568,9 @@ impl Grid {
                         navigation.push(control("panel-next", "Next board page"));
                     }
                     navigation.push(control("panel-close", "Close board"));
-                    children.push(row("grid-panel-pages", navigation));
+                    board.push(row("grid-panel-pages", navigation));
                 }
-                children.extend(
+                board.extend(
                     projection
                         .nodes
                         .into_iter()
@@ -529,24 +578,102 @@ impl Grid {
                         .take(PAGE),
                 );
                 self.panel_commands = projection.commands;
+                // The board is a card over the world, scrolled by the wheel
+                // over it ([`Grid::input`]).
+                middle = column("grid-board", board);
+                middle.style.background = Some(Color {
+                    alpha: 235,
+                    ..openagents_chat_app::visual::CANVAS
+                });
+                middle.style.border = Some(openagents_chat_app::visual::BORDER);
+                middle.style.radius = Some(10);
+                middle.style.padding_points = Some([12, 14, 12, 14]);
+                middle.style.viewport = Some(rust_native::style::Viewport {
+                    // It fills what the page leaves; this is only the
+                    // view's bound.
+                    max_height: 4096,
+                    offset: self.panel_scroll.round().clamp(0.0, f32::from(u16::MAX)) as u16,
+                    fade: 12,
+                });
             }
-        } else {
-            children.push(text(
-                "grid-starting",
-                "Starting the Grid…",
-                TextRole::Status,
-            ));
         }
-        column("grid-page", children)
+        middle.style.fill_height = Some(true);
+        children.push(middle);
+        if let Some(hint) = hint {
+            let mut hint = alone(chip("grid-controls", hint, 0.6));
+            hint.style.align = Some(TextAlign::Center);
+            children.push(hint);
+        }
+        let mut page = column(WORLD, children);
+        page.style.gap = None;
+        page.style.gap_points = Some(8);
+        page.style.fill_height = Some(true);
+        page.style.padding_points = Some([12, 12, 12, 12]);
+        page
     }
+}
 
-    pub fn surface_height(&self) -> f32 {
-        if self.surface.as_ref().is_some_and(|s| s.panel().is_some()) {
-            160.0
-        } else {
-            (self.viewport.1 - 260.0).max(140.0)
-        }
+/// A small dark chip over the world, with its text at `strength` of full
+/// brightness: the status line full, the key hint dim.
+fn chip(key: &str, value: impl Into<String>, strength: f32) -> Node<Intent> {
+    let mut line = text(&format!("{key}-text"), value, TextRole::Status);
+    line.style.text_size = Some(12);
+    line.style.line_height = Some(16);
+    line.style.foreground = Some(Color {
+        alpha: (255.0 * strength.clamp(0.0, 1.0)).round() as u8,
+        ..openagents_chat_app::visual::TEXT
+    });
+    // A vertical stack is as wide as its text, where a row would take
+    // the whole line.
+    let mut chip = Node {
+        key: key.into(),
+        style: Style::default(),
+        element: Element::Stack {
+            axis: Axis::Vertical,
+            children: vec![line],
+        },
+    };
+    chip.style.intrinsic_width = Some(true);
+    chip.style.background = Some(Color {
+        alpha: (150.0 * strength.clamp(0.0, 1.0)).round().max(90.0) as u8,
+        ..Color::rgb(10, 10, 10)
+    });
+    chip.style.radius = Some(6);
+    chip.style.padding_points = Some([5, 10, 5, 10]);
+    chip
+}
+
+/// A small button over the world; `on` marks the current mode.
+fn chip_button(key: &str, label: &str, on: bool) -> Node<Intent> {
+    let mut button = control(key, label);
+    button.style.text_size = Some(12);
+    button.style.line_height = Some(16);
+    button.style.button_padding = Some([10, 5]);
+    button.style.radius = Some(6);
+    button.style.weight = Some(TextWeight::Medium);
+    if on {
+        button.style.background = Some(openagents_chat_app::visual::TEXT);
+        button.style.foreground = Some(Color::rgb(20, 20, 20));
+    } else {
+        button.style.background = Some(Color {
+            alpha: 170,
+            ..Color::rgb(10, 10, 10)
+        });
+        button.style.foreground = Some(openagents_chat_app::visual::TEXT);
+        button.style.hover_background = Some(Color {
+            alpha: 220,
+            ..Color::rgb(40, 40, 40)
+        });
     }
+    button
+}
+
+/// `node` on a row of its own, keeping its own width.
+fn alone(node: Node<Intent>) -> Node<Intent> {
+    let key = format!("{}-row", node.key);
+    let mut row = column(&key, vec![node]);
+    row.style.gap = None;
+    row
 }
 
 pub fn control(key: &str, label: &str) -> Node<Intent> {
@@ -666,9 +793,11 @@ impl Layer {
     }
 }
 impl Backdrop for Layer {
+    /// The Verse page's own node, which fills the content pane, or the
+    /// whole window in full screen (#10116).
     fn surface(&self) -> Option<&str> {
         let grid = self.grid.borrow();
-        (grid.open && grid.playing).then_some(WORLD)
+        (grid.open && !grid.full).then_some(WORLD)
     }
     fn look(&self) -> Option<Look> {
         if !self.grid.borrow().open {
@@ -679,20 +808,21 @@ impl Backdrop for Layer {
                 blur: 0.0,
                 scale: 0.25,
             })
-        } else if self.grid.borrow().playing {
-            Some(Look {
-                dim: 0.0,
-                blur: 0.0,
-                scale: 1.0,
-            })
-        } else if self.watch.is_none() {
+        } else if self.watch.is_none() && !self.grid.borrow().playing {
             Some(Look {
                 dim: 1.0,
                 blur: 0.0,
                 scale: 0.25,
             })
         } else {
-            None
+            // The world is the page (#10116): Watch and Play both show it
+            // sharp and undimmed; the controls over it carry their own
+            // dark chips.
+            Some(Look {
+                dim: 0.0,
+                blur: 0.0,
+                scale: 1.0,
+            })
         }
     }
     fn viewport(&mut self, rect: Rect, scale: f32) {
@@ -871,7 +1001,19 @@ mod tests {
         assert_eq!(made.get(), 1);
         assert!(layer.loaded());
         assert!(layer.watch.as_ref().unwrap().connected());
-        assert_eq!(layer.look(), None);
+        // The world is the page, sharp and undimmed, and fills it (#10116).
+        assert_eq!(
+            layer.look(),
+            Some(Look {
+                dim: 0.0,
+                blur: 0.0,
+                scale: 1.0
+            })
+        );
+        assert_eq!(layer.surface(), Some(WORLD));
+        grid.borrow_mut().full = true;
+        assert_eq!(layer.surface(), None, "full screen: the whole window");
+        grid.borrow_mut().full = false;
         // Left: everything is dropped, relay connection included, and Play stops.
         grid.borrow_mut().playing = true;
         grid.borrow_mut().set_open(false);
