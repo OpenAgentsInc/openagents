@@ -525,11 +525,16 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(set.code, 0, "{}", set.stderr);
     assert_eq!(set.stdout.trim(), "coder.providers claude");
     assert!(file.exists());
-    assert_eq!(run!("settings", "get", "coder.providers").stdout.trim(), "claude");
+    assert_eq!(
+        run!("settings", "get", "coder.providers").stdout.trim(),
+        "claude"
+    );
     let claude = run!("--json", "chat", "--local", "fix the flaky test");
     assert_eq!(claude.code, 1);
     assert!(
-        coder_message(&claude).starts_with("Claude Code is not signed in on this computer, and your settings allow only it."),
+        coder_message(&claude).starts_with(
+            "Claude Code is not signed in on this computer, and your settings allow only it."
+        ),
         "{}",
         claude.stdout
     );
@@ -538,7 +543,13 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     let elsewhere = home.path().join("code");
     std::fs::create_dir_all(&elsewhere).unwrap();
     assert_eq!(
-        run!("settings", "set", "coder.projects", elsewhere.to_str().unwrap()).code,
+        run!(
+            "settings",
+            "set",
+            "coder.projects",
+            elsewhere.to_str().unwrap()
+        )
+        .code,
         0
     );
     let outside = run!("--json", "chat", "--local", "fix the flaky test");
@@ -556,7 +567,13 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(asked.event("offer")["offer"]["offer"], "run_coder");
     assert!(!asked.stdout.contains("\"event\":\"coder\""));
     // `--run-coder` still runs at once, into the same refusals.
-    let forced = run!("--json", "chat", "--local", "--run-coder", "fix the flaky test");
+    let forced = run!(
+        "--json",
+        "chat",
+        "--local",
+        "--run-coder",
+        "fix the flaky test"
+    );
     assert_eq!(forced.code, 1);
     assert!(coder_message(&forced).contains("is not in one of your project folders"));
 
@@ -594,7 +611,13 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     let broken = run!("--json", "chat", "--local", "fix the flaky test");
     assert_eq!(broken.code, 0, "a broken file asks first");
     assert!(!broken.stdout.contains("\"event\":\"coder\""));
-    let accepted = run!("--json", "chat", "--local", "--run-coder", "fix the flaky test");
+    let accepted = run!(
+        "--json",
+        "chat",
+        "--local",
+        "--run-coder",
+        "fix the flaky test"
+    );
     assert!(
         coder_message(&accepted).contains("settings.json are not valid"),
         "{}",
