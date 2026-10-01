@@ -2878,6 +2878,17 @@ pub(super) mod card_fixtures {
             prompt.contains("fix the flaky test in openagents"),
             "{prompt}"
         );
+        // The engine is told the routing is done and its job is the
+        // person's task, never another engine's command line (#10084).
+        assert_eq!(
+            prompt,
+            openagents_chat::delegation::prompt("New chat", &snapshot.turns),
+        );
+        assert!(prompt.contains("How this run started:"), "{prompt}");
+        assert!(
+            prompt.contains("never start another coding engine's command line"),
+            "{prompt}"
+        );
         assert!(!title.is_empty());
         panel.run_outcome(
             chat.clone(),

@@ -114,7 +114,7 @@ conversation run in the owner's order.
 | `delegate-who` | "who can you delegate to", in the same chat, gets an answer, and Coder does not start. | #10073 |
 | `delegate-now` | "do a test delegation now", in the same chat: Coder starts, runs, and finishes in the linked-worktree project; the prompt Coder received is that message; the reply carries no Gym card; and no decision-call row shows in the transcript. | #10073, #10078 |
 | `working-directory` | "What's the working directory right now?" names the project folder, never says to connect a computer, and starts no Coder. | #10077, #10079 |
-| `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code, the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073 |
+| `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |
 | `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. | #10066, #10070 |
 | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |
 | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |

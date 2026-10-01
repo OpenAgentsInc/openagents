@@ -15,10 +15,59 @@ pub fn project(listed: &[String], used: impl Fn(&str) -> Option<u64>) -> Option<
 }
 
 /// The prompt a Coder run starts with: the message that asked for the
-/// work, titled by it, then bounded context ([`crate::basic_chats::handoff`]).
-/// `chat_title` titles it only when the conversation has no user turn.
+/// work, titled by it, then how the run was started ([`routing`], for the
+/// engine the reply's offer names), then bounded context
+/// ([`crate::basic_chats::handoff_routed`]). `chat_title` titles it only
+/// when the conversation has no user turn. Every surface that starts Coder
+/// from a conversation (the desktop's local run, the host's handoff and
+/// `thread.run`, the phone through it, and the CLI) builds it here.
 pub fn prompt(chat_title: &str, turns: &[Turn]) -> String {
-    crate::basic_chats::handoff(&title(chat_title, turns), turns, MAX_PROMPT_BYTES)
+    let routing = routing(requested(turns));
+    crate::basic_chats::handoff_routed(
+        &title(chat_title, turns),
+        turns,
+        MAX_PROMPT_BYTES,
+        Some(&routing),
+    )
+}
+
+/// What a handoff tells the engine about how its run was started (#10084).
+/// The person's message asked OpenAgents to delegate, and maybe to one
+/// engine (`requested`, the offer's typed engine, never read from text);
+/// by the time an engine reads this, that request is done. So the engine
+/// is told the routing is settled, that its job is the person's task, and
+/// never to start another coding engine's command line to perform the
+/// delegation; and that a message with no task beyond the delegation
+/// itself gets a small, harmless check of the project. Which engine a
+/// message names is the router's typed judgment; whether it asks for more
+/// than the delegation is the engine's own reading of it.
+#[must_use]
+pub fn routing(requested: Option<nostr::cj_conversation::Engine>) -> String {
+    let asked = match requested {
+        Some(engine) => {
+            let name = engine.name();
+            format!(
+                "The person asked for this to run on {name}. OpenAgents has already started \
+                 this run on the engine it chose, so that request is done: if you are {name}, \
+                 you are the engine they asked for; if you are another engine, {name} could not \
+                 run on this computer now (it is not signed in here, it is at its usage limit, \
+                 or this computer's Coder settings do not allow it), and OpenAgents has already \
+                 told the person why and which engine runs instead. "
+            )
+        }
+        None => "The person asked OpenAgents to hand this conversation to Coder. OpenAgents has \
+                 already started this run on the engine it chose, so that request is done. "
+            .to_owned(),
+    };
+    format!(
+        "{asked}Your job is the person's task, done here in this project with your own \
+         commands. This run is the delegation: never start another coding engine's command \
+         line (such as `claude`, `codex`, `devin`, `opencode`, or `grok`) as a sub-process, to \
+         do the task or to test a delegation, and never ask the person for another engine's \
+         login. If the message asks for nothing beyond the delegation itself, such as a test \
+         delegation, the task is a small, harmless check of this project: look at what it \
+         holds, change nothing, and tell the person in a few sentences what you found."
+    )
 }
 
 /// The task's title for a Coder run started from a conversation: the
@@ -304,6 +353,99 @@ mod tests {
             ..Meta::default()
         };
         assert!(offered(Some(&offer), false));
+    }
+
+    /// The owner's gate run on 2026-10-01 (#10084): "do a test delegation
+    /// to claude" started Coder on Claude Code with the message as its only
+    /// task, so the engine ran the `claude` command line in its sandbox,
+    /// hit its login, and waited on a credentials question. The prompt now
+    /// says the routing is done and what the task is, for the engine asked
+    /// for and for none, and still reads as the person's message.
+    #[test]
+    fn the_prompt_says_the_routing_is_done_and_what_the_task_is() {
+        use crate::router::{Meta, Offer};
+        use nostr::cj_conversation::Engine;
+        let offer = |engine| {
+            Some(Meta {
+                offers: vec![Offer::RunCoder],
+                engine,
+                ..Meta::default()
+            })
+        };
+        let claude = vec![
+            Turn::user("do a test delegation to claude"),
+            Turn::assistant(
+                "We'll dispatch Coder, asking for Claude Code, to take this on.",
+                offer(Some(Engine::ClaudeCode)),
+            ),
+        ];
+        let text = prompt("Chat", &claude);
+        assert!(
+            text.starts_with("do a test delegation to claude\n\n"),
+            "{text}"
+        );
+        let request = text
+            .find("The request:\n\ndo a test delegation to claude")
+            .unwrap();
+        let routing_at = text.find("How this run started:").unwrap();
+        assert!(request < routing_at, "{text}");
+        for needle in [
+            "The person asked for this to run on Claude Code.",
+            "that request is done",
+            "if you are Claude Code, you are the engine they asked for",
+            "Claude Code could not run on this computer now",
+            "which engine runs instead",
+            "Your job is the person's task",
+            "never start another coding engine's command line",
+            "`claude`",
+            "never ask the person for another engine's login",
+            "a small, harmless check of this project",
+            "change nothing",
+        ] {
+            assert!(text.contains(needle), "{needle:?} missing from {text}");
+        }
+        assert_eq!(
+            crate::basic_chats::handoff_request(&text).as_deref(),
+            Some("do a test delegation to claude")
+        );
+        // Codex, asked for by name, is named the same way.
+        let codex = vec![
+            Turn::user("have codex fix the parser"),
+            Turn::assistant("We'll dispatch Coder.", offer(Some(Engine::Codex))),
+        ];
+        assert!(prompt("Chat", &codex).contains("if you are Codex, you are the engine"));
+        // No engine named: the routing is still done, and no engine is
+        // named as asked for.
+        let now = vec![
+            Turn::user("who are you"),
+            Turn::assistant("We are OpenAgents.", None),
+            Turn::user("do a test delegation now"),
+            Turn::assistant("We'll dispatch Coder.", offer(None)),
+        ];
+        let text = prompt("who are you", &now);
+        assert!(text.contains("hand this conversation to Coder"), "{text}");
+        assert!(text.contains("that request is done"), "{text}");
+        assert!(!text.contains("asked for this to run on"), "{text}");
+        assert!(text.contains("a small, harmless check of this project"));
+        // The routing comes before the context, which is still carried.
+        let routing_at = text.find("How this run started:").unwrap();
+        let context = text.find("User: who are you").unwrap();
+        assert!(routing_at < context, "{text}");
+        assert_eq!(
+            crate::basic_chats::handoff_request(&text).as_deref(),
+            Some("do a test delegation now")
+        );
+        // A request too long to fit is cut; the routing is kept whole.
+        let long = vec![
+            Turn::user("y".repeat(MAX_PROMPT_BYTES * 2)),
+            Turn::assistant("We'll dispatch Coder.", offer(Some(Engine::ClaudeCode))),
+        ];
+        let text = prompt("Chat", &long);
+        assert!(text.len() <= MAX_PROMPT_BYTES, "{}", text.len());
+        assert!(
+            text.ends_with(&routing(Some(Engine::ClaudeCode))),
+            "routing kept whole"
+        );
     }
 
     #[test]

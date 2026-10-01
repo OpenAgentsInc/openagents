@@ -116,6 +116,21 @@ pub(super) fn context(store: PathBuf) -> openagents_chat::router::Context {
 
 /// Start Coder on this computer for the thread `id`, in the checkout the
 /// command runs in, bind the task to the thread, and follow it.
+/// What `chat run-coder` starts Coder with: the shared handoff prompt
+/// ([`openagents_chat::delegation::prompt`]), which tells the engine the
+/// routing is done (#10084), and the engine the person asked for, from the
+/// reply's typed offer: it goes first, and the start card says why when
+/// another runs (#10076).
+fn handoff(
+    title: &str,
+    turns: &[openagents_chat::basic_coder::Turn],
+) -> (String, Option<coder::task::capacity::Provider>) {
+    (
+        openagents_chat::delegation::prompt(title, turns),
+        openagents_chat::delegation::requested(turns).map(coder::task::settings::provider_of),
+    )
+}
+
 pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u8 {
     let report = |accepted: bool, message: &str, task: Option<serde_json::Value>| {
         event(
@@ -144,7 +159,7 @@ pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u
         );
         return follow_task(output, backend, id, &coder.task, 1).await;
     }
-    let prompt = openagents_chat::delegation::prompt(&thread.summary.title, &thread.turns);
+    let (prompt, requested) = handoff(&thread.summary.title, &thread.turns);
     let here = match std::env::current_dir() {
         Ok(dir) => dir,
         Err(_) => {
@@ -169,10 +184,6 @@ pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u
     let run = runner(backend, id);
     let title = thread.summary.title.clone();
     let chat = id.to_owned();
-    // The engine the person asked for, from the reply's typed offer: it
-    // goes first, and the start card says why when another runs (#10076).
-    let requested = openagents_chat::delegation::requested(&thread.turns)
-        .map(coder::task::settings::provider_of);
     let started = tokio::task::spawn_blocking(move || {
         run.start_requested(&here, &title, &prompt, Some(&chat), &[], requested)
     })
@@ -565,6 +576,43 @@ fn show(output: &Output, line: &Line) {
             if let Some(text) = coder_events::text(event) {
                 eprintln!("{text}");
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openagents_chat::basic_coder::Turn;
+    use openagents_chat::router::{Meta, Offer};
+
+    /// The CLI's run starts on the shared handoff (#10084): the engine is
+    /// told the person's request for Claude Code is done and its job is
+    /// the task, and the run asks for Claude Code.
+    #[test]
+    fn the_cli_handoff_tells_the_engine_the_routing_is_done() {
+        let turns = vec![
+            Turn::user("do a test delegation to claude"),
+            Turn::assistant(
+                "We'll dispatch Coder, asking for Claude Code, to take this on.",
+                Some(Meta {
+                    offers: vec![Offer::RunCoder],
+                    engine: Some(nostr::cj_conversation::Engine::ClaudeCode),
+                    ..Meta::default()
+                }),
+            ),
+        ];
+        let (prompt, requested) = super::handoff("Chat", &turns);
+        assert_eq!(requested, Some(coder::task::capacity::Provider::Claude));
+        assert!(
+            prompt.starts_with("do a test delegation to claude\n\n"),
+            "{prompt}"
+        );
+        for needle in [
+            "The person asked for this to run on Claude Code.",
+            "never start another coding engine's command line",
+            "a small, harmless check of this project",
+        ] {
+            assert!(prompt.contains(needle), "{needle:?} missing from {prompt}");
         }
     }
 }

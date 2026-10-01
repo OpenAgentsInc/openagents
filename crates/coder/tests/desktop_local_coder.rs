@@ -250,7 +250,15 @@ async fn desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_ident
     let plain = "c".repeat(32);
     let turns = vec![
         Turn::user("fix the flaky test in openagents"),
-        Turn::assistant("I'll hand this conversation to Coder.", None),
+        // A dispatch-routed reply: one that answered starts no Coder
+        // (#10079).
+        Turn::assistant(
+            "I'll hand this conversation to Coder.",
+            Some(openagents_chat::router::Meta {
+                route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
+                ..Default::default()
+            }),
+        ),
     ];
     let mut chats = BasicChats::new(
         None,
@@ -271,6 +279,12 @@ async fn desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_ident
         )
         .unwrap();
     let expected = openagents_chat::delegation::prompt("Fix flaky test", &turns);
+    // The host's handoff tells the engine the routing is done (#10084).
+    assert!(expected.contains("How this run started:"), "{expected}");
+    assert!(
+        expected.contains("never start another coding engine's command line"),
+        "{expected}"
+    );
     let launched = Arc::new(Mutex::new(vec![]));
     let autostart = Arc::new(
         autostart::Autostart::new(

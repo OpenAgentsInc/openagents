@@ -1064,9 +1064,11 @@ pub fn handoff_request(text: &str) -> Option<String> {
     let request = rest
         .strip_prefix(" The request:\n\n")
         .map(|request| {
-            request
-                .split_once("\n\nEarlier in the conversation, for context:\n\n")
-                .map_or(request, |(asked, _)| asked)
+            [HANDOFF_ROUTING, HANDOFF_CONTEXT]
+                .iter()
+                .fold(request, |request, lead| {
+                    request.split_once(lead).map_or(request, |(asked, _)| asked)
+                })
                 .trim()
         })
         .filter(|request| !request.is_empty());
@@ -1081,6 +1083,13 @@ pub fn handoff_request(text: &str) -> Option<String> {
 /// How many turns before the request a handoff carries as context.
 pub const HANDOFF_CONTEXT_TURNS: usize = 6;
 
+/// The lead of a handoff's routing section ([`handoff_routed`]): what the
+/// engine is told about how its run was started, after the request.
+pub const HANDOFF_ROUTING: &str = "\n\nHow this run started:\n\n";
+
+/// The lead of a handoff's context section: the turns before the request.
+pub const HANDOFF_CONTEXT: &str = "\n\nEarlier in the conversation, for context:\n\n";
+
 /// The context a computer's Coder starts with when the person runs Coder
 /// from a conversation (#10073): `title` as the first line (the task's
 /// title), then the message that asked for the work, the newest user turn,
@@ -1089,6 +1098,21 @@ pub const HANDOFF_CONTEXT_TURNS: usize = 6;
 /// within `limit` bytes. Replies after the request, such as the offer that
 /// started Coder, are not carried: they are ours, not the person's ask.
 pub fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
+    handoff_routed(title, turns, limit, None)
+}
+
+/// [`handoff`] with a routing section after the request (#10084): what the
+/// engine is told about how its run was started, such as
+/// [`crate::delegation::routing`]. The section is kept whole: the request
+/// is cut first, then the context.
+pub fn handoff_routed(title: &str, turns: &[Turn], limit: usize, routing: Option<&str>) -> String {
+    let routing = routing
+        .map(str::trim)
+        .filter(|routing| !routing.is_empty())
+        .map(|routing| format!("{HANDOFF_ROUTING}{routing}"))
+        .unwrap_or_default();
+    let total = limit;
+    let limit = total.saturating_sub(routing.len());
     let title: String = title
         .lines()
         .next()
@@ -1099,13 +1123,15 @@ pub fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
     let asked = turns.iter().rposition(|turn| turn.role == Role::User);
     let head = format!("{title}\n\n{HANDOFF_MARK}");
     let Some(asked) = asked else {
-        return clip(&head, limit);
+        return format!("{}{routing}", clip(&head, limit));
     };
     let request = format!("{head} The request:\n\n{}", turns[asked].text.trim());
     if request.len() >= limit {
-        return clip(&request, limit);
+        return format!("{}{routing}", clip(&request, limit));
     }
-    let lead = "\n\nEarlier in the conversation, for context:\n\n";
+    let request = format!("{request}{routing}");
+    let limit = total;
+    let lead = HANDOFF_CONTEXT;
     let mut bytes = request.len() + lead.len();
     let mut parts: Vec<String> = vec![];
     for turn in turns[..asked].iter().rev().take(HANDOFF_CONTEXT_TURNS) {

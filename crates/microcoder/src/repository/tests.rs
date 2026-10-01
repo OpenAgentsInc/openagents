@@ -885,6 +885,8 @@ fn during_limit() -> u64 {
 
 /// A route whose replies are scripted: an action, or a capacity refusal.
 struct ScriptedLane {
+    /// The system text of each call.
+    systems: RefCell<Vec<String>>,
     script: RefCell<VecDeque<Result<NextAction, Refusal>>>,
     model: &'static str,
     usd: f64,
@@ -893,6 +895,7 @@ struct ScriptedLane {
 }
 fn lane(model: &'static str, usd: f64, script: Vec<Result<NextAction, Refusal>>) -> ScriptedLane {
     ScriptedLane {
+        systems: RefCell::new(Vec::new()),
         script: RefCell::new(script.into()),
         model,
         usd,
@@ -901,8 +904,9 @@ fn lane(model: &'static str, usd: f64, script: Vec<Result<NextAction, Refusal>>)
     }
 }
 impl Generate for ScriptedLane {
-    async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+    async fn generate(&self, system: &str, _prompt: &str) -> Generated {
         self.calls.set(self.calls.get() + 1);
+        self.systems.borrow_mut().push(system.to_owned());
         let next = self
             .script
             .borrow_mut()
@@ -1004,6 +1008,21 @@ async fn a_capacity_refusal_fails_over_to_the_next_admitted_route_and_is_recorde
     // One refused request, not three retries ending in bad replies.
     assert_eq!(codex.calls.get(), 1);
     assert_eq!(claude.calls.get(), 2);
+    // Each step is told which engine it runs on, after a failover too
+    // (#10084).
+    assert!(
+        codex.systems.borrow()[0].ends_with(
+            "you are running as Codex (model gpt-6-luna), the coding engine OpenAgents chose."
+        ),
+        "{:?}",
+        codex.systems.borrow()
+    );
+    for system in claude.systems.borrow().iter() {
+        assert!(
+            system.contains("you are running as Claude Code (model claude-opus-5-5)"),
+            "{system}"
+        );
+    }
     assert_eq!(result.execution, task::Execution::Finished);
     assert_eq!(
         std::fs::read(root.path().join("checkout/result.txt")).unwrap(),

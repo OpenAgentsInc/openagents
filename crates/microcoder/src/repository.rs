@@ -256,13 +256,29 @@ impl<L: Lane> Generate for Recorded<'_, L> {
             inner: &self.inner,
             route: &self.route,
         }
-        .generate(system, prompt)
+        .generate(&engine_system(system, &self.route), prompt)
         .await
     }
 
     fn warm(&self, system: &str) {
-        self.inner.warm(system);
+        self.inner.warm(&engine_system(system, &self.route));
     }
+}
+
+/// `system`, then which coding engine this route is (#10084): a handoff
+/// says which engine the person asked for, and this says which one they
+/// got, on every step of the route that runs it, so after a failover the
+/// model is told the engine it now is. With both, the model knows the
+/// routing is done and never starts another engine's command line.
+fn engine_system(system: &str, route: &GrantRoute) -> String {
+    let name: &str = match Provider::from_config(&route.provider) {
+        Some(provider) => task::settings::provider_name(provider),
+        None => &route.provider,
+    };
+    format!(
+        "{system} On this step you are running as {name} (model {}), the coding engine OpenAgents chose.",
+        route.model
+    )
 }
 
 impl<L: Lane> Lane for Recorded<'_, L> {

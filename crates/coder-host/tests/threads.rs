@@ -646,6 +646,19 @@ async fn a_phone_runs_coder_from_a_host_threads_offer() {
         "{}",
         created[0].1.prompt
     );
+    // The phone's run tells the engine the person's engine request is
+    // done and its job is the task, never `claude` itself (#10084).
+    for needle in [
+        "The person asked for this to run on Claude Code.",
+        "if you are Claude Code, you are the engine they asked for",
+        "never start another coding engine's command line",
+    ] {
+        assert!(
+            created[0].1.prompt.contains(needle),
+            "{needle:?} missing from {}",
+            created[0].1.prompt
+        );
+    }
     let started = read(&link, &thread).await.unwrap();
     let coder = started.coder.as_ref().expect("the thread names its task");
     assert_eq!(coder.task, receipt.reference);

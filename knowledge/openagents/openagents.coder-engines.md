@@ -30,6 +30,7 @@ provenance:
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-30: an engine named in chat now reaches the computer from the phone too (#10081); checked against INVARIANTS.md."
+  - "2026-10-01: the engine that runs is told the request for it is done and works on the task itself (#10084); checked against INVARIANTS.md."
 ---
 
 ## Answer
@@ -39,6 +40,7 @@ Coder runs on your computer, with the access you granted that computer. Its host
 ## Details
 
 - A device sends a workspace label, a title, a prompt, and at most the engine you asked for. That engine only goes first among the ones the owner already allows; a device can't add an engine or choose the model or limits.
+- The engine that runs is told your request for it is already done, so it works on your task itself; it never starts another engine's app to do it. A message that only asks for a test delegation gets a small, harmless look at the project.
 - There's no model picker in the app yet.
 
 ## Sources
