@@ -1236,3 +1236,40 @@ One phone "compare the two essays" on `7cab5e2191` ran the product lookup
 past its budget (each Jev call tries TypeSafe's 402 first) and the model
 alone asked for the essays' text; the same question answered from the
 overviews on every other try.
+
+Release `0cd4b87152` (2026-10-01 UTC,
+[#10110](https://github.com/OpenAgentsInc/openagents/issues/10110)) keeps a
+slow Jev judgment from leaving a turn unrouted, and puts the Vercel AI
+Gateway first among Jev's doors at the owner's direction (the gateway routes
+Jev to TypeSafe itself). The judge asks the gateway, then OpenRouter, then
+TypeSafe direct last, and skips a door that answered 401 or 402 for five
+minutes. On a turn that asks for a first response the model's words wait for
+the judgment up to 6 s, with "We'll look that up for you." shown past 2.5 s,
+and an unrouted reply carries the fixed `first::UNROUTED_NOTE`. It contains
+#10109's chat model door (`c1f9d8d9d9`, Space Bunny Alpha first). It was
+built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/0cd4b87152` with `knowledge/` and
+`codebase-kb.gz` copied from `c1f9d8d9d9`, checked with `--check` as root
+with the chat environment sourced ("the configuration is safe to deploy"),
+and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`. The environment file and unit did not change,
+`coder-worker.service` and `/opt/coder-worker/current` (`0757355c1d`) were
+not touched, and `c1f9d8d9d9` stays in `releases/` for rollback. The log
+names:
+
+```text
+judge   doors https://ai-gateway.vercel.sh → https://openrouter.ai → https://api.typesafe.ai (jev-latest): first response and suggestions
+judge   door https://ai-gateway.vercel.sh under $AI_GATEWAY_API_KEY
+judge   door https://openrouter.ai under $OPENROUTER_API_KEY
+```
+
+From fresh keys with `openagents chat send --scratch --no-run --json`, every
+judgment was answered by the gateway (`judge answered by door
+https://ai-gateway.vercel.sh` in 354–899 ms), so TypeSafe's 402 was never
+reached. "What's new in the Gym?" took `gym.news` and answered from the
+Gym's records (4 cited, 8.2 s: Space Bunny missed its first words in 4 s and
+Gemini 2.5 Flash took it); "What is Jev?" was the bank's `meta.jev` in
+356 ms; "How do I connect a phone" was the product entry about the QR code
+(`kb:product`) on two of three tries, with the model winning the knowledge
+race on the third; "What's a plugin?" and "Write a haiku about rain" were
+the model's under the judged opener.
