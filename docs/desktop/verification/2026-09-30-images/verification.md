@@ -26,6 +26,15 @@ an attached image preserves the images and caption and explains: “Hosted chat
 accepts text only. Remove the images to send.” Removing the last image enables
 the existing text send. Suggestions use the same refusal.
 
+Later the same day [#10070](https://github.com/OpenAgentsInc/openagents/issues/10070)
+replaced that refusal: a send with images sends only its words to the router
+and keeps the images in the draft, bound to that message. A coding reply's
+Coder start (at once, or **Run Coder**) carries them; any other reply keeps
+them and says images go only to Coder. The refusal remains only on routes
+that carry words only (a running Coder task's chat, a computer's own thread),
+with the line "This message can't carry images. Remove them to send it;
+images go to Coder when it starts."
+
 ## Checks
 
 On macOS 26.4, M5 Max, Rust 1.97.1:

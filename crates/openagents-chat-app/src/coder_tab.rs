@@ -2009,9 +2009,14 @@ impl CoderTab {
         if prompt.is_empty() {
             return;
         }
-        // Every route the phone sends on carries text only: keep the
-        // images and the words rather than drop the images silently.
-        if let Some(reason) = self.images.hosted_send_refusal(&self.draft_key()) {
+        // A computer's own thread and a Coder task's chat carry words
+        // only: keep the images and the words rather than drop the images
+        // silently. A message to OpenAgents sends its words and binds the
+        // draft's images to it, for the Coder start its reply may lead to.
+        let key = self.draft_key();
+        let to_router =
+            self.threads.opened().is_none() && (self.talk.is_some() || self.open.is_none());
+        if !to_router && let Some(reason) = self.images.text_only_refusal(&key) {
             self.notice = Some(reason.into());
             return;
         }
@@ -2026,10 +2031,17 @@ impl CoderTab {
         // A basic conversation, open or new, needs no computer.
         let context = self.router_context(computers.as_deref());
         self.basic.set_context(context);
+        let request = uuid::Uuid::new_v4().simple().to_string();
         if let Some(id) = self.talk.clone() {
-            if self.basic.send(&id, prompt, unix_now()) {
+            if self
+                .basic
+                .send_tagged(&id, prompt, unix_now(), Some(request.clone()))
+            {
                 self.composers += 1;
-                self.notice = None;
+                self.notice = self
+                    .images
+                    .bind(&key, &request)
+                    .then(|| crate::attachments::HELD_FOR_CODER.into());
                 self.compose = None;
                 self.gym.notice = None;
             }
@@ -2037,9 +2049,17 @@ impl CoderTab {
         }
         // A new chat always goes to OpenAgents.
         let Some(open) = &self.open else {
-            if let Some(id) = self.basic.start(prompt, unix_now()) {
+            if let Some(id) = self
+                .basic
+                .start_tagged(prompt, unix_now(), Some(request.clone()))
+            {
                 self.composers += 1;
-                self.notice = None;
+                let talk = format!("talk:{id}");
+                self.images.rebind(&key, &talk);
+                self.notice = self
+                    .images
+                    .bind(&talk, &request)
+                    .then(|| crate::attachments::HELD_FOR_CODER.into());
                 self.talk_turns = TALK_TURNS;
                 self.talk = Some(id);
             }
@@ -2081,6 +2101,26 @@ impl CoderTab {
         };
         if self.command(action, prompt, emulate, computers) {
             self.composers += 1;
+        }
+    }
+
+    /// The replies to messages sent with images: a reply that leads to
+    /// Coder leaves them in the draft for **Run Coder**, which carries them;
+    /// any other keeps them there and says images go only to Coder
+    /// ([`crate::attachments::Drafts::settle`]).
+    fn settle_images(&mut self) {
+        for key in self.images.bound_chats() {
+            let Some(id) = key.strip_prefix("talk:") else {
+                continue;
+            };
+            let busy = self.basic.busy(id);
+            let lane = self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer);
+            let settled = self.images.settle(&key, self.basic.turns(id), busy, lane);
+            if settled == Some(crate::attachments::Settled::Kept)
+                && self.talk.as_deref() == Some(id)
+            {
+                self.notice = Some(crate::attachments::ONLY_TO_CODER.into());
+            }
         }
     }
 
@@ -2239,6 +2279,7 @@ impl CoderTab {
             self.remember(computers, chats);
         }
         self.basic.settle(unix_now());
+        self.settle_images();
         self.poll_threads(computers);
         self.poll_cli();
         self.gym.begin();

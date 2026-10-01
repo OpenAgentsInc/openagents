@@ -711,13 +711,8 @@ impl crate::session::Session {
             }
             Action::Gym { .. } => return Effect::None,
         };
-        if let Some(reason) = self
-            .selected
-            .as_ref()
-            .and_then(|chat| self.images.hosted_send_refusal(chat))
-        {
-            return Effect::Notice(reason.into());
-        }
+        // Only the words go to the router; the draft's images stay, bound
+        // to this message (`Session::submit`).
         let mut requests = vec![];
         if let Some(id) = suggestion_id
             && let Some(chat) = &self.selected

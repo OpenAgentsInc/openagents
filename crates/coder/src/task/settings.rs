@@ -553,6 +553,35 @@ impl Settings {
         Ok(())
     }
 
+    /// Let `provider` run or not, as a settings screen's toggle does:
+    /// turned on, it is added after the providers already allowed, with
+    /// its default model; turned off, every entry naming it is removed.
+    ///
+    /// # Errors
+    /// The change is not valid ([`Coder::validate`]): it would leave no
+    /// provider, or the provider has no default model (OpenCode names its
+    /// own). The settings are unchanged then.
+    pub fn allow(&mut self, provider: Provider, on: bool) -> Result<(), String> {
+        let mut coder = self.coder.clone();
+        if on {
+            if coder
+                .providers
+                .iter()
+                .any(|choice| choice.provider == provider)
+            {
+                return Ok(());
+            }
+            let choice = Choice::new(provider);
+            choice.route()?;
+            coder.providers.push(choice);
+        } else {
+            coder.providers.retain(|choice| choice.provider != provider);
+        }
+        coder.validate()?;
+        self.coder = coder;
+        Ok(())
+    }
+
     /// Return `key` to its default.
     ///
     /// # Errors
@@ -587,6 +616,34 @@ fn expand_home(text: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A settings screen's toggle adds a provider last, removes every
+    /// entry of one, and refuses to leave none or to add OpenCode with no
+    /// model, changing nothing then.
+    #[test]
+    fn a_toggle_allows_and_removes_a_provider_and_keeps_the_settings_valid() {
+        let mut settings = Settings::default();
+        settings.allow(Provider::Grok, true).unwrap();
+        assert_eq!(
+            settings.coder.provider_list(),
+            vec![Provider::Codex, Provider::Claude, Provider::Grok]
+        );
+        settings.allow(Provider::Grok, true).unwrap();
+        assert_eq!(settings.coder.providers.len(), 3);
+        settings
+            .set(
+                "coder.providers",
+                "codex:gpt-6-mini,claude,codex",
+                Path::new("/"),
+            )
+            .unwrap();
+        settings.allow(Provider::Codex, false).unwrap();
+        assert_eq!(settings.coder.provider_list(), vec![Provider::Claude]);
+        let before = settings.clone();
+        assert!(settings.allow(Provider::Claude, false).is_err());
+        assert!(settings.allow(Provider::OpenCode, true).is_err());
+        assert_eq!(settings, before);
+    }
 
     #[test]
     fn no_file_and_an_empty_section_are_the_defaults() {

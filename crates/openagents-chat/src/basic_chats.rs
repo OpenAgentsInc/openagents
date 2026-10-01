@@ -544,6 +544,17 @@ impl BasicChats {
 
     /// Start a conversation with `text` and ask for the reply.
     pub fn start(&mut self, text: &str, now: u64) -> Option<String> {
+        self.start_tagged(text, now, None)
+    }
+
+    /// [`BasicChats::start`], its first message carrying the local command
+    /// ID `request`, as [`BasicChats::send_tagged`].
+    pub fn start_tagged(
+        &mut self,
+        text: &str,
+        now: u64,
+        request: Option<String>,
+    ) -> Option<String> {
         let text = text.trim();
         if self.corrupt_index || text.is_empty() {
             return None;
@@ -584,7 +595,7 @@ impl BasicChats {
             }
         }
         self.turns.insert(id.clone(), vec![]);
-        self.send(&id, text, now);
+        self.send_tagged(&id, text, now, request);
         Some(id)
     }
 

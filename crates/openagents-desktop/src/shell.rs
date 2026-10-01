@@ -2816,7 +2816,7 @@ mod image_fixtures {
     }
 
     #[test]
-    fn dropped_images_preview_remove_and_refuse_unsupported_send_without_losing_text() {
+    fn dropped_images_preview_remove_and_stay_in_the_draft_when_the_words_send() {
         let (mut app, now) = super::tests::chat_fixture(0);
         let create = app.chat.as_mut().unwrap().new_chat();
         app.send(vec![create], now);
@@ -2861,12 +2861,13 @@ mod image_fixtures {
             },
             now,
         );
-        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this caption");
-        assert_eq!(app.chat.as_ref().unwrap().state().unwrap().total, 0);
+        // Only the words went; the images stay in the draft, bound to the
+        // message, for Coder (#10070).
+        assert_eq!(app.chat.as_ref().unwrap().images().len(), 4);
         assert!(
             serde_json::to_string(app.view().view())
                 .unwrap()
-                .contains("text only")
+                .contains(openagents_chat_app::attachments::HELD_FOR_CODER)
         );
         for (width, height, scale, name) in [
             (1200.0, 840.0, 2.0, "default"),
@@ -2909,7 +2910,6 @@ mod image_fixtures {
             now,
         );
         assert_eq!(app.chat.as_ref().unwrap().images().len(), 3);
-        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this caption");
     }
 }
 

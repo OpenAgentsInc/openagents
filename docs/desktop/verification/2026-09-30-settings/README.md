@@ -34,6 +34,14 @@ Settings has six pages, chosen from a row of chips at the top:
   (`chat_list::archived`), each with **Restore**, which sends the shared
   `Command::Restore` without opening the chat.
 
+Later the same day [#10070](https://github.com/OpenAgentsInc/openagents/issues/10070)
+added a seventh page, **Coder**: **Start at once** or **Ask first**
+(`coder.start`) and a switch for each agent Coder may run (`coder.providers`),
+changed only through `coder::task::settings` (`Settings::allow` and `save`,
+which validate). A file that loader refuses shows as unreadable and is not
+written. The chat reads `coder.start` from the same file for each coding
+reply, and the Coder lane reads the file again at each start.
+
 The preferences are shared Rust (`openagents_chat_app::preferences`) and live
 in the `app` section of `~/.openagents/settings.json`, beside Coder's
 settings. They're saved through `coder::task::settings`, which keeps the

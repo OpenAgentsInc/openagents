@@ -124,15 +124,15 @@ impl Session {
         self.poll.max(now + Duration::from_millis(100))
     }
     /// Bind a send to its exact bytes until a durable host acknowledgment arrives.
+    /// Only the words go to the hosted router; images in the draft stay on
+    /// this device, bound to this message for the Coder start its reply may
+    /// lead to ([`crate::attachments::Drafts::bind`]).
     pub fn submit(&mut self, request: String, text: String) -> Option<(u64, Command)> {
         let chat = self.selected.clone()?;
-        if let Some(reason) = self.images.hosted_send_refusal(&chat) {
-            self.error = Some(reason.into());
-            return None;
-        }
         if self.busy() || text.trim().is_empty() {
             return None;
         }
+        self.images.bind(&chat, &request);
         let send = PendingSend {
             chat: chat.clone(),
             request: request.clone(),
@@ -177,7 +177,7 @@ impl Session {
         }
         // The host's handoff starts Coder from the conversation's text; it
         // carries no images, so it never drops the draft's silently.
-        if let Some(reason) = self.images.hosted_send_refusal(&chat) {
+        if let Some(reason) = self.images.text_only_refusal(&chat) {
             self.error = Some(reason.into());
             return None;
         }
@@ -499,26 +499,50 @@ mod tests {
         assert_eq!(crate::chat_list::search(&session.summaries, "")[0].id, id);
     }
 
+    /// A send whose draft holds images sends only its words, and binds the
+    /// images, still in the draft, to that message; the host's Run Coder
+    /// handoff, which carries words only, still refuses them.
     #[test]
-    fn image_drafts_cannot_be_silently_dropped_by_a_text_send() {
+    fn a_send_with_images_sends_only_its_words_and_binds_the_images() {
         let mut session = Session::new(Instant::now());
         session.select("a");
         let image = crate::attachments::Image::pixels(1, 1, vec![0; 4]).unwrap();
-        let id = image.id.clone();
         session.images.add("a", image).unwrap();
-        assert!(session.submit("one".into(), "Draft text".into()).is_none());
-        assert!(session.error.as_deref().unwrap().contains("text only"));
-        assert!(session.send.is_empty());
+        let (_, command) = session
+            .submit("one".into(), "fix this layout bug".into())
+            .unwrap();
+        assert_eq!(
+            command,
+            Command::Send {
+                chat: "a".into(),
+                request: "one".into(),
+                text: "fix this layout bug".into(),
+            }
+        );
+        assert!(session.error.is_none());
         assert_eq!(session.images.get("a").len(), 1);
+        assert_eq!(session.images.bound("a"), Some("one"));
+        // Another chat's send binds nothing.
         session.select("b");
         assert!(session.submit("two".into(), "Other chat".into()).is_some());
+        assert_eq!(session.images.bound("b"), None);
+        // The host's handoff carries words only: it refuses the images.
         session.select("a");
-        session.images.remove("a", &id);
-        assert!(
-            session
-                .submit("three".into(), "Draft text".into())
-                .is_some()
+        session.send.clear();
+        session.states.insert(
+            "a".into(),
+            Snapshot {
+                chat: Some("a".into()),
+                ready_computer: Some("Studio Mac".into()),
+                ..Snapshot::default()
+            },
         );
+        assert!(session.run_coder().is_none());
+        assert_eq!(
+            session.error.as_deref(),
+            Some(crate::attachments::TEXT_ONLY_ROUTE)
+        );
+        assert_eq!(session.images.get("a").len(), 1);
     }
     #[test]
     fn late_acknowledgment_and_archive_stay_bound_to_their_conversation() {

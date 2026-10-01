@@ -1,12 +1,16 @@
 //! Settings (#10021, audit CDP-22): appearance, text size, keyboard
-//! shortcuts, notifications, phones and computers, and archived chats.
+//! shortcuts, notifications, Coder, phones and computers, and archived
+//! chats.
 //!
 //! What a setting means is shared Rust
 //! ([`openagents_chat_app::preferences`], the shortcut list in
 //! [`openagents_chat_app::commands::bindings`], and the archive list in
 //! [`openagents_chat_app::chat_list::archived`]); this module only shows
 //! them. The window keeps the preferences in the settings file's `app`
-//! section and applies each change at once. Phones and computers is the
+//! section and applies each change at once. Coder's page (#10070) shows
+//! and changes the file's `coder` section, whose meaning and validation
+//! are `coder::task::settings`'s: the window reads it into [`CoderChoices`]
+//! and writes a change only through that loader. Phones and computers is the
 //! existing pairing screen ([`crate::screens`]), so a code shown there is
 //! cancelled when the person leaves it for another page, as when they leave
 //! the standalone screen (`DSK-01`). The app is dark only.
@@ -33,16 +37,18 @@ pub enum Pane {
     TextSize,
     Shortcuts,
     Notifications,
+    Coder,
     Computers,
     Archived,
 }
 
 impl Pane {
-    pub const ALL: [Pane; 6] = [
+    pub const ALL: [Pane; 7] = [
         Pane::Appearance,
         Pane::TextSize,
         Pane::Shortcuts,
         Pane::Notifications,
+        Pane::Coder,
         Pane::Computers,
         Pane::Archived,
     ];
@@ -53,6 +59,7 @@ impl Pane {
             Pane::TextSize => "Text size",
             Pane::Shortcuts => "Keyboard shortcuts",
             Pane::Notifications => "Notifications",
+            Pane::Coder => "Coder",
             Pane::Computers => "Phones and computers",
             Pane::Archived => "Archived chats",
         }
@@ -64,6 +71,7 @@ impl Pane {
             Pane::TextSize => "text-size",
             Pane::Shortcuts => "shortcuts",
             Pane::Notifications => "notifications",
+            Pane::Coder => "coder",
             Pane::Computers => "computers",
             Pane::Archived => "archived",
         }
@@ -75,6 +83,7 @@ impl Pane {
             Pane::TextSize => Glyph::Edit,
             Pane::Shortcuts => Glyph::Terminal,
             Pane::Notifications => Glyph::Flag,
+            Pane::Coder => Glyph::Key,
             Pane::Computers => Glyph::Computer,
             Pane::Archived => Glyph::Archive,
         }
@@ -97,6 +106,16 @@ pub enum Action {
     Notifications {
         on: bool,
     },
+    /// Coder's `coder.start`: wait for **Run Coder**, or start at once.
+    CoderStart {
+        ask_first: bool,
+    },
+    /// Let the agent with this settings name (`codex`, `claude`, …) run
+    /// Coder here, or not.
+    CoderAgent {
+        agent: String,
+        on: bool,
+    },
     /// Restore the archived chat with this ID.
     Restore {
         chat: String,
@@ -110,7 +129,10 @@ impl Action {
             Action::TextSize { size } => Some(Change::TextSize(*size)),
             Action::ReduceMotion { on } => Some(Change::ReduceMotion(*on)),
             Action::Notifications { on } => Some(Change::Notifications(*on)),
-            Action::Pane { .. } | Action::Restore { .. } => None,
+            Action::Pane { .. }
+            | Action::Restore { .. }
+            | Action::CoderStart { .. }
+            | Action::CoderAgent { .. } => None,
         }
     }
 }
@@ -120,6 +142,37 @@ impl Action {
 pub struct Archived {
     pub id: String,
     pub title: String,
+}
+
+/// One agent Coder can run, as Coder's page shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CoderAgent {
+    /// The name the settings file uses (`codex`, `claude`, …).
+    pub key: String,
+    /// The name a person reads.
+    pub name: String,
+    /// It may run.
+    pub on: bool,
+    /// Why it can't be turned on here, when it can't.
+    pub blocked: Option<String>,
+}
+
+/// Coder's own settings on this computer, as its page shows them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum CoderChoices {
+    /// Not read yet, or not on this computer (a capture or a preview).
+    #[default]
+    Unknown,
+    /// The file can't be read: a run refuses and a coding reply only
+    /// offers, so nothing here changes it.
+    Unreadable(String),
+    Read {
+        /// `coder.start: ask_first`.
+        ask_first: bool,
+        /// Every agent: those allowed first, in the order Coder tries
+        /// them, then the rest.
+        agents: Vec<CoderAgent>,
+    },
 }
 
 /// Settings' presentation state and the preferences it shows.
@@ -133,6 +186,8 @@ pub struct Settings {
     pub restoring: std::collections::BTreeSet<String>,
     /// A line about the last save, when it failed.
     pub notice: Option<String>,
+    /// Coder's own settings ([`CoderChoices`]).
+    pub coder: CoderChoices,
     /// The settings file the window keeps them in; none in a capture or a
     /// test, where they live only in memory.
     pub file: Option<std::path::PathBuf>,
@@ -389,6 +444,96 @@ fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
     ]
 }
 
+fn coder(settings: &Settings) -> Vec<Node<Intent>> {
+    let mut rows = vec![title("settings-coder-title", "Coder on this computer")];
+    let (ask_first, agents) = match &settings.coder {
+        CoderChoices::Unknown => {
+            rows.push(text(
+                "settings-coder-unknown",
+                "Coder's settings show here when OpenAgents runs on your computer.",
+                TextRole::Status,
+            ));
+            return rows;
+        }
+        CoderChoices::Unreadable(why) => {
+            rows.push(text(
+                "settings-coder-unreadable",
+                format!(
+                    "Coder's settings can't be read, so a coding reply only offers Coder. Fix or remove the file to change them here: {why}"
+                ),
+                TextRole::Status,
+            ));
+            return rows;
+        }
+        CoderChoices::Read { ask_first, agents } => (*ask_first, agents),
+    };
+    rows.push(title(
+        "settings-coder-start-title",
+        "When a reply is coding work",
+    ));
+    rows.push(stack(
+        "settings-coder-start",
+        Axis::Wrap,
+        Space::Sm,
+        [(false, "Start at once"), (true, "Ask first")]
+            .into_iter()
+            .map(|(asks, label)| {
+                chip(button(
+                    &format!(
+                        "settings-coder-{}",
+                        if asks { "ask-first" } else { "at-once" }
+                    ),
+                    label,
+                    Action::CoderStart { ask_first: asks },
+                    (asks == ask_first).then_some(Glyph::Check),
+                    asks == ask_first,
+                    true,
+                ))
+            })
+            .collect(),
+    ));
+    rows.push(text(
+        "settings-coder-start-line",
+        if ask_first {
+            "The reply offers Run Coder, and Coder starts when you choose it."
+        } else {
+            "Coder starts on this computer as soon as the reply says the message is coding work."
+        },
+        TextRole::Status,
+    ));
+    rows.push(title("settings-coder-agents-title", "Agents Coder may run"));
+    let allowed = agents.iter().filter(|agent| agent.on).count();
+    for agent in agents {
+        let only = agent.on && allowed == 1;
+        let mut toggle = toggle(
+            &format!("settings-coder-agent-{}", agent.key),
+            &agent.name,
+            agent.on,
+            Action::CoderAgent {
+                agent: agent.key.clone(),
+                on: !agent.on,
+            },
+        );
+        if let Element::Button { enabled, .. } = &mut toggle.element {
+            *enabled = !only && (agent.on || agent.blocked.is_none());
+        }
+        rows.push(toggle);
+        if let Some(why) = agent.blocked.as_ref().filter(|_| !agent.on) {
+            rows.push(text(
+                &format!("settings-coder-agent-{}-line", agent.key),
+                why.clone(),
+                TextRole::Status,
+            ));
+        }
+    }
+    rows.push(text(
+        "settings-coder-agents-line",
+        "Coder tries the ones that are on from the top, each only when it's signed in on this computer and has room. One turned on goes last. At least one stays on.",
+        TextRole::Status,
+    ));
+    rows
+}
+
 fn archived(settings: &Settings) -> Vec<Node<Intent>> {
     let mut rows = vec![title("settings-archived-title", "Archived chats")];
     if settings.archived.is_empty() {
@@ -507,6 +652,7 @@ pub fn view(
         Pane::TextSize => text_size(settings),
         Pane::Shortcuts => shortcuts(),
         Pane::Notifications => notifications(settings),
+        Pane::Coder => coder(settings),
         Pane::Computers => vec![crate::screens::root(model, now)],
         Pane::Archived => archived(settings),
     };

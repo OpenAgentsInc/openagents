@@ -2651,20 +2651,31 @@ fn attached_images_show_as_shared_image_nodes_and_are_not_dropped() {
             .iter()
             .any(|text| text.contains("PNG or JPEG"))
     );
-    // A text-only route keeps the draft rather than drop the image.
+    // A send sends only the words; the image stays in the draft, bound to
+    // that message, and a reply that is not coding keeps it there.
     let token = composer_of(&screen)["token"].as_str().unwrap().to_owned();
     fixture
         .coder
         .submit(&token, "Look at this", None, &mut fixture.chats);
     let screen = fixture.render();
-    assert_eq!(composer_of(&screen)["token"], token.as_str());
-    assert!(texts(&screen).iter().any(|text| text.contains("text only")));
-    assert!(hand.asked().is_empty());
+    assert_eq!(hand.asked(), vec![vec!["Look at this".to_owned()]]);
+    assert!(
+        texts(&screen)
+            .iter()
+            .any(|text| text == openagents_chat_app::attachments::HELD_FOR_CODER)
+    );
+    assert!(fixture.coder.image(&resource).is_some());
+    hand.say("It's a photo of a cat.", true);
+    let screen = fixture.render();
+    assert!(
+        texts(&screen)
+            .iter()
+            .any(|text| text == openagents_chat_app::attachments::ONLY_TO_CODER)
+    );
+    assert!(fixture.coder.image(&resource).is_some());
     let id = resource.trim_start_matches("image:");
     fixture.tap(&format!("image-remove-{id}"));
     assert!(fixture.coder.image(&resource).is_none());
-    fixture.say("Look at this");
-    assert_eq!(hand.asked().len(), 1);
 }
 
 /// A finished chat on the phone shows the change at its exact revisions
@@ -2896,19 +2907,6 @@ fn run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost() {
     fixture.coder.attach_image("Settings.png", bytes.clone());
     let chat = fixture.render();
     assert_eq!(image_surfaces(&chat), 1);
-    // The hosted conversation still takes text only.
-    let token = composer_of(&chat)["token"].as_str().unwrap().to_owned();
-    let asked = hand.asked().len();
-    fixture
-        .coder
-        .submit(&token, "And the header", None, &mut fixture.chats);
-    assert_eq!(hand.asked().len(), asked);
-    assert!(
-        texts(&fixture.render())
-            .iter()
-            .any(|t| t.contains("text only"))
-    );
-
     // A computer that refuses: no task, and the draft keeps its image.
     delivery.lock().unwrap().refuse = true;
     let chat = fixture.tap("coder-run");
@@ -2951,6 +2949,73 @@ fn run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost() {
     // answer starts a second task until the client keeps its submissions
     // (G05). The draft let its images go only on the accepted start.
     assert_eq!(delivery.created.len(), 1);
+}
+
+/// One send with words and a screenshot (#10070): only the words reach
+/// the router; the screenshot stays on the phone, bound to the message, and
+/// when the reply offers Coder, Run Coder carries its exact bytes to the
+/// computer.
+#[test]
+fn one_send_with_words_and_a_screenshot_runs_coder_with_its_bytes() {
+    let delivery = std::sync::Arc::new(std::sync::Mutex::new(Delivery::default()));
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(Imaging {
+        inner: Synthetic::fixture(Platform::Phone, now),
+        delivery: delivery.clone(),
+    })
+    .answered_by(&hand);
+    fixture.list();
+    fixture.tap("coder-back");
+    let pixels: Vec<u8> = (0..48u32 * 32 * 4).map(|i| (i % 241) as u8).collect();
+    let image = openagents_chat_app::attachments::Image::pixels(48, 32, pixels).unwrap();
+    let bytes = image.bytes.as_ref().clone();
+    fixture.coder.attach_image("Layout.png", bytes.clone());
+    let chat = fixture.say("fix this layout bug");
+    assert_eq!(hand.asked(), vec![vec!["fix this layout bug".to_owned()]]);
+    assert_eq!(
+        image_surfaces(&chat),
+        1,
+        "the screenshot stays on the phone"
+    );
+    assert!(delivery.lock().unwrap().chunks == 0);
+    hand.judge(crate::basic_coder::Lane::Computer);
+    hand.say("That needs a computer.", true);
+    let chat = fixture.render();
+    assert!(
+        !texts(&chat)
+            .iter()
+            .any(|t| t == openagents_chat_app::attachments::ONLY_TO_CODER)
+    );
+    assert_eq!(image_surfaces(&chat), 1);
+    fixture.tap("coder-run");
+    assert!(fixture.coder.open_task().is_some());
+    let delivery = delivery.lock().unwrap();
+    let [images] = delivery.created.as_slice() else {
+        panic!("one task with images")
+    };
+    let [(reference, held)] = images.as_slice() else {
+        panic!("one image")
+    };
+    assert_eq!(held, &bytes);
+    assert_eq!(reference.digest, coder_host::access::media::digest(&bytes));
+}
+
+/// A computer's own thread and a Coder task's chat carry words only: a
+/// send there with images keeps the draft and says why.
+#[test]
+fn a_words_only_route_keeps_the_images_and_says_why() {
+    let mut drafts = openagents_chat_app::attachments::Drafts::default();
+    drafts
+        .add(
+            "task:a:b",
+            openagents_chat_app::attachments::Image::pixels(1, 1, vec![0; 4]).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        drafts.text_only_refusal("task:a:b"),
+        Some(openagents_chat_app::attachments::TEXT_ONLY_ROUTE)
+    );
+    assert!(!openagents_chat_app::attachments::TEXT_ONLY_ROUTE.contains("Hosted chat"));
 }
 
 /// An image that isn't PNG or JPEG, or is too large, is refused before

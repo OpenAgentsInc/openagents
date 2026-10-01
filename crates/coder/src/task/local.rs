@@ -322,6 +322,15 @@ impl Local {
         Local::new(store).with_settings_result(settings::load().map(|s| s.coder))
     }
 
+    /// Read the person's settings from [`settings::path`] again, so a
+    /// change made since (the desktop's Settings page) applies to the next
+    /// start.
+    pub fn reload_settings(&mut self) {
+        self.settings = settings::load()
+            .map(|s| s.coder)
+            .and_then(|coder| coder.validate().map(|()| coder));
+    }
+
     /// Run with `settings` instead of the defaults.
     #[must_use]
     pub fn with_settings(self, settings: settings::Coder) -> Self {

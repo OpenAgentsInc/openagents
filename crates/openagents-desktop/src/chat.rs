@@ -88,7 +88,7 @@ pub struct Panel {
     /// Whether a coding reply waits for **Run Coder** instead of starting
     /// Coder at once: the settings' `coder.start` (#10036), read when a
     /// reply is judged coding work.
-    coder_asks_first: fn() -> bool,
+    coder_asks_first: Box<dyn Fn() -> bool>,
     task_editor: BTreeMap<String, u64>,
     born: Instant,
     pub viewport: (f32, f32, f32),
@@ -188,9 +188,9 @@ impl Panel {
             sent: Default::default(),
             coder_projects: vec![],
             coder_asks_first: if cfg!(test) {
-                || false
+                Box::new(|| false)
             } else {
-                coder_asks_first
+                Box::new(coder_asks_first)
             },
             task_editor: BTreeMap::new(),
             born: now,
@@ -308,10 +308,9 @@ impl Panel {
             crate::chat_images::Result::Image(image) => {
                 let result = self.session.images.add(&chat, image);
                 if self.session.selected.as_deref() == Some(&chat) {
-                    self.notice =
-                        Some(result.err().unwrap_or_else(|| {
-                            "Image added. Hosted chat accepts text only.".into()
-                        }));
+                    self.notice = Some(result.err().unwrap_or_else(|| {
+                        "Image added. Images go only to Coder, never to the hosted chat.".into()
+                    }));
                 }
             }
             crate::chat_images::Result::Text(text) => {
@@ -679,8 +678,19 @@ impl Panel {
     }
     /// Decide whether a coding reply asks first with `asks` instead of
     /// the settings file.
-    pub fn set_coder_asks_first(&mut self, asks: fn() -> bool) {
-        self.coder_asks_first = asks;
+    pub fn set_coder_asks_first(&mut self, asks: impl Fn() -> bool + 'static) {
+        self.coder_asks_first = Box::new(asks);
+    }
+    /// Read `coder.start` from `file`, the settings file the window keeps
+    /// (its Settings page changes it), each time a reply is judged coding
+    /// work. A file Coder's loader refuses asks first, as
+    /// `coder::task::local::Local::asks_first` does.
+    pub fn read_coder_start_from(&mut self, file: std::path::PathBuf) {
+        self.set_coder_asks_first(move || {
+            coder::task::settings::Settings::load(&file).map_or(true, |settings| {
+                settings.coder.start == coder::task::settings::Start::AskFirst
+            })
+        });
     }
     /// Start Coder on this computer for `chat`, as `openagents chat` does.
     fn start_run(&mut self, chat: &str) {
@@ -989,7 +999,7 @@ impl Panel {
             TaskAction::Send | TaskAction::Queue | TaskAction::Steer
         );
         let submission = if submitted {
-            if let Some(reason) = self.session.images.hosted_send_refusal(&chat) {
+            if let Some(reason) = self.session.images.text_only_refusal(&chat) {
                 self.notice = Some(reason.into());
                 return None;
             }
@@ -1307,6 +1317,21 @@ impl Panel {
         if snapshot.busy {
             return;
         }
+        // Images sent with a message wait for its reply: a coding reply
+        // leaves them in the draft for the start below or **Run Coder**,
+        // which carries them; any other keeps them and says so.
+        if self.session.images.bound(&chat).is_some() {
+            let computer = snapshot.computer;
+            let turns = snapshot.turns.clone();
+            if self.session.images.settle(&chat, &turns, false, computer)
+                == Some(openagents_chat_app::attachments::Settled::Kept)
+            {
+                self.notice = Some(openagents_chat_app::attachments::ONLY_TO_CODER.into());
+            }
+        }
+        let Some(snapshot) = self.session.state() else {
+            return;
+        };
         let sent: Vec<String> = self
             .sent
             .iter()
@@ -1633,18 +1658,20 @@ impl Panel {
                 if self.run().is_some() {
                     return self.run_action(RunAction::Send, view);
                 }
-                if let Some(reason) = self.session.images.hosted_send_refusal(&id) {
-                    self.notice = Some(reason.into());
-                    return None;
-                }
                 let field = self.field()?;
                 let stamp = field.draft.stamp().ok()?;
                 let submission = field.draft.submission(view, &stamp, None).ok()?;
                 let id = self.session.selected.clone()?;
                 let send_id = uuid::Uuid::new_v4().simple().to_string();
+                // Only the words go to the router; the draft's images stay
+                // here, bound to this message, for the Coder start its
+                // reply may lead to.
                 let command = self
                     .session
                     .submit(send_id.clone(), submission.text.clone())?;
+                if self.session.images.bound(&id) == Some(send_id.as_str()) {
+                    self.notice = Some(openagents_chat_app::attachments::HELD_FOR_CODER.into());
+                }
                 self.sent.insert((id.clone(), send_id.clone()));
                 self.submissions.insert(send_id, (id, submission));
                 Some(request(command))
@@ -4164,6 +4191,36 @@ mod start_setting_tests {
         assert!(asks.coder_run(&chat).is_some());
     }
 
+    /// The window's settings file decides `coder.start` for the next coding
+    /// reply (#10070): Settings writes it, and the chat reads it each time.
+    #[test]
+    fn the_start_setting_in_the_windows_file_applies_to_the_next_reply() {
+        use coder::task::settings::{Settings, Start};
+        let home = tempfile::tempdir().unwrap();
+        let file = home.path().join("settings.json");
+        let chat = "c".repeat(32);
+        let reply = |file: &std::path::Path| {
+            let mut panel = replied(|| true);
+            panel.runs.clear();
+            panel.read_coder_start_from(file.to_path_buf());
+            panel.sent.insert((chat.clone(), "r1".into()));
+            panel.run_if_coding();
+            panel.coder_run(&chat).is_some()
+        };
+        // No file: the default, at once.
+        assert!(reply(&file));
+        let mut settings = Settings::default();
+        settings.coder.start = Start::AskFirst;
+        settings.save(&file).unwrap();
+        assert!(!reply(&file));
+        settings.coder.start = Start::AtOnce;
+        settings.save(&file).unwrap();
+        assert!(reply(&file));
+        // A file the loader refuses asks first.
+        std::fs::write(&file, "not the settings").unwrap();
+        assert!(!reply(&file));
+    }
+
     /// The next Coder run request the panel sends, answering reads.
     fn next_run(panel: &mut Panel) -> (String, u64, coder_run::Request) {
         for step in 0..40 {
@@ -4194,7 +4251,7 @@ mod start_setting_tests {
         let image = openagents_chat_app::attachments::Image::pixels(5, 4, vec![77; 80]).unwrap();
         let bytes = image.bytes.as_ref().clone();
         panel.session.images.add(&chat, image).unwrap();
-        assert!(panel.session.images.hosted_send_refusal(&chat).is_some());
+        assert!(panel.session.images.text_only_refusal(&chat).is_some());
         panel.start_run(&chat);
         let (started, ticket, request) = next_run(&mut panel);
         assert_eq!(started, chat);
@@ -4229,6 +4286,146 @@ mod start_setting_tests {
             }),
         );
         assert!(panel.session.images.get(&chat).is_empty());
+    }
+
+    /// A chat with no turns yet, a draft holding a PNG, and the words typed;
+    /// Send pressed. Returns the panel, the image's bytes, and the send's
+    /// request ID and ticket.
+    fn sent_with_a_screenshot(asks_first: fn() -> bool) -> (Panel, Vec<u8>, String, u64) {
+        let now = Instant::now();
+        let chat = "c".repeat(32);
+        let mut panel = Panel::new(now);
+        panel.set_coder_asks_first(asks_first);
+        panel.session.states.insert(
+            chat.clone(),
+            Snapshot {
+                chat: Some(chat.clone()),
+                ..Default::default()
+            },
+        );
+        panel.session.select(&chat);
+        panel.selected_changed(None);
+        let pixels: Vec<u8> = (0..32u32 * 24 * 4).map(|i| (i % 251) as u8).collect();
+        let image = openagents_chat_app::attachments::Image::pixels(32, 24, pixels).unwrap();
+        let bytes = image.bytes.as_ref().clone();
+        panel.session.images.add(&chat, image).unwrap();
+        let view = rust_native::View::new("send-images", 1, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        panel.input(TextInput::Commit("fix this layout bug"), now);
+        let Some(Request::Chat { ticket, command }) = panel.action(Action::Send, &view, now) else {
+            panic!("a send")
+        };
+        // Only the words go to the hosted router.
+        let Command::Send {
+            chat: to,
+            request,
+            text,
+        } = command
+        else {
+            panic!("{command:?}")
+        };
+        assert_eq!(
+            (to.as_str(), text.as_str()),
+            (chat.as_str(), "fix this layout bug")
+        );
+        assert_eq!(
+            panel.notice(),
+            Some(openagents_chat_app::attachments::HELD_FOR_CODER)
+        );
+        assert_eq!(panel.session.images.get(&chat).len(), 1);
+        assert_eq!(panel.session.images.bound(&chat), Some(request.as_str()));
+        (panel, bytes, request, ticket)
+    }
+
+    /// The router's reply to the message `request`, offering Coder or not.
+    fn answered(panel: &mut Panel, request: &str, ticket: u64, coding: bool) {
+        use openagents_chat::router::{Meta, Offer};
+        let chat = "c".repeat(32);
+        let mut user = Turn::user("fix this layout bug");
+        user.request = Some(request.into());
+        let meta = coding.then(|| Meta {
+            offers: vec![Offer::RunCoder],
+            ..Meta::default()
+        });
+        let snapshot = Snapshot {
+            chat: Some(chat.clone()),
+            turns: vec![user, Turn::assistant("On it.", meta)],
+            ..Default::default()
+        };
+        panel.session.states.insert(chat, snapshot.clone());
+        panel.outcome(ticket, Ok(snapshot));
+    }
+
+    /// One send with words and a screenshot (#10070): the words go to the
+    /// router, and its coding reply starts Coder at once on this computer
+    /// with the screenshot's exact bytes; an accepted start lets the
+    /// draft's image go.
+    #[test]
+    fn one_send_with_words_and_a_screenshot_starts_coder_with_its_bytes() {
+        let chat = "c".repeat(32);
+        let (mut panel, bytes, request, ticket) = sent_with_a_screenshot(|| false);
+        answered(&mut panel, &request, ticket, true);
+        let (started, ticket, run) = next_run(&mut panel);
+        assert_eq!(started, chat);
+        let coder_run::Request::Start { images, prompt, .. } = &run else {
+            panic!("{run:?}")
+        };
+        assert!(prompt.contains("fix this layout bug"), "{prompt}");
+        assert_eq!(images.len(), 1);
+        assert_eq!(*images[0].bytes, bytes);
+        assert_eq!(
+            images[0].reference.digest,
+            coder_access::media::digest(&bytes)
+        );
+        panel.run_outcome(
+            chat.clone(),
+            ticket,
+            Ok(coder_run::Answer::Started {
+                task: "b".repeat(64),
+                project: "openagents".into(),
+                checkout: "/w/openagents".into(),
+            }),
+        );
+        assert!(panel.session.images.get(&chat).is_empty());
+    }
+
+    /// A reply that does not lead to Coder keeps the images in the draft
+    /// and says images go only to Coder; nothing starts.
+    #[test]
+    fn a_reply_that_is_not_coding_keeps_the_images() {
+        let chat = "c".repeat(32);
+        let (mut panel, _, request, ticket) = sent_with_a_screenshot(|| false);
+        answered(&mut panel, &request, ticket, false);
+        assert!(panel.coder_run(&chat).is_none());
+        assert_eq!(panel.session.images.get(&chat).len(), 1);
+        assert_eq!(panel.session.images.bound(&chat), None);
+        assert_eq!(
+            panel.notice(),
+            Some(openagents_chat_app::attachments::ONLY_TO_CODER)
+        );
+    }
+
+    /// `ask_first`: the coding reply waits for **Run Coder**, which carries
+    /// the images sent with the message.
+    #[test]
+    fn ask_first_and_run_coder_carry_the_images_sent_with_the_message() {
+        let chat = "c".repeat(32);
+        let (mut panel, bytes, request, ticket) = sent_with_a_screenshot(|| true);
+        answered(&mut panel, &request, ticket, true);
+        assert!(panel.coder_run(&chat).is_none());
+        assert_eq!(panel.session.images.get(&chat).len(), 1);
+        assert_ne!(
+            panel.notice(),
+            Some(openagents_chat_app::attachments::ONLY_TO_CODER)
+        );
+        panel.start_run(&chat);
+        let (_, _, run) = next_run(&mut panel);
+        let coder_run::Request::Start { images, .. } = &run else {
+            panic!("{run:?}")
+        };
+        assert_eq!(*images[0].bytes, bytes);
     }
 }
 

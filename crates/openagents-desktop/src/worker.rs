@@ -54,6 +54,10 @@ pub struct Context {
 struct CoderLane {
     fake: bool,
     local: Option<coder::task::local::Local>,
+    /// The runner follows the person's settings file, read again at each
+    /// start so a change on Settings applies to the next run; a runner a
+    /// test gave keeps its own settings.
+    here: bool,
     /// One follower a task, kept across polls so each poll reads only
     /// what is new.
     follows: std::collections::BTreeMap<String, coder::task::local::Follow>,
@@ -122,6 +126,7 @@ impl Context {
             coder: CoderLane {
                 fake: fake.is_some(),
                 local: None,
+                here: false,
                 follows: Default::default(),
             },
             local: LocalLane {
@@ -472,6 +477,9 @@ impl CoderLane {
     fn local(&mut self) -> &coder::task::local::Local {
         // With the person's settings (#10036): the providers, the usage
         // threshold, the project folders, and what commands may reach.
+        if self.local.is_none() {
+            self.here = true;
+        }
         self.local.get_or_insert_with(|| {
             coder::task::local::Local::here(coder::task::local::default_store())
         })
@@ -495,6 +503,11 @@ impl CoderLane {
                 images,
             } => {
                 let store = self.local().store().to_path_buf();
+                if self.here
+                    && let Some(local) = self.local.as_mut()
+                {
+                    local.reload_settings();
+                }
                 if let Ok(last) = std::fs::read_to_string(last_project(&store)) {
                     dirs.push(last.trim().to_owned());
                 }
@@ -1130,6 +1143,101 @@ mod tests {
             panic!("start in the last project")
         };
         assert_eq!(project, "slugs");
+    }
+
+    /// The Start a chat's send with a screenshot leads to (#10070) keeps
+    /// the screenshot's exact bytes with the task on this computer, named
+    /// by the task's intent, for the engine (here a launcher that starts
+    /// nothing) to read back checked.
+    #[test]
+    fn a_chat_runs_start_keeps_the_screenshots_exact_bytes_for_the_engine() {
+        use coder::task::autostart::{Engine, Launch, Launched};
+        use coder::task::capacity::{Connection, Provider};
+        use openagents_chat_app::coder_run::{Answer, Request as Run};
+        struct Idle;
+        impl Launch for Idle {
+            fn launch(
+                &self,
+                _: &Engine,
+                _: &std::path::Path,
+                _: &std::path::Path,
+            ) -> Result<Launched, String> {
+                Ok(Launched {
+                    owner_process: std::process::id(),
+                    grant_digest: String::new(),
+                })
+            }
+        }
+        fn signed_in(_: Provider) -> Connection {
+            Connection::Connected
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().join("site");
+        std::fs::create_dir_all(&top).unwrap();
+        for args in [
+            vec!["init", "-q"],
+            vec![
+                "-c",
+                "user.name=F",
+                "-c",
+                "user.email=f@example.invalid",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "one",
+            ],
+        ] {
+            assert!(
+                Command::new("git")
+                    .args(args)
+                    .current_dir(&top)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let store = dir.path().join("tasks");
+        let mut context = Context::new(
+            Box::new(FakeHost::new("Studio Mac", 1_790_000_000)),
+            None,
+            None,
+            None,
+            dir.path().to_path_buf(),
+        )
+        .with_coder(
+            coder::task::local::Local::new(store.clone())
+                .with_probe(signed_in)
+                .with_controller(std::env::current_exe().unwrap())
+                .with_launcher(Box::new(Idle)),
+        );
+        // The draft's screenshot, as the chat's start carries it.
+        let mut drafts = openagents_chat_app::attachments::Drafts::default();
+        let pixels: Vec<u8> = (0..40u32 * 30 * 4).map(|i| (i % 249) as u8).collect();
+        let image = openagents_chat_app::attachments::Image::pixels(40, 30, pixels).unwrap();
+        let bytes = image.bytes.as_ref().clone();
+        drafts.add("chat", image).unwrap();
+        let images = drafts.uploads("chat").unwrap();
+        let reference = images[0].reference.clone();
+        let Some(Outcome::CoderRun { result, .. }) = context.run(Request::CoderRun {
+            chat: "e".repeat(32),
+            ticket: 1,
+            request: Run::Start {
+                title: "Fix this layout bug".into(),
+                prompt: "fix this layout bug".into(),
+                dirs: vec![top.display().to_string()],
+                images,
+            },
+        }) else {
+            panic!("an answer")
+        };
+        let Ok(Answer::Started { task, .. }) = *result else {
+            panic!("{result:?}")
+        };
+        assert_eq!(
+            coder::task::media::load(&store, &task, &reference).unwrap(),
+            bytes
+        );
     }
 
     /// The desktop's local run honors the same settings as

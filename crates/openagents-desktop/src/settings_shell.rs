@@ -1,12 +1,14 @@
 //! Settings in the window (#10021): each choice applies at once and is kept
 //! in the settings file's `app` section, beside Coder's own settings
-//! (`coder::task::settings`), so it holds across restarts.
+//! (`coder::task::settings`), so it holds across restarts. Coder's page
+//! (#10070) changes the `coder` section only through that loader, which
+//! validates it: a file it refuses is never written.
 
 use super::DesktopApp;
 use openagents_chat_app::preferences::{Change, Preferences, SECTION};
 use openagents_desktop::chrome::Page;
 use openagents_desktop::model::{Intent, Screen};
-use openagents_desktop::settings::Action;
+use openagents_desktop::settings::{Action, CoderAgent, CoderChoices};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -28,13 +30,74 @@ pub fn save(file: &Path, preferences: &Preferences) -> Result<(), String> {
     settings.save(file)
 }
 
+/// Coder's own settings in `file`, as its page shows them.
+pub fn coder_choices(file: &Path) -> CoderChoices {
+    use coder::task::settings::{self, Choice, PROVIDERS, Settings, Start};
+    let settings = match Settings::load(file) {
+        Ok(settings) => settings,
+        Err(why) => return CoderChoices::Unreadable(why),
+    };
+    let allowed = settings.coder.provider_list();
+    let rest = PROVIDERS.into_iter().filter(|p| !allowed.contains(p));
+    let agents = allowed
+        .iter()
+        .copied()
+        .chain(rest)
+        .map(|provider| CoderAgent {
+            key: provider.as_str().to_owned(),
+            name: settings::provider_name(provider).to_owned(),
+            on: allowed.contains(&provider),
+            blocked: Choice::new(provider).route().err().map(|_| {
+                format!(
+                    "{} needs a model named in the settings file, which this page can't set yet.",
+                    settings::provider_name(provider)
+                )
+            }),
+        })
+        .collect();
+    CoderChoices::Read {
+        ask_first: settings.coder.start == Start::AskFirst,
+        agents,
+    }
+}
+
+/// Makes a change on Coder's page in `file` through Coder's own loader,
+/// which validates it; a file it can't read, or a change it refuses, is
+/// left as it was.
+fn change_coder(file: &Path, action: &Action) -> Result<(), String> {
+    use coder::task::capacity::Provider;
+    use coder::task::settings::{Settings, Start};
+    let mut settings = Settings::load(file)?;
+    match action {
+        Action::CoderStart { ask_first } => {
+            settings.coder.start = if *ask_first {
+                Start::AskFirst
+            } else {
+                Start::AtOnce
+            };
+        }
+        Action::CoderAgent { agent, on } => {
+            let provider = Provider::from_config(agent)
+                .filter(|provider| coder::task::settings::PROVIDERS.contains(provider))
+                .ok_or_else(|| format!("`{agent}` is not an agent Coder runs"))?;
+            settings.allow(provider, *on)?;
+        }
+        _ => return Ok(()),
+    }
+    settings.save(file)
+}
+
 impl DesktopApp {
     /// Reads the preferences from `file`, applies them, and keeps later
     /// changes there.
     pub fn use_settings_file(&mut self, file: PathBuf) {
         let preferences = load(&file);
+        if let Some(chat) = &mut self.chat {
+            chat.read_coder_start_from(file.clone());
+        }
         if let Some(state) = &mut self.navigation {
             state.settings.replace(preferences);
+            state.settings.coder = coder_choices(&file);
             state.settings.file = Some(file);
         }
         self.apply_text_size();
@@ -74,12 +137,31 @@ impl DesktopApp {
             }
         }
         match action {
+            Action::CoderStart { .. } | Action::CoderAgent { .. } => {
+                if let Some(state) = &mut self.navigation
+                    && let Some(file) = state.settings.file.clone()
+                {
+                    // A coding reply reads `coder.start` from the file each
+                    // time, and the Coder lane reads it again at each
+                    // start, so a saved change applies to the next one.
+                    state.settings.notice = change_coder(&file, &action)
+                        .err()
+                        .map(|why| format!("Couldn't change Coder's settings: {why}"));
+                    state.settings.coder = coder_choices(&file);
+                }
+            }
             Action::Pane { pane } => {
                 let Some(state) = &mut self.navigation else {
                     return;
                 };
                 state.page = Page::Settings;
                 state.settings.pane = pane;
+                // Coder's settings as the file holds them now.
+                if pane == openagents_desktop::settings::Pane::Coder
+                    && let Some(file) = state.settings.file.clone()
+                {
+                    state.settings.coder = coder_choices(&file);
+                }
                 // Leaving Phones and computers cancels a shown code.
                 if !state.shows_computers() && self.model.screen == Screen::Connect {
                     let requests = self.model.activate(Intent::Back, now);
@@ -272,6 +354,108 @@ mod tests {
         setting(&mut app, Action::Notifications { on: false }, now);
         assert!(!app.notifications_on());
         assert!(shows(&app, "settings-notice"));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "not the settings");
+    }
+
+    /// Coder's page (#10070) shows and changes `coder.start` and which
+    /// agents may run, through Coder's own loader: each change is kept in
+    /// the file's `coder` section beside `app`, holds across a reopen, and
+    /// a change the loader refuses, or a file it can't read, writes nothing.
+    #[test]
+    fn coder_settings_persist_through_coders_loader_and_show_again() {
+        use coder::task::capacity::Provider;
+        use coder::task::settings::{Settings, Start};
+        use openagents_desktop::settings::CoderChoices;
+        let home = tempfile::tempdir().unwrap();
+        let file = home.path().join("settings.json");
+        std::fs::write(
+            &file,
+            r#"{"schema":"openagents.settings.v1","app":{"text_size":"larger"}}"#,
+        )
+        .unwrap();
+        let (mut app, now) = chat_fixture(0);
+        app.use_settings_file(file.clone());
+        app.click(
+            Intent::Navigate {
+                action: Navigate::Settings,
+            },
+            now,
+        );
+        setting(&mut app, Action::Pane { pane: Pane::Coder }, now);
+        capture(&mut app, "settings-coder");
+        let Some(Node {
+            element: Element::Button { label, .. },
+            ..
+        }) = find(&app.view().view().root, "settings-coder-at-once")
+        else {
+            panic!("no start choice")
+        };
+        assert_eq!(label, "Start at once");
+        assert!(shows(&app, "settings-coder-agent-codex"));
+        assert!(shows(&app, "settings-coder-agent-opencode-line"));
+
+        setting(&mut app, Action::CoderStart { ask_first: true }, now);
+        for (agent, on) in [("grok", true), ("claude", false)] {
+            setting(
+                &mut app,
+                Action::CoderAgent {
+                    agent: agent.into(),
+                    on,
+                },
+                now,
+            );
+        }
+        let kept = Settings::load(&file).unwrap();
+        assert_eq!(kept.coder.start, Start::AskFirst);
+        assert_eq!(
+            kept.coder.provider_list(),
+            vec![Provider::Codex, Provider::Grok]
+        );
+        assert_eq!(kept.other["app"]["text_size"], "larger");
+        assert!(!shows(&app, "settings-notice"));
+
+        // A change Coder's loader refuses writes nothing and says so.
+        let before = std::fs::read(&file).unwrap();
+        setting(
+            &mut app,
+            Action::CoderAgent {
+                agent: "opencode".into(),
+                on: true,
+            },
+            now,
+        );
+        assert!(shows(&app, "settings-notice"));
+        assert_eq!(std::fs::read(&file).unwrap(), before);
+
+        // Reopened: the page shows what the file holds.
+        let (mut again, _) = chat_fixture(0);
+        again.use_settings_file(file.clone());
+        let CoderChoices::Read { ask_first, agents } =
+            &again.navigation.as_ref().unwrap().settings.coder
+        else {
+            panic!("read")
+        };
+        assert!(*ask_first);
+        let on: Vec<&str> = agents
+            .iter()
+            .filter(|agent| agent.on)
+            .map(|agent| agent.key.as_str())
+            .collect();
+        assert_eq!(on, ["codex", "grok"]);
+
+        // A file the loader refuses is shown as such and never written.
+        std::fs::write(&file, "not the settings").unwrap();
+        let (mut broken, _) = chat_fixture(0);
+        broken.use_settings_file(file.clone());
+        broken.click(
+            Intent::Navigate {
+                action: Navigate::Settings,
+            },
+            now,
+        );
+        setting(&mut broken, Action::Pane { pane: Pane::Coder }, now);
+        assert!(shows(&broken, "settings-coder-unreadable"));
+        setting(&mut broken, Action::CoderStart { ask_first: false }, now);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not the settings");
     }
 
