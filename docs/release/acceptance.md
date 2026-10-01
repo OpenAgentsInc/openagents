@@ -58,9 +58,9 @@ or the owner's host.
      copy (mode `0600`) of `~/.codex/auth.json` that is deleted with the
      temporary home. Coder's Codex transport reads the login and never
      refreshes it, so the real login never changes. It is a copy, not a
-     symbolic link, because a reader that takes a login
-     (`codex_transport::Login::take`) removes the file it read, and a link's
-     target with it.
+     symbolic link, so nothing a run does reaches the real file. (A take,
+     `codex_transport::Login::take`, removes only a run's own copy and
+     refuses a link, #10083.)
    - Claude Code: the temporary home's `Library/Keychains` is a symbolic link
      to the real one, so `claude` reads its `Claude Code-credentials` item the
      way it always does. `~/.claude.json` in the temporary home holds only the

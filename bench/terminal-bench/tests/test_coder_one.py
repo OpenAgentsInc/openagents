@@ -564,9 +564,13 @@ def test_the_microluna_arm_places_a_login_the_episode_can_remove(tmp_path, monke
 
     environment = Environment()
     asyncio.run(agent.install(environment))
-    placed = next(command for command in environment.commands if "ln -sf" in command)
+    placed = next(command for command in environment.commands if "chmod 600" in command)
     assert "chown agent /tmp/codex-secrets/auth.json /tmp/codex-home /tmp/codex-secrets" in placed
     assert "chmod 700 /tmp/codex-home /tmp/codex-secrets" in placed
+    # The episode takes only its own copy, a regular file, never a link's
+    # target (issue #10083).
+    assert "mv -f /tmp/codex-secrets/auth.json /tmp/codex-home/auth.json" in placed
+    assert "ln -sf" not in placed
     doctor_env = next(
         env
         for command, env in zip(environment.commands, environment.envs)

@@ -8,9 +8,11 @@
 //!
 //! `--task-container` runs commands directly, as a Terminal-Bench trial
 //! does, for a process that already runs in a disposable container.
-//! `--take-login` reads the Codex login into memory and removes the file
-//! before the session starts, so the model's commands can't read it
-//! (issue #9599).
+//! `--take-login` reads the run's own copy of the Codex login, at
+//! `$CODEX_HOME/auth.json`, into memory and removes that copy before the
+//! session starts, so the model's commands can't read it (issue #9599).
+//! It needs `CODEX_HOME`, and refuses a link, so the person's own login
+//! is never removed (issue #10083).
 //!
 //! The session's steps print to standard error as they happen. The typed
 //! finish, the usage, and the cost print to standard output as JSON. The
@@ -121,13 +123,13 @@ async fn main() -> ExitCode {
         config.max_turns = max_turns;
     }
 
-    let Some(login) = Login::default_path() else {
-        eprintln!("microluna: no home directory to find the Codex login in");
-        return ExitCode::from(2);
-    };
     let transport = if args.take_login {
-        Login::take(&login).and_then(|login| CodexTransport::holding(login, &session_id))
+        Login::take_copy().and_then(|login| CodexTransport::holding(login, &session_id))
     } else {
+        let Some(login) = Login::default_path() else {
+            eprintln!("microluna: no home directory to find the Codex login in");
+            return ExitCode::from(2);
+        };
         CodexTransport::new(login, &session_id)
     };
     let transport = match transport {

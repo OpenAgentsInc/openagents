@@ -896,7 +896,7 @@ mod portal {
 /// both keep their sign-in in a file.
 pub fn signed_in(home: &Path) -> Agents {
     Agents {
-        codex: home.join(".codex/auth.json").exists(),
+        codex: openagents_desktop::model::codex_login(home).exists(),
         claude: home.join(".claude/.credentials.json").exists(),
     }
 }

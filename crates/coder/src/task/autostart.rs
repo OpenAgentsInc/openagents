@@ -625,6 +625,11 @@ impl Launch for Process {
         if let Some(home) = std::env::var_os("HOME") {
             command.env("HOME", home);
         }
+        // The engine finds the Codex login where the readiness check did:
+        // `$CODEX_HOME` when the person set it, else `~/.codex` (#10083).
+        if let Some(codex) = codex_transport::codex::Login::home_override() {
+            command.env(codex_transport::codex::HOME_VAR, codex);
+        }
         // A run with this computer's tools derives them from the person's
         // own PATH, which the engine process otherwise never sees.
         if engine.access == adapter::Access::Toolchains {

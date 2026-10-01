@@ -53,8 +53,9 @@
 #               copy (mode 0600) of ~/.codex/auth.json, deleted with the
 #               temporary HOME. Coder's Codex transport reads the login and
 #               never refreshes it, so the real login is never changed. It
-#               is a copy, not a link, because a reader that takes a login
-#               removes the file it read, and a link's target with it.
+#               is a copy, not a link, so nothing a run does reaches the
+#               real file (a take removes only a run's own copy and refuses
+#               a link, #10083).
 #   Claude Code The temporary HOME's Library/Keychains is a symbolic link to
 #               the real one, so `claude` reads its `Claude Code-credentials`
 #               item as it always does, and ~/.claude.json gets only the
@@ -219,9 +220,8 @@ say "build under test: $desktop"
 codex_ok=0
 claude_ok=0
 if [ -f "$real_home/.codex/auth.json" ]; then
-  # A private copy, never a link: a reader that takes the login removes
-  # the file it reads (and a link's target), and the copy keeps that away
-  # from the real one. Nothing refreshes it; it goes with the scratch home.
+  # A private copy, never a link, so nothing a run does reaches the real
+  # login. Nothing refreshes it; it goes with the scratch home.
   mkdir -p "$H/.codex"
   chmod 700 "$H/.codex"
   (umask 077 && cp "$real_home/.codex/auth.json" "$H/.codex/auth.json") || die "cannot copy the Codex login"

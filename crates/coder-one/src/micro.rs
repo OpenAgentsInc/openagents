@@ -996,22 +996,29 @@ static TAKEN: std::sync::OnceLock<Result<Login, String>> = std::sync::OnceLock::
 
 /// Takes the Codex login into memory when `CODER_ONE_CODEX_LOGIN` is
 /// `take`, before the episode runs any command: the process is marked
-/// non-dumpable, the login is read, and the file and its link are removed
-/// (`microluna::codex::Login::take`). Every Microluna session in this
-/// process then sends with the login in memory. A missing or unusable
-/// login is kept as the reason Microluna has no transport.
+/// non-dumpable, the run's own copy at `$CODEX_HOME/auth.json` is read,
+/// and that copy is removed (`microluna::codex::Login::take_copy`). The
+/// person's own login is never removed: a take needs `CODEX_HOME`, and a
+/// link there is refused with the file it names untouched (#10083).
+/// Every Microluna session in this process then sends with the login in
+/// memory. A missing or unusable login is kept as the reason Microluna
+/// has no transport.
 ///
 /// # Errors
 ///
-/// When the file couldn't be removed, which must stop the episode before
-/// the model runs anything.
+/// When there is no `CODEX_HOME`, the login there is a link, or the copy
+/// couldn't be removed, any of which must stop the episode before the
+/// model runs anything.
 pub fn take_login() -> Result<(), String> {
     if !takes_login() {
         return Ok(());
     }
-    let path = login_path().ok_or("no CODEX_HOME or HOME to find the Codex login in")?;
-    let taken = match Login::take(&path) {
-        Err(error @ microluna::codex::LoginError::Unremovable(..)) => {
+    let taken = match Login::take_copy() {
+        Err(
+            error @ (microluna::codex::LoginError::Unremovable(..)
+            | microluna::codex::LoginError::Linked(_)
+            | microluna::codex::LoginError::NoPrivateHome),
+        ) => {
             return Err(error.to_string());
         }
         taken => taken.map_err(|error| error.to_string()),

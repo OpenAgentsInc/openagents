@@ -127,6 +127,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
                 process.env(key, value);
             }
         }
+        // The model host finds the Codex login where the readiness check
+        // did: `$CODEX_HOME` when the person set it, else `~/.codex`
+        // (#10083).
+        if let Some(codex) = codex_transport::codex::Login::home_override() {
+            process.env(codex_transport::codex::HOME_VAR, codex);
+        }
         // The person's toolchain variables, for a run with this
         // computer's tools, reach the model host that admits it.
         process.envs(std::env::vars_os().filter(|(key, _)| {
@@ -212,6 +218,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             if let Some(value) = std::env::var_os(key) {
                 process.env(key, value);
             }
+        }
+        // The model host finds the Codex login where the readiness check
+        // did: `$CODEX_HOME` when the person set it, else `~/.codex`
+        // (#10083).
+        if let Some(codex) = codex_transport::codex::Login::home_override() {
+            process.env(codex_transport::codex::HOME_VAR, codex);
         }
         // The person's toolchain variables, for a run with this
         // computer's tools, reach the model host that admits it.

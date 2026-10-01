@@ -239,7 +239,7 @@ pub fn choose_folder() -> openagents_desktop::folder::Chosen {
 /// both keep their sign-in in a file under the profile.
 pub fn signed_in(home: &Path) -> Agents {
     Agents {
-        codex: home.join(".codex").join("auth.json").exists(),
+        codex: openagents_desktop::model::codex_login(home).exists(),
         claude: home.join(".claude").join(".credentials.json").exists(),
     }
 }

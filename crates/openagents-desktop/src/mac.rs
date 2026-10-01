@@ -199,7 +199,7 @@ pub fn signed_in(home: &Path) -> Agents {
         .status()
         .is_ok_and(|status| status.success());
     Agents {
-        codex: home.join(".codex/auth.json").exists(),
+        codex: openagents_desktop::model::codex_login(home).exists(),
         claude: claude_item || home.join(".claude/.credentials.json").exists(),
     }
 }

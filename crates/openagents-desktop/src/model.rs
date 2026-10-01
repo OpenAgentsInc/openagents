@@ -252,6 +252,22 @@ pub struct Agents {
     pub claude: bool,
 }
 
+/// Codex's login for the person whose home is `home`: `$CODEX_HOME/auth.json`
+/// when `CODEX_HOME` is set and not empty, else `home/.codex/auth.json`.
+/// The same place the engine's readiness check and its runs look
+/// (`codex_transport::codex::Login::default_path`, #10083).
+#[must_use]
+pub fn codex_login(home: &std::path::Path) -> PathBuf {
+    std::env::var_os("CODEX_HOME")
+        .filter(|codex| !codex.is_empty())
+        .map(PathBuf::from)
+        .map_or_else(
+            || home.join(".codex"),
+            |codex| std::path::absolute(&codex).unwrap_or(codex),
+        )
+        .join("auth.json")
+}
+
 /// Whether the login agent that runs Coder is registered.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Agent {

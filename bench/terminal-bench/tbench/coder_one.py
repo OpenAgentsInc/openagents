@@ -780,7 +780,10 @@ class CoderOneDelegate(CoderOne):
 
         With ``take``, the episode removes the login once it has read it
         (issue #9599), so both directories also belong to the agent's user
-        and close to everyone else.
+        and close to everyone else, and the container's copy is moved into
+        ``CODEX_HOME`` as a regular file: the episode takes only its own
+        copy and refuses a link, so it never removes a file a link names
+        (issue #10083).
         """
         remote_auth = CODEX_SECRETS / "auth.json"
         await self.exec_as_root(
@@ -791,11 +794,12 @@ class CoderOneDelegate(CoderOne):
         user = await self._agent_user(environment)
         owner = f"chown {user} {owned} && " if user is not None else ""
         closed = f"chmod 700 {CODEX_HOME} {CODEX_SECRETS} && " if take else ""
+        place = "mv -f" if take else "ln -sf"
         await self.exec_as_root(
             environment,
             command=(
                 f"{owner}{closed}chmod 600 {remote_auth} && "
-                f"ln -sf {remote_auth} {CODEX_HOME / 'auth.json'}"
+                f"{place} {remote_auth} {CODEX_HOME / 'auth.json'}"
             ),
         )
 

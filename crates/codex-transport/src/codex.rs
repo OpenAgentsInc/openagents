@@ -18,15 +18,26 @@
 //!
 //! No token reaches a log line, an error, or a `Debug` string.
 //!
+//! Every check and every run finds the login the same way,
+//! [`Login::default_path`]: `$CODEX_HOME/auth.json` when `CODEX_HOME` is
+//! set, else `~/.codex/auth.json`. A launcher that clears a child's
+//! environment passes [`Login::home_override`] on as `CODEX_HOME`, so the
+//! child finds the login its readiness check found (issue #10083).
+//!
 //! # Taking the login in a task container
 //!
 //! Where the model's commands run as the same user as Microluna, as in a
 //! Terminal-Bench task container, a login file on disk is a login the
-//! model can read. [`Login::take`] marks the process non-dumpable, so
+//! model can read. [`Login::take_copy`] marks the process non-dumpable, so
 //! another process of the same user can't read its memory, environment,
-//! or file descriptors through `/proc`, then reads the login into memory
-//! and removes the file and any link to it. [`CodexTransport::holding`]
+//! or file descriptors through `/proc`, then reads the run's own copy of
+//! the login into memory and removes that copy. [`CodexTransport::holding`]
 //! then sends with the login in memory and never opens a file again.
+//!
+//! The person's own login is never deleted, moved, or rewritten: a take
+//! needs `CODEX_HOME` naming the run's private home (never `~/.codex`),
+//! removes only a regular file there, and refuses a link, so the file a
+//! link names is never touched (issue #10083).
 
 use std::borrow::Cow;
 use std::fmt;
@@ -37,6 +48,9 @@ use base64::Engine;
 use serde_json::{Value, json};
 
 use crate::transport::{Reply, Request, TokenUsage, Transport, TransportError};
+
+/// The variable that names Codex's home folder, where `auth.json` lives.
+pub const HOME_VAR: &str = "CODEX_HOME";
 
 /// The Codex backend's base URL for ChatGPT-login access.
 pub const BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
@@ -67,6 +81,12 @@ pub enum LoginError {
     /// The login was read, but its file couldn't be removed, so it would
     /// stay readable to the commands the model runs.
     Unremovable(PathBuf, String),
+    /// A take was asked of a link. The run takes only its own copy, never
+    /// the file a link names, which may be the person's own login.
+    Linked(PathBuf),
+    /// A take was asked with no `CODEX_HOME`, or with it at `~/.codex`: the
+    /// login would be the person's own, which a run never removes.
+    NoPrivateHome,
     /// The access token has expired or is about to.
     Expiring {
         /// Seconds of validity left, zero when already expired.
@@ -93,6 +113,17 @@ impl fmt::Display for LoginError {
                 f,
                 "can't remove {} after reading it, so the model's commands could read it: {why}",
                 path.display()
+            ),
+            LoginError::Linked(path) => write!(
+                f,
+                "{} is a link; a run takes only its own copy of the Codex login, and never \
+                 touches the file a link names: place a copy there instead",
+                path.display()
+            ),
+            LoginError::NoPrivateHome => write!(
+                f,
+                "taking the Codex login needs CODEX_HOME naming the run's own copy, not \
+                 ~/.codex: the person's login is never removed"
             ),
             LoginError::Expiring { seconds_left } => write!(
                 f,
@@ -125,13 +156,27 @@ impl fmt::Debug for Login {
 
 impl Login {
     /// The login file Codex uses: `$CODEX_HOME/auth.json`, or
-    /// `~/.codex/auth.json`.
+    /// `~/.codex/auth.json`. Readiness checks and runs both resolve the
+    /// login here, so they agree (issue #10083).
     #[must_use]
     pub fn default_path() -> Option<PathBuf> {
-        if let Some(home) = std::env::var_os("CODEX_HOME").filter(|home| !home.is_empty()) {
-            return Some(PathBuf::from(home).join("auth.json"));
-        }
-        std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex/auth.json"))
+        Login::home().map(|home| home.join("auth.json"))
+    }
+
+    /// Codex's home folder: [`Login::home_override`], else `~/.codex`.
+    #[must_use]
+    pub fn home() -> Option<PathBuf> {
+        Login::home_override()
+            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+    }
+
+    /// `$CODEX_HOME` as an absolute folder, when it is set and not empty.
+    /// A launcher that starts a child with a cleared environment passes
+    /// it on as [`HOME_VAR`]; it names a folder, not a secret.
+    #[must_use]
+    pub fn home_override() -> Option<PathBuf> {
+        let home = PathBuf::from(std::env::var_os(HOME_VAR).filter(|home| !home.is_empty())?);
+        Some(std::path::absolute(&home).unwrap_or(home))
     }
 
     /// Reads the login at `path` and checks that its access token has
@@ -162,40 +207,72 @@ impl Login {
         Ok(login)
     }
 
-    /// Reads the login at `path` into memory and removes the file, so no
-    /// command this process runs afterward can read it. The process is
-    /// marked non-dumpable before the read (see [`protect_process`]).
-    ///
-    /// When `path` is a symbolic link, both the link and the file it names
-    /// are removed. The file is removed even when it can't be parsed. The
-    /// expiry isn't checked here: [`CodexTransport`] checks it before every
-    /// request.
+    /// Takes the run's own copy of the login from `$CODEX_HOME/auth.json`
+    /// ([`Login::take`]). `CODEX_HOME` must be set, and not to `~/.codex`:
+    /// that login is the person's own, which no run removes.
     ///
     /// # Errors
     ///
-    /// [`LoginError::Unremovable`] when the file stays on disk, which the
-    /// caller must treat as fatal, or the error of a missing, unreadable,
-    /// non-ChatGPT, or malformed login.
+    /// [`LoginError::NoPrivateHome`] without `CODEX_HOME` or with it at
+    /// `~/.codex`, else
+    /// [`Login::take`]'s errors.
+    pub fn take_copy() -> Result<Login, LoginError> {
+        let home = Login::home_override().ok_or(LoginError::NoPrivateHome)?;
+        let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        if std::env::var_os("HOME")
+            .is_some_and(|person| real(&PathBuf::from(person).join(".codex")) == real(&home))
+        {
+            return Err(LoginError::NoPrivateHome);
+        }
+        Login::take(&home.join("auth.json"))
+    }
+
+    /// Reads the run's own copy of the login at `path` into memory and
+    /// removes that copy, so no command this process runs afterward can
+    /// read it. The process is marked non-dumpable before the read (see
+    /// [`protect_process`]).
+    ///
+    /// `path` must be a regular file the run placed for itself. A link is
+    /// refused and left as it is, with the file it names untouched: that
+    /// file may be the person's own login, which is never deleted, moved,
+    /// or rewritten (issue #10083). The copy is removed even when it can't
+    /// be parsed. The expiry isn't checked here: [`CodexTransport`] checks
+    /// it before every request.
+    ///
+    /// # Errors
+    ///
+    /// [`LoginError::Linked`] for a link, [`LoginError::Unremovable`] when
+    /// the copy stays on disk, either of which the caller must treat as
+    /// fatal, or the error of a missing, unreadable, non-ChatGPT, or
+    /// malformed login.
     pub fn take(path: &Path) -> Result<Login, LoginError> {
         let _ = protect_process();
-        let is_link = std::fs::symlink_metadata(path)
-            .map(|meta| meta.file_type().is_symlink())
-            .unwrap_or(false);
-        let target = if is_link {
-            std::fs::canonicalize(path).ok()
-        } else {
-            Some(path.to_path_buf())
-        };
-        let text = match &target {
-            Some(target) => std::fs::read_to_string(target),
-            None => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
-        };
-        if let Some(target) = &target {
-            remove(target)?;
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(LoginError::Linked(path.to_path_buf()));
+            }
+            Ok(meta) if !meta.is_file() => {
+                return Err(LoginError::Unreadable(
+                    path.to_path_buf(),
+                    "not a regular file".into(),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(LoginError::Missing(path.to_path_buf()));
+            }
+            Err(error) => {
+                return Err(LoginError::Unreadable(
+                    path.to_path_buf(),
+                    error.to_string(),
+                ));
+            }
         }
-        if is_link {
-            remove(path)?;
-        }
+        let text = std::fs::read_to_string(path);
+        // `remove_file` removes a link itself, never what it names, so
+        // even a file swapped for a link since the check above leaves the
+        // linked file alone.
+        remove(path)?;
         let text = match text {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -756,27 +833,50 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
-    fn taking_a_login_removes_the_file_and_the_link_to_it() {
+    fn taking_the_runs_copy_removes_only_that_copy() {
         let dir = tempfile::tempdir().unwrap();
-        let secrets = dir.path().join("secrets");
-        let home = dir.path().join("home");
-        std::fs::create_dir_all(&secrets).unwrap();
-        std::fs::create_dir_all(&home).unwrap();
-        let file = secrets.join("auth.json");
-        std::fs::write(&file, auth(now_secs() + 3_600)).unwrap();
-        let link = home.join("auth.json");
-        std::os::unix::fs::symlink(&file, &link).unwrap();
+        let copy = dir.path().join("auth.json");
+        std::fs::write(&copy, auth(now_secs() + 3_600)).unwrap();
 
-        let login = Login::take(&link).unwrap();
+        let login = Login::take(&copy).unwrap();
         assert!(login.check(now_secs()).is_ok());
-        assert!(std::fs::symlink_metadata(&link).is_err());
-        assert!(!file.exists());
+        assert!(std::fs::symlink_metadata(&copy).is_err());
         // A second take finds nothing; the transport holds the first.
-        assert!(matches!(Login::take(&link), Err(LoginError::Missing(_))));
+        assert!(matches!(Login::take(&copy), Err(LoginError::Missing(_))));
         let transport = CodexTransport::holding(login, "s-1").unwrap();
         assert!(transport.login().is_ok());
         assert!(!format!("{transport:?}").contains("acct-1"));
+    }
+
+    /// A person whose `auth.json` is a link (dotfiles) keeps both the
+    /// link and the file it names: a take refuses a link and touches
+    /// neither, and the file's bytes stay exactly as they were (#10083).
+    #[test]
+    #[cfg(unix)]
+    fn a_linked_login_is_refused_and_neither_the_link_nor_its_file_is_touched() {
+        let dir = tempfile::tempdir().unwrap();
+        let dotfiles = dir.path().join("dotfiles");
+        let home = dir.path().join("codex-home");
+        std::fs::create_dir_all(&dotfiles).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        let real = dotfiles.join("auth.json");
+        let bytes = auth(now_secs() + 3_600);
+        std::fs::write(&real, &bytes).unwrap();
+        let link = home.join("auth.json");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let error = Login::take(&link).unwrap_err();
+        assert!(matches!(error, LoginError::Linked(_)), "{error}");
+        assert!(!error.to_string().contains("acct-1"));
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), bytes);
+        // Reading through the link, as a run without a take does, works.
+        assert!(Login::load(&link).is_ok());
     }
 
     #[test]

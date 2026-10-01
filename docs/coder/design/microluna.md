@@ -286,9 +286,15 @@ following before anything else, and so before any model command:
 1. Marks the process non-dumpable (`PR_SET_DUMPABLE` 0). Its
    `/proc/<pid>/mem`, `environ`, `maps`, and `fd` then need
    `CAP_SYS_PTRACE`, which a task container doesn't grant, even to root.
-2. Reads the login into memory (`Login::take`), then removes the file
-   and the `CODEX_HOME` link to it. If the file can't be removed, the
-   episode stops before it runs anything.
+2. Reads the run's own copy of the login, which the adapter placed as a
+   regular file at `$CODEX_HOME/auth.json`, into memory
+   (`Login::take_copy`), then removes that copy. If the copy can't be
+   removed, the episode stops before it runs anything.
+
+The person's own login is never deleted, moved, or rewritten (issue
+#10083). A take needs `CODEX_HOME`, and refuses it at `~/.codex`; a link
+at `$CODEX_HOME/auth.json` is refused with the link and the file it names
+left as they were. Each refusal stops the episode before any command.
 
 Every Microluna session then sends with the login in memory. That works
 because Microluna never refreshes the token. The episode doctor confirms
