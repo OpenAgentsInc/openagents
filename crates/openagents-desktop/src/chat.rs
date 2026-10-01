@@ -1189,6 +1189,7 @@ impl Panel {
             self.ids.insert(selected.clone(), id);
         }
         state.search = self.search.text().into();
+        state.total_chats = self.session.summaries.len();
         state.projects.clear();
         let mut listed =
             openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
@@ -2108,6 +2109,15 @@ impl Panel {
         use openagents_chat_app::commands::Action as C;
         let request = match action {
             C::NewChat => Some(self.new_chat()),
+            // With too few chats for the sidebar's filter (#10072), the
+            // palette searches them instead.
+            C::Search
+                if self.session.summaries.len() < crate::chrome::SEARCH_MIN_CHATS
+                    && self.search.text().is_empty() =>
+            {
+                self.open_commands(openagents_chat_app::commands::Kind::Palette);
+                None
+            }
             C::Search => {
                 if let Some(field) = self.field() {
                     field.focused = false;
@@ -3474,10 +3484,19 @@ impl Panel {
             || run.map_or("Message OpenAgents…", Run::placeholder),
             task_chat::Session::placeholder,
         );
-        if let Some(field) = self.fields.get_mut(&id) {
-            field.set_placeholder(placeholder);
-            field.set_unframed(true);
-        }
+        // The composer always has its field, so the card never shows empty:
+        // without one the surface paints nothing, not even the placeholder
+        // (#10072). Every path that selects a chat should have made it.
+        let waker = &self.waker;
+        let field = self.fields.entry(id.clone()).or_insert_with(|| {
+            let mut field = chat_field("Message OpenAgents…");
+            if let Some(waker) = waker {
+                field.start(waker.clone());
+            }
+            field
+        });
+        field.set_placeholder(placeholder);
+        field.set_unframed(true);
         let draft = self.fields.get(&id).map(|field| {
             if field.draft.editor().is_none() {
                 task.and_then(task_chat::Session::editing_text)

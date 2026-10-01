@@ -412,14 +412,21 @@ pub fn run(directory: &Path, minimum: bool, scale: f32, backdrop: bool) -> Resul
     };
     #[cfg(not(windows))]
     if backdrop {
-        // Refused loopback connection; render the real empty Verse, with no public relay.
+        // The window's real Verse layer, as the app installs it, on the chat
+        // page: since #10071 it loads nothing until the Verse page opens.
+        // A refused loopback relay; never the public one.
+        let grid = openagents_desktop::grid::Grid::new(
+            "ws://127.0.0.1:9".into(),
+            std::env::temp_dir(),
+            true,
+        );
+        let watcher: openagents_desktop::grid::Watcher = Box::new(|| {
+            openagents_desktop::backdrop::GridBackdrop::new("ws://127.0.0.1:9", Box::new(|| false))
+        });
         rust_native_desktop::window::run_with_backdrop(
             app,
             options,
-            Box::new(openagents_desktop::backdrop::GridBackdrop::new(
-                "ws://127.0.0.1:9",
-                Box::new(|| false),
-            )),
+            Box::new(openagents_desktop::grid::Layer::new(grid, Some(watcher))),
         )?;
     } else {
         rust_native_desktop::window::run(app, options)?;

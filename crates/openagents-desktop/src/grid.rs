@@ -27,6 +27,8 @@ pub type Shared = Rc<RefCell<Grid>>;
 
 pub struct Grid {
     pub playing: bool,
+    /// The Verse page shows ([`Layer`] loads the world only then).
+    pub open: bool,
     pub surface: Option<GridSurface>,
     pub rect: Rect,
     controls: Controls,
@@ -53,6 +55,7 @@ impl Grid {
     pub fn new(relay: String, root: PathBuf, fixture: bool) -> Shared {
         Rc::new(RefCell::new(Self {
             playing: false,
+            open: false,
             surface: None,
             rect: Rect::default(),
             controls: Controls::default(),
@@ -246,6 +249,16 @@ impl Grid {
             && let Err(error) = surface.active(visible && self.focused && !self.suspended)
         {
             self.notice = Some(error);
+        }
+    }
+
+    /// The Verse page opened (`true`) or closed. Closing stops Play.
+    pub fn set_open(&mut self, open: bool) {
+        if self.open != open {
+            self.open = open;
+            if !open {
+                self.stop();
+            }
         }
     }
 
@@ -586,8 +599,19 @@ pub fn row(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
     }
 }
 
+/// Makes the spectator that Watch draws, each time the Verse page opens.
+pub type Watcher = Box<dyn FnMut() -> crate::backdrop::GridBackdrop>;
+
+/// The window's GPU layer for the Verse page (#10071).
+///
+/// Nothing of the world is loaded, connected, or drawn while another page
+/// shows: the window's background is plain behind chat, Settings, and the
+/// rest. Opening the Verse page makes a spectator with `watcher` and
+/// connects it; leaving the page drops it with its relay connection and
+/// GPU resources, and stops Play.
 pub struct Layer {
     grid: Shared,
+    watcher: Option<Watcher>,
     watch: Option<crate::backdrop::GridBackdrop>,
     player: Option<verse::render::Layer>,
     player_scale: f32,
@@ -595,27 +619,67 @@ pub struct Layer {
     last: Option<Instant>,
     playing: bool,
     visible: bool,
+    open: bool,
 }
 impl Layer {
-    pub fn new(grid: Shared, watch: Option<crate::backdrop::GridBackdrop>) -> Self {
+    /// `watcher` is `None` when the person asked for no world at all
+    /// (`--no-backdrop`): the Verse page then shows only its controls.
+    pub fn new(grid: Shared, watcher: Option<Watcher>) -> Self {
         Self {
             grid,
-            watch,
+            watcher,
+            watch: None,
             player: None,
             player_scale: 0.0,
             started: Instant::now(),
             last: None,
             playing: false,
             visible: true,
+            open: false,
+        }
+    }
+
+    /// Whether the world is loaded: the Verse page shows.
+    pub fn loaded(&self) -> bool {
+        self.watch.is_some() || self.player.is_some()
+    }
+
+    /// Follows the page: loads the spectator when the Verse page opens and
+    /// releases everything when it closes.
+    fn follow(&mut self, now: Instant) {
+        let open = self.grid.borrow().open;
+        if open == self.open {
+            return;
+        }
+        self.open = open;
+        self.player = None;
+        self.last = None;
+        self.playing = false;
+        if open {
+            self.watch = self.watcher.as_mut().map(|watcher| watcher());
+            if let Some(watch) = &mut self.watch {
+                watch.shown(self.visible && !self.grid.borrow().playing, now);
+            }
+        } else {
+            self.watch = None;
         }
     }
 }
 impl Backdrop for Layer {
     fn surface(&self) -> Option<&str> {
-        self.grid.borrow().playing.then_some(WORLD)
+        let grid = self.grid.borrow();
+        (grid.open && grid.playing).then_some(WORLD)
     }
     fn look(&self) -> Option<Look> {
-        if self.grid.borrow().playing {
+        if !self.grid.borrow().open {
+            // Another page: the plain background, as a window without a
+            // backdrop has, with the smallest texture.
+            Some(Look {
+                dim: 1.0,
+                blur: 0.0,
+                scale: 0.25,
+            })
+        } else if self.grid.borrow().playing {
             Some(Look {
                 dim: 0.0,
                 blur: 0.0,
@@ -662,6 +726,10 @@ impl Backdrop for Layer {
         }
     }
     fn next_frame(&mut self, now: Instant) -> Option<Instant> {
+        self.follow(now);
+        if !self.open {
+            return None;
+        }
         let playing = self.grid.borrow().playing;
         if playing != self.playing {
             self.playing = playing;
@@ -690,6 +758,11 @@ impl Backdrop for Layer {
         size: (u32, u32),
         now: Instant,
     ) -> Result<(), String> {
+        self.follow(now);
+        if !self.open {
+            // Hidden under the plain background (`look`); nothing to draw.
+            return Ok(());
+        }
         let mut grid = self.grid.borrow_mut();
         if grid.playing && grid.surface.is_some() {
             let input = grid.controls.input();
@@ -755,5 +828,70 @@ impl Backdrop for Layer {
             self.last = Some(now);
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn the_world_loads_only_on_the_verse_page_and_is_released_when_left() {
+        let home = tempfile::tempdir().unwrap();
+        let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+        let made = Rc::new(Cell::new(0));
+        let count = made.clone();
+        let watcher: Watcher = Box::new(move || {
+            count.set(count.get() + 1);
+            crate::backdrop::GridBackdrop::new("ws://127.0.0.1:1", Box::new(|| false))
+        });
+        let mut layer = Layer::new(grid.clone(), Some(watcher));
+        let now = Instant::now();
+        // Chat and every other page: nothing made, no frame, the plain background.
+        layer.shown(true, now);
+        for _ in 0..3 {
+            assert_eq!(layer.next_frame(now), None);
+        }
+        assert_eq!(made.get(), 0);
+        assert!(!layer.loaded());
+        assert_eq!(layer.surface(), None);
+        assert_eq!(
+            layer.look(),
+            Some(Look {
+                dim: 1.0,
+                blur: 0.0,
+                scale: 0.25
+            })
+        );
+        // The Verse page: the spectator is made once, connects, and draws.
+        grid.borrow_mut().set_open(true);
+        assert!(layer.next_frame(now).is_some());
+        assert!(layer.next_frame(now).is_some());
+        assert_eq!(made.get(), 1);
+        assert!(layer.loaded());
+        assert!(layer.watch.as_ref().unwrap().connected());
+        assert_eq!(layer.look(), None);
+        // Left: everything is dropped, relay connection included, and Play stops.
+        grid.borrow_mut().playing = true;
+        grid.borrow_mut().set_open(false);
+        assert!(!grid.borrow().playing);
+        assert_eq!(layer.next_frame(now), None);
+        assert!(!layer.loaded());
+        assert!(layer.watch.is_none());
+        // Opened again: a fresh spectator.
+        grid.borrow_mut().set_open(true);
+        assert!(layer.next_frame(now).is_some());
+        assert_eq!(made.get(), 2);
+    }
+
+    #[test]
+    fn without_a_world_the_verse_page_stays_plain() {
+        let home = tempfile::tempdir().unwrap();
+        let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+        let mut layer = Layer::new(grid.clone(), None);
+        grid.borrow_mut().set_open(true);
+        assert_eq!(layer.next_frame(Instant::now()), None);
+        assert!(!layer.loaded());
     }
 }

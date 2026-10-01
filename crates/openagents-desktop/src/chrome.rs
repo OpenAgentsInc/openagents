@@ -15,6 +15,10 @@ pub const MARK: &str = "openagents-mark";
 pub const SIDEBAR_MIN: f32 = 224.0;
 pub const SIDEBAR_MAX: f32 = 400.0;
 pub const SIDEBAR_DEFAULT: f32 = 256.0;
+/// The sidebar's **Filter sessions…** field shows once there are this many
+/// chats (#10072); with fewer the whole list fits, and the palette
+/// (Cmd/Ctrl+K) still searches them.
+pub const SEARCH_MIN_CHATS: usize = 5;
 const SAMPLE_LIMIT: usize = 40;
 const SIDEBAR: Color = openagents_chat_app::visual::SIDEBAR;
 const SELECTED: Color = openagents_chat_app::visual::SELECTED;
@@ -120,6 +124,8 @@ pub struct State {
     pub profile_open: bool,
     pub closed_sections: BTreeSet<Section>,
     pub chats: Vec<Chat>,
+    /// Every saved chat, before the sidebar's filter.
+    pub total_chats: usize,
     pub search: String,
     pub projects: std::collections::BTreeMap<u64, String>,
     /// A newer release to offer on Settings.
@@ -215,6 +221,7 @@ impl Default for State {
         ];
         Self {
             live: false,
+            total_chats: 0,
             search: String::new(),
             projects: std::collections::BTreeMap::new(),
             update: None,
@@ -370,6 +377,12 @@ impl State {
                 && self.settings.pane == crate::settings::Pane::Computers)
     }
 
+    /// Whether the sidebar shows its filter field: enough chats to need
+    /// it, or a filter already typed.
+    pub fn shows_search(&self) -> bool {
+        self.live && (self.total_chats >= SEARCH_MIN_CHATS || !self.search.is_empty())
+    }
+
     pub fn selected(&self) -> Option<&Chat> {
         let Page::Chat(id) = self.page else {
             return None;
@@ -506,8 +519,8 @@ fn gap(key: &str, width: u16) -> Node<Intent> {
     node
 }
 
-fn sidebar(state: &State) -> Node<Intent> {
-    let header_rows = if state.live {
+fn sidebar(state: &State, model: &Model) -> Node<Intent> {
+    let header_rows = if state.shows_search() {
         vec![node(
             "chat-search",
             Element::Composer {
@@ -522,6 +535,8 @@ fn sidebar(state: &State) -> Node<Intent> {
                 focus: false,
             },
         )]
+    } else if state.live {
+        vec![]
     } else {
         vec![text("shell-brand", "OpenAgents", TextRole::Body)]
     };
@@ -692,6 +707,16 @@ fn sidebar(state: &State) -> Node<Intent> {
         settings.style.background = Some(SELECTED);
         settings.style.foreground = Some(TEXT);
     }
+    // The Verse page (#10071): the Grid lives there and nowhere else.
+    let mut verse = icon_button("sidebar-verse", "Verse", Action::Grid, Glyph::Cloud);
+    verse.style.radius = Some(8);
+    verse.style.glyph_size = Some(15);
+    verse.style.hover_background = Some(SELECTED);
+    verse.style.hover_foreground = Some(TEXT);
+    if state.page == Page::Grid {
+        verse.style.background = Some(SELECTED);
+        verse.style.foreground = Some(TEXT);
+    }
     let mut spacer = stack(
         "sidebar-footer-spacer",
         Axis::Horizontal,
@@ -703,24 +728,219 @@ fn sidebar(state: &State) -> Node<Intent> {
         "sidebar-footer",
         Axis::Horizontal,
         Space::None,
-        vec![profile, spacer, settings],
+        vec![profile, spacer, verse, settings],
     );
     footer.style.gap_points = Some(4);
+    let mut bottom = vec![];
+    if state.live
+        && let Some(engines) = engines(model, state.sidebar_width)
+    {
+        bottom.push(engines);
+    }
+    bottom.push(footer);
+    let mut bottom = stack("sidebar-bottom", Axis::Vertical, Space::None, bottom);
+    bottom.style.gap_points = Some(8);
     let mut pane = stack(
         "shell-sidebar",
         Axis::Vertical,
         Space::None,
         if state.collapsed {
-            ["sidebar-header", "sidebar-body", "sidebar-footer"]
+            ["sidebar-header", "sidebar-body", "sidebar-bottom"]
                 .into_iter()
                 .map(|key| stack(key, Axis::Vertical, Space::None, vec![]))
                 .collect()
         } else {
-            vec![header, body, footer]
+            vec![header, body, bottom]
         },
     );
     pane.style.background = Some(SIDEBAR);
     pane
+}
+
+/// The engines this computer's Coder runs, one condensed row each, above
+/// the sidebar's footer (#10072, from the #10018 report): the name, the
+/// model, and a small meter for the tightest usage window. Hovering a row
+/// shows every window with its reset ([`engine_tooltip`]); a click opens
+/// Settings' Coder page, which shows the full report. Read-only: nothing
+/// here changes an engine.
+fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
+    if model.engine.is_none() && model.engine_note.is_none() {
+        return None;
+    }
+    let mut rows = vec![];
+    if let Some(report) = &model.engine {
+        if report.routes.is_empty() {
+            for (index, account) in report.accounts.iter().take(4).enumerate() {
+                rows.push(engine_row(
+                    sidebar_width,
+                    index,
+                    &account.name,
+                    if account.signed_in {
+                        "Signed in"
+                    } else {
+                        "Not signed in"
+                    },
+                    None,
+                ));
+            }
+        } else {
+            for (index, route) in report.routes.iter().take(4).enumerate() {
+                rows.push(engine_row(
+                    sidebar_width,
+                    index,
+                    &route.name,
+                    &route.model,
+                    tightest(&route.usage).map(|percent| (route.provider.as_str(), percent)),
+                ));
+            }
+        }
+    }
+    if let Some(note) = &model.engine_note {
+        let mut line = text("sidebar-engine-note", note.clone(), TextRole::Status);
+        line.style.text_size = Some(11);
+        line.style.foreground = Some(MUTED);
+        line.style.padding_points = Some([0, 8, 0, 8]);
+        rows.push(line);
+    }
+    let mut section = stack("sidebar-engines", Axis::Vertical, Space::None, rows);
+    section.style.gap_points = Some(2);
+    Some(section)
+}
+
+/// The used share of a route's tightest window, from 0 to 100, when its
+/// usage is read.
+fn tightest(usage: &crate::control::RouteUsage) -> Option<u8> {
+    match usage {
+        crate::control::RouteUsage::Windows {
+            windows,
+            limit_reached,
+            used_percent,
+        } => Some(if *limit_reached {
+            100
+        } else {
+            windows
+                .iter()
+                .map(|window| window.used_percent)
+                .max()
+                .unwrap_or(*used_percent)
+                .min(100)
+        }),
+        _ => None,
+    }
+}
+
+fn engine_row(
+    sidebar_width: f32,
+    index: usize,
+    name: &str,
+    detail: &str,
+    meter: Option<(&str, u8)>,
+) -> Node<Intent> {
+    // One line: the model is shortened to the row's room (about 6 points
+    // a character at 12 points), and the hover text has it whole.
+    let room = sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX)
+        - 16.0
+        - 16.0
+        - if meter.is_some() { 76.0 } else { 0.0 };
+    let budget = ((room / 6.0) as usize).saturating_sub(name.chars().count() + 2);
+    let detail = if detail.chars().count() > budget {
+        let mut short: String = detail.chars().take(budget.saturating_sub(1)).collect();
+        short.push('…');
+        short
+    } else {
+        detail.to_owned()
+    };
+    let mut row = node(
+        &format!("sidebar-engine-{index}"),
+        Element::Button {
+            shortcut: None,
+            label: format!("{name}  {detail}"),
+            enabled: true,
+            icon: None,
+            intent: Intent::Settings {
+                action: crate::settings::Action::Pane {
+                    pane: crate::settings::Pane::Coder,
+                },
+            },
+        },
+    );
+    row.style = Style {
+        background: Some(SIDEBAR),
+        foreground: Some(MUTED),
+        hover_background: Some(SELECTED),
+        hover_foreground: Some(TEXT),
+        align: Some(TextAlign::Start),
+        weight: Some(TextWeight::Normal),
+        radius: Some(8),
+        text_size: Some(12),
+        line_height: Some(16),
+        button_padding: Some([8, 6]),
+        min_height: Some(28),
+        ..Style::default()
+    };
+    let mut children = vec![row];
+    if let Some((provider, percent)) = meter {
+        let provider: String = provider
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .take(24)
+            .collect();
+        children.push(node(
+            &format!("sidebar-engine-{index}-meter"),
+            Element::Surface {
+                resource: format!("engine-meter:{provider}:{percent}"),
+                label: format!("{name} usage {percent} percent"),
+            },
+        ));
+        let mut share = text(
+            &format!("sidebar-engine-{index}-percent"),
+            format!("{percent}%"),
+            TextRole::Status,
+        );
+        share.style.text_size = Some(11);
+        share.style.foreground = Some(MUTED);
+        share.style.intrinsic_width = Some(true);
+        share.style.padding_points = Some([5, 8, 0, 0]);
+        children.push(share);
+    }
+    let mut line = stack(
+        &format!("sidebar-engine-row-{index}"),
+        Axis::Horizontal,
+        Space::None,
+        children,
+    );
+    line.style.gap_points = Some(6);
+    line
+}
+
+/// The hover text for an engine row: every usage window with its reset.
+pub fn engine_tooltip(model: &Model, key: &str) -> Option<String> {
+    let index: usize = key.strip_prefix("sidebar-engine-")?.parse().ok()?;
+    let report = model.engine.as_ref()?;
+    if report.routes.is_empty() {
+        let account = report.accounts.get(index)?;
+        return Some(format!(
+            "{} · {}",
+            account.name,
+            if account.signed_in {
+                "Signed in"
+            } else {
+                "Not signed in"
+            }
+        ));
+    }
+    let route = report.routes.get(index)?;
+    Some(format!(
+        "{} · {} · {}. {}",
+        route.name,
+        route.model,
+        if route.signed_in {
+            "Signed in"
+        } else {
+            "Not signed in"
+        },
+        openagents_chat_app::engine::usage_sentence(&route.usage)
+    ))
 }
 
 fn placeholder(state: &State) -> Node<Intent> {
@@ -793,7 +1013,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 .map_or("New chat", |chat| chat.title.as_str())
                 .into(),
             Page::Saved => "Saved sessions".into(),
-            Page::Grid => "The Grid".into(),
+            Page::Grid => "Verse".into(),
             Page::Computers => "Phones and computers".into(),
             Page::Settings => "Settings".into(),
         }
@@ -928,28 +1148,14 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         menu.style.hover_background = Some(SELECTED);
         children.push(menu);
     }
-    let show_engine = state.live
-        && !prompt
-        && matches!(state.page, Page::Chat(_))
-        && (model.engine.is_some() || model.engine_note.is_some());
-    // The titlebar stays one line. The strip sits in the content slot under it.
-    let content_header = if show_engine {
-        let mut lines = Vec::new();
-        if let Some(report) = &model.engine {
-            lines.push(openagents_chat_app::engine::strip(report));
-        }
-        if let Some(note) = &model.engine_note {
-            lines.push(text("shell-engine-note", note.clone(), TextRole::Status));
-        }
-        stack("shell-content-header", Axis::Vertical, Space::Xs, lines)
-    } else {
-        stack(
-            "shell-content-header",
-            Axis::Vertical,
-            Space::None,
-            Vec::new(),
-        )
-    };
+    // The engines sit in the sidebar (#10072); the conversation starts at
+    // the top of the reading pane.
+    let content_header = stack(
+        "shell-content-header",
+        Axis::Vertical,
+        Space::None,
+        Vec::new(),
+    );
     let body = if prompt {
         crate::screens::root(model, now)
     } else {
@@ -1017,7 +1223,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 "desktop-shell",
                 Axis::Horizontal,
                 Space::None,
-                vec![sidebar(state), content],
+                vec![sidebar(state, model), content],
             ),
         ],
     )
@@ -1127,6 +1333,70 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_filter_shows_once_there_are_enough_chats() {
+        use crate::model::{Agent, Screen};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut state = State::empty();
+        for total in 0..SEARCH_MIN_CHATS {
+            state.total_chats = total;
+            assert!(
+                !contains(&root(&state, &model, 0), "chat-search"),
+                "{total}"
+            );
+        }
+        state.total_chats = SEARCH_MIN_CHATS;
+        assert!(contains(&root(&state, &model, 0), "chat-search"));
+        // A filter already typed stays visible however few chats match.
+        state.total_chats = 2;
+        state.search = "pla".into();
+        assert!(contains(&root(&state, &model, 0), "chat-search"));
+    }
+
+    #[test]
+    fn the_verse_opens_from_the_footer_beside_settings() {
+        use crate::model::{Agent, Screen};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut state = State::empty();
+        let view = root(&state, &model, 0);
+        let footer = find(&view, "sidebar-footer").expect("the footer");
+        let Element::Stack { children, .. } = &footer.element else {
+            panic!("a stack")
+        };
+        let keys: Vec<_> = children.iter().map(|child| child.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "sidebar-profile",
+                "sidebar-footer-spacer",
+                "sidebar-verse",
+                "sidebar-settings"
+            ]
+        );
+        let Element::Button { label, intent, .. } = &children[2].element else {
+            panic!("a button")
+        };
+        assert_eq!(label, "Verse");
+        assert_eq!(
+            *intent,
+            Intent::Navigate {
+                action: Action::Grid
+            }
+        );
+        state.activate(Action::Grid);
+        let view = root(&state, &model, 0);
+        let verse = find(&view, "sidebar-verse").unwrap();
+        assert_eq!(verse.style.background, Some(SELECTED));
+        let Some(Node {
+            element: Element::Text { value, .. },
+            ..
+        }) = find(&view, "shell-page-title")
+        else {
+            panic!("a title")
+        };
+        assert_eq!(value, "Verse");
+    }
+
     fn contains(node: &Node<Intent>, key: &str) -> bool {
         if node.key == key {
             return true;
@@ -1156,7 +1426,7 @@ mod tests {
     }
 
     #[test]
-    fn the_chat_header_shows_the_engine_and_cannot_change_it() {
+    fn the_sidebar_shows_each_engine_in_one_row_and_the_transcript_none() {
         use crate::control::{EngineReport, EngineRoute, RouteUsage, UsageWindow};
         use crate::model::{Agent, Screen};
         let mut model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
@@ -1190,18 +1460,63 @@ mod tests {
         });
         model.engine_note = Some("Coder's engine report was unreadable.".into());
         let root = root(&State::empty(), &model, 0);
+        // Nothing above the conversation (#10072).
+        let header = find(&root, "shell-content-header").expect("the content header");
+        assert!(matches!(&header.element, Element::Stack { children, .. } if children.is_empty()));
+        assert!(!contains(&root, "engine-strip"));
+        // One condensed row per engine above the sidebar's footer.
+        let bottom = find(&root, "sidebar-bottom").expect("the sidebar's bottom");
+        let Element::Stack { children, .. } = &bottom.element else {
+            panic!("a stack")
+        };
+        assert_eq!(children[0].key, "sidebar-engines");
+        assert_eq!(children[1].key, "sidebar-footer");
+        let Some(Node {
+            element: Element::Button { label, intent, .. },
+            ..
+        }) = find(&root, "sidebar-engine-0")
+        else {
+            panic!("no engine row")
+        };
+        assert_eq!(label, "Codex  gpt-6-luna");
+        assert_eq!(
+            *intent,
+            Intent::Settings {
+                action: crate::settings::Action::Pane {
+                    pane: crate::settings::Pane::Coder
+                }
+            }
+        );
+        assert!(contains(&root, "sidebar-engine-0-meter"));
         let words = crate::screens::words(&root);
-        assert!(words.iter().any(|word| word.contains("Codex")));
-        assert!(words.iter().any(|word| word.contains("gpt-6-luna")));
         assert!(words.iter().any(|word| word.contains("72%")));
         assert!(words.iter().any(|word| word.contains("unreadable")));
+        assert!(!words.iter().any(|word| word.contains("UTC")));
         for value in &words {
             assert!(crate::words::banned_in(value).is_empty(), "{value}");
         }
-        let strip = find(&root, "engine-strip").expect("the strip");
-        assert!(!has_button(strip));
+        // Resets on hover.
+        let tip = engine_tooltip(&model, "sidebar-engine-0").expect("a tooltip");
+        assert!(tip.contains("Signed in"), "{tip}");
+        assert!(
+            tip.contains("Primary 72% until 2026-10-03 18:07 UTC"),
+            "{tip}"
+        );
+        assert_eq!(engine_tooltip(&model, "sidebar-engine-9"), None);
         rust_native::View::new("shell-engine", 1, root)
             .validate()
             .expect("valid view");
+        // The full report, resets included, on Settings' Coder page.
+        let mut state = State::empty();
+        state.page = Page::Settings;
+        state.settings.pane = crate::settings::Pane::Coder;
+        let settings = super::root(&state, &model, 0);
+        let strip = find(&settings, "engine-strip").expect("the full report");
+        assert!(!has_button(strip));
+        assert!(
+            crate::screens::words(&settings)
+                .iter()
+                .any(|word| word.contains("UTC"))
+        );
     }
 }

@@ -31,9 +31,10 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
         },
         start,
     );
-    let watch =
-        openagents_desktop::backdrop::GridBackdrop::new("ws://127.0.0.1:1", Box::new(|| true));
-    let mut layer = Layer::new(grid.clone(), Some(watch));
+    let watcher: openagents_desktop::grid::Watcher = Box::new(|| {
+        openagents_desktop::backdrop::GridBackdrop::new("ws://127.0.0.1:1", Box::new(|| true))
+    });
+    let mut layer = Layer::new(grid.clone(), Some(watcher));
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))

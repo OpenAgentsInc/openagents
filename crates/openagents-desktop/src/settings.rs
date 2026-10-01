@@ -191,7 +191,7 @@ pub struct Settings {
     /// The settings file the window keeps them in; none in a capture or a
     /// test, where they live only in memory.
     pub file: Option<std::path::PathBuf>,
-    /// The "Reduce motion" preference, read by the Grid behind the window
+    /// The "Reduce motion" preference, read by the Grid on the Verse page
     /// on its own schedule ([`crate::backdrop`]).
     motion: Arc<AtomicBool>,
 }
@@ -344,7 +344,7 @@ fn appearance(settings: &Settings) -> Vec<Node<Intent>> {
         ),
         text(
             "settings-motion-line",
-            "Keeps the Grid behind the window still. Your computer's own Reduce motion setting also does.",
+            "Keeps the Grid on the Verse page still. Your computer's own Reduce motion setting also does.",
             TextRole::Status,
         ),
     ]
@@ -444,8 +444,16 @@ fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
     ]
 }
 
-fn coder(settings: &Settings) -> Vec<Node<Intent>> {
+fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
     let mut rows = vec![title("settings-coder-title", "Coder on this computer")];
+    // The engines in full, with each usage window's reset; the sidebar
+    // shows one condensed row each and opens this page (#10072).
+    if let Some(report) = &model.engine {
+        rows.push(openagents_chat_app::engine::strip(report));
+    }
+    if let Some(note) = &model.engine_note {
+        rows.push(text("settings-engine-note", note.clone(), TextRole::Status));
+    }
     let (ask_first, agents) = match &settings.coder {
         CoderChoices::Unknown => {
             rows.push(text(
@@ -652,7 +660,7 @@ pub fn view(
         Pane::TextSize => text_size(settings),
         Pane::Shortcuts => shortcuts(),
         Pane::Notifications => notifications(settings),
-        Pane::Coder => coder(settings),
+        Pane::Coder => coder(settings, model),
         Pane::Computers => vec![crate::screens::root(model, now)],
         Pane::Archived => archived(settings),
     };

@@ -54,9 +54,9 @@ Usage: openagents-desktop [options]
   --fake-phones N      with --fake-host, N phones are already connected, and
                        the window opens on Phones and computers
   --no-login-agent     don't register the login agent that runs Coder
-  --verse-relay URL    watch the Grid behind the window on URL (default
+  --verse-relay URL    watch the Grid on the Verse page from URL (default
                        $OPENAGENTS_VERSE_RELAY, else wss://relay.openagents.com)
-  --no-backdrop        a plain background, without the Grid
+  --no-backdrop        no world on the Verse page
   --chat-benchmark DIR  measure an offline 3,300-row / 500-chat native fixture
   --benchmark-minimum   use the minimum window in the benchmark
   --benchmark-scale N   render the benchmark at 1x or 2x
@@ -342,8 +342,9 @@ fn reduce_motion() -> bool {
     system
 }
 
-/// The Grid behind the window, watched on the chosen relay, unless the
-/// person asked for a plain background. Windows has none.
+/// The Verse page's layer: the Grid, watched on the chosen relay while
+/// that page shows, unless the person asked for no world. Other pages have
+/// a plain background. Windows has none.
 #[cfg(not(windows))]
 fn backdrop(
     options: &Options,
@@ -357,11 +358,17 @@ fn backdrop(
         .unwrap_or_else(|| verse::session::PUBLIC_RELAY.to_owned());
     let grid = openagents_desktop::grid::Grid::new(relay.clone(), home(), options.fake_host);
     app.set_grid(grid.clone());
-    let watch = (!options.no_backdrop).then(|| {
-        openagents_desktop::backdrop::GridBackdrop::new(&relay, Box::new(reduce_motion))
-            .follow(app.reduce_motion())
+    // The world loads only while the Verse page shows (#10071).
+    let preference = app.reduce_motion();
+    let watcher = (!options.no_backdrop).then(|| -> openagents_desktop::grid::Watcher {
+        Box::new(move || {
+            openagents_desktop::backdrop::GridBackdrop::new(&relay, Box::new(reduce_motion))
+                .follow(preference.clone())
+        })
     });
-    Some(Box::new(openagents_desktop::grid::Layer::new(grid, watch)))
+    Some(Box::new(openagents_desktop::grid::Layer::new(
+        grid, watcher,
+    )))
 }
 
 #[cfg(windows)]

@@ -199,7 +199,7 @@ pub fn profile_registry() -> Vec<Entry> {
             Action::Computers,
             true,
         ),
-        entry("grid", "The Grid", "", Action::Grid, true),
+        entry("grid", "Verse", "", Action::Grid, true),
         entry("saved", "Saved sessions", "", Action::Saved, true),
         entry("commands", "Commands", "Cmd/Ctrl+K", Action::Palette, true),
     ]

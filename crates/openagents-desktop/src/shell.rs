@@ -329,11 +329,14 @@ impl DesktopApp {
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             grid.borrow_mut().suspend(!self.grid_active());
-            if !self
+            let open = self
                 .navigation
                 .as_ref()
-                .is_some_and(|state| state.page == Page::Grid)
-            {
+                .is_some_and(|state| state.page == Page::Grid);
+            // The window's layer loads the world only while this is set
+            // and releases it when it clears (#10071).
+            grid.borrow_mut().set_open(open);
+            if !open {
                 grid.borrow_mut().stop();
             } else if !self.grid_active() {
                 grid.borrow_mut().input(
@@ -1163,7 +1166,10 @@ impl App for DesktopApp {
         self.chat.as_ref().is_none_or(|chat| chat.allows_focus(key))
     }
     fn tooltip(&self, key: &str) -> Option<String> {
-        self.chat.as_ref().and_then(|chat| chat.tooltip(key))
+        self.chat
+            .as_ref()
+            .and_then(|chat| chat.tooltip(key))
+            .or_else(|| chrome::engine_tooltip(&self.model, key))
     }
     fn access_value(&self, key: &str) -> Option<String> {
         self.chat.as_ref()?.access_value(key)
@@ -1195,7 +1201,7 @@ impl App for DesktopApp {
         if resource == openagents_desktop::slides::RESOURCE {
             return self.slides.as_ref().map(|slides| slides.version());
         }
-        if let Some(percent) = parse_ring(resource) {
+        if let Some(percent) = parse_ring(resource).or_else(|| parse_meter(resource)) {
             return Some(u64::from(percent));
         }
         #[cfg(not(windows))]
@@ -1301,6 +1307,9 @@ impl App for DesktopApp {
         if parse_ring(resource).is_some() {
             return Some((22.0_f32.min(available), 22.0));
         }
+        if parse_meter(resource).is_some() {
+            return Some((METER_WIDTH.min(available), 28.0));
+        }
         if resource == chrome::MARK {
             return Some((64.0_f32.min(available), 64.0));
         }
@@ -1332,6 +1341,30 @@ impl App for DesktopApp {
                 Color::rgb(220, 225, 233)
             };
             frame.usage_ring(rect, f32::from(percent) / 100.0, track, fill);
+            return;
+        }
+        if let Some(percent) = parse_meter(resource) {
+            // A 4-point bar on the row's middle line (#10072).
+            let scale = (rect.h / 28.0).max(0.5);
+            let bar = PxRect {
+                x: rect.x,
+                y: (rect.y + rect.h / 2.0 - 2.0 * scale).round(),
+                w: rect.w,
+                h: (4.0 * scale).round().max(1.0),
+            };
+            frame.fill(bar, bar.h / 2.0, Color::rgb(58, 64, 73));
+            if percent > 0 {
+                let used = PxRect {
+                    w: (bar.w * f32::from(percent) / 100.0).max(bar.h),
+                    ..bar
+                };
+                let fill = if percent >= 90 {
+                    Color::rgb(214, 168, 92)
+                } else {
+                    Color::rgb(220, 225, 233)
+                };
+                frame.fill(used, bar.h / 2.0, fill);
+            }
             return;
         }
         if resource == chrome::MARK {
@@ -1374,6 +1407,18 @@ impl App for DesktopApp {
         };
         paint_code(frame, rect, modules);
     }
+}
+
+/// The sidebar engine meter's width in points.
+const METER_WIDTH: f32 = 32.0;
+
+/// `engine-meter:{provider}:{percent}`, the sidebar's usage bar, with
+/// `percent` from 0 to 100.
+fn parse_meter(resource: &str) -> Option<u8> {
+    let rest = resource.strip_prefix("engine-meter:")?;
+    let (_, percent) = rest.rsplit_once(':')?;
+    let percent = percent.parse().ok()?;
+    (percent <= 100).then_some(percent)
 }
 
 /// `engine-ring:{provider}:{percent}`, with `percent` from 0 to 100.
@@ -2966,6 +3011,187 @@ mod chat_management {
             assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
         }
     }
+    /// Pixels in the composer's field that are the placeholder's ink.
+    fn placeholder_ink(
+        frame: &rust_native_desktop::Frame,
+        rect: rust_native_desktop::Rect,
+        scale: f32,
+    ) -> usize {
+        let faint = openagents_chat_app::visual::FAINT;
+        let mut count = 0;
+        let x0 = (rect.x * scale) as usize;
+        let y0 = (rect.y * scale) as usize;
+        for y in y0..((rect.y + rect.h) * scale) as usize {
+            for x in x0..((rect.x + rect.w) * scale) as usize {
+                let [r, g, b] = frame.pixel(x, y);
+                if r.abs_diff(faint.red) < 24
+                    && g.abs_diff(faint.green) < 24
+                    && b.abs_diff(faint.blue) < 24
+                {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+    #[test]
+    fn the_placeholder_paints_in_the_centered_and_the_docked_composer() {
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            for scale in [1.0, 2.0] {
+                for rows in [0, 4] {
+                    let (mut app, now) = super::tests::chat_fixture(rows);
+                    assert_eq!(
+                        app.chat.as_ref().unwrap().composer_centered(),
+                        rows == 0,
+                        "an empty chat centers its composer"
+                    );
+                    let (frame, scene) =
+                        rust_native_desktop::capture(&mut app, width, height, scale);
+                    let field = scene
+                        .surface_rect(openagents_desktop::chat::COMPOSER)
+                        .unwrap();
+                    let empty = placeholder_ink(&frame, field, scale);
+                    assert!(
+                        empty > (40.0 * scale * scale) as usize,
+                        "Message OpenAgents… shows with {rows} rows at {width}x{height} {scale}x: {empty}"
+                    );
+                    if let Some(path) = std::env::var_os("OPENAGENTS_POLISH_EVIDENCE") {
+                        let path = std::path::PathBuf::from(path);
+                        std::fs::create_dir_all(&path).unwrap();
+                        std::fs::write(
+                            path.join(format!(
+                                "composer-{}-{width}x{height}-{scale}x.png",
+                                if rows == 0 { "centered" } else { "docked" }
+                            )),
+                            frame.png().unwrap(),
+                        )
+                        .unwrap();
+                    }
+                    app.text_input(TextInput::Commit("Hi"), now);
+                    let (frame, scene) =
+                        rust_native_desktop::capture(&mut app, width, height, scale);
+                    let field = scene
+                        .surface_rect(openagents_desktop::chat::COMPOSER)
+                        .unwrap();
+                    assert!(
+                        placeholder_ink(&frame, field, scale) < empty / 4,
+                        "typing hides the placeholder"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn engines_sit_above_the_footer_and_the_filter_waits_for_five_chats() {
+        use openagents_desktop::control::{EngineReport, EngineRoute, RouteUsage, UsageWindow};
+        let window = |name: &str, label: &str, used: u8, resets: &str| UsageWindow {
+            name: name.into(),
+            label: label.into(),
+            used_percent: used,
+            resets_at: Some(1_791_050_824),
+            resets: Some(resets.into()),
+        };
+        let now = Instant::now();
+        let (mut app, _) = DesktopApp::performance_fixture(0, 3, now);
+        let report = EngineReport {
+            enabled: true,
+            adapter: "microcoder-repository".into(),
+            model: "gpt-6-luna".into(),
+            routes: vec![
+                EngineRoute {
+                    provider: "codex".into(),
+                    name: "Codex".into(),
+                    model: "gpt-6-luna".into(),
+                    signed_in: true,
+                    usage: RouteUsage::Windows {
+                        windows: vec![
+                            window("primary", "5 hours", 72, "2026-10-01 18:07 UTC"),
+                            window("secondary", "Week", 31, "2026-10-06 09:00 UTC"),
+                        ],
+                        limit_reached: false,
+                        used_percent: 72,
+                    },
+                },
+                EngineRoute {
+                    provider: "claude".into(),
+                    name: "Claude Code".into(),
+                    model: "claude-opus-5-5".into(),
+                    signed_in: true,
+                    usage: RouteUsage::Windows {
+                        windows: vec![window("five_hour", "5 hours", 94, "2026-10-01 16:00 UTC")],
+                        limit_reached: false,
+                        used_percent: 94,
+                    },
+                },
+            ],
+            accounts: vec![],
+            usage_probe: Some(90),
+            refresh_due: false,
+        };
+        app.model.engine = Some(report.clone());
+        app.present();
+        let evidence = std::env::var_os("OPENAGENTS_POLISH_EVIDENCE").map(std::path::PathBuf::from);
+        let save = |app: &mut DesktopApp, name: &str, width: f32, height: f32| {
+            let (frame, scene) = rust_native_desktop::capture(app, width, height, 2.0);
+            if let Some(path) = &evidence {
+                std::fs::create_dir_all(path).unwrap();
+                std::fs::write(
+                    path.join(format!("{name}-{width}x{height}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+            scene
+        };
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let scene = save(&mut app, "sidebar-few-chats", width, height);
+            assert!(!scene.bounds.contains_key("chat-search"));
+            let footer = scene.bounds["sidebar-footer"];
+            let verse = scene.bounds["sidebar-verse"];
+            let settings = scene.bounds["sidebar-settings"];
+            assert_eq!((verse.w, verse.h), (28.0, 28.0));
+            assert!(verse.x + verse.w <= settings.x && verse.y == settings.y);
+            for index in 0..2 {
+                let row = scene.bounds[&format!("sidebar-engine-row-{index}")];
+                assert!(row.h <= 32.0, "one condensed line: {row:?}");
+                assert!(row.y + row.h <= footer.y, "above the footer");
+                assert!(
+                    scene
+                        .bounds
+                        .contains_key(&format!("sidebar-engine-{index}-meter"))
+                );
+            }
+            assert!(!scene.bounds.contains_key("engine-strip"));
+        }
+        let (mut app, _) = DesktopApp::performance_fixture(0, 5, now);
+        app.model.engine = Some(report);
+        app.present();
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let scene = save(&mut app, "sidebar-five-chats", width, height);
+            assert!(scene.bounds.contains_key("chat-search"));
+        }
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::Grid,
+            },
+            now,
+        );
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            save(&mut app, "verse-page", width, height);
+        }
+        app.activate(
+            Intent::Settings {
+                action: openagents_desktop::settings::Action::Pane {
+                    pane: openagents_desktop::settings::Pane::Coder,
+                },
+            },
+            now,
+        );
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let scene = save(&mut app, "settings-coder-engines", width, height);
+            assert!(scene.bounds.contains_key("engine-strip"));
+        }
+    }
     #[test]
     fn sidebar_context_precedes_the_title_without_wrapping_the_row() {
         let (mut app, _) = DesktopApp::performance_fixture(0, 1, Instant::now());
@@ -3220,6 +3446,11 @@ mod chat_management {
     #[test]
     fn pin_rename_search_archive_and_restore_use_real_host_state() {
         let (mut app, now) = super::tests::chat_fixture(0);
+        // Enough chats for the sidebar's filter (#10072).
+        for _ in 0..4 {
+            let request = app.chat.as_mut().unwrap().new_chat();
+            app.send(vec![request], now);
+        }
         let request = app.chat.as_mut().unwrap().new_chat();
         app.send(vec![request], now);
         app.present();
@@ -4258,6 +4489,22 @@ mod command_fixtures {
         key(&mut app, now, "Tab", true, true);
         assert_eq!(app.navigation.as_ref().unwrap().page, Page::Chat(first));
         assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this unsent draft");
+        // With fewer than five chats Cmd/Ctrl+F opens the palette (#10072).
+        key(&mut app, now, "f", true, false);
+        assert!(app.chat.as_ref().unwrap().modal());
+        key_escape(&mut app, now);
+        // Enough chats for the sidebar's filter (#10072).
+        for _ in 0..4 {
+            let request = app.chat.as_mut().unwrap().new_chat();
+            app.send(vec![request], now);
+        }
+        app.present();
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::SelectChat { id: first },
+            },
+            now,
+        );
         key(&mut app, now, "f", true, false);
         app.text_input(TextInput::Commit("new"), now);
         assert_eq!(app.navigation.as_ref().unwrap().search, "new");

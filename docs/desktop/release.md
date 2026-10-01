@@ -350,8 +350,8 @@ at a test manifest, such as `desktop/windows-test/manifest.json`; the
 compiled key still has to verify it.
 
 **What differs on Windows.** Chat, Coder runs from chat, and pairing are
-the same shared Rust as on the Mac. The Verse backdrop (the Grid behind the
-window) stays off: Verse does not build for Windows yet, and the window
+the same shared Rust as on the Mac. The Verse page's world (the Grid) stays
+off: Verse does not build for Windows yet, and the window
 keeps its plain background. Coder's desktop notifications are Linux's
 ([#10026](https://github.com/OpenAgentsInc/openagents/issues/10026)) and the
 Mac's ([#10061](https://github.com/OpenAgentsInc/openagents/issues/10061),

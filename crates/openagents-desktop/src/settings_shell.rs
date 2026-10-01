@@ -104,7 +104,7 @@ impl DesktopApp {
         self.present();
     }
 
-    /// The "Reduce motion" preference the Grid behind the window follows.
+    /// The "Reduce motion" preference the Grid on the Verse page follows.
     pub fn reduce_motion(&self) -> Arc<AtomicBool> {
         self.navigation
             .as_ref()

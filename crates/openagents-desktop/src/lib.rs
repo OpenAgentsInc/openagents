@@ -22,7 +22,7 @@
 //!
 //! The modules, in the order a reader meets them:
 //!
-//! - `backdrop`: the Grid, watched live behind the window (the `app`
+//! - `backdrop`: the Grid, watched live on the Verse page (the `app`
 //!   feature; not on Windows).
 //! - [`control`]: the control protocol client and the [`control::HostControl`] seam.
 //! - [`codes`]: when a code shows, rotates, and is cancelled.

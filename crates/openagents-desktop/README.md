@@ -1,8 +1,9 @@
 # openagents-desktop
 
 **OpenAgents** for desktop opens into chat: a sidebar of your saved chats, a
-transcript, and an editable composer, with the live Grid behind the main pane
-on macOS and Linux. Chats are hosted OpenAgents conversations that persist
+transcript, and an editable composer, on a plain background. The live Grid
+has its own **Verse** page, opened from the sidebar's footer, on macOS and
+Linux. Chats are hosted OpenAgents conversations that persist
 across restarts; a coding request runs Coder on this computer
 ([local Coder](../../docs/desktop/local-coder.md)). The same shared Rust
 (`openagents-chat`, `openagents-chat-app`) drives the phones' chat.
@@ -28,7 +29,7 @@ verification record; owner-only checks are in the workspace `NEEDS_OWNER.md`.
 | Coder notifications (question, approval, finished, failed) whose click opens the chat | Linux (portal, else notification server), macOS (notification center, asked on the first notice), Windows (toasts) | macOS needs the app bundle; Windows needs the MSI's AppUserModelID registration. A click after the app quit opens nothing on macOS or Windows | [Linux](../../docs/desktop/verification/2026-09-30-linux-integration/README.md), [Windows](../../docs/desktop/verification/2026-09-30-windows-notifications/verification.md), [release](../../docs/desktop/release.md#releasing-for-windows) |
 | **Update ready** strip with **Restart to update** | macOS, Linux, Windows | A development build never checks | [menus, notifications, update](../../docs/desktop/verification/2026-09-30-menus-notify-update/verification.md) |
 | Slide viewer: a deck opened from chat (`presentation.open`) or `--open-deck ID`, animated open and close, full screen | macOS, Linux, Windows | Decks open only in the desktop app; the phone and terminal say so | [captures](../../docs/desktop/verification/2026-09-30-slide-viewer/slides-viewer.png), [route](../../docs/coder/measurements/2026-09-30-presentation-route.md) |
-| The Grid: Watch backdrop and Play | macOS, Linux | Verse does not build on Windows | [playable Grid](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md) |
+| The Verse page (sidebar footer): the Grid's Watch and Play, loaded only while the page shows | macOS, Linux | Verse does not build on Windows | [playable Grid](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md) |
 
 Packages: the signed, notarized macOS `.dmg`; the Linux 1.0.0 AppImage and
 `.deb` ([record](../../docs/desktop/verification/2026-09-30-linux-release/README.md));
@@ -141,11 +142,18 @@ it creates no world key and joins no relay as a player. See the
 [verification record](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md)
 for captures, test commands, timing scope, and remaining native device checks.
 
-## The backdrop
+## The Verse page
 
-In Watch mode, behind every screen is the Grid, the OpenAgents app's Verse world, seen live
-from above ([#9982](https://github.com/OpenAgentsInc/openagents/issues/9982),
-[`src/backdrop.rs`](src/backdrop.rs)). Other players walk around the plaza,
+The **Verse** button in the sidebar's footer, beside the Local profile and
+Settings, opens the Verse page. In Watch mode it shows the Grid, the
+OpenAgents app's Verse world, seen live from above
+([#9982](https://github.com/OpenAgentsInc/openagents/issues/9982),
+[`src/backdrop.rs`](src/backdrop.rs)); **Play** joins it. The world exists
+only on that page ([#10071](https://github.com/OpenAgentsInc/openagents/issues/10071),
+[`src/grid.rs`](src/grid.rs)): chat and every other page have a plain
+background, nothing of the world is loaded, connected, or drawn there, and
+leaving the page closes the relay connection and releases the world's GPU
+resources. Other players walk around the plaza,
 the ball, the blocks, and the Gym as the phones draw them, and the camera
 sways slowly over it. With nobody there the Grid is empty; nothing is
 invented.
@@ -156,7 +164,7 @@ invented.
   presence, no input to the world, no chat, no name. If the relay asks for
   authentication it answers with a fresh key kept in memory for that one
   connection. Nobody sees the desktop or counts it.
-- **Behind the views.** The world is drawn by the Verse renderer on the
+- **Under the page's views.** The world is drawn by the Verse renderer on the
   window's own `wgpu` device, at half the window's pixels, then blurred a
   little and covered by the window's black at 55 percent
   (`rust_native_desktop::backdrop`). The views are painted over it
@@ -164,17 +172,20 @@ invented.
   contrast. Tests read the code back from a frame over an all-white,
   a finely lined, and a noisy backdrop, and from the committed window
   capture.
-- **Cost.** 30 frames a second while someone is in the Grid or the ball or
-  a block moves, 10 while it is empty and settled, none while the window is
-  hidden or minimized; after 20 seconds hidden the relay connection closes.
+- **Cost.** Nothing on any other page. On the Verse page, 30 frames a
+  second while someone is in the Grid or the ball or a block moves, 10 while
+  it is empty and settled, none while the window is hidden or minimized;
+  after 20 seconds hidden the relay connection closes.
   With **Reduce motion** on, the camera stops and one still frame is drawn
   each time the window shows. Measured on an Apple M5 Max, release
   build, window at its default size, CPU of one core over 30 seconds: 7.2%
   with three players walking, 3.0% with the Grid empty, 0.03% minimized,
-  and 0.03% for the window without a backdrop.
+  and 0.03% for the window without a backdrop. Those figures were measured
+  when the Grid sat behind every page; chat now costs what the window without
+  a backdrop costs ([measurement](../../docs/desktop/verification/2026-10-01-chat-polish/verification.md)).
 - **Choosing.** `--verse-relay URL` (or `OPENAGENTS_VERSE_RELAY`) watches
-  another relay; `--no-backdrop` shows a plain black background in Watch and keeps Play available. Windows has
-  no backdrop yet: Verse does not build there.
+  another relay; `--no-backdrop` shows no world in Watch and keeps Play
+  available. Windows has no Verse world yet: Verse does not build there.
 
 ## Run it
 
@@ -188,15 +199,15 @@ cargo run --release -p openagents-desktop -- --fake-host --fake-phones 5
 # The window against this Mac's host (its control socket).
 cargo run --release -p openagents-desktop -- --no-login-agent
 
-# Every screen as PNG files (without the backdrop).
+# Every screen as PNG files (without the Verse world).
 cargo run -p openagents-desktop -- --capture /tmp/openagents-desktop
 
-# The backdrop with simulated players: an in-process relay and three
-# walkers, then the window watching that relay.
+# The Verse page with simulated players: an in-process relay and three
+# walkers, then the window watching that relay (open Verse in the sidebar).
 cargo run -p verse --no-default-features --example grid_walkers -- 3
 cargo run --release -p openagents-desktop -- --fake-host --verse-relay ws://127.0.0.1:PORT
 
-# The backdrop alone, as a PNG, watching a relay for ten seconds.
+# The Grid alone, as a PNG, watching a relay for ten seconds.
 cargo run -p verse --no-default-features --features capture \
   --example overlook_capture -- /tmp/grid.png 0 wss://relay.openagents.com 10
 ```
@@ -260,8 +271,9 @@ and 2× scale. It excludes GPU rendering and display latency.
 
 ## Screenshots
 
-The app's window, captured with `screencapture -l`, against the in-process
-host with the Grid behind it, three simulated players walking there
+The app's window, captured with `screencapture -l` before the Grid moved to
+its own page (#10071), against the in-process host with the Grid behind it,
+three simulated players walking there
 (`grid_walkers`): [connect](screenshots/dsk-01-connect.png),
 [connected](screenshots/dsk-02-connected.png),
 [home](screenshots/dsk-03-home.png),

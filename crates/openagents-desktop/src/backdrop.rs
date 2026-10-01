@@ -1,5 +1,8 @@
-//! The window's backdrop: the Grid, the OpenAgents app's Verse world, seen
+//! Watch on the Verse page: the Grid, the OpenAgents app's Verse world, seen
 //! live from above ([#9982](https://github.com/OpenAgentsInc/openagents/issues/9982)).
+//! It exists only while the Verse page shows ([`crate::grid::Layer`],
+//! [#10071](https://github.com/OpenAgentsInc/openagents/issues/10071)): no
+//! other page loads or draws the world.
 //!
 //! The desktop is a spectator, never a player. [`verse::spectator`]
 //! subscribes to the Grid's public presence (NIP-MV pose frames and entity
@@ -9,7 +12,7 @@
 //! owners report them. With nobody online the Grid is empty.
 //!
 //! The world is drawn with the Verse renderer on the window's own device,
-//! half the window's size, then softened and dimmed under the views
+//! half the window's size, then softened and dimmed under the page's views
 //! (`rust_native_desktop::backdrop`), so the QR code and every word keep
 //! their full contrast. Cost: at most [`FPS`] frames a second while the
 //! window shows and someone is in the Grid, ten while it is empty; none
@@ -117,7 +120,7 @@ impl Pace {
     }
 }
 
-/// The Grid behind the window.
+/// The Grid as Watch shows it on the Verse page.
 pub struct GridBackdrop {
     overlook: Overlook,
     layer: Option<Layer>,
