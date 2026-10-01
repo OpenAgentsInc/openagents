@@ -4629,7 +4629,17 @@ fn outcome(rows: &[crate::conversation::Row], phase: Phase) -> Option<String> {
                 .iter()
                 .find_map(|row| said(row, role))
                 .or_else(|| rows.iter().rev().find_map(|row| said(row, role)))?,
-            None => rows.iter().rev().find_map(|row| said(row, role))?,
+            // Only the end of the chat was read: the last message that
+            // says something itself, not a lead-in to a block (#10118).
+            None => rows
+                .iter()
+                .rev()
+                .filter_map(|row| said(row, role))
+                .find(|text| {
+                    let first = text.trim_start().lines().next().unwrap_or_default().trim();
+                    !first.ends_with(':') && !first.starts_with("```")
+                })
+                .or_else(|| rows.iter().rev().find_map(|row| said(row, role)))?,
         }
     } else {
         rows.iter().rev().find_map(|row| said(row, role))?
@@ -5371,6 +5381,12 @@ mod tests {
         ];
         assert_eq!(
             outcome(&lead_in, Phase::Completed).as_deref(),
+            Some("Dry run succeeded for build 44, from commit 603eebd19a.")
+        );
+        // Only the chat's end was read: the lead-in and its block are
+        // passed over for the line that says what happened.
+        assert_eq!(
+            outcome(&lead_in[3..], Phase::Completed).as_deref(),
             Some("Dry run succeeded for build 44, from commit 603eebd19a.")
         );
         let long = format!("{}. {}", "a".repeat(60), "b".repeat(200));
