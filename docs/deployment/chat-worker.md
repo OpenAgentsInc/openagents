@@ -105,8 +105,8 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   (`service.upstream`), the journal logs `judge answered by door …` when a
   door other than TypeSafe did, and the privacy answer names the doors that
   are on. The question set and its digest are unchanged, so the router's
-  calibration stands. The [decision worker](decision-worker.md#the-backup-doors)
-  still asks TypeSafe first.
+  calibration stands. The [decision worker](decision-worker.md#the-doors-in-order)'s
+  open lane asks in the same order since #10112.
 - **A late judgment still routes (#10110).** On a turn that asks for a
   first response, the model starts at once but its words wait for the
   judgment. A healthy judge answers in about a quarter second, so nothing

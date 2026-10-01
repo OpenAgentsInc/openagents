@@ -182,6 +182,7 @@ async fn rig() -> Rig {
         probe_secs: 0,
         backup: None,
         backups: Vec::new(),
+        bench_secs: None,
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();

@@ -508,6 +508,7 @@ async fn rig(
         probe_secs: 0,
         backup: None,
         backups: Vec::new(),
+        bench_secs: None,
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();
@@ -1220,6 +1221,7 @@ async fn settled_record_survives_restart() {
         probe_secs: 0,
         backup: None,
         backups: Vec::new(),
+        bench_secs: None,
     })
     .unwrap();
     let serving = Arc::clone(&worker);
@@ -1592,7 +1594,8 @@ async fn scripted_upstream() -> (String, Arc<AtomicUsize>) {
 }
 
 /// An OpenRouter-shaped Decisions API: it answers only its own bearer,
-/// records every body, refuses `"limited"` with a numeric 402, and answers
+/// records every body, refuses a state with `limited` in it with a numeric
+/// 402, and answers
 /// the rest in OpenRouter's response shape.
 async fn openrouter_door(bearer: &'static str) -> (String, Arc<Mutex<Vec<Value>>>) {
     let bodies = Arc::new(Mutex::new(Vec::new()));
@@ -1615,7 +1618,10 @@ async fn openrouter_door(bearer: &'static str) -> (String, Arc<Mutex<Vec<Value>>
                 }
                 let body: Value = serde_json::from_slice(&body).unwrap_or_default();
                 seen.lock().unwrap().push(body.clone());
-                if body["state"] == "limited" {
+                if body["state"]
+                    .as_str()
+                    .is_some_and(|state| state.contains("limited"))
+                {
                     return (
                         StatusCode::PAYMENT_REQUIRED,
                         Json(json!({"error": {"code": 402, "message": "Insufficient credits"}})),
@@ -1816,8 +1822,8 @@ async fn gateway_door(bearer: &'static str) -> (String, Arc<Mutex<Vec<Value>>>) 
     (format!("http://{address}/typesafe/v1/systemone"), bodies)
 }
 
-/// The door order NIP-DEC names: TypeSafe, then the Vercel AI Gateway,
-/// then OpenRouter. TypeSafe's 402 (with a code NIP-DEC does not name)
+/// The default door order, which a provisioned principal's jobs keep:
+/// TypeSafe, then the Vercel AI Gateway, then OpenRouter. TypeSafe's 402 (with a code NIP-DEC does not name)
 /// goes to the gateway, which answers as `typesafe-ai/jev` and is named in
 /// `service.door` with its price as `usage.cost`; a gateway that is down
 /// passes the job to OpenRouter; a gateway that refuses the question
@@ -1853,6 +1859,8 @@ async fn typesafe_then_the_gateway_then_openrouter() {
                 "quota": {"per_key_day": 20, "per_key_minute": 20, "total_day": 20},
             },
             "service": {"door": "https://api.typesafe.ai", "version": "decision-worker/test"},
+            // No bench: each job here asks TypeSafe, whatever the last said.
+            "bench_secs": 0,
             "backups": [
                 {"url": gateway, "key_env": gateway_env, "door": "https://ai-gateway.vercel.sh", "naming": "gateway"},
                 {"url": openrouter, "key_env": OPENROUTER_ENV, "door": "https://openrouter.ai", "naming": "openrouter"},
@@ -1949,8 +1957,159 @@ async fn typesafe_then_the_gateway_then_openrouter() {
     assert_eq!(asked.load(Ordering::SeqCst), 4);
 }
 
-/// The deployed config asks the Vercel AI Gateway, then OpenRouter, after
-/// TypeSafe, each under its own key variable (`jev::doors::FALLBACKS`).
+/// The open lane with `upstream_last` (the deployed order, the chat
+/// judge's): the Vercel AI Gateway answers first and TypeSafe is not asked;
+/// a gateway that is down passes to OpenRouter, and an OpenRouter that
+/// cannot pay (402) to TypeSafe, which answers last; OpenRouter is then
+/// benched, skipped on the next job, and asked again when its bench ends; a
+/// gateway that refuses the question ends the chain with its refusal; and
+/// when no door answers, the first door's refusal stands.
+#[tokio::test]
+async fn on_the_open_lane_the_gateway_answers_first_and_typesafe_last() {
+    const OPEN_ENV: &str = "DECISION_WORKER_TEST_LAST_OPEN_KEY";
+    const GATEWAY_ENV: &str = "DECISION_WORKER_TEST_LAST_GATEWAY_KEY";
+    const OPENROUTER_ENV: &str = "DECISION_WORKER_TEST_LAST_OPENROUTER_KEY";
+    // SAFETY: this test binary reads these variables nowhere else, and no
+    // other test sets them.
+    unsafe {
+        std::env::set_var(OPEN_ENV, "ts-test-key");
+        std::env::set_var(GATEWAY_ENV, "vck-test-key");
+        std::env::set_var(OPENROUTER_ENV, "or-test-key");
+    }
+    let (relay_url, conns) = relay().await;
+    let (upstream, asked) = scripted_upstream().await;
+    let (gateway, gateway_bodies) = gateway_door("vck-test-key").await;
+    let (openrouter, openrouter_bodies) = openrouter_door("or-test-key").await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let config = serde_json::from_value::<WorkerConfig>(json!({
+        "relay": relay_url,
+        "worker_secret": hex_secret(WORKER_BYTE),
+        "upstream": upstream,
+        "jobs_dir": jobs_dir.path(),
+        "probe_secs": 0,
+        "bench_secs": 1,
+        "open": {
+            "key_env": OPEN_ENV,
+            "models": ["jev-1.13.0"],
+            "quota": {"per_key_day": 20, "per_key_minute": 20, "total_day": 20},
+            "upstream_last": true,
+        },
+        "service": {"door": "https://api.typesafe.ai", "version": "decision-worker/test"},
+        "backups": [
+            {"url": gateway, "key_env": GATEWAY_ENV, "door": "https://ai-gateway.vercel.sh", "naming": "gateway"},
+            {"url": openrouter, "key_env": OPENROUTER_ENV, "door": "https://openrouter.ai", "naming": "openrouter"},
+        ],
+    }))
+    .unwrap();
+    let worker = Worker::open(config).unwrap();
+    assert_eq!(
+        worker.open_lane_doors(),
+        [
+            "https://ai-gateway.vercel.sh",
+            "https://openrouter.ai",
+            "https://api.typesafe.ai"
+        ]
+    );
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+    let questions = json!({"q1": {"type": "noul", "instructions": "Is it?"}});
+    let ask = |request: &str, state: &str| {
+        RequestBody::new(
+            request,
+            1,
+            "jev-1.13.0",
+            json!(state),
+            questions.as_object().unwrap().clone(),
+        )
+        .deadline(unix_now() + 20)
+    };
+    let refusal_code = |statuses: Vec<decision::StatusPayload>,
+                        result: Option<decision::ResultPayload>| {
+        result
+            .and_then(|result| result.refusal.map(|refusal| refusal.code))
+            .or_else(|| {
+                statuses
+                    .last()
+                    .and_then(|status| status.refusal.clone())
+                    .map(|refusal| refusal.code)
+            })
+    };
+
+    // A healthy gateway answers first; TypeSafe is not asked.
+    let body = ask("last-1", "fine");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let response = result
+        .expect("the gateway never answered")
+        .response
+        .unwrap();
+    assert_eq!(response["service"]["door"], "https://ai-gateway.vercel.sh");
+    assert_eq!(response["model"], "typesafe-ai/jev");
+    assert_eq!(
+        gateway_bodies.lock().unwrap()[0]["model"],
+        "typesafe-ai/jev"
+    );
+    assert_eq!(asked.load(Ordering::SeqCst), 0);
+    assert!(openrouter_bodies.lock().unwrap().is_empty());
+
+    // The gateway is down and OpenRouter cannot pay: TypeSafe answers last.
+    let body = ask("last-2", "limited, gateway down");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let response = result.expect("TypeSafe never answered").response.unwrap();
+    assert_eq!(response["service"]["door"], "https://api.typesafe.ai");
+    assert_eq!(asked.load(Ordering::SeqCst), 1);
+    assert_eq!(openrouter_bodies.lock().unwrap().len(), 1);
+
+    // OpenRouter is benched: the next job skips it.
+    let body = ask("last-3", "limited, gateway down");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let response = result.expect("TypeSafe never answered").response.unwrap();
+    assert_eq!(response["service"]["door"], "https://api.typesafe.ai");
+    assert_eq!(asked.load(Ordering::SeqCst), 2);
+    assert_eq!(openrouter_bodies.lock().unwrap().len(), 1);
+
+    // The gateway refuses the question itself: its refusal stands, and no
+    // other door is asked.
+    let body = ask("last-4", "gateway refuses");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (statuses, result) =
+        run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    assert_eq!(
+        refusal_code(statuses, result).as_deref(),
+        Some("invalid_request")
+    );
+    assert_eq!(asked.load(Ordering::SeqCst), 2);
+    assert_eq!(openrouter_bodies.lock().unwrap().len(), 1);
+
+    // The bench ends: OpenRouter is asked again. No door answers this one,
+    // so the gateway's refusal, the first door's, stands.
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    let body = ask("last-5", "no credits, limited, gateway down");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (statuses, result) =
+        run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    assert_eq!(
+        refusal_code(statuses, result).as_deref(),
+        Some("internal_server_error")
+    );
+    assert_eq!(openrouter_bodies.lock().unwrap().len(), 2);
+    assert_eq!(asked.load(Ordering::SeqCst), 3);
+    assert_eq!(gateway_bodies.lock().unwrap().len(), 5);
+}
+
+/// The deployed config's open lane asks the Vercel AI Gateway, then
+/// OpenRouter, then TypeSafe last (`upstream_last`, the chat judge's order),
+/// each under its own key variable (`jev::doors::FALLBACKS`), with the
+/// default bench (`jev::doors::BENCH`).
 #[test]
 fn the_deployed_config_names_the_fallback_doors_in_order() {
     let text = std::fs::read_to_string(concat!(
@@ -1959,6 +2118,13 @@ fn the_deployed_config_names_the_fallback_doors_in_order() {
     ))
     .unwrap();
     let config: WorkerConfig = serde_json::from_str(&text).unwrap();
+    let open = config
+        .open
+        .as_ref()
+        .expect("the deployed worker has an open lane");
+    assert_eq!(open.key_env, "TYPESAFE_API_KEY");
+    assert!(open.upstream_last, "the open lane asks TypeSafe last");
+    assert_eq!(config.bench_secs, None);
     let doors = config.backup_doors();
     assert_eq!(doors.len(), jev::doors::FALLBACKS.len());
     for (door, fallback) in doors.iter().zip(jev::doors::FALLBACKS.iter()) {
@@ -2014,6 +2180,11 @@ async fn live_worker_backup_door_answers_through_openrouter() {
         open.key_env = OPEN_ENV.to_string();
         open.quota.file = None;
     }
+    // OpenRouter alone, so the gateway (asked first on the open lane)
+    // cannot answer in its place.
+    config
+        .backups
+        .retain(|backup| backup.door == jev::doors::OPENROUTER_DOOR);
     let worker = Worker::open(config).unwrap();
     assert!(worker.backup_door_on(jev::doors::OPENROUTER_URL));
     let worker_pub = worker.pubkey().to_string();

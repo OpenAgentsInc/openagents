@@ -243,9 +243,12 @@ judge (`jev::doors::Failover`, through
 AI Gateway → OpenRouter → TypeSafe (`Failover::primary_last`): the gateway
 is the primary and routes Jev to TypeSafe itself, with the owner's key as
 its own fallback, and TypeSafe direct is the final backup; every other
-route still goes to TypeSafe. The decision worker (`decision-worker.json`
-`backups`) still asks TypeSafe → Vercel AI Gateway → OpenRouter
-(`jev::doors::FALLBACKS` after its upstream). A door is asked only when
+route still goes to TypeSafe. The decision worker's open lane (the jobs
+it forwards under its server-held TypeSafe key; `decision-worker.json`
+`open.upstream_last`) asks in the same order: its `backups`
+(`jev::doors::FALLBACKS`) first and its TypeSafe upstream last. A
+provisioned principal's jobs, under their own key, ask the upstream first
+and the backups after it. A door is asked only when
 every door before it could not answer for its own reasons
 (`jev::doors::fails_over`): it timed out or could not be reached, answered
 `402`, `408`, `429`, or any `5xx`, or refused with one of its own codes
@@ -258,9 +261,12 @@ backup is off unless its key (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`)
 is in the server's environment, and the server says which at start. An
 answer from any door but TypeSafe names it in `service.door`, so the
 decision record (`openagents.decision-call.v1`) says which door answered;
-when no door answers, the first door's refusal stands. The chat judge
-remembers a door that refused for its key or account (`401`, `402`) and
-skips it for `jev::doors::BENCH` (five minutes), then asks it again.
+when no door answers, the first door's refusal stands. The chat judge and
+the decision worker remember a door that refused for its key or account
+(`401`, `402`; `jev::doors::benches`) and skip it for `jev::doors::BENCH`
+(five minutes), then ask it again; a skipped door counts as having
+refused the same way again. The decision worker never benches the
+upstream for a provisioned principal, whose key is the caller's.
 
 A client that turns a relay refusal back into an HTTP-shaped
 error (`jev_hosted` does, so every Jev caller sees one error shape) uses the

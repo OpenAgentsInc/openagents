@@ -139,11 +139,17 @@ pub struct WorkerConfig {
     /// single-door form of `backups`, asked after them.
     #[serde(default)]
     pub backup: Option<BackupDoor>,
-    /// Backup doors in the order they are asked after the upstream (NIP-DEC,
-    /// "Doors and the backup door": the Vercel AI Gateway, then
-    /// OpenRouter). Each is off unless its key variable is set at start.
+    /// Backup doors in the order they are asked (NIP-DEC, "Doors and the
+    /// backup door": the Vercel AI Gateway, then OpenRouter): after the
+    /// upstream, or before it on an open lane with `upstream_last`. Each is
+    /// off unless its key variable is set at start.
     #[serde(default)]
     pub backups: Vec<BackupDoor>,
+    /// Seconds a door that refused for its key or account (401, 402) is
+    /// skipped before it is asked again; absent, `jev::doors::BENCH`. Zero
+    /// turns the bench off.
+    #[serde(default)]
+    pub bench_secs: Option<u64>,
 }
 
 impl WorkerConfig {
@@ -222,6 +228,14 @@ pub struct OpenLane {
     pub models: Vec<String>,
     /// The per-key and daily limits.
     pub quota: crate::open_quota::Policy,
+    /// Ask the backup doors first, in order, and the upstream last, as the
+    /// chat judge does (`jev::doors::Failover::primary_last`): the Vercel AI
+    /// Gateway is the primary and routes Jev to TypeSafe itself. Default
+    /// false: the upstream first. Only the open lane's jobs, which forward
+    /// under the server-held key, take this order; a provisioned principal
+    /// still asks its upstream first.
+    #[serde(default)]
+    pub upstream_last: bool,
 }
 
 /// What answered, as the NIP-CJ result's `response.service` names it.
@@ -615,6 +629,12 @@ pub struct Worker {
     /// The backup doors that are on, each with its key, in the order they
     /// are asked.
     backups: Vec<(BackupDoor, String)>,
+    /// Doors skipped after a refusal for their key or account
+    /// (`jev::doors::benches`), by door, until the bench ends, with the
+    /// refusal that benched them.
+    benched: Mutex<HashMap<String, (Instant, Settled)>>,
+    /// How long a bench lasts.
+    bench: Duration,
 }
 
 impl Worker {
@@ -690,6 +710,9 @@ impl Worker {
                 backups.push((backup, key));
             }
         }
+        let bench_secs = config
+            .bench_secs
+            .unwrap_or_else(|| jev::doors::BENCH.as_secs());
         let (outbox, inbox) = mpsc::unbounded_channel();
         let window = config
             .request_window
@@ -712,6 +735,8 @@ impl Worker {
             open_key,
             quota,
             backups,
+            benched: Mutex::new(HashMap::new()),
+            bench: Duration::from_secs(bench_secs),
         }))
     }
 
@@ -1406,36 +1431,163 @@ impl Worker {
     /// logical request, `X-Attempt` the attempt, so a relay retry is
     /// not a second spend on the HTTP lane either.
     async fn dispatch(&self, binding: &Binding, body: &RequestBody, started: Instant) -> Settled {
-        let primary = self.primary(binding, body, started).await;
-        if self.backups.is_empty() || !falls_back(&primary) {
-            return primary;
+        if self.backups.is_empty() {
+            return self.primary(binding, body, started).await;
         }
-        // Each backup door in order, while the one before could not answer
-        // for its own reasons; the first answer stands, and when none
-        // answers the upstream's refusal stands.
-        for (backup, key) in &self.backups {
+        let order = self.order(binding);
+        // The first door's outcome, which stands when no door answers.
+        let mut first: Option<(String, Settled)> = None;
+        for (at, door) in order.iter().enumerate() {
             let remaining = body
                 .deadline
                 .map(|deadline| deadline.saturating_sub(unix_now()));
-            if remaining == Some(0) {
+            if at > 0 && remaining == Some(0) {
                 break;
             }
-            let second = self.backup_call(backup, key, body, started).await;
-            eprintln!(
-                "decision-worker: upstream {} ({}); backup door {} answered {}",
-                primary.outcome,
-                primary.code.as_deref().unwrap_or("-"),
-                backup.door,
-                second.code.as_deref().unwrap_or(&second.outcome),
-            );
-            if second.outcome == "answered" {
-                return second;
+            let name = door.name(self);
+            // The upstream under a principal's own key is never benched:
+            // its key is the caller's, not the open lane's.
+            let benchable = binding.open || !matches!(door, Door::Upstream);
+            let remembered = benchable.then(|| self.benched(name)).flatten();
+            let benched = remembered.is_some();
+            let settled = match remembered {
+                Some(mut refusal) => {
+                    refusal.latency_ms = Some(started.elapsed().as_millis() as u64);
+                    refusal.resolved_at = Some(now_utc());
+                    refusal
+                }
+                None => match door {
+                    Door::Upstream => self.primary(binding, body, started).await,
+                    Door::Backup(backup, key) => self.backup_call(backup, key, body, started).await,
+                },
+            };
+            if settled.outcome == "answered" {
+                match &first {
+                    Some((before, why)) => eprintln!(
+                        "decision-worker: door {name} answered in {} ms, after {before} {} ({})",
+                        started.elapsed().as_millis(),
+                        why.outcome,
+                        why.code.as_deref().unwrap_or("-"),
+                    ),
+                    None => eprintln!(
+                        "decision-worker: door {name} answered in {} ms",
+                        started.elapsed().as_millis()
+                    ),
+                }
+                return settled;
             }
-            if !falls_back(&second) {
-                break;
+            let over = falls_back(&settled);
+            if benched {
+                eprintln!("decision-worker: door {name} benched; skipped");
+            } else {
+                eprintln!(
+                    "decision-worker: door {name} {} ({})",
+                    settled.outcome,
+                    settled.code.as_deref().unwrap_or("-"),
+                );
+                if over && benchable {
+                    self.bench_if_refused(name, &settled);
+                }
+            }
+            if !over {
+                // A refusal of the question itself: the next door would
+                // refuse it too.
+                return match first {
+                    Some((_, refusal)) => refusal,
+                    None => settled,
+                };
+            }
+            if first.is_none() {
+                first = Some((name.to_string(), settled));
             }
         }
-        primary
+        first.map_or_else(
+            || {
+                unavailable(
+                    "timeout",
+                    "The job ran out of time before any door answered.".to_string(),
+                    started,
+                )
+            },
+            |(_, refusal)| refusal,
+        )
+    }
+
+    /// The doors a job asks, in order: the upstream, then each backup door
+    /// that is on; on the open lane with `upstream_last`, every backup door
+    /// first and the upstream last.
+    fn order(&self, binding: &Binding) -> Vec<Door<'_>> {
+        let upstream_last = binding.open
+            && self
+                .config
+                .open
+                .as_ref()
+                .is_some_and(|open| open.upstream_last);
+        let mut order = Vec::with_capacity(self.backups.len() + 1);
+        if !upstream_last {
+            order.push(Door::Upstream);
+        }
+        order.extend(
+            self.backups
+                .iter()
+                .map(|(backup, key)| Door::Backup(backup, key.as_str())),
+        );
+        if upstream_last {
+            order.push(Door::Upstream);
+        }
+        order
+    }
+
+    /// The open lane's doors in the order its jobs ask them, by name.
+    pub fn open_lane_doors(&self) -> Vec<String> {
+        let open = Binding {
+            key: None,
+            tenant: None,
+            workspace: None,
+            open: true,
+        };
+        self.order(&open)
+            .iter()
+            .map(|door| door.name(self).to_string())
+            .collect()
+    }
+
+    /// The refusal that benched `door`, while its bench lasts.
+    fn benched(&self, door: &str) -> Option<Settled> {
+        let mut benched = self
+            .benched
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match benched.get(door) {
+            Some((until, refusal)) if Instant::now() < *until => Some(refusal.clone()),
+            Some(_) => {
+                benched.remove(door);
+                None
+            }
+            None => None,
+        }
+    }
+
+    /// Bench `door` when it refused for its key or account
+    /// (`jev::doors::benches`: 401, 402); logged once per bench.
+    fn bench_if_refused(&self, door: &str, settled: &Settled) {
+        let Some(status) = settled.http_status else {
+            return;
+        };
+        if !jev::doors::benches(status) {
+            return;
+        }
+        self.benched
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(
+                door.to_string(),
+                (Instant::now() + self.bench, settled.clone()),
+            );
+        eprintln!(
+            "decision-worker: door {door} refused for its key or account (HTTP {status}); skipping it for {} s",
+            self.bench.as_secs()
+        );
     }
 
     /// A backup door's call: the same `state` and `questions`, the model
@@ -1708,6 +1860,29 @@ impl Worker {
     }
 }
 
+/// One door a job may ask: the upstream, or a backup door with its key.
+enum Door<'a> {
+    Upstream,
+    Backup(&'a BackupDoor, &'a str),
+}
+
+impl Door<'_> {
+    /// The door's name in the journal and the bench: the upstream's
+    /// `service.door` (else its URL), or the backup's `door`.
+    fn name<'w>(&'w self, worker: &'w Worker) -> &'w str {
+        match self {
+            Door::Upstream => worker
+                .config
+                .service
+                .as_ref()
+                .map_or(worker.config.upstream.as_str(), |service| {
+                    service.door.as_str()
+                }),
+            Door::Backup(backup, _) => backup.door.as_str(),
+        }
+    }
+}
+
 /// A settled attempt no door answered: `cause` names why.
 fn unavailable(cause: &str, message: String, started: Instant) -> Settled {
     Settled {
@@ -1790,6 +1965,12 @@ pub async fn run(config: WorkerConfig) -> Result<(), Trouble> {
             open.quota.total_day
         ),
         None => eprintln!("decision-worker: no open lane"),
+    }
+    if worker.config.open.is_some() && worker.backup_on() {
+        eprintln!(
+            "decision-worker: open lane doors {}",
+            worker.open_lane_doors().join(" → ")
+        );
     }
     let backups = worker.config.backup_doors();
     if backups.is_empty() {

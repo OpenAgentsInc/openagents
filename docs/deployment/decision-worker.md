@@ -10,7 +10,8 @@ This page is the serving path, its limits, and the runbook.
 
 ```text
 Coder (decision key) --NIP-CJ 25910, NIP-44--> relay.openagents.com --> decision worker
-Coder <--27010 status, 26910 result----------- relay.openagents.com <-- decision worker --> api.typesafe.ai
+Coder <--27010 status, 26910 result----------- relay.openagents.com <-- decision worker --> ai-gateway.vercel.sh
+                                                                              (then openrouter.ai, then api.typesafe.ai)
 ```
 
 - **Wire.** Each judgment is one `POST /v1/systemone` call carried as a
@@ -27,20 +28,26 @@ Coder <--27010 status, 26910 result----------- relay.openagents.com <-- decision
   made on first use (32 random bytes as hex, mode 0600). It signs the job and
   answers the relay's NIP-42 challenge. There is no account and no key to
   paste.
-- **The door.** The worker forwards each admitted job to
-  `https://api.typesafe.ai/v1/systemone` with `Idempotency-Key` and
-  `X-Attempt`, under `TYPESAFE_API_KEY` from its environment file on its
-  host. No TypeSafe key ships to a user's computer.
+- **The doors.** The worker forwards each admitted job, with
+  `Idempotency-Key` and `X-Attempt`, to the Vercel AI Gateway first
+  (`typesafe-ai/jev`, under `AI_GATEWAY_API_KEY`), which routes Jev to
+  TypeSafe itself; then OpenRouter; then `https://api.typesafe.ai/v1/systemone`
+  last, under `TYPESAFE_API_KEY` (the order below). Every key is in the
+  worker's environment file on its host. No door key ships to a user's
+  computer.
 - **Evidence.** Every answer the worker relays carries
-  `service: {door: "https://api.typesafe.ai", version: "decision-worker@<release>"}`
+  `service: {door: "<the door that answered>", version: "decision-worker@<release>"}`
   and a sealed execution receipt bound to the request's digest. The client
   checks the worker's signature, the request's event id, its own key, and
   the receipt before it believes an answer.
 
-## The backup doors
+## The doors, in order
 
-When TypeSafe cannot answer, the worker asks the other doors that serve
-Jev, in order (NIP-DEC, "Doors and the backup door"; `jev::doors`):
+The open lane asks Jev's three doors in the chat judge's order (NIP-DEC,
+"Doors and the backup door"; `jev::doors`), set by `open.upstream_last`
+in the config. The owner chose it on 2026-10-01: the gateway is the
+primary and handles provider routing, falling back to TypeSafe with the
+owner's own key, and TypeSafe direct is the final backup.
 
 1. The **Vercel AI Gateway**'s TypeSafe-compatible API,
    `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone`, with the same
@@ -49,30 +56,47 @@ Jev, in order (NIP-DEC, "Doors and the backup door"; `jev::doors`):
 2. **OpenRouter**'s Decisions API,
    `POST https://openrouter.ai/api/alpha/decisions`, the model as
    `typesafe/jev-1.13`, under `OPENROUTER_API_KEY`.
+3. **TypeSafe** direct, the `upstream`, under `TYPESAFE_API_KEY`.
 
-They are the `backups` list of the config, and **each is off unless its
-key is in the worker's environment file** when it starts; the journal names
-each at start (`backup door … under $AI_GATEWAY_API_KEY`, or
-`backup door … off: $AI_GATEWAY_API_KEY is not set`, and the same for
-OpenRouter).
+The first two are the `backups` list of the config, and **each is off
+unless its key is in the worker's environment file** when it starts; with
+both off, TypeSafe answers alone. The journal names each at start
+(`backup door … under $AI_GATEWAY_API_KEY`, or `backup door … off:
+$AI_GATEWAY_API_KEY is not set`, and the same for OpenRouter) and the
+open lane's order (`open lane doors https://ai-gateway.vercel.sh →
+https://openrouter.ai → https://api.typesafe.ai`). A provisioned
+principal's jobs, under their own key, ask the upstream first and the
+backups after it.
 
 - A door is asked only after the doors before it timed out, could not be
   reached, answered 402, 408, 429, or any 5xx, or refused for their own
   reasons (their key, account, model list, rate, or quota;
   `jev::doors::fails_over`). A request the caller got wrong
-  (`invalid_request`, …) is never retried at another door, and a backup
-  door that refuses the question ends the chain.
-- Its answer names it: `service: {door: "https://ai-gateway.vercel.sh", …}`
-  or `{door: "https://openrouter.ai", …}`, the model it served
-  (`typesafe-ai/jev`, `typesafe/jev-1.13-20260917`), and `usage.cost` (the
-  gateway's `provider_metadata.gateway.cost`, OpenRouter's own). A client's
+  (`invalid_request`, …) is never retried at another door, and a door
+  after the first that refuses the question ends the chain.
+- A door that refused for its key or account (401, 402;
+  `jev::doors::benches`) is benched for `jev::doors::BENCH` (five
+  minutes): the next jobs skip it as if it refused again, and it is asked
+  after the bench ends. The journal says so once (`door … refused for its
+  key or account (HTTP 402); skipping it for 300 s`). `bench_secs` in the
+  config changes the length; zero turns it off.
+- The journal has one line per job naming the door that answered
+  (`door https://ai-gateway.vercel.sh answered in 412 ms`), with the first
+  door's refusal when another door answered (`…, after
+  https://ai-gateway.vercel.sh refused (internal_server_error)`), and a
+  line for each door that could not answer.
+- Each answer names its door: `service: {door: "https://ai-gateway.vercel.sh", …}`,
+  `{door: "https://openrouter.ai", …}`, or `{door: "https://api.typesafe.ai", …}`,
+  the model it served (`typesafe-ai/jev`, `typesafe/jev-1.13-20260917`,
+  `jev-1.13.0`), and `usage.cost` where the door prices it (the gateway's
+  `provider_metadata.gateway.cost`, OpenRouter's own). A client's
   decision record (`openagents.decision-call.v1`) keeps that `service`. If
-  no backup answers, the caller gets TypeSafe's refusal.
-- A backup answer counts against the open lane like any other; the lane's
+  no door answers, the caller gets the first door's refusal.
+- Every answer counts against the open lane like any other; the lane's
   daily total still bounds the day's spend on all doors together.
 
-The chat worker's router judge fails over across the same doors, in the
-same order, with its own keys ([chat worker](chat-worker.md)).
+The chat worker's router judge asks the same doors, in the same order,
+with its own keys ([chat worker](chat-worker.md)).
 
 ### Turning the backup doors on
 
@@ -213,7 +237,7 @@ sudo journalctl -u decision-worker -n 20 --no-pager
 ```
 
 The first lines must name the pubkey `ad6b4d91…`, the upstream
-`https://api.typesafe.ai`, and the open lane's quota. The worker secret is
+`https://api.typesafe.ai`, the open lane's quota, and its door order. The worker secret is
 kept with the owner's secrets as `decision-worker.env`; the TypeSafe key is
 the owner's (`typesafe.env`).
 

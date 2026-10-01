@@ -9,6 +9,7 @@
   "open": {
     "key_env": "TYPESAFE_API_KEY",
     "models": ["jev-1.13.0", "jev-latest"],
+    "upstream_last": true,
     "quota": {
       "per_key_minute": 60,
       "per_key_day": 2000,
