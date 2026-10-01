@@ -1396,7 +1396,7 @@ mod tests {
         };
         assert_eq!(started.provider, "claude");
         assert_eq!(started.reason, "Claude Code is signed in and has capacity.");
-        assert_eq!(started.fallbacks, vec!["codex:gpt-6-luna".to_owned()]);
+        assert_eq!(started.fallbacks, vec!["codex:gpt-6.1-sol".to_owned()]);
     }
 
     #[test]

@@ -1388,7 +1388,7 @@ mod tests {
         assert_eq!(choice.chosen, Chosen::Delegate(usable[0].clone()));
         assert_eq!(
             choice.reason,
-            "microcoder runs in this process on codex (gpt-6-luna)"
+            "microcoder runs in this process on codex (gpt-6.1-sol)"
         );
         // Codex out of its limit: Microcoder still answers, on Claude, and
         // says why it skipped Codex.
@@ -1854,7 +1854,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         else {
             return;
         };
-        assert_eq!(door.label(), "microcoder/gpt-6-luna");
+        assert_eq!(door.label(), "microcoder/gpt-6.1-sol");
         let mut agent =
             crate::agent::Agent::new(None, Door::Delegate(std::sync::Arc::clone(&door)));
         let (read, shell, streamed) = turn(

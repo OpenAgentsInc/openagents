@@ -695,7 +695,7 @@ async fn auto_start_changes_run_the_hosts_own_command() {
             "--max-running",
             "2",
             "--route",
-            "codex:gpt-6-luna",
+            "codex:gpt-6.1-sol",
             "--route",
             "claude:claude-opus-5-5",
             "--route",
