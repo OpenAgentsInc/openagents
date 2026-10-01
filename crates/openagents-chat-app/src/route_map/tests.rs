@@ -523,7 +523,7 @@ fn the_inspector_shows_why_numbers_and_records() {
     let labels: Vec<&str> = map_plugin.fields.iter().map(|f| f.label.as_str()).collect();
     for label in [
         "Where",
-        "Tools (Wasm)",
+        "Wasm",
         "Workflows",
         "Knowledge",
         "Tests",

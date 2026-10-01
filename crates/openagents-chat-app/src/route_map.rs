@@ -1361,7 +1361,7 @@ impl Map {
             path("Its directory", &plugin.dir),
         ));
         let parts = [
-            ("Tools (Wasm)", &plugin.tools),
+            ("Wasm", &plugin.tools),
             ("Workflows", &plugin.workflows),
             ("Skills", &plugin.skills),
             ("Knowledge", &plugin.knowledge),

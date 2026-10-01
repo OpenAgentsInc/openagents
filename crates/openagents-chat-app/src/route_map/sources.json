@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v4@ca74e9da5045",
-  "bank": "chat-answers-v1@d3ff1e68a58a",
+  "bank": "chat-answers-v1@9b39e6796962",
   "routes": [
     {
       "id": "meta",
@@ -862,7 +862,7 @@
     },
     {
       "id": "gym.what",
-      "version": 1,
+      "version": 2,
       "routes": [
         "product.kb",
         "general"
@@ -879,7 +879,7 @@
     },
     {
       "id": "gym.what_test",
-      "version": 1,
+      "version": 2,
       "routes": [
         "product.kb",
         "general"
@@ -895,23 +895,24 @@
     },
     {
       "id": "gym.what_tool",
-      "version": 1,
+      "version": 2,
       "routes": [
         "product.kb",
         "general"
       ],
-      "chip": "What's a tool?",
+      "chip": "What's a plugin?",
       "place": "any",
       "records": false,
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "knowledge/openagents/openagents.tools.md"
+        "knowledge/openagents/openagents.tools.md",
+        "docs/plugins/README.md"
       ]
     },
     {
       "id": "eval.credit.how",
-      "version": 2,
+      "version": 3,
       "routes": [
         "eval.credit"
       ],
@@ -927,7 +928,7 @@
     },
     {
       "id": "eval.credit.mine",
-      "version": 2,
+      "version": 3,
       "routes": [
         "eval.credit"
       ],
@@ -942,7 +943,7 @@
     },
     {
       "id": "eval.author.soon",
-      "version": 2,
+      "version": 3,
       "routes": [
         "eval.author"
       ],
@@ -1076,7 +1077,7 @@
     },
     {
       "id": "capability.missing",
-      "version": 1,
+      "version": 2,
       "routes": [
         "capability.missing"
       ],
@@ -1091,7 +1092,7 @@
     },
     {
       "id": "capability.missing_near",
-      "version": 1,
+      "version": 2,
       "routes": [
         "capability.missing"
       ],
@@ -1693,7 +1694,7 @@
       },
       {
         "id": "openagents.credit",
-        "title": "Credit for tests and capabilities",
+        "title": "Credit for tests and plugins",
         "path": "knowledge/openagents/openagents.credit.md",
         "status": "admitted",
         "tags": [
@@ -2071,7 +2072,7 @@
       },
       {
         "id": "openagents.tools",
-        "title": "Capabilities for Coder",
+        "title": "Plugins",
         "path": "knowledge/openagents/openagents.tools.md",
         "status": "admitted",
         "tags": [
@@ -2395,7 +2396,7 @@
       "reach": "chat",
       "route": "eval.run",
       "source": "crates/coder/src/router/capability.rs",
-      "line": "Tests a capability on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned."
+      "line": "Tests a plugin on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned."
     },
     {
       "id": "openagents.tool-project-map",
