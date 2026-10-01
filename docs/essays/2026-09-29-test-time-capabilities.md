@@ -41,8 +41,10 @@ text says so.
   one, and credit goes to verification work, not to agreement.
   [Related work](#related-work-and-prior-art) says what came before.
 - **We built an implementation** in OpenAgents, with first measurements,
-  reproduction by a second trainer, no external validation yet, and no
-  adoption yet; Part II has it, term by term. The words are also in the
+  reproduction by other trainers, and, since the first draft, one
+  capability (Project map) externally validated and adopted on 2026-09-29
+  ([record](../extensions/measurements/2026-09-29-first-adoption.md)); Part
+  II has it, term by term. The words are also in the
   [glossary](../glossary.md#test-time-capabilities).
 
 ## Contents
@@ -1544,7 +1546,8 @@ describing it, or demoing it decides none of them.
    released by someone other than the capability's author, after its
    release, on the same distribution, naming the result with the
    `validates` marker. An admission that admits cites that validation or
-   doesn't parse. No capability has such a validation yet. Adoption
+   doesn't parse. One capability, Project map, has such a validation, from
+   2026-09-29 ([record](../extensions/measurements/2026-09-29-first-adoption.md)). Adoption
    itself is an operator's
    [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption) decision
    and a new [`coder-defaults`](../../packages/coder-defaults/) release, and
@@ -2068,7 +2071,7 @@ evidence, so they don't appear below.
 | Measure (with and without) | [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | `openagents.eval-report.v1`: `subject` and `baseline` arms, `runs`, `coverage`, `measurements` (`cases_passed`, `mean_score`, `cost_usd`, `seconds`, and `change` on the `comparison` arm), `verdict`, and `acceptance` (the gate's digest, repeated in `meta.ext_eval.gate`). KB's [evidence](../../nips/openagents/NIP-KB.md#evidence-3189) uses the same report for knowledge entries. |
 | Publish | [EVAL](../../nips/openagents/NIP-EVAL.md#publication), [EXT](../../nips/openagents/NIP-EXT.md#component-types-and-operation-descriptors), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) | The suite as an EXT `3184` release with one `eval-suite` component. The result as a `3189` with `t: oa:ext-eval:v1`, `e` markers `suite`, `subject`, `request`, and `meta.ext_eval_report`. CJ `publish_eval` offer and the hosted runner's `publish` action. Released leaderboards as `3195`. |
 | Check and reproduce | [EVAL](../../nips/openagents/NIP-EVAL.md#checks) | A `3189` with the `check` marker, the same suite and subject, the same subject-arm lock, and a different trainer; it confirms on an equal verdict and disputes otherwise. Hosted reruns set `check` in the `run` action. |
-| Validate externally | [EVAL](../../nips/openagents/NIP-EVAL.md#validations) | A `3189` with the `validates` marker (same distribution) or `transfer` (another), the same subject and subject-arm lock, a different suite; a reader checks independence from the suite's and subject's releases (another signer, created later) with `eval_ext::validation`. The candidate policy requires one; none has been published. |
+| Validate externally | [EVAL](../../nips/openagents/NIP-EVAL.md#validations) | A `3189` with the `validates` marker (same distribution) or `transfer` (another), the same subject and subject-arm lock, a different suite; a reader checks independence from the suite's and subject's releases (another signer, created later) with `eval_ext::validation`. The candidate policy requires one; the first was published on 2026-09-29 ([record](../extensions/measurements/2026-09-29-first-adoption.md)). |
 | Credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` pays `checker`, `evaluator`, `suite-author` for a rerun to protocol, confirming or disputing; [`eval-adopt`](../../nips/openagents/NIP-XP.md#eval-adopt) pays `extension-author`, `suite-author`, `evaluator` and needs a confirming check and a validation. Quests `30193`, awards `3193`, revocations `3194`; the CJ `card` of type `credit` shows the reader's ledger. |
 | Adopt | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption), [POL](../../nips/openagents/NIP-POL.md#optimization-authority-and-adoption), [EXT](../../nips/openagents/NIP-EXT.md#release-and-package-manifest) | An `openagents.eval-admission.v1` decision citing the reports, at least one validation, and optionally `marginal`, `regression`, `reliability`, `authority {before, after}`, and `stakes`; then a `coder-defaults` `3184` release whose `dependencies` include the tool's release and whose `provenance.receipts` cite the admission. POL keeps activation an operator decision; active runs keep their lock. |
 | Share (Verse) | [MV](../../nips/openagents/NIP-MV.md#gym-notes), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [EVAL](../../nips/openagents/NIP-EVAL.md#gym-results-publication), [XP](../../nips/openagents/NIP-XP.md#trainer-cards-30194) | Gym notes: kind `9` world chat with `L`/`l` `openagents.gym` and an `e … source` citing the trainer's `3189`. CJ `open_screen` `verse.gym`. Gym leaderboards `3195`. Trainer cards `30194`. |
@@ -2084,8 +2087,8 @@ evidence, so they don't appear below.
 | Judgment budget | [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [POL](../../nips/openagents/NIP-POL.md#routing-and-observed-cost) | CJ `judgment` feedback carries the decision (`tier`, `route_p`, `answer_p`, `needs_specifics`) and a result names a bank answer with `model: "bank:<bank id>"`. Its time and cost have no wire field today; POL's `openagents.route-usage.v1` (`latency_ms`, `cost_microunits`) is Designed. |
 | Test-time delegation | [PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents) | PRG `delegate`, SESS delegate-engine rows, ATIF `parent`/`children`. The delegate door's provider failover and Jev's briefing run locally and have no Nostr record yet. |
 | Reproduced capability claim | [EVAL](../../nips/openagents/NIP-EVAL.md#checks) | A confirming `check`, decided by `eval_ext::confirms` from the two signed events. The candidate threshold (three distinct trainers) is [operator policy](../extensions/evaluation.md#checks-adoption-and-credit), not a NIP field. |
-| Externally validated capability claim | [EVAL](../../nips/openagents/NIP-EVAL.md#validations) | A `3189` with the `validates` marker on a second suite; `eval_ext::validation` reads distribution from `meta.ext_eval.distribution` and independence from the two releases' signers and creation times. None published. |
-| Capability adoption | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption) | `openagents.eval-admission.v1` (with `validation`, `marginal`, `regression`, `reliability`, `authority`, `stakes`) plus the `coder-defaults` `3184` release. No adoption has been published; a marginal report names its defaults release in `meta.ext_eval.defaults`, and the runner has no such arm yet. |
+| Externally validated capability claim | [EVAL](../../nips/openagents/NIP-EVAL.md#validations) | A `3189` with the `validates` marker on a second suite; `eval_ext::validation` reads distribution from `meta.ext_eval.distribution` and independence from the two releases' signers and creation times. The first was published on 2026-09-29 ([record](../extensions/measurements/2026-09-29-first-adoption.md)). |
+| Capability adoption | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption) | `openagents.eval-admission.v1` (with `validation`, `marginal`, `regression`, `reliability`, `authority`, `stakes`) plus the `coder-defaults` `3184` release. The first adoption was published on 2026-09-29 ([record](../extensions/measurements/2026-09-29-first-adoption.md)); a marginal report names its defaults release in `meta.ext_eval.defaults`, and the runner has no such arm yet. |
 | Capability credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` and `eval-adopt` awards (`3193`); XP is never money. `eval-check` pays a rerun to protocol whichever way it came out. |
 | Capability flywheel | Composition of the rows above | No single carrier. Its measure, marginal externally validated utility on a declared distribution per adopted contribution, has no wire field; a reader derives it from `validates` results, `meta.ext_eval.distribution`, and `coder-defaults` releases. |
 
