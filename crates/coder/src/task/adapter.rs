@@ -408,6 +408,23 @@ fn bounded(text: &str) -> String {
     format!("{}…", &text[..end])
 }
 
+/// Where a full-access run's Cargo builds go when the owner's login
+/// environment names no `CARGO_TARGET_DIR`: beside the task store, one
+/// directory per workspace, never inside the workspace (#10118).
+fn build_directory(store: &Path, workspace: &Path) -> PathBuf {
+    let name = workspace.file_name().map_or_else(
+        || "workspace".into(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let digest = digest_bytes(workspace.as_os_str().as_encoded_bytes());
+    let tag = &digest.trim_start_matches("sha256:")[..12];
+    store
+        .parent()
+        .unwrap_or(store)
+        .join("targets")
+        .join(format!("{name}-{tag}"))
+}
+
 /// Why a workspace observation cannot admit a run, or `None` when it can:
 /// an incomplete observation names its first fault (the limit reached, or
 /// the file that could not be read, and how many faults there were), and a
@@ -1229,8 +1246,22 @@ impl Host {
                     .args(&arguments)
                     .current_dir(&directory)
                     .env_clear()
-                    .envs(login.variables.iter().map(|(key, value)| (key, value)))
-                    .envs(script_variables);
+                    .envs(login.variables.iter().map(|(key, value)| (key, value)));
+                // Build output stays out of the workspace (#10118): a Cargo
+                // target directory inside it would grow past what the next
+                // task's workspace observation can hash, and every later
+                // task there would be refused.
+                if !login
+                    .variables
+                    .iter()
+                    .any(|(name, _)| name == "CARGO_TARGET_DIR")
+                {
+                    command.env(
+                        "CARGO_TARGET_DIR",
+                        build_directory(&self.owner.dir, self.workspace()),
+                    );
+                }
+                command.envs(script_variables);
                 command
             }
             None => {
@@ -1386,6 +1417,26 @@ impl Host {
 mod source_snapshot_tests {
     use super::*;
     use coder_boundary::snapshot::Limits;
+
+    /// A full-access run's Cargo builds go outside its workspace, one
+    /// directory per workspace (#10118).
+    #[test]
+    fn builds_go_beside_the_task_store_never_into_the_workspace() {
+        let store = Path::new("/home/kai/.openagents/tasks");
+        let workspace = Path::new("/home/kai/work/openagents-host-tasks");
+        let built = build_directory(store, workspace);
+        assert!(
+            built
+                .to_string_lossy()
+                .starts_with("/home/kai/.openagents/targets/openagents-host-tasks-")
+        );
+        assert!(!built.starts_with(workspace));
+        assert_eq!(built, build_directory(store, workspace));
+        assert_ne!(
+            built,
+            build_directory(store, Path::new("/home/kai/other/openagents-host-tasks"))
+        );
+    }
 
     #[test]
     fn a_refusal_says_whether_the_snapshot_was_incomplete_or_changed() {
