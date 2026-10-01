@@ -1,6 +1,6 @@
 ---
 id: openagents.gen-overview
-version: 1
+version: 2
 kind: product
 title: "Our essay The Return of the General Agent"
 summary: >-
@@ -10,7 +10,9 @@ summary: >-
 tags: [essay, general-agent, overview, thesis, composition]
 applies_when: >-
   The user asks about our essay The Return of the General Agent, our thesis on
-  general agents, or what the essay argues.
+  general agents, or what the essay argues; or asks about our essays
+  together: what they are about, a summary or overview of them, or how the
+  two compare ("the essays", "both essays", "your essays").
 answer: >-
   Our thesis on general agents: general agents did not fail; the monolithic
   general agent did. A general agent is a composition: a general front that
@@ -27,6 +29,7 @@ provenance:
     - docs/essays/2026-10-01-the-return-of-the-general-agent.md
 evidence:
   - "2026-10-01: written from the essay The Return of the General Agent and checked against its text (#10099); the answer text awaits the owner's copy review."
+  - "2026-10-01: covers asking about, summarizing, or comparing our two essays together, so a request for both essays finds both overviews (#10102); the answer is unchanged."
 ---
 
 ## Answer

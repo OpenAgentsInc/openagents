@@ -1847,3 +1847,27 @@ and the router read the questions as `general`. What changed:
   all in the tune split. See [the measurement](../measurements/2026-10-01-essays-route.md).
 - **The release gate** gains `essays-chat`.
 
+
+### Summaries of our essays (2026-10-01)
+
+Fixed in [#10102](https://github.com/OpenAgentsInc/openagents/issues/10102).
+"Summarize both of the essays, please" with no earlier turn read `clarify`
+(the essays had no referent), and the reply talked about dispatching Coder to
+read files. What changed:
+
+- **The route rubric** (the set's digest moves): `product.kb` covers asking to
+  summarize, give an overview of, explain, or compare our essays, and says
+  "the essays", "both essays", and our essays, posts, or writing mean the two
+  published essays, never files on the user's computer; a README, file, or
+  document in the user's own repository stays `work.dispatch`, and someone
+  else's essay `general`. `clarify`, `work.dispatch`, and `general` name our
+  essays in `not_for`; the `chat` lane covers a summary of them.
+- **Retrieval.** The two overview entries (version 2) cover asking about the
+  essays together, so a request for both keeps both overviews and the
+  grounded model summarizes each, with its link; no single overview's answer
+  is served whole for it.
+- **The labeled set** adds 22 rows tagged `essays`, with near misses. In the
+  same change: rows tagged `map` for opening the route or plugin map, the
+  rubric and bank wording that serve them `meta.map.desktop` on the desktop,
+  and the `explain` opener's new line, "We'll look that up for you."
+  See [the measurement](../measurements/2026-10-01-essays-route.md#summaries-of-our-essays-and-the-map-on-the-desktop-10102).

@@ -78,8 +78,8 @@ version = 1
 routes = ["meta"]
 place = "off_desktop"
 when = "The user asks to see how we route or handle messages, how we are put together, a map or overview of our routes and what serves each (prepared answers, knowledge, Coder and its engines, plugins), or where we are weak or missing something; not what Jev is, who we are, or what we can do in general"
-not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch)"
-examples = ["can I see a map of how you work", "open the route map", "which plugins and engines do you have, show me the map"]
+not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch); testing or trying one of our plugins, such as Project map (eval.run)"
+examples = ["can I see a map of how you work", "open the route map", "can you open the map for me", "which plugins and engines do you have, show me the map"]
 text = "Our route map shows how we handle a message: the router that reads it first, each route it can take, what serves each one, and where we're thin. It opens in the OpenAgents desktop app."
 chip = "How do you route things?"
 sources = ["docs/desktop/route-map.md", "crates/openagents-chat-app/src/route_map.rs"]
@@ -90,8 +90,8 @@ version = 1
 routes = ["meta"]
 place = "desktop"
 when = "The user asks to see how we route or handle messages, how we are put together, a map or overview of our routes and what serves each (prepared answers, knowledge, Coder and its engines, plugins), or where we are weak or missing something; not what Jev is, who we are, or what we can do in general"
-not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch)"
-examples = ["can I see a map of how you work", "open the route map", "which plugins and engines do you have, show me the map"]
+not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch); testing or trying one of our plugins, such as Project map (eval.run)"
+examples = ["can I see a map of how you work", "open the route map", "can you open the map for me", "which plugins and engines do you have, show me the map"]
 text = "Our route map shows how we handle a message: the router that reads it first, each route it can take, what serves each one, and where we're thin."
 offer = { screen = "routes.map", label = "Open the map" }
 chip = "How do you route things?"
@@ -821,7 +821,7 @@ generic_end = " what would you like us to do?"
 
 [[opener]]
 id = "explain"
-text = "Here's how that works."
+text = "We'll look that up for you."
 when = "A request to explain how a concept, tool, protocol, or piece of code works"
 
 [[opener]]

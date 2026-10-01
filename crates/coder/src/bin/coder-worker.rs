@@ -3624,7 +3624,7 @@ mod tests {
         assert!(
             frames
                 .iter()
-                .all(|(_, body)| body["delta"] != "Here's how that works.\n\n")
+                .all(|(_, body)| body["delta"] != "We'll look that up for you.\n\n")
         );
         let result = &frames.last().unwrap().1;
         assert_eq!(result["type"], "result");
@@ -3650,10 +3650,10 @@ mod tests {
         assert_eq!(bodies[1]["lane"], "computer");
         assert_eq!(bodies[1]["opener"], "explain");
         assert_eq!(bodies[1]["tier"], "opener");
-        assert_eq!(bodies[1]["line"], "Here's how that works.");
+        assert_eq!(bodies[1]["line"], "We'll look that up for you.");
         assert_eq!(bodies[2]["type"], "partial");
         assert_eq!(bodies[2]["seq"], 0);
-        assert_eq!(bodies[2]["delta"], "Here's how that works.\n\n");
+        assert_eq!(bodies[2]["delta"], "We'll look that up for you.\n\n");
         // The opener arrived well before the model's first word could.
         assert!(
             frames[2].0 < Duration::from_millis(500),
@@ -3673,8 +3673,11 @@ mod tests {
         let result = bodies.last().unwrap();
         assert_eq!(result["type"], "result");
         let text = result["text"].as_str().unwrap();
-        assert!(text.starts_with("Here's how that works.\n\n"), "{text}");
-        assert!(text.len() > "Here's how that works.\n\n".len());
+        assert!(
+            text.starts_with("We'll look that up for you.\n\n"),
+            "{text}"
+        );
+        assert!(text.len() > "We'll look that up for you.\n\n".len());
         assert_eq!(result["model"], GEMINI);
     }
 

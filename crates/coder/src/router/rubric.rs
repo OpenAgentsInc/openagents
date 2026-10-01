@@ -74,7 +74,8 @@ pub fn route(route: RouteId) -> Value {
              link GitHub, or asking whether we can do a kind of work for them; and asking to \
              see how we route or handle messages or how we are put together: our route map \
              (also just \"the map\"), our routes, what serves each, our plugins and engines, \
-             or where we are weak",
+             or where we are weak, thin, or missing something, including asking to open or \
+             show the route map or the plugin map",
             Some(
                 "Handing us a concrete task in the user's own repository, or asking us to \
                  delegate to Coder or run it now, even as a test (work.dispatch); how to \
@@ -120,7 +121,8 @@ pub fn route(route: RouteId) -> Value {
                  set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
                  plugins does even when its name sounds like another product's, and what our \
                  own essays and thesis say about general agents, test-time capabilities, \
-                 capability claims, or typed decision models (product.kb); work on the user's own code \
+                 capability claims, or typed decision models, or a summary, overview, or \
+                 comparison of our essays (product.kb); work on the user's own code \
                  (work.dispatch), including more work on Coder's run in this chat, such as \
                  another change, a fix, a test, or the same for another place (work.dispatch); \
                  asking us to do, fetch, or reach something now, such as a \
@@ -147,12 +149,18 @@ pub fn route(route: RouteId) -> Value {
              capabilities, capability claims and deltas, admission and adoption, reach and \
              restraint, the judgment budget, the capability flywheel, why general agents \
              stalled, extending an agent at machine speed, what we have and have not shown, \
-             and why typed decision models make routing feasible",
+             what makes a claim reproduced or externally validated, and why typed decision \
+             models make routing feasible; including asking to summarize, give an overview \
+             of, explain, or compare our essays: \"the essays\", \"both essays\", \"the \
+             two essays\", or our essays, posts, or writing mean these two published essays, \
+             which we answer from our knowledge, never files on the user's computer",
             Some(
                 "The wallet (wallet); account settings (account); questions about us as an \
                  assistant (meta); how the OpenAgents code implements something (codebase.kb); \
                  a concept not specific to OpenAgents, or what another company's product is or \
-                 costs (general); what's new in the Gym \
+                 costs, or someone else's essay or help writing one (general); summarizing a \
+                 README, a file, or a document in the user's own repository or computer \
+                 (work.dispatch); what's new in the Gym \
                  (gym.news); which plugins they can test or should test first (eval.run); \
                  testing, making, or checking a plugin, a result, or credit (eval.run, \
                  eval.author, eval.check, eval.result, eval.credit)",
@@ -168,6 +176,8 @@ pub fn route(route: RouteId) -> Value {
                 "what counts as a test in the gym",
                 "what's a capability claim?",
                 "what's your thesis about general agents?",
+                "summarize both of the essays, please",
+                "compare the two essays",
                 "what does a test check?",
                 "What's a tool?",
                 "what is a tool in the gym",
@@ -179,7 +189,8 @@ pub fn route(route: RouteId) -> Value {
         RouteId::CodebaseKb => option(
             "How the OpenAgents software itself is built: where something lives in the \
              OpenAgents repository, which crate or file implements it, how one of its \
-             components or protocols works inside, or why it was designed that way",
+             components or protocols works inside, what one of its files, such as a path \
+             under crates/, contains, or why it was designed that way",
             Some(
                 "The user's own code or repository (work.dispatch); how to use a feature \
                  (product.kb); asking to see how we route messages or our route map, rather \
@@ -207,7 +218,9 @@ pub fn route(route: RouteId) -> Value {
                  engine, or for a summary or explanation of it (general); asking whether or \
                  how we can help, or whether we can do a kind of work or \
                  work on GitHub for them, without handing us the task itself; asking us to \
-                 connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking \
+                 connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works or what one of its files \
+                 contains (codebase.kb); summarizing, explaining, or comparing our own \
+                 published essays (product.kb); checking \
                  their computers, sessions, XP, or other things an `openagents` command reads \
                  (cli); testing one of our Gym plugins on Coder or running its tests, even \
                  when the plugin's name reads like a task, such as Explain this error or \
@@ -286,7 +299,8 @@ pub fn route(route: RouteId) -> Value {
             Some(
                 "A short but clear question or request, including a short question about us \
                  or this app such as who built it, or a short request to open our map (meta); \
-                 a short answer to our question while \
+                 a short request to summarize or compare \"the essays\" or \"both essays\", \
+                 which are our two published essays (product.kb); a short answer to our question while \
                  we make a tool or a test set together (eval.author)",
             ),
             &[
@@ -321,7 +335,8 @@ pub fn route(route: RouteId) -> Value {
              testing or working on, or what changed in our latest app build",
             Some(
                 "What a Gym feature is or how it works (product.kb); how the user's own test \
-                 did (eval.result); starting a test (eval.run)",
+                 did (eval.result); starting a test (eval.run); what is missing in us or where we \
+                 are weak, or asking to see our gaps or route map (meta)",
             ),
             &[
                 "What's new in the Gym?",
@@ -345,6 +360,7 @@ pub fn route(route: RouteId) -> Value {
             ),
             &[
                 "Test Project map on Coder",
+                "test project map",
                 "Which tool should I try?",
                 "which plugin should I test first",
                 "run the tests for code finder",
@@ -682,7 +698,8 @@ pub fn risk(risk: Risk) -> Value {
         Risk::Ok => option(
             "Nothing to refuse or warn about: an ordinary question or request, including how \
              to back up or find the user's own keys, asking us to sign in to their own GitHub, \
-             or asking us to buy or book something somewhere else",
+             or asking us to buy or book something somewhere else, or asking to see how we \
+             are put together or our route map, which is public",
             None,
             &[
                 "where are my recovery words",
@@ -763,8 +780,9 @@ pub fn lane(word: &str) -> Value {
         "chat" => option(
             "Answer in the chat: a question, explanation, advice, a short snippet, or a \
              question about us, our features, or how we work with GitHub, that needs none of \
-             the user's repositories, files, or commands; and a question about what Coder's \
-             run in this chat did, which its result answers",
+             the user's repositories, files, or commands, including a summary or comparison of \
+             our own published essays, which we answer from our knowledge; and a question \
+             about what Coder's run in this chat did, which its result answers",
             None,
             &[
                 "can you write code?",
@@ -801,7 +819,8 @@ pub fn specifics_instructions() -> Value {
          user named, beyond a fixed prepared answer?",
         "Particulars are the user's own file, repository, error, product, feature, or goal; a \
          general question about us or a feature is not one, and neither is asking to open or \
-         see one of our screens, such as the map.",
+         see one of our screens, such as the map, or to show or draw how we are put \
+         together; our own essays are not the user's particulars either.",
     )
 }
 

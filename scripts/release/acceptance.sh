@@ -34,8 +34,9 @@
 #      failure through `openagents plugin run`; plugins-chat asks the live
 #      chat "which plugins can I test?" through `openagents chat --scratch`
 #      and checks the reply names every plugin in deploy/eval-runner/catalog;
-#      essays-chat asks the live chat two questions about our essays and
-#      checks each reply is grounded in them.
+#      essays-chat asks the live chat two questions about our essays and to
+#      summarize both, and checks each reply is grounded in them (the
+#      summary names both essays and is not a dispatch).
 #   5. A PASS/FAIL line per scenario, a summary table, and the evidence
 #      directory. Exit status 1 when any scenario fails, 2 on a setup error.
 #
@@ -578,6 +579,7 @@ essays_chat() {
   local questions=(
     "what is a capability claim?|with-and-without,marginal effect,claim key,evidence"
     "what is your thesis about general agents?|composition"
+    "summarize both of the essays, please|Test-Time Capabilities;General Agent"
   )
   local entry question words
   for entry in "${questions[@]}"; do
@@ -601,8 +603,11 @@ text = result.get("text", "")
 route = next((e.get("route") for e in events if e.get("event") == "route"), None)
 if "no documented answer" in text.lower() or "don't have that documented" in text.lower():
     print(f"route {route}: the chat has no documented answer: {text!r}")
-elif not any(w.lower() in text.lower() for w in sys.argv[2].split(",")):
-    print(f"route {route}: the reply names none of {sys.argv[2]}: {text!r}")
+elif route == "work.dispatch":
+    print(f"route {route}: the question was dispatched to Coder: {text!r}")
+elif missing := [g for g in sys.argv[2].split(";")
+                 if not any(w.lower() in text.lower() for w in g.split(","))]:
+    print(f"route {route}: the reply names none of {missing[0]}: {text!r}")
 else:
     print(f"ok route {route}")
 PY
@@ -613,7 +618,7 @@ PY
     esac
   done
   if [ -z "$failed" ]; then
-    record essays-chat PASS "both essay questions answered from our essays (chat1.ndjson, chat2.ndjson)"
+    record essays-chat PASS "the essay questions answered from our essays, and both essays summarized (chat1.ndjson to chat3.ndjson)"
   else
     record essays-chat FAIL "$failed"
   fi

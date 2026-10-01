@@ -1,95 +1,95 @@
 {
   "schema": "openagents.chat-router.calibration.v1",
-  "set": "chat-router-v4@ef02faf055e7",
-  "bank": "chat-answers-v1@43063f287db6",
+  "set": "chat-router-v4@71bde73d1610",
+  "bank": "chat-answers-v1@e158a330ddca",
   "created": "2026-10-01",
   "fitted_on": "calibration",
-  "fitted_rows": 356,
+  "fitted_rows": 370,
   "route": {
     "map": {
       "bins": [
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.9185393258426966,
+          "fitted": 0.925207756232687,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.9185393258426966,
+          "fitted": 0.925207756232687,
           "count": 0
         },
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.9185393258426966,
+          "fitted": 0.925207756232687,
           "count": 0
         },
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.1,
+          "fitted": 0.3,
           "count": 4
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.2777777777777778,
-          "count": 8
+          "fitted": 0.35,
+          "count": 9
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.8214285714285714,
-          "count": 13
+          "fitted": 0.6538461538461539,
+          "count": 12
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.525,
-          "count": 19
+          "fitted": 0.6785714285714286,
+          "count": 13
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.875,
-          "count": 19
+          "fitted": 0.7857142857142857,
+          "count": 20
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.9482758620689655,
-          "count": 28
+          "fitted": 0.9545454545454546,
+          "count": 32
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9793233082706767,
-          "count": 265
+          "fitted": 0.9797794117647058,
+          "count": 271
         }
       ],
-      "base_rate": 0.9185393258426966,
-      "fitted_on": 356
+      "base_rate": 0.925207756232687,
+      "fitted_on": 361
     },
-    "held_out_items": 256,
+    "held_out_items": 253,
     "raw": {
-      "accuracy": 0.90234375,
-      "ece": 0.07011718750000032,
-      "brier": 0.066795703125,
-      "nll": 0.2187176667312872,
-      "confident_errors": 1,
-      "items": 256
+      "accuracy": 0.8972332015810277,
+      "ece": 0.038181818181818504,
+      "brier": 0.0712877470355731,
+      "nll": 0.23007348032494804,
+      "confident_errors": 2,
+      "items": 253
     },
     "calibrated": {
-      "accuracy": 0.90234375,
-      "ece": 0.07311667539291888,
-      "brier": 0.08984340151520086,
-      "nll": 0.2768422837395116,
-      "confident_errors": 5,
-      "items": 256
+      "accuracy": 0.8972332015810277,
+      "ece": 0.018803192183820608,
+      "brier": 0.06895244075522275,
+      "nll": 0.22952677350096634,
+      "confident_errors": 4,
+      "items": 253
     },
-    "verdict": "failed",
+    "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
   },
   "answer": {
@@ -98,56 +98,56 @@
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.5528455284552846,
+          "fitted": 0.5502008032128514,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.5528455284552846,
+          "fitted": 0.5502008032128514,
           "count": 0
         },
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.1,
-          "count": 4
+          "fitted": 0.05555555555555555,
+          "count": 8
         },
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.11363636363636363,
-          "count": 21
+          "fitted": 0.11904761904761904,
+          "count": 20
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.19736842105263158,
-          "count": 37
+          "fitted": 0.16666666666666666,
+          "count": 32
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.26,
-          "count": 24
+          "fitted": 0.13636363636363635,
+          "count": 32
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.175,
-          "count": 19
+          "fitted": 0.4423076923076923,
+          "count": 25
         },
         {
           "lo": 0.7,
           "hi": 0.8,
           "fitted": 0.5,
-          "count": 22
+          "count": 16
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.6379310344827587,
-          "count": 28
+          "fitted": 0.7115384615384616,
+          "count": 25
         },
         {
           "lo": 0.9,
@@ -156,25 +156,25 @@
           "count": 91
         }
       ],
-      "base_rate": 0.5528455284552846,
-      "fitted_on": 246
+      "base_rate": 0.5502008032128514,
+      "fitted_on": 249
     },
-    "held_out_items": 186,
+    "held_out_items": 180,
     "raw": {
-      "accuracy": 0.5913978494623656,
-      "ece": 0.1362903225806453,
-      "brier": 0.1705661290322581,
-      "nll": 0.48908031490924686,
+      "accuracy": 0.6166666666666667,
+      "ece": 0.11127777777777792,
+      "brier": 0.17052277777777786,
+      "nll": 0.4875511731269528,
       "confident_errors": 1,
-      "items": 186
+      "items": 180
     },
     "calibrated": {
-      "accuracy": 0.5913978494623656,
-      "ece": 0.057852133510339666,
-      "brier": 0.15076365692830318,
-      "nll": 0.45064938492975665,
+      "accuracy": 0.6166666666666667,
+      "ece": 0.07454079736688402,
+      "brier": 0.1610335533017478,
+      "nll": 0.48260487910511424,
       "confident_errors": 1,
-      "items": 186
+      "items": 180
     },
     "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"

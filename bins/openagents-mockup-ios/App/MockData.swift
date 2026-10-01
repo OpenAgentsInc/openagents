@@ -555,7 +555,7 @@ enum MockData {
 
     /// What a typed (free text) message gets in the mockup: the model's
     /// "streamed" reply after a short opener.
-    static let freeTextOpener = "Here's how that works."
+    static let freeTextOpener = "We'll look that up for you."
     static let freeTextReply = "In the real app, our answer streams in here, drawn as Markdown. This preview doesn't read what you typed; tap a suggestion to see a prepared answer, a card, and its offers."
 
     /// SCR-15 chips: first-time questions, and the starter chips (SCR-01.E13).

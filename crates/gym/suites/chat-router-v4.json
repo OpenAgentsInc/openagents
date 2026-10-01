@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "a68291a2cda1bbdc3d52656f66650034e061592bf05b21c63bf37538fa5ff1d4",
+  "digest": "50077f4a7752b7f2bc85221030f81d1d96d514a6b47538620efcaa9e1c0d18b4",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -17766,6 +17766,510 @@
       },
       "truth": "codebase.kb",
       "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize both of the essays, please",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize both of the essays, please"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize your essay on general agents",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize your essay on general agents"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what are your essays about?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what are your essays about?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "compare the two essays",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "compare the two essays"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize both essays",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize both essays"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "give me an overview of your essays",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "give me an overview of your essays"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize the test-time capabilities essay",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize the test-time capabilities essay"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "tl;dr of the general agents essay",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "tl;dr of the general agents essay"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how do your two essays relate to each other?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how do your two essays relate to each other?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-018",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's the main point of each of your essays",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's the main point of each of your essays"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-019",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize what you've written about test-time capabilities",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize what you've written about test-time capabilities"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-022",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "explain the general agent essay to me simply",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "explain the general agent essay to me simply"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/essay-sum-023",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what makes a claim externally validated?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what makes a claim externally validated?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/essay-sum-nm-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize the README in this repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize the README in this repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/essay-sum-nm-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize the README in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize the README in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/essay-sum-nm-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize this file",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize this file"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/essay-sum-nm-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize the essay in docs/draft.md on my laptop",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize the essay in docs/draft.md on my laptop"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/essay-sum-nm-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "compare the two markdown essays in my notes folder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "compare the two markdown essays in my notes folder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/essay-sum-nm-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "tighten the intro of the essay draft in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "tighten the intro of the essay draft in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-sum-nm-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "summarize Paul Graham's essay Do Things That Don't Scale",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "summarize Paul Graham's essay Do Things That Don't Scale"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-sum-nm-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "help me write an essay about AI agents",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "help me write an essay about AI agents"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/essay-sum-nm-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what makes a scientific claim valid?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what makes a scientific claim valid?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-open-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "open the plugin map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "open the plugin map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-open-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me the route map",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me the route map"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-open-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me the map of routes",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me the map of routes"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-open-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me the map of plugins",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me the map of plugins"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/map-open-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "show me the map of your routes and plugins",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "show me the map of your routes and plugins"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/eval.run/map-open-nm-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "try the project map plugin on coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "try the project map plugin on coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "eval.run",
+      "partition": "development",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }
   ]

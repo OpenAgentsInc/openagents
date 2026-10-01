@@ -333,11 +333,11 @@ fn the_held_out_questions_name_only_committed_entries() {
 fn product_citations_are_taken_out_as_the_reply_streams() {
     let cases = [
         (
-            "Here's how that works. Open the desktop app and scan its code \
+            "We'll look that up for you. Open the desktop app and scan its code \
              [openagents.connect-computer@1].\n\n```bash\nopenagents connect invite\n```\n\
              [openagents.connect-computer@1]\n\nNo Tailscale is needed \
              [openagents.connect-computer@1, openagents.tailnet@2].",
-            "Here's how that works. Open the desktop app and scan its code.\n\n```bash\n\
+            "We'll look that up for you. Open the desktop app and scan its code.\n\n```bash\n\
              openagents connect invite\n```\n\nNo Tailscale is needed.",
         ),
         (

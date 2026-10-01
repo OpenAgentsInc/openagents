@@ -36,7 +36,7 @@ use serde_json::Value;
 /// The latest committed per-route router record and the page that
 /// explains it.
 const MEASUREMENT: (&str, &str) = (
-    "docs/coder/measurements/2026-10-01-essays-claims",
+    "docs/coder/measurements/2026-10-01-essays-summary-claims",
     "docs/coder/measurements/2026-10-01-essays-route.md",
 );
 

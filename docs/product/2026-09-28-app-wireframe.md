@@ -1222,7 +1222,7 @@ IDIOT PROOF check: **pass with a note** (a list; one action kind, like
 
 A chat with OpenAgents. The reply's first words show within about a second:
 a prepared answer is the whole reply at once; otherwise a short opener
-("Here's how that works.") shows while the model's answer streams in.
+("We'll look that up for you.") shows while the model's answer streams in.
 
 ```
 +------------------------------------------+

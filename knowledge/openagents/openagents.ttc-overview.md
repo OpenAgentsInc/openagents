@@ -1,6 +1,6 @@
 ---
 id: openagents.ttc-overview
-version: 1
+version: 2
 kind: product
 title: "Our essay Test-Time Capabilities"
 summary: >-
@@ -10,7 +10,9 @@ summary: >-
 tags: [essay, test-time-capabilities, overview, thesis]
 applies_when: >-
   The user asks about our essay Test-Time Capabilities, what it argues, or
-  what its main ideas are.
+  what its main ideas are; or asks about our essays together: what they are
+  about, a summary or overview of them, or how the two compare ("the
+  essays", "both essays", "your essays").
 answer: >-
   Test-Time Capabilities is our essay of 2026-09-29. Its thesis: an agent can
   also gain or lose abilities while it runs, without retraining, when a
@@ -26,6 +28,7 @@ provenance:
     - docs/essays/2026-09-29-test-time-capabilities.md
 evidence:
   - "2026-10-01: written from the essay Test-Time Capabilities and checked against its text (#10099); the answer text awaits the owner's copy review."
+  - "2026-10-01: covers asking about, summarizing, or comparing our two essays together, so a request for both essays finds both overviews (#10102); the answer is unchanged."
 ---
 
 ## Answer

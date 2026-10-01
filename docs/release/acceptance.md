@@ -124,8 +124,10 @@ or the owner's host.
    router judgment and no model call when the bank answers.
    `essays-chat` asks the live chat worker two questions about our essays
    ("what is a capability claim?" and "what is your thesis about general
-   agents?") the same way and checks each reply carries that essay's idea
-   and is not the no-documented-answer reply.
+   agents?") and "summarize both of the essays, please" the same way, and
+   checks each reply carries that essay's idea and is not the
+   no-documented-answer reply, and that the summary names both essays and
+   was not dispatched to Coder.
 
 When the scenarios end, the gate gives Coder runs up to four minutes to
 finish, stops any that remain, stops the host, copies the task store's
@@ -163,7 +165,7 @@ conversation run in the owner's order.
 | `phone-start-at-once` | The phone's own Coder tab (the shared Rust the iOS and Android apps run), paired with the host, asks a coding question through the live chat; the computer's presence says it starts Coder at once (`coder.start: at_once`, auto-start on), and the reply starts exactly one Coder task there with no **Run Coder** tap, the chat showing the start with Stop and no Run Coder. | #10101 |
 | `explain-error` | A gate scenario, outside the window: a Python file with a wrong dictionary key is planted in a scratch project and run, and the build's `openagents plugin run` runs the [Explain this error](../plugins/examples/explain-this-error.md) plugin's workflow on its output with reads only. The plugin names `billing.py:5`, shows the line, and suggests the key the dictionary has. | #10086 |
 | `plugins-chat` | A gate scenario, outside the window: "which plugins can I test?" through the build's `openagents chat --scratch`; the live chat's reply names every plugin in `deploy/eval-runner/catalog`, the catalog the hosted runner and the Gym's chips use. | #10090 |
-| `essays-chat` | A gate scenario, outside the window: "what is a capability claim?" and "what is your thesis about general agents?" through `openagents chat --scratch`; each reply carries its essay's idea (Test-Time Capabilities, The Return of the General Agent) and is not the no-documented-answer reply. | #10099 |
+| `essays-chat` | A gate scenario, outside the window: "what is a capability claim?", "what is your thesis about general agents?", and "summarize both of the essays, please" through `openagents chat --scratch`; each reply carries its essay's idea (Test-Time Capabilities, The Return of the General Agent) and is not the no-documented-answer reply, and the summary names both essays and is not dispatched to Coder. | #10099, #10102 |
 
 ## Proof that it catches the owner's bugs
 
