@@ -412,3 +412,106 @@ fn the_welcome_card_is_three_short_facts() {
     assert!(host.contains("Agents   none signed in"), "{host}");
     assert!(host.lines().count() <= 5, "{host}");
 }
+
+/// A real Grok Build run (#10117, `openagents-chat`'s
+/// `fixtures/coder-events/tools-grok.ndjson`), fed as the client streams
+/// it: condensed, its looking calls show as one labelled line and its
+/// command as one line; Ctrl+O shows each call with its output, and again
+/// condenses them. `/expand` does the same.
+#[test]
+fn tool_calls_are_grouped_condensed_and_expand_with_ctrl_o() {
+    let mut app = app();
+    for text in
+        include_str!("../../openagents-chat/fixtures/coder-events/tools-grok.ndjson").lines()
+    {
+        let parsed: CoderLine = serde_json::from_str(text).unwrap();
+        app.event(Event::Line(Box::new(parsed)));
+    }
+    let condensed = shown(&mut app);
+    check_snapshot("tools_grok_condensed_80", &condensed);
+    assert!(condensed.contains("◈ Read 3 files, Listed 1 dir, Searched 2 patterns"));
+    assert!(
+        !condensed.contains("pub fn add"),
+        "file contents stay hidden"
+    );
+    assert!(app.key(&ctrl('o'), 80).is_empty());
+    let expanded = shown(&mut app);
+    check_snapshot("tools_grok_expanded_80", &expanded);
+    assert!(expanded.contains("◆ Read lib.rs"));
+    assert!(expanded.contains("pub fn add"));
+    assert!(expanded.contains("$ cargo build && echo"));
+    app.key(&ctrl('o'), 80);
+    assert_eq!(shown(&mut app), condensed);
+    assert!(typed(&mut app, "/expand").is_empty());
+    assert_eq!(shown(&mut app), expanded);
+}
+
+/// A long Codex-shaped run: its first commands fold under one count, the
+/// last ten stay, and a failure says its exit.
+#[test]
+fn a_long_run_of_commands_folds_its_oldest() {
+    use openagents_chat::coder_events::{Call, Output, Step, StepKind, Verb};
+    let mut app = app();
+    app.event(line(1, started()));
+    let mut seq = 1;
+    for n in 0..13 {
+        let command = format!("cargo test -p part{n}");
+        seq += 1;
+        app.event(line(
+            seq,
+            CoderEvent::Step(Step {
+                turn: 1,
+                step_id: n,
+                kind: StepKind::Command,
+                source: "agent".into(),
+                text: command.clone(),
+                call: Some(Call {
+                    verb: Verb::Run,
+                    target: command.clone(),
+                    about: None,
+                    failed: false,
+                }),
+            }),
+        ));
+        seq += 1;
+        app.event(line(
+            seq,
+            CoderEvent::Output(Output {
+                turn: 1,
+                step_id: n,
+                command,
+                exit: Some(if n == 12 { 101 } else { 0 }),
+                timed_out: false,
+                seconds: 1.0,
+                text: "test result: ok".into(),
+                truncated: false,
+            }),
+        ));
+    }
+    let text = shown(&mut app);
+    check_snapshot("tools_folded_80", &text);
+    assert!(text.contains("◈ Ran 3 commands"), "{text}");
+    assert!(
+        text.contains("◆ Run cargo test -p part12 · exit 101"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("part0\n") && !text.contains("test result"),
+        "{text}"
+    );
+}
+
+fn check_snapshot(name: &str, actual: &str) {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("snapshots")
+        .join(format!("{name}.txt"));
+    let actual = format!("{}\n", actual.trim_end());
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, &actual).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("no snapshot {name}; run with UPDATE_SNAPSHOTS=1:\n{actual}"));
+    assert_eq!(expected, actual, "the {name} snapshot differs");
+}

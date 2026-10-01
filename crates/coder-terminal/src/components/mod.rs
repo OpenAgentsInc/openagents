@@ -25,7 +25,7 @@ pub mod turn;
 
 pub use card::Card;
 pub use overlay::{Item, ListOverlay};
-pub use run::{FileRow, RunRow};
+pub use run::{FileRow, RunRow, ToolRow};
 pub use turn::Who;
 
 use unicode_segmentation::UnicodeSegmentation;

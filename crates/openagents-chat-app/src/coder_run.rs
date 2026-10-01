@@ -27,6 +27,7 @@
 
 use crate::coder_tab::{Choice, Mode};
 use openagents_chat::coder_events::{self, CoderEvent, Line, StepKind};
+use openagents_chat::tool_groups::{self, Entry, Item, Shown, Stretch};
 use rust_native::style::{Color, Space, Style, TextWeight};
 use rust_native::{Axis, Element, MessageRole, Node, TextRole, ToolState, markdown};
 use std::collections::{BTreeMap, VecDeque};
@@ -1037,15 +1038,13 @@ pub fn turn_of(line: &Line) -> usize {
     }
 }
 
-/// A tool row being built: a command, a tool call, or a thought.
+/// One tool row: a group, a command, a tool call, or a thought.
 struct Tool {
     key: String,
     name: String,
     detail: String,
     body: Vec<String>,
     state: ToolState,
-    /// A command waiting for its output.
-    command: Option<String>,
 }
 
 /// The rows of a run, built one line at a time.
@@ -1054,9 +1053,9 @@ struct Rows {
     rows: Vec<Node<()>>,
     /// The reply being written: its key and text.
     reply: Option<(String, String)>,
-    tools: Vec<Tool>,
-    /// Where each open tool row goes in `rows`.
-    slots: Vec<usize>,
+    /// The commands, tool calls, and thoughts since the last other row,
+    /// drawn grouped when something else comes (#10117).
+    stretch: Stretch,
     /// The latest progress while the turn runs.
     progress: Option<String>,
     /// This turn's commands, thoughts, and tool calls, for its summary.
@@ -1102,6 +1101,7 @@ impl Rows {
         }
         match &line.event {
             CoderEvent::Step(step) if step.kind == StepKind::Reply => {
+                self.draw_stretch();
                 match &mut self.reply {
                     Some((_, text)) => text.push_str(&step.text),
                     None => self.reply = Some((key, step.text.clone())),
@@ -1109,6 +1109,26 @@ impl Rows {
                 return;
             }
             _ => self.flush_reply(),
+        }
+        // A command, a tool call, a thought, or what one returned joins
+        // the stretch; anything else draws it first. Progress does neither.
+        if !matches!(line.event, CoderEvent::Progress(_)) {
+            if self.stretch.push(line.seq, &line.event) {
+                match &line.event {
+                    CoderEvent::Step(step) => match step.kind {
+                        StepKind::Thinking => self.thoughts += 1,
+                        StepKind::Command => self.commands += 1,
+                        StepKind::ToolCall => self.calls += 1,
+                        _ => {}
+                    },
+                    CoderEvent::Output(output) => {
+                        self.failed += usize::from(output.timed_out || output.exit != Some(0));
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            self.draw_stretch();
         }
         match &line.event {
             CoderEvent::CoderStarted(started) => {
@@ -1171,93 +1191,34 @@ impl Rows {
                         self.flush_held();
                     }
                 }
-                StepKind::Thinking => {
-                    self.thoughts += 1;
-                    self.open(Tool {
-                        key,
-                        name: "Thinking".into(),
-                        detail: first_line(&step.text),
-                        body: vec![step.text.clone()],
-                        state: ToolState::Done,
-                        command: None,
-                    });
-                }
-                StepKind::Command => {
-                    self.commands += 1;
-                    self.open(Tool {
-                        key,
-                        name: "Command".into(),
-                        detail: first_line(&step.text),
-                        body: vec![format!("$ {}", step.text)],
-                        state: ToolState::Running,
-                        command: Some(step.text.clone()),
-                    });
-                }
-                StepKind::ToolCall => {
-                    self.calls += 1;
-                    let (name, rest) = step.text.split_once(' ').unwrap_or((&step.text, ""));
-                    self.open(Tool {
-                        key,
-                        name: name.into(),
-                        detail: first_line(rest),
-                        body: vec![step.text.clone()],
-                        state: ToolState::Done,
-                        command: None,
-                    });
-                }
-                StepKind::Observation => {
-                    // A command's exit and time, or what an agent's tool
-                    // returned: under the row before it.
-                    match self.tools.last_mut() {
-                        Some(tool) if tool.command.is_some() => {
-                            tool.detail = format!("{} · {}", clip(&tool.detail, 80), step.text);
-                        }
-                        Some(tool) => tool.body.push(step.text.clone()),
-                        None => self.rows.push(status(&key, &step.text)),
-                    }
-                }
+                // A stretch takes these; only an observation with no call
+                // before it reaches here.
+                StepKind::Thinking | StepKind::Command | StepKind::ToolCall => {}
+                StepKind::Observation => self.rows.push(status(&key, &step.text)),
                 StepKind::Note => self.rows.push(status(&key, &step.text)),
                 StepKind::Reply => {}
             },
             CoderEvent::Output(output) => {
-                let found = self
-                    .tools
-                    .iter_mut()
-                    .rev()
-                    .find(|tool| tool.command.as_deref() == Some(output.command.as_str()));
+                // An output whose command the stretch does not hold.
                 let failed = output.timed_out || output.exit != Some(0);
                 if failed {
                     self.failed += 1;
                 }
                 let mut text = output.text.trim_end().to_owned();
                 if output.truncated {
-                    text.push_str("\n… (cut; the whole output is in the task's trajectory)");
+                    text.push_str("\n…");
                 }
-                match found {
-                    Some(tool) => {
-                        tool.command = None;
-                        tool.state = if failed {
-                            ToolState::Failed
-                        } else {
-                            ToolState::Done
-                        };
-                        if !text.is_empty() {
-                            tool.body.push(text);
-                        }
-                    }
-                    None => self.open(Tool {
-                        key,
-                        name: "Output".into(),
-                        detail: first_line(&output.command),
-                        body: vec![text],
-                        state: if failed {
-                            ToolState::Failed
-                        } else {
-                            ToolState::Done
-                        },
-                        command: None,
-                    }),
-                }
+                self.rows.push(tool_row(Tool {
+                    key,
+                    name: "Output".into(),
+                    detail: first_line(&output.command),
+                    body: vec![text],
+                    state: if failed {
+                        ToolState::Failed
+                    } else {
+                        ToolState::Done
+                    },
+                }));
             }
             CoderEvent::ProviderSwitched(switch) => {
                 let text = match &switch.to {
@@ -1355,19 +1316,6 @@ impl Rows {
         }
     }
 
-    fn open(&mut self, tool: Tool) {
-        self.slots.push(self.rows.len());
-        self.rows.push(Node {
-            key: tool.key.clone(),
-            style: Style::default(),
-            element: Element::Text {
-                value: String::new(),
-                role: TextRole::Status,
-            },
-        });
-        self.tools.push(tool);
-    }
-
     fn flush_held(&mut self) {
         if let Some(card) = self.held.take() {
             self.rows.push(card);
@@ -1395,17 +1343,21 @@ impl Rows {
         }
     }
 
-    /// Draw the open tool rows in their places.
-    fn draw_tools(&mut self) {
-        for (tool, slot) in self.tools.drain(..).zip(self.slots.drain(..)) {
-            self.rows[slot] = tool_row(tool);
+    /// Draw the stretch, grouped (#10117): a group's label, each call one
+    /// line, and a long run folded; each expands to its calls and output.
+    fn draw_stretch(&mut self) {
+        let stretch = std::mem::take(&mut self.stretch);
+        for item in stretch.items(true) {
+            let node = item_row(&item);
+            self.rows.push(node);
         }
     }
 
     /// A turn ended: its "Worked for" line.
     fn close_turn(&mut self) {
+        self.stretch.settle();
+        self.draw_stretch();
         self.flush_reply();
-        self.draw_tools();
         let mut parts = vec![];
         if self.commands > 0 {
             parts.push(plural(self.commands, "ran a command", "ran {} commands"));
@@ -1444,11 +1396,133 @@ impl Rows {
     /// The last line: a running turn keeps its rows open.
     fn close(&mut self, running: bool) {
         self.flush_held();
+        if !running {
+            self.stretch.settle();
+        }
+        self.draw_stretch();
         self.flush_reply();
-        self.draw_tools();
         if !running {
             self.progress = None;
         }
+    }
+}
+
+/// One item of a stretch as a transcript row: a group's label (its calls
+/// and their output inside), a call (its command and output inside), a
+/// thought, or the fold over a long run's earlier lines.
+fn item_row(item: &Item<'_>) -> Node<()> {
+    match item {
+        Item::Group {
+            key,
+            label,
+            members,
+        } => {
+            let mut body = Vec::new();
+            for member in members {
+                match member {
+                    // Each call's line, what it returned indented under
+                    // it: the code font has no diamond.
+                    Entry::Call(shown) => {
+                        body.push(shown.line());
+                        if let Some(command) = shown.command() {
+                            body.push(format!("  $ {command}"));
+                        }
+                        if !shown.output.is_empty() {
+                            body.push(indent(&shown.output));
+                        }
+                    }
+                    Entry::Thought { text, .. } => body.push(format!("· {text}")),
+                }
+            }
+            tool_row(Tool {
+                key: format!("coder-{key}"),
+                name: label.text.clone(),
+                detail: failures(label),
+                body,
+                state: label_state(label),
+            })
+        }
+        Item::Call(shown) => call_row(shown),
+        Item::Thought { seq, text } => tool_row(Tool {
+            key: format!("coder-{seq}"),
+            name: "Thinking".into(),
+            detail: first_line(text),
+            body: vec![(*text).to_owned()],
+            state: ToolState::Done,
+        }),
+        Item::More { key, label, hidden } => tool_row(Tool {
+            key: format!("coder-{key}-more"),
+            name: label.text.clone(),
+            detail: failures(label),
+            body: hidden
+                .iter()
+                .map(|item| match item {
+                    Item::Call(shown) => shown.line(),
+                    Item::Thought { text, .. } => format!("· {}", first_line(text)),
+                    Item::Group { label, .. } | Item::More { label, .. } => label.line(),
+                })
+                .collect(),
+            state: label_state(label),
+        }),
+    }
+}
+
+/// One call: its verb, then its target and any failure; inside, a
+/// command's own line and what the call returned.
+fn call_row(shown: &Shown) -> Node<()> {
+    let (name, target) = match shown.verb() {
+        Some(verb) => (verb.to_owned(), shown.target()),
+        None => (shown.target(), String::new()),
+    };
+    let detail = match (target.is_empty(), shown.result()) {
+        (_, None) => target,
+        (true, Some(result)) => result,
+        (false, Some(result)) => format!("{target} · {result}"),
+    };
+    let mut body = Vec::new();
+    if let Some(command) = shown.command() {
+        body.push(format!("$ {command}"));
+    }
+    if !shown.output.is_empty() {
+        body.push(shown.output.clone());
+    }
+    tool_row(Tool {
+        key: format!("coder-{}", shown.seq),
+        name,
+        detail,
+        body,
+        state: if shown.running {
+            ToolState::Running
+        } else if shown.failed() {
+            ToolState::Failed
+        } else {
+            ToolState::Done
+        },
+    })
+}
+
+/// `text` with every line two spaces in.
+fn indent(text: &str) -> String {
+    text.lines()
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn failures(label: &tool_groups::Label) -> String {
+    match label.failed {
+        0 => String::new(),
+        n => format!("{n} failed"),
+    }
+}
+
+fn label_state(label: &tool_groups::Label) -> ToolState {
+    if label.running {
+        ToolState::Running
+    } else if label.failed > 0 {
+        ToolState::Failed
+    } else {
+        ToolState::Done
     }
 }
 
@@ -1461,17 +1535,22 @@ fn tool_row(tool: Tool) -> Node<()> {
             name: tool.name,
             detail: tool.detail,
             state: tool.state,
-            children: vec![Node {
-                key: format!("{key}-body"),
-                style: Style {
-                    foreground: Some(GRAY),
-                    ..Style::default()
-                },
-                element: Element::Text {
-                    value: tool.body.join("\n"),
-                    role: TextRole::Code,
-                },
-            }],
+            // Nothing inside: one line that does not expand.
+            children: if tool.body.iter().all(|part| part.trim().is_empty()) {
+                Vec::new()
+            } else {
+                vec![Node {
+                    key: format!("{key}-body"),
+                    style: Style {
+                        foreground: Some(GRAY),
+                        ..Style::default()
+                    },
+                    element: Element::Text {
+                        value: tool.body.join("\n"),
+                        role: TextRole::Code,
+                    },
+                }]
+            },
         },
     }
 }

@@ -1504,6 +1504,7 @@ impl Follow {
                 kind: coder_events::StepKind::Note,
                 source: "system".into(),
                 text: note.text.clone(),
+                call: None,
             });
             self.line(event, out);
         }

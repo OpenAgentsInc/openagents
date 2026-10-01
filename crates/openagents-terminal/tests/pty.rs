@@ -39,7 +39,9 @@ use openagents_chat::basic_coder::{Door, Reply, Turn, lock};
 use openagents_chat::client::{
     self, Client, Coder, Follow, Issue, Kind, Options, Place, Progress, Started,
 };
-use openagents_chat::coder_events::{self, CoderEvent, Line, Output, Runner, Step, StepKind};
+use openagents_chat::coder_events::{
+    self, Call, CoderEvent, Line, Output, Runner, Step, StepKind, Verb,
+};
 use openagents_chat::router::{
     Caller, CoderRun, Computer, Context, Engine, EngineState, Meta, Offer, Project,
 };
@@ -245,7 +247,36 @@ impl Coder for FakeCoder {
                 kind: StepKind::Thinking,
                 source: "agent".into(),
                 text: "Reading the failing test.".into(),
+                call: None,
             }));
+            // Tool calls as an engine's typed steps carry them (#10117):
+            // two that look, which group, then a command that fails.
+            let tool = |kind: StepKind, verb: Verb, target: &str| {
+                CoderEvent::Step(Step {
+                    turn: 1,
+                    step_id: 2,
+                    kind,
+                    source: "agent".into(),
+                    text: target.into(),
+                    call: Some(Call {
+                        verb,
+                        target: target.into(),
+                        about: None,
+                        failed: false,
+                    }),
+                })
+            };
+            emit(tool(StepKind::ToolCall, Verb::Read, "lib.rs"));
+            emit(CoderEvent::Step(Step {
+                turn: 1,
+                step_id: 2,
+                kind: StepKind::Observation,
+                source: "system".into(),
+                text: "pub fn add(a: i32, b: i32) -> i32 { a - b }".into(),
+                call: None,
+            }));
+            emit(tool(StepKind::ToolCall, Verb::Search, "fn add"));
+            emit(tool(StepKind::Command, Verb::Run, "cargo test"));
             emit(CoderEvent::Output(Output {
                 turn: 1,
                 step_id: 2,
@@ -592,12 +623,32 @@ fn the_screen_end_to_end() {
         &[
             "Coder can fix that on this computer.",
             "Coder · Codex",
-            "Reading the failing test.",
-            "$ cargo test",
-            "exit 101",
+            "◈ Read 1 file, Searched 1 pattern",
+            "◆ Run cargo test · exit 101",
             "≈40% done",
         ],
     );
+    // Condensed: the reasoning folded into the group, file contents and
+    // command output hidden.
+    for hidden in ["Reading the failing test.", "a - b", "FAILED"] {
+        assert!(!run.contains(hidden), "{hidden:?} shows condensed:\n{run}");
+    }
+    // Ctrl+O shows each call and its output, and condenses them again.
+    session.send(b"\x0f");
+    let open = session.wait(
+        "the tool calls expanded",
+        &[
+            "◆ Read lib.rs",
+            "a - b",
+            "◆ Search \"fn add\"",
+            "$ cargo test",
+            "test adds ... FAILED",
+        ],
+    );
+    eprintln!("==== expanded ====\n{open}\n");
+    session.send(b"\x0f");
+    let closed = session.wait("the tool calls condensed", &["◆ Run cargo test · exit 101"]);
+    assert!(!closed.contains("test adds ... FAILED"), "{closed}");
     // Progress is Jev's estimate, never a step budget.
     for line in run.lines().filter(|line| line.contains("% done")) {
         assert!(!line.contains(" of "), "a budget in {line:?}");

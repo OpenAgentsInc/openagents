@@ -16,6 +16,7 @@ use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::client::{Event, Kind, Op, Start};
 use openagents_chat::coder_events::{CoderEvent, Line as CoderLine};
 use openagents_chat::router::{Context, EngineState, Meta, Offer};
+use openagents_chat::tool_groups::Stretch;
 use ratatui::text::Line;
 
 use crate::rows::{self, Row};
@@ -124,6 +125,9 @@ pub struct App {
     seen: HashMap<String, u64>,
     /// Frames drawn, for the spinner.
     pub tick: u64,
+    /// Tool calls show expanded: each call with its output (Ctrl+O,
+    /// `/expand`). Condensed by default.
+    pub expanded: bool,
 }
 
 impl App {
@@ -151,6 +155,7 @@ impl App {
             quiet_detach: false,
             seen: HashMap::new(),
             tick: 0,
+            expanded: false,
         }
     }
 
@@ -244,6 +249,10 @@ impl App {
             (KeyCode::Char('d'), true, _) if self.editor.is_empty() => vec![Action::Quit],
             (KeyCode::Esc, _, _) => self.stop(),
             (KeyCode::Char('t'), true, _) => vec![Action::Threads],
+            (KeyCode::Char('o'), true, _) => {
+                self.toggle_tools();
+                Vec::new()
+            }
             (KeyCode::Char('s'), true, _) => vec![Action::Sync],
             (KeyCode::PageUp, _, _) => {
                 self.scroll = self.scroll.saturating_add(10);
@@ -362,6 +371,10 @@ impl App {
             Slash::Settings => vec![Action::Settings],
             Slash::Connect => vec![Action::Connect],
             Slash::Plugins => vec![Action::Plugins],
+            Slash::Expand => {
+                self.toggle_tools();
+                Vec::new()
+            }
             Slash::Help => {
                 self.push(Row::Card(help()));
                 Vec::new()
@@ -394,6 +407,16 @@ impl App {
             start: Start::Settings,
             timeout: openagents_chat::client::DEFAULT_TIMEOUT,
         })]
+    }
+
+    /// Expand every stretch of tool calls, or condense them all again.
+    pub fn toggle_tools(&mut self) {
+        self.expanded = !self.expanded;
+        for row in self.transcript.lines_mut() {
+            if let Row::Tools { expanded, .. } = row {
+                *expanded = self.expanded;
+            }
+        }
     }
 
     /// An operation is about to run.
@@ -548,6 +571,26 @@ impl App {
         if line.event.ends_turn() {
             self.running = false;
             self.progress = None;
+            if let Some(Row::Tools { stretch, .. }) = self.transcript.last_mut() {
+                stretch.settle();
+            }
+        }
+        // A command, a tool call, a thought, or what one returned joins the
+        // open stretch, or starts one (#10117). A reply draws no row here,
+        // so it never splits one.
+        if let Some(Row::Tools { stretch, .. }) = self.transcript.last_mut()
+            && stretch.push(line.seq, &line.event)
+        {
+            self.scroll = 0;
+            return;
+        }
+        let mut stretch = Stretch::default();
+        if stretch.push(line.seq, &line.event) {
+            self.push(Row::Tools {
+                stretch,
+                expanded: self.expanded,
+            });
+            return;
         }
         if let Some(row) = rows::run_row(&line.event) {
             self.push(Row::Run(row));
@@ -717,6 +760,10 @@ pub fn help() -> Card {
             "stop the reply, or stop the Coder run".to_owned(),
         ),
         ("Ctrl+T".to_owned(), "threads".to_owned()),
+        (
+            "Ctrl+O".to_owned(),
+            "expand or condense tool calls".to_owned(),
+        ),
         (
             "Ctrl+S".to_owned(),
             "keep this computer's chats in sync with your phone".to_owned(),

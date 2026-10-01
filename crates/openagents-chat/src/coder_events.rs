@@ -346,6 +346,43 @@ pub struct Step {
     pub source: String,
     /// At most [`MAX_TEXT`] bytes.
     pub text: String,
+    /// For a command or a tool call, what it did and to what, typed
+    /// (#10117): the shared grouping ([`crate::tool_groups`]) reads this,
+    /// never `text`. Absent from other steps and from lines written before
+    /// it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call: Option<Call>,
+}
+
+/// What a command or a tool call did, and to what (#10117).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Call {
+    pub verb: Verb,
+    /// The file, directory, pattern, URL, or command it acted on; for
+    /// [`Verb::Other`], the agent's own words for the call.
+    pub target: String,
+    /// What the agent said a command does, when it said (Grok Build's
+    /// `description`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+    /// The agent reported the call failed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failed: bool,
+}
+
+/// What a [`Call`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verb {
+    Read,
+    Search,
+    List,
+    Fetch,
+    Edit,
+    Delete,
+    Move,
+    Run,
+    Other,
 }
 
 /// A command's output, bounded to [`MAX_OUTPUT`] bytes.
@@ -622,7 +659,15 @@ impl Mapper {
                 kind,
                 source,
                 text: bounded(text, MAX_TEXT).0,
+                call: None,
             })
+        };
+        let with_call = |event: CoderEvent, call: Call| match event {
+            CoderEvent::Step(step) => CoderEvent::Step(Step {
+                call: Some(call),
+                ..step
+            }),
+            other => other,
         };
         let mut events = Vec::new();
         if extra
@@ -743,7 +788,15 @@ impl Mapper {
                     self.streamed.clear();
                     for command in action["commands"].as_array().into_iter().flatten() {
                         if let Some(command) = command.as_str() {
-                            events.push(make(StepKind::Command, command));
+                            events.push(with_call(
+                                make(StepKind::Command, command),
+                                Call {
+                                    verb: Verb::Run,
+                                    target: command.to_owned(),
+                                    about: None,
+                                    failed: false,
+                                },
+                            ));
                         }
                     }
                 }
@@ -804,11 +857,22 @@ impl Mapper {
                 .filter(|call| is_decision_call(call))
                 .filter_map(|call| call["tool_call_id"].as_str())
                 .collect();
+            let results: Vec<&Value> = step
+                .pointer("/observation/results")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .collect();
             for call in step["tool_calls"].as_array().into_iter().flatten() {
                 if is_decision_call(call) {
                     continue;
                 }
-                events.push(make(StepKind::ToolCall, &tool_line(call, &step["extra"])));
+                let (line, mut typed) = tool_call(call, &step["extra"]);
+                typed.failed = results.iter().any(|result| {
+                    result["source_call_id"] == call["tool_call_id"]
+                        && result.pointer("/extra/status").and_then(Value::as_str) == Some("failed")
+                });
+                events.push(with_call(make(StepKind::ToolCall, &line), typed));
             }
             for result in step
                 .pointer("/observation/results")
@@ -1179,7 +1243,14 @@ const TOOL_LINE_CHARS: usize = 120;
 /// the field names the agents use, with the ACP tool kind the recorder kept
 /// (`extra.<engine>_tool.kind`), then the title the agent showed beside the
 /// call (`extra.purpose`), and else names the tool.
+#[cfg(test)]
 fn tool_line(call: &Value, extra: &Value) -> String {
+    tool_call(call, extra).0
+}
+
+/// [`tool_line`]'s line with the call typed (#10117): the same fields
+/// read once, so the line and the [`Call`] always agree.
+fn tool_call(call: &Value, extra: &Value) -> (String, Call) {
     let arguments = &call["arguments"];
     let field = |names: &[&str]| {
         names
@@ -1196,23 +1267,42 @@ fn tool_line(call: &Value, extra: &Value) -> String {
         .find_map(|(_, value)| value["kind"].as_str())
         .unwrap_or("");
     let file = field(&["target_file", "file_path", "filePath", "path"]).map(shown);
-    let line = if let Some(dir) = field(&["target_directory", "directory", "dir_path"]) {
-        Some(match dir {
-            "." | "./" => "Listed the project".to_owned(),
-            dir => format!("Listed {}", shown(dir)),
-        })
+    let first = |text: &str| text.lines().next().unwrap_or(text).to_owned();
+    let typed = if let Some(dir) = field(&["target_directory", "directory", "dir_path"]) {
+        Some((
+            match dir {
+                "." | "./" => "Listed the project".to_owned(),
+                dir => format!("Listed {}", shown(dir)),
+            },
+            Verb::List,
+            match dir {
+                "./" => ".".to_owned(),
+                dir => shown(dir),
+            },
+        ))
     } else if let Some(command) = field(&["command", "cmd"]) {
-        Some(format!("Ran {}", command.lines().next().unwrap_or(command)))
+        Some((
+            format!("Ran {}", first(command)),
+            Verb::Run,
+            command.to_owned(),
+        ))
     } else if let Some(pattern) = field(&["pattern", "query", "regex"]) {
-        Some(format!("Searched for {pattern}"))
+        Some((
+            format!("Searched for {pattern}"),
+            Verb::Search,
+            pattern.to_owned(),
+        ))
     } else if let Some(url) = field(&["url"]) {
-        Some(format!("Fetched {url}"))
+        Some((format!("Fetched {url}"), Verb::Fetch, url.to_owned()))
     } else {
-        file.map(|file| match kind {
-            "edit" => format!("Edited {file}"),
-            "delete" => format!("Deleted {file}"),
-            "move" => format!("Moved {file}"),
-            _ => format!("Read {file}"),
+        file.map(|file| {
+            let (word, verb) = match kind {
+                "edit" => ("Edited", Verb::Edit),
+                "delete" => ("Deleted", Verb::Delete),
+                "move" => ("Moved", Verb::Move),
+                _ => ("Read", Verb::Read),
+            };
+            (format!("{word} {file}"), verb, file)
         })
     };
     let title = extra["purpose"]
@@ -1230,15 +1320,47 @@ fn tool_line(call: &Value, extra: &Value) -> String {
         .map(str::trim)
         .filter(|text| !text.is_empty() && !text.starts_with(['{', '[']))
         .map(|text| format!("{} {text}", name.unwrap_or("tool")));
-    let line = line
-        .or(title)
-        .or(plain)
-        .or_else(|| name.map(|name| format!("Used {name}")))
-        .unwrap_or_else(|| "Used a tool".to_owned());
-    let line: String = line.chars().filter(|ch| !ch.is_control()).collect();
-    match line.char_indices().nth(TOOL_LINE_CHARS) {
-        Some((at, _)) => format!("{}…", &line[..at]),
-        None => line,
+    let clean = |line: String| -> String {
+        let line: String = line.chars().filter(|ch| !ch.is_control()).collect();
+        match line.char_indices().nth(TOOL_LINE_CHARS) {
+            Some((at, _)) => format!("{}…", &line[..at]),
+            None => line,
+        }
+    };
+    let about = field(&["description"]).map(|text| clean(first(text)));
+    match typed {
+        Some((line, verb, target)) => {
+            let target = match verb {
+                Verb::Run => target.chars().filter(|ch| *ch != '\r').collect(),
+                _ => clean(target),
+            };
+            (
+                clean(line),
+                Call {
+                    verb,
+                    target,
+                    about: about.filter(|_| verb == Verb::Run),
+                    failed: false,
+                },
+            )
+        }
+        None => {
+            let line = clean(
+                title
+                    .or(plain)
+                    .or_else(|| name.map(|name| format!("Used {name}")))
+                    .unwrap_or_else(|| "Used a tool".to_owned()),
+            );
+            (
+                line.clone(),
+                Call {
+                    verb: Verb::Other,
+                    target: line,
+                    about: None,
+                    failed: false,
+                },
+            )
+        }
     }
 }
 
@@ -1336,6 +1458,89 @@ mod tests {
         assert_eq!(line("read", json!("a.rs"), json!({})), "read a.rs");
         let long = line("other", json!({"command": "y".repeat(500)}), json!({}));
         assert!(long.chars().count() <= TOOL_LINE_CHARS + 1 && long.ends_with('…'));
+    }
+
+    /// The same calls, typed (#10117): the verb and target every surface
+    /// groups by, read from the same fields as the line. Devin's and
+    /// OpenCode's argument names (`file_path`, `filePath`, `path`) type the
+    /// same way Grok Build's do.
+    #[test]
+    fn an_agents_tool_calls_are_typed() {
+        let typed = |name: &str, arguments: Value, extra: Value| {
+            tool_call(
+                &json!({"tool_call_id": "c", "function_name": name, "arguments": arguments}),
+                &extra,
+            )
+            .1
+        };
+        let is = |call: Call, verb: Verb, target: &str| {
+            assert_eq!((call.verb, call.target.as_str()), (verb, target));
+        };
+        is(
+            typed("other", json!({"target_directory": "./"}), json!({})),
+            Verb::List,
+            ".",
+        );
+        is(
+            typed("read", json!({"filePath": "/w/src/main.rs"}), json!({})),
+            Verb::Read,
+            "main.rs",
+        );
+        is(
+            typed(
+                "edit",
+                json!({"file_path": "src/lib.rs"}),
+                json!({"devin_tool": {"kind": "edit"}}),
+            ),
+            Verb::Edit,
+            "src/lib.rs",
+        );
+        is(
+            typed(
+                "rm",
+                json!({"path": "old.rs"}),
+                json!({"opencode_tool": {"kind": "delete"}}),
+            ),
+            Verb::Delete,
+            "old.rs",
+        );
+        is(
+            typed("grep", json!({"pattern": "fn main"}), json!({})),
+            Verb::Search,
+            "fn main",
+        );
+        is(
+            typed("webfetch", json!({"url": "https://example.com"}), json!({})),
+            Verb::Fetch,
+            "https://example.com",
+        );
+        let run = typed(
+            "other",
+            json!({"command": "git log -1\ngit status", "description": "Show the latest commit"}),
+            json!({}),
+        );
+        assert_eq!(run.verb, Verb::Run);
+        assert_eq!(run.target, "git log -1\ngit status");
+        assert_eq!(run.about.as_deref(), Some("Show the latest commit"));
+        is(
+            typed("web_search", json!({"x": 1}), json!({})),
+            Verb::Other,
+            "Used web_search",
+        );
+        // A failed result marks its call; the mapper reads it typed.
+        let mut mapper = Mapper::new(1, None);
+        let events = mapper.step(&json!({
+            "step_id": 3, "source": "agent", "message": "",
+            "tool_calls": [{"tool_call_id": "c1", "function_name": "other",
+                "arguments": {"target_file": "gone.rs"}}],
+            "observation": {"results": [{"source_call_id": "c1", "content": "no such file",
+                "extra": {"status": "failed"}}]},
+        }));
+        let CoderEvent::Step(step) = &events[0] else {
+            panic!("a step: {events:?}")
+        };
+        let call = step.call.as_ref().unwrap();
+        assert_eq!((call.verb, call.failed), (Verb::Read, true));
     }
 
     fn step(id: u64, source: &str, message: &str, extra: Value) -> Value {
@@ -1824,6 +2029,7 @@ mod tests {
             kind: StepKind::Command,
             source: "agent".into(),
             text: text.into(),
+            call: None,
         })
     }
 

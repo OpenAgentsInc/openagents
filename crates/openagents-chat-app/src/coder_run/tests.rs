@@ -107,7 +107,9 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
         "Falls back to Claude Code (claude-opus-5-5)",
         "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until",
         "Thinking Write the output.",
-        "Command printf 'import unittest\\n' > test_slugs.py · exit 0 in 0.0s",
+        // A command is one line, as Grok Build draws it (#10117); its
+        // exit shows only when it failed.
+        "Run printf 'import unittest\\n' > test_slugs.py",
         "Coder asks",
         "Should the test cover empty input too?",
         "Coder continued on Claude Code · claude-opus-5-5 (turn 2)",
@@ -360,6 +362,7 @@ fn the_handoff_prompt_is_not_shown_again_under_the_chat() {
             kind: StepKind::Message,
             source: "user".into(),
             text: text.into(),
+            call: None,
         }),
     };
     let mut run = fed(
@@ -462,4 +465,61 @@ fn turns_follow_the_chat_reply_that_started_them() {
             .collect::<Vec<_>>(),
         plain
     );
+}
+
+/// A real Grok Build run (#10117): its looking calls show as one row
+/// labelled by verb, which a click opens to each call and what it
+/// returned; its command is one row of its own. The desktop and the phone
+/// draw these same rows.
+#[test]
+fn tool_calls_show_grouped_and_open_to_each_call() {
+    let lines = tasks(include_str!(
+        "../../../openagents-chat/fixtures/coder-events/tools-grok.ndjson"
+    ))
+    .remove(0);
+    let mut run = fed(&lines, State::Ended);
+    let rows = run.rows();
+    let tools: Vec<(&str, &str, usize)> = rows
+        .iter()
+        .filter_map(|row| match &row.element {
+            Element::Tool {
+                name,
+                detail,
+                children,
+                ..
+            } => Some((name.as_str(), detail.as_str(), children.len())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        tools,
+        [
+            ("Thinking", "Continuing the OpenAgents conversation.", 1),
+            ("Read 3 files, Listed 1 dir, Searched 2 patterns", "", 1),
+            ("Run", "Build crate and show git history", 1),
+            (
+                "Thinking",
+                "I will summarize the crate's purpose in one sentence.",
+                1
+            ),
+        ]
+    );
+    let text = text_of(&rows);
+    for inside in [
+        "Read lib.rs\n  1→pub fn add",
+        "List src",
+        "Search \"TODO\"\n  found 2 matches",
+        "$ cargo build && echo \"---GIT---\" && git log --oneline",
+    ] {
+        assert!(text.contains(inside), "{inside:?} missing from:\n{text}");
+    }
+    // The group's key is its first call's event, so an open group stays
+    // open as the run goes on.
+    let group = rows
+        .iter()
+        .find(
+            |row| matches!(&row.element, Element::Tool { name, .. } if name.starts_with("Read 3")),
+        )
+        .unwrap();
+    assert_eq!(group.key, format!("coder-{}", lines[4].seq));
 }

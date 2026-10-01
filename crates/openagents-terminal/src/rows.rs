@@ -2,10 +2,11 @@
 //! them. Every row draws with one of `coder-terminal`'s components.
 
 use coder_terminal::components::card::Card;
-use coder_terminal::components::run::{self, FileRow, RunRow};
+use coder_terminal::components::run::{self, FileRow, RunRow, ToolRow};
 use coder_terminal::components::turn::{self, Who};
 use coder_terminal::{Intensity, Ladder};
 use openagents_chat::coder_events::{self, CoderEvent, StepKind};
+use openagents_chat::tool_groups::{Entry, Item, Shown, Stretch};
 use ratatui::text::Line;
 
 /// One entry in the transcript.
@@ -19,6 +20,9 @@ pub enum Row {
     Card(Card),
     /// One row of a Coder run.
     Run(RunRow),
+    /// A Coder run's consecutive tool calls and thoughts, grouped as Grok
+    /// Build groups them (#10117): condensed unless `expanded`.
+    Tools { stretch: Stretch, expanded: bool },
 }
 
 impl Row {
@@ -54,6 +58,63 @@ pub fn lines(row: &Row, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
         Row::Note(text, intensity) => turn::note(text, *intensity, width, ladder),
         Row::Card(card) => card.lines(width, ladder),
         Row::Run(row) => run::lines(row, width, ladder),
+        Row::Tools { stretch, expanded } => {
+            run::lines(&RunRow::Tools(tool_rows(stretch, *expanded)), width, ladder)
+        }
+    }
+}
+
+/// A stretch's lines: condensed, each group's label, each call one line,
+/// and a long run folded; expanded, every call with its command and
+/// output under its group's label.
+pub fn tool_rows(stretch: &Stretch, expanded: bool) -> Vec<ToolRow> {
+    let mut rows = Vec::new();
+    for item in stretch.items(!expanded) {
+        push_item(&mut rows, &item, expanded);
+    }
+    rows
+}
+
+fn push_item(rows: &mut Vec<ToolRow>, item: &Item<'_>, expanded: bool) {
+    match item {
+        Item::Group { label, members, .. } => {
+            rows.push(ToolRow::Group {
+                label: label.text.clone(),
+                failed: label.failed,
+            });
+            if expanded {
+                for member in members {
+                    rows.push(match member {
+                        Entry::Call(shown) => call_row(shown, true),
+                        Entry::Thought { text, .. } => ToolRow::Thought(text.clone()),
+                    });
+                }
+            }
+        }
+        Item::Call(shown) => rows.push(call_row(shown, expanded)),
+        Item::Thought { text, .. } => rows.push(ToolRow::Thought((*text).to_owned())),
+        Item::More { label, .. } => rows.push(ToolRow::Group {
+            label: label.text.clone(),
+            failed: label.failed,
+        }),
+    }
+}
+
+fn call_row(shown: &Shown, expanded: bool) -> ToolRow {
+    let line = match shown.verb() {
+        Some(verb) => format!("{verb} {}", shown.target()),
+        None => shown.target(),
+    };
+    ToolRow::Call {
+        line,
+        result: shown.result(),
+        running: shown.running,
+        command: shown.command().filter(|_| expanded).map(str::to_owned),
+        output: if expanded {
+            shown.output.lines().map(str::to_owned).collect()
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -169,6 +230,7 @@ mod tests {
             kind: StepKind::Reply,
             source: "agent".into(),
             text: "done".into(),
+            call: None,
         });
         assert_eq!(run_row(&reply), None);
         let progress = CoderEvent::Progress(Progress {

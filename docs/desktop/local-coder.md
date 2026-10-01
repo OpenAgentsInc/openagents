@@ -114,8 +114,8 @@ prints:
 | Event | In the chat |
 | --- | --- |
 | `coder_started` | A card: the provider and model, why that provider, the project and worktree, and what it falls back to. A later turn says "Coder continued". |
-| `step` | The request as the person's message; thoughts as a **Thinking** row; each command as a **Command** row, running until its output; an agent's call as its own row; the reply as the assistant's message; a note as a quiet line. A later turn's carried conversation shows once. |
-| `output` | Inside its command's row, with the exit and time on the row; failed or timed out marks the row failed; cut output says so. |
+| `step` | The request as the person's message; thoughts as a **Thinking** row; tool calls grouped as Grok Build groups them ([#10117](https://github.com/OpenAgentsInc/openagents/issues/10117), [design](../coder/design/2026-10-01-tool-call-groups.md)): consecutive reads, searches, listings, and fetches as one row labelled "Read 3 files, Searched 2 patterns" that a click opens to each call and what it returned, and each command or edit as its own **Run** / **Edit** row, running until its output; the reply as the assistant's message; a note as a quiet line. A later turn's carried conversation shows once. |
+| `output` | Inside its command's row; a failure or time-out marks the row failed and names the exit after the command; cut output says so. |
 | `provider_switched` | "Switched from Codex (…) to Claude Code (…): why", or that no other provider has capacity. |
 | `progress` | The working line: step, bound, Jev's done estimate, and time. |
 | `question` | A **Coder asks** card; the composer answers it. |

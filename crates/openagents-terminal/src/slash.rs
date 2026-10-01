@@ -16,13 +16,14 @@ pub enum Slash {
     Settings,
     Connect,
     Plugins,
+    Expand,
     Help,
     Quit,
 }
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 9] = [
+    pub const ALL: [Slash; 10] = [
         Slash::New,
         Slash::Threads,
         Slash::Stop,
@@ -30,6 +31,7 @@ impl Slash {
         Slash::Settings,
         Slash::Connect,
         Slash::Plugins,
+        Slash::Expand,
         Slash::Help,
         Slash::Quit,
     ];
@@ -44,6 +46,7 @@ impl Slash {
             Slash::Settings => "settings",
             Slash::Connect => "connect",
             Slash::Plugins => "plugins",
+            Slash::Expand => "expand",
             Slash::Help => "help",
             Slash::Quit => "quit",
         }
@@ -59,6 +62,7 @@ impl Slash {
             Slash::Settings => "show the Coder settings and where the file is",
             Slash::Connect => "pair a phone with this computer by QR code",
             Slash::Plugins => "list published plugins",
+            Slash::Expand => "expand or condense tool calls (Ctrl+O)",
             Slash::Help => "show these commands and keys",
             Slash::Quit => "close the screen; a Coder run keeps going",
         }

@@ -11,6 +11,7 @@ pub mod migrate;
 pub mod router;
 pub mod service;
 pub mod thread;
+pub mod tool_groups;
 
 fn public(secret: &secp256k1::SecretKey) -> String {
     let key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), secret)

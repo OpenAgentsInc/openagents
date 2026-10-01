@@ -85,6 +85,23 @@ where
         self.entries.iter().map(|entry| &entry.line)
     }
 
+    /// The newest line, to change in place; it wraps again at the next
+    /// frame.
+    pub fn last_mut(&mut self) -> Option<&mut L> {
+        let entry = self.entries.back_mut()?;
+        entry.rows = None;
+        Some(&mut entry.line)
+    }
+
+    /// Every line, to change in place; every line wraps again at the next
+    /// frame.
+    pub fn lines_mut(&mut self) -> impl Iterator<Item = &mut L> {
+        self.entries.iter_mut().map(|entry| {
+            entry.rows = None;
+            &mut entry.line
+        })
+    }
+
     /// The rows of every line `keep` admits, oldest first, wrapped at
     /// `width`. A width other than the last one wraps every line afresh;
     /// otherwise only lines with no rows yet are wrapped.
@@ -183,6 +200,28 @@ mod tests {
         );
         assert_eq!(scrollback.rows(80, |_| true).len(), 2);
         assert_eq!(calls.get(), 6);
+    }
+
+    #[test]
+    fn a_line_changed_in_place_wraps_again() {
+        let calls = Cell::new(0);
+        let mut scrollback = Scrollback::new(counting_wrap(&calls));
+        scrollback.push("one".to_owned());
+        scrollback.push("two".to_owned());
+        assert_eq!(scrollback.rows(10, |_| true).len(), 2);
+        assert_eq!(calls.get(), 2);
+        if let Some(last) = scrollback.last_mut() {
+            last.push_str(" three four five six");
+        }
+        let rows: Vec<String> = scrollback.rows(10, |_| true).into_iter().cloned().collect();
+        assert_eq!(calls.get(), 3, "only the changed line wraps again");
+        assert!(rows.len() > 2, "{rows:?}");
+        for line in scrollback.lines_mut() {
+            line.make_ascii_uppercase();
+        }
+        let rows = scrollback.rows(10, |_| true);
+        assert_eq!(calls.get(), 5);
+        assert_eq!(rows[0], "ONE");
     }
 
     #[test]

@@ -64,7 +64,38 @@ pub enum RunRow {
     Failed { text: String },
     /// The run stopped, in its words (ThreeQuarters).
     Stopped { text: String },
+    /// A stretch of tool activity, condensed or expanded (#10117), as Grok
+    /// Build draws it: each [`ToolRow`] one line under the turn.
+    Tools(Vec<ToolRow>),
 }
+
+/// One line of a stretch of tool activity. The caller decides what shows:
+/// condensed, a group's label alone; expanded, the label, then each call
+/// with its output.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolRow {
+    /// "◈ Read 3 files, Searched 2 patterns" (mark Half, label
+    /// ThreeQuarters), then " · N failed" (Full) when any member failed.
+    Group { label: String, failed: usize },
+    /// "◆ Run cargo test" (mark Half, line Half; the mark Full while it
+    /// runs or when it failed), then " · {result}" (Full) when it failed.
+    /// Expanded, `command` ("$ …", Half) and `output` (Half) follow under
+    /// it, clipped rather than wrapped.
+    Call {
+        line: String,
+        result: Option<String>,
+        running: bool,
+        command: Option<String>,
+        output: Vec<String>,
+    },
+    /// "· {text}": a thought (mark Half, text Half).
+    Thought(String),
+}
+
+/// The mark of a group's label: Grok Build's dotted diamond.
+pub const GROUP_MARK: &str = "◈ ";
+/// The mark of one call: Grok Build's diamond.
+pub const CALL_MARK: &str = "◆ ";
 
 /// One changed file in a finished run.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -175,6 +206,11 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
         }
         RunRow::Failed { text } => block.text(&mut out, 0, "", text, full),
         RunRow::Stopped { text } => block.text(&mut out, 0, "", text, three),
+        RunRow::Tools(rows) => {
+            for row in rows {
+                block.tool(&mut out, row);
+            }
+        }
     }
     out
 }
@@ -258,6 +294,77 @@ impl Block {
                 spans.push(Span::styled(row, self.style(text_at)));
             }
             out.push(Line::from(spans));
+        }
+    }
+
+    /// One line of a stretch of tool activity: its mark, its words, and a
+    /// failure in Full, clipped to one row; an expanded call's command and
+    /// output under it.
+    fn tool(&self, out: &mut Vec<Line<'static>>, row: &ToolRow) {
+        let half = Intensity::Half;
+        let full = Intensity::Full;
+        let (mark, mark_at, text, text_at, tail) = match row {
+            ToolRow::Group { label, failed } => (
+                GROUP_MARK,
+                half,
+                label.as_str(),
+                Intensity::ThreeQuarters,
+                (*failed > 0).then(|| format!(" · {failed} failed")),
+            ),
+            ToolRow::Call {
+                line,
+                result,
+                running,
+                ..
+            } => (
+                CALL_MARK,
+                if *running || result.is_some() {
+                    full
+                } else {
+                    half
+                },
+                line.as_str(),
+                half,
+                result.as_ref().map(|result| format!(" · {result}")),
+            ),
+            ToolRow::Thought(text) => ("· ", half, text.as_str(), half, None),
+        };
+        let lead = self.lead(0);
+        let room = self.width.saturating_sub(lead);
+        let mark = clip(mark, room);
+        let room = room.saturating_sub(cells(&mark));
+        let tail = tail.unwrap_or_default();
+        let first = text.lines().next().unwrap_or("");
+        let body = clip(
+            &sanitize(first),
+            room.saturating_sub(cells(&tail).min(room)),
+        );
+        let tail = clip(&tail, room.saturating_sub(cells(&body)));
+        let mut spans = vec![
+            Span::raw(" ".repeat(lead)),
+            Span::styled(mark, self.style(mark_at)),
+            Span::styled(body, self.style(text_at)),
+        ];
+        if !tail.is_empty() {
+            spans.push(Span::styled(tail, self.style(full)));
+        }
+        out.push(Line::from(spans));
+        if let ToolRow::Call {
+            command, output, ..
+        } = row
+        {
+            if let Some(command) = command {
+                self.clipped(
+                    out,
+                    INDENT,
+                    "$ ",
+                    command.lines().next().unwrap_or(""),
+                    half,
+                );
+            }
+            for line in output {
+                self.clipped(out, INDENT, "", line, half);
+            }
         }
     }
 

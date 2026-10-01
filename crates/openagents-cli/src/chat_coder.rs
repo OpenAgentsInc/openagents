@@ -13,6 +13,7 @@ use std::io::Write;
 
 use openagents_chat::client::Kind;
 use openagents_chat::coder_events::{self, CoderEvent, Line, StepKind};
+use openagents_chat::tool_groups::Stream;
 
 use crate::out::Output;
 
@@ -36,14 +37,28 @@ pub(super) fn flag(kind: Kind) -> &'static str {
 }
 
 /// One event: an NDJSON line, or the live view on stderr and the result on
-/// stdout.
-pub(super) fn show(output: &Output, line: &Line) {
+/// stdout. The live view groups tool calls as every surface does
+/// (#10117): `tools` holds what is not final yet.
+pub(super) fn show(output: &Output, tools: &mut Stream, line: &Line) {
     if output.json() {
         if let Ok(text) = serde_json::to_string(line) {
             println!("{text}");
             let _ = std::io::stdout().flush();
         }
         return;
+    }
+    match tools.push(line.seq, &line.event) {
+        Some(lines) => {
+            for row in lines {
+                eprintln!("  {row}");
+            }
+            return;
+        }
+        None => {
+            for row in tools.flush() {
+                eprintln!("  {row}");
+            }
+        }
     }
     match &line.event {
         CoderEvent::Result(result) => {

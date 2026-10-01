@@ -108,6 +108,7 @@ it.
 | Option+Enter (Alt+Enter on Linux), Ctrl+J | A new line in the message. |
 | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
 | Ctrl+T | The thread list. |
+| Ctrl+O | Expand every Coder run's tool calls to each call and its output, or condense them again. |
 | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
 | PageUp, PageDown | Scroll the transcript. |
 | Up, Down | Move in the message, then through your earlier messages. |
@@ -131,10 +132,17 @@ including text that only starts with a slash, goes to OpenAgents.
 | `/settings` | Show the Coder settings and where the file is. |
 | `/connect` | Pair a phone with this computer by QR code. |
 | `/plugins` | List published plugins. |
+| `/expand` | Expand or condense the tool calls (also Ctrl+O). |
 | `/help` | Show these commands and keys. |
 | `/quit` | Close the screen; a Coder run keeps going. |
 
 ## Coder runs
+
+A run's tool calls show as Grok Build shows them
+([design](../coder/design/2026-10-01-tool-call-groups.md)): consecutive calls
+that only look fold into one line counted by verb (`◈ Read 3 files, Searched
+2 patterns`), each command or edit is one line (`◆ Run cargo test · exit
+101`), and file contents and command output stay hidden until Ctrl+O.
 
 When the router judges a message is coding work, Coder starts at once on this
 computer (unless your settings say to ask first; then Enter on an empty line

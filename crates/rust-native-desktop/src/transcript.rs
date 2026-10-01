@@ -560,6 +560,31 @@ impl Transcript {
         }
         None
     }
+    /// The viewport bounds of the expand toggle of the row keyed `key` (a
+    /// tool row with something inside), while it is on screen.
+    pub fn toggle_bounds(&self, key: &str) -> Option<PxRect> {
+        for index in self.frame.rows_in(self.offset, self.offset + self.height) {
+            let row = self.frame.display(index)?;
+            let top = self.frame.placement(index)?.y - self.offset;
+            for widget in &row.widgets {
+                if matches!(&widget.kind, WidgetKind::Toggle { key: current, .. } if current == key)
+                {
+                    let y = (top + widget.y).max(0.0);
+                    let bottom = (top + widget.y + widget.h).min(self.height);
+                    if bottom > y {
+                        return Some(PxRect {
+                            x: widget.x,
+                            y,
+                            w: widget.w,
+                            h: bottom - y,
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// The rows, in order, for screen readers, with the viewport bounds of
     /// the rows and enabled buttons now on screen ([`crate::access`]).
     pub fn access(&self) -> crate::access::Content {

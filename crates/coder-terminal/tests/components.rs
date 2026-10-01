@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use coder_terminal::components::{
-    Card, FileRow, Item, ListOverlay, RunRow, Who, run,
+    Card, FileRow, Item, ListOverlay, RunRow, ToolRow, Who, run,
     turn::{note, streaming, turn},
 };
 use coder_terminal::{Colors, Intensity, Ladder};
@@ -461,4 +461,108 @@ fn a_reply_styles_its_marks() {
     let label = &lines[0].spans[0];
     assert_eq!(label.content, "openagents");
     assert_eq!(label.style.fg, TRUE.style(Intensity::Half).fg);
+}
+
+/// Grok Build's capture in the design note
+/// (`docs/coder/design/2026-10-01-tool-call-groups.md`), condensed: the
+/// looking calls under one label, the command one line, a failure loud.
+fn tool_rows(expanded: bool) -> Vec<ToolRow> {
+    let call = |line: &str, command: Option<&str>, output: &[&str]| ToolRow::Call {
+        line: line.into(),
+        result: None,
+        running: false,
+        command: command.filter(|_| expanded).map(str::to_owned),
+        output: if expanded {
+            output.iter().map(|line| (*line).to_owned()).collect()
+        } else {
+            Vec::new()
+        },
+    };
+    let mut rows = vec![ToolRow::Group {
+        label: "Read 3 files, Searched 2 patterns, Listed 1 dir".into(),
+        failed: 0,
+    }];
+    if expanded {
+        rows.extend([
+            call(
+                "Read src/lib.rs",
+                None,
+                &[
+                    "pub fn add(a: i32, b: i32) -> i32 { a + b }",
+                    "// TODO: subtract",
+                ],
+            ),
+            call("Read src/main.rs", None, &[]),
+            call("Read Cargo.toml", None, &[]),
+            call(
+                "Search \"TODO\"",
+                None,
+                &["src/lib.rs:2: // TODO: subtract"],
+            ),
+            call("Search \"fn\"", None, &[]),
+            call("List src", None, &["lib.rs", "main.rs"]),
+        ]);
+    }
+    rows.push(call(
+        "Run List files and recent git commits",
+        Some("ls -la && git log --oneline"),
+        &["total 16", "45f98b7 init"],
+    ));
+    rows.push(ToolRow::Thought("Now the tests.".into()));
+    rows.push(ToolRow::Call {
+        line: "Run cargo test -p demo".into(),
+        result: Some("exit 101".into()),
+        running: false,
+        command: expanded.then(|| "cargo test -p demo".into()),
+        output: if expanded {
+            vec!["test add ... FAILED".into()]
+        } else {
+            Vec::new()
+        },
+    });
+    rows.push(ToolRow::Group {
+        label: "Reading 1 file".into(),
+        failed: 1,
+    });
+    rows
+}
+
+#[test]
+fn tool_groups() {
+    for width in [80u16, 40] {
+        check(
+            &format!("tools_condensed_{width}"),
+            &draw(
+                &run::lines(&RunRow::Tools(tool_rows(false)), width, TRUE),
+                width,
+            ),
+        );
+    }
+    check(
+        "tools_expanded_80",
+        &draw(&run::lines(&RunRow::Tools(tool_rows(true)), 80, TRUE), 80),
+    );
+    // Every width keeps each line to one row: nothing is wider than the
+    // width, and a condensed stretch is one row a line.
+    for width in [0u16, 1, 2, 5, 12] {
+        let lines = run::lines(&RunRow::Tools(tool_rows(false)), width, TRUE);
+        assert_eq!(lines.len(), tool_rows(false).len());
+        for line in lines {
+            assert!(line.width() <= usize::from(width).max(2), "{width}: {line}");
+        }
+    }
+}
+
+#[test]
+fn a_failure_is_loud_and_a_quiet_line_is_half() {
+    let lines = run::lines(&RunRow::Tools(tool_rows(false)), 80, TRUE);
+    let failed = &lines[3];
+    let last = failed.spans.last().unwrap();
+    assert_eq!(last.content.as_ref(), " · exit 101");
+    assert_eq!(last.style, TRUE.style(Intensity::Full));
+    let quiet = &lines[1];
+    assert_eq!(quiet.spans[1].style, TRUE.style(Intensity::Half));
+    assert_eq!(quiet.spans[2].style, TRUE.style(Intensity::Half));
+    let group = &lines[0];
+    assert_eq!(group.spans[2].style, TRUE.style(Intensity::ThreeQuarters));
 }

@@ -6195,6 +6195,62 @@ mod coder_events {
         }
     }
 
+    /// A real Grok Build run's tool calls (#10117): condensed, the looking
+    /// calls are one row labelled by verb and the command one row; a click
+    /// on the group opens it to each call and what it returned. Captures
+    /// `dsk-11-coder-tools-condensed.png` and
+    /// `dsk-11-coder-tools-expanded.png` under
+    /// `OPENAGENTS_CODER_CAPTURE_DIR`.
+    #[test]
+    fn tool_calls_show_grouped_and_a_click_opens_a_group() {
+        use openagents_desktop::chat::TRANSCRIPT;
+        use rust_native_desktop::input::SurfaceInput;
+        let lines = tasks(include_str!(
+            "../../openagents-chat/fixtures/coder-events/tools-grok.ndjson"
+        ))
+        .remove(0);
+        let directory =
+            std::env::var_os("OPENAGENTS_CODER_CAPTURE_DIR").map(std::path::PathBuf::from);
+        let mut app = window(&lines, RunState::Ended);
+        let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        let text = outline(app.chat.as_ref().unwrap().transcript_rows());
+        check_snapshot("dsk-11-coder-tools", &text);
+        assert!(
+            text.contains("tool \"Read 3 files, Listed 1 dir, Searched 2 patterns\" \"\" [done]")
+        );
+        assert!(text.contains("tool \"Run\" \"Build crate and show git history\" [done]"));
+        let write = |name: &str, frame: &rust_native_desktop::Frame| {
+            if let Some(directory) = &directory {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap())
+                    .unwrap();
+            }
+        };
+        write("dsk-11-coder-tools-condensed", &frame);
+        let group = format!("coder-{}", lines[4].seq);
+        let now = Instant::now();
+        let panel = app.chat.as_mut().unwrap();
+        let before = panel.transcript.height();
+        let bounds = panel
+            .transcript
+            .toggle_bounds(&group)
+            .expect("the group opens with a click");
+        let (x, y) = (bounds.x + 40.0, bounds.y + bounds.h / 2.0);
+        assert!(panel.surface(TRANSCRIPT, SurfaceInput::Down { x, y, shift: false }, now));
+        panel.surface(TRANSCRIPT, SurfaceInput::Up { x, y }, now);
+        assert!(
+            panel.transcript.toggle_bounds(&group).is_some(),
+            "the group stays on screen"
+        );
+        assert!(
+            panel.transcript.height() > before,
+            "the open group shows its calls"
+        );
+        app.present();
+        let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        write("dsk-11-coder-tools-expanded", &frame);
+    }
+
     /// A finished run's worktree diff opens in the "What changed" pane
     /// (#10019).
     #[test]
@@ -6484,7 +6540,10 @@ mod coder_events {
             .unwrap();
         let app = window(&whole[..=first_output], RunState::Running);
         let text = outline(app.chat.as_ref().unwrap().transcript_rows());
-        assert!(text.contains("tool \"Command\" \"printf 'import unittest\\\\n' > test_slugs.py · exit 0 in 0.0s\" [done]"), "{text}");
+        assert!(
+            text.contains("tool \"Run\" \"printf 'import unittest\\\\n' > test_slugs.py\" [done]"),
+            "{text}"
+        );
         assert!(
             text.contains("working \"Coder is working · step 1 · 0s\""),
             "{text}"

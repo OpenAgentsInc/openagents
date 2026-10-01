@@ -19,6 +19,7 @@ use coder::task::issue_run::{self, Land, Reference, Refused, Runner, Tracker};
 use coder::task::local::{self, Local, State};
 use openagents_chat::coder_events::{self, CoderEvent, Line};
 use openagents_chat::service::Command;
+use openagents_chat::tool_groups::Stream;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
@@ -139,6 +140,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
 
     let mut active: Vec<String> = Vec::new();
     let mut results: Vec<Value> = Vec::new();
+    let mut tools: std::collections::HashMap<u64, Stream> = std::collections::HashMap::new();
     let interrupt = tokio::signal::ctrl_c();
     tokio::pin!(interrupt);
     let mut stopping = false;
@@ -182,7 +184,9 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
                     eprintln!("#{issue}: Coder took {url} as task {task} (thread {thread}).");
                 }
             }
-            Told::Line { issue, line } => show(output, issue, &line),
+            Told::Line { issue, line } => {
+                show(output, issue, tools.entry(issue).or_default(), &line);
+            }
             Told::Done {
                 issue,
                 outcome,
@@ -342,7 +346,7 @@ fn worker(
 
 /// One flow's event: an NDJSON line with its issue, or a line on stderr
 /// marked with it.
-fn show(output: &Output, issue: u64, line: &Line) {
+fn show(output: &Output, issue: u64, tools: &mut Stream, line: &Line) {
     if output.json() {
         if let Ok(mut value) = serde_json::to_value(line) {
             value["issue"] = json!(issue);
@@ -350,6 +354,20 @@ fn show(output: &Output, issue: u64, line: &Line) {
             let _ = std::io::stdout().flush();
         }
         return;
+    }
+    // Tool calls group as every surface groups them (#10117).
+    match tools.push(line.seq, &line.event) {
+        Some(lines) => {
+            for row in lines {
+                eprintln!("#{issue}   {row}");
+            }
+            return;
+        }
+        None => {
+            for row in tools.flush() {
+                eprintln!("#{issue}   {row}");
+            }
+        }
     }
     if let CoderEvent::Step(step) = &line.event
         && step.kind == coder_events::StepKind::Reply

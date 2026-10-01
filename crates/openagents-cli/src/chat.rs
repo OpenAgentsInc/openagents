@@ -402,6 +402,8 @@ pub(crate) struct Printer<'a> {
     printed: String,
     /// The finished reply replaced the preview.
     diverged: bool,
+    /// The Coder run's tool calls not yet final (#10117).
+    tools: openagents_chat::tool_groups::Stream,
 }
 
 impl<'a> Printer<'a> {
@@ -411,6 +413,7 @@ impl<'a> Printer<'a> {
             kind: Kind::InProcess,
             printed: String::new(),
             diverged: false,
+            tools: openagents_chat::tool_groups::Stream::default(),
         }
     }
 
@@ -535,7 +538,7 @@ impl<'a> Printer<'a> {
             Event::Unbound { why, .. } => eprintln!(
                 "openagents chat: Coder started, but the thread could not record its task ({why})."
             ),
-            Event::Line(line) => coder_run::show(output, &line),
+            Event::Line(line) => coder_run::show(output, &mut self.tools, &line),
             Event::TaskUnreadable {
                 thread,
                 task,
