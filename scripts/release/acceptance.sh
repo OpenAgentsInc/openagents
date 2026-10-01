@@ -114,7 +114,7 @@ say() { echo "==> $*" >&2; }
 
 # The desktop driver's scenarios, then the gate's own: ones this script
 # runs itself with the build's binaries, outside the desktop window.
-desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok push-main ui-stop-coder ui-no-attach open-deck phone-claude phone-start-at-once ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
+desktop_scenarios="who-are-you working-directory delegate-who delegate-now followup-chat followup-coder delegate-claude delegate-grok push-main ui-stop-coder ui-no-attach open-deck phone-claude phone-start-at-once phone-closed-loop ui-no-verse ui-placeholder ui-starter-chips ui-engines-sidebar ui-new-chat-top ui-filter-sessions ui-chips route-map route-map-chat"
 gate_scenarios="explain-error plugins-chat essays-chat phone-sim-start"
 scenarios="$desktop_scenarios $gate_scenarios"
 
@@ -392,6 +392,47 @@ export OPENAGENTS_ACCEPTANCE_REPO="$repo"
 # push-main (#10104): Coder, asked to commit and push to main, must do it
 # without asking; the scenario reads this remote's main before and after.
 export OPENAGENTS_ACCEPTANCE_REMOTE="$remote"
+
+# phone-closed-loop (#10118): a scratch clone of this repository, its
+# `origin` a local bare repository (both share the real repository's
+# objects through hard links), which the scenario makes the host's project;
+# and what the owner's login shell gives Coder's full-access commands
+# (Coder reads the login shell's environment): the toolchains, the build
+# cache, where releases keep their state, and the App Store Connect key's
+# env file. Signing reads the real login keychain and provisioning
+# profiles through links; nothing in them is copied or changed.
+loop_selected=0
+case " ${only//,/ } " in *" phone-closed-loop "*) loop_selected=1 ;; esac
+[ -z "$only" ] && loop_selected=1
+if [ "$loop_selected" = 1 ]; then
+  loop_remote="$H/work/openagents-remote.git"
+  loop_project="$H/work/openagents"
+  git clone -q --bare --local "$root" "$loop_remote" \
+    && git -C "$loop_remote" update-ref refs/heads/main "$(git -C "$root" rev-parse HEAD)" \
+    && git clone -q --local "$loop_remote" "$loop_project" \
+    || die "cannot make the scratch clone of $root"
+  export OPENAGENTS_ACCEPTANCE_LOOP_PROJECT="$loop_project"
+  export OPENAGENTS_ACCEPTANCE_LOOP_REMOTE="$loop_remote"
+  export OPENAGENTS_SHIP_DIR="$evidence/ship"
+  export OPENAGENTS_ACCEPTANCE_CODER="$coder"
+  export OPENAGENTS_ACCEPTANCE_MICROCODER="$microcoder"
+  mkdir -p "$OPENAGENTS_SHIP_DIR" "$H/Library/Developer/Xcode"
+  [ -e "$H/Library/Keychains" ] || ln -s "$real_home/Library/Keychains" "$H/Library/Keychains"
+  [ -d "$real_home/Library/MobileDevice" ] && ln -s "$real_home/Library/MobileDevice" "$H/Library/MobileDevice"
+  [ -d "$real_home/Library/Developer/Xcode/UserData" ] \
+    && ln -s "$real_home/Library/Developer/Xcode/UserData" "$H/Library/Developer/Xcode/UserData"
+  asc_env="${OPENAGENTS_ASC_ENV:-$real_home/work/.secrets/appstoreconnect.env}"
+  [ -f "$asc_env" ] && export OPENAGENTS_ACCEPTANCE_ASC="$asc_env"
+  {
+    echo "export PATH=\"$real_home/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH\""
+    echo "export CARGO_HOME=\"${CARGO_HOME:-$real_home/.cargo}\""
+    echo "export RUSTUP_HOME=\"${RUSTUP_HOME:-$real_home/.rustup}\""
+    echo "export CARGO_TARGET_DIR=\"$target\""
+    echo "export OPENAGENTS_SHIP_DIR=\"$OPENAGENTS_SHIP_DIR\""
+    echo "export OPENAGENTS_ASC_ENV=\"$asc_env\""
+  } > "$H/.zshenv"
+  cp "$H/.zshenv" "$H/.bash_profile"
+fi
 
 # Coder's start setting, as the app's Settings page writes it.
 "$openagents" settings set coder.start at_once >/dev/null 2>"$evidence/settings.log" \

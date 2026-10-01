@@ -21,6 +21,10 @@
 //! lists the scenarios and the bugs each one guards.
 
 use super::{DesktopApp, Runner};
+
+/// `phone-closed-loop` (#10118).
+#[path = "acceptance_loop.rs"]
+mod closed_loop;
 use crate::worker::Context;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::coder_events::{CoderEvent, Line};
@@ -39,7 +43,7 @@ use std::time::{Duration, Instant};
 /// Every scenario, in the order they run. The chat scenarios share one
 /// conversation where the owner's report did ("who are you", then "who can
 /// you delegate to", then "do a test delegation now", #10073).
-pub const SCENARIOS: [&str; 23] = [
+pub const SCENARIOS: [&str; 24] = [
     "ui-placeholder",
     "ui-starter-chips",
     "who-are-you",
@@ -63,6 +67,7 @@ pub const SCENARIOS: [&str; 23] = [
     "route-map-chat",
     "phone-claude",
     "phone-start-at-once",
+    "phone-closed-loop",
 ];
 
 /// How long a reply may take.
@@ -203,6 +208,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "route-map-chat" => route_map_chat(&mut gate),
             "phone-claude" => phone_claude(&mut gate),
             "phone-start-at-once" => phone_start_at_once(&mut gate),
+            "phone-closed-loop" => closed_loop::phone_closed_loop(&mut gate),
             _ => unreachable!(),
         };
         gate.record(name, outcome);
@@ -2141,6 +2147,7 @@ fn phone_claude(gate: &mut Gate) -> Outcome {
         host,
         label,
         workspace,
+        ..
     } = pair_phone("acceptance-phone")?;
     // The phone's own chat: straight to the hosted worker, with the phone's
     // context naming its paired computer (`CoderTab::context`).
@@ -2268,6 +2275,9 @@ struct Phone {
     host: String,
     label: String,
     workspace: String,
+    /// The computer's Coder chats invitation pairing handed over, which the
+    /// app pairs its chats with so a task's messages read back.
+    chats: Option<String>,
 }
 
 /// Pairs a phone whose keys and stores live in `store` under the gate's
@@ -2278,9 +2288,17 @@ fn pair_phone(store: &str) -> Result<Phone, String> {
     // The phone's pairing: the code the app shows, redeemed by the phone.
     let socket = crate::platform::control_path().ok_or("no control socket")?;
     let mut control = SocketControl::new(socket);
-    let invite = control
-        .invite()
-        .map_err(|e| format!("the host made no invitation: {e}"))?;
+    // A settings change starts the host again; wait for it to answer.
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let invite = loop {
+        match control.invite() {
+            Ok(invite) => break invite,
+            Err(e) if Instant::now() >= deadline => {
+                return Err(format!("the host made no invitation: {e}"));
+            }
+            Err(_) => std::thread::sleep(Duration::from_secs(1)),
+        }
+    };
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     let store = super::super::home().join(".openagents").join(store);
     std::fs::create_dir_all(&store).map_err(|e| e.to_string())?;
@@ -2300,6 +2318,8 @@ fn pair_phone(store: &str) -> Result<Phone, String> {
         .map_err(|_| "pairing timed out".to_owned())?
         .map_err(|failure| format!("pairing failed: {failure:?}"))?;
     let host = paired.host.clone();
+    let chats = paired.chats.clone();
+    let terminals = live.terminals();
     let mut computers = Computers::new(
         Box::new(live),
         Capabilities {
@@ -2337,12 +2357,21 @@ fn pair_phone(store: &str) -> Result<Phone, String> {
         .host(&host)
         .map(|record| record.label.clone())
         .unwrap_or_else(|| "Acceptance Mac".into());
+    // Pairing by a code hands over no chats invitation; the app then asks
+    // the computer for one over its link (`chats.invite`), as here.
+    let chats = chats.or_else(|| {
+        use openagents_chat_app::chat_invites::Asker as _;
+        openagents_chat_app::chat_invites::Live::new(terminals, runtime.handle().clone())
+            .invite(&host)
+            .ok()
+    });
     Ok(Phone {
         runtime,
         computers,
         host,
         label,
         workspace,
+        chats,
     })
 }
 
@@ -2367,7 +2396,7 @@ fn phone_start_at_once(gate: &mut Gate) -> Outcome {
         mut computers,
         host,
         label,
-        workspace: _,
+        ..
     } = pair_phone("acceptance-phone-at-once")?;
     let record = computers
         .snapshot()
