@@ -36,6 +36,34 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "38",
+        title: "Coder starts on what you asked",
+        what_to_test: "In a new chat, ask \"Who can you delegate to?\", then send \"Do a test delegation now\". The second reply should offer Coder (Run Coder with a computer paired, or Connect a computer without one) and should not also show a Gym test. With a computer paired, tap Run Coder: the run should be titled by \"Do a test delegation now\", not by the chat's first message, and its transcript should show no internal judge rows. On the Coder tab, chats from a task's worktree should be listed under the project's own name.",
+        items: &[
+            Item {
+                title: "One reply, one next step",
+                detail: "A reply that offers a Gym test no longer also starts Coder. When you ask to hand work off, the reply offers Coder, or Connect a computer if none is ready.",
+            },
+            Item {
+                title: "Coder starts on your request",
+                detail: "Run Coder now titles and starts the run with the message that asked for the work, plus a few earlier messages for context, not the chat's first message or the reply after it.",
+            },
+            Item {
+                title: "No internal decision rows",
+                detail: "Checks Coder makes for itself while it works stay in its record and no longer show as rows in the transcript.",
+            },
+            Item {
+                title: "Usage limits that match",
+                detail: "When your computer's newer usage reading shows a limit has reset, Coder's start card no longer says that engine is limited or names it as a fallback. This needs the latest OpenAgents on your computer.",
+            },
+            Item {
+                title: "Projects keep their names",
+                detail: "Chats run in a task's working copy are listed under the repository's name instead of the working copy's folder. This needs the latest OpenAgents on your computer.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "37",
         title: "Words and screenshots together, and review before you publish",
         what_to_test: "Tap the paperclip, pick a photo, type a question that isn't about code, such as \"What is OpenAgents?\", and tap Send: your words should send and get a reply, and the photo should stay above the message box with a line saying images go only to Coder. With a computer paired, attach a screenshot, ask for a code change, and tap Run Coder on the reply: the run should start with the screenshot. When a Coder run on your computer finishes, open it: its card should count the files changed and name the base and head it compares, What changed should open the diff, and Publish should make one draft pull request or commit and link it on the card. If the change moves on the computer after you open it, the card should say so and offer Refresh.",
