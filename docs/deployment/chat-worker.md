@@ -805,3 +805,27 @@ delegate to", "do a test delegation now") routed the last to
 still answered with the Project map card and `start_eval`; and "who can you
 delegate to" stayed `meta` at 0.99. Use `--no-run` for these checks: without
 it, a dispatch reply starts Coder in this checkout.
+
+TestFlight build 38 (1.0.0, archived from `4ceaa4f542`, 2026-09-30)
+changes no worker release; it ships the phone side of release
+`92aef353b7`. Since build 37 one reply never both offers a Gym test and
+starts Coder: an explicit `run_coder` offer offers Coder, else another
+typed action is what the router chose, else the computer lane offers it,
+and the dispatch's own **Connect a computer** stays part of the Coder offer
+(`92aef353b7`, `39b21e3694`, #10073). Run Coder titles and starts the run
+with the message that asked for the work, and decision-model calls
+(`openagents.decision-call.v1`, such as Microcoder's judge) show no
+transcript row. A computer with the update also lifts a usage-limit refusal
+a later probe reading contradicts and labels a task worktree by its
+repository. The mobile tests (154 passed), `openagents-chat-app` (134), and
+`openagents-chat` (54) pass. On a fresh iPhone 17 Pro simulator (iOS 26.5,
+deleted afterwards) build 38 launched and the changelog showed 1.0.0 (38).
+With `--chat-script "who can you delegate to|do a test delegation now"`
+against the live chat worker, the first reply named Coder and the second
+answered "That needs a computer. Connect one and we'll dispatch Coder there
+with this conversation." with a **Connect a computer** chip, no Gym test
+card, and no `openagents.microcoder.judge` row. Run Coder on a paired
+computer, the run's title, and the host-side usage and project labels were
+covered by the tests, not on the simulator. Build 38 was uploaded with
+`build.sh upload` at 2026-09-30T19:41:40-07:00 and is `VALID`, in Internal
+Testers (`IN_BETA_TESTING`).
