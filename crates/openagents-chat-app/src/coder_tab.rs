@@ -4584,14 +4584,33 @@ fn outcome(rows: &[crate::conversation::Row], phase: Phase) -> Option<String> {
         Phase::Failed => MessageRole::System,
         _ => return None,
     };
-    let text = rows.iter().rev().find_map(|row| match &row.entry {
-        crate::conversation::Entry::Message { role: shown, text }
-            if *shown == role && !text.trim().is_empty() =>
-        {
-            Some(text.as_str())
+    fn said(row: &crate::conversation::Row, role: MessageRole) -> Option<&str> {
+        match &row.entry {
+            crate::conversation::Entry::Message { role: shown, text }
+                if *shown == role && !text.trim().is_empty() =>
+            {
+                Some(text.as_str())
+            }
+            _ => None,
         }
-        _ => None,
-    })?;
+    }
+    let text = if role == MessageRole::Assistant {
+        // The final reply: the messages after the run's last step, read
+        // from its first (#10118: a reply that ends "The result:" and a
+        // code block still opens with what happened).
+        match rows
+            .iter()
+            .rposition(|row| !matches!(row.entry, crate::conversation::Entry::Message { .. }))
+        {
+            Some(last) => rows[last + 1..]
+                .iter()
+                .find_map(|row| said(row, role))
+                .or_else(|| rows.iter().rev().find_map(|row| said(row, role)))?,
+            None => rows.iter().rev().find_map(|row| said(row, role))?,
+        }
+    } else {
+        rows.iter().rev().find_map(|row| said(row, role))?
+    };
     let line = text
         .lines()
         .map(|line| {
@@ -4600,7 +4619,9 @@ fn outcome(rows: &[crate::conversation::Row], phase: Phase) -> Option<String> {
                 .trim()
         })
         .find(|line| !line.is_empty())?;
-    let mut line = line.trim_matches('*').trim();
+    // Plain words: no inline code marks.
+    let plain = line.replace('`', "");
+    let mut line = plain.trim_matches('*').trim();
     // A long line keeps its first sentence.
     if line.chars().count() > OUTCOME_CHARS
         && let Some(end) = line.find(". ")
@@ -5303,6 +5324,31 @@ mod tests {
         assert_eq!(
             outcome(&failed, Phase::Failed).as_deref(),
             Some("xcodebuild exited with code 65")
+        );
+        // The final reply is read from its first message, in plain words:
+        // a lead-in to a code block is not the outcome (#10118).
+        let tool = crate::conversation::Row {
+            entry: Entry::Tool {
+                name: "shell".into(),
+                detail: "scripts/release/testflight.sh wait".into(),
+                body: String::new(),
+            },
+            ..rows[0].clone()
+        };
+        let lead_in = vec![
+            rows[0].clone(),
+            row(MessageRole::Assistant, "Starting the release."),
+            tool,
+            row(
+                MessageRole::Assistant,
+                "Dry run succeeded for build `44`, from commit `603eebd19a`.",
+            ),
+            row(MessageRole::Assistant, "Release script's final result:"),
+            row(MessageRole::Assistant, "```\nDone: build 44 archived\n```"),
+        ];
+        assert_eq!(
+            outcome(&lead_in, Phase::Completed).as_deref(),
+            Some("Dry run succeeded for build 44, from commit 603eebd19a.")
         );
         let long = format!("{}. {}", "a".repeat(60), "b".repeat(200));
         let shown = outcome(&[row(MessageRole::Assistant, &long)], Phase::Completed).unwrap();
