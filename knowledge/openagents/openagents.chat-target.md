@@ -1,48 +1,43 @@
 ---
 id: openagents.chat-target
-version: 1
+version: 2
 kind: product
-title: "Where a new chat goes"
+title: "Starting a new chat, and where it goes"
 summary: >-
-  A new chat goes to OpenAgents even with a computer connected; Coder runs on
-  a computer only when you pick it in the selector or tap one of its
-  workspaces.
-tags: [chat, selector, cloud, workspace, computer]
+  New chat (Cmd+N on the desktop, /new in OpenAgents Terminal) starts a
+  chat with OpenAgents; coding work in it runs Coder on your computer.
+tags: [chat, new chat, terminal, computer]
 applies_when: >-
-  The user asks where a new message goes, how to send a message to a
-  particular computer or workspace, what Cloud means in the selector, or what
-  the chips above the composer do.
+  The user asks how to start a new chat or thread, where a new message goes,
+  or how to send a message to a particular computer.
 answer: >-
-  A new chat goes to us, OpenAgents, even when a computer is connected. Coder
-  runs on a computer only when you pick that computer in the selector beside
-  the title or tap one of its workspaces in the chips above the composer. The
-  selector also offers Cloud, which is this chat with us, and a way to connect
-  a computer. Other chips continue your recent chats.
+  Start one with New chat: Cmd+N in the desktop app, or /new in OpenAgents
+  Terminal. Every chat goes to us, OpenAgents; when a message is coding work,
+  Coder runs on your computer for it. There's nothing to pick.
 status: admitted
 author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/openagents-mobile/src/account.rs
-    - bins/openagents-ios/README.md
+    - crates/openagents-chat-app/src/commands.rs
+    - crates/openagents-terminal/src/slash.rs
     - INVARIANTS.md
 evidence:
-  - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-28: written from the cited documents (#9923)."
+  - "2026-10-01: rewritten: the selector beside the title and the workspace chips above the composer were removed on 2026-09-29 (#9962), and the terminal's /new was added (#10111)."
 ---
 
 ## Answer
 
-A new chat goes to us, OpenAgents, even when a computer is connected. Coder runs on a computer only when you pick that computer in the selector beside the title or tap one of its workspaces in the chips above the composer. The selector also offers Cloud, which is this chat with us, and a way to connect a computer. Other chips continue your recent chats.
+Start one with New chat: Cmd+N in the desktop app, or /new in OpenAgents Terminal. Every chat goes to us, OpenAgents; when a message is coding work, Coder runs on your computer for it. There's nothing to pick.
 
 ## Details
 
-- Build 19 changed this: before it, a new chat went to a ready computer as a Coder task.
-- A chat on a computer is a NIP-HOST `task.create` in the workspace you picked.
-- The workspace this phone used last comes first among the chips.
-- With no computer added, a chip offers to connect one, which opens Account > Computers.
+- No selector or target chips: since #9962 a chat starts on a computer only through Coder, when the router reads a message as coding work.
+- OpenAgents Terminal opens on a new thread; `--continue` reopens the last one in that folder, and Ctrl+T lists them.
 
 ## Sources
 
-- `crates/openagents-mobile/src/account.rs`
-- `bins/openagents-ios/README.md`
+- `crates/openagents-chat-app/src/commands.rs`
+- `crates/openagents-terminal/src/slash.rs`
 - `INVARIANTS.md`

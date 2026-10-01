@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v4@71bde73d1610",
-  "bank": "chat-answers-v1@e158a330ddca",
+  "bank": "chat-answers-v1@b08b64b48be8",
   "routes": [
     {
       "id": "meta",
@@ -263,7 +263,7 @@
     },
     {
       "id": "meta.capabilities",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -277,7 +277,7 @@
     },
     {
       "id": "meta.capabilities.here",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -334,7 +334,7 @@
     },
     {
       "id": "meta.coder",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -349,7 +349,7 @@
     },
     {
       "id": "meta.coder.here",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -576,7 +576,7 @@
     },
     {
       "id": "dispatch.stem",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -594,7 +594,7 @@
     },
     {
       "id": "dispatch.explore_stem",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -612,7 +612,7 @@
     },
     {
       "id": "dispatch.github_stem",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -630,7 +630,7 @@
     },
     {
       "id": "dispatch.capability_stem",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -649,7 +649,7 @@
     },
     {
       "id": "dispatch.engine_stem",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -668,7 +668,7 @@
     },
     {
       "id": "dispatch.no_computer",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -686,7 +686,7 @@
     },
     {
       "id": "dispatch.no_computer.here",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],
@@ -1630,14 +1630,13 @@
       },
       {
         "id": "openagents.chat-target",
-        "title": "Where a new chat goes",
+        "title": "Starting a new chat, and where it goes",
         "path": "knowledge/openagents/openagents.chat-target.md",
         "status": "admitted",
         "tags": [
           "chat",
-          "selector",
-          "cloud",
-          "workspace",
+          "new chat",
+          "terminal",
           "computer"
         ],
         "answer": true

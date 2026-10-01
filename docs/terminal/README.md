@@ -17,14 +17,14 @@ and the decisions taken on its open questions.
 ```sh
 openagents terminal          # or bare `openagents` on a terminal
 openagents terminal --thread ID
-openagents terminal --new
+openagents terminal --continue
 openagents terminal --scratch
 ```
 
 - Bare `openagents` opens the screen when it runs on a terminal. Piped, or
   with `--json`, it prints the usage as before.
-- It opens on the last thread you had open in this folder, or a new one.
-  `--thread ID` opens that thread and `--new` starts a new one.
+- It opens on a new thread. `--continue` opens the last thread you had open
+  in this folder, `--thread ID` opens that thread, and Ctrl+T lists them.
 - `--scratch` uses a throwaway identity and thread store in the system
   temporary directory, for trying it out and for tests. Reopen that thread
   with `--scratch --thread ID`.

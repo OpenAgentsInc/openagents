@@ -62,9 +62,11 @@ fn a_bad_thread_is_a_usage_error() {
             "terminal",
             "--thread",
             "0123456789abcdef0123456789abcdef",
-            "--new",
+            "--continue",
         ],
     );
+    assert_eq!(output.status.code(), Some(64));
+    let output = openagents(home.path(), &["terminal", "--new", "--continue"]);
     assert_eq!(output.status.code(), Some(64));
     let output = openagents(home.path(), &["terminal", "--colour"]);
     assert_eq!(output.status.code(), Some(64));

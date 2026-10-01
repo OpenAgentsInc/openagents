@@ -29,10 +29,11 @@ use serde_json::Value;
 use crate::{Args, Output, runtime};
 
 pub(crate) const USAGE: &str =
-    "usage: openagents terminal [--thread ID] [--new] [--scratch] [--local] [--socket PATH]
+    "usage: openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
 OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
-Type a message and press Enter. It opens on the last thread you had open in
-this folder; --thread ID opens that thread and --new starts a new one. When
+Type a message and press Enter. It opens on a new thread; --continue opens
+the last thread you had open in this folder, --thread ID opens that thread,
+and Ctrl+T lists them all. When
 this computer's host runs, the threads are the desktop app's threads;
 --socket names another control socket and --local skips the host. --scratch
 uses a throwaway identity and thread store; reopen that thread with
@@ -46,7 +47,8 @@ when it runs on a terminal.";
 pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::LongRunning)];
 
 const OPTIONS: &[&str] = &["thread", "socket"];
-const SWITCHES: &[&str] = &["scratch", "local", "new"];
+// `--new` is the default now and still accepted.
+const SWITCHES: &[&str] = &["scratch", "local", "new", "continue"];
 
 /// How a Coder question is answered in the screen.
 const ANSWER_HINT: &str = "Type your answer and press Enter.";
@@ -86,8 +88,15 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             USAGE,
         );
     }
-    if thread.is_some() && args.switch("new") {
-        return output.usage("terminal", "--thread and --new do not go together", USAGE);
+    if thread.is_some() && (args.switch("new") || args.switch("continue")) {
+        return output.usage(
+            "terminal",
+            "--thread goes alone, without --new or --continue",
+            USAGE,
+        );
+    }
+    if args.switch("new") && args.switch("continue") {
+        return output.usage("terminal", "--new and --continue do not go together", USAGE);
     }
     let scratch = args.switch("scratch");
     // A scratch store holds one thread: a fresh one, or the one named.
@@ -98,8 +107,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         }
         (true, Some(id)) => (Some(id.clone()), false, Resume::Thread(id)),
         (false, Some(id)) => (Some(id.clone()), false, Resume::Thread(id)),
-        (false, None) if args.switch("new") => (None, false, Resume::New(None)),
-        (false, None) => (None, false, Resume::LastForFolder),
+        (false, None) if args.switch("continue") => (None, false, Resume::LastForFolder),
+        (false, None) => (None, false, Resume::New(None)),
     };
     let place = if scratch {
         Place::Scratch

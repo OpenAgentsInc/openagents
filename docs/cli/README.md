@@ -42,9 +42,9 @@ install target/release/openagents ~/.local/bin/
 Terminal: a full-screen chat with OpenAgents over the same client as
 `openagents chat`, where a coding reply runs Coder on this computer and its
 steps stream into the screen. Esc stops a reply or a run, Ctrl+T lists
-threads, and `/help` lists the slash commands. It opens on the last thread
-used in this folder; `--thread ID`, `--new`, `--scratch`, `--local`, and
-`--socket PATH` choose otherwise. Bare `openagents` piped or with `--json`
+threads, and `/help` lists the slash commands. It opens on a new thread;
+`--continue` (the last thread used in this folder), `--thread ID`,
+`--scratch`, `--local`, and `--socket PATH` choose otherwise. Bare `openagents` piped or with `--json`
 still prints the usage and exits 64. The guide is
 [docs/terminal](../terminal/README.md).
 
