@@ -1130,3 +1130,62 @@ typed decision models make routing feasible?", "what have you shown and not
 shown?", and "why did general agents stall?" all took `product.kb` and
 answered from the essays' entries; the release gate's `essays-chat`
 scenario passes against it.
+
+Release `54fd3851a0` (2026-10-01 UTC,
+[#10102](https://github.com/OpenAgentsInc/openagents/issues/10102)) answers
+requests to summarize, explain, or compare our essays from the essays'
+overview entries instead of offering Coder, serves the typed `routes.map`
+offer for requests to open the route or plugin map on the desktop, and
+changes the `explain` opener to "We'll look that up for you." The set is
+`chat-router-v4@71bde73d1610`, the bank `chat-answers-v1@e158a330ddca` (71
+answers), `calibration-v2.json` was refit
+([measurement](../coder/measurements/2026-10-01-essays-route.md#summaries-of-our-essays-and-the-map-on-the-desktop-10102)),
+and serving keeps calibration off. The product note now asks the model to
+give the link of a document it summarizes (`router::PRODUCT_LINKS`), and the
+citation tidier drops a comma that only joined two citations. It is built on
+`509575c549` (the `web` surface, #10106), so that release's policy stays. It
+went live in three steps the same hour: `4ff0eac4d4` (router, bank, and the
+two overview entries at version 2: `knowledge/openagents/` 107 files, no
+`._*` files, the worker logs `product kb openagents-product@fd15cb6fdc5d
+(106 entries)`), `7cab5e2191`, then `54fd3851a0` (the link rule reaching the
+live note). Each was built with `cargo zigbuild` as above, installed under
+`/opt/coder-worker/releases/` with `knowledge/` and `codebase-kb.gz` copied
+from the release before it (`codebase-kb.gz` from `509575c549`), checked
+with `--check` under the chat environment ("the configuration is safe to
+deploy"), and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file and unit did not change,
+`coder-worker.service` and `/opt/coder-worker/current` (`0757355c1d`) were
+not touched, and `509575c549`, `4ff0eac4d4`, and `7cab5e2191` stay in
+`releases/` for rollback. TypeSafe still answers 402, so every judgment
+is answered by the Vercel AI Gateway door (`NEEDS_OWNER.md`).
+
+Live checks from fresh keys, as a phone (`live_basic_coder_streams_a_reply`
+with a computer ready), as the desktop (`OPENAGENTS_TEST_CHAT_SURFACE=desktop`
+with a project here), and from the terminal (`openagents chat --scratch
+--no-run --json`):
+
+- "summarize both of the essays", "summarize your essay on general agents",
+  "what are your essays about?", and "compare the two essays" took
+  `product.kb`, tier grounded, citing `openagents.ttc-overview` and
+  `openagents.gen-overview` (and section entries for the single essay), with
+  a summary of each essay and its GitHub link, on every surface.
+- "what makes a claim externally validated?" took `product.kb` and served
+  `openagents.ttc-term-validated@1` whole.
+- "summarize the README in this repo" still took `work.dispatch` (the phone
+  and the terminal "We'll have Coder look through the README in your repo";
+  the desktop, with no signed-in engine in the check, the no-agent-here
+  line).
+- On the desktop, "open the route map", "open the plugin map", "show me the
+  route map", "show me the map of routes", "show me the map of plugins",
+  "how are you put together? show me the whole thing", "draw the
+  composition: …", and "can you open the map for me" were served
+  `meta.map.desktop@1` with `OpenScreen { screen: RoutesMap }`; "test the
+  project map plugin" and "test project map" took `eval.run` with Project
+  map's card (`start_eval`). "what's missing in openagents right now, show
+  me the gaps" still read `meta` with the model answering and no offer.
+- "explain how nostr relays work" opened with "We'll look that up for you."
+
+One phone "compare the two essays" on `7cab5e2191` ran the product lookup
+past its budget (each Jev call tries TypeSafe's 402 first) and the model
+alone asked for the essays' text; the same question answered from the
+overviews on every other try.

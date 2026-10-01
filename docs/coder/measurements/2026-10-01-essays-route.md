@@ -350,3 +350,16 @@ Calibration fitted on the calibration partition and scored held out:
 626-row published runs (the first lost to TypeSafe's 402), one 703-row
 tune run, one 269-row baseline, and about 200 rows of subset runs, at about
 $0.000014 a request.
+
+### Live, and two reply fixes
+
+On the first release (`4ff0eac4d4`) the summaries of both essays were
+grounded on both overviews but carried no link, and read "into the run,."
+where the model wrote two citations joined by a comma. The worker grounds
+product replies with `router::grounded_note`, which now asks for the link
+of a document the reply summarizes (`router::PRODUCT_LINKS`, and the same
+line in `knowledge::product::instructions`), and the citation tidier drops
+a comma or semicolon that only joined two citations. On `54fd3851a0` every
+summary, overview, and comparison of the essays on the phone, the desktop,
+and the terminal named both essays with their GitHub links; the release
+record has each answer ([chat worker](../../deployment/chat-worker.md)).
