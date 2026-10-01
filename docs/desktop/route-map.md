@@ -68,8 +68,13 @@ or tests), **Candidate** (packaged, no published result), **Better**, **No
 clear change**, or **Worse** (a result), **Reproduced** (a Better result
 another trainer's check confirmed), **Validated** (also Better on a second
 test set), **Adopted** (in Coder's defaults for everyone). As of
-2026-10-01: Project map is Adopted, Code finder and Test reader are
-Reproduced, Outline is Not packaged, and Jev-probe is a Candidate.
+2026-10-01: Project map is Adopted; Code finder and Test reader are
+Reproduced; Explain this error, Release notes, and Dependency check
+(#10086) are Better and wait for a check; Outline is Not packaged; and
+Jev-probe is a Candidate. Explain this error is marked as the example to
+copy (`SHOWCASE` in the sources' builder): its details offer **Make one
+like this**, a new chat with "Help me make a plugin like Explain this error
+that " in the composer.
 
 What only this computer knows comes in at build time and never leaves it:
 how often this person's own chats took each route (`Command::Routes`,
