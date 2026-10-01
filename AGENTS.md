@@ -23,6 +23,18 @@ The Nix and shell under `os/` (CoderOS) are infrastructure in the same sense:
 they configure a machine and launch Rust programs, and product behavior
 belongs in Rust.
 
+To ship the OpenAgents iOS app to TestFlight (for example when asked from the
+phone), run `scripts/release/testflight.sh start` (add `--validate-only` for
+a dry run that archives and validates without uploading), then run
+`scripts/release/testflight.sh wait` again and again until it exits 0 (done)
+or 1 (failed; the reason is its last line); each `wait` returns within four
+minutes. Before a real upload, raise `CURRENT_PROJECT_VERSION` in
+`bins/openagents-ios/host/project.yml` to the build being shipped, add that
+build's entry at the top of `CHANGELOG` in
+`crates/openagents-mobile/src/account.rs`, commit, and push to `main`; the
+script refuses a dirty checkout or a build number App Store Connect already
+has. Report the build number and the script's last line.
+
 Documentation-only changes do not require the Rust verification gate, including
 before a push. Check links, paths, and retained artifacts for documentation
 reorganizations. Comment edits and documentation path updates do not require

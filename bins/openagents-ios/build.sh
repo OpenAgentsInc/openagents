@@ -3,6 +3,8 @@
 #
 #   bins/openagents-ios/build.sh sim       build, install, and launch on a simulator
 #   bins/openagents-ios/build.sh archive   signed App Store archive; does not upload
+#   bins/openagents-ios/build.sh validate  export the archive and validate it with App Store
+#                                          Connect, without uploading (a dry run of upload)
 #   bins/openagents-ios/build.sh upload    upload the archive to TestFlight
 #   bins/openagents-ios/build.sh bench     transcript benchmark build on a device
 #
@@ -11,7 +13,9 @@
 # OPENAGENTS_PLAYTEST_LOGGING=on|off: playtest logging is on in every build,
 # TestFlight archives included, unless this is off (release mode). The Rust
 # library reads it when it compiles; see docs/game/playtesting.md.
-# upload reads ASC_API_KEY_ID, ASC_API_ISSUER_ID, and ASC_API_PRIVATE_KEY_PATH.
+# validate and upload read ASC_API_KEY_ID, ASC_API_ISSUER_ID, and
+# ASC_API_PRIVATE_KEY_PATH. scripts/release/testflight.sh runs the whole
+# release (build number, archive, validate or upload, processing).
 # Push wakes are off by default. OPENAGENTS_IOS_PUSH=development|production
 # signs with the push entitlement, and OPENAGENTS_PUSH_RELAY_URL,
 # OPENAGENTS_PUSH_GATEWAY_URL, and OPENAGENTS_PUSH_APP_PROFILE turn them on.
@@ -46,17 +50,32 @@ case "$command" in
     [[ -n "${OPENAGENTS_IOS_DEVICE_ID:-}" ]] || { echo "OPENAGENTS_IOS_DEVICE_ID is not set." >&2; exit 64; }
     triple=aarch64-apple-ios; profile=release; destination='generic/platform=iOS' ;;
   archive) triple=aarch64-apple-ios; profile=release; destination='generic/platform=iOS' ;;
-  upload)
+  upload|validate)
     [[ -d "$archive" ]] || { echo "No archive; run archive first." >&2; exit 1; }
     for setting in ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_PRIVATE_KEY_PATH; do
       [[ -n "${!setting:-}" ]] || { echo "$setting is not set." >&2; exit 64; }
     done
+    if [[ "$command" == validate ]]; then
+      # The same signed export as upload, kept on disk, then App Store
+      # Connect's validation of it; nothing is uploaded.
+      rm -rf "$output/validate"
+      mkdir -p "$output/validate"
+      cp "$host/ExportOptions.plist" "$output/validate/ExportOptions.plist"
+      plutil -replace destination -string export "$output/validate/ExportOptions.plist"
+      xcodebuild -exportArchive -archivePath "$archive" \
+        -exportOptionsPlist "$output/validate/ExportOptions.plist" -exportPath "$output/validate"
+      ipa="$(find "$output/validate" -maxdepth 1 -name '*.ipa' | head -1)"
+      [[ -n "$ipa" ]] || { echo "The export made no .ipa." >&2; exit 1; }
+      xcrun altool --validate-app -f "$ipa" -t ios --api-key "$ASC_API_KEY_ID" \
+        --api-issuer "$ASC_API_ISSUER_ID" --p8-file-path "$ASC_API_PRIVATE_KEY_PATH"
+      exit
+    fi
     xcodebuild -exportArchive -archivePath "$archive" \
       -exportOptionsPlist "$host/ExportOptions.plist" -exportPath "$output/upload" \
       -authenticationKeyPath "$ASC_API_PRIVATE_KEY_PATH" \
       -authenticationKeyID "$ASC_API_KEY_ID" -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
     exit ;;
-  *) echo "usage: bins/openagents-ios/build.sh sim|archive|upload|bench" >&2; exit 64 ;;
+  *) echo "usage: bins/openagents-ios/build.sh sim|archive|validate|upload|bench" >&2; exit 64 ;;
 esac
 
 # openagents-mobile is its own Cargo workspace (see its Cargo.toml).
