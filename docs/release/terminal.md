@@ -1,0 +1,137 @@
+# Releasing OpenAgents Terminal
+
+OpenAgents Terminal is the `openagents` program
+([user guide](../terminal/README.md)). A release is seven platforms of two
+bare executables each, a checksum file, and a channel pointer, in the public
+bucket `gs://openagentsgemini-cli-releases` under the prefix `openagents/`.
+`scripts/release/terminal.sh` builds, signs, checks, and publishes them;
+`scripts/install/openagents.sh` and `.ps1` install them. The flow is the one
+Coder Terminal used in the private `coder` repo, adapted
+([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)).
+
+## What a release is
+
+The base URL is
+`https://storage.googleapis.com/openagentsgemini-cli-releases/openagents`.
+It serves today, without the website. Under it:
+
+| Object | What it is |
+| --- | --- |
+| `openagents.<channel>` | The version a channel (`rc`, `stable`) names, on one line. |
+| `openagents-<version>-<platform>` | The `openagents` program, a bare executable. |
+| `microcoder-<version>-<platform>` | The `microcoder` engine Coder runs a turn with. |
+| `SHA256SUMS-openagents-<version>` | `<sha256>  <name>` for both, every platform. |
+| `openagents-<version>.release-manifest.json` | The commit, its tree, the toolchain, each artifact's digest, notarization, and Gatekeeper verdict. |
+| `install.sh`, `install.ps1` | The installers. |
+
+The engine ships as a second artifact, not inside an archive. Coder looks
+for `microcoder` beside the running `openagents`
+(`coder::task::local::controller`), so the installers put both in one
+directory, `~/.openagents/bin` by default, and verify both before replacing
+either. A Windows artifact's URL has no extension; the sums file names it
+with `.exe`.
+
+The bucket root holds other lines (the older OpenAgents CLI's
+`openagents-<version>-<platform>`, `SHA256SUMS-<version>`, `stable`, `rc`;
+`openagents-coder-api-*`; Coder Terminal's `coder-terminal-*`). Nothing here
+writes outside `openagents/`, and nothing there is read or replaced.
+
+## Platforms
+
+| Platform | Target | Built with | Signed |
+| --- | --- | --- | --- |
+| `macos-aarch64` | `aarch64-apple-darwin` | `cargo` | Developer ID, notarized |
+| `macos-x86_64` | `x86_64-apple-darwin` | `cargo` | Developer ID, notarized |
+| `linux-x86_64` | `x86_64-unknown-linux-gnu` (glibc 2.28) | `cargo zigbuild` | no |
+| `linux-x86_64-musl` | `x86_64-unknown-linux-musl` (static) | `cargo zigbuild` | no |
+| `linux-aarch64` | `aarch64-unknown-linux-gnu` (glibc 2.28) | `cargo zigbuild` | no |
+| `linux-aarch64-musl` | `aarch64-unknown-linux-musl` (static) | `cargo zigbuild` | no |
+| `windows-x86_64` | `x86_64-pc-windows-gnu` | `cargo zigbuild` | no |
+
+All seven build on one Mac: the macOS targets natively, the rest with
+`cargo-zigbuild` and `zig`. Install the Rust targets with
+`rustup target add <target>` inside the checkout, so the pinned toolchain
+gets them. On Windows, `openagents connect`, `labor`, `service`, `ssh`,
+`wallet`, and `x402` answer that they need macOS or Linux: they stand on the
+host's control socket and service manager, the resident wallet, Unix file
+modes, and the system `ssh`'s process groups. The terminal, chat, and Coder
+runs build there.
+
+## Cut a release
+
+1. **Bump the version.** Set `version` in `crates/openagents-cli/Cargo.toml`
+   and `crates/openagents-terminal/Cargo.toml` to the release, such as
+   `1.0.0-rc.2` or `1.0.0`. `openagents --version` and the welcome card print
+   it. It moves apart from the workspace version. Commit and push it.
+2. **Build and check.**
+   `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/terminal.sh --version 1.0.0-rc.2`
+   builds every platform from an archive of `HEAD` and stages the
+   artifacts in `dist/releases/openagents/<version>/`. It publishes nothing
+   without `--publish`.
+3. **Publish and point the channel.** Run it again with
+   `--publish --channel rc` (or `stable`). It uploads the artifacts, the sums
+   file, and the manifest, reads the sums file back through the public URL,
+   then moves the channel.
+4. **Install it.** On a Mac and on a Linux computer, install into a
+   temporary home with the published `install.sh`, run `openagents
+   --version`, and open `openagents terminal --scratch`.
+5. **Clean up.** `dist/` is a staging folder and is not kept; the bucket and
+   the published manifest are the record. Delete
+   `dist/releases/openagents/<version>/` once the release is published.
+
+`--publish-installers` uploads `scripts/install/openagents.sh` and `.ps1`
+from the commit as `install.sh` and `install.ps1`. Run it when they change.
+
+## What the script refuses
+
+- **A malformed version.** Stable is `X.Y.Z`; a candidate is `X.Y.Z-rc.N`
+  with `N` a decimal with no leading zeros. `1.0.0-rc1` and `1.0.0-rc.01` are
+  refused. The owner's "v1.0.0-rc1" is `1.0.0-rc.1`.
+- **A version the crates don't carry.** `--version` must equal the `version`
+  of both crates at the commit.
+- **A published version.** If the bucket holds the version's sums file or
+  any of its artifacts, the script stops before building. Uploads use
+  `--no-clobber`, so nothing is ever replaced. A new build takes the next
+  `rc.N`.
+- **A build of the wrong thing.** Each artifact is read with `file` and must
+  match its platform's signature (Mach-O arm64 or x86_64, dynamic or static
+  ELF for the right machine, PE32+ x86-64).
+- **A source that moved.** The build reads an archive of the commit. After
+  the builds, the extracted tree is hashed against the commit's tree.
+- **A native artifact that doesn't run.** The artifact for this machine must
+  print the version from `--version`, and its engine must start.
+- **A macOS artifact Gatekeeper refuses.** Both binaries are signed with the
+  `Developer ID Application: OpenAgents, Inc.` identity under the hardened
+  runtime, with `scripts/release/openagents-terminal.entitlements` (wasmtime
+  needs JIT pages). Identifiers: `com.openagents.terminal.openagents` and
+  `com.openagents.terminal.microcoder`. They go to `notarytool` in one
+  submission per platform. A bare Mach-O cannot carry a stapled ticket, so
+  Gatekeeper reads it from Apple's ticket store, which can lag `Accepted` by
+  minutes. The script runs `spctl --assess -vv -t install` on each, 60
+  seconds apart, up to 45 times (`OPENAGENTS_RELEASE_ASSESS_DELAY`,
+  `OPENAGENTS_RELEASE_ASSESS_ATTEMPTS`), and publishes nothing until every
+  verdict is `accepted` with `source=Notarized Developer ID`.
+- **A channel past a gap.** A channel moves only after the bucket listing
+  holds both artifacts, and the sums file names both, for all seven
+  platforms. `--allow-partial` publishes what built and leaves the channel
+  where it was. `--point-channel NAME --version V` moves a channel to a
+  version already covered, building nothing.
+
+Signing credentials come from the file `OPENAGENTS_NOTARY_ENV` names
+(default `~/work/.secrets/appstoreconnect.env`: `ASC_API_KEY_ID`,
+`ASC_API_ISSUER_ID`, `ASC_API_PRIVATE_KEY_PATH`,
+`OA_DEVELOPER_ID_APPLICATION`), the same file
+`scripts/desktop/package-macos.sh --notary-env` reads, or a saved
+`NOTARY_KEYCHAIN_PROFILE`. The bucket is written with the gcloud
+configuration in `CLOUDSDK_CONFIG` (default
+`~/work/.secrets/gcloud-sa-config`, the automation service account).
+
+`scripts/test-release-terminal.sh` tests the version grammar, the channel
+coverage rule, and the installer against a local server (checksum mismatch,
+unpublished version, missing platform), with no bucket and no network.
+
+## Releases
+
+| Version | Channel | Commit | Date |
+| --- | --- | --- | --- |
+| `1.0.0-rc.1` | `rc` | see the manifest | 2026-10-01 |

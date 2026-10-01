@@ -1,6 +1,10 @@
 [package]
 name = "openagents-cli"
-version.workspace = true
+# The release line of OpenAgents Terminal (the `openagents` program), which
+# `openagents --version` and the welcome card name. It moves apart from the
+# workspace version; scripts/release/terminal.sh refuses a release whose
+# version differs from this one, in both crates (docs/release/terminal.md).
+version = "1.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
@@ -26,11 +30,9 @@ openagents-chat = { path = "../openagents-chat" }
 openagents-terminal = { path = "../openagents-terminal" }
 atif = { path = "../atif" }
 coder-host = { path = "../coder-host" }
-coder-labor = { path = "../coder-labor" }
 coder-link = { path = "../coder-link" }
 coder-reach = { path = "../coder-reach" }
 coder-service = { path = "../coder-service" }
-coder-ssh = { path = "../coder-ssh" }
 discovery = { path = "../discovery" }
 # `openagents ext eval`: the runner, the sandbox, the publish and check
 # builders, and the authoring interview (`ext eval init`).
@@ -58,6 +60,13 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 verse-lagrange = { path = "../verse-lagrange" }
+
+# `openagents ssh` runs the system ssh through Unix process groups, and
+# `openagents labor`'s store rests on Unix file modes; Windows builds
+# without both.
+[target.'cfg(unix)'.dependencies]
+coder-labor = { path = "../coder-labor" }
+coder-ssh = { path = "../coder-ssh" }
 
 [dev-dependencies]
 # `tests/chat.rs` runs a local NIP-42 relay with a scripted chat worker.

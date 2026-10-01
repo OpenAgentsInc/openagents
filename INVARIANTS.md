@@ -169,6 +169,21 @@ screen over the shared chat client. Its user guide is `docs/terminal/README.md`.
 | `/connect` gets its code only from this computer's host over the control socket (the host stays the only issuer of access), shows it only as a text QR code, and cancels it once a phone connects, when it expires, on Esc, and when the screen closes. The Ctrl+S sync offer installs the host service only when the person presses it, never on its own. | New on 2026-10-01 ([#10111](https://github.com/OpenAgentsInc/openagents/issues/10111)). | `text_qr_rows_fill_light_modules_without_escapes` in `crates/coder-connect`; `sync_leaves_a_running_host_alone`, `sync_installs_when_everything_is_here`, `sync_names_what_is_missing` (`screen`) in `crates/openagents-cli` |
 | What the screen keeps of its own is `terminal.json` in the chat home (each folder's path and the last thread ID opened there, at most 256 folders, no message text) and the files `/export` writes on request. | New on 2026-10-01 ([#10111](https://github.com/OpenAgentsInc/openagents/issues/10111)). | `each_folder_keeps_its_own_last_thread`, `the_oldest_folders_are_forgotten_first` (`last`) in `crates/openagents-terminal` |
 
+## OpenAgents Terminal releases
+
+`scripts/release/terminal.sh` publishes the `openagents` program and its
+`microcoder` engine to `gs://openagentsgemini-cli-releases/openagents/`, and
+`scripts/install/openagents.sh` and `.ps1` install them
+([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). The
+runbook is `docs/release/terminal.md`.
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A channel pointer (`openagents.<channel>`) moves only to a version for which the bucket holds both artifacts (`openagents-` and `microcoder-<version>-<platform>`) and the version's sums file names both, on all seven platforms. A partial publish leaves the channel where it was. | New on 2026-10-01 ([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). | `uncovered_platforms` in `scripts/release/terminal.sh`, tested by `scripts/test-release-terminal.sh` (a missing engine, a missing sums entry, and a longer version's artifacts are each a gap) |
+| A published object is never replaced: the script refuses to build a version whose sums file or any artifact is in the bucket, and uploads with `--no-clobber`. It writes nothing outside the `openagents/` prefix. | New on 2026-10-01 ([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). | The pre-build check and `--no-clobber` uploads in `scripts/release/terminal.sh`; read back on the 1.0.0-rc.1 cut |
+| The installers install nothing whose SHA-256 differs from the version's sums file, and verify both programs before replacing either. | New on 2026-10-01 ([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). | `a checksum mismatch installs nothing and keeps the installed version` in `scripts/test-release-terminal.sh` |
+| A macOS artifact is published only after Gatekeeper (`spctl --assess -t install`) answers `accepted` from `Notarized Developer ID`; `--skip-notarization` is refused with `--publish`. | New on 2026-10-01 ([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). | `wait_for_gatekeeper` in `scripts/release/terminal.sh`; the verdicts in each published manifest |
+
 ## Hosted decision service
 
 Coder on a computer with no TypeSafe key asks Jev through the hosted

@@ -17,7 +17,12 @@ use openagents_chat::router::{Caller, CoderRun, Context};
 use openagents_chat::service::{Command, Snapshot};
 use openagents_connect::control::{self, Op, Reply, Request};
 use serde_json::Value;
-use tokio::net::UnixStream;
+#[cfg(unix)]
+use tokio::net::UnixStream as Stream;
+// Windows has no host control socket ([`control::socket_path`] answers
+// `None` there), so nothing dials; the type only keeps the code one shape.
+#[cfg(not(unix))]
+use tokio::net::TcpStream as Stream;
 
 use super::local::{self, Local, State};
 
@@ -205,6 +210,19 @@ impl Follow for Following {
 /// This computer's host, over its control socket ([`control::socket_path`]).
 pub struct Control;
 
+#[cfg(unix)]
+async fn connect(socket: &Path) -> std::io::Result<Stream> {
+    Stream::connect(socket).await
+}
+
+#[cfg(not(unix))]
+async fn connect(_socket: &Path) -> std::io::Result<Stream> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "no host control socket on this platform",
+    ))
+}
+
 impl Dial for Control {
     fn socket(&self) -> Option<PathBuf> {
         control::socket_path()
@@ -212,7 +230,7 @@ impl Dial for Control {
 
     fn dial<'a>(&'a self, socket: &'a Path) -> BoxFuture<'a, Option<Box<dyn Host>>> {
         Box::pin(async move {
-            let stream = UnixStream::connect(socket).await.ok()?;
+            let stream = connect(socket).await.ok()?;
             Some(Box::new(ControlHost {
                 stream,
                 next: 1,
@@ -225,7 +243,7 @@ impl Dial for Control {
 
 /// One connection to the host's control socket.
 struct ControlHost {
-    stream: UnixStream,
+    stream: Stream,
     next: u64,
     socket: PathBuf,
     /// The host predates the `chat` operation's `caller` (#10108): it
@@ -269,7 +287,7 @@ impl Host for ControlHost {
                 // An older host: ask again on a new connection, without the
                 // caller, and keep doing so.
                 self.older = true;
-                match UnixStream::connect(&self.socket).await {
+                match connect(&self.socket).await {
                     Ok(stream) => {
                         self.stream = stream;
                         result = self
@@ -296,7 +314,7 @@ impl Host for ControlHost {
     fn migrate(&mut self, home: &Path) -> BoxFuture<'_, Migration> {
         let home = home.display().to_string();
         Box::pin(async move {
-            let Ok(mut stream) = UnixStream::connect(&self.socket).await else {
+            let Ok(mut stream) = connect(&self.socket).await else {
                 return Migration::Quiet;
             };
             match control::call(&mut stream, &Request::new(1, Op::ChatMigrate { home })).await {

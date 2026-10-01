@@ -8,9 +8,49 @@ same screen. It works over SSH and in tmux, and it is text only.
 
 Status: v1, landed 2026-10-01
 ([#10111](https://github.com/OpenAgentsInc/openagents/issues/10111)). It ships
-inside the `openagents` program; an installer for computers without the app is
-phase 2 of the [scope](scope.md), which also records why it is built this way
-and the decisions taken on its open questions.
+inside the `openagents` program, which installs on its own with one command
+(below; first release `1.0.0-rc.1`,
+[#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). The
+[scope](scope.md) records why it is built this way and the decisions taken on
+its open questions.
+
+## Install
+
+On macOS and Linux:
+
+```sh
+curl -fsSL https://storage.googleapis.com/openagentsgemini-cli-releases/openagents/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://storage.googleapis.com/openagentsgemini-cli-releases/openagents/install.ps1 | iex
+```
+
+The installer picks the build for your system (macOS on Apple silicon or
+Intel; Linux on x86_64 or arm64, glibc or musl; Windows x86_64), downloads
+`openagents` and the `microcoder` engine Coder runs with, checks both against
+the release's SHA-256 sums, and puts them side by side in `~/.openagents/bin`
+(`%USERPROFILE%\.openagents\bin` on Windows). It installs nothing whose
+digest does not match. If that folder is not on your `PATH`, it prints the line
+to add (Windows adds it for you). Then it opens the terminal when one is
+attached; set `OPENAGENTS_NO_LAUNCH=1` to skip that.
+
+It follows the `stable` channel, and `rc` until a stable release exists. To
+choose:
+
+```sh
+curl -fsSL .../openagents/install.sh | OPENAGENTS_CHANNEL=rc sh   # a channel
+curl -fsSL .../openagents/install.sh | sh -s 1.0.0-rc.1           # a version
+```
+
+In PowerShell, set `$env:OPENAGENTS_CHANNEL` or `$env:OPENAGENTS_VERSION`
+first. `OPENAGENTS_BIN_DIR` installs somewhere else. Run the command again to
+update. On Windows, `openagents connect`, `labor`, `service`, `ssh`, `wallet`,
+and `x402` say they need macOS or Linux.
+
+How a release is built and published: [docs/release/terminal.md](../release/terminal.md).
 
 ## Start it
 

@@ -430,25 +430,31 @@ impl Store {
 }
 
 fn create_private_dir(dir: &Path) -> Result<(), String> {
+    #[cfg(unix)]
     use std::os::unix::fs::DirBuilderExt;
     if dir.is_dir() {
         return Ok(());
     }
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    // Owner-only on Unix; on Windows the profile directory's ACL is the
+    // boundary.
+    #[cfg(unix)]
+    builder.mode(0o700);
+    builder
         .create(dir)
         .map_err(|error| format!("cannot create {}: {error}", dir.display()))
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
         .open(path)
         .map_err(|error| format!("cannot create {}: {error}", path.display()))?;
     file.write_all(bytes)

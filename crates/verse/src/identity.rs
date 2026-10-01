@@ -4,7 +4,6 @@
 //! `~/.openagents/verse/<profile>.key` as 64 lowercase hex characters,
 //! readable only by the owner. `VERSE_HOME` overrides the directory.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use nostr::domain::RelaySigner;
@@ -99,10 +98,9 @@ pub fn load_or_create(dir: &Path, profile: &str) -> Result<Identity, String> {
 
 fn fresh_secret() -> Result<String, String> {
     loop {
-        let mut bytes = [0u8; 32];
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut f| f.read_exact(&mut bytes))
-            .map_err(|e| format!("cannot read randomness: {e}"))?;
+        // The system's generator through `rand`, which reads the
+        // platform's source (`/dev/urandom` has none on Windows).
+        let bytes: [u8; 32] = random_bytes();
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         if RelaySigner::from_secret_hex(&hex).is_ok() {
             return Ok(hex);
@@ -112,15 +110,19 @@ fn fresh_secret() -> Result<String, String> {
 
 fn write_private(path: &Path, secret: &str) -> Result<(), String> {
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // Owner-only on Unix; on Windows the profile directory's ACL is the
+    // boundary.
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
         .open(path)
         .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
     writeln!(file, "{secret}").map_err(|e| format!("cannot write {}: {e}", path.display()))

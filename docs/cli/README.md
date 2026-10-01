@@ -31,6 +31,15 @@ until the pieces NIP-SOV requires exist.
 
 ## Build and install
 
+Install a release (macOS and Linux; Windows and channels in
+[the terminal guide](../terminal/README.md#install)):
+
+```sh
+curl -fsSL https://storage.googleapis.com/openagentsgemini-cli-releases/openagents/install.sh | sh
+```
+
+Or build it from a checkout:
+
 ```sh
 cargo build --release -p openagents-cli
 install target/release/openagents ~/.local/bin/

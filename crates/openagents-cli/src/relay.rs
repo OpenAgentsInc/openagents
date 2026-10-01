@@ -264,6 +264,8 @@ impl Client {
     ///
     /// # Errors
     /// Reports a full relay queue.
+    // Only Unix-only groups call it.
+    #[cfg_attr(not(unix), allow(dead_code))]
     pub fn listen(&mut self, filters: Vec<Value>) -> Result<String, String> {
         self.subscriptions += 1;
         let id = format!("oa-{}", self.subscriptions);
@@ -280,6 +282,8 @@ impl Client {
 
     /// The next event on any [`Client::listen`] subscription, or `None`
     /// after `wait`.
+    // Only Unix-only groups call it.
+    #[cfg_attr(not(unix), allow(dead_code))]
     pub fn recv(&mut self, wait: Duration) -> Option<Event> {
         let deadline = Instant::now() + wait;
         loop {

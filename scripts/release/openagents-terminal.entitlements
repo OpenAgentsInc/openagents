@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Plugins run in wasmtime, which compiles a module to native code and
+         maps the pages executable. Under the hardened runtime macOS kills a
+         process that does that without these two entitlements (SIGKILL,
+         Code Signature Invalid, on the first plugin call). The desktop app's
+         binaries carry the same key (scripts/desktop/package-macos.sh). -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>

@@ -371,7 +371,7 @@ pub fn doctor() -> Value {
     let socket = control::socket_path();
     let running = socket
         .as_ref()
-        .is_some_and(|socket| std::os::unix::net::UnixStream::connect(socket).is_ok());
+        .is_some_and(|socket| crate::host_answers_at(socket));
     let home = client::home();
     json!({
         "backend": if running { "host" } else { "in_process" },

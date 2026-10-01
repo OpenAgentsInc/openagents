@@ -1,6 +1,10 @@
 [package]
 name = "openagents-terminal"
-version.workspace = true
+# The release line of OpenAgents Terminal (the `openagents` program), which
+# `openagents --version` and the welcome card name. It moves apart from the
+# workspace version; scripts/release/terminal.sh refuses a release whose
+# version differs from this one, in both crates (docs/release/terminal.md).
+version = "1.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true

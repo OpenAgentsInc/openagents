@@ -14,9 +14,12 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
+// `connect`, `labor`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
+// (see the dispatch below); Windows builds the rest.
 mod catalog;
 mod chat;
 mod computer;
+#[cfg(unix)]
 mod connect;
 mod discover;
 mod eval;
@@ -28,6 +31,7 @@ mod gym;
 mod hosts;
 mod kb;
 mod key;
+#[cfg(unix)]
 mod labor;
 mod mcp;
 mod out;
@@ -36,20 +40,26 @@ mod quest;
 mod reach;
 mod relay;
 mod screen;
+#[cfg(unix)]
 mod service;
 mod session;
 mod settings;
 mod sov;
 mod sov_host;
+#[cfg(unix)]
 mod ssh;
 mod study;
 mod terminal;
 #[cfg(test)]
 mod tree;
+#[cfg(unix)]
 mod wallet;
 mod world;
+#[cfg(unix)]
 mod x402;
+#[cfg(unix)]
 mod x402_native;
+#[cfg(unix)]
 mod x402_phone;
 mod zone;
 
@@ -155,6 +165,7 @@ fn main() -> ExitCode {
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),
+        #[cfg(unix)]
         "connect" => connect::run(&output, &rest),
         "verse" => world::run(&output, &rest),
         // `openagents xp …` is `openagents verse xp …`.
@@ -170,16 +181,21 @@ fn main() -> ExitCode {
         "sov" => sov::run(&output, &rest),
         "eval" => eval::run(&output, &rest),
         "gym" => gym::run(&output, &rest),
+        #[cfg(unix)]
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        #[cfg(unix)]
         "wallet" => wallet::run(&output, &rest),
+        #[cfg(unix)]
         "x402" => x402::run(&output, &rest),
         "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "playtest" => playtest::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        #[cfg(unix)]
         "service" => service::run(&output, &rest),
         "settings" => settings::run(&output, &rest),
+        #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
         "prg" => catalog::prg(&output, &rest),
@@ -188,6 +204,14 @@ fn main() -> ExitCode {
         "discover" => discover::run(&output, &rest),
         "mcp" => mcp::run(&output, &rest, USAGE),
         "completions" => mcp::completions(&output, &rest, USAGE),
+        // These groups stand on Unix pieces: the host's control socket and
+        // service manager, the resident wallet, Unix file modes, and the
+        // system ssh's process groups.
+        #[cfg(not(unix))]
+        "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" => {
+            eprintln!("openagents {command}: not available on Windows; run it from macOS or Linux");
+            EXIT_FAILURE
+        }
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
             EXIT_USAGE
@@ -196,8 +220,51 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
+/// The stream to this computer's host control socket. Windows has no
+/// control socket (`openagents_connect::control::socket_path` answers
+/// `None` there), so nothing dials one; the type keeps the code one shape.
+#[cfg(unix)]
+pub(crate) type ControlStream = tokio::net::UnixStream;
+#[cfg(not(unix))]
+pub(crate) type ControlStream = tokio::net::TcpStream;
+
+/// Connects to the host control socket at `socket`.
+pub(crate) async fn dial_control(socket: &Path) -> std::io::Result<ControlStream> {
+    #[cfg(unix)]
+    {
+        ControlStream::connect(socket).await
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = socket;
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+}
+
+/// Whether a host answers on the control socket at `socket`, blocking.
+pub(crate) fn host_answers_at(socket: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::net::UnixStream::connect(socket).is_ok()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = socket;
+        false
+    }
+}
+
+/// What `openagents --version` prints: this program's release
+/// (`1.0.0-rc.1`), then the repository, the commit, and the tree state the
+/// build came from.
 pub(crate) fn version_line() -> String {
-    coder::identity::line().replacen("coder ", "openagents ", 1)
+    format!(
+        "openagents {} ({} {} {})",
+        env!("CARGO_PKG_VERSION"),
+        coder::identity::REPOSITORY,
+        coder::identity::short_commit(),
+        coder::identity::TREE
+    )
 }
 
 pub fn runtime() -> tokio::runtime::Runtime {

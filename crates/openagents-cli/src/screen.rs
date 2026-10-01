@@ -259,9 +259,7 @@ impl ProgramExtras {
             .build()
             .map_err(|_| "Cannot start the runtime to reach the host.".to_owned())?;
         runtime.block_on(async move {
-            let mut stream = tokio::net::UnixStream::connect(&socket)
-                .await
-                .map_err(|_| no_host())?;
+            let mut stream = crate::dial_control(&socket).await.map_err(|_| no_host())?;
             match control::call(&mut stream, &Request::new(1, op)).await {
                 Ok(Reply::Refused { message, .. }) => Err(format!("The host refused: {message}.")),
                 Ok(reply) => Ok(reply),
@@ -280,7 +278,7 @@ impl ProgramExtras {
     fn host_answers(&self) -> bool {
         self.socket
             .as_ref()
-            .is_some_and(|socket| std::os::unix::net::UnixStream::connect(socket).is_ok())
+            .is_some_and(|socket| crate::host_answers_at(socket))
     }
 
     /// What `sync` needs to know, read without changing anything. Past a
@@ -319,7 +317,7 @@ impl ProgramExtras {
         });
         Facts {
             host_answers: false,
-            service_manager: coder_service::service::Platform::current().is_some(),
+            service_manager: service_manager_here(),
             bundle_selected,
             launcher_present,
             host_key,
@@ -579,6 +577,18 @@ fn plugin_rows(text: &str) -> Result<Vec<(String, String)>, String> {
             Some((name.to_owned(), summary.to_owned()))
         })
         .collect())
+}
+
+/// Whether this computer has a service manager a host can be installed
+/// under (launchd or systemd). Windows has none `coder_service` drives.
+#[cfg(unix)]
+fn service_manager_here() -> bool {
+    coder_service::service::Platform::current().is_some()
+}
+
+#[cfg(not(unix))]
+fn service_manager_here() -> bool {
+    false
 }
 
 #[cfg(test)]
