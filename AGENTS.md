@@ -35,6 +35,24 @@ build's entry at the top of `CHANGELOG` in
 script refuses a dirty checkout or a build number App Store Connect already
 has. Report the build number and the script's last line.
 
+## Velocity (owner, 2026-10-01)
+
+Ship small changes fast. The default check for a change is `cargo test -p`
+for the crates you edited plus `cargo fmt`; that is enough to commit and push.
+Do not run, unless the task is a release or the owner reported that exact
+flow broken:
+
+- Clippy, the release gate (`scripts/release/acceptance.sh`), the phone
+  suite, live runs against real engines, or other crates' tests.
+- New `INVARIANTS.md` rows, design notes, or long docs. Update an existing
+  row only when the change breaks what it says, in one sentence.
+
+Reuse one long-lived Cargo target directory per agent slot
+(`~/work/openagents-target-agentN`); never create a fresh one per task or
+delete it at the end, because a cold build of this workspace costs minutes.
+When a test fails only because a checked-in generated file is stale, run its
+regenerate command and commit the result; don't investigate further.
+
 Documentation-only changes do not require the Rust verification gate, including
 before a push. Check links, paths, and retained artifacts for documentation
 reorganizations. Comment edits and documentation path updates do not require
