@@ -1079,3 +1079,23 @@ on `general` from the run's result, no new Coder turn), `followup-coder`
 ("now also list the top-level files in a note" continued the same task as
 turn 2 and finished, the message above its card), and `delegate-claude`
 passed with real engines, debug builds (`--bin-dir`).
+
+TestFlight build 42 (1.0.0, archived from `a4a39f0752`, 2026-10-01 UTC)
+changes no worker release. Its source is `origin/main` at `3ce548bd7d` plus
+the changelog entry and the build number. It extends the **Text only**
+entry (#10093, #10095, no attach button and no way to attach) with the
+phone side of #10094 (after a Coder run ends, a question about it is
+answered in chat and a request for more work continues the same task; the
+worker release `9afc94bd92` above), #10100 (the newest chat is at the top
+of Chats, Pinned above, with the project as a row label), and #10091 and
+#10092 (Grok Build is allowed by default on a computer). The mobile tests
+(157 passed), `openagents-chat-app` (162), and `openagents-chat` (66)
+pass. On a fresh iPhone 17 Pro simulator (iOS 26.5, deleted afterwards)
+the changelog showed 1.0.0 (42) with the four items, the chat had no
+attach button, and the live chat worker answered "Who are you?". The
+newest-first order, the follow-up routing with a finished Coder run, and
+Grok Build on a paired computer were covered by the tests and not run on
+the simulator or a device. Build 42 was uploaded with `build.sh upload` at
+2026-10-01T07:37:31-07:00 and is `VALID`; it shows `IN_BETA_TESTING` for
+Internal Testers, which receives builds without a manual assignment (the
+API refuses to add an internal group by hand).
