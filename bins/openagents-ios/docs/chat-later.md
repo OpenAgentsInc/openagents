@@ -42,7 +42,7 @@ what each needs before it can work. None of them are built.
 
 | Feature | What it needs |
 | --- | --- |
-| Photo attachments: library and camera pickers, drag and drop, an attachment strip, size limits | The image pipeline exists (NIP-HOST `artifact.put`, #10066 and #10070) and the desktop uses it. The phone shipped a photo picker on it, then turned attachments off on 2026-10-01 (#10093): its chat is text only until `coder_tab::ATTACHMENTS_ENABLED` is turned back on. |
+| Photo attachments: library and camera pickers, drag and drop, an attachment strip, size limits | The image pipeline exists (NIP-HOST `artifact.put`, #10066 and #10070). The phone and the desktop shipped attachments on it, then turned them off on 2026-10-01 (#10093, #10095): both chats are text only until `coder_tab::ATTACHMENTS_ENABLED` is turned back on. |
 | Large pastes turned into attachments | The same attachment path, after phone attachments are back on. |
 | Voice dictation with Apple speech recognition | Only native work and a microphone permission string; no backend change. |
 | Model and traits picker | The host's auto-start policy fixes the model today (`coder host autostart --model`). A per-task model needs a `task.create` field the policy admits. |

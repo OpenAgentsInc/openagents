@@ -3285,6 +3285,8 @@ mod image_fixtures {
         let (mut app, now) = super::tests::chat_fixture(0);
         let create = app.chat.as_mut().unwrap().new_chat();
         app.send(vec![create], now);
+        // The image pipeline, with attachments turned on (#10095).
+        app.chat.as_mut().unwrap().set_attachments(true);
         app.present();
         let root = tempfile::tempdir().unwrap();
         let image = Image::pixels(4, 4, vec![200; 4 * 4 * 4]).unwrap();
@@ -3324,6 +3326,8 @@ mod image_fixtures {
         let (mut app, now) = super::tests::chat_fixture(0);
         let create = app.chat.as_mut().unwrap().new_chat();
         app.send(vec![create], now);
+        // The image pipeline, with attachments turned on (#10095).
+        app.chat.as_mut().unwrap().set_attachments(true);
         app.present();
         app.text_input(TextInput::Commit("Keep this caption"), now);
         let root = tempfile::tempdir().unwrap();
@@ -3414,6 +3418,49 @@ mod image_fixtures {
             now,
         );
         assert_eq!(app.chat.as_ref().unwrap().images().len(), 3);
+    }
+
+    /// Attachments off (#10095, the shared switch the phone uses): the
+    /// composer has no attach control, a dropped image is dropped without
+    /// a notice, and a dropped document still puts its path in the words.
+    #[test]
+    fn the_desktop_is_text_only_while_attachments_are_off() {
+        const { assert!(!openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED) };
+        let (mut app, now) = super::tests::chat_fixture(0);
+        let create = app.chat.as_mut().unwrap().new_chat();
+        app.send(vec![create], now);
+        app.present();
+        assert!(!app.chat.as_ref().unwrap().attachments_enabled());
+        for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
+            let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+            assert!(scene.hits.iter().any(|hit| hit.key == "chat-send"));
+            for key in ["chat-attach", "chat-paste-image"] {
+                assert!(!scene.hits.iter().any(|hit| hit.key == key), "{key}");
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let image = Image::pixels(4, 4, vec![200; 4 * 4 * 4]).unwrap();
+        let png = root.path().join("shot.png");
+        std::fs::write(&png, image.bytes.as_slice()).unwrap();
+        assert!(app.dropped_file(png, now));
+        let until = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < until {
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let chat = app.chat.as_ref().unwrap();
+        assert!(chat.images().is_empty());
+        assert_eq!(chat.notice(), None);
+        assert_eq!(chat.draft(), "");
+        let view = serde_json::to_string(app.view().view()).unwrap();
+        assert!(!view.contains("chat-attach") && !view.contains("image-previews"));
+        let notes = root.path().join("notes.md");
+        std::fs::write(&notes, b"# notes").unwrap();
+        assert!(app.dropped_file(notes.clone(), now));
+        assert_eq!(
+            app.chat.as_ref().unwrap().draft().trim(),
+            notes.display().to_string()
+        );
     }
 }
 
@@ -4032,10 +4079,12 @@ mod chat_management {
         );
         for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
             let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
-            for key in ["chat-attach", "chat-send", "chat-menu"] {
+            for key in ["chat-send", "chat-menu"] {
                 let hit = scene.hits.iter().find(|h| h.key == key).unwrap();
                 assert!(hit.rect.y + hit.rect.h <= height, "{key}");
             }
+            // Text only (#10095): no attach control.
+            assert!(!scene.hits.iter().any(|h| h.key == "chat-attach"));
             if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
                 let path = std::path::PathBuf::from(path);
                 std::fs::create_dir_all(&path).unwrap();
@@ -4814,11 +4863,16 @@ mod command_fixtures {
                 let (_, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
                 let card = scene.bounds["chat-composer-card"];
                 assert_eq!(card.h, expected);
-                for node in ["chat-attach", "chat-send"] {
-                    let rect = scene.hits.iter().find(|hit| hit.key == node).unwrap().rect;
-                    assert!(rect.y >= card.y && rect.y + rect.h <= card.y + card.h);
+                let rect = scene
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == "chat-send")
+                    .unwrap()
+                    .rect;
+                assert!(rect.y >= card.y && rect.y + rect.h <= card.y + card.h);
+                for key in ["chat-attach", "chat-paste-image"] {
+                    assert!(!scene.hits.iter().any(|hit| hit.key == key), "{key}");
                 }
-                assert!(!scene.hits.iter().any(|hit| hit.key == "chat-paste-image"));
                 assert_eq!(app.chat.as_ref().unwrap().draft(), draft);
             }
         }

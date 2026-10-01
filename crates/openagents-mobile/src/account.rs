@@ -41,7 +41,7 @@ pub const CHANGELOG: &[Release] = &[
         what_to_test: "On the Chat tab, in a new chat and in an open one, the message box should have no attach button above it. Copy a photo, then tap the message box twice: Paste should not be offered. Type a message and send it: it should send as before.",
         items: &[Item {
             title: "Text only",
-            detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app still takes images.",
+            detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app is text only too.",
         }],
     },
     Release {

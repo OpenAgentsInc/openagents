@@ -455,14 +455,17 @@ pub struct CoderTab {
 /// The most turns an open basic conversation shows at first.
 const TALK_TURNS: usize = 200;
 
-/// Phone attachments (#10093): off as of 2026-10-01, so the phone is text
-/// only. The chat shows no attach control, never asks the host for a photo
+/// Attachments, everywhere (#10093 phone, #10095 desktop): off as of
+/// 2026-10-01, so the phone and the desktop are text only. The phone chat
+/// shows no attach control, never asks the host for a photo
 /// ([`Go::PickImage`]), drops an image the host hands it
 /// ([`CoderTab::attach_image`]) without a notice, and sends a draft's words
 /// only, dropping any images it still holds. Hosts mount their photo picker
-/// only while the packet says attachments are on. The shared image pipeline
-/// (`crate::attachments`, #10066/#10070) is unchanged and still serves the
-/// desktop; set this to `true` to turn phone attachments back on.
+/// only while the packet says attachments are on. The desktop composer reads
+/// this same switch: no attach control or image picker, text-only paste, a
+/// dropped image dropped, and a draft's words only. The shared image
+/// pipeline (`crate::attachments`, #10066/#10070) is unchanged; set this to
+/// `true` to turn attachments back on in both apps.
 pub const ATTACHMENTS_ENABLED: bool = false;
 
 impl CoderTab {

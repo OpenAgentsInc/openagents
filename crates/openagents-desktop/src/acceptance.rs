@@ -50,7 +50,7 @@ pub const SCENARIOS: [&str; 17] = [
     "delegate-claude",
     "delegate-grok",
     "ui-stop-coder",
-    "image-to-coder",
+    "ui-no-attach",
     "open-deck",
     "ui-filter-sessions",
     "ui-no-verse",
@@ -184,7 +184,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "delegate-claude" => delegate_claude(&mut gate),
             "delegate-grok" => delegate_grok(&mut gate),
             "ui-stop-coder" => ui_stop_coder(&mut gate),
-            "image-to-coder" => image_to_coder(&mut gate),
+            "ui-no-attach" => ui_no_attach(&mut gate),
             "open-deck" => open_deck(&mut gate),
             "ui-filter-sessions" => ui_filter(&mut gate),
             "ui-no-verse" => ui_no_verse(&mut gate),
@@ -1240,15 +1240,30 @@ fn contradicts_readings(gate: &Gate, reason: &str) -> Option<String> {
     None
 }
 
-/// Text plus a PNG in one send: the words go to chat, the image's exact
-/// bytes reach the Coder run (#10066, #10070).
-fn image_to_coder(gate: &mut Gate) -> Outcome {
-    if let Some(skip) = gate.need(true, false) {
-        return skip;
+/// The desktop is text only (#10095, the switch the phone shares, #10093):
+/// the composer has no attach control, and an image dropped on the window
+/// or pasted is dropped quietly; the draft stays words only.
+fn ui_no_attach(gate: &mut Gate) -> Outcome {
+    if gate.panel().attachments_enabled() {
+        return Err("attachments are on: the desktop should be text only".into());
     }
-    const ASK: &str =
-        "Add one line to NOTES.md that says which two colors the attached image shows.";
-    let chat = new_chat(gate, "image-to-coder")?;
+    new_chat(gate, "ui-no-attach")?;
+    let mut problems = Vec::new();
+    for (file, width, height, scale) in [
+        ("composer-1200x840-2x", 1200.0, 840.0, 2.0),
+        ("composer-760x540-1x", 760.0, 540.0, 1.0),
+    ] {
+        let (_, scene) = gate.capture("ui-no-attach", file, width, height, scale);
+        if !scene.hits.iter().any(|hit| hit.key == "chat-send") {
+            problems.push(format!("no Send control ({file})"));
+        }
+        for key in ["chat-attach", "chat-paste-image"] {
+            if scene.hits.iter().any(|hit| hit.key == key) {
+                problems.push(format!("the composer shows {key} ({file})"));
+            }
+        }
+    }
+    // An image dropped on the window, as from the Finder.
     let image = openagents_chat_app::attachments::Image::pixels(
         64,
         32,
@@ -1262,72 +1277,44 @@ fn image_to_coder(gate: &mut Gate) -> Outcome {
             })
             .collect(),
     )?;
-    let path = gate.evidence("image-to-coder").join("attached.png");
+    let path = gate.evidence("ui-no-attach").join("dropped.png");
     std::fs::write(&path, image.bytes.as_slice()).map_err(|e| e.to_string())?;
-    let bytes = image.bytes.to_vec();
     gate.app.dropped_file(path, Instant::now());
-    if !pump(gate, Duration::from_secs(10), |gate| {
+    // A pasted image, through the composer's image paste (no clipboard is
+    // read while attachments are off).
+    gate.app.activate(
+        Intent::Chat {
+            action: openagents_desktop::chat_action::Action::PasteImage,
+        },
+        Instant::now(),
+    );
+    // Give a read the time it would take; nothing may arrive.
+    pump(gate, Duration::from_secs(3), |gate| {
         !gate.panel().images().is_empty()
-    }) {
-        return Err("the dropped PNG never reached the draft".into());
+    });
+    let panel = gate.panel();
+    if !panel.images().is_empty() {
+        problems.push(format!(
+            "{} image(s) reached the draft",
+            panel.images().len()
+        ));
     }
-    let reply = send(gate, ASK)?;
-    let seen = follow_run(gate, &chat, true);
-    gate.save_chat("image-to-coder");
-    let mut problems = Vec::new();
-    // Only the words went to the hosted chat.
-    let snapshot = gate.panel().state().cloned().unwrap_or_default();
-    match snapshot
-        .turns
+    if let Some(notice) = panel.notice() {
+        problems.push(format!("a notice showed: {notice:?}"));
+    }
+    if !panel.draft().is_empty() {
+        problems.push(format!("the draft took {:?}", excerpt(panel.draft())));
+    }
+    let (_, scene) = gate.capture("ui-no-attach", "after-drop-1200x840-2x", 1200.0, 840.0, 2.0);
+    if scene
+        .hits
         .iter()
-        .rev()
-        .find(|turn| turn.role == Role::User)
+        .any(|hit| hit.key.starts_with("image-remove-") || hit.key == "chat-attach")
     {
-        Some(turn) if turn.text.trim() == ASK => {}
-        Some(turn) => problems.push(format!(
-            "the chat got {:?}, not the words",
-            excerpt(&turn.text)
-        )),
-        None => problems.push("the message is not in the chat".into()),
-    }
-    let _ = reply;
-    let store = coder::task::local::default_store();
-    match &seen.task {
-        Some(task) => {
-            let media = store.join(coder::task::media::MEDIA_DIR).join(task);
-            let kept: Vec<Vec<u8>> = std::fs::read_dir(&media)
-                .map(|entries| {
-                    entries
-                        .filter_map(Result::ok)
-                        .filter_map(|entry| std::fs::read(entry.path()).ok())
-                        .collect()
-                })
-                .unwrap_or_default();
-            if !kept.contains(&bytes) {
-                problems.push(format!(
-                    "the task holds no byte-exact copy of the image ({} files in {})",
-                    kept.len(),
-                    media.display()
-                ));
-            }
-        }
-        None => problems.push(format!(
-            "Coder did not start with the image: {}",
-            seen.failure.clone().unwrap_or_default()
-        )),
-    }
-    if let Some(failure) = &seen.failure
-        && seen.task.is_some()
-    {
-        problems.push(format!("Coder: {failure}"));
+        problems.push("an image card or attach control shows after the drop".into());
     }
     if problems.is_empty() {
-        Ok(format!(
-            "words to chat, image ({} bytes) kept byte-exact with task {} on {}",
-            bytes.len(),
-            seen.task.unwrap_or_default(),
-            seen.started.map(|s| s.provider).unwrap_or_default()
-        ))
+        Ok("no attach control at 1200x840 or 760x540; a dropped PNG and an image paste were dropped quietly, draft empty; captures composer-*.png, after-drop-1200x840-2x.png".into())
     } else {
         Err(problems.join("; "))
     }

@@ -37,8 +37,12 @@ images go to Coder when it starts."
 
 On 2026-10-01 [#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)
 turned attachments off on the phone: its chat is text only, with no attach
-control or photo picker, behind `coder_tab::ATTACHMENTS_ENABLED`. The desktop
-behavior on this page is unchanged.
+control or photo picker, behind `coder_tab::ATTACHMENTS_ENABLED`. The same day
+[#10095](https://github.com/OpenAgentsInc/openagents/issues/10095) turned them
+off on the desktop behind the same switch: no attach control or image picker,
+a pasted or dropped image is dropped, and a draft sends its words only. The
+behavior on this page is kept in code and returns when the switch is turned
+back on.
 
 ## Checks
 

@@ -124,6 +124,10 @@ pub struct Drafts {
     bound: BTreeMap<String, String>,
 }
 impl Drafts {
+    /// No conversation's draft holds an image or a binding.
+    pub fn is_empty(&self) -> bool {
+        self.images.values().all(Vec::is_empty) && self.bound.is_empty()
+    }
     pub fn get(&self, chat: &str) -> &[Image] {
         self.images.get(chat).map_or(&[], Vec::as_slice)
     }

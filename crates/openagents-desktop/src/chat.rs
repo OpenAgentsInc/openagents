@@ -129,6 +129,10 @@ pub struct Panel {
     )>,
     /// Dropped files waiting for the one being read ([`MAX_PENDING_DROPS`]).
     pending_drops: std::collections::VecDeque<std::path::PathBuf>,
+    /// Whether the composer takes images: the phone's switch,
+    /// [`openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED`], so both
+    /// apps turn attachments on and off together (#10095).
+    attachments: bool,
     /// A change bound by hand, as a fixture does; otherwise the selected
     /// task's or run's reviewer shows.
     changes_bound: Option<openagents_chat_app::changes::Reviewer>,
@@ -222,6 +226,7 @@ impl Panel {
             waker: None,
             image_input: None,
             pending_drops: std::collections::VecDeque::new(),
+            attachments: openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED,
             changes_bound: None,
             changes_open: false,
             changes_scroll: 0.0,
@@ -230,7 +235,42 @@ impl Panel {
             gym_loading: None,
         }
     }
+    /// Whether the composer takes images: the shared
+    /// [`openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED`] unless
+    /// [`Panel::set_attachments`] changed it. Off as of 2026-10-01 (#10095):
+    /// the desktop is text only, as the phone is (#10093).
+    pub fn attachments_enabled(&self) -> bool {
+        self.attachments
+    }
+
+    /// Turn image attachments on or off for this window; the image
+    /// pipeline's tests turn them on. Turning them off drops any images a
+    /// draft holds.
+    pub fn set_attachments(&mut self, on: bool) {
+        self.attachments = on;
+        self.text_only();
+    }
+
+    /// While attachments are off, drop any images a draft still holds, so
+    /// a draft (a restored one included) is words only and its send or
+    /// Coder start carries no images. Quiet: nothing to tell the person.
+    fn text_only(&mut self) {
+        if self.attachments {
+            return;
+        }
+        if !self.session.images.is_empty() {
+            self.session.images = openagents_chat_app::attachments::Drafts::default();
+            self.rows_dirty = true;
+        }
+        self.pending_drops.clear();
+    }
+
     fn import_image(&mut self, source: crate::chat_images::Source) {
+        // Text only while attachments are off: no picker, no clipboard
+        // image, no dropped image (#10095).
+        if !self.attachments {
+            return;
+        }
         if self.image_input.is_some() {
             self.notice =
                 Some("An image is already being imported. Try again when it finishes.".into());
@@ -284,6 +324,11 @@ impl Panel {
                 crate::chat_images::Result::Failed(error) => self.notice = Some(error),
                 _ => {}
             }
+            return;
+        }
+        // Text only while attachments are off (#10095): a dropped image is
+        // dropped, quietly, and the draft stays words only.
+        if !self.attachments {
             return;
         }
         // Several images dropped at once arrive one by one; each waits for
@@ -605,6 +650,7 @@ impl Panel {
         }
         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
         self.poll_images(at_ms);
+        self.text_only();
         self.search.poll_clipboard(at_ms);
         self.command_query.poll_clipboard(at_ms);
         if let Some((_, field)) = &mut self.rename {
@@ -701,6 +747,8 @@ impl Panel {
         if self.runs.contains_key(chat) {
             return;
         }
+        // Text only while attachments are off: the run carries no images.
+        self.text_only();
         let Some(snapshot) = self.session.states.get(chat) else {
             return;
         };
@@ -1010,6 +1058,9 @@ impl Panel {
             TaskAction::Send | TaskAction::Queue | TaskAction::Steer
         );
         let submission = if submitted {
+            // Text only while attachments are off: a restored draft that
+            // still holds images sends its words alone.
+            self.text_only();
             if let Some(reason) = self.session.images.text_only_refusal(&chat) {
                 self.notice = Some(reason.into());
                 return None;
@@ -1686,6 +1737,9 @@ impl Panel {
                 None
             }
             Action::Send => {
+                // Text only while attachments are off: a restored draft
+                // that still holds images sends its words alone.
+                self.text_only();
                 if self.task().is_some() {
                     return self.task_action(TaskAction::Send, view, now);
                 }
@@ -2387,6 +2441,8 @@ impl Panel {
             key, command: true, ..
         } = &event
             && matches!(*key, "v" | "V")
+            // While attachments are off the field pastes text only.
+            && self.attachments
             && self.field().is_some_and(|field| field.focused)
         {
             self.import_image(crate::chat_images::Source::Clipboard);
@@ -3564,7 +3620,7 @@ impl Panel {
             .or_else(|| run.map(Run::mode));
         let task_ready = task.is_none_or(|task| task.summary.is_some());
         let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
-            || !self.session.images.get(&id).is_empty();
+            || (self.attachments && !self.session.images.get(&id).is_empty());
         let composer = Node {
             key: "chat-composer".into(),
             style: Style::default(),
@@ -3592,7 +3648,9 @@ impl Panel {
         };
         // Reimplemented from Zeron's composer: quiet utilities on the left,
         // one circular submission control on the right, and management in the header.
-        let mut buttons = vec![
+        // The attach control shows only while attachments are on; the
+        // desktop is text only as of 2026-10-01 (#10095).
+        let attach = self.attachments.then(|| {
             icon_button(
                 "chat-attach",
                 "Attach image",
@@ -3600,9 +3658,9 @@ impl Panel {
                 !busy,
                 Glyph::Paperclip,
                 false,
-            ),
-            text("chat-toolbar-space", "", TextRole::Status),
-        ];
+            )
+        });
+        let mut buttons = vec![text("chat-toolbar-space", "", TextRole::Status)];
         if let Some(run) = run
             && run.active()
         {
@@ -3671,7 +3729,12 @@ impl Panel {
             )
         });
         let mut previews = vec![];
-        for image in self.session.images.get(&id) {
+        let images: &[openagents_chat_app::attachments::Image] = if self.attachments {
+            self.session.images.get(&id)
+        } else {
+            &[]
+        };
+        for image in images {
             let short: String = image.name.chars().take(10).collect();
             previews.push(stack(
                 &format!("image-row-{}", image.id),
@@ -3727,19 +3790,19 @@ impl Panel {
                 .expect("valid composer metrics");
         }
         let mut card = if compact {
-            let attach = buttons.remove(0);
             buttons.remove(0); // Expanded-only flexible spacer.
             let send = buttons.pop().expect("composer send control");
-            let mut card = stack(
-                "chat-composer-card",
-                Axis::Horizontal,
-                vec![attach, composer, send],
-            );
+            let mut row: Vec<_> = attach.into_iter().collect();
+            row.extend([composer, send]);
+            let mut card = stack("chat-composer-card", Axis::Horizontal, row);
             card.style.padding_start = Some(Space::Sm);
             card.style.padding_end = Some(Space::Sm);
             card.style.gap = Some(Space::Xs);
             card
         } else {
+            if let Some(attach) = attach {
+                buttons.insert(0, attach);
+            }
             let mut toolbar = stack("chat-send-controls", Axis::Horizontal, buttons);
             toolbar.style.padding_points = Some([2, 8, 8, 8]);
             toolbar.style.min_height = Some(42);
@@ -4376,6 +4439,8 @@ mod start_setting_tests {
     fn a_run_carries_the_drafts_images_and_keeps_them_until_accepted() {
         let chat = "c".repeat(32);
         let mut panel = replied(|| true);
+        // The image pipeline, with attachments turned on (#10095).
+        panel.set_attachments(true);
         let image = openagents_chat_app::attachments::Image::pixels(5, 4, vec![77; 80]).unwrap();
         let bytes = image.bytes.as_ref().clone();
         panel.session.images.add(&chat, image).unwrap();
@@ -4423,6 +4488,8 @@ mod start_setting_tests {
         let now = Instant::now();
         let chat = "c".repeat(32);
         let mut panel = Panel::new(now);
+        // The image pipeline, with attachments turned on (#10095).
+        panel.set_attachments(true);
         panel.set_coder_asks_first(asks_first);
         panel.session.states.insert(
             chat.clone(),
@@ -4554,6 +4621,76 @@ mod start_setting_tests {
             panic!("{run:?}")
         };
         assert_eq!(*images[0].bytes, bytes);
+    }
+
+    /// Attachments off (#10095, the switch the phone shares): a draft
+    /// restored from before still holding an image shows no image or
+    /// attach control, sends its words only, and Command-V is the field's
+    /// text paste, never an image import.
+    #[test]
+    fn a_restored_draft_with_images_sends_its_words_only() {
+        let now = Instant::now();
+        let chat = "c".repeat(32);
+        let mut panel = Panel::new(now);
+        assert!(!panel.attachments_enabled());
+        panel.session.states.insert(
+            chat.clone(),
+            Snapshot {
+                chat: Some(chat.clone()),
+                ..Default::default()
+            },
+        );
+        panel.session.select(&chat);
+        panel.selected_changed(None);
+        let image = openagents_chat_app::attachments::Image::pixels(2, 2, vec![9; 16]).unwrap();
+        panel.session.images.add(&chat, image).unwrap();
+        let view = rust_native::View::new("text-only", 1, panel.footer())
+            .validate()
+            .unwrap();
+        let tree = format!("{:?}", view.view());
+        assert!(!tree.contains("chat-attach") && !tree.contains("image-previews"));
+        panel.mounted(&view);
+        panel.input(TextInput::Commit("just the words"), now);
+        let _ = panel.input(
+            TextInput::Key {
+                key: "v",
+                text: None,
+                command: true,
+                alt: false,
+                shift: false,
+            },
+            now,
+        );
+        assert!(panel.image_input.is_none());
+        let Some(Request::Chat { command, .. }) = panel.action(Action::Send, &view, now) else {
+            panic!("a send")
+        };
+        let Command::Send { text, .. } = command else {
+            panic!("{command:?}")
+        };
+        assert_eq!(text, "just the words");
+        assert!(panel.session.images.is_empty());
+        assert_ne!(
+            panel.notice(),
+            Some(openagents_chat_app::attachments::HELD_FOR_CODER)
+        );
+    }
+
+    /// Attachments off: Run Coder on this computer starts with the words
+    /// and no images, though the draft held one.
+    #[test]
+    fn run_coder_carries_no_images_while_attachments_are_off() {
+        let chat = "c".repeat(32);
+        let mut panel = replied(|| true);
+        let image = openagents_chat_app::attachments::Image::pixels(2, 2, vec![9; 16]).unwrap();
+        panel.session.images.add(&chat, image).unwrap();
+        panel.start_run(&chat);
+        let (_, _, request) = next_run(&mut panel);
+        let coder_run::Request::Start { images, .. } = &request else {
+            panic!("{request:?}")
+        };
+        assert!(images.is_empty());
+        assert!(panel.session.images.is_empty());
     }
 }
 
