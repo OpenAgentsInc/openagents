@@ -1067,6 +1067,9 @@ pub struct Tidy {
     /// How much of `space` came before the citations just taken out, when
     /// it held a line break: the citations began a line.
     line: Option<usize>,
+    /// A comma or semicolon right after a citation, held until what
+    /// follows shows whether it only joined two citations ("[a], [b]").
+    joiner: Option<char>,
 }
 
 impl Default for Tidy {
@@ -1123,6 +1126,7 @@ impl Tidy {
             bracket: String::new(),
             after: false,
             line: None,
+            joiner: None,
         }
     }
 
@@ -1140,11 +1144,15 @@ impl Tidy {
                 if c == close {
                     let inside = &self.bracket[1..self.bracket.len() - 1];
                     if citations_only(inside, self.prefix) {
+                        // "run [a], [b]." reads "run.": the comma only
+                        // joined two citations.
+                        self.joiner = None;
                         if !self.after {
                             self.line = self.space.contains('\n').then_some(self.space.len());
                         }
                         self.after = true;
                     } else {
+                        out.extend(self.joiner.take());
                         out.push_str(&self.space);
                         out.push_str(&self.bracket);
                         self.space.clear();
@@ -1152,6 +1160,7 @@ impl Tidy {
                     }
                     self.bracket.clear();
                 } else if !could_cite(&self.bracket, self.prefix) {
+                    out.extend(self.joiner.take());
                     out.push_str(&self.space);
                     out.push_str(&self.bracket);
                     self.space.clear();
@@ -1168,6 +1177,12 @@ impl Tidy {
                 self.space.push(c);
                 continue;
             }
+            if self.after && self.joiner.is_none() && matches!(c, ',' | ';') {
+                self.joiner = Some(c);
+                self.space.clear();
+                continue;
+            }
+            out.extend(self.joiner.take());
             if self.after {
                 // "credit [gym:…]." reads "credit.", and a citation that
                 // ended a line leaves no space before the break. A line
@@ -1196,7 +1211,7 @@ impl Tidy {
     /// What is left once the reply ends.
     pub fn finish(&mut self) -> String {
         let prefix = self.prefix;
-        let mut out = String::new();
+        let mut out: String = self.joiner.take().into_iter().collect();
         if !self.bracket.is_empty() {
             out.push_str(&self.space);
             out.push_str(&self.bracket);

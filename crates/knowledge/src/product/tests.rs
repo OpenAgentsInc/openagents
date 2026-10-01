@@ -167,6 +167,39 @@ fn instructions_hold_only_the_kept_entries_and_the_citation_rule() {
     assert_eq!(instructions(&[]), NO_DOCUMENTED_ANSWER);
 }
 
+/// A summary of our essays is given from their overview entries, which
+/// carry each essay's link, and the model is told to pass the link on
+/// (#10102).
+#[test]
+fn an_essay_summary_is_grounded_with_each_essays_link() {
+    let corpus = Corpus::load(&default_dir(), Some(&repository())).expect("the corpus loads");
+    let overview = |id: &str| {
+        corpus
+            .base
+            .entries
+            .iter()
+            .find(|e| e.id == id)
+            .unwrap_or_else(|| panic!("{id}"))
+    };
+    let both = [
+        Reference::of(overview("openagents.ttc-overview")),
+        Reference::of(overview("openagents.gen-overview")),
+    ];
+    let text = instructions(&both);
+    assert!(text.contains("give its link from the entry"));
+    for essay in [
+        "docs/essays/2026-09-29-test-time-capabilities.md",
+        "docs/essays/2026-10-01-the-return-of-the-general-agent.md",
+    ] {
+        assert!(
+            text.contains(&format!(
+                "https://github.com/OpenAgentsInc/openagents/blob/main/{essay}"
+            )),
+            "{essay}"
+        );
+    }
+}
+
 #[test]
 fn a_reply_cites_only_the_entries_it_was_given() {
     let a = Reference::of(&entry("openagents.a", "product", &["README.md"], ""));

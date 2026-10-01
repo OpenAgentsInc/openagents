@@ -290,7 +290,9 @@ below, which are our reviewed product notes. After each sentence that uses an en
 its id in square brackets, such as [openagents.wallet-send]. Do not add facts about OpenAgents, \
 its app, prices, dates, or plans that the entries do not state. If the entries do not answer what \
 the user asked, say plainly that we don't have that documented yet, and give only what the \
-entries do say. Keep it short for a phone screen, and use Markdown only when it helps.\n",
+entries do say. When you summarize or describe a document an entry links, such as one of our \
+essays, give its link from the entry. Keep it short for a phone screen, and use Markdown only when \
+it helps.\n",
     );
     for reference in references {
         out.push_str(&format!(

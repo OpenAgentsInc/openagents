@@ -352,6 +352,12 @@ fn product_citations_are_taken_out_as_the_reply_streams() {
             "Arrays like [1, 2] stay [openagents.cli@3]",
             "Arrays like [1, 2] stay",
         ),
+        // A comma that only joined two citations goes with them (#10102).
+        (
+            "Admitted into the run [openagents.ttc-overview], [openagents.ttc-thesis]. Next \
+             [openagents.a]; [openagents.b], and on [openagents.c], [x] too.",
+            "Admitted into the run. Next, and on, [x] too.",
+        ),
     ];
     for (reply, want) in cases {
         assert_eq!(tidy(reply), want, "{reply}");
