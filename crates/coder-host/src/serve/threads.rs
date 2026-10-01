@@ -287,6 +287,13 @@ fn extras(turn: &Turn) -> thread::ThreadExtras {
             {
                 value["runner"] = runner;
             }
+            // The engine the person asked for rides on the same offer, as
+            // the worker's NIP-CJ field (#10076).
+            if *offer == openagents_chat::router::Offer::RunCoder
+                && let Some(engine) = meta.engine
+            {
+                value["engine"] = serde_json::json!(engine.word());
+            }
             let fits = serde_json::to_vec(&value)
                 .is_ok_and(|bytes| bytes.len() <= thread::MAX_EXTRA_VALUE);
             (fits && openagents_chat::router::Offer::parse(&value).is_some()).then_some(value)

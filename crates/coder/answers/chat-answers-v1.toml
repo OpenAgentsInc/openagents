@@ -357,6 +357,18 @@ offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/coder/src/router/capability.rs", "crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
+id = "dispatch.engine_stem"
+version = 1
+routes = ["work.dispatch"]
+records = true
+when = "Picked by code from the typed engine reading: the user hands us work on their code and asks for a named coding engine, such as Claude Code or Codex, to do it"
+stem = "We'll dispatch Coder, asking for {engine}, to"
+generic_end = " take this on, with this conversation as its task."
+facts = { engine = "engine.name" }
+offer = { run_coder = true, label = "Run Coder" }
+sources = ["crates/coder/src/router/judge.rs", "crates/coder/src/task/local.rs"]
+
+[[answer]]
 id = "dispatch.no_computer"
 version = 1
 routes = ["work.dispatch"]

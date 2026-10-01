@@ -54,6 +54,10 @@ pub enum Request {
         /// The draft's images, as their exact bytes; the adapter keeps them
         /// with the task ([`crate::attachments::Drafts::uploads`]).
         images: Vec<crate::attachments::Upload>,
+        /// The coding engine the person asked for, from the reply's typed
+        /// offer (#10076): the start puts it first and says why when
+        /// another runs.
+        engine: Option<nostr::cj_conversation::Engine>,
     },
     /// The task's events since the last poll.
     Poll { task: String },
@@ -188,6 +192,8 @@ pub struct Run {
     dirs: Vec<String>,
     /// The images the start carries until a task holds them.
     images: Vec<crate::attachments::Upload>,
+    /// The engine the person asked for, which the start carries (#10076).
+    engine: Option<nostr::cj_conversation::Engine>,
     /// The start that carried images was accepted; the adapter drops the
     /// draft's images once ([`Run::take_delivered`]).
     delivered: bool,
@@ -261,6 +267,7 @@ impl Run {
             prompt: String::new(),
             dirs: vec![],
             images: vec![],
+            engine: None,
             delivered: false,
             lines: VecDeque::new(),
             state: State::Running,
@@ -285,7 +292,18 @@ impl Run {
             prompt: self.prompt.clone(),
             dirs: self.dirs.clone(),
             images: self.images.clone(),
+            engine: self.engine,
         }
+    }
+
+    /// This start, for a person who asked for `engine` (#10076).
+    #[must_use]
+    pub fn requesting(mut self, engine: Option<nostr::cj_conversation::Engine>) -> Self {
+        self.engine = engine;
+        if matches!(self.due, Some(Request::Start { .. })) {
+            self.due = Some(self.start_request());
+        }
+        self
     }
 
     /// Whether a start that carried the draft's images was accepted since
@@ -989,10 +1007,16 @@ impl Rows {
             }
             CoderEvent::Step(step) => match step.kind {
                 StepKind::Message => {
-                    if self.shown.insert((true, step.text.trim().to_owned())) || self.turn == 1 {
-                        let text = crate::basic_chats::handoff_summary(&step.text)
-                            .unwrap_or_else(|| step.text.clone());
-                        self.rows.push(message(&key, MessageRole::User, &text));
+                    // The handoff prompt is the person's own message, which
+                    // the chat shows just above the run: shown once, there,
+                    // never again as "Continued from the OpenAgents app"
+                    // (#10076). Its provenance stays in the task's prompt.
+                    let handoff = crate::basic_chats::handoff_request(&step.text).is_some();
+                    if !handoff
+                        && (self.shown.insert((true, step.text.trim().to_owned()))
+                            || self.turn == 1)
+                    {
+                        self.rows.push(message(&key, MessageRole::User, &step.text));
                     }
                 }
                 StepKind::Thinking => {

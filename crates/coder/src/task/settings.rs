@@ -93,6 +93,20 @@ pub fn default_model(provider: Provider) -> Option<&'static str> {
     }
 }
 
+/// The provider that runs `engine`, the coding engine a chat's dispatch
+/// offer names as the person's request (#10076).
+#[must_use]
+pub fn provider_of(engine: nostr::cj_conversation::Engine) -> Provider {
+    use nostr::cj_conversation::Engine;
+    match engine {
+        Engine::Codex => Provider::Codex,
+        Engine::ClaudeCode => Provider::Claude,
+        Engine::GrokBuild => Provider::Grok,
+        Engine::OpenCode => Provider::OpenCode,
+        Engine::Devin => Provider::Devin,
+    }
+}
+
 /// The name a person reads for `provider`.
 #[must_use]
 pub fn provider_name(provider: Provider) -> &'static str {

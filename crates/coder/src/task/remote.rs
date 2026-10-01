@@ -34,7 +34,14 @@ pub struct Inbox {
     store: PathBuf,
     workspaces: BTreeMap<String, PathBuf>,
     autostart: Option<Arc<super::autostart::Autostart>>,
+    /// The engine the person asked for, by the create request it is for
+    /// (#10076): set only by the host itself, from its own chat's typed
+    /// offer, just before it creates that task; a device never sets it.
+    preferences: Arc<std::sync::Mutex<BTreeMap<String, nostr::cj_conversation::Engine>>>,
 }
+
+/// The most engine preferences an inbox holds for creates not yet made.
+const MAX_PREFERENCES: usize = 64;
 
 impl Inbox {
     /// An inbox over the task store at `store`. `workspaces` maps the labels
@@ -45,6 +52,7 @@ impl Inbox {
             store: store.into(),
             workspaces,
             autostart: None,
+            preferences: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -97,6 +105,19 @@ impl Inbox {
 }
 
 impl Tasks for Inbox {
+    fn prefer(&self, key: &str, engine: nostr::cj_conversation::Engine) {
+        let mut preferences = self
+            .preferences
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if preferences.len() >= MAX_PREFERENCES
+            && let Some(oldest) = preferences.keys().next().cloned()
+        {
+            preferences.remove(&oldest);
+        }
+        preferences.insert(key.to_owned(), engine);
+    }
+
     fn create(&self, key: &str, device: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
         let root = self
             .workspaces
@@ -112,12 +133,20 @@ impl Tasks for Inbox {
                 other => refusal(other),
             })?;
         }
+        // The engine the person asked for, when the host said so for this
+        // request: its route goes first, if the owner's policy admits it.
+        let requested = self
+            .preferences
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(key)
+            .map(super::settings::provider_of);
         // Under the owner's policy the task records the engine's model, which
         // its grant must name; otherwise no model, as always.
         let model = self
             .autostart
             .as_ref()
-            .and_then(|autostart| autostart.model_for(&task.workspace));
+            .and_then(|autostart| autostart.model_requesting(&task.workspace, requested));
         let command = |model: Option<String>| Command {
             schema: COMMAND_SCHEMA.into(),
             command_id: format!("host-create-{key}"),
@@ -157,7 +186,7 @@ impl Tasks for Inbox {
             other => other?,
         };
         if let (Some(autostart), Some(_)) = (&self.autostart, &model) {
-            autostart.eligible(key, device, &task.workspace);
+            autostart.eligible_requesting(key, device, &task.workspace, requested);
             autostart.sweep_soon();
         }
         Ok(created)

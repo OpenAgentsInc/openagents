@@ -16,6 +16,7 @@
 //! | `tool` | Choice | the tool catalog a [`GymKb`](super::seams::GymKb) lists, plus `none`; asked only when it lists any |
 //! | `capability` | Choice | the admitted-capability set ([`Admitted`]), plus `none` (a request none covers) and `not-a-capability-request`; asked on every turn |
 //! | `deck` | Choice | the decks the desktop app ships (`openagents_deck::decks()`), by title, plus `none`; asked only on a desktop turn |
+//! | `engine` | Choice | the coding engines a dispatch may name ([`Engine::ALL`]), plus `none`; asked on every turn, read only for a dispatch (#10076) |
 //! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement, none |
 //!
 //! No question consumes another's answer, so they cost one round trip.
@@ -28,7 +29,7 @@ use super::bank::{Bank, Entry, Facts, Opener};
 use super::capability::{Admitted, Capability, NONE, NOT_A_REQUEST};
 use super::gym::Tool;
 use super::seams::CliGroup;
-use super::{Risk, RouteId};
+use super::{CodingEngine as Engine, Risk, RouteId};
 use crate::classify::Route;
 use crate::first::Lane;
 use crate::generate::Message;
@@ -100,6 +101,27 @@ pub fn deck(decks: &[DeckEntry]) -> Choice {
         Some(Criterion::from(super::rubric::deck_none())),
     );
     Choice::new(super::rubric::deck_instructions(), options)
+}
+
+/// The `engine` question: each coding engine a dispatch offer may name,
+/// by its wire word, then `none`. The reading is one of them or nothing,
+/// never text (#10076).
+#[must_use]
+pub fn engine() -> Choice {
+    let mut options: IndexMap<String, Option<Criterion>> = Engine::ALL
+        .into_iter()
+        .map(|engine| {
+            (
+                engine.word().to_string(),
+                Some(Criterion::from(super::rubric::engine(engine))),
+            )
+        })
+        .collect();
+    options.insert(
+        "none".to_string(),
+        Some(Criterion::from(super::rubric::engine_none())),
+    );
+    Choice::new(super::rubric::engine_instructions(), options)
 }
 
 /// The questions, from one state. Only entries selectable under `facts`
@@ -251,6 +273,10 @@ pub fn questions(
     if !decks.is_empty() {
         questions = questions.with("deck", deck(decks));
     }
+    // Asked on every turn, beside the route, and read only when the
+    // policy serves a dispatch: the questions are independent, so it
+    // costs no round trip.
+    questions = questions.with("engine", engine());
     questions.with(
         "risk",
         Choice::new(super::rubric::risk_instructions(), risks),
@@ -338,6 +364,11 @@ pub struct Routing {
     /// `None` for `none` or not asked. The id is one of the decks the
     /// question listed.
     pub deck: Option<(String, f64)>,
+    /// The coding engine the `engine` reading named, with the
+    /// probability of that option; `None` for `none` or not asked. Only a
+    /// dispatch reads it, and only at
+    /// [`ENGINE_CONFIDENCE`](super::policy::ENGINE_CONFIDENCE) (#10076).
+    pub engine: Option<(Engine, f64)>,
     pub risk: Risk,
     pub risk_p: f64,
 }
@@ -451,6 +482,15 @@ pub fn reading(
         .filter(|deck| deck.choice != "none")
         .filter(|deck| super::decks().iter().any(|known| known.id == deck.choice))
         .map(|deck| (deck.choice.clone(), finite(deck.confidence)));
+    let engine = choice(response, "engine").and_then(|answer| {
+        let engine = Engine::parse(&answer.choice)?;
+        let p = answer
+            .probabilities
+            .get(&answer.choice)
+            .copied()
+            .unwrap_or(answer.confidence);
+        Some((engine, finite(p)))
+    });
     let risk_answer = choice(response, "risk");
     Routing {
         action: crate::classify::route(&judgment),
@@ -470,6 +510,7 @@ pub fn reading(
         capability_missing_p,
         capability_closest,
         deck,
+        engine,
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
     }
@@ -508,7 +549,28 @@ mod tests {
                 "lane",
                 "opener",
                 "capability",
+                "engine",
                 "risk"
+            ]
+        );
+        // The engine question offers every engine by its wire word, then
+        // `none`, and nothing else.
+        let engine = serde_json::to_value(questions.get("engine")).unwrap();
+        let options: Vec<&str> = engine["criteria"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            options,
+            [
+                "codex",
+                "claude_code",
+                "grok_build",
+                "opencode",
+                "devin",
+                "none"
             ]
         );
         // The capability question offers every admitted entry, then `none`
@@ -611,6 +673,34 @@ mod tests {
                 .into_bytes(),
         })
         .expect("a readable response")
+    }
+
+    /// The `engine` reading is a listed engine with the probability of
+    /// that option, or nothing for `none`, an unknown word, or no answer
+    /// (#10076).
+    #[test]
+    fn the_engine_reading_is_a_listed_engine_or_nothing() {
+        let bank = Bank::builtin();
+        let admitted = Admitted::builtin();
+        let read = |choice: &str, p: f64| {
+            let other = if choice == "none" { "codex" } else { "none" };
+            reading(
+                &response(json!({
+                    "engine": {"type": "choice", "choice": choice, "confidence": 0.5,
+                               "probabilities": {choice: p, other: 1.0 - p}},
+                })),
+                bank,
+                &facts(),
+                &admitted,
+            )
+            .engine
+        };
+        assert_eq!(read("claude_code", 0.92), Some((Engine::ClaudeCode, 0.92)));
+        assert_eq!(read("grok_build", 0.4), Some((Engine::GrokBuild, 0.4)));
+        assert_eq!(read("none", 0.9), None);
+        assert_eq!(read("Claude Code", 0.9), None);
+        let routing = reading(&response(json!({})), bank, &facts(), &admitted);
+        assert_eq!(routing.engine, None);
     }
 
     /// A desktop turn asks `deck` over the decks the app ships, each by its

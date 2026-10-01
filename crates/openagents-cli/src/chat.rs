@@ -718,8 +718,8 @@ async fn send(
             coding = openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer);
             // Say who will run it, from what the run itself reads here.
             let mut turns = [reply];
-            openagents_chat::delegation::attach_runner(&mut turns, snapshot.computer, || {
-                coder_run::predict(backend, id)
+            openagents_chat::delegation::attach_runner(&mut turns, snapshot.computer, |engine| {
+                coder_run::predict(backend, id, engine)
             });
             let [reply] = turns;
             finish(
@@ -807,6 +807,8 @@ fn finish(
             // Who would run Coder on this computer for this reply.
             "runner": meta.runner,
             "runner_text": meta.runner.as_ref().map(|runner| runner.text()),
+            // The engine the person asked for, from the typed offer.
+            "engine": meta.engine,
         }),
     );
     for offer in &meta.offers {
@@ -818,6 +820,13 @@ fn finish(
         {
             line["runner"] = json!(runner);
             line["runner_text"] = json!(runner.text());
+        }
+        // The engine the person asked for, as the worker's typed offer
+        // named it (#10076).
+        if *offer == Offer::RunCoder
+            && let Some(engine) = meta.engine
+        {
+            line["engine"] = json!(engine);
         }
         event(output, line);
     }
@@ -883,6 +892,9 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
         eprintln!(
             "offer: run Coder on this computer for this thread: openagents chat run-coder --thread {id}"
         );
+        if let Some(engine) = meta.engine {
+            eprintln!("asked for: {}", engine.name());
+        }
     }
     if let Some(runner) = &meta.runner {
         eprintln!("coder: {}", runner.text());

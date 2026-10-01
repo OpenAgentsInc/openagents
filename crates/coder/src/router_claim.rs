@@ -793,6 +793,7 @@ mod tests {
             risk: "ok".to_string(),
             cli_group: None,
             tool: None,
+            engine: None,
             tags: Vec::new(),
             split: "held_out".to_string(),
         }

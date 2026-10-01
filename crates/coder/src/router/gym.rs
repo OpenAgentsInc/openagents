@@ -1819,6 +1819,7 @@ mod tests {
         let handoff = AuthorStep {
             offer: Some(Offer::RunCoder {
                 label: "Run Coder".into(),
+                engine: None,
             }),
             ..step.clone()
         };

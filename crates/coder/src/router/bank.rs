@@ -37,7 +37,9 @@ pub const MAX_TEXT_CHARS: usize = 600;
 /// `capability.*` keys only by [`super::policy::decide`], from an entry
 /// of the admitted-capability set, and `deck.*` keys only by
 /// [`super::policy::decide`], from the decks the desktop app ships
-/// ([`super::decks`]), each for an entry that sets [`Entry::records`].
+/// ([`super::decks`]), and `engine.*` keys only by
+/// [`super::policy::decide`], from the engine the typed `engine` reading
+/// named (#10076), each for an entry that sets [`Entry::records`].
 /// `chat.*` keys are filled only by [`super::Context::facts`], from the
 /// request's bounded `context`: the computer's name and the chat's project
 /// folder, the person's own words and paths (#10077).
@@ -56,6 +58,7 @@ pub const FACT_KEYS: &[&str] = &[
     "chat.computer",
     "chat.project",
     "chat.project_path",
+    "engine.name",
 ];
 
 /// The id suffix of an entry's variant for a chat on a computer: the entry
@@ -129,6 +132,7 @@ impl EntryOffer {
         ) {
             (true, None) => Some(super::Offer::RunCoder {
                 label: self.label.clone(),
+                engine: None,
             }),
             (false, Some(screen)) => Some(super::Offer::OpenScreen {
                 screen,
@@ -561,12 +565,13 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
         }
         // A records entry is picked by code: from the Gym's records on a
         // Gym or eval route, from the admitted-capability set on
-        // `capability.missing` or a dispatch stem that names a capability,
-        // or from the deck list on `presentation.open`.
+        // `capability.missing` or a dispatch stem that names a capability
+        // or the engine the person asked for, or from the deck list on
+        // `presentation.open`.
         let capability_slot = entry
             .facts
             .values()
-            .any(|key| key.starts_with("capability."));
+            .any(|key| key.starts_with("capability.") || key.starts_with("engine."));
         let picked_by_code = routes.iter().all(|route| {
             route.is_gym()
                 || *route == RouteId::CapabilityMissing
@@ -598,7 +603,7 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
             push(
                 id,
                 "a records entry answers Gym and eval routes, capability.missing, \
-                 presentation.open, or a dispatch stem with a capability slot only"
+                 presentation.open, or a dispatch stem with a capability or engine slot only"
                     .into(),
             );
         }
@@ -612,7 +617,7 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
             push(
                 id,
                 "only a records entry fills a slot from the Gym's records, the admitted \
-                 capabilities, or the deck list"
+                 capabilities, the engine reading, or the deck list"
                     .into(),
             );
         }

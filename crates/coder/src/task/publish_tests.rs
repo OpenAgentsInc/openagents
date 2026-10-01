@@ -101,6 +101,7 @@ impl Scratch {
             base: base.clone(),
             turns: Vec::new(),
             ends: Default::default(),
+            requested: None,
         };
         std::fs::create_dir_all(store.join("local")).unwrap();
         std::fs::write(

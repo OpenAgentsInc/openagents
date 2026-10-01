@@ -242,7 +242,14 @@ pub enum SubjectSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Offer {
     /// Dispatch Coder to the connected computer with this conversation.
-    RunCoder { label: String },
+    /// `engine` is the coding engine the person asked for, when the
+    /// router's typed `engine` reading named one (#10076): a preference
+    /// the start puts first, never permission to run an engine the
+    /// computer's owner did not allow. `None` is no preference.
+    RunCoder {
+        label: String,
+        engine: Option<Engine>,
+    },
     /// Open a screen of the app.
     OpenScreen { screen: Screen, label: String },
     /// Run an `openagents` command after a confirm.
@@ -280,6 +287,64 @@ impl Offer {
             Offer::StartEval { .. } => "start_eval",
             Offer::PublishEval { .. } => "publish_eval",
             Offer::OpenPresentation { .. } => "open_presentation",
+        }
+    }
+}
+
+/// A coding engine a `run_coder` offer may name as the person's request
+/// (#10076). A closed set: an engine word this version doesn't know
+/// refuses the offer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Engine {
+    #[serde(rename = "codex")]
+    Codex,
+    #[serde(rename = "claude_code")]
+    ClaudeCode,
+    #[serde(rename = "grok_build")]
+    GrokBuild,
+    #[serde(rename = "opencode")]
+    OpenCode,
+    #[serde(rename = "devin")]
+    Devin,
+}
+
+impl Engine {
+    /// Every engine, in the order the router lists them.
+    pub const ALL: [Engine; 5] = [
+        Engine::Codex,
+        Engine::ClaudeCode,
+        Engine::GrokBuild,
+        Engine::OpenCode,
+        Engine::Devin,
+    ];
+
+    /// The word the wire carries in a `run_coder` offer's `engine`.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Engine::Codex => "codex",
+            Engine::ClaudeCode => "claude_code",
+            Engine::GrokBuild => "grok_build",
+            Engine::OpenCode => "opencode",
+            Engine::Devin => "devin",
+        }
+    }
+
+    /// The engine an exact wire word names.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        Engine::ALL.into_iter().find(|engine| engine.word() == word)
+    }
+
+    /// The engine's name as a person reads it.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Engine::Codex => "Codex",
+            Engine::ClaudeCode => "Claude Code",
+            Engine::GrokBuild => "Grok Build",
+            Engine::OpenCode => "OpenCode",
+            Engine::Devin => "Devin",
         }
     }
 }
@@ -364,12 +429,22 @@ pub fn parse_offer(value: &Value) -> Result<(u64, Offer), ContractError> {
     };
     let offer = match word.as_str() {
         "run_coder" => {
-            allow(&["target", "label"])?;
+            allow(&["target", "label", "engine"])?;
             if object.get("target").and_then(Value::as_str) != Some("connected_computer") {
                 return Err(unsupported("target"));
             }
+            let engine = match object.get("engine") {
+                None => None,
+                Some(value) => Some(
+                    value
+                        .as_str()
+                        .and_then(Engine::parse)
+                        .ok_or_else(|| unsupported("engine"))?,
+                ),
+            };
             Offer::RunCoder {
                 label: label(object)?,
+                engine,
             }
         }
         "open_screen" => {
@@ -1183,9 +1258,12 @@ fn body(version: u64, kind: &str, word: &str) -> Value {
 pub fn offer_feedback(offer: &Offer, version: u64) -> Result<Value, ContractError> {
     let mut value = body(version, "offer", offer.word());
     match offer {
-        Offer::RunCoder { label } => {
+        Offer::RunCoder { label, engine } => {
             value["target"] = json!("connected_computer");
             value["label"] = json!(label);
+            if let Some(engine) = engine {
+                value["engine"] = json!(engine.word());
+            }
         }
         Offer::OpenScreen { screen, label } => {
             value["screen"] = json!(screen.word());

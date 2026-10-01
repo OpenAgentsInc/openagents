@@ -1357,11 +1357,16 @@ fn run_coder_starts_a_task_with_the_conversation() {
         "Studio Mac"
     );
     // The chat shows what was sent until the computer's transcript does:
-    // one line naming the message that asked for the work (#10073), never
-    // the conversation pasted back.
+    // the message that asked for the work (#10073), once, with where it
+    // came from as its note (#10076), never the conversation pasted back.
     let sent = serde_json::to_string(&node(&opened, "coder-transcript").unwrap()).unwrap();
+    assert!(sent.contains("Run the tests in my repo"), "{sent}");
     assert!(
-        sent.contains("Continued from the OpenAgents app: Run the tests in my repo"),
+        sent.contains("\"note\":\"Continued from the OpenAgents app\""),
+        "{sent}"
+    );
+    assert!(
+        !sent.contains("Continued from the OpenAgents app: "),
         "{sent}"
     );
     assert!(!sent.contains("Continue this conversation"), "{sent}");

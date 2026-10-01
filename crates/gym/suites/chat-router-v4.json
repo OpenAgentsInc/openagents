@@ -3,7 +3,7 @@
   "name": "chat-router-v4",
   "description": "The chat router's labeled route set for chat-router-v4 (#10058), from crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for the presentation.open route and its near misses, across 20 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-30",
-  "digest": "7e525594e044cc709de766b9e349ae11c228f2b2fac9c0dee29c9a50362f0acb",
+  "digest": "3a8b153c70f98b0dad59a956c73cbe898bd2b51b1c468fa59c963401471b7479",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v5",
@@ -14427,6 +14427,758 @@
         "repo_members": []
       },
       "truth": "codebase.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "Do a test delegation to claude",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "Do a test delegation to claude"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "Do a test delegation to claude",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "who are you"
+          },
+          {
+            "role": "assistant",
+            "text": "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to a computer you've connected."
+          },
+          {
+            "role": "user",
+            "text": "who can you delegate to"
+          },
+          {
+            "role": "assistant",
+            "text": "We delegate to Coder, our coding agent. When a task needs files, commands, or a repository, we dispatch Coder to a computer you connect."
+          },
+          {
+            "role": "user",
+            "text": "Do a test delegation to claude"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "have claude code fix the failing test in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "have claude code fix the failing test in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "use codex to refactor the parser module in my project",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "use codex to refactor the parser module in my project"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "use grok to add tests for the date parser in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "use grok to add tests for the date parser in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "send this to opencode: rename the config loader in my app",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "send this to opencode: rename the config loader in my app"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "let devin take this one and bump the dependencies in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "let devin take this one and bump the dependencies in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "fix the flaky CI job in my repo with anthropic's agent",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the flaky CI job in my repo with anthropic's agent"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "start a coder run on gpt and have it update the README",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "start a coder run on gpt and have it update the README"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "kick off a test job to claude code",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "kick off a test job to claude code"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delega esto a claude: arregla la prueba que falla en mi repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delega esto a claude: arregla la prueba que falla en mi repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "have opus look through my repo and explain the auth flow",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "have opus look through my repo and explain the auth flow"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-013",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "spin up devin on my repo to add a dark mode toggle",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "spin up devin on my repo to add a dark mode toggle"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-014",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do a test delegation using OpenCode",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation using OpenCode"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-015",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "Codex please: migrate the db schema in my project",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "Codex please: migrate the db schema in my project"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-016",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "dispatch coder with grok build to fix the lint errors in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "dispatch coder with grok build to fix the lint errors in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-017",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "have Claude implement the TODOs in src/lib.rs",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "have Claude implement the TODOs in src/lib.rs"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-018",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run it on codex",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "the export button in my app does nothing"
+          },
+          {
+            "role": "assistant",
+            "text": "We'll dispatch Coder to look into why the export button does nothing, with this conversation as its task."
+          },
+          {
+            "role": "user",
+            "text": "run it on codex"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-019",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "try a delegation to grok build now",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "try a delegation to grok build now"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-020",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "hand this off to Claude Code: add retries to the upload client in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "hand this off to Claude Code: add retries to the upload client in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-021",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delegate this to codex: speed up the test suite in my repo",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delegate this to codex: speed up the test suite in my repo"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-022",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "make devin write the migration for the users table",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "make devin write the migration for the users table"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-023",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delegate this",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "delegate this"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-024",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "delegate this",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "the export button in my app does nothing"
+          },
+          {
+            "role": "assistant",
+            "text": "That sounds like a bug in your app's code. We can dispatch Coder to look into it on your computer."
+          },
+          {
+            "role": "user",
+            "text": "delegate this"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-025",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "fix the flaky test in my repo with whichever agent is free",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "fix the flaky test in my repo with whichever agent is free"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-026",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "run coder on my repo to add a changelog, any engine is fine",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "run coder on my repo to add a changelog, any engine is fine"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-027",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do a test delegation, you pick the agent",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do a test delegation, you pick the agent"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/work.dispatch/engine-028",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "is claude better at this? anyway, fix the null check in my parser",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "is claude better at this? anyway, fix the null check in my parser"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "work.dispatch",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "ask Claude what a monad is",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "ask Claude what a monad is"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "ask claude about the history of rome",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "ask claude about the history of rome"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what's the difference between codex and claude code?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what's the difference between codex and claude code?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "who made devin?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "who made devin?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "is grok build any good for coding?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "is grok build any good for coding?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "explain how codex sandboxing works",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "explain how codex sandboxing works"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/engine-near-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "can coder use grok build?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "can coder use grok build?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/engine-near-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "which coding agents can you delegate to?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "which coding agents can you delegate to?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/codebase.kb/engine-near-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "where is the claude code adapter implemented in openagents?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "where is the claude code adapter implemented in openagents?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "codebase.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/codebase.kb/engine-near-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how does coder pick between codex and claude code?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how does coder pick between codex and claude code?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "codebase.kb",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "write me a haiku about claude",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "write me a haiku about claude"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/general/engine-near-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "ask GPT what it thinks of rust",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "ask GPT what it thinks of rust"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "general",
       "partition": "calibration",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }

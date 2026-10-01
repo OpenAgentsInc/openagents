@@ -60,6 +60,7 @@ the owner can answer.
 - [Gym and eval routes (2026-09-29)](#gym-and-eval-routes-2026-09-29)
 - [From the terminal: `openagents chat` (2026-09-30)](#from-the-terminal-openagents-chat-2026-09-30)
 - [Delegation requests (2026-09-30)](#delegation-requests-2026-09-30)
+- [Engine requests (2026-09-30)](#engine-requests-2026-09-30)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## What exists today
@@ -1624,6 +1625,36 @@ the reply does not also offer Coder, whatever the `lane` reading; else a
 computer `lane` offers it. The Coder run starts with the message that asked
 for the work as its title and the start of its prompt, then bounded
 context (`openagents_chat::delegation::prompt`).
+
+## Engine requests (2026-09-30)
+
+Fixed in [#10076](https://github.com/OpenAgentsInc/openagents/issues/10076);
+measured in
+[the engine request measurement](../measurements/2026-09-30-engine-request.md).
+"Do a test delegation to claude" was dispatched, and Coder then started on
+Codex, the first engine in the person's settings: nothing carried the
+engine they named. The router now asks an `engine` Choice on every turn,
+beside the others and in the same request, over a closed list: `codex`,
+`claude_code`, `grok_build`, `opencode`, `devin`, and `none`
+(`router::judge::engine`, rubric in `router::rubric::engine*`). Only a
+dispatch reads it: at `ENGINE_CONFIDENCE` (0.70) the dispatch offer names
+the engine (NIP-CJ `run_coder` `engine`) and the reply is the bank's
+`dispatch.engine_stem`, "We'll dispatch Coder, asking for Claude Code,
+to …"; below it, or on `none`, there is no preference. Asking a model a
+question in chat, comparing engines, or asking where an adapter lives
+names an engine only as a subject, and its `none` rubric says so. No
+route changed, so the set stays `chat-router-v4` with the same digest.
+
+Every start reads the engine from the reply's typed offer
+(`openagents_chat::delegation::requested`): the desktop's local run, the
+CLI's `openagents chat`, and a host's `thread.run` or handoff, which tells
+its task store with the host-only `Tasks::prefer`. The start puts that
+engine's routes first among those the settings or the owner's policy admit
+(`Policy::preferring`), so it falls back only as it would from any first
+route (not signed in, refused for a limit, near its usage threshold), or
+when the settings do not allow it. The start card and the offer's
+prediction say what was asked and why another runs, from the typed
+`Runner` (`requested`, `PassedOver::NotAllowed`).
 
 ## Open questions for the owner
 

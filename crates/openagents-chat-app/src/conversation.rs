@@ -1211,11 +1211,19 @@ fn system<I>(key: &str, text: &str) -> Node<I> {
 
 /// A message this device sent that the transcript does not show yet.
 fn sent<I>(pending: &Pending<'_>) -> Node<I> {
+    // A handoff shows the person's message once, with where it came from
+    // as the note, not pasted in front of it (#10076).
+    let request = crate::basic_chats::handoff_request(pending.text);
+    let note = pending.note.map(str::to_owned).or_else(|| {
+        request
+            .is_some()
+            .then(|| crate::basic_chats::HANDOFF_NOTE.to_owned())
+    });
     node(
         &pending.key,
         Element::Message {
             role: MessageRole::User,
-            note: pending.note.map(str::to_owned),
+            note,
             children: vec![Node {
                 key: format!("{}-md", pending.key),
                 style: Style {
@@ -1223,11 +1231,7 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
                     ..Style::default()
                 },
                 element: Element::Markdown {
-                    blocks: markdown::parse(
-                        crate::basic_chats::handoff_summary(pending.text)
-                            .as_deref()
-                            .unwrap_or(pending.text),
-                    ),
+                    blocks: markdown::parse(request.as_deref().unwrap_or(pending.text)),
                 },
             }],
         },
@@ -1315,30 +1319,35 @@ fn draw<I>(
             role: MessageRole::System,
             text,
         } => system(&key, text),
-        Entry::Message { role, text } => node(
-            &key,
-            Element::Message {
-                role: *role,
-                note: None,
-                children: vec![Node {
-                    key: format!("{key}-md"),
-                    style: Style {
-                        foreground: Some(WHITE),
-                        ..Style::default()
-                    },
-                    element: Element::Markdown {
-                        // A handoff from the phone is one line, not the
-                        // conversation pasted back as a wall of text.
-                        blocks: match crate::basic_chats::handoff_summary(text) {
-                            Some(summary) if *role == MessageRole::User => {
-                                markdown::parse(&summary)
-                            }
-                            _ => row.blocks.clone(),
+        Entry::Message { role, text } => {
+            // A handoff from the phone is the person's message, once: not
+            // the conversation pasted back, and not prefixed with where it
+            // came from, which is the note (#10076).
+            let request =
+                crate::basic_chats::handoff_request(text).filter(|_| *role == MessageRole::User);
+            node(
+                &key,
+                Element::Message {
+                    role: *role,
+                    note: request
+                        .is_some()
+                        .then(|| crate::basic_chats::HANDOFF_NOTE.to_owned()),
+                    children: vec![Node {
+                        key: format!("{key}-md"),
+                        style: Style {
+                            foreground: Some(WHITE),
+                            ..Style::default()
                         },
-                    },
-                }],
-            },
-        ),
+                        element: Element::Markdown {
+                            blocks: match request {
+                                Some(request) => markdown::parse(&request),
+                                None => row.blocks.clone(),
+                            },
+                        },
+                    }],
+                },
+            )
+        }
         Entry::Tool { name, detail, body } => node(
             &key,
             Element::Tool {

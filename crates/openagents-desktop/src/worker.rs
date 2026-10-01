@@ -501,6 +501,7 @@ impl CoderLane {
                 prompt,
                 mut dirs,
                 images,
+                engine,
             } => {
                 let store = self.local().store().to_path_buf();
                 if self.here
@@ -546,12 +547,15 @@ impl CoderLane {
                                     checkout: record.checkout,
                                 });
                             }
-                            let record = self.local().start_with_images(
+                            // The engine the person asked for goes first
+                            // (#10076).
+                            let record = self.local().start_requested(
                                 path,
                                 &title,
                                 &prompt,
                                 Some(chat),
                                 &images,
+                                engine.map(coder::task::settings::provider_of),
                             )?;
                             let _ = std::fs::write(last_project(&store), &record.checkout);
                             return Ok(Answer::Started {
@@ -1090,6 +1094,7 @@ mod tests {
             prompt: "add a test".into(),
             dirs: vec![empty.display().to_string()],
             images: vec![],
+            engine: None,
         }) else {
             panic!("a folder that is not a checkout asks for one")
         };
@@ -1099,6 +1104,7 @@ mod tests {
             prompt: "add a test".into(),
             dirs: vec![empty.display().to_string(), top.display().to_string()],
             images: vec![],
+            engine: None,
         }) else {
             panic!("start")
         };
@@ -1139,6 +1145,7 @@ mod tests {
             prompt: "again".into(),
             dirs: vec![],
             images: vec![],
+            engine: None,
         }) else {
             panic!("start in the last project")
         };
@@ -1227,6 +1234,7 @@ mod tests {
                 prompt: "fix this layout bug".into(),
                 dirs: vec![top.display().to_string()],
                 images,
+                engine: None,
             },
         }) else {
             panic!("an answer")
@@ -1341,6 +1349,7 @@ mod tests {
             prompt: "add a test".into(),
             dirs: vec![slugs.display().to_string()],
             images: vec![],
+            engine: None,
         }) else {
             panic!("a checkout outside the project folders asks for one")
         };
@@ -1355,6 +1364,7 @@ mod tests {
             prompt: "add a test".into(),
             dirs: vec![parser.display().to_string()],
             images: vec![],
+            engine: None,
         }) else {
             panic!("start in a project folder")
         };

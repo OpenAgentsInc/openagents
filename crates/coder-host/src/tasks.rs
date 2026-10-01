@@ -168,6 +168,13 @@ pub trait Tasks: Send + Sync {
     /// Returns the NIP-HOST refusal code the device receives.
     fn create(&self, key: &str, device: &str, task: &TaskCreate) -> Result<TaskRef, Code>;
 
+    /// Say, before creating it, that the task the create request `key`
+    /// makes is for a person who asked for `engine` (#10076). Only the host
+    /// calls it, from its own chat's typed `run_coder` offer; a device
+    /// never reaches it. The task store puts that engine first when the
+    /// owner's policy admits it. The default ignores it.
+    fn prefer(&self, _key: &str, _engine: nostr::cj_conversation::Engine) {}
+
     /// Replace a task's instructions at the revision the device last read.
     ///
     /// # Errors

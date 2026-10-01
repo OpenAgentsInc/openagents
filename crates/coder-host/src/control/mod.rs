@@ -1003,12 +1003,16 @@ pub fn set_local_coder(ready: fn() -> bool) {
 /// program serving the host (`coder::task::local::runner_here`). The host
 /// puts it on a reply that offers Coder, so the desktop and a phone show
 /// what will run before it runs. Unset, replies carry no prediction.
-static LOCAL_RUNNER: std::sync::OnceLock<fn() -> Option<openagents_chat::coder_events::Runner>> =
-    std::sync::OnceLock::new();
+static LOCAL_RUNNER: std::sync::OnceLock<LocalRunner> = std::sync::OnceLock::new();
+
+/// How the host predicts who runs Coder here, for the engine the person
+/// asked for, if any (#10076).
+pub type LocalRunner =
+    fn(Option<nostr::cj_conversation::Engine>) -> Option<openagents_chat::coder_events::Runner>;
 
 /// Tell the host's chats how to predict who runs Coder here
 /// ([`LOCAL_RUNNER`]). The first call wins.
-pub fn set_local_runner(predict: fn() -> Option<openagents_chat::coder_events::Runner>) {
+pub fn set_local_runner(predict: LocalRunner) {
     let _ = LOCAL_RUNNER.set(predict);
 }
 
@@ -1029,7 +1033,7 @@ fn chat_context(shared: &Shared, bound: Option<&str>) -> openagents_chat::router
     use openagents_chat::router::{Computer, Context, Engine, Project as Folder, Surface};
     let engines = LOCAL_RUNNER
         .get()
-        .and_then(|predict| predict())
+        .and_then(|predict| predict(None))
         .map(|runner| Engine::from_runner(&runner))
         .unwrap_or_default();
     let name = (!shared.config.label.is_empty()).then(|| shared.config.label.clone());

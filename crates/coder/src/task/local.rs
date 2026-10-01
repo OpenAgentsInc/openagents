@@ -260,6 +260,10 @@ pub struct Record {
     /// Each finished turn's ending event, by turn.
     #[serde(default)]
     pub ends: BTreeMap<usize, CoderEvent>,
+    /// The provider the person asked for when the task started (#10076),
+    /// as its word (`claude`); every turn puts it first again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested: Option<String>,
 }
 
 impl Record {
@@ -470,6 +474,30 @@ impl Local {
         self.policy_with(label, controller)
     }
 
+    /// The policy for a run that asked for `requested` (#10076): its routes
+    /// first when the settings allow it, and whether they do.
+    fn asking(&self, policy: Policy, requested: Option<Provider>) -> (Policy, Option<Asked>) {
+        let Some(provider) = requested else {
+            return (policy, None);
+        };
+        match policy.preferring(provider) {
+            Some(preferring) => (
+                preferring,
+                Some(Asked {
+                    provider,
+                    allowed: true,
+                }),
+            ),
+            None => (
+                policy,
+                Some(Asked {
+                    provider,
+                    allowed: false,
+                }),
+            ),
+        }
+    }
+
     fn policy_with(&self, label: &str, controller: PathBuf) -> Result<Policy, String> {
         let settings = self.settings()?;
         let routes: Vec<Route> = settings.routes()?;
@@ -508,8 +536,12 @@ impl Local {
     /// and usage readings, so the prediction names what then runs. `None`
     /// only when the local policy cannot be built. Reads only; no
     /// credential is read.
+    ///
+    /// `requested` is the provider the person asked for (#10076): it is
+    /// put first when the settings allow it, and the prediction says so,
+    /// and why another runs when it can't.
     #[must_use]
-    pub fn predict(&self) -> Option<Runner> {
+    pub fn predict(&self, requested: Option<Provider>) -> Option<Runner> {
         // Which engine runs a turn does not change who runs it.
         let controller = self
             .controller
@@ -517,12 +549,13 @@ impl Local {
             .or_else(|| controller().ok())
             .unwrap_or_else(|| PathBuf::from("/"));
         let policy = self.policy_with("project", controller).ok()?;
-        Some(self.forecast(&policy).0)
+        let (policy, asked) = self.asking(policy, requested);
+        Some(self.forecast(&policy, asked).0)
     }
 
     /// The prediction for `policy` now, and the routes to start on when one
     /// can start.
-    fn forecast(&self, policy: &Policy) -> (Runner, Option<Vec<Route>>) {
+    fn forecast(&self, policy: &Policy, asked: Option<Asked>) -> (Runner, Option<Vec<Route>>) {
         let now = (self.now)();
         let book = capacity::Book::load(&self.store);
         let readings = usage::Book::load(&self.store);
@@ -543,7 +576,7 @@ impl Local {
         }
         match policy.choose(&book, &readings, &probe, now) {
             Choice::Start { order } => (
-                runner(policy, &order, &book, &readings, probe, now),
+                runner(policy, &order, &book, &readings, probe, now, asked),
                 Some(order),
             ),
             Choice::NoCapacity { until } => (Runner::NoCapacity { until }, None),
@@ -558,7 +591,16 @@ impl Local {
     /// Why no provider can start: none is signed in here, or every one
     /// signed in has a refusal that holds.
     pub fn choose(&self, policy: &Policy) -> Result<(Vec<Route>, Runner), String> {
-        match self.forecast(policy) {
+        self.choose_asking(policy, None)
+    }
+
+    /// [`Local::choose`] for a policy [`Local::asking`] made.
+    fn choose_asking(
+        &self,
+        policy: &Policy,
+        asked: Option<Asked>,
+    ) -> Result<(Vec<Route>, Runner), String> {
+        match self.forecast(policy, asked) {
             (runner, Some(order)) => Ok((order, runner)),
             (Runner::NoCapacity { until }, None) => Err(format!(
                 "No coding agent signed in here has capacity{}.",
@@ -609,7 +651,7 @@ impl Local {
         prompt: &str,
         thread: Option<&str>,
     ) -> Result<Record, String> {
-        self.start_full(dir, base, title, prompt, thread, &[])
+        self.start_full(dir, base, title, prompt, thread, &[], None)
     }
 
     /// [`Local::start`] with the images a chat on this computer attached:
@@ -629,9 +671,30 @@ impl Local {
         thread: Option<&str>,
         images: &[super::media::wire::Upload],
     ) -> Result<Record, String> {
-        self.start_full(dir, None, title, prompt, thread, images)
+        self.start_full(dir, None, title, prompt, thread, images, None)
     }
 
+    /// [`Local::start_with_images`] for a person who asked for `requested`
+    /// (#10076): that provider's routes go first when the settings allow
+    /// it, and a start falls back only when it is not signed in, refused
+    /// for a limit, or near its limit. The start card says what was asked
+    /// and, when another runs, why; every later turn asks again.
+    ///
+    /// # Errors
+    /// As [`Local::start_with_images`].
+    pub fn start_requested(
+        &self,
+        dir: &Path,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+        images: &[super::media::wire::Upload],
+        requested: Option<Provider>,
+    ) -> Result<Record, String> {
+        self.start_full(dir, None, title, prompt, thread, images, requested)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn start_full(
         &self,
         dir: &Path,
@@ -640,6 +703,7 @@ impl Local {
         prompt: &str,
         thread: Option<&str>,
         images: &[super::media::wire::Upload],
+        requested: Option<Provider>,
     ) -> Result<Record, String> {
         let references: Vec<_> = images.iter().map(|image| image.reference.clone()).collect();
         super::media::wire::validate_all(&references).map_err(|error| error.message)?;
@@ -652,8 +716,8 @@ impl Local {
             .map_err(|_| format!("{base} names no commit in {}", checkout.top.display()))?;
             checkout.head = commit.trim().to_owned();
         }
-        let policy = self.policy(&checkout.name)?;
-        let (order, runner) = self.choose(&policy)?;
+        let (policy, asked) = self.asking(self.policy(&checkout.name)?, requested);
+        let (order, runner) = self.choose_asking(&policy, asked)?;
         let now = (self.now)();
         let task = identity(&format!(
             "task:{}:{}:{}:{}",
@@ -717,6 +781,7 @@ impl Local {
             base: checkout.head.clone(),
             turns: Vec::new(),
             ends: BTreeMap::new(),
+            requested: requested.map(|provider| provider.as_str().to_owned()),
         };
         self.launch(&policy, &order, runner, &submitted, &mut record)?;
         Ok(record)
@@ -772,8 +837,9 @@ impl Local {
         if !matches!(current.status, Status::Finished | Status::Cancelled) {
             return Err("Coder is still working on this task; wait for it to ask.".into());
         }
-        let policy = self.policy(&record.project)?;
-        let (order, runner) = self.choose(&policy)?;
+        let requested = record.requested.as_deref().and_then(Provider::from_config);
+        let (policy, asked) = self.asking(self.policy(&record.project)?, requested);
+        let (order, runner) = self.choose_asking(&policy, asked)?;
         let command = Command {
             schema: COMMAND_SCHEMA.into(),
             command_id: identity(&format!("continue:{task}:{}:{}", current.revision, nonce())),
@@ -942,43 +1008,52 @@ fn unconnected(providers: &[Provider]) -> String {
 /// registered project.
 #[must_use]
 pub fn ready_here() -> bool {
-    here().0
+    here(None).0
 }
 
 /// Who a Coder run on this computer would use now over [`default_store`]
-/// ([`Local::predict`]), read at most every [`READY_EVERY`] seconds. A
-/// host's chat puts it on a reply that offers Coder.
+/// ([`Local::predict`]), for a person who asked for `requested` or for
+/// none (#10076), read at most every [`READY_EVERY`] seconds. A host's
+/// chat puts it on a reply that offers Coder.
 #[must_use]
-pub fn runner_here() -> Option<Runner> {
-    here().1
+pub fn runner_here(requested: Option<nostr::cj_conversation::Engine>) -> Option<Runner> {
+    here(requested.map(settings::provider_of)).1
 }
 
-fn here() -> (bool, Option<Runner>) {
+fn here(requested: Option<Provider>) -> (bool, Option<Runner>) {
     use std::sync::Mutex;
-    type Cached = Option<(u64, bool, Option<Runner>)>;
-    static CACHE: Mutex<Cached> = Mutex::new(None);
+    type Cached = Vec<(Option<Provider>, u64, bool, Option<Runner>)>;
+    static CACHE: Mutex<Cached> = Mutex::new(Vec::new());
     let now = autostart::unix_now();
     let mut cache = CACHE.lock().unwrap_or_else(|poison| poison.into_inner());
-    if let Some((at, ready, runner)) = cache.as_ref()
-        && now.saturating_sub(*at) < READY_EVERY
-    {
+    cache.retain(|(_, at, _, _)| now.saturating_sub(*at) < READY_EVERY);
+    if let Some((_, _, ready, runner)) = cache.iter().find(|(asked, ..)| *asked == requested) {
         return (*ready, runner.clone());
     }
     let run = Local::here(default_store());
-    let runner = run.predict();
+    let runner = run.predict(requested);
     // `ready` is `choose` succeeding under a policy with a real engine.
     let ready =
         run.policy("project").is_ok() && runner.as_ref().is_some_and(|r| r.provider().is_some());
-    *cache = Some((now, ready, runner.clone()));
+    cache.push((requested, now, ready, runner.clone()));
     (ready, runner)
 }
 
 /// How long [`ready_here`] keeps its answer, in seconds.
 pub const READY_EVERY: u64 = 15;
 
+/// The provider a person asked for, and whether the settings allow it
+/// (#10076).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Asked {
+    provider: Provider,
+    allowed: bool,
+}
+
 /// Who runs first in `order`, and why each route before it in the
 /// policy's preference order was passed over: the checks
-/// [`Policy::choose`] made, in its order.
+/// [`Policy::choose`] made, in its order. A provider the person asked for
+/// that the settings do not allow is passed over first, as not allowed.
 fn runner(
     policy: &Policy,
     order: &[Route],
@@ -986,6 +1061,7 @@ fn runner(
     readings: &usage::Book,
     probe: fn(Provider) -> Connection,
     now: u64,
+    asked: Option<Asked>,
 ) -> Runner {
     let chosen = &order[0];
     let threshold = policy
@@ -994,6 +1070,16 @@ fn runner(
         .as_ref()
         .map(|p| p.threshold_percent);
     let mut passed = Vec::new();
+    if let Some(Asked {
+        provider,
+        allowed: false,
+    }) = asked
+    {
+        passed.push(Passed {
+            provider: provider.as_str().into(),
+            why: PassedOver::NotAllowed,
+        });
+    }
     for route in policy.routes() {
         if route.provider == chosen.provider {
             break;
@@ -1038,6 +1124,7 @@ fn runner(
         provider: chosen.provider.as_str().into(),
         model: chosen.model.clone(),
         passed,
+        requested: asked.map(|asked| asked.provider.as_str().to_owned()),
     }
 }
 
@@ -1046,11 +1133,23 @@ fn runner(
 /// "Codex reached its usage limit until …; using Claude Code."
 fn started_reason(runner: &Runner) -> String {
     let Runner::Runs {
-        provider, passed, ..
+        provider,
+        passed,
+        requested,
+        ..
     } = runner
     else {
         return runner.text();
     };
+    if let Some(reason) = coder_events::requested_reason(
+        provider,
+        passed,
+        requested.as_deref(),
+        "is signed in and has capacity.",
+        "is running.",
+    ) {
+        return reason;
+    }
     let name = coder_events::provider_name(&json!(provider));
     if passed.is_empty() {
         format!("{name} is signed in and has capacity.")
@@ -2143,10 +2242,10 @@ mod tests {
     fn the_prediction_names_codex_claude_code_or_nobody() {
         let dir = tempfile::tempdir().unwrap();
         let run = local(dir.path(), both);
-        assert_eq!(run.predict().unwrap().text(), "Codex will do this.");
+        assert_eq!(run.predict(None).unwrap().text(), "Codex will do this.");
 
         reading(run.store(), Provider::Codex, 0.92);
-        let runner = run.predict().unwrap();
+        let runner = run.predict(None).unwrap();
         assert_eq!(
             runner.text(),
             "Codex is at 92% of its window; Claude Code will do this."
@@ -2155,14 +2254,14 @@ mod tests {
 
         let none = local(dir.path(), nobody);
         assert_eq!(
-            none.predict().unwrap(),
+            none.predict(None).unwrap(),
             Runner::NotSignedIn {
                 providers: vec!["codex".into(), "claude".into()]
             },
             "no login, whatever the books say"
         );
         assert_eq!(
-            none.predict().unwrap().text(),
+            none.predict(None).unwrap().text(),
             "Neither Codex nor Claude Code is signed in on this computer. \
              Sign in to one to run Coder here."
         );
@@ -2200,7 +2299,7 @@ mod tests {
                 )
                 .unwrap();
             }
-            let predicted = run.predict().unwrap();
+            let predicted = run.predict(None).unwrap();
             let record = run
                 .start(&top, "Fix the parser", "Fix the parser.", None)
                 .unwrap();
@@ -2220,6 +2319,118 @@ mod tests {
             };
             assert_eq!(&started.model, model);
         }
+    }
+
+    fn only_codex(provider: Provider) -> Connection {
+        match provider {
+            Provider::Codex => Connection::Connected,
+            _ => Connection::Missing("no login".into()),
+        }
+    }
+
+    /// The engine the person asked for goes first, and the run falls back
+    /// only when it is not signed in, refused for a limit, or not allowed
+    /// by the settings; the start card says what was asked and why, and
+    /// the prediction is what starts (#10076). Fake engines: the probe
+    /// says who is signed in, the capacity book who is refused.
+    #[test]
+    fn the_engine_the_person_asked_for_runs_first_or_says_why_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        type Probe = fn(Provider) -> Connection;
+        // (probe, Claude refused, asked for, runs on, reason)
+        let cases: [(Probe, bool, Provider, &str, &str); 5] = [
+            (
+                both,
+                false,
+                Provider::Claude,
+                "claude",
+                "You asked for Claude Code; it is signed in and has capacity.",
+            ),
+            (
+                both,
+                false,
+                Provider::Codex,
+                "codex",
+                "You asked for Codex; it is signed in and has capacity.",
+            ),
+            (
+                both,
+                true,
+                Provider::Claude,
+                "codex",
+                "You asked for Claude Code; it reached its usage limit until",
+            ),
+            (
+                only_codex,
+                false,
+                Provider::Claude,
+                "codex",
+                "You asked for Claude Code; it is not signed in here, so Codex is running.",
+            ),
+            (
+                both,
+                false,
+                Provider::Grok,
+                "codex",
+                "You asked for Grok Build; it is not one of the engines your Coder settings \
+                 allow, so Codex is running.",
+            ),
+        ];
+        for (index, (probe, refused, asked, runs, reason)) in cases.into_iter().enumerate() {
+            let home = dir.path().join(format!("asked{index}"));
+            let run = local(&home, probe).with_launcher(Box::new(Held));
+            if refused {
+                let now = autostart::unix_now();
+                capacity::record(
+                    run.store(),
+                    capacity::Refusal::new(
+                        Provider::Claude,
+                        capacity::Kind::UsageLimit,
+                        now,
+                        Some(now + 3600),
+                    ),
+                )
+                .unwrap();
+            }
+            let predicted = run.predict(Some(asked)).unwrap();
+            let record = run
+                .start_requested(&top, "Fix it", "Fix it.", None, &[], Some(asked))
+                .unwrap();
+            let start = &record.turns[0];
+            assert_eq!(start.provider, runs, "case {index}");
+            assert!(
+                start.reason.starts_with(reason),
+                "case {index}: {}",
+                start.reason
+            );
+            assert_eq!(start.runner.as_ref(), Some(&predicted), "case {index}");
+            assert_eq!(record.requested.as_deref(), Some(asked.as_str()));
+            // A fallback that the reason says can't run is not named again.
+            if runs != asked.as_str() {
+                assert!(
+                    start
+                        .fallbacks
+                        .iter()
+                        .all(|f| !f.starts_with(asked.as_str())),
+                    "case {index}: {:?}",
+                    start.fallbacks
+                );
+                assert!(
+                    start.reason.ends_with("so Codex is running."),
+                    "case {index}"
+                );
+            }
+        }
+        // No request: the settings' order, as before.
+        let run = local(&dir.path().join("plain"), both).with_launcher(Box::new(Held));
+        let record = run.start(&top, "Fix it", "Fix it.", None).unwrap();
+        assert_eq!(record.turns[0].provider, "codex");
+        assert_eq!(
+            record.turns[0].reason,
+            "Codex is signed in and has capacity."
+        );
+        assert_eq!(record.requested, None);
     }
 
     #[test]

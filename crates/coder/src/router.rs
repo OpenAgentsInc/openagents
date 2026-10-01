@@ -58,6 +58,10 @@ pub use judge::{Routing, reading, request};
 pub use policy::{Lead, Mode, Situation, Tier, decide};
 pub use seams::Seams;
 
+/// A coding engine a dispatch offer may name as the person's request
+/// (#10076): NIP-CJ's closed set, the options of the `engine` question.
+pub use nostr::cj_conversation::Engine as CodingEngine;
+
 /// The question set's name, for evidence and for the wire. The route
 /// list is part of it: `chat-router-v2` added the Gym and eval routes, and
 /// `chat-router-v3` the `capability.missing` route and the `capability`
@@ -875,8 +879,14 @@ impl Screen {
 pub enum Offer {
     /// Dispatch Coder to the connected computer with this conversation as
     /// its task. The target comes from the screen's controls, never from
-    /// the message.
-    RunCoder { label: String },
+    /// the message. `engine` is the engine the `engine` reading named at
+    /// [`policy::ENGINE_CONFIDENCE`] (#10076), never text from the message;
+    /// `None` is no preference. It is a request the start puts first, not
+    /// permission.
+    RunCoder {
+        label: String,
+        engine: Option<CodingEngine>,
+    },
     /// Open a screen of the app.
     OpenScreen { screen: Screen, label: String },
     /// Run an `openagents` command, after a confirm.
@@ -938,8 +948,9 @@ impl Offer {
             )
         };
         Ok(match self {
-            Offer::RunCoder { label } => cj::Offer::RunCoder {
+            Offer::RunCoder { label, engine } => cj::Offer::RunCoder {
                 label: label.clone(),
+                engine: *engine,
             },
             Offer::OpenScreen { screen, label } => cj::Offer::OpenScreen {
                 screen: cj::Screen::parse(screen.word()).ok_or_else(|| unknown("screen"))?,
@@ -1627,6 +1638,7 @@ mod tests {
     fn offers_serialize_as_nip_cj_offer_feedback() {
         let run = Offer::RunCoder {
             label: "Run Coder".into(),
+            engine: None,
         }
         .feedback(2)
         .unwrap();

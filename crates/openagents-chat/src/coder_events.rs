@@ -100,7 +100,7 @@ pub struct Started {
     pub worktree: String,
     /// The commit the worktree started from.
     pub base: String,
-    /// `codex` or `claude`.
+    /// The provider's word: `codex`, `claude`, `grok`, `opencode`, or `devin`.
     pub provider: String,
     pub model: String,
     /// Why this provider, in a sentence ("Codex is signed in and has
@@ -131,11 +131,16 @@ pub enum Runner {
     /// `provider` will do the work. The routes before it in preference
     /// order were passed over, each with why.
     Runs {
-        /// `codex` or `claude`.
+        /// The provider's word: `codex`, `claude`, `grok`, `opencode`, or `devin`.
         provider: String,
         model: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         passed: Vec<Passed>,
+        /// The provider the person asked for (#10076), as the router's
+        /// typed `engine` reading named it on the offer, when they asked
+        /// for one: first in `passed`, with why, when it does not run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requested: Option<String>,
     },
     /// None of the coding agents a run here may use (`providers`, in
     /// preference order) is signed in on this computer.
@@ -151,7 +156,7 @@ pub enum Runner {
 /// A route passed over before the one that runs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Passed {
-    /// `codex` or `claude`.
+    /// The provider's word: `codex`, `claude`, `grok`, `opencode`, or `devin`.
     pub provider: String,
     #[serde(flatten)]
     pub why: PassedOver,
@@ -169,6 +174,9 @@ pub enum PassedOver {
     /// A fresh usage reading puts its fullest window at `used_percent`,
     /// at or above the threshold.
     NearLimit { used_percent: u8 },
+    /// The person asked for it, and the owner's Coder settings do not
+    /// list it among the engines a run here may use (#10076).
+    NotAllowed,
 }
 
 impl Passed {
@@ -176,18 +184,63 @@ impl Passed {
     #[must_use]
     pub fn text(&self) -> String {
         let who = provider_name(&Value::String(self.provider.clone()));
+        format!("{who} {}", self.clause())
+    }
+
+    /// Why it was passed over, without its name: `is at 92% of its
+    /// window`.
+    #[must_use]
+    pub fn clause(&self) -> String {
         match &self.why {
-            PassedOver::NotSignedIn => format!("{who} is not signed in here"),
+            PassedOver::NotSignedIn => "is not signed in here".into(),
             PassedOver::Refused { kind, until } => format!(
-                "{who} reached its {} until {}",
+                "reached its {} until {}",
                 kind.replace('_', " "),
                 utc(*until)
             ),
             PassedOver::NearLimit { used_percent } => {
-                format!("{who} is at {used_percent}% of its window")
+                format!("is at {used_percent}% of its window")
             }
+            PassedOver::NotAllowed => "is not one of the engines your Coder settings allow".into(),
         }
     }
+}
+
+/// The reason a run names when the person asked for an engine (#10076):
+/// "You asked for Claude Code; it reached its usage limit until …, so
+/// Codex {then}" when it does not run, "You asked for Claude Code; it
+/// {then}" when it does. `None` when they asked for none. `then` is the
+/// verb phrase of the surface: "will do this." on an offer, "is running."
+/// on a start.
+#[must_use]
+pub fn requested_reason(
+    provider: &str,
+    passed: &[Passed],
+    requested: Option<&str>,
+    runs: &str,
+    then: &str,
+) -> Option<String> {
+    let requested = requested?;
+    let asked = provider_name(&Value::String(requested.to_owned()));
+    if requested == provider {
+        return Some(format!("You asked for {asked}; it {runs}"));
+    }
+    let who = provider_name(&Value::String(provider.to_owned()));
+    let mut why: Vec<String> = Vec::new();
+    match passed.iter().find(|p| p.provider == requested) {
+        Some(own) => why.push(format!("it {}", own.clause())),
+        None => why.push("it can't run here now".into()),
+    }
+    why.extend(
+        passed
+            .iter()
+            .filter(|p| p.provider != requested)
+            .map(Passed::text),
+    );
+    Some(format!(
+        "You asked for {asked}; {}, so {who} {then}",
+        why.join("; ")
+    ))
 }
 
 impl Runner {
@@ -207,8 +260,20 @@ impl Runner {
     pub fn text(&self) -> String {
         match self {
             Runner::Runs {
-                provider, passed, ..
+                provider,
+                passed,
+                requested,
+                ..
             } => {
+                if let Some(text) = requested_reason(
+                    provider,
+                    passed,
+                    requested.as_deref(),
+                    "will do this.",
+                    "will do this.",
+                ) {
+                    return text;
+                }
                 let who = provider_name(&Value::String(provider.clone()));
                 if passed.is_empty() {
                     format!("{who} will do this.")
@@ -1217,6 +1282,73 @@ mod tests {
         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
     }
 
+    /// When the person asked for an engine, the runner says so first, and
+    /// why another runs when it does (#10076).
+    #[test]
+    fn a_runner_states_the_engine_the_person_asked_for() {
+        let honored = Runner::Runs {
+            provider: "claude".into(),
+            model: "claude-opus-5-5".into(),
+            passed: vec![],
+            requested: Some("claude".into()),
+        };
+        assert_eq!(
+            honored.text(),
+            "You asked for Claude Code; it will do this."
+        );
+        let wire = serde_json::to_value(&honored).unwrap();
+        assert_eq!(wire["requested"], "claude");
+        assert_eq!(serde_json::from_value::<Runner>(wire).unwrap(), honored);
+        let limited = Runner::Runs {
+            provider: "codex".into(),
+            model: "gpt-6-luna".into(),
+            passed: vec![Passed {
+                provider: "claude".into(),
+                why: PassedOver::Refused {
+                    kind: "usage_limit".into(),
+                    until: 1_791_050_823,
+                },
+            }],
+            requested: Some("claude".into()),
+        };
+        assert_eq!(
+            limited.text(),
+            "You asked for Claude Code; it reached its usage limit until 2026-10-03 18:07 UTC, \
+             so Codex will do this."
+        );
+        for (why, clause) in [
+            (PassedOver::NotSignedIn, "it is not signed in here"),
+            (
+                PassedOver::NotAllowed,
+                "it is not one of the engines your Coder settings allow",
+            ),
+            (
+                PassedOver::NearLimit { used_percent: 95 },
+                "it is at 95% of its window",
+            ),
+        ] {
+            let runner = Runner::Runs {
+                provider: "codex".into(),
+                model: "gpt-6-luna".into(),
+                passed: vec![Passed {
+                    provider: "grok".into(),
+                    why,
+                }],
+                requested: Some("grok".into()),
+            };
+            assert_eq!(
+                runner.text(),
+                format!("You asked for Grok Build; {clause}, so Codex will do this.")
+            );
+        }
+        // An old runner, without the field, reads as no request.
+        let old: Runner = serde_json::from_value(
+            json!({"state": "runs", "provider": "codex", "model": "gpt-6-luna"}),
+        )
+        .unwrap();
+        assert_eq!(old.text(), "Codex will do this.");
+    }
+
     /// The three things an offer can say, from their typed fields, and
     /// the wire form a phone reads back.
     #[test]
@@ -1225,6 +1357,7 @@ mod tests {
             provider: "codex".into(),
             model: "gpt-6-luna".into(),
             passed: vec![],
+            requested: None,
         };
         assert_eq!(codex.text(), "Codex will do this.");
         assert_eq!(codex.provider(), Some("codex"));
@@ -1240,6 +1373,7 @@ mod tests {
                 provider: "codex".into(),
                 why: PassedOver::NearLimit { used_percent: 92 },
             }],
+            requested: None,
         };
         assert_eq!(
             claude.text(),
@@ -1261,6 +1395,7 @@ mod tests {
                     until: 1_791_050_823,
                 },
             }],
+            requested: None,
         };
         assert_eq!(
             refused.text(),

@@ -365,6 +365,7 @@ mod tests {
             capability_missing_p: 0.02,
             capability_closest: None,
             deck: None,
+            engine: None,
             risk: Risk::Ok,
             risk_p: 0.99,
         }
@@ -429,7 +430,8 @@ mod tests {
 
         assert_eq!(
             Offer::RunCoder {
-                label: "Run Coder".into()
+                label: "Run Coder".into(),
+                engine: None,
             }
             .feedback(2)
             .unwrap(),

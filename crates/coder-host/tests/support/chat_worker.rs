@@ -35,8 +35,15 @@ fn script(payload: &Value) -> (Vec<Value>, Value) {
             (2..42).map(|seq| json!({"v": 2, "type": "partial", "seq": seq, "delta": "."})),
         );
     }
+    // A message that names Claude gets the typed engine on its offer, as
+    // the router's `engine` reading would set it (#10076).
+    let claude = last.is_some_and(|last| last.to_string().contains("on claude"));
     if offer {
-        feedback.push(json!({"v": 2, "requires": [], "type": "offer", "offer": "run_coder"}));
+        let mut run = json!({"v": 2, "requires": [], "type": "offer", "offer": "run_coder"});
+        if claude {
+            run["engine"] = json!("claude_code");
+        }
+        feedback.push(run);
         feedback.push(json!({
             "v": 2, "requires": [], "type": "card", "card": "news",
             "items": [{

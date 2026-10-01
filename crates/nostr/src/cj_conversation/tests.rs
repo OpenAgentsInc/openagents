@@ -69,6 +69,7 @@ fn offers() -> Vec<Offer> {
     vec![
         Offer::RunCoder {
             label: "Run on Studio Mac".into(),
+            engine: None,
         },
         Offer::OpenScreen {
             screen: Screen::GymResult,
@@ -112,6 +113,10 @@ fn offers() -> Vec<Offer> {
         Offer::OpenPresentation {
             deck: "three-devdays-later".into(),
             label: "Open the deck".into(),
+        },
+        Offer::RunCoder {
+            label: "Run Coder".into(),
+            engine: Some(Engine::ClaudeCode),
         },
     ]
 }
@@ -222,6 +227,46 @@ fn a_capability_card_is_closed_and_names_nothing_of_the_message() {
         code(parse_card(&elsewhere)),
         RefusalCode::UnsupportedFeature
     );
+}
+
+/// A `run_coder` offer's `engine` is one exact word of the closed engine
+/// set, or absent for no preference (#10076); anything else refuses.
+#[test]
+fn a_run_coder_engine_is_a_closed_word_or_absent() {
+    let body = offer_feedback(
+        &Offer::RunCoder {
+            label: "Run Coder".into(),
+            engine: Some(Engine::ClaudeCode),
+        },
+        2,
+    )
+    .unwrap();
+    assert_eq!(body["engine"], "claude_code");
+    let plain = offer_feedback(
+        &Offer::RunCoder {
+            label: "Run Coder".into(),
+            engine: None,
+        },
+        2,
+    )
+    .unwrap();
+    assert!(plain.get("engine").is_none());
+    for engine in Engine::ALL {
+        assert_eq!(Engine::parse(engine.word()), Some(engine));
+        // Its serde form is its wire word.
+        assert_eq!(serde_json::to_value(engine).unwrap(), json!(engine.word()));
+    }
+    for word in [
+        json!("Claude Code"),
+        json!("claude"),
+        json!(""),
+        json!(1),
+        Value::Null,
+    ] {
+        let mut odd = body.clone();
+        odd["engine"] = word;
+        assert_eq!(code(parse_offer(&odd)), RefusalCode::UnsupportedFeature);
+    }
 }
 
 #[test]

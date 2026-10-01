@@ -167,6 +167,10 @@ pub const PRESENTATION_ROUTE: f64 = 0.70;
 /// The least `deck` probability at which the reading names the deck to
 /// open.
 pub const DECK_CONFIDENCE: f64 = 0.60;
+/// The least `engine` probability at which a dispatch offer names the
+/// engine the person asked for (#10076). An unsure reading is no
+/// preference: a wrong engine put first costs more than none.
+pub const ENGINE_CONFIDENCE: f64 = 0.70;
 /// The routes a message may take and still continue an open authoring
 /// interview: the interview's own, running or reading its pilot, and the
 /// short replies ("looks good", "change it") that answer its questions.
@@ -479,6 +483,38 @@ fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
     if situation.context.computer_ready == Some(false) {
         return final_of(bank, facts, "dispatch.no_computer");
     }
+    let engine = requested_engine(routing);
+    let mut tier = dispatch_stem(routing, bank, facts, situation, engine)?;
+    if let Tier::CannedStem {
+        offer: Some(Offer::RunCoder { engine: named, .. }),
+        ..
+    } = &mut tier
+    {
+        *named = engine;
+    }
+    Some(tier)
+}
+
+/// The engine a dispatch offer names: the `engine` reading at
+/// [`ENGINE_CONFIDENCE`], else none (#10076).
+#[must_use]
+pub fn requested_engine(routing: &Routing) -> Option<super::CodingEngine> {
+    routing
+        .engine
+        .filter(|(_, p)| *p >= ENGINE_CONFIDENCE)
+        .map(|(engine, _)| engine)
+}
+
+/// The dispatch stem: one naming a capability the reading found, else
+/// one naming the engine the person asked for, else the chosen or plain
+/// stem.
+fn dispatch_stem(
+    routing: &Routing,
+    bank: &Bank,
+    facts: &Facts,
+    situation: &Situation,
+    engine: Option<super::CodingEngine>,
+) -> Option<Tier> {
     if let Some(capability) = named_capability(routing)
         && let Some(entry) = bank.entry("dispatch.capability_stem")
         && let Some(tier) = stem_of(
@@ -486,6 +522,16 @@ fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
             &facts
                 .clone()
                 .set("capability.name", capability.name.clone()),
+            situation.personalize,
+        )
+    {
+        return Some(tier);
+    }
+    if let Some(engine) = engine
+        && let Some(entry) = bank.entry("dispatch.engine_stem")
+        && let Some(tier) = stem_of(
+            entry,
+            &facts.clone().set("engine.name", engine.name()),
             situation.personalize,
         )
     {
@@ -845,6 +891,7 @@ mod tests {
             capability_missing_p: 0.0,
             capability_closest: None,
             deck: None,
+            engine: None,
             risk: Risk::Ok,
             risk_p: 0.95,
         }
@@ -1334,6 +1381,58 @@ mod tests {
         risky.risk = Risk::Harmful;
         risky.risk_p = 0.9;
         assert!(matches!(router(&risky), Tier::Refuse { .. }));
+    }
+
+    /// A dispatch offer names the engine the `engine` reading found at
+    /// [`ENGINE_CONFIDENCE`], and its stem says so; an unsure reading, or
+    /// none, is no preference. A turn that is not a dispatch carries no
+    /// engine, whatever the reading (#10076).
+    #[test]
+    fn a_dispatch_names_the_engine_the_person_asked_for() {
+        use crate::router::CodingEngine as Engine;
+        let mut work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.8, 0.9);
+        work.engine = Some((Engine::ClaudeCode, 0.9));
+        let tier = router(&work);
+        let Tier::CannedStem {
+            answer,
+            stem,
+            offer,
+            ..
+        } = &tier
+        else {
+            panic!("{tier:?}");
+        };
+        assert_eq!(answer.id, "dispatch.engine_stem");
+        assert_eq!(stem, "We'll dispatch Coder, asking for Claude Code, to");
+        assert_eq!(
+            offer,
+            &Some(Offer::RunCoder {
+                label: "Run Coder".into(),
+                engine: Some(Engine::ClaudeCode),
+            })
+        );
+        // An unsure reading is no preference, on the plain stem.
+        work.engine = Some((Engine::ClaudeCode, ENGINE_CONFIDENCE - 0.01));
+        let tier = router(&work);
+        let Tier::CannedStem { answer, offer, .. } = &tier else {
+            panic!("{tier:?}");
+        };
+        assert_eq!(answer.id, "dispatch.stem");
+        assert!(matches!(offer, Some(Offer::RunCoder { engine: None, .. })));
+        work.engine = None;
+        assert!(matches!(
+            router(&work),
+            Tier::CannedStem {
+                offer: Some(Offer::RunCoder { engine: None, .. }),
+                ..
+            }
+        ));
+        // Not a dispatch: "ask Claude what a monad is" names Claude only as
+        // the subject, and no offer carries an engine.
+        let mut general = routed(RouteId::General, 0.9, "none", 0.0, 0.9);
+        general.engine = Some((Engine::ClaudeCode, 0.9));
+        general.lane = Lane::Chat;
+        assert!(matches!(router(&general), Tier::Model { .. }));
     }
 
     /// A dispatch offer names the Coder-run capability the reading found

@@ -726,6 +726,9 @@ impl Panel {
                 return;
             }
         };
+        // The engine the person asked for, from the reply's typed offer
+        // (#10076).
+        let engine = openagents_chat::delegation::requested(&snapshot.turns);
         self.runs.insert(
             chat.to_owned(),
             Run::start_with_images(
@@ -735,7 +738,8 @@ impl Panel {
                 self.coder_projects.clone(),
                 images,
                 Instant::now(),
-            ),
+            )
+            .requesting(engine),
         );
         if self.session.selected.as_deref() == Some(chat) {
             self.rows_dirty = true;

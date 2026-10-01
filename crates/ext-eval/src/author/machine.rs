@@ -436,6 +436,7 @@ impl Interview {
             },
             Planned::RunCoder => WireOffer::RunCoder {
                 label: "Run Coder on your computer".into(),
+                engine: None,
             },
         })
     }

@@ -141,6 +141,8 @@ impl Engine {
                 for over in passed {
                     let state = match over.why {
                         PassedOver::NotSignedIn => EngineState::NotSignedIn,
+                        // Not a readiness: the settings leave it out (#10076).
+                        PassedOver::NotAllowed => continue,
                         _ => EngineState::Limited,
                     };
                     push(&over.provider, state);
@@ -563,6 +565,16 @@ impl Offer {
     }
 }
 
+/// The engine a `run_coder` offer payload names (#10076): one exact word
+/// of NIP-CJ's closed set, else none. A word this build doesn't know is no
+/// preference, and the offer still shows.
+#[must_use]
+pub fn engine_of(payload: &Value) -> Option<nostr::cj_conversation::Engine> {
+    payload["engine"]
+        .as_str()
+        .and_then(nostr::cj_conversation::Engine::parse)
+}
+
 /// An offer body without the worker's label, which the phone never shows:
 /// it names every control itself. The body still parses, with an empty
 /// label replaced by the phone's own word.
@@ -667,6 +679,11 @@ pub struct Meta {
     /// sets it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner: Option<crate::coder_events::Runner>,
+    /// The coding engine the person asked for, from the worker's
+    /// `run_coder` offer (#10076): the router's typed `engine` reading,
+    /// never text. A request the start puts first, not permission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<nostr::cj_conversation::Engine>,
 }
 
 impl Meta {
@@ -696,6 +713,9 @@ impl Meta {
             && self.offers.len() < MAX_OFFERS
             && !self.offers.contains(&offer)
         {
+            if offer == Offer::RunCoder {
+                self.engine = engine_of(payload);
+            }
             self.offers.push(offer);
         }
     }
@@ -832,6 +852,30 @@ mod tests {
                 deck: "test-time-capabilities".into()
             }]
         );
+    }
+
+    /// A `run_coder` offer's `engine` is kept beside the offer as a typed
+    /// value; an unknown word is no preference (#10076).
+    #[test]
+    fn a_run_coder_offer_keeps_the_engine_asked_for() {
+        use nostr::cj_conversation::Engine;
+        let mut meta = Meta::default();
+        meta.offered(
+            &json!({"v": 2, "requires": [], "type": "offer", "offer": "run_coder",
+            "target": "connected_computer", "label": "Run Coder", "engine": "claude_code"}),
+        );
+        assert_eq!(meta.offers, [Offer::RunCoder]);
+        assert_eq!(meta.engine, Some(Engine::ClaudeCode));
+        let kept = serde_json::to_value(&meta).unwrap();
+        assert_eq!(kept["engine"], "claude_code");
+        assert_eq!(serde_json::from_value::<Meta>(kept).unwrap(), meta);
+        let mut plain = Meta::default();
+        plain.offered(&json!({"offer": "run_coder", "engine": "gemini_cli"}));
+        assert_eq!((plain.offers.len(), plain.engine), (1, None));
+        // Another offer never sets it.
+        let mut other = Meta::default();
+        other.offered(&json!({"offer": "open_screen", "screen": "wallet", "engine": "codex"}));
+        assert_eq!(other.engine, None);
     }
 
     /// Offers are read against the phone's own tables: a screen it does
@@ -1031,6 +1075,7 @@ mod computer_context_tests {
                 provider: "codex".into(),
                 why: PassedOver::NearLimit { used_percent: 97 },
             }],
+            requested: None,
         };
         let context = Context {
             surface: Surface::Desktop,

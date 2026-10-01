@@ -466,7 +466,11 @@ async fn a_phone_stops_a_host_threads_streaming_reply_and_the_owner_reads_it_sto
 }
 
 /// A task owner that records each creation once per idempotency key.
-struct Recorder(std::sync::Mutex<Vec<(String, coder_host::TaskRef, coder_host::TaskCreate)>>);
+#[allow(clippy::type_complexity)]
+struct Recorder(
+    std::sync::Mutex<Vec<(String, coder_host::TaskRef, coder_host::TaskCreate)>>,
+    std::sync::Mutex<Vec<(String, nostr::cj_conversation::Engine)>>,
+);
 
 impl Recorder {
     fn created(&self) -> Vec<(coder_host::TaskRef, coder_host::TaskCreate)> {
@@ -480,6 +484,10 @@ impl Recorder {
 }
 
 impl coder_host::Tasks for Recorder {
+    fn prefer(&self, key: &str, engine: nostr::cj_conversation::Engine) {
+        self.1.lock().unwrap().push((key.to_owned(), engine));
+    }
+
     fn create(
         &self,
         key: &str,
@@ -543,7 +551,10 @@ fn json_keys(value: &serde_json::Value, found: &mut Vec<String>) {
 async fn a_phone_runs_coder_from_a_host_threads_offer() {
     let worker = support::key();
     let (door, _payloads) = chat_worker::start(worker).await;
-    let recorder = std::sync::Arc::new(Recorder(std::sync::Mutex::new(vec![])));
+    let recorder = std::sync::Arc::new(Recorder(
+        std::sync::Mutex::new(vec![]),
+        std::sync::Mutex::new(vec![]),
+    ));
     let host = host_with(Options {
         chat_door: Some(ChatDoor {
             relay: door,
@@ -566,7 +577,7 @@ async fn a_phone_runs_coder_from_a_host_threads_offer() {
         Command::Send {
             chat: thread.clone(),
             request: "55".repeat(16),
-            text: "offer coder a haiku".into(),
+            text: "offer coder a haiku on claude".into(),
         },
     )
     .await;
@@ -601,6 +612,8 @@ async fn a_phone_runs_coder_from_a_host_threads_offer() {
         openagents_chat::router::Offer::parse(&reply.extras.offers[0]),
         Some(openagents_chat::router::Offer::RunCoder)
     );
+    // The engine the person asked for rides on the page's offer (#10076).
+    assert_eq!(reply.extras.offers[0]["engine"], "claude_code");
     assert_eq!(reply.extras.followups[0].label, "Say it shorter");
     assert_eq!(reply.extras.cards[0]["card"], "news");
     let encoded = serde_json::to_value(reply).unwrap();
@@ -622,6 +635,10 @@ async fn a_phone_runs_coder_from_a_host_threads_offer() {
     assert_eq!(receipt.operation.as_str(), "thread.run");
     let created = recorder.created();
     assert_eq!(created.len(), 1);
+    // The host asked its task store for that engine, for this create.
+    let preferred = recorder.1.lock().unwrap().clone();
+    assert_eq!(preferred.len(), 1);
+    assert_eq!(preferred[0].1, nostr::cj_conversation::Engine::ClaudeCode);
     assert_eq!(created[0].0.task, receipt.reference);
     assert_eq!(created[0].1.workspace, "checkout");
     assert!(

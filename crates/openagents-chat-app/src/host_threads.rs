@@ -1281,6 +1281,7 @@ fn meta_of(
             // on its Run Coder offer, as a typed value or not at all.
             if offer == openagents_chat::router::Offer::RunCoder {
                 meta.runner = serde_json::from_value(value["runner"].clone()).ok();
+                meta.engine = openagents_chat::router::engine_of(value);
             }
             meta.offers.push(offer);
         }

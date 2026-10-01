@@ -3491,6 +3491,7 @@ mod tests {
             "opener": sure(opener, &openers),
             "capability": capability("not-a-capability-request", &[]),
             "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement", "none"]),
+            "engine": engine("none"),
         });
         // A desktop turn also asks which deck (#10058).
         if router::Context::of(context).surface() == router::Surface::Desktop {
@@ -3502,6 +3503,17 @@ mod tests {
             answers["deck"] = sure("none", &decks);
         }
         answers
+    }
+
+    /// The `engine` answer over the closed engine list and `none`, sure
+    /// of `choice` (#10076).
+    fn engine(choice: &str) -> Value {
+        let options: Vec<&str> = router::CodingEngine::ALL
+            .iter()
+            .map(|engine| engine.word())
+            .chain(["none"])
+            .collect();
+        sure(choice, &options)
     }
 
     /// The `capability` answer over the built-in admitted set, `extra`
@@ -3920,6 +3932,55 @@ mod tests {
                 .starts_with("chat-answers-v1@")
         );
         assert!(*at < Duration::from_millis(1_000), "{at:?}");
+    }
+
+    /// The owner's "Do a test delegation to claude" (#10076): the typed
+    /// `engine` reading names Claude Code, so the offer carries it as
+    /// NIP-CJ's `engine` and the stem says it was asked for; with no
+    /// engine read, the offer carries none.
+    #[tokio::test]
+    async fn a_dispatch_offer_names_the_engine_the_person_asked_for() {
+        let mut answers = routed("work.dispatch", "dispatch.stem", 0.9, "none");
+        answers["engine"] = engine("claude_code");
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn(
+                "Do a test delegation to claude",
+                json!({ "surface": "phone", "computer_ready": true }),
+            ),
+            personalized(" take this on."),
+            RouterSetting::Live,
+        )
+        .await;
+        let offers = of_type(&frames, "offer");
+        assert_eq!(offers[0]["offer"], "run_coder");
+        assert_eq!(offers[0]["engine"], "claude_code");
+        let partials = of_type(&frames, "partial");
+        assert_eq!(
+            partials[0]["delta"],
+            "We'll dispatch Coder, asking for Claude Code, to"
+        );
+        assert!(
+            frames.last().unwrap().1["answer"]
+                .as_str()
+                .unwrap()
+                .starts_with("dispatch.engine_stem@")
+        );
+        let plain = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed("work.dispatch", "dispatch.stem", 0.9, "none"),
+            )),
+            routed_turn("delegate this", json!({ "computer_ready": true })),
+            personalized(" take this on."),
+            RouterSetting::Live,
+        )
+        .await;
+        let offers = of_type(&plain, "offer");
+        assert_eq!(offers[0]["offer"], "run_coder");
+        assert!(offers[0].get("engine").is_none(), "{}", offers[0]);
     }
 
     /// A continuation that breaks the rules is never shown: the stem's

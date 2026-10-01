@@ -40,11 +40,14 @@ fn runner(backend: &Backend, thread: &str) -> Local {
 
 /// Who a Coder run for this thread would use now, and why: the runner's
 /// own choice ([`Local::predict`]) over the thread's store and settings.
+/// `engine` is the engine the person asked for, from the reply's typed
+/// offer (#10076).
 pub(super) fn predict(
     backend: &Backend,
     thread: &str,
+    engine: Option<nostr::cj_conversation::Engine>,
 ) -> Option<openagents_chat::coder_events::Runner> {
-    runner(backend, thread).predict()
+    runner(backend, thread).predict(engine.map(coder::task::settings::provider_of))
 }
 
 /// Whether a coding reply waits for `openagents chat run-coder` instead of
@@ -94,7 +97,7 @@ pub(super) fn context(store: PathBuf, no_run: bool) -> openagents_chat::router::
         Vec::new()
     } else {
         Local::here(store.clone())
-            .predict()
+            .predict(None)
             .map(|runner| Engine::from_runner(&runner))
             .unwrap_or_default()
     };
@@ -169,10 +172,15 @@ pub(super) async fn start(output: &Output, backend: &mut Backend, id: &str) -> u
     let run = runner(backend, id);
     let title = thread.summary.title.clone();
     let chat = id.to_owned();
-    let started =
-        tokio::task::spawn_blocking(move || run.start(&here, &title, &prompt, Some(&chat)))
-            .await
-            .unwrap_or_else(|_| Err("Coder could not start.".into()));
+    // The engine the person asked for, from the reply's typed offer: it
+    // goes first, and the start card says why when another runs (#10076).
+    let requested = openagents_chat::delegation::requested(&thread.turns)
+        .map(coder::task::settings::provider_of);
+    let started = tokio::task::spawn_blocking(move || {
+        run.start_requested(&here, &title, &prompt, Some(&chat), &[], requested)
+    })
+    .await
+    .unwrap_or_else(|_| Err("Coder could not start.".into()));
     let record = match started {
         Ok(record) => record,
         Err(message) => {

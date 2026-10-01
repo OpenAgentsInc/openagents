@@ -129,6 +129,11 @@ pub struct Row {
     /// `None` when it names none and the default tool is right.
     #[serde(default)]
     pub tool: Option<String>,
+    /// For a `work.dispatch` row, the coding engine its message asks for,
+    /// by its NIP-CJ word (`claude_code`), or `None` when it asks for none
+    /// (#10076). A right dispatch offer names exactly it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     pub split: String,
@@ -933,6 +938,7 @@ mod tests {
         "presentation.unknown",
         "presentation.elsewhere",
         "dispatch.capability_stem",
+        "dispatch.engine_stem",
     ];
 
     /// An `eval.run` row's tool is a tool of the product corpus's catalog
@@ -1079,6 +1085,53 @@ mod tests {
         assert!(near >= 10, "{near}");
     }
 
+    /// The engine rows (#10076): dispatch rows that name an engine, by a
+    /// word of NIP-CJ's closed set, dispatch rows that name none, and near
+    /// misses that name one only as a subject; only a `work.dispatch` row
+    /// names an engine, and some of each kind are held out.
+    #[test]
+    fn engine_rows_name_a_closed_engine_on_dispatch_only() {
+        let set = Set::fixture();
+        let tagged: Vec<&Row> = set
+            .rows
+            .iter()
+            .filter(|r| r.tags.iter().any(|t| t == "engine"))
+            .collect();
+        for row in &set.rows {
+            if let Some(engine) = &row.engine {
+                assert_eq!(row.route, "work.dispatch", "{}", row.id);
+                assert!(
+                    crate::router::CodingEngine::parse(engine).is_some(),
+                    "{}: {engine}",
+                    row.id
+                );
+                assert_eq!(row.answer.as_deref(), Some("dispatch.engine_stem"));
+            }
+        }
+        let named = tagged.iter().filter(|r| r.engine.is_some()).count();
+        let unnamed = tagged
+            .iter()
+            .filter(|r| r.route == "work.dispatch" && r.engine.is_none())
+            .count();
+        let near = tagged.iter().filter(|r| r.route != "work.dispatch").count();
+        assert!(
+            named >= 20 && unnamed >= 5 && near >= 10,
+            "{named} {unnamed} {near}"
+        );
+        let held = |want: &dyn Fn(&&&Row) -> bool| {
+            tagged.iter().filter(|r| r.held_out()).filter(want).count()
+        };
+        assert!(held(&|r| r.engine.is_some()) >= 5);
+        assert!(held(&|r| r.route != "work.dispatch") >= 3);
+        // The owner's message is in the set.
+        assert!(
+            set.rows
+                .iter()
+                .any(|r| r.latest() == "Do a test delegation to claude"
+                    && r.engine.as_deref() == Some("claude_code"))
+        );
+    }
+
     #[test]
     fn the_owner_reported_messages_are_in_the_set() {
         let set = Set::fixture();
@@ -1123,6 +1176,7 @@ mod tests {
             risk: "ok".to_string(),
             cli_group: None,
             tool: None,
+            engine: None,
             tags: Vec::new(),
             split: "tune".to_string(),
         }

@@ -149,7 +149,7 @@ impl Chat {
                     at.word()
                 ),
                 Offer::PublishEval { label, .. } => format!("[{label}]"),
-                Offer::RunCoder { label } => format!("[{label}]"),
+                Offer::RunCoder { label, .. } => format!("[{label}]"),
                 other => format!("[{}]", other.word()),
             })
             .collect();

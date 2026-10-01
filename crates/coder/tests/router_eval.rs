@@ -14,7 +14,9 @@
 //! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
 //! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
 //! added), `presentation` (the rows `routes-v4.json` added), or
-//! `delegation` (the delegation rows and near misses #10073 added).
+//! `delegation` (the delegation rows and near misses #10073 added), or
+//! `engine` (the engine requests and near misses #10076 added). Every run
+//! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
 //! phone context.
@@ -91,12 +93,19 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let capability = |row: &Row| row.tags.iter().any(|tag| tag == "capability");
     let presentation = |row: &Row| row.tags.iter().any(|tag| tag == "presentation");
     let delegation = |row: &Row| row.tags.iter().any(|tag| tag == "delegation");
+    let engine = |row: &Row| row.tags.iter().any(|tag| tag == "engine");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
-                .filter(|r| !gym(r) && !capability(r) && !presentation(r) && !delegation(r))
+                .filter(|r| {
+                    !gym(r) && !capability(r) && !presentation(r) && !delegation(r) && !engine(r)
+                })
                 .collect(),
             format!("{split}-v1-rows"),
+        ),
+        "engine" => (
+            rows.into_iter().filter(|r| engine(r)).collect(),
+            format!("{split}-engine-rows"),
         ),
         "gym" => (
             rows.into_iter().filter(|r| gym(r)).collect(),
@@ -210,6 +219,7 @@ async fn run_router(name: &str, mode: router::Mode) {
     // sets as the deployed worker reads them (#9943).
     let starter = starter_records(&tools);
     let mut offers = Offers::default();
+    let mut engines = Engines::default();
     for row in &rows {
         let started = Instant::now();
         let asked = judge
@@ -231,6 +241,7 @@ async fn run_router(name: &str, mode: router::Mode) {
                 let routing = router::reading(&response, bank, &facts, &admitted);
                 let tier = router::decide(&routing, bank, &facts, &situation);
                 let offered = offers.count(row, &tier, &starter, bank, &facts);
+                engines.count(row, &tier);
                 let mut traced = trace(row, &routing, &tier);
                 traced["start_eval"] = serde_json::json!(offered);
                 traces.push(traced);
@@ -252,6 +263,7 @@ async fn run_router(name: &str, mode: router::Mode) {
             offers.offered, offers.rows, offers.right
         );
     }
+    engines.print(&split_label);
     write_traces(name, &split_label, &traces);
     if publishing() && mode == router::Mode::Router {
         let profile = coder::decision::profile_from_env()
@@ -487,6 +499,72 @@ impl Offers {
     }
 }
 
+/// How dispatch offers named engines (#10076).
+#[derive(Default)]
+struct Engines {
+    /// Rows labeled with an engine, and those whose dispatch offer named it.
+    asked: usize,
+    named_right: usize,
+    /// Rows labeled with an engine whose offer named another one.
+    named_wrong: usize,
+    /// Dispatch offers that named an engine where the row asks for none:
+    /// a `work.dispatch` row without one, or any other row.
+    false_named: usize,
+    /// Dispatch offers that named an engine, in all.
+    named: usize,
+}
+
+impl Engines {
+    fn count(&mut self, row: &Row, tier: &router::Tier) {
+        let offered = match tier {
+            router::Tier::CannedStem {
+                offer: Some(router::Offer::RunCoder { engine, .. }),
+                ..
+            }
+            | router::Tier::CannedFinal {
+                offer: Some(router::Offer::RunCoder { engine, .. }),
+                ..
+            } => *engine,
+            _ => None,
+        };
+        let wanted = row.engine.as_deref().and_then(router::CodingEngine::parse);
+        if offered.is_some() {
+            self.named += 1;
+        }
+        match (wanted, offered) {
+            (Some(want), Some(got)) if want == got => {
+                self.asked += 1;
+                self.named_right += 1;
+            }
+            (Some(_), Some(_)) => {
+                self.asked += 1;
+                self.named_wrong += 1;
+            }
+            (Some(_), None) => self.asked += 1,
+            (None, Some(_)) => self.false_named += 1,
+            (None, None) => {}
+        }
+    }
+
+    fn print(&self, split: &str) {
+        let precision = if self.named == 0 {
+            1.0
+        } else {
+            self.named_right as f64 / self.named as f64
+        };
+        println!(
+            "engine ({split}): {} rows ask for one; the offer named it on {}, another on {}; \
+             {} offers named one where none was asked; engine precision {precision:.3} ({}/{})",
+            self.asked,
+            self.named_right,
+            self.named_wrong,
+            self.false_named,
+            self.named_right,
+            self.named
+        );
+    }
+}
+
 /// One row's reading in full, for tuning on the tune split: ids and
 /// probabilities, and the row's own labels.
 fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_json::Value {
@@ -508,6 +586,8 @@ fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_jso
         "capability_missing_p": routing.capability_missing_p,
         "capability_closest": routing.capability_closest.as_ref().map(|(c, p)| (c.id.clone(), *p)),
         "deck": routing.deck,
+        "engine": routing.engine.map(|(engine, p)| (engine.word(), p)),
+        "engine_label": row.engine,
         "risk": routing.risk.word(),
         "risk_p": routing.risk_p,
         "tier": tier.word(),
@@ -530,7 +610,7 @@ fn write_traces(name: &str, split: &str, traces: &[serde_json::Value]) {
 #[tokio::test]
 #[ignore = "calls the live judge"]
 async fn live_router() {
-    run_router("chat-router-v4", router::Mode::Router).await;
+    run_router(router::SET, router::Mode::Router).await;
 }
 
 #[tokio::test]

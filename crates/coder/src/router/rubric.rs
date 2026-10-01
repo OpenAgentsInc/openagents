@@ -460,6 +460,65 @@ pub fn deck_none() -> Value {
     })
 }
 
+/// The `engine` question's instructions (#10076).
+#[must_use]
+pub fn engine_instructions() -> Value {
+    instructions(
+        "If the user's latest message asks for work to be done on their code or computer, \
+         which coding engine, if any, do they ask to do it?",
+        "Pick the engine the user asks to run or hand the work to: by its name, a short or \
+         informal form of it, or its maker (\"Claude\" or \"Anthropic's agent\" for Claude \
+         Code, \"OpenAI's\" or \"GPT\" for Codex, \"xAI's\" or \"Grok\" for Grok Build), \
+         in any case or language. Earlier messages only resolve what the latest one refers \
+         to. Pick `none` when the message names no engine for the work, leaves the choice to \
+         us, or mentions an engine only as a subject: asking about it, comparing engines, \
+         asking a model a question in chat, or work on the engine's own code.",
+    )
+}
+
+/// An engine's option.
+#[must_use]
+pub fn engine(engine: super::CodingEngine) -> Value {
+    use super::CodingEngine as Engine;
+    let what = match engine {
+        Engine::Codex => {
+            "Codex, OpenAI's coding agent: the user asks for the work to run on Codex, on \
+             OpenAI or GPT, or with a GPT model"
+        }
+        Engine::ClaudeCode => {
+            "Claude Code, Anthropic's coding agent: the user asks for the work to run on \
+             Claude, Claude Code, or Anthropic, or with a Claude model such as Opus or Sonnet"
+        }
+        Engine::GrokBuild => {
+            "Grok Build, xAI's coding agent: the user asks for the work to run on Grok, Grok \
+             Build, or xAI"
+        }
+        Engine::OpenCode => {
+            "OpenCode, the open-source coding agent: the user asks for the work to run on \
+             OpenCode"
+        }
+        Engine::Devin => {
+            "Devin, Cognition's coding agent: the user asks for the work to run on Devin"
+        }
+    };
+    json!({ "what": what })
+}
+
+/// The `engine` question's `none`.
+#[must_use]
+pub fn engine_none() -> Value {
+    option(
+        "The message names no engine to do the work, leaves it to us (\"any\", \"whichever \
+         is free\"), or asks for no work on the user's code or computer",
+        Some(
+            "A message that names an engine only as its subject: what Claude or Codex is, \
+             which is better, a question for a model to answer in chat, or a change to the \
+             engine's own code or settings; these name no engine to run the work",
+        ),
+        &[],
+    )
+}
+
 /// The `capability` question's instructions.
 #[must_use]
 pub fn capability_instructions() -> Value {

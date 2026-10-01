@@ -65,11 +65,15 @@ pub fn offered(meta: Option<&crate::router::Meta>, computer_lane: bool) -> bool 
 /// reply when the thread's computer lane holds it. `predict` is asked only
 /// then, so a thread without the offer reads no login state. An earlier
 /// prediction is replaced; with none, it is cleared.
+///
+/// `predict` gets the engine the reply's offer says the person asked for
+/// ([`requested`]), so the prediction puts it first (#10076).
 pub fn attach_runner(
     turns: &mut [Turn],
     computer_lane: bool,
-    predict: impl FnOnce() -> Option<crate::coder_events::Runner>,
+    predict: impl FnOnce(Option<nostr::cj_conversation::Engine>) -> Option<crate::coder_events::Runner>,
 ) {
+    let engine = requested(turns);
     let Some(last) = turns.last_mut() else {
         return;
     };
@@ -79,11 +83,25 @@ pub fn attach_runner(
     if !offered(last.meta.as_ref(), computer_lane) {
         return;
     }
-    let runner = predict();
+    let runner = predict(engine);
     if runner.is_none() && last.meta.is_none() {
         return;
     }
     last.meta.get_or_insert_with(Default::default).runner = runner;
+}
+
+/// The coding engine the person asked for, for a Coder run started from
+/// `turns` (#10076): the typed engine on the latest reply's `run_coder`
+/// offer ([`crate::router::Meta::engine`]), else none. Never read from
+/// text.
+#[must_use]
+pub fn requested(turns: &[Turn]) -> Option<nostr::cj_conversation::Engine> {
+    turns
+        .iter()
+        .rev()
+        .find(|turn| turn.role == crate::basic_coder::Role::Assistant)
+        .and_then(|turn| turn.meta.as_ref())
+        .and_then(|meta| meta.engine)
 }
 
 #[cfg(test)]
@@ -102,7 +120,7 @@ mod tests {
             Turn::user("fix the parser"),
             Turn::assistant("Coder can do that.", offering),
         ];
-        attach_runner(&mut turns, false, || {
+        attach_runner(&mut turns, false, |_| {
             Some(Runner::NotSignedIn { providers: vec![] })
         });
         assert_eq!(
@@ -110,13 +128,51 @@ mod tests {
             Some(Runner::NotSignedIn { providers: vec![] })
         );
         let mut plain = vec![Turn::user("hi"), Turn::assistant("Hello.", None)];
-        attach_runner(&mut plain, false, || panic!("no offer, no prediction"));
+        attach_runner(&mut plain, false, |_| panic!("no offer, no prediction"));
         assert!(plain[1].meta.is_none());
         // The computer lane makes any reply an offer.
-        attach_runner(&mut plain, true, || {
+        attach_runner(&mut plain, true, |_| {
             Some(Runner::NotSignedIn { providers: vec![] })
         });
         assert!(plain[1].meta.as_ref().unwrap().runner.is_some());
+    }
+
+    /// The prediction is asked for the engine the reply's offer names,
+    /// and a reply without one asks for none (#10076).
+    #[test]
+    fn the_prediction_puts_the_requested_engine_first() {
+        use crate::router::{Meta, Offer};
+        use nostr::cj_conversation::Engine;
+        let mut turns = vec![
+            Turn::user("Do a test delegation to claude"),
+            Turn::assistant(
+                "We'll dispatch Coder, asking for Claude Code, to take this on.",
+                Some(Meta {
+                    offers: vec![Offer::RunCoder],
+                    engine: Some(Engine::ClaudeCode),
+                    ..Meta::default()
+                }),
+            ),
+        ];
+        assert_eq!(requested(&turns), Some(Engine::ClaudeCode));
+        let mut asked = None;
+        attach_runner(&mut turns, false, |engine| {
+            asked = Some(engine);
+            None
+        });
+        assert_eq!(asked, Some(Some(Engine::ClaudeCode)));
+        let plain = vec![
+            Turn::user("delegate this"),
+            Turn::assistant(
+                "We'll dispatch Coder to take this on.",
+                Some(Meta {
+                    offers: vec![Offer::RunCoder],
+                    ..Meta::default()
+                }),
+            ),
+        ];
+        assert_eq!(requested(&plain), None);
+        assert_eq!(requested(&[Turn::user("hi")]), None);
     }
     /// One message never yields both a Gym offer and a Coder start
     /// (#10073): a reply carrying the router's Gym card and `start_eval`

@@ -1047,17 +1047,35 @@ pub(crate) fn item(id: &str) -> String {
 pub const HANDOFF_MARK: &str =
     "Continue this conversation from the OpenAgents app on this computer.";
 
-/// How the phone shows a handoff prompt, wherever it appears (the echo of
-/// what was sent, and the computer's transcript's first message): one line
-/// naming the chat, never the conversation pasted back at the person. A
-/// message that is not a handoff reads as `None`.
-pub fn handoff_summary(text: &str) -> Option<String> {
-    if !text.contains(HANDOFF_MARK) {
-        return None;
-    }
-    let title = text.lines().next().unwrap_or("Chat").trim();
-    let title = if title.is_empty() { "Chat" } else { title };
-    Some(format!("Continued from the OpenAgents app: {title}"))
+/// Where a handoff came from, as a message's note: provenance kept beside
+/// the person's words, never pasted in front of them (#10076).
+pub const HANDOFF_NOTE: &str = "Continued from the OpenAgents app";
+
+/// The words the person asked with, from a handoff prompt [`handoff`]
+/// wrote, wherever it appears (the echo of what was sent, and the
+/// computer's transcript's first message): the message that asked for the
+/// work, once, never the conversation pasted back at the person and never
+/// prefixed with where it came from, which is [`HANDOFF_NOTE`]'s. A prompt
+/// with no request part reads as its title. A message that is not a
+/// handoff reads as `None`. This reads only the shape [`handoff`] itself
+/// writes, after the route is chosen.
+pub fn handoff_request(text: &str) -> Option<String> {
+    let (head, rest) = text.split_once(HANDOFF_MARK)?;
+    let request = rest
+        .strip_prefix(" The request:\n\n")
+        .map(|request| {
+            request
+                .split_once("\n\nEarlier in the conversation, for context:\n\n")
+                .map_or(request, |(asked, _)| asked)
+                .trim()
+        })
+        .filter(|request| !request.is_empty());
+    let title = head.lines().next().unwrap_or("").trim();
+    Some(
+        request
+            .unwrap_or(if title.is_empty() { "Chat" } else { title })
+            .to_owned(),
+    )
 }
 
 /// How many turns before the request a handoff carries as context.
@@ -1363,8 +1381,8 @@ mod tests {
             "the reply after it is not carried"
         );
         assert_eq!(
-            handoff_summary(&text).as_deref(),
-            Some("Continued from the OpenAgents app: do a test delegation now")
+            handoff_request(&text).as_deref(),
+            Some("do a test delegation now")
         );
         // Context is bounded to the turns just before the request.
         turns.splice(0..0, (0..20).map(|n| Turn::user(format!("old {n}"))));
@@ -1377,16 +1395,32 @@ mod tests {
         assert_eq!(handoff_title("Chat", &[]), "Chat");
     }
 
-    /// A handoff prompt shows as one line on the phone, wherever it
-    /// appears; an ordinary message does not.
+    /// A handoff prompt shows as the person's own message, once, wherever
+    /// it appears, without the conversation pasted back or a prefix saying
+    /// where it came from (#10076); an ordinary message is not one.
     #[test]
-    fn a_handoff_reads_as_one_line_on_the_phone() {
-        let turns = vec![Turn::user("x".repeat(5_000))];
-        let text = handoff("Run the tests", &turns, 16 * 1024);
+    fn a_handoff_reads_as_the_message_that_asked() {
+        let turns = vec![
+            Turn::user("who are you"),
+            Turn::assistant("We are OpenAgents.", None),
+            Turn::user("Run the tests in my repo"),
+        ];
+        let text = handoff("Run the tests in my repo", &turns, 16 * 1024);
+        assert!(text.contains("Earlier in the conversation"), "{text}");
         assert_eq!(
-            handoff_summary(&text).as_deref(),
-            Some("Continued from the OpenAgents app: Run the tests")
+            handoff_request(&text).as_deref(),
+            Some("Run the tests in my repo")
         );
-        assert!(handoff_summary("Run the tests in my repo").is_none());
+        // A long request, cut to the limit, still reads as itself.
+        let long = vec![Turn::user("x".repeat(5_000))];
+        let text = handoff("Run the tests", &long, 16 * 1024);
+        assert_eq!(handoff_request(&text), Some("x".repeat(5_000)));
+        // No user turn: the title.
+        assert_eq!(
+            handoff_request(&handoff("Run the tests", &[], 16 * 1024)).as_deref(),
+            Some("Run the tests")
+        );
+        assert!(handoff_request("Run the tests in my repo").is_none());
+        assert!(!HANDOFF_NOTE.contains(':'));
     }
 }

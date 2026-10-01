@@ -190,6 +190,27 @@ impl Policy {
         }
     }
 
+    /// This policy with `provider`'s routes first, in their order, then
+    /// the rest in theirs, and the engine's model the new first route's
+    /// (#10076): how a start honors the engine the person asked for.
+    /// [`Policy::choose`] then passes it over only as it would any first
+    /// route: not connected, refused, or near its limit. `None` when the
+    /// policy admits no route for `provider`, which the owner's settings
+    /// then do not allow.
+    #[must_use]
+    pub fn preferring(&self, provider: Provider) -> Option<Policy> {
+        let (mut routes, rest): (Vec<Route>, Vec<Route>) = self
+            .routes()
+            .into_iter()
+            .partition(|route| route.provider == provider);
+        let first = routes.first()?.model.clone();
+        routes.extend(rest);
+        let mut policy = self.clone();
+        policy.engine.model = first;
+        policy.engine.routes = routes;
+        Some(policy)
+    }
+
     /// Choose a route at `now`: the first admitted route whose provider is
     /// connected and has capacity in `book`. A one-route policy skips the
     /// connection probe, so an existing policy starts exactly as before
@@ -476,6 +497,11 @@ pub struct Entry {
     /// resets, in Unix seconds, if known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resets_at: Option<u64>,
+    /// For `eligible`: the provider the person asked for (#10076), as its
+    /// word, which the start puts first among the policy's own routes.
+    /// Never a model, a bound, or a route the policy does not admit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested: Option<String>,
 }
 
 impl Entry {
@@ -492,6 +518,7 @@ impl Entry {
             owner_process: None,
             detail: None,
             resets_at: None,
+            requested: None,
         }
     }
 
@@ -796,25 +823,62 @@ impl Autostart {
     /// the policy admits the workspace, else `None`, as without a policy.
     #[must_use]
     pub fn model_for(&self, workspace: &str) -> Option<String> {
+        self.model_requesting(workspace, None)
+    }
+
+    /// [`Autostart::model_for`] for a task whose person asked for
+    /// `requested` (#10076): that provider's model when the policy admits
+    /// it ([`Policy::preferring`]), else the engine's.
+    pub fn model_requesting(&self, workspace: &str, requested: Option<Provider>) -> Option<String> {
         self.policy()
             .filter(|policy| policy.admits(workspace) && self.workspaces.contains_key(workspace))
-            .map(|policy| policy.engine.model)
+            .map(|policy| {
+                requested
+                    .and_then(|provider| policy.preferring(provider))
+                    .unwrap_or(policy)
+                    .engine
+                    .model
+            })
     }
 
     /// Record that `device` created `task` in `workspace` under the policy.
     pub fn eligible(&self, task: &str, device: &str, workspace: &str) {
-        self.eligible_turn(task, device, workspace, 1);
+        self.eligible_requesting(task, device, workspace, None);
+    }
+
+    /// [`Autostart::eligible`] for a task whose person asked for
+    /// `requested` (#10076): every turn's start puts it first.
+    pub fn eligible_requesting(
+        &self,
+        task: &str,
+        device: &str,
+        workspace: &str,
+        requested: Option<Provider>,
+    ) {
+        self.record_eligible(task, device, workspace, 1, requested);
     }
 
     /// Record that `device` continued `task` in `workspace` into the turn
     /// that started at revision `turn` under the policy. The turn starts
     /// exactly as a new task would, under the same bounds.
     pub fn eligible_turn(&self, task: &str, device: &str, workspace: &str, turn: u64) {
+        self.record_eligible(task, device, workspace, turn, None);
+    }
+
+    fn record_eligible(
+        &self,
+        task: &str,
+        device: &str,
+        workspace: &str,
+        turn: u64,
+        requested: Option<Provider>,
+    ) {
         let mut entry = Entry::new((self.now)(), "eligible")
             .task(task)
             .at_turn(turn);
         entry.device = Some(device.into());
         entry.workspace = Some(workspace.into());
+        entry.requested = requested.map(|provider| provider.as_str().to_owned());
         if let Err(error) = record(&self.root, &entry) {
             eprintln!("coder host: auto-start: {error}");
         }
@@ -839,10 +903,18 @@ impl Autostart {
         let mut attempts: BTreeMap<(String, u64), usize> = BTreeMap::new();
         let mut unadmitted: BTreeSet<(String, u64)> = BTreeSet::new();
         let mut settled: BTreeSet<(String, u64)> = BTreeSet::new();
+        // The provider each task's person asked for, from its first
+        // eligible entry; every later turn asks for it again (#10076).
+        let mut requested: BTreeMap<String, Provider> = BTreeMap::new();
         for entry in history {
             let Some(task) = entry.subject() else {
                 continue;
             };
+            if entry.event == "eligible"
+                && let Some(provider) = entry.requested.as_deref().and_then(Provider::from_config)
+            {
+                requested.entry(task.0.clone()).or_insert(provider);
+            }
             match entry.event.as_str() {
                 "eligible" if !waiting.iter().any(|w| w.subject() == entry.subject()) => {
                     waiting.push(entry);
@@ -1017,6 +1089,12 @@ impl Autostart {
                     );
                     continue;
                 }
+                // The person's requested provider first, when the policy
+                // admits it; the model the task recorded is that route's.
+                let policy = requested
+                    .get(&id)
+                    .and_then(|provider| policy.preferring(*provider))
+                    .unwrap_or_else(|| policy.clone());
                 if task.intent.configuration.model.as_deref() != Some(&policy.engine.model) {
                     write(
                         Entry::new(now, "skipped")
@@ -1081,11 +1159,12 @@ impl Autostart {
                     task.intent_digest.clone(),
                     task.revision,
                     order,
+                    policy,
                 ));
             }
             plans
         };
-        for (id, turn, workspace, intent_digest, revision, order) in plans {
+        for (id, turn, workspace, intent_digest, revision, order, policy) in plans {
             let entry = match self.start(&policy, &order, &id, &intent_digest, revision) {
                 Ok(launched) => {
                     let mut entry = Entry::new(now, "started").task(&id).at_turn(turn);
@@ -2198,6 +2277,24 @@ mod tests {
         }
     }
 
+    /// A policy preferring a provider puts its routes first and takes its
+    /// model as the engine's; one it does not admit is `None` (#10076).
+    #[test]
+    fn a_preferred_provider_goes_first_only_when_admitted() {
+        let policy = routed(1);
+        let claude = policy.preferring(Provider::Claude).unwrap();
+        let order: Vec<Provider> = claude.routes().iter().map(|r| r.provider).collect();
+        assert_eq!(order, [Provider::Claude, Provider::Codex]);
+        assert_eq!(claude.engine.model, "claude-opus-5-5");
+        claude.validate().unwrap();
+        assert_eq!(policy.preferring(Provider::Codex).unwrap(), policy);
+        assert_eq!(policy.preferring(Provider::Grok), None);
+        // The implicit Codex route of a policy with none listed.
+        let plain = super::tests::policy(1);
+        assert!(plain.preferring(Provider::Codex).is_some());
+        assert_eq!(plain.preferring(Provider::Claude), None);
+    }
+
     fn routed(max_running: u32) -> Policy {
         let mut policy = policy(max_running);
         policy.engine.routes = vec![
@@ -2862,6 +2959,80 @@ mod tests {
         s.autostart.sweep();
         let configuration = launched_grant(&s, 1).adapter_configuration.unwrap();
         assert_eq!(configuration.provider, "codex");
+    }
+
+    /// A task the host's chat created for a person who asked for an
+    /// engine starts on it first when the policy admits it, keeps the
+    /// others as fallbacks, and asks for it again on the next turn; an
+    /// engine the policy does not admit changes nothing (#10076).
+    #[test]
+    fn a_requested_engine_starts_first_when_the_policy_admits_it() {
+        use nostr::cj_conversation::Engine;
+        let s = setup();
+        routed(1).save(&s.root).unwrap();
+        let task = "6".repeat(64);
+        s.inbox.prefer(&task, Engine::ClaudeCode);
+        s.inbox.create(&task, "host", &create("allowed")).unwrap();
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(
+            stored.intent.configuration.model.as_deref(),
+            Some("claude-opus-5-5")
+        );
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "claude");
+        assert_eq!(configuration.fallbacks.len(), 1);
+        assert_eq!(configuration.fallbacks[0].model, "gpt-6-luna");
+        let eligible = journal(&s.root)
+            .into_iter()
+            .find(|entry| entry.event == "eligible")
+            .unwrap();
+        assert_eq!(eligible.requested.as_deref(), Some("claude"));
+        // A preference is for one create: the next task asks for none.
+        advance(PENDING_GRACE + 1);
+        let next = "7".repeat(64);
+        s.inbox.create(&next, "host", &create("allowed")).unwrap();
+        advance(PENDING_GRACE + 1);
+        s.autostart.sweep();
+        assert_eq!(
+            launched_grant(&s, 1)
+                .adapter_configuration
+                .unwrap()
+                .provider,
+            "codex"
+        );
+        // An engine the policy does not admit: the policy's own order.
+        let other = "8".repeat(64);
+        s.inbox.prefer(&other, Engine::GrokBuild);
+        s.inbox.create(&other, "host", &create("allowed")).unwrap();
+        advance(PENDING_GRACE + 1);
+        s.autostart.sweep();
+        let stored = Store::open(&s.store).unwrap().show(&other).unwrap();
+        assert_eq!(
+            stored.intent.configuration.model.as_deref(),
+            Some("gpt-6-luna")
+        );
+        assert_eq!(
+            launched_grant(&s, 2)
+                .adapter_configuration
+                .unwrap()
+                .provider,
+            "codex"
+        );
+    }
+
+    /// A requested engine that is out of capacity falls back to the next
+    /// admitted route (#10076).
+    #[test]
+    fn a_requested_engine_without_capacity_falls_back() {
+        use nostr::cj_conversation::Engine;
+        let s = setup();
+        routed(1).save(&s.root).unwrap();
+        exhaust_codex(&s.store);
+        let task = "9".repeat(64);
+        s.inbox.prefer(&task, Engine::Codex);
+        s.inbox.create(&task, "host", &create("allowed")).unwrap();
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "claude");
     }
 
     #[test]

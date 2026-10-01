@@ -305,6 +305,7 @@ mod tests {
             capability_missing_p: 0.0,
             capability_closest: None,
             deck: None,
+            engine: None,
             risk: crate::router::Risk::Ok,
             risk_p: 0.99,
         };

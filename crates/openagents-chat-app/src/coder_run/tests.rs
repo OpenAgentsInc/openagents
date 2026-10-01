@@ -260,6 +260,44 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     assert_eq!(run.queued(), 0);
 }
 
+/// A start carries the engine the person asked for, on its first try and
+/// on the retry after a folder is picked (#10076).
+#[test]
+fn a_start_carries_the_engine_the_person_asked_for() {
+    use nostr::cj_conversation::Engine;
+    let now = Instant::now();
+    let mut run = Run::start("c".repeat(32).as_str(), "slugs", "add a test", vec![], now)
+        .requesting(Some(Engine::ClaudeCode));
+    let (ticket, start) = run.tick(now).unwrap();
+    assert!(matches!(
+        &start,
+        Request::Start {
+            engine: Some(Engine::ClaudeCode),
+            ..
+        }
+    ));
+    run.outcome(
+        ticket,
+        Ok(Answer::NeedsProject {
+            why: "Pick the project folder for Coder.".into(),
+        }),
+        now,
+    );
+    let (ticket, _) = run.action(Action::ChooseFolder, "").unwrap();
+    run.outcome(ticket, Ok(Answer::Folder(Some("/w/slugs".into()))), now);
+    let (_, again) = run.tick(now).unwrap();
+    assert!(matches!(
+        &again,
+        Request::Start {
+            engine: Some(Engine::ClaudeCode),
+            ..
+        }
+    ));
+    let mut plain = Run::start("c".repeat(32).as_str(), "slugs", "add a test", vec![], now);
+    let (_, start) = plain.tick(now).unwrap();
+    assert!(matches!(&start, Request::Start { engine: None, .. }));
+}
+
 #[test]
 fn a_start_without_a_checkout_asks_for_a_folder_and_starts_there() {
     let now = Instant::now();
@@ -292,4 +330,41 @@ fn a_start_without_a_checkout_asks_for_a_folder_and_starts_there() {
     assert_eq!(run.take_bind(), Some(("t".repeat(64), "slugs".into())));
     assert!(run.take_bind().is_none());
     assert!(matches!(run.tick(now), Some((_, Request::Poll { .. }))));
+}
+
+/// The handoff prompt that starts a run is the person's own message,
+/// which the chat shows just above the run: the run draws no second
+/// bubble for it, "Continued from the OpenAgents app" or otherwise; a
+/// message the person sends Coder later still shows (#10076).
+#[test]
+fn the_handoff_prompt_is_not_shown_again_under_the_chat() {
+    use openagents_chat::coder_events::{CoderEvent, Line, Step, StepKind};
+    let task = "a".repeat(64);
+    let prompt = crate::basic_chats::handoff(
+        "do a test delegation to claude",
+        &[openagents_chat::basic_coder::Turn::user(
+            "do a test delegation to claude",
+        )],
+        16 * 1024,
+    );
+    let step = |seq: u64, turn: usize, text: &str| Line {
+        seq,
+        task: task.clone(),
+        thread: None,
+        event: CoderEvent::Step(Step {
+            turn,
+            step_id: 1,
+            kind: StepKind::Message,
+            source: "user".into(),
+            text: text.into(),
+        }),
+    };
+    let mut run = fed(
+        &[step(1, 1, &prompt), step(2, 2, "also cover empty input")],
+        State::Ended,
+    );
+    let text = text_of(&run.rows());
+    assert!(!text.contains("Continued from"), "{text}");
+    assert!(!text.contains("do a test delegation to claude"), "{text}");
+    assert!(text.contains("also cover empty input"), "{text}");
 }

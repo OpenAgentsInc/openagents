@@ -13,6 +13,10 @@ struct Handoff {
     request: String,
     host: String,
     task: coder_access::protocol::TaskCreate,
+    /// The engine the person asked for (#10076); absent in a plan saved
+    /// before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    engine: Option<nostr::cj_conversation::Engine>,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -185,6 +189,9 @@ pub(super) async fn handoff(shared: Arc<Shared>, chat: String) -> Reply {
             return super::refused("unavailable", "Coder could not prepare this conversation");
         }
     };
+    if let Some(engine) = plan.engine {
+        shared.tasks.prefer(&plan.request, engine);
+    }
     let result = call(
         shared.clone(),
         plan.request,
@@ -323,6 +330,9 @@ fn prepare(shared: &Shared, id: &str, require_keys: bool) -> Result<Option<Hando
         request,
         host: shared.host_key.clone(),
         task: coder_access::client::tasks::input(&prompt, &project),
+        // The engine the person asked for, from this chat's own typed
+        // offer (#10076).
+        engine: openagents_chat::delegation::requested(&turns),
     };
     cache.write(id, &plan)?;
     Ok(Some(plan))
@@ -356,6 +366,9 @@ pub(crate) fn run_thread(shared: &Shared, id: &str) -> Result<RunStarted, Code> 
     .validate()
     {
         return Err(error.code);
+    }
+    if let Some(engine) = plan.engine {
+        shared.tasks.prefer(&plan.request, engine);
     }
     let created = shared.tasks.create(&plan.request, &plan.host, &plan.task)?;
     {
