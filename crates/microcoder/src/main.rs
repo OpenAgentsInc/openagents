@@ -23,7 +23,7 @@ the cost. Then it runs the task's own tests and prints the reward beside
 Fable 5.1 low's time and cost on the same task.
 
 Options:
-  --model SLUG       the model (default gpt-6-luna)
+  --model SLUG       the model (default gpt-6.1-sol)
   --provider NAME    codex (the operator's Codex login, the default),
                      openrouter (OPENROUTER_API_KEY), or door (the OpenAgents
                      door at openagents.com/v1/responses on OPENAGENTS_API_KEY

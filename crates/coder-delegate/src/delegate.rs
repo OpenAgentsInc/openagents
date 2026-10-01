@@ -39,7 +39,7 @@ use crate::state::{State, Turn};
 pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 
 /// The model the Codex delegate runs on unless the operator names another.
-pub const DEFAULT_CODEX_MODEL: &str = "gpt-6-luna";
+pub const DEFAULT_CODEX_MODEL: &str = "gpt-6.1-sol";
 
 /// The model the OpenCode delegate runs on unless the operator names
 /// another: empty, which keeps the model the owner configured in OpenCode.
@@ -4137,7 +4137,7 @@ pub mod tests {
         assert_eq!(Agent::parse("codex"), Ok(Agent::Codex));
         assert_eq!(Agent::parse("claude-code"), Ok(Agent::ClaudeCode));
         assert!(Agent::parse("devin").is_err());
-        assert_eq!(Agent::Codex.default_model(), "gpt-6-luna");
+        assert_eq!(Agent::Codex.default_model(), "gpt-6.1-sol");
         assert_eq!(Agent::ClaudeCode.default_model(), "claude-opus-5-5");
         let dir = std::env::temp_dir().join(format!("coder-one-codex-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

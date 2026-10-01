@@ -115,7 +115,7 @@
     },
     {
       "agent": "codex",
-      "default": "codex 0.155.1 (gpt-6-luna)",
+      "default": "codex 0.155.1 (gpt-6.1-sol)",
       "chars": 18037,
       "protected": false,
       "sections": [

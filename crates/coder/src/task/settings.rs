@@ -90,7 +90,7 @@ pub fn load() -> Result<Settings, String> {
 #[must_use]
 pub fn default_model(provider: Provider) -> Option<&'static str> {
     match provider {
-        Provider::Codex => Some("gpt-6-luna"),
+        Provider::Codex => Some("gpt-6.1-sol"),
         Provider::Claude => Some("claude-opus-5-5"),
         Provider::Devin => Some(acp_client::devin::DEFAULT_MODEL),
         Provider::Grok => Some(acp_client::grok::DEFAULT_MODEL),
@@ -708,7 +708,7 @@ mod tests {
             vec![
                 Route {
                     provider: Provider::Codex,
-                    model: "gpt-6-luna".into(),
+                    model: "gpt-6.1-sol".into(),
                     effort: None
                 },
                 Route {

@@ -38,7 +38,7 @@ pub mod usage;
 pub mod vertex;
 
 /// The default model, reached through the operator's Codex login.
-pub const MODEL: &str = "gpt-6-luna";
+pub const MODEL: &str = "gpt-6.1-sol";
 
 /// The stronger model that writes the acceptance tests when Jev judges a
 /// task hard. Routing to it is off by default (`Route::Never`).

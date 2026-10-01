@@ -40,7 +40,7 @@ pub const CLAUDE_CODE_VERSION: &str = "2.1.280";
 
 /// The Codex version and model whose default the library splits.
 pub const CODEX_VERSION: &str = "0.155.1";
-pub const CODEX_MODEL: &str = "gpt-6-luna";
+pub const CODEX_MODEL: &str = "gpt-6.1-sol";
 
 /// A Noul at or above this selects an optional section. An unmeasured
 /// development value.

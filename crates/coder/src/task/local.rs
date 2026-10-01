@@ -60,7 +60,7 @@ use super::{
 /// desktop's auto-start switch admits. The settings' `coder.providers`
 /// replaces them.
 pub const ROUTES: [(Provider, &str); 3] = [
-    (Provider::Codex, "gpt-6-luna"),
+    (Provider::Codex, "gpt-6.1-sol"),
     (Provider::Claude, "claude-opus-5-5"),
     (Provider::Grok, acp_client::grok::DEFAULT_MODEL),
 ];

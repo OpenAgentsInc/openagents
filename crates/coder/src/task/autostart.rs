@@ -1946,7 +1946,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                         );
                     }
                     (Some(first), None) => first.model.clone(),
-                    (None, model) => model.unwrap_or_else(|| "gpt-6-luna".into()),
+                    (None, model) => model.unwrap_or_else(|| "gpt-6.1-sol".into()),
                 };
                 let engine = Engine {
                     adapter: adapter::NAME.into(),
