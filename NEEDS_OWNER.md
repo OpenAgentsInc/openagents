@@ -82,3 +82,11 @@ and Linux binary checks are recorded in
 Native OS cursor grabs, protected-store prompts, and the signed Mac bundle
 need device checks. Windows Verse remains tracked by #10027. Open a new issue
 if any installed-device check finds a defect; these checks do not keep #10038 open.
+
+## Cloud artifact signing (#10227)
+
+Configure a private GCS artifact bucket with lifecycle retention and an identity
+with object-create and URL-signing permissions. Run a non-sensitive Boat or GCE
+command using the artifact publisher described in `scripts/cloud/README.md`.
+Verify that all four signed links open and expire after 24 hours. Mocked tests
+cover upload and comment behavior; a live signing check has not run.

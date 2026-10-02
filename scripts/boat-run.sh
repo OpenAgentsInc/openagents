@@ -59,6 +59,23 @@ while :; do
   st=$(printf '%s' "$out" | field status)
   [ "$st" = exited ] && break; sleep 5
 done
+# Upload only this run's selected artifacts when explicitly configured.
+if [ -n "${OA_ARTIFACT_BUCKET:-}" ]; then
+  : "${OA_ARTIFACT_ISSUE:?set the issue number for artifact links}"
+  umask 077
+  run_dir=$(mktemp -d "$state/run-XXXXXXXX")
+  cp "$state/$name.patch" "$run_dir/change.patch"
+  printf '%s' "$out" | python3 -c '
+import json,pathlib,sys
+d=json.load(sys.stdin); root=pathlib.Path(sys.argv[1])
+for key in ("stdout", "stderr"):
+    (root/(key+".log")).write_text(d.get(key) or "")
+(root/"evidence.json").write_text(json.dumps({"sandbox":sys.argv[2], "process":sys.argv[3], "status":d.get("status"), "exit_code":d.get("exitCode")}))
+' "$run_dir" "$id" "$pid"
+  python3 "$top/scripts/cloud/publish-artifacts.py" "$run_dir" \
+    --bucket "$OA_ARTIFACT_BUCKET" --issue "$OA_ARTIFACT_ISSUE" || \
+    echo "boat: artifact publication failed; retained in $run_dir" >&2
+fi
 printf '%s' "$out" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
