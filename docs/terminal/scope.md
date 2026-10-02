@@ -8,7 +8,10 @@ screen) landed 2026-10-01
 ([#10111](https://github.com/OpenAgentsInc/openagents/issues/10111)):
 `crates/openagents-terminal`, opened by `openagents terminal` and by bare
 `openagents` on a terminal. How to use it is the [user guide](README.md).
-Phase 2 (shipping it) is next. The open questions have answers, recorded
+Phase 2 (shipping it) is done: the installer and the release script
+shipped 1.0.0-rc.1 and rc.2. What to add next is the
+[gap analysis against Coder Terminal](2026-10-02-coder-terminal-gap-analysis.md).
+The open questions have answers, recorded
 [below](#decisions); the remaining issues are listed
 [at the end](#github-issues-to-open).
 
