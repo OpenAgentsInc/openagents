@@ -58,6 +58,7 @@ mod screen;
 mod service;
 mod session;
 mod settings;
+mod shadow;
 mod sov;
 mod sov_host;
 #[cfg(unix)]
@@ -108,6 +109,8 @@ Coder:
   background   The host's background rules, built in and from plugins turned on here.
   ssh          Start or adopt a host over SSH and tunnel to it.
   boat         Build and test this checkout's change on a Boat sandbox, not here.
+  shadow       What a sample of Coder runs would have cost through the raw engine
+               (off unless set: coder.shadow).
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -272,6 +275,7 @@ fn main() -> ExitCode {
         "background" => background::run(&output, &rest),
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
+        "shadow" => shadow::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),

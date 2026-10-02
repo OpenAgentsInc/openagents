@@ -703,12 +703,16 @@ impl Launch for Process {
         // owner forwards it (`microcoder::repository::launch`), else the
         // hosted decision service, whose overrides pass through too. The
         // engine's shell children clear their environment again.
+        //
+        // The delegate recipe's switch (#10209) passes through too, so
+        // `OPENAGENTS_DELEGATE_RECIPE=off` reaches the engine it names.
         for name in [
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
             "OPENAGENTS_JEV_RELAY",
             "OPENAGENTS_JEV_WORKER",
             "OPENAGENTS_JEV_HOSTED",
+            "OPENAGENTS_DELEGATE_RECIPE",
         ] {
             if let Some(value) = std::env::var_os(name) {
                 command.env(name, value);
@@ -779,7 +783,7 @@ fn refused(controller: &Path, stderr: &str) -> String {
 /// The `claude` binary the engine runs: `CLAUDE_BIN` when it names a file,
 /// else the one [`microcoder_loop::claude::locate`] finds (which asks the
 /// login shell at most once a process).
-fn claude_binary() -> Option<PathBuf> {
+pub(crate) fn claude_binary() -> Option<PathBuf> {
     if let Some(named) = std::env::var_os(microcoder_loop::claude::BIN_VAR)
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)

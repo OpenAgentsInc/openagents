@@ -6146,6 +6146,62 @@
       ]
     },
     {
+      "name": "shadow",
+      "summary": "What a sample of Coder runs would have cost through the raw engine (off unless set: coder.shadow).",
+      "children": [
+        {
+          "name": "report",
+          "leaf": {
+            "path": [
+              "shadow",
+              "report"
+            ],
+            "usage": [
+              "report"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "report"
+                  }
+                ]
+              }
+            ],
+            "summary": "Finish the baselines that have ended (run the recipe's kept checks on both sides, write the record, delete the scratch copy), then print the routed runs against their raw baselines: cost and wall time, totals and medians, and checks passed.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "records",
+          "leaf": {
+            "path": [
+              "shadow",
+              "records"
+            ],
+            "usage": [
+              "records"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "records"
+                  }
+                ]
+              }
+            ],
+            "summary": "Finish the ended baselines and print every record.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ]
+    },
+    {
       "name": "verse",
       "summary": "See who is around, listen, speak, move, gesture, drive owned entities, and read quests, XP, and the board.",
       "children": [

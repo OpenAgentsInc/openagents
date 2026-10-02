@@ -517,6 +517,9 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             "coder.usage_threshold_percent": 90,
             "coder.projects": [],
             "coder.access": "full",
+            "coder.shadow": null,
+            "coder.shadow_budget_usd": null,
+            "models.payer": "ours",
         })
     );
     let coder_message = |run: &Run| {

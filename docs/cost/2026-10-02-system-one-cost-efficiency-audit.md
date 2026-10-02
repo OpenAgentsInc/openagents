@@ -406,8 +406,8 @@ runs an engine raw, for a with/without measurement.
 | 4. "Done" is a program state | **Applied when Jev finds a checkable outcome** (#10208): Jev judges candidate commands (those the request names, and the runner of each test file the survey kept); the host freezes up to two that fail before the change, runs them after each loop step that ran a command, or while an agent works whenever the workspace changed and then held still, and ends the run once they pass (`checks_passed`). It is an early stop on success, not a budget. Absent on the CLI fallback, which has no host hook mid-session. The GitHub issue flow keeps its own host gate. | `crates/microcoder-loop/src/run.rs` (`Limits::checks_stop`, `Ending::ChecksPassed`); `crates/microcoder/src/repository/recipe.rs` (`Recipe::watch`) |
 | Effort matched to the task | **Applied** (#10208): Jev's class (question, change, hard) sets the effort per engine: Codex stays at medium unless hard (high); Claude low, medium when hard; Grok Build low for a question, high when hard. Devin and OpenCode have no effort setting. | `crates/route-contract/src/recipe.rs` (`effort`) |
 | 5. Route per task to the cheapest likely-to-pass config | **Absent.** The router picks the family and engine by capacity and preference, not by a measured cost per pass. `Route::Auto` (Jev `hard` sends test-writing to a stronger model) is opt-in on the `microcoder` binary only. | `crates/openagents-chat/src/route.rs`; `crates/coder/src/task/autostart.rs` |
-| Cost visible per run | **Partly.** The recipe's Jev cost joins each task's cost; route records keep cost and wall time per run (#10207); a whole agent's own cost is what it reports. | `crates/microcoder/src/repository.rs` (`run_stages_with`); `crates/route-contract/src/record.rs` |
-| Raw-vs-OpenAgents measurement | **Bench only, and not yet for the recipe.** The Harbor arms remain; #10208's before/after is planned below and runs in #10209. | `bench/terminal-bench/profiles/agents.json`; `crates/gym/src/runs_beats_winner.rs` |
+| Cost visible per run | **Partly.** The recipe's Jev cost joins each task's cost; route records keep cost and wall time per run (#10207); a whole agent's own cost is what it reports. Until #10209, every routed Codex run's cost was recorded as unknown, because `gpt-6.1-sol` had no list price; it now has one. | `crates/microcoder/src/repository.rs` (`run_stages_with`); `crates/route-contract/src/record.rs` |
+| Raw-vs-OpenAgents measurement | **Measured once on the shipped path (5c), and opt-in on real use.** The Harbor arms remain. The shadow baseline (`coder.shadow`, off by default) reruns a sample of real runs through the raw engine and records both sides (#10209). | `bench/terminal-bench/profiles/agents.json`; `crates/gym/src/runs_beats_winner.rs`; `crates/coder/src/task/shadow.rs` |
 
 ### 5a. The delegate recipe, per engine
 
@@ -427,7 +427,7 @@ lever.
 
 ### 5b. Measuring the recipe
 
-Not measured yet. Boat sandboxes have no engine logins (NEEDS_OWNER "Boat:
+Measured on 2026-10-02; results in 5c. As first planned: Boat sandboxes have no engine logins (NEEDS_OWNER "Boat:
 choose how coding agents log in"), and the Coder box's binaries predate
 #10208, so the after arm needs a build of main there. The plan, carried by
 #10209: on coderos-4080, the four-task development panel (`fix-git`,
@@ -438,6 +438,46 @@ defaults and through a routed task with the recipe on and with
 plus Jev), wall time, input tokens, and whether the frozen checks ended the
 run. The bar is section 2c's: 12 of 12 at 63% lower cost and 32% less time
 for the lean, Jev-briefed Opus arm.
+
+### 5c. Measured, 2026-10-02: the routed path against raw Claude Code (#10209)
+
+The 5b plan was run on coderos-4080 with the binaries at `feb4bc8270`:
+7 tasks (the four-task panel moved to host scratch repositories, plus three
+real fixes merged after the models' cutoff), 5 arms, 3 trials each, 105 runs,
+every pass from an independent check. Full method, per-task grid, failures,
+and corrections:
+[the shadow baseline measurement](2026-10-02-shadow-baseline-measurement.md).
+
+| Arm (21 runs each) | Passed | Total cost | Median wall time | Cost against raw (95% CI) | Wall time against raw (95% CI) |
+| --- | --- | ---: | ---: | --- | --- |
+| Raw Claude Code, defaults (Opus 5.5 1M) | 21/21 | $6.24 | 45 s | – | – |
+| Routed, Claude engine, recipe on | 21/21 | $10.52 | 64 s | 1.68× (1.46–1.95) | 1.39× (1.02–1.89) |
+| Routed, Claude engine, recipe off | 20/21 | $10.00 | 84 s | 1.60× (1.44–1.75) | 1.47× (1.15–1.87) |
+| Routed, Codex engine, recipe on | 21/21 | $5.45 | 124 s | 0.87× (0.79–0.96) | 2.61× (2.05–3.31) |
+| Routed, Codex engine, recipe off | 21/21 | $3.38 | 99 s | 0.54× (0.51–0.57) | 1.83× (1.41–2.37) |
+
+**The bar was not met, and the routed path did not beat raw Claude Code.** On
+the same model, the routed Claude engine cost 68% more and took 39% longer at
+the same pass rate. The recipe had no measurable effect on Claude (cost
+1.05×, 0.88–1.25). On Codex it cost 61% more and took 43% longer, because Jev
+classed 36 of 42 small tasks "hard", which runs Codex at high effort. The
+cause on Claude is the prompt cache. The Microcoder loop sent 3.7 times fewer
+input tokens than raw Claude Code, but it wrote 85–88% of them to the cache
+(1.25× price) and read 12–15% back. Raw Claude Code read 93% of its input
+from cache (0.1× price). Each loop step is a fresh `claude -p` whose prompt
+changes near its start, so principle 3's five-minute cache cannot hit.
+
+This does not contradict sections 1 and 2. Those savings were measured on the
+Coder One CLI delegate (Jev probes in front of a lean Claude Code session with
+six tools), which the router does not dispatch to. It does mean the claim in
+#10204 rests on bench arms, not on what the terminal runs. In order:
+
+1. Keep the loop's prompt stable at the front, or keep one session across
+   steps, so the cache reads instead of writes.
+2. Recalibrate the recipe's "hard" class.
+3. Add the audit's winning CLI-delegate configuration as an arm of this harness.
+
+The study cost $35.60 at list price.
 
 Owner rules hold on the default path: Microcoder door runs use
 `Limits::unbounded()` (only an 8-step stuck guard), task grants use
@@ -454,7 +494,9 @@ none of the briefing, knowledge, or checks. Since #10208 every task route
 gets the briefing, Jev-chosen knowledge, matched effort, and frozen checks
 where its engine allows them (suggestions 3 to 6 below). Per-task routing
 to the cheapest likely-to-pass configuration (suggestion 7) is still
-absent, and the recipe's own before/after is not measured yet (5b).
+absent. The recipe's own before/after was measured on 2026-10-02 (5c): no effect
+on Claude, and higher cost on Codex. The routed path as a whole cost more than
+raw Claude Code.
 
 ## 6. Suggestions, in order
 

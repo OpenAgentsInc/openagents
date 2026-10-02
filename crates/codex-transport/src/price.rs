@@ -68,6 +68,17 @@ const PRICES: &[(&str, Rates)] = &[
             output: 10.00,
         },
     ),
+    // GPT-6.1 Sol, Codex's default model here: OpenAI's $2 / $10 list
+    // price (docs/research/ppq.md); the cached rate is taken as GPT-6 Sol's
+    // 10%, as OpenAI lists none separately there (#10209).
+    (
+        "gpt-6.1-sol",
+        Rates {
+            input: 2.00,
+            cached: 0.20,
+            output: 10.00,
+        },
+    ),
     (
         "gpt-6-luna",
         Rates {

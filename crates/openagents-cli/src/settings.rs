@@ -39,6 +39,11 @@ Keys:
   coder.projects                  Folders whose Git checkouts are projects,
                                   comma-separated; empty is any (default).
   coder.access                    full, toolchains, or boundary (default full: every step approved).
+  coder.shadow                    1 to 100: that percent of finished Coder runs also run once
+                                  through the raw engine, to record what they would have
+                                  cost (openagents shadow report); or off (default off).
+  coder.shadow_budget_usd         The most the shadow baselines may cost in all, in dollars,
+                                  or off for no cap (default off).
   models.payer                    ours (default: model calls on OpenAgents) or mine (every
                                   model call on your own keys, never ours; needs an
                                   OpenRouter or Vercel AI Gateway key).

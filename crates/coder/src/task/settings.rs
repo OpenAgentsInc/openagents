@@ -358,6 +358,19 @@ pub struct Coder {
     /// tools), or `boundary` (the plain boundary).
     #[serde(default = "default_access", skip_serializing_if = "is_default_access")]
     pub access: Access,
+    /// The shadow baseline (#10209): the percent (1 to 100) of this
+    /// computer's Coder runs that also run once through the raw engine
+    /// (Claude Code or Codex on its own defaults) in a scratch copy of the
+    /// same commit, to record what the task would have cost without
+    /// OpenAgents. `None`, the default, is off. The baseline's changes are
+    /// never applied ([`super::shadow`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow_percent: Option<u8>,
+    /// The most the shadow baseline may spend in all, in cents, as the
+    /// person set it (`coder.shadow_budget_usd`); `None` sets no cap. Once
+    /// the recorded baselines reach it, no new one starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow_budget_cents: Option<u64>,
 }
 
 impl Default for Coder {
@@ -369,6 +382,8 @@ impl Default for Coder {
             usage_threshold_percent: default_threshold(),
             projects: Vec::new(),
             access: default_access(),
+            shadow_percent: None,
+            shadow_budget_cents: None,
         }
     }
 }
@@ -409,6 +424,11 @@ impl Coder {
             && !(1..=100).contains(&percent)
         {
             return Err("coder.usage_threshold_percent is 1 to 100, or null for off".into());
+        }
+        if let Some(percent) = self.shadow_percent
+            && !(1..=100).contains(&percent)
+        {
+            return Err("coder.shadow is 1 to 100 percent of runs, or off".into());
         }
         for folder in &self.projects {
             if !folder.is_absolute() {
@@ -576,7 +596,7 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 7] {
+pub const fn keys() -> [&'static str; 9] {
     [
         "coder.providers",
         "coder.disabled",
@@ -584,6 +604,8 @@ pub const fn keys() -> [&'static str; 7] {
         "coder.usage_threshold_percent",
         "coder.projects",
         "coder.access",
+        "coder.shadow",
+        "coder.shadow_budget_usd",
         "models.payer",
     ]
 }
@@ -675,6 +697,12 @@ impl Settings {
                     .collect::<Vec<_>>()
             ),
             "coder.access" => json!(coder.access.as_str()),
+            "coder.shadow" => json!(coder.shadow_percent),
+            "coder.shadow_budget_usd" => json!(coder.shadow_budget_cents.map(|cents| format!(
+                "{}.{:02}",
+                cents / 100,
+                cents % 100
+            ))),
             "models.payer" => json!(self.models.payer.as_str()),
             _ => return Err(unknown(key)),
         })
@@ -763,6 +791,27 @@ impl Settings {
                     other => return Err(format!("`{other}` is not toolchains, full, or boundary")),
                 };
             }
+            "coder.shadow" => {
+                coder.shadow_percent = match value.trim() {
+                    "off" | "null" | "none" | "0" => None,
+                    number => Some(
+                        number
+                            .trim_end_matches('%')
+                            .parse::<u8>()
+                            .ok()
+                            .filter(|p| (1..=100).contains(p))
+                            .ok_or_else(|| format!("`{number}` is not 1 to 100, or off"))?,
+                    ),
+                };
+            }
+            "coder.shadow_budget_usd" => {
+                coder.shadow_budget_cents = match value.trim() {
+                    "off" | "null" | "none" => None,
+                    amount => Some(dollars_to_cents(amount).ok_or_else(|| {
+                        format!("`{amount}` is not an amount in dollars, such as 5 or 2.50, or off")
+                    })?),
+                };
+            }
             _ => return Err(unknown(key)),
         }
         coder.validate()?;
@@ -805,11 +854,38 @@ impl Settings {
             }
             "coder.projects" => coder.projects = default.projects,
             "coder.access" => coder.access = default.access,
+            "coder.shadow" => coder.shadow_percent = default.shadow_percent,
+            "coder.shadow_budget_usd" => coder.shadow_budget_cents = default.shadow_budget_cents,
             "models.payer" => self.models.payer = model_access::Mode::Ours,
             _ => return Err(unknown(key)),
         }
         Ok(())
     }
+}
+
+/// Cents from the dollars a person types (`5`, `2.50`, `$0.75`), or `None`
+/// for anything else.
+fn dollars_to_cents(text: &str) -> Option<u64> {
+    let text = text.trim().trim_start_matches('$');
+    let (whole, part) = text.split_once('.').unwrap_or((text, ""));
+    if whole.is_empty() && part.is_empty()
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || !part.bytes().all(|b| b.is_ascii_digit())
+        || part.len() > 2
+    {
+        return None;
+    }
+    let whole: u64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let part: u64 = match part.len() {
+        0 => 0,
+        1 => part.parse::<u64>().ok()? * 10,
+        _ => part.parse().ok()?,
+    };
+    whole.checked_mul(100)?.checked_add(part)
 }
 
 /// The agent a person names: `codex`, `claude`, `grok`, `devin`, or
@@ -1279,5 +1355,43 @@ mod tests {
         }
         assert_eq!(edited.coder, Coder::default());
         assert_eq!(edited.other["appearance"]["theme"], "dark");
+    }
+
+    /// The shadow baseline is off unless the person turns it on (#10209),
+    /// and its budget is only the one they set.
+    #[test]
+    fn the_shadow_baseline_is_off_by_default_and_takes_the_persons_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = Settings::default();
+        assert_eq!(settings.get("coder.shadow").unwrap(), Value::Null);
+        assert_eq!(
+            settings.get("coder.shadow_budget_usd").unwrap(),
+            Value::Null
+        );
+        settings.set("coder.shadow", "10%", dir.path()).unwrap();
+        settings
+            .set("coder.shadow_budget_usd", "$2.5", dir.path())
+            .unwrap();
+        assert_eq!(settings.coder.shadow_percent, Some(10));
+        assert_eq!(settings.coder.shadow_budget_cents, Some(250));
+        assert_eq!(settings.get("coder.shadow_budget_usd").unwrap(), "2.50");
+        for (key, value) in [
+            ("coder.shadow", "101"),
+            ("coder.shadow", "half"),
+            ("coder.shadow_budget_usd", "-1"),
+            ("coder.shadow_budget_usd", "1.234"),
+            ("coder.shadow_budget_usd", "."),
+        ] {
+            assert!(
+                settings.clone().set(key, value, dir.path()).is_err(),
+                "{key}={value}"
+            );
+        }
+        let file = dir.path().join("settings.json");
+        settings.save(&file).unwrap();
+        assert_eq!(Settings::load(&file).unwrap(), settings);
+        settings.set("coder.shadow", "off", dir.path()).unwrap();
+        settings.unset("coder.shadow_budget_usd").unwrap();
+        assert_eq!(settings.coder, Coder::default());
     }
 }

@@ -138,6 +138,8 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             jev_hosted::RELAY_VAR,
             jev_hosted::WORKER_VAR,
             jev_hosted::HOSTED_VAR,
+            // The recipe's off switch, for a with/without measurement (#10209).
+            crate::repository::recipe::OFF_VAR,
         ] {
             if let Some(value) = std::env::var_os(key) {
                 process.env(key, value);
@@ -236,6 +238,8 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             jev_hosted::RELAY_VAR,
             jev_hosted::WORKER_VAR,
             jev_hosted::HOSTED_VAR,
+            // The recipe's off switch, for a with/without measurement (#10209).
+            crate::repository::recipe::OFF_VAR,
         ] {
             if let Some(value) = std::env::var_os(key) {
                 process.env(key, value);

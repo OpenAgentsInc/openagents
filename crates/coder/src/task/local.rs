@@ -2045,6 +2045,36 @@ impl Follow {
                     if let Some(record) = record.as_mut() {
                         record.ends.insert(self.turn, end.clone());
                         let _ = save(&self.store, record);
+                        // The shadow baseline (#10209): off unless the
+                        // person turned it on; it never touches this run.
+                        if let Ok(settings) = settings::load()
+                            && settings.coder.shadow_percent.is_some()
+                        {
+                            let provider = record
+                                .turns
+                                .iter()
+                                .rev()
+                                .find(|t| t.turn == self.turn)
+                                .map_or("", |t| t.provider.as_str());
+                            let _ = super::shadow::offer(
+                                &self.store,
+                                &settings.coder,
+                                &super::shadow::Finished {
+                                    task: &self.task,
+                                    thread: record.thread.as_deref(),
+                                    turn: self.turn,
+                                    prompt: &task.intent.prompt,
+                                    checkout: &record.checkout,
+                                    worktree: &record.worktree,
+                                    base: &record.base,
+                                    provider,
+                                    ending: &result.ending,
+                                    cost_microusd: result.cost_microusd,
+                                    trajectory: Some(&trace),
+                                    issue_flow: flow.is_some(),
+                                },
+                            );
+                        }
                     }
                     end
                 }

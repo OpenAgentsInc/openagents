@@ -54,6 +54,7 @@ pub mod remote;
 pub mod review;
 pub mod run_artifacts;
 pub mod settings;
+pub mod shadow;
 pub mod spare;
 pub mod steer;
 pub(crate) mod targets;
