@@ -781,7 +781,8 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         }
     };
     // A request being answered gets its answer first, such as the one
-    // that changed the settings.
+    // that changed the settings; no new one is taken.
+    running.stop_taking_requests();
     if !running.drain(DRAIN).await {
         eprintln!(
             "coder host: stopping with {} request(s) unanswered",

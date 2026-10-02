@@ -99,6 +99,9 @@ pub(crate) struct Shared {
     /// Requests in flight on every path, and when the last one ended: what
     /// a restart for an update waits out.
     pub(crate) activity: activity::Activity,
+    /// Set when the host stops taking control requests, to stop or start
+    /// again ([`Running::stop_taking_requests`]).
+    pub(crate) closing: std::sync::atomic::AtomicBool,
     /// A second descriptor for the control socket's listener, so a restart
     /// hands the bound socket to the new program: a client that connects
     /// meanwhile waits in its queue instead of finding nothing there.
@@ -119,6 +122,9 @@ pub enum Tailnet {
 pub struct Running {
     shared: Arc<Shared>,
     tasks: Vec<JoinHandle<()>>,
+    /// The control socket's accept loop, stopped first when the host
+    /// stops or starts again.
+    control: Option<JoinHandle<()>>,
 }
 
 impl std::fmt::Debug for Running {
@@ -223,6 +229,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         engines: std::sync::Mutex::new(Vec::new()),
         tailnet: std::sync::Mutex::new(None),
         activity: activity::Activity::default(),
+        closing: std::sync::atomic::AtomicBool::new(false),
         #[cfg(unix)]
         control_listener: std::sync::Mutex::new(None),
     });
@@ -236,6 +243,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         let _ = shared.iroh.set(listener);
         tasks.extend(iroh_tasks);
     }
+    let mut control_task = None;
     let control = match shared.config.control.clone() {
         Some(control) => Some(crate::control::bind(&control).await?),
         None => None,
@@ -253,7 +261,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         if let Some(home) = shared.config.chat_home.clone() {
             migrate_chat_home(&shared, &home);
         }
-        tasks.push(tokio::spawn(crate::control::serve(shared.clone(), bound)));
+        control_task = Some(tokio::spawn(crate::control::serve(shared.clone(), bound)));
     }
     if let Some((listener, _)) = websocket {
         tasks.push(tokio::spawn(websocket::listen(
@@ -279,7 +287,11 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     if let Some(ready) = &shared.config.ready {
         write_ready(&ready.file, shared.config.generation, &ready.version)?;
     }
-    Ok(Running { shared, tasks })
+    Ok(Running {
+        shared,
+        tasks,
+        control: control_task,
+    })
 }
 
 impl Running {
@@ -398,6 +410,20 @@ impl Running {
         }
     }
 
+    /// Stop taking control requests: no new connection is accepted (one
+    /// that arrives waits in the socket's queue, for the program that
+    /// serves it next), and an open connection ends before its next
+    /// request. A request already begun is answered; [`Running::drain`]
+    /// waits for it.
+    pub fn stop_taking_requests(&self) {
+        self.shared
+            .closing
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(control) = &self.control {
+            control.abort();
+        }
+    }
+
     /// Requests being answered now, on every path.
     #[must_use]
     pub fn in_flight(&self) -> usize {
@@ -439,7 +465,7 @@ impl Running {
     }
 
     async fn stop(self, keep_socket: bool) {
-        for task in &self.tasks {
+        for task in self.tasks.iter().chain(&self.control) {
             task.abort();
         }
         let shared = self.shared.clone();

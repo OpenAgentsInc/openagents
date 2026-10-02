@@ -216,6 +216,12 @@ async fn connection<S: AsyncRead + AsyncWrite + Unpin>(shared: Arc<Shared>, stre
             Ok(_) => {}
         }
         let _busy = shared.activity.begin();
+        // The host is stopping or starting again: this request is the next
+        // program's. The client asks again on a new connection, which
+        // waits in the socket's queue for it.
+        if shared.closing.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
         let request = match control::next_request(&mut stream).await {
             Ok(Some(request)) => request,
             Ok(None) => return,
