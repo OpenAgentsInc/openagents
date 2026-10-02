@@ -29,7 +29,7 @@ it. Each issue runs on a Boat sandbox of its own.
 3. **Reachable.** A sandbox from a template reports `ready` before Boat can
    start commands on it: commands are refused with `400
    sandbox_direct_failed` (seen 2026-10-02). The command waits until a
-   detached `true` starts (up to three minutes); a sandbox that never gets
+   detached `true` starts (up to ten minutes); a sandbox that never gets
    there is deleted and replaced once, and its cost is added to the run's.
    The run's own command is sent once, retried only on those refusals,
    which run nothing.

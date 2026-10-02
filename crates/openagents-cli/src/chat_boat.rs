@@ -320,6 +320,9 @@ export PATH="$HOME/.cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$P
 [ -n "${{OA_GIT_EMAIL:-}}" ] && git config --global user.email "$OA_GIT_EMAIL"
 unset OA_GIT_NAME OA_GIT_EMAIL
 gh auth setup-git >/dev/null 2>&1 || true
+# protoc's well-known types (spark-primitives needs them); templates built
+# before coder-host-setup.sh installed libprotobuf-dev lack them.
+[ -f /usr/include/google/protobuf/descriptor.proto ] || sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -q libprotobuf-dev >/dev/null 2>&1 || true
 cd ~/openagents || {{ echo "boat: no clone at ~/openagents" >&2; exit 2; }}
 git fetch -q origin main && git checkout -q --detach origin/main || exit 2
 slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json 2>/dev/null)
@@ -586,12 +589,12 @@ async fn ready(client: &boat::Client, id: &str) -> Result<(), String> {
 }
 
 /// Waits until `id` starts a detached command, the way the run's own
-/// command starts: a detached `true`, once every two seconds, up to three
+/// command starts: a detached `true`, once every two seconds, up to ten
 /// minutes. A sandbox from a template ran a plain command while it still
 /// refused detached ones (2026-10-02), so the probe is detached too. Only
 /// then does the run's own command go, which is never resent.
 async fn reachable(client: &boat::Client, id: &str) -> Result<(), String> {
-    let deadline = Instant::now() + Duration::from_secs(180);
+    let deadline = Instant::now() + Duration::from_secs(600);
     loop {
         let tried = client
             .exec_detached(
