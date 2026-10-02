@@ -24,3 +24,4 @@ thiserror = "2"
 
 [dev-dependencies]
 nostr = { path = "../nostr", features = ["test-invoice"] }
+tempfile = "3"

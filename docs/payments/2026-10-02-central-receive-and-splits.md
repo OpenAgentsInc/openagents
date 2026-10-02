@@ -345,6 +345,42 @@ and a cached destination stays until a newer resolution replaces it.
   wallet. `openagents x402 advertise` publishes the central URL and our
   `payTo`. Running one's own receiver stays possible for self-hosters (the
   protocol is open) but is no longer what our tools set up.
+  Shipped in #10194 as the `[hosted]` section of `openagents pay serve`
+  (`crates/openagents-cli/src/pay_hosted.rs`, `crates/x402/src/hosted.rs`):
+  - **Registration.** `openagents x402 publish --upstream URL --price-sats N
+    --payout ADDRESS [--resource NAME] [--method GET|POST]` posts a JSON
+    registration to `POST /v1/resources` under a NIP-98 `Authorization`
+    event (kind 27235) signed by the author's key, the body bound by its
+    `payload` tag. The front keeps the signed pair in an append-only file, so
+    any registration can be re-verified. A name belongs to the key that
+    registered it first; the same key publishing again replaces it. The
+    payout becomes the owner's payee with `source` = `registration`
+    (resolver rank 1, beside the release).
+  - **Serving.** `GET`/`POST /x/{name}` is a quoted route: the registration's
+    price, our `402`, our invoice, our replay store; the settlement carries
+    role `hosted_resource`, the owner, and resource `x:{name}`, so the ledger
+    splits by `[hosted_resource]` before the upstream is called.
+  - **The paid header.** The forward carries `OpenAgents-Paid: Nostr …`, a
+    NIP-98 event signed by the pay host key over the upstream URL, method,
+    and forwarded body, with `resource`, `request` (the front request's
+    binding hash), `payment`, and `settled_at` tags. The key is published at
+    `GET /v1/paid-key`; an upstream checks the header with
+    `openagents_x402::hosted::verify_paid` (300-second window) and refuses a
+    payment hash it has seen.
+  - **Safety.** Upstream schemes are allowlisted (`https` by default); URLs
+    with credentials are refused; every address the host resolves to must be
+    public (no loopback, private, link-local, metadata, CGNAT, unique-local,
+    or IPv4-mapped forms of them), checked at registration and again at each
+    call, and the call connects only to the checked addresses, with no
+    redirects and no proxy. Request bodies are capped before the `402`
+    (1 MiB), answers are capped (4 MiB), and the forward has a connect and
+    total timeout (30 s).
+  - **Failure after payment.** A timeout or error from the upstream keeps
+    the settlement and records the call as `execution_failed` (NIP-X402's
+    `failed`); the buyer gets a `500`. Refunds are out of scope.
+  - `openagents x402 advertise --slug NAME` (http:1) reads the registration
+    back from `GET /v1/resources/{name}` and publishes the central URL and
+    the front's `payTo`; `--local --url URL` keeps the self-hosted path.
 
 ## 7. Stats and the live view
 

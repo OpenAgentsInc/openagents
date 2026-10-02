@@ -108,6 +108,9 @@ pub struct Quote {
     /// The author party the fee is owed to.
     pub author: Option<String>,
     pub fee_msat: Option<u64>,
+    /// The resource the ledger and the flow view name for this call, when
+    /// it is narrower than the route's (`x:{name}` for a hosted resource).
+    pub resource: Option<String>,
 }
 
 /// Why a [`Price::Quote`] route could not price a call: the status and
@@ -606,6 +609,9 @@ impl<S: ReplayStore> Front<S> {
                 usage.plugin.clone_from(&quote.plugin);
             }
             usage.release.clone_from(&quote.release);
+            if let Some(resource) = &quote.resource {
+                usage.resource.clone_from(resource);
+            }
         }
         let price = quote.price_msat;
         event.price_msat = Some(price);
@@ -917,7 +923,11 @@ impl<S: ReplayStore> Front<S> {
             payment_hash: payment_hash.clone(),
             request_hash: paid.request_hash.to_string(),
             route: paid.route.id.clone(),
-            resource: paid.route.resource.clone(),
+            resource: paid
+                .quote
+                .resource
+                .clone()
+                .unwrap_or_else(|| paid.route.resource.clone()),
             role: paid.route.role.clone(),
             plugin: paid
                 .quote

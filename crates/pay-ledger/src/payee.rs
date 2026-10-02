@@ -4,7 +4,8 @@
 //! section 5. First match wins:
 //!
 //! 1. The signed EXT release's `payout` (a Spark address, a Lightning
-//!    address, or a node key), pinned with the release.
+//!    address, or a node key), pinned with the release; for the owner of a
+//!    hosted resource, the `payout` of their signed registration (#10194).
 //! 2. The newest signed NIP-A3 payment targets (kind 10133) Spark target.
 //! 3. `lud16` in the newest signed kind-0 profile.
 //! 4. An API account's payout setting (`PUT /v1/account/payout`).
@@ -49,6 +50,8 @@ impl Kind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     Release,
+    /// A signed hosted resource registration's `payout`.
+    Registration,
     PaymentTargets,
     Profile,
     Account,
@@ -60,6 +63,7 @@ impl Source {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Release => "release",
+            Self::Registration => "registration",
             Self::PaymentTargets => "nip-a3",
             Self::Profile => "profile",
             Self::Account => "account",
@@ -82,6 +86,9 @@ pub struct Sources {
     pub pubkey: Option<String>,
     /// The signed EXT release the shares were earned under.
     pub release: Option<Event>,
+    /// The `payout` of the party's newest verified hosted resource
+    /// registration (the pay front checks its signature).
+    pub registration: Option<String>,
     /// Kind-0 and kind-10133 events a relay returned for the key.
     pub events: Vec<Event>,
     /// The API account's payout setting.
@@ -122,6 +129,7 @@ pub fn resolve(sources: &Sources) -> Option<Destination> {
         .and_then(|(key, event)| payto::release_payout(key, event));
     let published = pubkey.map(|key| payto::published(key, &sources.events));
     found(Source::Release, release)
+        .or_else(|| found(Source::Registration, sources.registration.clone()))
         .or_else(|| {
             found(
                 Source::PaymentTargets,
@@ -262,6 +270,7 @@ mod tests {
         Sources {
             pubkey: Some(author.pubkey().to_owned()),
             release: Some(release(author, json!("alice@getalby.com"))),
+            registration: Some("dave@example.com".into()),
             events: vec![
                 targets(author, 10, &spark("spark")),
                 profile(author, 10, "bob@example.com"),
@@ -283,6 +292,11 @@ mod tests {
             Some((Source::Release, "alice@getalby.com".into()))
         );
         sources.release = None;
+        assert_eq!(
+            source(&sources),
+            Some((Source::Registration, "dave@example.com".into()))
+        );
+        sources.registration = None;
         assert_eq!(
             source(&sources),
             Some((Source::PaymentTargets, spark("spark")))
@@ -328,6 +342,7 @@ mod tests {
         let mut sources = Sources {
             pubkey: Some(author.pubkey().to_owned()),
             release: Some(release(&thief, json!("thief@example.com"))),
+            registration: None,
             events: vec![
                 targets(&thief, 50, &spark("spark")),
                 profile(&thief, 50, "thief@example.com"),
@@ -362,6 +377,7 @@ mod tests {
         let sources = Sources {
             pubkey: Some(author.pubkey().to_owned()),
             release: Some(release(&author, json!(spark("sparkrt")))),
+            registration: Some(spark("sparkrt")),
             events: vec![
                 targets(&author, 10, &spark("sparkrt")),
                 profile(&author, 10, "bob@example.com"),
@@ -403,6 +419,7 @@ mod tests {
         // After it, a newer source replaces the cache.
         let mut sources = full(&author);
         sources.release = None;
+        sources.registration = None;
         let fresh = ledger
             .resolve_payee(&party, 1_000 + RECHECK_SECS, || sources)
             .unwrap()

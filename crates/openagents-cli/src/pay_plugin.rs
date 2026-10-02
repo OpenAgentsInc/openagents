@@ -193,6 +193,7 @@ impl Invoke {
             release: Some(resolved.release.clone()),
             author: Some(resolved.author.clone()),
             fee_msat: Some(resolved.fee_msat),
+            resource: None,
         };
         self.pinned
             .lock()
@@ -403,6 +404,25 @@ impl LedgerSink {
         Self(Mutex::new(pay_ledger::Ledger::in_memory().unwrap()))
     }
 
+    /// Record where `party`'s shares are paid, from a signed hosted
+    /// resource registration (`source` = `registration`).
+    pub(crate) fn register_payout(&self, party: &str, payout: &str, at: u64) -> Result<(), String> {
+        let (kind, value) = pay_ledger::payee::classify(payout).ok_or_else(|| {
+            format!("payout {payout} is not a Spark address, Lightning address, or node key")
+        })?;
+        self.0
+            .lock()
+            .map_err(|_| "the ledger lock is poisoned".to_string())?
+            .register_payee(pay_ledger::Payee {
+                party: party.to_owned(),
+                destination_kind: kind.as_str().into(),
+                destination_value: value,
+                source: pay_ledger::payee::Source::Registration.as_str().into(),
+                verified_at: msat(at)?,
+            })
+            .map_err(|e| e.to_string())
+    }
+
     #[cfg(test)]
     pub(crate) fn with<T>(&self, f: impl FnOnce(&mut pay_ledger::Ledger) -> T) -> T {
         f(&mut self.0.lock().unwrap())
@@ -420,6 +440,11 @@ impl openagents_x402::front::SettlementSink for LedgerSink {
                 author: author.clone(),
                 fee_msat: msat(fee)?,
             },
+            (Some(owner), _) if settlement.role == openagents_x402::hosted::ROLE => {
+                pay_ledger::Split::HostedResource {
+                    owner: owner.clone(),
+                }
+            }
             _ => pay_ledger::Split::OpenAgents,
         };
         let input = pay_ledger::SettlementInput {

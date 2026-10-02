@@ -8987,8 +8987,92 @@
                 ]
               }
             ],
-            "summary": "Sell CMD at PUBLIC_URL for exactly N msat per call (x402 exact/lnbtc, http:1). A request without PAYMENT-SIGNATURE gets a 402 with an invoice bound to the method, URL, and body; a paid request runs CMD with the body on stdin and returns stdout. Each invoice settles once; a replay is duplicate_settlement.",
+            "summary": "Self-hosting: sell CMD from this computer's own wallet at PUBLIC_URL for exactly N msat per call (x402 exact/lnbtc, http:1); `publish` sells through OpenAgents' receiver instead. A request without PAYMENT-SIGNATURE gets a 402 with an invoice bound to the method, URL, and body; a paid request runs CMD with the body on stdin and returns stdout. Each invoice settles once; a replay is duplicate_settlement.",
             "effect": "long_running",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "publish",
+          "leaf": {
+            "path": [
+              "x402",
+              "publish"
+            ],
+            "usage": [
+              "publish --upstream URL --price-sats N --payout ADDRESS [--resource NAME] [--method GET|POST] [--summary TEXT] [--front URL] [--dry-run] [--as PROFILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "publish"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "upstream",
+                    "value": "URL",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "price-sats",
+                    "value": "N",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "payout",
+                    "value": "ADDRESS",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "resource",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "method",
+                    "value": "GET|POST",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "summary",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "front",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "dry-run",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "as",
+                    "value": "PROFILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Sell an HTTP service you run through OpenAgents' receiver, with no wallet of your own: sign a registration with this key and post it to the pay front (--front, default $OPENAGENTS_PAY_FRONT or https://api.openagents.com). The front sells FRONT/x/NAME with its own 402 and invoice, forwards each paid call to URL (https, a public address) with an OpenAgents-Paid header to check against the key at FRONT/v1/paid-key, and pays your share to ADDRESS (a Spark address, Lightning address, or node key). NAME defaults to URL's last path segment; METHOD to POST. Publishing again with the same key updates it.",
+            "effect": "publishes",
             "runs_on": "screen",
             "screen": "wallet"
           }
@@ -9541,7 +9625,7 @@
               "advertise"
             ],
             "usage": [
-              "advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]... [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]"
+              "advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--front URL] [--local] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]... [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]"
             ],
             "forms": [
               {
@@ -9567,6 +9651,18 @@
                     "name": "url",
                     "value": "PUBLIC_URL",
                     "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "front",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "local",
                     "optional": true
                   },
                   {
@@ -9617,7 +9713,7 @@
                 ]
               }
             ],
-            "summary": "Publish (or print) the kind 30180 adapter definition that advertises a paid resource of this wallet (NIP-CAP feature oa-x402-v1) over one binding: http:1 (default) or mcp:1 at PUBLIC_URL (the MCP server URI), or nostr:openagents:1 answered by this key on --relays (default: --relay), with recovery native-record-v1.",
+            "summary": "Publish (or print) the kind 30180 adapter definition that advertises a paid resource (NIP-CAP feature oa-x402-v1) over one binding. http:1 (default) advertises the resource SLUG this key published (`publish`) at the pay front's URL with the front's payTo; --local advertises PUBLIC_URL paid to this computer's wallet instead (self-hosting). mcp:1 advertises the MCP server URI PUBLIC_URL, and nostr:openagents:1 this key on --relays (default: --relay) with recovery native-record-v1, both paid to this wallet.",
             "effect": "publishes",
             "runs_on": "screen",
             "screen": "wallet"
@@ -10798,8 +10894,70 @@
         },
         {
           "kind": "option",
+          "name": "upstream",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "price-sats",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "payout",
+          "value": "ADDRESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "resource",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "method",
-          "value": "M",
+          "value": "GET|POST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "summary",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "front",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "dry-run",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "as",
+          "value": "PROFILE",
           "open": true,
           "optional": true,
           "repeated": true
@@ -10920,14 +11078,6 @@
         },
         {
           "kind": "option",
-          "name": "as",
-          "value": "PROFILE",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
           "name": "cj",
           "value": "WORKER",
           "open": true,
@@ -10985,6 +11135,12 @@
         },
         {
           "kind": "option",
+          "name": "local",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "binding",
           "value": "http:1|mcp:1|nostr:openagents:1",
           "choices": [
@@ -11000,20 +11156,6 @@
           "name": "relays",
           "value": "URL",
           "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "summary",
-          "value": "TEXT",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "dry-run",
           "optional": true,
           "repeated": true
         },

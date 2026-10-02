@@ -19,6 +19,7 @@ use openagents_x402::{FileReplayStore, ReplayStore, network_id};
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::pay_hosted::{Hosted, HostedSpec};
 use crate::pay_plugin::{Invoke, LedgerSink, PluginSource, ROLE, RegistrySource};
 use crate::x402::{Node, fail_wallet, open_wallet, replay_dir, toll_floor, x402_home};
 use crate::{Args, Output};
@@ -66,6 +67,23 @@ the published plugin {id} names: its newest signed release, priced at the
 route's price plus the release's fee_msat (the 402 names both parts), run
 once as a sandboxed guest with the body as the request, the fee recorded
 as the author's share.
+A [hosted] section sells author-hosted resources at GET and POST
+/x/{resource} (#10194): an author registers an upstream with
+`openagents x402 publish` (POST /v1/resources, signed by their key); the
+front sells calls with its own 402 and invoice, records the owner's share
+(the rule's [hosted_resource] split), then forwards the paid request to the
+upstream with an OpenAgents-Paid header signed by the pay host key
+(published at GET /v1/paid-key). The author runs no wallet.
+  [hosted]
+  registry = \"/path/hosted.ndjson\"     # optional
+  key_file = \"/path/paid-header.key\"   # optional; made on first use
+  schemes = [\"https\"]                  # optional; https and http only
+  timeout_secs = 30                      # optional
+  max_request_bytes = 1048576            # optional
+  max_response_bytes = 4194304           # optional
+An upstream that resolves to a loopback, private, link-local, or other
+non-public address is refused at registration and at every call; it is
+called at the checked address with no redirects and no proxy.
 A path segment {name} matches any one segment and reaches the command as
 OPENAGENTS_PAY_PARAM_NAME and an upstream URL as {name}. Defaults: the
 replay store ~/.openagents/x402/replay, the challenge key
@@ -102,6 +120,7 @@ pub(crate) struct RouteFile {
     pub settlements: Option<PathBuf>,
     pub ledger: Option<PathBuf>,
     pub plugin_cache: Option<PathBuf>,
+    pub hosted: Option<HostedSpec>,
     #[serde(rename = "route", default)]
     pub routes: Vec<RouteSpec>,
 }
@@ -157,6 +176,9 @@ impl RouteFile {
         }
         if let Some(path) = &mut file.plugin_cache {
             anchor(path);
+        }
+        if let Some(hosted) = &mut file.hosted {
+            hosted.anchor(base);
         }
         for route in &mut file.routes {
             if let Some(path) = &mut route.plugin_dir {
@@ -331,7 +353,8 @@ impl RouteFile {
     }
 }
 
-/// The front a route file describes, on `receiver`, `store`, and `sink`.
+/// The front a route file describes, on `receiver`, `store`, and `sink`,
+/// with `hosted`'s routes after the file's.
 pub(crate) fn front<S: ReplayStore>(
     file: &RouteFile,
     network: &'static str,
@@ -339,8 +362,12 @@ pub(crate) fn front<S: ReplayStore>(
     receiver: Arc<dyn Receiver>,
     store: S,
     sink: Arc<dyn SettlementSink>,
+    hosted: Option<&Arc<Hosted>>,
 ) -> Result<Front<S>, String> {
-    let routes = file.routes()?;
+    let mut routes = file.routes()?;
+    if let Some(hosted) = hosted {
+        routes.extend(hosted.routes());
+    }
     Front::new(
         Config {
             base_url: file.public_url.clone(),
@@ -595,11 +622,15 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         .settlements
         .clone()
         .unwrap_or_else(|| x402_home().join("settlements.ndjson"));
-    let sink: Arc<dyn SettlementSink> = match &file.ledger {
+    let ledger = match &file.ledger {
         Some(path) => match LedgerSink::open(path) {
-            Ok(sink) => Arc::new(sink),
+            Ok(sink) => Some(Arc::new(sink)),
             Err(message) => return output.fail("pay", &message),
         },
+        None => None,
+    };
+    let sink: Arc<dyn SettlementSink> = match &ledger {
+        Some(ledger) => ledger.clone(),
         None => match NdjsonSettlements::open(&settlements_path) {
             Ok(sink) => Arc::new(sink),
             Err(message) => return output.fail("pay", &message),
@@ -608,6 +639,13 @@ fn serve(output: &Output, words: &[String]) -> u8 {
     if let Err(message) = file.routes() {
         return output.fail("pay", &message);
     }
+    let hosted = match &file.hosted {
+        Some(spec) => match Hosted::open(spec, &file.public_url, ledger.clone()) {
+            Ok(hosted) => Some(hosted),
+            Err(message) => return output.fail("pay", &message),
+        },
+        None => None,
+    };
 
     let (wallet, wallet_config) = match open_wallet() {
         Ok(opened) => opened,
@@ -647,6 +685,7 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         Arc::new(Wallet(Node(wallet.clone()))),
         store,
         sink,
+        hosted.as_ref(),
     ) {
         Ok(front) => Arc::new(front),
         Err(message) => {
@@ -676,6 +715,7 @@ fn serve(output: &Output, words: &[String]) -> u8 {
             "routes": routes,
             "replay_dir": replay_dir().display().to_string(),
             "settlements": file.ledger.as_ref().unwrap_or(&settlements_path).display().to_string(),
+            "paid_key": hosted.as_ref().map(|h| h.host_pubkey().to_owned()),
         }),
         |v| {
             let mut text = format!(
@@ -707,8 +747,8 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         });
     }
     let log_output = *output;
-    let served = openagents_x402::front::serve(listener, front, stop, move |event| {
-        log_output.line(&serde_json::to_value(event).unwrap_or_default(), |v| {
+    let log = move |event: &serde_json::Value| {
+        log_output.line(event, |v| {
             format!(
                 "{} {} -> {} {}{}",
                 v["method"].as_str().unwrap_or(""),
@@ -721,7 +761,8 @@ fn serve(output: &Output, words: &[String]) -> u8 {
                     .unwrap_or_default()
             )
         });
-    });
+    };
+    let served = serve_front(listener, front, hosted, stop, log);
     let stopped = wallet.stop();
     if let Err(error) = served {
         return output.fail("pay", &error.to_string());
@@ -730,6 +771,31 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         Ok(()) => 0,
         Err(error) => output.fail("pay", &error.to_string()),
     }
+}
+
+/// Serve `front`, with `hosted`'s registration and key endpoints before
+/// its routes, until `stop` is set.
+pub(crate) fn serve_front<S: ReplayStore + Send + Sync + 'static>(
+    listener: std::net::TcpListener,
+    front: Arc<Front<S>>,
+    hosted: Option<Arc<Hosted>>,
+    stop: Arc<AtomicBool>,
+    log: impl Fn(&serde_json::Value) + Send + Sync + 'static,
+) -> std::io::Result<()> {
+    openagents_x402::server::serve_with(listener, stop, move |request| {
+        let now = openagents_x402::unix_now();
+        if let Some(hosted) = &hosted
+            && let Some((response, outcome)) =
+                hosted.answer(request, &front.pay_to(), front.config().network, now)
+        {
+            log(&json!({"method": request.method, "target": request.target,
+                        "status": response.status, "outcome": outcome}));
+            return response;
+        }
+        let (response, event) = front.handle(request, now);
+        log(&serde_json::to_value(&event).unwrap_or_default());
+        response
+    })
 }
 
 #[cfg(test)]

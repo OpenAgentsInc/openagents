@@ -38,12 +38,30 @@ use coder::cli_route::tree::{Declared, Effect};
 pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
   serve --url PUBLIC_URL --msat N [--listen HOST:PORT] [--expiry SECONDS]
         [--mime TYPE] [--seconds N] -- CMD [ARGS...]
-                          Sell CMD at PUBLIC_URL for exactly N msat per call
-                          (x402 exact/lnbtc, http:1). A request without
+                          Self-hosting: sell CMD from this computer's own
+                          wallet at PUBLIC_URL for exactly N msat per call
+                          (x402 exact/lnbtc, http:1); `publish` sells through
+                          OpenAgents' receiver instead. A request without
                           PAYMENT-SIGNATURE gets a 402 with an invoice bound to
                           the method, URL, and body; a paid request runs CMD
                           with the body on stdin and returns stdout. Each
                           invoice settles once; a replay is duplicate_settlement.
+  publish --upstream URL --price-sats N --payout ADDRESS [--resource NAME]
+        [--method GET|POST] [--summary TEXT] [--front URL] [--dry-run]
+        [--as PROFILE]
+                          Sell an HTTP service you run through OpenAgents'
+                          receiver, with no wallet of your own: sign a
+                          registration with this key and post it to the pay
+                          front (--front, default $OPENAGENTS_PAY_FRONT or
+                          https://api.openagents.com). The front sells
+                          FRONT/x/NAME with its own 402 and invoice, forwards
+                          each paid call to URL (https, a public address)
+                          with an OpenAgents-Paid header to check against the
+                          key at FRONT/v1/paid-key, and pays your share to
+                          ADDRESS (a Spark address, Lightning address, or node
+                          key). NAME defaults to URL's last path segment;
+                          METHOD to POST. Publishing again with the same key
+                          updates it.
   fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
         [--pay-with wallet|phone]
@@ -122,16 +140,20 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           finish one by hand as failed with a recorded cause
                           (provider_restarted, operator_cancelled,
                           execute_until_passed) and publish the status.
-  advertise --slug SLUG --merchant ID [--url PUBLIC_URL]
-        [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]...
+  advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--front URL]
+        [--local] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]...
         [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]
                           Publish (or print) the kind 30180 adapter definition
-                          that advertises a paid resource of this wallet
-                          (NIP-CAP feature oa-x402-v1) over one binding:
-                          http:1 (default) or mcp:1 at PUBLIC_URL (the MCP
-                          server URI), or nostr:openagents:1 answered by this
-                          key on --relays (default: --relay), with recovery
-                          native-record-v1.
+                          that advertises a paid resource (NIP-CAP feature
+                          oa-x402-v1) over one binding. http:1 (default)
+                          advertises the resource SLUG this key published
+                          (`publish`) at the pay front's URL with the front's
+                          payTo; --local advertises PUBLIC_URL paid to this
+                          computer's wallet instead (self-hosting). mcp:1
+                          advertises the MCP server URI PUBLIC_URL, and
+                          nostr:openagents:1 this key on --relays (default:
+                          --relay) with recovery native-record-v1, both paid
+                          to this wallet.
   policy [show]           Print the buyer policy and where it lives.
   policy set [--max-msat N|-] [--max-fee-msat F|-] [--daily-cap-msat N|-]
         [--provider NODE_ID | --cap PUBKEY:SLUG]
@@ -163,6 +185,7 @@ Both roles use this computer's Lightning node; set it up and run it with
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("serve", Effect::LongRunning, "wallet"),
+    Declared::screen("publish", Effect::Publishes, "wallet"),
     Declared::screen("fetch", Effect::Spends, "wallet"),
     Declared::screen("mcp-serve", Effect::LongRunning, "wallet"),
     Declared::screen("call", Effect::Spends, "wallet"),
@@ -177,7 +200,16 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("ledger", Effect::ReadOnly, "wallet"),
 ];
 
-const SWITCHES: &[&str] = &["show-proof", "dry-run"];
+const SWITCHES: &[&str] = &["show-proof", "dry-run", "local"];
+
+/// The pay front `publish` and `advertise` talk to by default.
+pub(crate) fn pay_front(flag: Option<&str>) -> String {
+    flag.map(str::to_owned)
+        .or_else(|| std::env::var("OPENAGENTS_PAY_FRONT").ok())
+        .unwrap_or_else(|| "https://api.openagents.com".into())
+        .trim_end_matches('/')
+        .to_owned()
+}
 
 /// The schema both x402 adapter operations declare: opaque bytes in and out.
 const BYTES_SCHEMA: &str = r#"{"type":"string","contentEncoding":"binary"}"#;
@@ -192,6 +224,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         }
         "serve" => serve(output, rest),
+        "publish" => publish(output, rest),
         "fetch" => fetch(output, rest),
         "mcp-serve" => mcp_serve(output, rest),
         "call" => call(output, rest),
@@ -497,14 +530,80 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         }
     };
 
-    let client = match reqwest::Client::builder()
+    let spend = Spend {
+        flags,
+        capability: args.option("cap").map(str::to_owned),
+        wait,
+        binding: "http:1",
+        resource: url.clone(),
+        phone,
+    };
+    let fetched = fetch_paid(&method, url, &body, |required| {
+        buy(
+            required,
+            &request_hash,
+            HTTP_ONLY,
+            "http:1",
+            descriptor.as_ref(),
+            spend,
+        )
+    });
+    match fetched {
+        Ok(Fetched { reply, paid: None }) => finish(
+            output,
+            reply.status,
+            &reply.headers,
+            &reply.body,
+            None,
+            None,
+            show_proof,
+        ),
+        Ok(Fetched {
+            reply,
+            paid: Some((proof, amount)),
+        }) => finish(
+            output,
+            reply.status,
+            &reply.headers,
+            &reply.body,
+            Some(&proof),
+            Some(amount),
+            show_proof,
+        ),
+        Err(message) => output.fail("x402", &message),
+    }
+}
+
+/// One HTTP answer.
+pub(crate) struct Reply {
+    pub(crate) status: u16,
+    pub(crate) headers: reqwest::header::HeaderMap,
+    pub(crate) body: Vec<u8>,
+}
+
+/// What `fetch` got: the final answer, and the proof and amount when it
+/// paid for it.
+pub(crate) struct Fetched {
+    pub(crate) reply: Reply,
+    pub(crate) paid: Option<(openagents_wallet::Proof, u64)>,
+}
+
+/// One `fetch`: send the request; on a `402`, check the challenge names
+/// this URL, have `buy` pay it (it checks the invoice against the request
+/// and the policy), and retry once with the proof.
+pub(crate) fn fetch_paid(
+    method: &str,
+    url: &str,
+    body: &[u8],
+    buy: impl FnOnce(
+        &openagents_x402::PaymentRequired,
+    ) -> Result<(PaymentPayload, openagents_wallet::Proof, u64), String>,
+) -> Result<Fetched, String> {
+    let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(60))
         .build()
-    {
-        Ok(client) => client,
-        Err(error) => return output.fail("x402", &error.to_string()),
-    };
+        .map_err(|error| error.to_string())?;
     let runtime = crate::runtime();
     let send = |signature: Option<String>| {
         let request = client
@@ -512,7 +611,7 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
                 reqwest::Method::from_bytes(method.as_bytes()).expect("method is a token"),
                 url,
             )
-            .body(body.clone());
+            .body(body.to_vec());
         let request = match signature {
             Some(signature) => request.header(PAYMENT_SIGNATURE, signature),
             None => request,
@@ -521,87 +620,47 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
             let response = request.send().await?;
             let status = response.status().as_u16();
             let headers = response.headers().clone();
-            let bytes = response.bytes().await?.to_vec();
-            Ok::<_, reqwest::Error>((status, headers, bytes))
+            let body = response.bytes().await?.to_vec();
+            Ok::<_, reqwest::Error>(Reply {
+                status,
+                headers,
+                body,
+            })
         })
     };
 
-    let (status, headers, first_body) = match send(None) {
-        Ok(reply) => reply,
-        Err(error) => return output.fail("x402", &format!("{method} {url}: {error}")),
-    };
-    if status != 402 {
-        return finish(
-            output,
-            status,
-            &headers,
-            &first_body,
-            None,
-            None,
-            show_proof,
-        );
+    let first = send(None).map_err(|error| format!("{method} {url}: {error}"))?;
+    if first.status != 402 {
+        return Ok(Fetched {
+            reply: first,
+            paid: None,
+        });
     }
-    let Some(required) = headers
+    let required = first
+        .headers
         .get(PAYMENT_REQUIRED)
         .and_then(|v| v.to_str().ok())
-        .map(wire::decode_payment_required)
-    else {
-        return output.fail("x402", "402 without a PAYMENT-REQUIRED header");
-    };
-    let required = match required {
-        Ok(required) => required,
-        Err(error) => return output.fail("x402", &format!("PAYMENT-REQUIRED: {error}")),
-    };
+        .ok_or("402 without a PAYMENT-REQUIRED header")?;
+    let required = wire::decode_payment_required(required)
+        .map_err(|error| format!("PAYMENT-REQUIRED: {error}"))?;
     if required.resource.url != *url {
-        return output.fail(
-            "x402",
-            "the challenge names a different resource URL than the one requested",
-        );
+        return Err("the challenge names a different resource URL than the one requested".into());
     }
-    let (payload, proof, amount) = match buy(
-        &required,
-        &request_hash,
-        HTTP_ONLY,
-        "http:1",
-        descriptor.as_ref(),
-        Spend {
-            flags,
-            capability: args.option("cap").map(str::to_owned),
-            wait,
-            binding: "http:1",
-            resource: url.clone(),
-            phone,
-        },
-    ) {
-        Ok(bought) => bought,
-        Err(message) => return output.fail("x402", &message),
-    };
-    let signature = match wire::encode_header(&payload) {
-        Ok(signature) => signature,
-        Err(error) => return output.fail("x402", &error.to_string()),
-    };
-    let (status, headers, paid_body) = match send(Some(signature)) {
-        Ok(reply) => reply,
+    let (payload, proof, amount) = buy(&required)?;
+    let signature = wire::encode_header(&payload).map_err(|error| error.to_string())?;
+    match send(Some(signature)) {
+        Ok(reply) => Ok(Fetched {
+            reply,
+            paid: Some((proof, amount)),
+        }),
         Err(error) => {
             set_phase(&proof.payment_hash, "retry_failed");
-            return output.fail(
-                "x402",
-                &format!(
-                    "paid retry failed: {error}; proof for payment {} is in `openagents x402 node lookup`",
-                    proof.payment_hash
-                ),
-            );
+            Err(format!(
+                "paid retry failed: {error}; proof for payment {} is in `openagents x402 node lookup`",
+                proof.payment_hash
+            ))
         }
-    };
-    finish(
-        output,
-        status,
-        &headers,
-        &paid_body,
-        Some(&proof),
-        Some(amount),
-        show_proof,
-    )
+    }
 }
 
 /// What the buyer is willing to spend on one call, before the policy is
@@ -744,6 +803,32 @@ pub(crate) fn expiry(args: &Args) -> Result<u32, String> {
 /// invoice for `request_hash` under `profiles`, pin it to the capability if
 /// one was named, and pay it from the wallet. Returns the payload to retry
 /// with, the proof, and the amount paid.
+/// The first offered requirement whose invoice is valid for this request.
+pub(crate) fn offered<'a>(
+    required: &'a openagents_x402::PaymentRequired,
+    request_hash: &str,
+    profiles: SupportedProfiles,
+) -> Result<(&'a nostr::x402::PaymentRequirements, nostr::x402::Invoice), String> {
+    let now = openagents_x402::unix_now();
+    required
+        .accepts
+        .iter()
+        .find_map(|terms| {
+            validate_challenge(
+                terms,
+                request_hash,
+                now,
+                nostr::x402::DEFAULT_CLOCK_SKEW,
+                profiles,
+            )
+            .ok()
+            .map(|invoice| (terms, invoice))
+        })
+        .ok_or_else(|| {
+            "no offered payment requirement is a valid exact/lnbtc invoice for this request".into()
+        })
+}
+
 fn buy(
     required: &openagents_x402::PaymentRequired,
     request_hash: &str,
@@ -752,22 +837,7 @@ fn buy(
     descriptor: Option<&(PaidCapability, String)>,
     spend: Spend,
 ) -> Result<(PaymentPayload, openagents_wallet::Proof, u64), String> {
-    let now = openagents_x402::unix_now();
-    let Some((terms, invoice)) = required.accepts.iter().find_map(|terms| {
-        validate_challenge(
-            terms,
-            request_hash,
-            now,
-            nostr::x402::DEFAULT_CLOCK_SKEW,
-            profiles,
-        )
-        .ok()
-        .map(|invoice| (terms, invoice))
-    }) else {
-        return Err(
-            "no offered payment requirement is a valid exact/lnbtc invoice for this request".into(),
-        );
-    };
+    let (terms, invoice) = offered(required, request_hash, profiles)?;
     if let Some((definition, event_id)) = descriptor {
         let admitted =
             definition.x402.receivers.iter().any(|receiver| {
@@ -1601,11 +1671,37 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
     {
         return output.usage("x402", "--relays takes one to eight ws(s):// URLs", USAGE);
     }
-    let url = match (args.option("url"), native) {
-        (_, true) => "",
-        (Some(url), false) => url,
-        (None, false) => {
-            return output.usage("x402", "advertise needs --url PUBLIC_URL", USAGE);
+    let central = binding == "http:1" && !args.switch("local");
+    let signer = match signer_for(args.option("as")) {
+        Ok(signer) => signer,
+        Err(message) => return output.fail("x402", &message),
+    };
+    // http:1 by default: the resource this key published, at the front's
+    // URL, paid to the front's receiver.
+    let registered = if central {
+        match registered(&pay_front(args.option("front")), slug, signer.pubkey()) {
+            Ok(registered) => Some(registered),
+            Err(message) => return output.fail("x402", &message),
+        }
+    } else {
+        None
+    };
+    let url = match (&registered, args.option("url"), native) {
+        (Some(found), Some(url), _) if url != found.url => {
+            return output.usage(
+                "x402",
+                &format!(
+                    "{slug} is sold at {}, not {url}; drop --url or pass --local",
+                    found.url
+                ),
+                USAGE,
+            );
+        }
+        (Some(found), _, _) => found.url.as_str(),
+        (None, _, true) => "",
+        (None, Some(url), false) => url,
+        (None, None, false) => {
+            return output.usage("x402", "advertise --local needs --url PUBLIC_URL", USAGE);
         }
     };
     let bound = match binding {
@@ -1629,24 +1725,26 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
     }
     let default_summary = format!("a paid {binding} resource (x402 exact/lnbtc)");
     let summary = args.option("summary").unwrap_or(&default_summary);
-    let signer = match signer_for(args.option("as")) {
-        Ok(signer) => signer,
-        Err(message) => return output.fail("x402", &message),
-    };
-    let (wallet, wallet_config) = match open_wallet() {
-        Ok(opened) => opened,
-        Err(error) => return fail_wallet(output, error),
-    };
-    let pay_to = wallet.node_id();
-    let _ = wallet.stop();
-    let Some(network) = network_id(wallet_config.network.as_str()) else {
-        return output.fail(
-            "x402",
-            &format!(
-                "wallet network `{}` has no x402 network id; use bitcoin or testnet",
-                wallet_config.network.as_str()
-            ),
-        );
+    let (pay_to, network) = match &registered {
+        Some(found) => (found.pay_to.clone(), found.network.as_str()),
+        None => {
+            let (wallet, wallet_config) = match open_wallet() {
+                Ok(opened) => opened,
+                Err(error) => return fail_wallet(output, error),
+            };
+            let pay_to = wallet.node_id();
+            let _ = wallet.stop();
+            let Some(network) = network_id(wallet_config.network.as_str()) else {
+                return output.fail(
+                    "x402",
+                    &format!(
+                        "wallet network `{}` has no x402 network id; use bitcoin or testnet",
+                        wallet_config.network.as_str()
+                    ),
+                );
+            };
+            (pay_to, network)
+        }
     };
     let body = paid_definition(&Advertisement {
         publisher: signer.pubkey(),
@@ -1737,6 +1835,194 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
             &format!("{relay} refused the head: {}", ack.message),
         ),
         Err(message) => output.fail("x402", &message),
+    }
+}
+
+/// A resource registered on the pay front, as `GET /v1/resources/{name}`
+/// describes it.
+pub(crate) struct Registered {
+    pub(crate) url: String,
+    pub(crate) pay_to: String,
+    pub(crate) network: String,
+}
+
+/// Read `name`'s registration from `front` and hold it to `owner`.
+fn registered(front: &str, name: &str, owner: &str) -> Result<Registered, String> {
+    let url = format!("{front}{}/{name}", openagents_x402::hosted::REGISTER_PATH);
+    let response = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .and_then(|client| client.get(&url).send())
+        .map_err(|e| format!("{url}: {e}"))?;
+    let status = response.status();
+    let value: Value = response.json().map_err(|e| format!("{url}: {e}"))?;
+    if status.as_u16() == 404 {
+        return Err(format!(
+            "{name} is not published on {front}; run `openagents x402 publish` first, or pass --local to advertise a self-hosted URL"
+        ));
+    }
+    if !status.is_success() {
+        return Err(format!("{url} answered {status}: {value}"));
+    }
+    if value["owner"].as_str() != Some(owner) {
+        return Err(format!("{name} on {front} is published by another key"));
+    }
+    let field = |name: &str| {
+        value[name]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| format!("{url} gave no {name}"))
+    };
+    Ok(Registered {
+        url: field("url")?,
+        pay_to: field("pay_to")?,
+        network: field("network")?,
+    })
+}
+
+/// The registration `publish` signs, from its flags.
+pub(crate) fn registration(args: &Args) -> Result<openagents_x402::hosted::Registration, String> {
+    let upstream = args
+        .option("upstream")
+        .ok_or("publish needs --upstream URL")?
+        .to_owned();
+    let sats: u64 = args.number("price-sats", 0)?;
+    if sats == 0 {
+        return Err("publish needs --price-sats N (at least 1)".into());
+    }
+    let payout = args
+        .option("payout")
+        .ok_or("publish needs --payout ADDRESS")?
+        .to_owned();
+    if pay_ledger::payee::classify(&payout).is_none() {
+        return Err(
+            "--payout must be a mainnet Spark address, Lightning address, or node key".into(),
+        );
+    }
+    let resource = match args.option("resource") {
+        Some(name) => name.to_owned(),
+        None => upstream
+            .split(['?', '#'])
+            .next()
+            .unwrap_or_default()
+            .split_once("://")
+            .map(|(_, rest)| rest)
+            .and_then(|rest| rest.split('/').skip(1).filter(|s| !s.is_empty()).last())
+            .map(str::to_ascii_lowercase)
+            .ok_or("publish needs --resource NAME (the URL has no path to name it by)")?,
+    };
+    let registration = openagents_x402::hosted::Registration {
+        v: 1,
+        resource,
+        upstream,
+        method: args.option("method").unwrap_or("POST").to_ascii_uppercase(),
+        price_msat: sats.checked_mul(1000).ok_or("--price-sats is too large")?,
+        payout,
+        summary: args.option("summary").map(str::to_owned),
+    };
+    registration.check()?;
+    Ok(registration)
+}
+
+fn publish(output: &Output, words: &[String]) -> u8 {
+    let args = match Args::parse(words, SWITCHES) {
+        Ok(args) => args,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let registration = match registration(&args) {
+        Ok(registration) => registration,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let signer = match signer_for(args.option("as")) {
+        Ok(signer) => signer,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let front = pay_front(args.option("front"));
+    let body = match serde_json::to_string(&registration) {
+        Ok(body) => body,
+        Err(error) => return output.fail("x402", &error.to_string()),
+    };
+    if args.switch("dry-run") {
+        let doc = json!({
+            "front": front,
+            "owner": signer.pubkey(),
+            "url": format!("{front}/x/{}", registration.resource),
+            "registration": registration,
+            "published": false,
+        });
+        output.emit(&doc, |v| {
+            format!(
+                "dry run: {} would sell {} at {} for {} msat (not published)",
+                v["owner"].as_str().unwrap_or(""),
+                v["registration"]["upstream"].as_str().unwrap_or(""),
+                v["url"].as_str().unwrap_or(""),
+                v["registration"]["price_msat"]
+            )
+        });
+        return 0;
+    }
+    match post_registration(&front, &signer, &body) {
+        Ok(value) => {
+            output.emit(&value, |v| {
+                format!(
+                    "published {} at {}\n  {} msat per {} call, paid to {} ({}); your share goes to {}\n  check the OpenAgents-Paid header against {front}{}",
+                    v["resource"].as_str().unwrap_or(""),
+                    v["url"].as_str().unwrap_or(""),
+                    v["price_msat"],
+                    v["method"].as_str().unwrap_or(""),
+                    v["pay_to"].as_str().unwrap_or(""),
+                    v["network"].as_str().unwrap_or(""),
+                    registration.payout,
+                    openagents_x402::hosted::KEY_PATH,
+                )
+            });
+            0
+        }
+        Err(message) => output.fail("x402", &message),
+    }
+}
+
+/// Post one signed registration to `front`; the front's description of
+/// the registered resource on success.
+pub(crate) fn post_registration(
+    front: &str,
+    signer: &nostr::domain::RelaySigner,
+    body: &str,
+) -> Result<Value, String> {
+    let url = format!("{front}{}", openagents_x402::hosted::REGISTER_PATH);
+    let authorization = openagents_x402::hosted::http_auth(
+        signer,
+        "POST",
+        &url,
+        body.as_bytes(),
+        openagents_x402::unix_now(),
+        vec![],
+    );
+    let response = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .and_then(|client| {
+            client
+                .post(&url)
+                .header("authorization", authorization)
+                .header("content-type", "application/json")
+                .body(body.to_owned())
+                .send()
+        })
+        .map_err(|e| format!("{url}: {e}"))?;
+    let status = response.status();
+    let value: Value = response.json().map_err(|e| format!("{url}: {e}"))?;
+    if status.is_success() {
+        Ok(value)
+    } else {
+        Err(format!(
+            "{front} refused the registration ({status}): {}",
+            value["error"]["message"]
+                .as_str()
+                .or(value["error"]["type"].as_str())
+                .unwrap_or_default()
+        ))
     }
 }
 
