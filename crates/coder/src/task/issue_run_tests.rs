@@ -431,6 +431,7 @@ fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
             branch: "main".into(),
             top: dir.path().into(),
             now: || 100,
+            artifacts: None,
         };
         let record = local_record();
         let mut flow = flow("working");
@@ -469,6 +470,88 @@ fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
     }
 }
 
+/// Records each upload and links it under `https://bucket.test/`.
+#[derive(Default)]
+struct FakeBucket(Mutex<Vec<String>>);
+
+impl super::super::run_artifacts::Uploader for FakeBucket {
+    fn upload(&self, object: &str, _: &[u8]) -> Result<String, String> {
+        self.0.lock().unwrap().push(object.to_owned());
+        Ok(format!("https://bucket.test/{object}"))
+    }
+}
+
+#[test]
+fn a_failure_comment_links_the_runs_uploaded_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let tracker = Arc::new(Comments::default());
+    let bucket = Arc::new(FakeBucket::default());
+    let mut record = local_record();
+    record.turns.push(local::TurnStart {
+        turn: 1,
+        revision: 1,
+        provider: "codex".into(),
+        model: "gpt".into(),
+        reason: "first".into(),
+        fallbacks: Vec::new(),
+        at: 90,
+        runner: None,
+        timings: None,
+    });
+    std::fs::write(
+        dir.path().join(format!("{}.1.atif.jsonl", record.task)),
+        "{}\n",
+    )
+    .unwrap();
+    let work = Work {
+        store: dir.path().into(),
+        local: Arc::new(Local::new(dir.path().into())),
+        tracker: tracker.clone(),
+        checks: Arc::new(NoChecks),
+        policy: Policy::default(),
+        branch: "main".into(),
+        top: dir.path().into(),
+        now: || 100,
+        artifacts: Some(bucket.clone()),
+    };
+    let mut flow = flow("working");
+    flow.finished = false;
+    let issue = issue(&[]);
+    let mut run = Run {
+        work: &work,
+        flow: &mut flow,
+        record: &record,
+        issue: &issue,
+        repository: "acme/app",
+        worktree: dir.path(),
+        turn: 1,
+        summaries: vec![],
+        checked: Checked {
+            problems: vec!["cargo test failed".into()],
+            ..Checked::default()
+        },
+        rounds: 0,
+    };
+    run.failed("The checks fail.", None);
+    let uploaded = bucket.0.lock().unwrap().clone();
+    let prefix = format!("coder/acme-app/42/{}-failed", record.task.replace('.', "-"));
+    assert_eq!(
+        uploaded,
+        vec![
+            format!("{prefix}/turn-1.atif.jsonl"),
+            format!("{prefix}/checks.txt"),
+            format!("{prefix}/route.json"),
+        ]
+    );
+    let comments = tracker.0.lock().unwrap();
+    let failure = comments
+        .iter()
+        .find(|c| c.contains("did not land"))
+        .unwrap();
+    assert!(failure.contains("**Run artifacts**"));
+    assert!(failure.contains(&format!("(<https://bucket.test/{prefix}/route.json>)")));
+}
+
 fn started_fixture(dir: &Path) -> Started {
     let tracker = Arc::new(Comments::default());
     std::fs::create_dir_all(dir.join("local")).unwrap();
@@ -492,6 +575,7 @@ fn started_fixture(dir: &Path) -> Started {
             branch: "main".into(),
             top: dir.into(),
             now: || 100,
+            artifacts: None,
         },
     }
 }
@@ -548,6 +632,7 @@ fn a_started_flow_goes_to_a_process_of_its_own_with_what_it_needs() {
         land: None,
         skip_claimed: true,
         now: || 100,
+        artifacts: None,
     };
     assert_eq!(
         drive_with(&runner, dir.path(), "task-fixture-1234").unwrap_err(),
@@ -693,6 +778,7 @@ fn a_queue_leaves_an_issue_in_progress_on_the_project() {
         land: None,
         skip_claimed: true,
         now: || 1_000,
+        artifacts: None,
     };
     let reference = Reference {
         repository: None,

@@ -893,6 +893,8 @@ struct Work {
     branch: String,
     top: PathBuf,
     now: fn() -> u64,
+    /// Where the run's artifacts go, when uploads are on (#10227).
+    artifacts: Option<Arc<dyn super::run_artifacts::Uploader>>,
 }
 
 /// Starts issue flows on this computer.
@@ -905,6 +907,8 @@ pub struct Runner {
     /// A queue skips claimed issues; a person naming one issue does not.
     pub skip_claimed: bool,
     pub now: fn() -> u64,
+    /// Where each run's artifacts go; `None` uploads nothing (#10227).
+    pub artifacts: Option<Arc<dyn super::run_artifacts::Uploader>>,
 }
 
 impl Runner {
@@ -920,6 +924,7 @@ impl Runner {
             land: None,
             skip_claimed: false,
             now: super::autostart::unix_now,
+            artifacts: super::run_artifacts::from_env(),
         }
     }
 
@@ -1084,6 +1089,7 @@ impl Runner {
                 branch,
                 top: checkout.top,
                 now: self.now,
+                artifacts: self.artifacts.clone(),
             },
         })
     }
@@ -1385,6 +1391,7 @@ fn drive_with(runner: &Runner, store: &Path, task: &str) -> Result<Flow, String>
             branch: job.branch,
             top: job.top,
             now: runner.now,
+            artifacts: runner.artifacts.clone(),
         },
     };
     Ok(started.finish())
@@ -1689,6 +1696,7 @@ impl Run<'_> {
             );
         }
         comment.push_str(&format!("\n\n**Landing**: {tries}"));
+        comment.push_str(&self.artifacts(Some(&format!("{commit}~1"))));
         let commented = self
             .work
             .tracker
@@ -1741,7 +1749,11 @@ impl Run<'_> {
         self.flow.files = Some(files.clone());
         self.flow.link.commits = vec![commit.clone()];
         let body = self.evidence(&format!("Coder's change for {}.", self.issue.url), &files);
-        let body = format!("{body}\n\nCloses #{}", self.issue.number);
+        let body = format!(
+            "{body}{}\n\nCloses #{}",
+            self.artifacts(Some(&format!("{commit}~1"))),
+            self.issue.number
+        );
         match self.work.tracker.pull_request(
             &self.work.top,
             self.repository,
@@ -1823,16 +1835,51 @@ impl Run<'_> {
     /// `git diff --stat` shows it; empty when nothing changed.
     fn diff_stat(&self) -> String {
         let _ = local::git_out(self.worktree, &["add", "-A"]);
-        let upstream = format!("origin/{}", self.work.branch);
-        let base = local::git_out(self.worktree, &["merge-base", "HEAD", &upstream])
-            .map(|base| base.trim().to_owned())
-            .ok()
-            .filter(|base| !base.is_empty())
-            .unwrap_or_else(|| self.record.base.clone());
+        let base = self.started_on();
         local::git_out(self.worktree, &["diff", "--cached", "--stat", &base])
             .unwrap_or_default()
             .trim_end()
             .to_owned()
+    }
+
+    /// The commit the run's change starts from: where `HEAD` meets the
+    /// branch, or the run's first base.
+    fn started_on(&self) -> String {
+        let upstream = format!("origin/{}", self.work.branch);
+        local::git_out(self.worktree, &["merge-base", "HEAD", &upstream])
+            .map(|base| base.trim().to_owned())
+            .ok()
+            .filter(|base| !base.is_empty())
+            .unwrap_or_else(|| self.record.base.clone())
+    }
+
+    /// The comment's section linking this run's uploaded artifacts, with
+    /// the change diffed from `base` (where the run started when `None`);
+    /// empty when uploads are off (#10227).
+    fn artifacts(&self, base: Option<&str>) -> String {
+        let Some(uploader) = &self.work.artifacts else {
+            return String::new();
+        };
+        let base = base.map_or_else(|| self.started_on(), str::to_owned);
+        let record = local::record(&self.work.store, &self.record.task)
+            .unwrap_or_else(|| self.record.clone());
+        let files = super::run_artifacts::Files::collect(
+            &self.work.store,
+            &record,
+            self.worktree,
+            &base,
+            &self.checked,
+        );
+        let prefix = super::run_artifacts::prefix(
+            self.repository,
+            self.issue.number,
+            &self.record.task,
+            &self.flow.link.outcome,
+        );
+        format!(
+            "\n\n{}",
+            super::run_artifacts::publish(&**uploader, &prefix, &files).trim_end()
+        )
     }
 
     /// How far the run got, for a comment that leaves the issue open.
@@ -1852,13 +1899,14 @@ impl Run<'_> {
         let what = self.summaries.join("\n\n");
         let comment = format!(
             "Coder worked this issue and changed nothing, so nothing landed and the issue stays \
-             open.\n\n{}\n\n{}\n\n{RELEASE_MARK}",
+             open.\n\n{}\n\n{}{}\n\n{RELEASE_MARK}",
             if what.trim().is_empty() {
                 "It gave no summary.".to_owned()
             } else {
                 format!("**What Coder said**\n\n{}", clip(what.trim(), 3_000))
             },
-            self.run_line()
+            self.run_line(),
+            self.artifacts(None)
         );
         let _ = self
             .work
@@ -1874,10 +1922,11 @@ impl Run<'_> {
         self.flow.link.outcome = "stopped".into();
         let comment = format!(
             "Coder stopped working on this before it landed anything: {why} The issue stays \
-             open. Any partial change is in Coder's worktree `{}` on the computer that ran it.\n\n{}{}\n\n{RELEASE_MARK}",
+             open. Any partial change is in Coder's worktree `{}` on the computer that ran it.\n\n{}{}{}\n\n{RELEASE_MARK}",
             self.worktree.display(),
             self.how_far(),
-            self.run_line()
+            self.run_line(),
+            self.artifacts(None)
         );
         let _ = self
             .work
@@ -1906,9 +1955,10 @@ impl Run<'_> {
         comment.push_str(&self.how_far());
         comment.push_str(&format!(
             "Nothing was pushed, and the issue stays open. The change is in Coder's worktree \
-             `{}` on the computer that ran it.\n\n{}\n\n{RELEASE_MARK}",
+             `{}` on the computer that ran it.\n\n{}{}\n\n{RELEASE_MARK}",
             self.worktree.display(),
-            self.run_line()
+            self.run_line(),
+            self.artifacts(None)
         ));
         let _ = self
             .work

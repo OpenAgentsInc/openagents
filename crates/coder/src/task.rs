@@ -50,6 +50,7 @@ pub mod owner;
 pub mod publish;
 pub mod remote;
 pub mod review;
+pub mod run_artifacts;
 pub mod settings;
 pub mod spare;
 pub mod steer;
