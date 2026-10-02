@@ -481,12 +481,26 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert_eq!(app.presentation().unwrap().counter(), "3 / 4");
     let wake = app.tick(open).expect("the future asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
-    let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().year();
-    app.tick(open + Duration::from_secs(10));
-    assert_eq!(future(&app), 2027);
+    let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().label();
+    let end = openagents_desktop::route_future::END;
+    // About a quarter of the way: mid 2027.
+    app.tick(open + Duration::from_secs_f32(end * 0.25));
+    assert_eq!(future(&app), "Oct 2027");
     let early = write(&mut app, "episode-289-future-a");
-    app.tick(open + Duration::from_secs(33));
-    assert_eq!(future(&app), 2030);
-    let late = write(&mut app, "episode-289-future-b");
+    app.tick(open + Duration::from_secs_f32(end * 0.6));
+    assert_eq!(future(&app), "Apr 2029");
+    let mid = write(&mut app, "episode-289-future-b");
+    // It plays once and holds on December 2030, the traffic still flowing.
+    app.tick(open + Duration::from_secs_f32(end + 20.0));
+    assert_eq!(future(&app), "Dec 2030");
+    let late = write(&mut app, "episode-289-future-c");
+    app.tick(open + Duration::from_secs_f32(end + 21.0));
+    assert_eq!(future(&app), "Dec 2030");
+    assert!(
+        app.tick(open + Duration::from_secs_f32(end + 21.0))
+            .is_some()
+    );
+    assert_ne!(early.pixels, mid.pixels);
+    assert_ne!(mid.pixels, late.pixels);
     assert_ne!(early.pixels, late.pixels);
 }

@@ -937,8 +937,13 @@ impl MapPage {
         // Each label sits outside its node, away from the front, so the
         // rings read like a radial tree; one that would overlap a label
         // already placed waits for a closer zoom. The selection and the
-        // shallowest nodes place first.
-        let mut order: Vec<usize> = (0..self.map.nodes.len()).collect();
+        // shallowest nodes place first. A scene's frame has no labels: its
+        // slide carries its own words.
+        let mut order: Vec<usize> = if self.shown.is_some() {
+            Vec::new()
+        } else {
+            (0..self.map.nodes.len()).collect()
+        };
         order.sort_by_key(|&i| {
             let focus = Some(i) == self.selected || Some(i) == self.hover;
             (!focus, !lit.contains(&i), self.map.nodes[i].depth, i)
