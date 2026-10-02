@@ -119,6 +119,9 @@ pub enum Refusal {
     /// "dispatch"): a reply that starts work says what starts, never who
     /// is sent to do it.
     NamesWorker,
+    /// Opens with a lone letter that is no word ("e a background process"),
+    /// the end of a word whose start was lost (#10178).
+    BrokenWord,
     /// A button or a tap, which the app shows itself.
     Button,
     /// A time, price, or guarantee, or a claim that work is already
@@ -138,6 +141,7 @@ impl Refusal {
             Refusal::Question => "question".to_string(),
             Refusal::SpeaksForUs => "speaks_for_us".to_string(),
             Refusal::NamesWorker => "names_worker".to_string(),
+            Refusal::BrokenWord => "broken_word".to_string(),
             Refusal::Button => "button".to_string(),
             Refusal::Promise => "promise".to_string(),
             Refusal::Router(invalid) => format!("{invalid:?}"),
@@ -242,6 +246,14 @@ pub fn check(written: &str, stem: &str, message: &str, cut_off: bool) -> Result<
     }
     let said = words(&text);
     let asked = words(message);
+    // A first word of one letter is "a", or the tail of a word cut short.
+    if text.split_whitespace().next().is_some_and(|first| {
+        first.chars().count() == 1
+            && first.chars().all(char::is_alphabetic)
+            && !first.eq_ignore_ascii_case("a")
+    }) {
+        return Err(Refusal::BrokenWord);
+    }
     if said.iter().any(|word| PLURAL_US.contains(&word.as_str())) {
         return Err(Refusal::SpeaksForUs);
     }
@@ -711,6 +723,7 @@ mod tests {
                 Refusal::Button,
             ),
             ("having Coder look through your repo", Refusal::NamesWorker),
+            ("e a background process", Refusal::BrokenWord),
             (
                 "your repo, and Coder will report back",
                 Refusal::NamesWorker,
