@@ -25,12 +25,16 @@
 //! go to it too. The arrow and page keys still change slides, except while
 //! the map is being dragged. Beside it, a narrow column plays a scripted
 //! chat and lights each message's way through the map ([`RouteChat`]).
-//! `scene: routes-future` shows the same view
-//! fed a growing model instead ([`RouteFuture`]), on the frame clock.
+//! `scene: routes-plugin` goes on with that chat over the same map: a
+//! request no plugin serves, the plugin made with the Gym's interview, its
+//! XP, and others using it ([`RoutePlugin`]). `scene: routes-future` shows
+//! the same view fed a growing model instead ([`RouteFuture`]), on the
+//! frame clock.
 
 use crate::route_chat::RouteChat;
 use crate::route_future::RouteFuture;
 use crate::route_map::MapPage;
+use crate::route_plugin::RoutePlugin;
 use openagents_deck::{Outcome, UnknownDeck, Viewer};
 use rust_native::style::{Color, Style, TextAlign};
 use rust_native::{Element, Node};
@@ -54,6 +58,8 @@ pub const FRAME: Duration = Duration::from_millis(16);
 pub const FUTURE_FRAME: Duration = Duration::from_millis(33);
 /// The scene that shows the live route map in the slide.
 pub const ROUTES: &str = "routes";
+/// The scene that goes on with the chat as a person makes a plugin.
+pub const ROUTES_PLUGIN: &str = "routes-plugin";
 /// The scene that shows the route map growing into the future.
 pub const ROUTES_FUTURE: &str = "routes-future";
 
@@ -114,6 +120,8 @@ pub struct Slides {
     future: Option<RouteFuture>,
     /// The scripted chat beside the live route map, once shown.
     chat: Option<RouteChat>,
+    /// The plugin story on the live route map, once shown.
+    plugin: Option<RoutePlugin>,
 }
 
 /// Ease-out: fast at first, settling at the end.
@@ -150,6 +158,7 @@ impl Slides {
             routes: None,
             future: None,
             chat: None,
+            plugin: None,
         })
     }
 
@@ -212,6 +221,29 @@ impl Slides {
         self.viewer.scene() == Some(ROUTES_FUTURE)
     }
 
+    /// The plugin story, once its slide has shown.
+    pub fn plugin(&self) -> Option<&RoutePlugin> {
+        self.plugin.as_ref()
+    }
+
+    fn on_plugin(&self) -> bool {
+        self.viewer.scene() == Some(ROUTES_PLUGIN)
+    }
+
+    /// The plugin story, made the first time over the live map the slide
+    /// before showed (or the committed map, if it never showed).
+    fn plugin_story(&mut self) -> &mut RoutePlugin {
+        let reduce = self.reduce_motion;
+        let routes = &self.routes;
+        self.plugin.get_or_insert_with(|| {
+            let today = routes.as_ref().map_or_else(
+                || crate::route_map::build(Default::default()),
+                |(page, _)| page.map().clone(),
+            );
+            RoutePlugin::new(today, reduce)
+        })
+    }
+
     /// The overlay's node: one surface over the whole window.
     pub fn node<I>(&self) -> Node<I> {
         Node {
@@ -268,7 +300,7 @@ impl Slides {
         if self.phase != Phase::Open {
             return None;
         }
-        if (self.on_future() || self.wants_routes()) && !self.reduce_motion {
+        if (self.on_future() || self.wants_routes() || self.on_plugin()) && !self.reduce_motion {
             return Some(now + FUTURE_FRAME);
         }
         self.routes().and_then(|page| page.next_wake(now))
@@ -325,10 +357,12 @@ impl Slides {
     pub fn version(&self) -> u64 {
         let routes = self.routes().map_or(0, MapPage::version);
         let future = self.future.as_ref().map_or(0, RouteFuture::version);
+        let plugin = self.plugin.as_ref().map_or(0, RoutePlugin::version);
         self.version
             .wrapping_add(self.viewer.version())
             .wrapping_add(routes)
             .wrapping_add(future)
+            .wrapping_add(plugin)
     }
 
     fn changed(&mut self) {
@@ -347,6 +381,14 @@ impl Slides {
         } else if let Some(future) = &mut self.future {
             // Off its slide: the next visit plays from today.
             future.reset();
+        }
+        if self.on_plugin() && self.phase != Phase::Closed {
+            let story = self.plugin_story();
+            story.advance(now);
+            moved |= story.playing();
+        } else if let Some(story) = &mut self.plugin {
+            // Off its slide: the next visit plays the story from the start.
+            story.reset();
         }
         if self.wants_routes() && self.phase != Phase::Closed {
             let reduce = self.reduce_motion;
@@ -684,6 +726,9 @@ impl Slides {
             page.set_unit(unit);
             page.paint(frame, map);
             chat.paint(frame, column, unit);
+        } else if self.on_plugin() {
+            let (column, map) = crate::route_chat::split(px(layout.slide));
+            self.plugin_story().paint(frame, column, map, unit);
         } else if self.on_future() {
             let reduce = self.reduce_motion;
             self.future

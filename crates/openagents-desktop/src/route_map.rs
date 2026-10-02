@@ -160,6 +160,9 @@ pub struct RouteLight {
     pub glow: f32,
     /// The whole light's opacity, 0 to 1, as it fades.
     pub fade: f32,
+    /// Nothing serves it yet: the way lights in the gap's red, and the
+    /// target, dim, gets dashed rings instead of a glow.
+    pub missing: bool,
 }
 
 /// A dot of traffic on the map: a request on its way out, or a payment on
@@ -995,10 +998,10 @@ impl MapPage {
         // Each label sits outside its node, away from the front, so the
         // rings read like a radial tree; one that would overlap a label
         // already placed waits for a closer zoom. The selection and the
-        // shallowest nodes place first. A scene's frame has no labels: its
-        // slide carries its own words.
+        // shallowest nodes place first. A scene's frame labels only what
+        // is lit: its slide carries its own words.
         let mut order: Vec<usize> = if self.shown.is_some() {
-            Vec::new()
+            lit.iter().copied().collect()
         } else {
             (0..self.map.nodes.len()).collect()
         };
@@ -1179,7 +1182,11 @@ impl MapPage {
             return;
         }
         let target = *light.path.last().unwrap_or(&0);
-        let tint = self.map.nodes[target].kind.color();
+        let tint = if light.missing {
+            visual::map::GAP
+        } else {
+            self.map.nodes[target].kind.color()
+        };
         let alpha = |a: f32| Color {
             alpha: (a * fade).round().clamp(0.0, 255.0) as u8,
             ..tint
@@ -1229,7 +1236,34 @@ impl MapPage {
             );
         }
         let glow = light.glow.clamp(0.0, 1.0);
-        if glow > 0.0 {
+        if glow > 0.0 && light.missing {
+            // A gap: the target dimmed, with dashed rings around it.
+            let (x, y) = *points.last().unwrap_or(&head);
+            let base = radius(target);
+            let r = base + 2.0 * unit;
+            frame.fill(
+                PxRect {
+                    x: x - r,
+                    y: y - r,
+                    w: 2.0 * r,
+                    h: 2.0 * r,
+                },
+                r,
+                Color {
+                    alpha: (170.0 * glow * fade) as u8,
+                    ..visual::CANVAS
+                },
+            );
+            for (grow_by, a) in [(6.0, 255.0), (14.0, 150.0), (23.0, 80.0)] {
+                dashed_ring(
+                    frame,
+                    (x, y),
+                    base + grow_by * unit * glow,
+                    unit * 1.4,
+                    alpha(a * glow),
+                );
+            }
+        } else if glow > 0.0 {
             let (x, y) = *points.last().unwrap_or(&head);
             let base = radius(target);
             for (grow_by, a) in [(22.0, 26.0), (13.0, 48.0), (6.0, 90.0)] {

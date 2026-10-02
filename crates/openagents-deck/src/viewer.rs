@@ -581,6 +581,8 @@ mod tests {
         viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), Some("routes"));
         viewer.key("ArrowRight", false);
+        assert_eq!(viewer.scene(), Some("routes-plugin"));
+        viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), Some("routes-future"));
         viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), None);

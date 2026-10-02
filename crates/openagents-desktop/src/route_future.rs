@@ -56,9 +56,9 @@ const MONTH_NAMES: [&str; 12] = [
 ];
 
 /// A request on its way out.
-const REQUEST: Color = Color::rgb(236, 240, 255);
+pub const REQUEST: Color = Color::rgb(236, 240, 255);
 /// A payment on its way back.
-const PAYMENT: Color = Color::rgb(255, 206, 84);
+pub const PAYMENT: Color = Color::rgb(255, 206, 84);
 
 /// How a cluster around ours is drawn smaller than ours.
 const SATELLITE_SCALE: f32 = 0.42;

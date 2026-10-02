@@ -388,7 +388,8 @@ fn the_viewer_opens_when_the_offer_arrives_not_on_the_next_input() {
 /// The Episode 289 deck's second slide hosts the Map page's graph, live
 /// and interactive: a click selects a node and shows its details, a drag
 /// pans it, and the arrow keys still change slides unless a drag is held.
-/// Its third slide plays the map growing over the years. With
+/// Its third slide goes on with the chat as a person makes a plugin and
+/// others use it, and its fourth plays the map growing over the years. With
 /// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
 #[test]
 fn episode_289_hosts_the_live_route_map_and_its_future() {
@@ -470,7 +471,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         Some("front"),
         "a click selects, and the slide stays"
     );
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 4");
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 5");
     // Tab steps to the next node; its details show on the slide.
     assert!(key(&mut app, "Tab", false, open));
     let selected = write(&mut app, "episode-289-routes-selected");
@@ -493,7 +494,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         },
     );
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 4");
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 5");
     input(
         &mut app,
         SurfaceInput::Up {
@@ -505,9 +506,49 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         app.presentation().unwrap().routes().unwrap().camera(),
         before
     );
-    // Once let go, the arrow changes slides: the future plays.
+    // Once let go, the arrow changes slides: the chat goes on as a
+    // person makes a plugin on the same map.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "3 / 4");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 5");
+    let wake = app.tick(open).expect("the story asks for frames");
+    assert!(wake <= open + Duration::from_millis(40));
+    let story = |app: &DesktopApp| {
+        let story = app.presentation().unwrap().plugin().unwrap();
+        let light = story.light().map(|light| {
+            let target = *light.path.last().unwrap();
+            (story.map().nodes[target].id.clone(), light.missing)
+        });
+        (light, story.grown(), story.xp(), story.uses())
+    };
+    // No plugin serves it: the gap lights.
+    app.tick(open + Duration::from_secs_f32(2.6));
+    let missing = write(&mut app, "episode-289-plugin-a-missing");
+    let (light, grown, _, _) = story(&app);
+    assert_eq!(light, Some(("route:capability.missing".to_string(), true)));
+    assert_eq!(grown, 0.0);
+    // The plugin made and its XP awarded.
+    let others = openagents_desktop::route_plugin::others_from();
+    app.tick(open + Duration::from_secs_f32(others - 1.6));
+    let made = write(&mut app, "episode-289-plugin-b-made");
+    let (light, grown, xp, uses) = story(&app);
+    assert_eq!(
+        light.map(|(target, _)| target).as_deref(),
+        Some(openagents_desktop::route_plugin::PLUGIN)
+    );
+    assert_eq!((grown, uses), (1.0, 0));
+    assert!(xp > 25.0, "{xp}");
+    // Others use it, and it holds there with the traffic flowing.
+    let end = openagents_desktop::route_plugin::end();
+    app.tick(open + Duration::from_secs_f32(end + 4.0));
+    let used = write(&mut app, "episode-289-plugin-c-used");
+    let (_, _, xp, uses) = story(&app);
+    assert_eq!(xp, 225.0);
+    assert!(uses > 5, "{uses}");
+    assert_ne!(missing.pixels, made.pixels);
+    assert_ne!(made.pixels, used.pixels);
+    // The future plays next.
+    assert!(key(&mut app, "ArrowRight", false, open));
+    assert_eq!(app.presentation().unwrap().counter(), "4 / 5");
     let wake = app.tick(open).expect("the future asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().label();

@@ -72,9 +72,12 @@ pub mod notices;
 pub mod qr;
 #[cfg(feature = "app")]
 pub mod route_chat;
+#[cfg(feature = "app")]
 pub mod route_future;
 #[cfg(feature = "app")]
 pub mod route_map;
+#[cfg(feature = "app")]
+pub mod route_plugin;
 pub mod screens;
 pub mod settings;
 #[cfg(feature = "app")]
