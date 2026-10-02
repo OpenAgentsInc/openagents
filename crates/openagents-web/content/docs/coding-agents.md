@@ -3,18 +3,18 @@
 Coder doesn't bring its own model account. It runs the coding agents you
 already use, on your computer, under your own sign-in with each one.
 
-| Agent | On by default | Model when you don't name one |
+| Agent | Order | Model when you don't name one |
 | --- | --- | --- |
-| Codex | Yes, first | `gpt-6.1-sol`, medium reasoning |
-| Claude Code | Yes, second | `claude-opus-5-5` |
-| Grok Build | Yes, third | Grok Build's own default |
-| OpenCode | No | None: you always name its model |
-| Devin | No | Devin's own default |
+| Codex | First | `gpt-6.1-sol`, medium reasoning |
+| Claude Code | Second | `claude-opus-5-5` |
+| Grok Build | Third | Grok Build's own default |
+| Devin | Fourth | Devin's own default |
+| OpenCode | Fifth | The model OpenCode's own configuration names |
 
-Coder tries them in order and uses the first one that is signed in on
-this computer and has room in its usage window. OpenCode and Devin are
-off until you turn them on: OpenCode needs a model named, and Devin bills
-its own paid API for each run.
+Every agent signed in on this computer is on, with nothing to enable.
+Coder tries them in order and uses the first one that is signed in and has
+room in its usage window. Devin bills its own paid API for each run; turn
+it off if you don't want Coder to use it.
 
 ## Sign in
 
@@ -33,9 +33,9 @@ your sign-in itself.
 ## Ask for one
 
 Name the agent in your message: "run this with Claude Code", "do it with
-Codex". Coder puts that agent first for the run, if your settings allow it
-on that computer. If it can't use it, because it isn't signed in, isn't
-turned on, or has no room right now, the start says why and names the one
+Codex". Coder puts that agent first for the run, unless you turned it off
+on that computer. If it can't use it, because it isn't signed in, is
+turned off, or has no room right now, the start says why and names the one
 running instead. This works from the phone too.
 
 There's no model picker in the apps yet. To choose a model, name it in the
@@ -45,16 +45,19 @@ settings (`codex:MODEL`, `opencode:PROVIDER/MODEL`); see the
 ## Failover
 
 If an agent turns Coder away during a run, Coder records it and switches
-to the next allowed agent, and the chat says it switched. An agent turned
+to the next agent, and the chat says it switched. An agent turned
 away earlier is skipped until it has room again.
 
-## Choose which agents Coder may use
+## Turn an agent off, or change the order
 
-- **Mac app:** **Settings → Coder → Agents Coder may run.** Turn each on or
-  off. Coder tries the ones that are on from the top; one you turn on goes
-  last. At least one stays on.
-- **Anywhere:** `openagents settings set coder.providers codex,claude`
-  lists them in order.
+Every signed-in agent is used unless you turn it off.
+
+- **Mac app:** **Settings → Coder → Agents Coder may run.** Turn one off to
+  keep Coder from using it. At least one stays on.
+- **OpenAgents Terminal:** `/settings`, the same switches.
+- **Anywhere:** `openagents settings disable devin` (and `enable devin`).
+  `openagents settings set coder.providers claude,codex` puts Claude Code
+  first; agents you leave out still follow.
 
 Delegated sessions show inside their Coder chat: when a task hands work to
 OpenCode or Devin, that session appears as a row you can open. Separate

@@ -4276,6 +4276,64 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "disable",
+          "leaf": {
+            "path": [
+              "settings",
+              "disable"
+            ],
+            "usage": [
+              "disable AGENT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "disable"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "AGENT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Turn a coding agent off: Coder never uses it.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "enable",
+          "leaf": {
+            "path": [
+              "settings",
+              "enable"
+            ],
+            "usage": [
+              "enable AGENT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "enable"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "AGENT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Turn a coding agent back on.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ]
     },

@@ -263,6 +263,23 @@ pub fn login(provider: &str, variable: &dyn Fn(&str) -> Option<OsString>) -> Log
     }
 }
 
+/// The default model the owner's OpenCode configuration names (its
+/// top-level `model`, as `provider/model`), when it names one that
+/// [`Model::parse`] admits. Nothing else in the file is kept.
+#[must_use]
+pub fn configured_model(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Configured {
+        #[serde(default)]
+        model: Option<String>,
+    }
+    config_files(variable).into_iter().find_map(|path| {
+        let bytes = std::fs::read(&path).ok()?;
+        let model = serde_json::from_slice::<Configured>(&bytes).ok()?.model?;
+        Model::parse(&model).ok().map(|_| model)
+    })
+}
+
 /// Whether OpenCode has any login here: a stored one in its `auth.json`, or
 /// a provider or default model in the owner's configuration. Names only,
 /// as [`login`] reads them.

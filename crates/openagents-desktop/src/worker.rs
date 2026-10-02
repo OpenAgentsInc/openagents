@@ -1379,6 +1379,8 @@ mod tests {
                 settings::Choice::new(Provider::Claude),
                 settings::Choice::new(Provider::Codex),
             ],
+            // Agents are opt-out (#10184): only these two stay on.
+            disabled: vec![Provider::Grok, Provider::Devin, Provider::OpenCode],
             projects: vec![allowed.canonicalize().unwrap()],
             ..settings::Coder::default()
         };

@@ -664,10 +664,11 @@ const START_KEY: &str = "start";
 const AGENT_KEY: &str = "agent:";
 
 /// What the settings list shows from `file`: when Coder starts, then each
-/// coding agent, the allowed ones first in the order Coder tries them, as
-/// the desktop app's settings page shows them.
+/// coding agent, the ones on first in the order Coder tries them, then the
+/// ones turned off, as the desktop app's settings page shows them. Agents
+/// are opt-out (#10184): every agent is on unless the person turned it off.
 fn coder_settings(file: &std::path::Path) -> Settings {
-    use coder::task::settings::{self, Choice as Route, PROVIDERS, Start};
+    use coder::task::settings::{self, Start};
     let loaded = match settings::Settings::load(file) {
         Ok(loaded) => loaded,
         Err(why) => {
@@ -680,23 +681,18 @@ fn coder_settings(file: &std::path::Path) -> Settings {
             };
         }
     };
-    let allowed = loaded.coder.provider_list();
-    let rest = PROVIDERS.into_iter().filter(|p| !allowed.contains(p));
     let mut choices = vec![openagents_terminal::Choice {
         key: START_KEY.into(),
         label: "Start Coder at once".into(),
         on: loaded.coder.start == Start::AtOnce,
         blocked: None,
     }];
-    choices.extend(allowed.iter().copied().chain(rest).map(|provider| {
-        let name = settings::provider_name(provider);
+    choices.extend(loaded.coder.listing().into_iter().map(|(provider, on)| {
         openagents_terminal::Choice {
             key: format!("{AGENT_KEY}{}", provider.as_str()),
-            label: name.to_owned(),
-            on: allowed.contains(&provider),
-            blocked: Route::new(provider).route().err().map(|_| {
-                format!("{name} needs a model named in the settings file; set it with `openagents settings set coder.providers`.")
-            }),
+            label: settings::provider_name(provider).to_owned(),
+            on,
+            blocked: None,
         }
     }));
     Settings {
@@ -707,18 +703,16 @@ fn coder_settings(file: &std::path::Path) -> Settings {
 }
 
 /// Turn the choice `key` on or off in `file`, through Coder's own loader,
-/// which refuses a change that leaves no agent.
+/// which records only a turn-off and refuses one that leaves no agent.
 fn change_setting(file: &std::path::Path, key: &str, on: bool) -> Result<(), String> {
-    use coder::task::capacity::Provider;
-    use coder::task::settings::{PROVIDERS, Settings as File, Start};
+    use coder::task::settings::{Settings as File, Start, agent};
     let mut settings = File::load(file)?;
     if key == START_KEY {
         settings.coder.start = if on { Start::AtOnce } else { Start::AskFirst };
     } else {
         let provider = key
             .strip_prefix(AGENT_KEY)
-            .and_then(Provider::from_config)
-            .filter(|provider| PROVIDERS.contains(provider))
+            .and_then(|name| agent(name).ok())
             .ok_or_else(|| format!("`{key}` is not a setting here"))?;
         settings
             .allow(provider, on)
@@ -1047,18 +1041,24 @@ mod tests {
             .iter()
             .map(|choice| (choice.key.as_str(), choice.on))
             .collect();
+        // Opt-out (#10184): every agent is on with no file, Devin and
+        // OpenCode too, and none is blocked.
         assert_eq!(
-            keys[..4],
+            keys,
             [
                 ("start", true),
                 ("agent:codex", true),
                 ("agent:claude", true),
-                ("agent:grok", true)
+                ("agent:grok", true),
+                ("agent:devin", true),
+                ("agent:opencode", true)
             ]
         );
+        assert!(shown.choices.iter().all(|choice| choice.blocked.is_none()));
         change_setting(&file, "start", false).unwrap();
-        change_setting(&file, "agent:claude", false).unwrap();
-        change_setting(&file, "agent:grok", false).unwrap();
+        for agent in ["claude", "grok", "devin", "opencode"] {
+            change_setting(&file, &format!("agent:{agent}"), false).unwrap();
+        }
         let shown = coder_settings(&file);
         assert!(!shown.choices[0].on);
         let on: Vec<&str> = shown
@@ -1068,6 +1068,10 @@ mod tests {
             .map(|choice| choice.key.as_str())
             .collect();
         assert_eq!(on, ["agent:codex"]);
+        // Only the turn-offs are saved.
+        let saved = coder::task::settings::Settings::load(&file).unwrap();
+        assert!(saved.coder.providers.is_empty());
+        assert_eq!(saved.coder.disabled.len(), 4);
         // The last agent stays on.
         assert!(change_setting(&file, "agent:codex", false).is_err());
         assert!(change_setting(&file, "agent:nobody", true).is_err());

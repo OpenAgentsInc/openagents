@@ -30,29 +30,24 @@ pub fn save(file: &Path, preferences: &Preferences) -> Result<(), String> {
     settings.save(file)
 }
 
-/// Coder's own settings in `file`, as its page shows them.
+/// Coder's own settings in `file`, as its page shows them: every agent,
+/// the ones on first in the order Coder tries them, then the ones turned
+/// off. Agents are opt-out (#10184): each is on unless turned off.
 pub fn coder_choices(file: &Path) -> CoderChoices {
-    use coder::task::settings::{self, Choice, PROVIDERS, Settings, Start};
+    use coder::task::settings::{self, Settings, Start};
     let settings = match Settings::load(file) {
         Ok(settings) => settings,
         Err(why) => return CoderChoices::Unreadable(why),
     };
-    let allowed = settings.coder.provider_list();
-    let rest = PROVIDERS.into_iter().filter(|p| !allowed.contains(p));
-    let agents = allowed
-        .iter()
-        .copied()
-        .chain(rest)
-        .map(|provider| CoderAgent {
+    let agents = settings
+        .coder
+        .listing()
+        .into_iter()
+        .map(|(provider, on)| CoderAgent {
             key: provider.as_str().to_owned(),
             name: settings::provider_name(provider).to_owned(),
-            on: allowed.contains(&provider),
-            blocked: Choice::new(provider).route().err().map(|_| {
-                format!(
-                    "{} needs a model named in the settings file, which this page can't set yet.",
-                    settings::provider_name(provider)
-                )
-            }),
+            on,
+            blocked: None,
         })
         .collect();
     CoderChoices::Read {
@@ -65,7 +60,6 @@ pub fn coder_choices(file: &Path) -> CoderChoices {
 /// which validates it; a file it can't read, or a change it refuses, is
 /// left as it was.
 fn change_coder(file: &Path, action: &Action) -> Result<(), String> {
-    use coder::task::capacity::Provider;
     use coder::task::settings::{Settings, Start};
     let mut settings = Settings::load(file)?;
     match action {
@@ -77,9 +71,8 @@ fn change_coder(file: &Path, action: &Action) -> Result<(), String> {
             };
         }
         Action::CoderAgent { agent, on } => {
-            let provider = Provider::from_config(agent)
-                .filter(|provider| coder::task::settings::PROVIDERS.contains(provider))
-                .ok_or_else(|| format!("`{agent}` is not an agent Coder runs"))?;
+            let provider = coder::task::settings::agent(agent)
+                .map_err(|_| format!("`{agent}` is not an agent Coder runs"))?;
             settings.allow(provider, *on)?;
         }
         _ => return Ok(()),
@@ -392,7 +385,8 @@ mod tests {
         };
         assert_eq!(label, "Start at once");
         assert!(shows(&app, "settings-coder-agent-codex"));
-        assert!(shows(&app, "settings-coder-agent-opencode-line"));
+        // Opt-out (#10184): every agent is on with nothing set, Devin too.
+        assert!(!shows(&app, "settings-coder-agent-devin-line"));
 
         setting(&mut app, Action::CoderStart { ask_first: true }, now);
         for (agent, on) in [("grok", true), ("claude", false)] {
@@ -407,25 +401,52 @@ mod tests {
         }
         let kept = Settings::load(&file).unwrap();
         assert_eq!(kept.coder.start, Start::AskFirst);
+        assert_eq!(kept.coder.disabled, vec![Provider::Claude]);
+        assert!(kept.coder.providers.is_empty());
         assert_eq!(
             kept.coder.provider_list(),
-            vec![Provider::Codex, Provider::Grok]
+            vec![
+                Provider::Codex,
+                Provider::Grok,
+                Provider::Devin,
+                Provider::OpenCode
+            ]
         );
         assert_eq!(kept.other["app"]["text_size"], "larger");
         assert!(!shows(&app, "settings-notice"));
 
-        // A change Coder's loader refuses writes nothing and says so.
+        // A change Coder's loader refuses (the last agent off) writes
+        // nothing and says so.
+        for agent in ["devin", "opencode", "codex"] {
+            setting(
+                &mut app,
+                Action::CoderAgent {
+                    agent: agent.into(),
+                    on: false,
+                },
+                now,
+            );
+        }
         let before = std::fs::read(&file).unwrap();
-        setting(
-            &mut app,
-            Action::CoderAgent {
-                agent: "opencode".into(),
-                on: true,
+        change_coder(
+            &file,
+            &Action::CoderAgent {
+                agent: "grok".into(),
+                on: false,
             },
-            now,
-        );
-        assert!(shows(&app, "settings-notice"));
+        )
+        .unwrap_err();
         assert_eq!(std::fs::read(&file).unwrap(), before);
+        for agent in ["devin", "opencode", "codex"] {
+            setting(
+                &mut app,
+                Action::CoderAgent {
+                    agent: agent.into(),
+                    on: true,
+                },
+                now,
+            );
+        }
 
         // Reopened: the page shows what the file holds.
         let (mut again, _) = chat_fixture(0);
@@ -441,7 +462,8 @@ mod tests {
             .filter(|agent| agent.on)
             .map(|agent| agent.key.as_str())
             .collect();
-        assert_eq!(on, ["codex", "grok"]);
+        assert_eq!(on, ["codex", "grok", "devin", "opencode"]);
+        assert_eq!(agents.last().unwrap().key, "claude");
 
         // A file the loader refuses is shown as such and never written.
         std::fs::write(&file, "not the settings").unwrap();

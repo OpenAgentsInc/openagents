@@ -14,11 +14,17 @@ pub(crate) const USAGE: &str = "usage: openagents settings COMMAND [OPTIONS]
   get KEY                 Print one setting.
   set KEY VALUE           Change one setting.
   unset KEY               Return one setting to its default.
+  disable AGENT           Turn a coding agent off: Coder never uses it.
+  enable AGENT            Turn a coding agent back on.
+Every coding agent signed in on this computer is used, Codex first; nothing
+needs enabling. Agents: codex, claude, grok, devin, opencode.
 Keys:
-  coder.providers                 Coding agents Coder may use, first preferred:
-                                  codex, claude, grok, opencode:PROVIDER/MODEL, devin,
+  coder.disabled                  Coding agents turned off, comma-separated
+                                  (default none).
+  coder.providers                 The order Coder tries agents in, first preferred,
                                   comma-separated, each optionally NAME:MODEL
-                                  (default codex,claude,grok).
+                                  (opencode:PROVIDER/MODEL); agents left out follow
+                                  in the default order codex,claude,grok,devin,opencode.
   coder.start                     at_once or ask_first (default at_once).
   coder.usage_threshold_percent   1 to 100, or off (default 90).
   coder.projects                  Folders whose Git checkouts are projects,
@@ -35,6 +41,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("get", Effect::ReadOnly),
     Declared::computer("set", Effect::LocalWrite),
     Declared::computer("unset", Effect::LocalWrite),
+    Declared::computer("disable", Effect::LocalWrite),
+    Declared::computer("enable", Effect::LocalWrite),
 ];
 
 pub(crate) fn render(value: &Value) -> String {
@@ -118,6 +126,40 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 }
                 Err(message) => output.usage("settings", &message, USAGE),
             }
+        }
+        "disable" | "enable" => {
+            if let Err(code) = want(1) {
+                return code;
+            }
+            let on = command == "enable";
+            let changed = settings::agent(&words[0]).and_then(|provider| {
+                loaded.allow(provider, on)?;
+                Ok(provider)
+            });
+            let provider = match changed {
+                Ok(provider) => provider,
+                Err(message) => return output.fail("settings", &message),
+            };
+            if let Err(message) = loaded.save(&file) {
+                return output.fail("settings", &message);
+            }
+            let name = settings::provider_name(provider);
+            output.emit(
+                &json!({
+                    "agent": provider.as_str(),
+                    "on": on,
+                    "disabled": loaded.get("coder.disabled").unwrap_or(Value::Null),
+                    "path": file.display().to_string(),
+                }),
+                |_| {
+                    if on {
+                        format!("{name} is on: Coder uses it whenever it is signed in here.")
+                    } else {
+                        format!("{name} is off: Coder will not use it.")
+                    }
+                },
+            );
+            0
         }
         "set" | "unset" => {
             let changed = if command == "set" {

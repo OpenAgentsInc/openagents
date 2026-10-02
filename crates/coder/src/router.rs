@@ -594,8 +594,9 @@ pub enum EngineState {
     Ready,
     NotSignedIn,
     Limited,
-    /// Installed or signed in, but not allowed by the person's settings
-    /// (#10113).
+    /// Installed or signed in, but the person turned it off in Coder's
+    /// settings (#10113, #10184). Agents are opt-out, so a signed-in agent
+    /// is never in this state unless the person chose it.
     NotEnabled,
 }
 
@@ -694,7 +695,7 @@ impl Engine {
             EngineState::NotSignedIn => format!("{who} is not signed in"),
             EngineState::Limited => format!("{who} is at its usage limit"),
             EngineState::NotEnabled => {
-                format!("{who} is installed but not enabled in Coder's settings")
+                format!("{who} is installed but the user turned it off in Coder's settings")
             }
         }
     }
@@ -707,7 +708,10 @@ impl Engine {
 const ENGINES_NOTE: &str = " These are the coding agents connected to this chat: each Coder \
      run uses one of them, never other agents or tools. When the user asks which agents or \
      coding agents are connected, which ones Coder can use, or who we can delegate to, \
-     answer from this list, naming each one and its state.";
+     answer from this list, naming each one and its state. Coder uses every agent signed in \
+     on the computer automatically, with nothing to enable (#10184): never tell the user to \
+     enable or turn on an agent in Coder's settings; an agent that is not signed in needs only \
+     its own sign-in.";
 
 /// The most bytes of `context.coder_run.summary` read.
 pub const MAX_RUN_SUMMARY_BYTES: usize = 4 * 1024;
@@ -2128,7 +2132,7 @@ mod tests {
     }
 
     /// Every coding agent on the computer reaches the model's note with
-    /// its own state, one the settings leave out as not enabled (#10113);
+    /// its own state, one the person turned off as such (#10113, #10184);
     /// a state this worker does not know leaves only that engine out.
     #[test]
     fn every_engine_and_its_state_reaches_the_note() {
@@ -2146,8 +2150,9 @@ mod tests {
         assert!(
             note.contains(
                 "Coding agents on this computer: Codex is ready; Claude Code is at its usage \
-                 limit; Grok Build is ready; Devin is installed but not enabled in Coder's \
-                 settings; OpenCode is installed but not enabled in Coder's settings."
+                 limit; Grok Build is ready; Devin is installed but the user turned it off \
+                 in Coder's settings; OpenCode is installed but the user turned it off in \
+                 Coder's settings."
             ),
             "{note}"
         );
@@ -2158,6 +2163,33 @@ mod tests {
         };
         assert_eq!(engines.len(), 4);
         assert!(engines.iter().all(|engine| engine.engine != "devin"));
+    }
+
+    /// "Why don't I see Devin" with Devin signed in (#10184): agents are
+    /// opt-out, so the computer names Devin ready, and the model is told it
+    /// is ready and never to send the user to Coder's settings to enable
+    /// an agent.
+    #[test]
+    fn a_signed_in_agent_is_listed_and_no_settings_advice_is_given() {
+        let context = Context::of(&json!({
+            "surface": "terminal",
+            "computer_ready": true,
+            "computer": {
+                "place": "here",
+                "engines": [
+                    { "engine": "codex", "state": "ready" },
+                    { "engine": "claude", "state": "ready" },
+                    { "engine": "devin", "state": "ready" },
+                ]
+            }
+        }));
+        let note = context.note().unwrap();
+        assert!(note.contains("Devin is ready"), "{note}");
+        assert!(!note.contains("not enabled"), "{note}");
+        assert!(
+            note.contains("never tell the user to enable or turn on an agent in Coder's settings"),
+            "{note}"
+        );
     }
 
     /// A phone's paired computer names its coding agents (#10119): the
@@ -2181,8 +2213,8 @@ mod tests {
         assert!(
             note.contains(
                 "Coding agents on \"macbook-pro-m5\": Codex is ready; Claude Code is ready; \
-                 Grok Build is ready; OpenCode is installed but not enabled in Coder's settings; \
-                 Devin is installed but not enabled in Coder's settings."
+                 Grok Build is ready; OpenCode is installed but the user turned it off in Coder's \
+                 settings; Devin is installed but the user turned it off in Coder's settings."
             ),
             "{note}"
         );

@@ -73,14 +73,15 @@ pairing, no registered project, and no accept step: the same local run
 the chat router's reply to a message sent from this window judges it coding
 work, or the person picks **Run Coder**, the window's Coder lane
 (`src/worker.rs`) calls `coder::task::local::Local::start` with the chat's
-handoff prompt. Codex, then Claude Code, then Grok Build (#10091), each only
-when signed in here with capacity; Coder's own worktree of the project's `HEAD`; the same engine,
+handoff prompt. Every coding agent not turned off, Codex first, then Claude
+Code, Grok Build, Devin, and OpenCode (#10091, #10184), each only when signed
+in here with capacity; Coder's own worktree of the project's `HEAD`; the same engine,
 failover, and ATIF recording as a host's auto-start. Reopening a chat never
 starts a run.
 
 The local capability settings ([`openagents settings`](../cli/settings.md),
-`coder::task::settings`) apply here as in the terminal: the providers and
-their order, the usage threshold, the project folders (tried after the ones
+`coder::task::settings`) apply here as in the terminal: the agents turned off
+and the order, the usage threshold, the project folders (tried after the ones
 below when a chat names none, and a checkout outside them is not a project),
 and what commands may reach. With `coder.start: ask_first` a coding reply
 only offers **Run Coder**. The Settings page (#10021) edits the same file.

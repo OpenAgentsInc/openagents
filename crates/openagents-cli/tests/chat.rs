@@ -459,8 +459,8 @@ async fn openagents_in(cwd: &Path, home: &Path, relay: &str, worker: &str, args:
 /// `openagents settings` edits the one settings file (#10036), and each
 /// setting a terminal can observe changes `openagents chat`'s local run:
 /// in a checkout on a computer with no coding agent signed in, the
-/// default run tries Codex, Claude Code, and Grok Build (#10091), a
-/// Claude-only setting names
+/// default run tries every coding agent (#10091, #10184), turning every
+/// other agent off names
 /// Claude Code alone, a project-folder setting refuses a checkout outside
 /// it, and `ask_first` keeps only the offer. (What each setting does to a
 /// run that starts is in `crates/coder/src/task/local.rs`.)
@@ -511,7 +511,8 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(
         shown["settings"],
         json!({
-            "coder.providers": ["codex", "claude", "grok"],
+            "coder.providers": [],
+            "coder.disabled": [],
             "coder.start": "at_once",
             "coder.usage_threshold_percent": 90,
             "coder.projects": [],
@@ -525,13 +526,13 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             .to_owned()
     };
 
-    // The defaults: Coder runs at once, on Codex, Claude Code, or Grok
-    // Build (#10091).
+    // The defaults: Coder runs at once, on any coding agent signed in
+    // here (#10091, #10184); OpenCode names no model in this home.
     let plain = run!("--json", "chat", "--local", "fix the flaky test");
     assert_eq!(plain.code, 1, "{}\n{}", plain.stdout, plain.stderr);
     assert!(
         coder_message(&plain).contains(
-            "None of the coding agents your settings allow (Codex, Claude Code, Grok Build) \
+            "None of the coding agents Coder can use (Codex, Claude Code, Grok Build, Devin) \
              is signed in"
         ),
         "{}",
@@ -557,20 +558,30 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
         "{context}"
     );
 
-    // Claude Code only.
+    // Claude Code only: every other agent turned off.
     let set = run!("settings", "set", "coder.providers", "claude");
     assert_eq!(set.code, 0, "{}", set.stderr);
     assert_eq!(set.stdout.trim(), "coder.providers claude");
     assert!(file.exists());
+    for agent in ["codex", "grok", "devin", "opencode"] {
+        let off = run!("settings", "disable", agent);
+        assert_eq!(off.code, 0, "{}", off.stderr);
+        assert!(off.stdout.contains("is off"), "{}", off.stdout);
+    }
     assert_eq!(
-        run!("settings", "get", "coder.providers").stdout.trim(),
-        "claude"
+        run!("settings", "get", "coder.disabled").stdout.trim(),
+        "codex,grok,devin,opencode"
     );
+    // The last agent cannot be turned off, and a name that is no agent
+    // changes nothing.
+    assert_eq!(run!("settings", "disable", "claude").code, 1);
+    assert_eq!(run!("settings", "disable", "vertex").code, 1);
     let claude = run!("--json", "chat", "--local", "fix the flaky test");
     assert_eq!(claude.code, 1);
     assert!(
         coder_message(&claude).starts_with(
-            "Claude Code is not signed in on this computer, and your settings allow only it."
+            "Claude Code is not signed in on this computer, and every other coding agent is \
+             turned off in your settings."
         ),
         "{}",
         claude.stdout
@@ -633,8 +644,10 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(saved["coder"]["usage_threshold_percent"], Value::Null);
 
     // Every setting unset: the run is the default one again.
+    assert_eq!(run!("settings", "enable", "codex").code, 0);
     for key in [
         "coder.providers",
+        "coder.disabled",
         "coder.start",
         "coder.usage_threshold_percent",
         "coder.projects",

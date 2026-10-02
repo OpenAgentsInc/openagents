@@ -12,14 +12,19 @@ With no file, or a field left out, every setting is its default, and the
 defaults are exactly what a computer does with no file at all
 ([#10032](https://github.com/OpenAgentsInc/openagents/issues/10032),
 [#10045](https://github.com/OpenAgentsInc/openagents/issues/10045)). Since
-[#10091](https://github.com/OpenAgentsInc/openagents/issues/10091) the
-default providers are Codex, then Claude Code, then Grok Build.
+[#10184](https://github.com/OpenAgentsInc/openagents/issues/10184) coding
+agents are opt-out: every agent signed in here (Codex, Claude Code, Grok
+Build, Devin, OpenCode, in that default order) is used with nothing to
+enable. The settings only record what the person turns off
+(`coder.disabled`) and an optional order (`coder.providers`). No one edits
+this file to use an agent they have signed in to.
 
 ```json
 {
   "schema": "openagents.settings.v1",
   "coder": {
-    "providers": ["codex", "claude", "grok"],
+    "providers": ["claude"],
+    "disabled": ["devin"],
     "start": "at_once",
     "usage_threshold_percent": 90,
     "projects": [],
@@ -30,19 +35,19 @@ default providers are Codex, then Claude Code, then Grok Build.
 
 | Key | Values | Default | What it changes |
 | --- | --- | --- | --- |
-| `coder.providers` | 1 to 5 of `codex`, `claude`, `grok`, `opencode:PROVIDER/MODEL`, `devin`, each optionally `NAME:MODEL` | `codex`, `claude`, `grok` | Which coding agents a run may use, first preferred. Each is still used only when it is signed in here and has capacity; one that is not is passed over with that reason ("Grok Build is not signed in here; using …"). A name alone runs `gpt-6.1-sol` at medium reasoning (Codex), `claude-opus-5-5` (Claude Code), Grok Build's own default model, or Devin's default; OpenCode always names its model. |
+| `coder.disabled` | any of `codex`, `claude`, `grok`, `devin`, `opencode` | none | The agents the person turned off: the only ones a run never uses. Turning every agent off is refused. `openagents settings disable AGENT` / `enable AGENT`, the terminal's `/settings`, and the desktop's Settings → Coder toggles edit only this. |
+| `coder.providers` | up to 5 of `codex`, `claude`, `grok`, `devin`, `opencode`, each optionally `NAME:MODEL` | none (the default order) | The order a run tries agents in, first preferred, and a model for any of them; never a list of what may run. Agents it leaves out follow in the default order. Each is still used only when it is signed in here and has capacity; one that is not is passed over with that reason ("Grok Build is not signed in here; using …"). A name alone runs `gpt-6.1-sol` at medium reasoning (Codex), `claude-opus-5-5` (Claude Code), Grok Build's own default model, Devin's default, or the model OpenCode's own configuration names (its `model`; OpenCode with none is passed over). |
 | `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers it: `openagents chat run-coder --thread ID` (or `send --run-coder`) or **Run Coder** in the app starts it. A host on this computer also tells its paired phones (presence capability `coder-start-at-once`, while its auto-start policy is on), so a coding reply on the phone starts Coder here at once too, or offers **Run Coder** under `ask_first` (#10101). |
 | `coder.usage_threshold_percent` | 1 to 100, or `null` (`off`) | 90 | The fresh usage reading at which a provider is passed over for a later one below it. Off: only a recorded refusal passes one over. A reading is only honored when the task store already holds one (a host's usage probe); the local run asks no provider. |
 | `coder.projects` | absolute folders | none: any Git checkout | Which checkouts count as projects: a checkout inside one of these folders. Outside them nothing runs and the command says why. The desktop also tries these folders when a chat names no project. |
 | `coder.access` | `toolchains`, `full`, `boundary` | `full` | What a run's commands may reach: the filesystem boundary with this computer's developer tools (#10045), the person's full access (no sandbox, their login-shell environment and real `HOME`, credential variables still left out), or the plain boundary. |
 
-OpenCode and Devin are never on by default. OpenCode has no default model: it
-runs only as `opencode:PROVIDER/MODEL`, which the person names. Devin bills a
-paid API for each run, so it runs only when the person adds `devin`
-(`openagents settings set coder.providers codex,claude,grok,devin`, or its
-toggle on the desktop's Settings → Coder page). A settings file written before
-Grok Build became a default keeps the providers it names; `openagents settings
-unset coder.providers` returns it to the default list.
+Migration: a file written before #10184 whose `coder.providers` left an agent
+out (the old default was `codex,claude,grok`) reads as that order, and the
+agents it left out now follow it; nothing is excluded unless it is in
+`coder.disabled`. An empty `coder.providers` is the default order. Devin
+bills a paid API for each run; a person who does not want that turns it off
+(`openagents settings disable devin`).
 
 A file that does not parse, has another schema, has an unknown `coder` key,
 or a value outside these sets is never read as the defaults: a local run
@@ -66,8 +71,10 @@ reduce motion off, notifications on); nothing in it opens anything up
 
 ```sh
 openagents settings show                          # every setting
-openagents settings get coder.providers           # codex,claude,grok
-openagents settings set coder.providers claude    # Claude Code only
+openagents settings disable devin                 # Coder never uses Devin
+openagents settings enable devin                  # Devin back on
+openagents settings get coder.disabled            # (empty: every agent on)
+openagents settings set coder.providers claude    # Claude Code first, the rest after
 openagents settings set coder.start ask_first
 openagents settings set coder.usage_threshold_percent off
 openagents settings set coder.projects ~/code,~/work
@@ -78,7 +85,8 @@ openagents settings unset coder.access
 
 Lists are comma-separated; a relative project folder resolves against the
 current directory and must exist. `--json` prints `{"key","value","path"}`
-(`show`: `{"path","exists","settings"}`). A bad value exits 1 and changes
+(`show`: `{"path","exists","settings"}`; `disable`/`enable`:
+`{"agent","on","disabled","path"}`). A bad value exits 1 and changes
 nothing; an unknown key or command exits 64.
 
 ## Where each program reads it
@@ -94,8 +102,8 @@ nothing; an unknown key or command exits 64.
   refuses untouched (the page then says the choice lasts until OpenAgents
   quits).
 - A host on this computer: whether its chats tell the router this computer
-  can run Coder (`coder::task::local::ready_here`) uses the allowed
-  providers.
+  can run Coder (`coder::task::local::ready_here`) and the agents it lists
+  (`engines_here`) use every agent not turned off.
 
 A device's auto-start policy (`coder host autostart on`) is separate: it is
 the host owner's policy for work that phones send, and these settings do not

@@ -227,7 +227,7 @@ impl Passed {
             PassedOver::Refused { .. } | PassedOver::NearLimit { .. } => {
                 "isn't available right now".into()
             }
-            PassedOver::NotAllowed => "is not one of the engines your Coder settings allow".into(),
+            PassedOver::NotAllowed => "is turned off in your Coder settings".into(),
         }
     }
 
@@ -2229,7 +2229,7 @@ mod tests {
             (PassedOver::NotSignedIn, "it is not signed in here"),
             (
                 PassedOver::NotAllowed,
-                "it is not one of the engines your Coder settings allow",
+                "it is turned off in your Coder settings",
             ),
             (
                 PassedOver::NearLimit { used_percent: 95 },

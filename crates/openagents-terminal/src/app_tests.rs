@@ -456,6 +456,15 @@ fn the_welcome_card_is_three_short_facts() {
                     engine: "claude".into(),
                     state: EngineState::NotSignedIn,
                 },
+                // Devin signed in is ready with nothing enabled (#10184).
+                Engine {
+                    engine: "devin".into(),
+                    state: EngineState::Ready,
+                },
+                Engine {
+                    engine: "grok".into(),
+                    state: EngineState::NotEnabled,
+                },
             ],
         }),
         project: Project::at("/work/demo"),
@@ -468,9 +477,9 @@ fn the_welcome_card_is_three_short_facts() {
     assert!(shown.contains("OpenAgents dev build"), "{shown}");
     assert!(shown.contains("Project  /work/demo"), "{shown}");
     // Only the agents that can run are named, without a word of state.
-    assert!(shown.contains("Agents   Codex"), "{shown}");
+    assert!(shown.contains("Agents   Codex · Devin"), "{shown}");
     assert!(
-        !shown.contains("Claude Code") && !shown.contains("ready"),
+        !shown.contains("Claude Code") && !shown.contains("ready") && !shown.contains("Grok"),
         "{shown}"
     );
     assert!(!shown.contains("Chats"), "{shown}");

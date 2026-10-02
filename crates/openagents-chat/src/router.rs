@@ -200,9 +200,10 @@ pub enum EngineState {
     NotSignedIn,
     /// Signed in, but at or near a usage limit.
     Limited,
-    /// Installed or signed in here, but not one of the engines the
-    /// settings' `coder.providers` allow (#10113). A worker that does not
-    /// know the word leaves the engine out.
+    /// Installed or signed in here, but the person turned it off in
+    /// Coder's settings (`coder.disabled`, #10113, #10184): agents are
+    /// opt-out, so this is only ever the person's own choice. A worker
+    /// that does not know the word leaves the engine out.
     NotEnabled,
 }
 
@@ -257,7 +258,7 @@ impl Engine {
                 for over in passed {
                     let state = match over.why {
                         PassedOver::NotSignedIn => EngineState::NotSignedIn,
-                        // Not a readiness: the settings leave it out (#10076).
+                        // Not a readiness: the person turned it off (#10076, #10184).
                         PassedOver::NotAllowed => continue,
                         _ => EngineState::Limited,
                     };

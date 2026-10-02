@@ -34,8 +34,9 @@ user.
    example `codex` or `claude`) and sign in.
 2. Check the Mac app's sidebar or **Settings → Coder**, or OpenAgents
    Terminal's **Agents** row: it should say **Signed in**.
-3. Check that the agent is turned on in **Agents Coder may run** (or in
-   `coder.providers`).
+3. Nothing needs enabling: Coder uses every signed-in agent. Only one you
+   turned off is skipped (**Agents Coder may run**, or
+   `openagents settings enable AGENT`).
 
 If the agent you asked for isn't available, Coder runs another one and the
 start says why. See [Coding agents](/docs/coding-agents).

@@ -537,7 +537,7 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
     }
     rows.push(text(
         "settings-coder-agents-line",
-        "Coder tries the ones that are on from the top, each only when it's signed in on this computer and has room. One turned on goes last. At least one stays on.",
+        "Coder uses every agent signed in on this computer, from the top, each only when it has room; nothing needs turning on. Turn one off to keep Coder from using it. At least one stays on.",
         TextRole::Status,
     ));
     rows

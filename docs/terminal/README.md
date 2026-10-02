@@ -103,10 +103,11 @@ The first thing it shows is the welcome card: the version and three rows.
 
 - **Project:** the Git checkout you started in, where Coder would work,
   written from the home folder (`~/openagents`).
-- **Agents:** every coding agent ready here, such as Codex, Claude Code, and
-  Grok Build. An agent that is not signed in, at its usage limit, or not
-  enabled in `coder.providers` is left off the card; the chat still knows
-  each one's state.
+- **Agents:** every coding agent ready here, such as Codex, Claude Code,
+  Grok Build, and Devin. Agents are opt-out (#10184): every one signed in
+  is listed and used with nothing to enable. One that is not signed in, at
+  its usage limit, or turned off (`/settings`, `coder.disabled`) is left off
+  the card; the chat still knows each one's state.
 
 Below the transcript sits the composer. Its top line says what is happening
 (`ready`, `replying`, `Starting Grok Build…`, `Coder · step 4 · ≈40% done ·

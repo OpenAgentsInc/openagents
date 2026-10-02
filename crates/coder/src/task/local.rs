@@ -58,8 +58,9 @@ use super::{
 
 /// The routes a local run admits by default, in preference order: Codex,
 /// then Claude Code, then Grok Build (#10091), with the models the
-/// desktop's auto-start switch admits. The settings' `coder.providers`
-/// replaces them.
+/// desktop's auto-start switch admits. Since #10184 the settings admit
+/// every coding agent not turned off ([`settings::Coder::routes`]); these
+/// remain the first routes of that default order.
 pub const ROUTES: [(Provider, &str); 3] = [
     (Provider::Codex, "gpt-6.1-sol"),
     (Provider::Claude, "claude-opus-5-5"),
@@ -350,6 +351,10 @@ pub struct Local {
     /// Whether a provider's coding agent is installed here
     /// ([`autostart::installed`]).
     installed: fn(Provider) -> bool,
+    /// The model OpenCode's own configuration names
+    /// ([`settings::opencode_model`]), which OpenCode runs on when the
+    /// settings name none.
+    opencode_model: fn() -> Option<String>,
     now: fn() -> u64,
     controller: Option<PathBuf>,
     /// The person's settings, or why they could not be read: a run then
@@ -393,6 +398,7 @@ impl Local {
             launcher: Box::new(autostart::Process),
             probe: capacity::probe,
             installed: autostart::installed,
+            opencode_model: settings::opencode_model,
             now: autostart::unix_now,
             controller: None,
             settings: Ok(settings::Coder::default()),
@@ -545,6 +551,13 @@ impl Local {
         self
     }
 
+    /// Read OpenCode's configured model with `opencode_model`, for tests.
+    #[must_use]
+    pub fn with_opencode_model(mut self, opencode_model: fn() -> Option<String>) -> Self {
+        self.opencode_model = opencode_model;
+        self
+    }
+
     /// Name each provider's signed-in login with `identify` instead of its
     /// local metadata, for tests.
     #[must_use]
@@ -634,7 +647,7 @@ impl Local {
 
     fn policy_with(&self, label: &str, controller: PathBuf) -> Result<Policy, String> {
         let settings = self.settings()?;
-        let routes: Vec<Route> = settings.routes()?;
+        let routes: Vec<Route> = settings.routes_with((self.opencode_model)().as_deref())?;
         let policy = Policy {
             schema: autostart::POLICY_SCHEMA.into(),
             enabled: true,
@@ -688,41 +701,45 @@ impl Local {
     }
 
     /// Every coding agent on this computer and its state, for the chat's
-    /// context and the welcome card (#10113): first the engines the
-    /// settings allow, in their order, then each other one installed or
-    /// signed in here, as not enabled. An allowed engine is ready, not
-    /// signed in, or at its usage limit, from the same login probe,
-    /// capacity book, and usage readings a start reads; an allowed one
-    /// that is neither installed nor signed in is left out, except Codex
-    /// and Claude Code, which the engine report always names. Reads only;
-    /// no credential is read.
+    /// context and the welcome card (#10113): first the engines not turned
+    /// off, in the order Coder tries them, then each one the person turned
+    /// off that is installed or signed in here, as not enabled. Agents are
+    /// opt-out (#10184): an agent is on unless the settings turn it off.
+    /// One that is on is ready, not signed in, or at its usage limit, from
+    /// the same login probe, capacity book, and usage readings a start
+    /// reads; one that is neither installed nor signed in is left out,
+    /// except Codex and Claude Code, which the engine report always names.
+    /// OpenCode with no model, in the settings or its own configuration,
+    /// cannot run, so it reads as not signed in. Reads only; no credential
+    /// is read.
     #[must_use]
     pub fn engines(&self) -> Vec<openagents_chat::router::Engine> {
         use openagents_chat::router::{Engine, EngineState, MAX_ENGINES};
         let Ok(settings) = self.settings() else {
             return Vec::new();
         };
-        let allowed = settings.provider_list();
+        let routable: Vec<Provider> = settings
+            .choices_with((self.opencode_model)().as_deref())
+            .iter()
+            .map(|choice| choice.provider)
+            .collect();
         let now = (self.now)();
         let book = capacity::Book::load_with(&self.store, self.identify);
         let readings = usage::Book::load_with(&self.store, self.identify);
         let threshold = settings.usage_threshold_percent;
-        let others = settings::PROVIDERS
-            .into_iter()
-            .filter(|provider| !allowed.contains(provider));
         let mut engines = Vec::new();
-        for provider in allowed.iter().copied().chain(others) {
+        for (provider, on) in settings.listing() {
             let signed_in = (self.probe)(provider).is_connected();
             let named =
                 signed_in || autostart::ACCOUNTS.contains(&provider) || (self.installed)(provider);
-            let state = if !allowed.contains(&provider) {
+            let state = if !on {
                 if !(signed_in || (self.installed)(provider)) {
                     continue;
                 }
                 EngineState::NotEnabled
             } else if !named {
                 continue;
-            } else if !signed_in {
+            } else if !signed_in || !routable.contains(&provider) {
                 EngineState::NotSignedIn
             } else if book.blocking(provider, now).is_some()
                 || threshold.is_some_and(|t| readings.near_limit(provider, t, now))
@@ -1356,13 +1373,14 @@ fn unconnected(providers: &[Provider]) -> String {
                 .into()
         }
         [one] => format!(
-            "{} is not signed in on this computer, and your settings allow only it. Sign in \
-             ({}) or allow another provider (`openagents settings set coder.providers …`).",
+            "{} is not signed in on this computer, and every other coding agent is turned off \
+             in your settings. Sign in ({}) or turn another agent back on \
+             (`openagents settings enable AGENT`).",
             settings::provider_name(*one),
             how(*one)
         ),
         many => format!(
-            "None of the coding agents your settings allow ({}) is signed in on this computer. \
+            "None of the coding agents Coder can use ({}) is signed in on this computer. \
              Sign in to one ({}) and try again.",
             many.iter()
                 .map(|p| settings::provider_name(*p))
@@ -2088,13 +2106,16 @@ mod tests {
             .with_probe(probe)
             .with_controller(std::env::current_exe().unwrap())
             .with_identify(|_| None)
+            .with_opencode_model(|| None)
     }
 
     /// The owner's Mac on 2026-10-01 (#10113): Codex, Claude Code, and
-    /// Grok Build signed in, Devin signed in but not in the settings, and
-    /// OpenCode installed. The context and the welcome card name every one
-    /// of them with its own state, in the settings' order, not only the
-    /// one a run would start on.
+    /// Grok Build signed in, Devin signed in, and OpenCode installed. The
+    /// context and the welcome card name every one of them with its own
+    /// state, in the order Coder tries them, not only the one a run would
+    /// start on. Since #10184 nothing has to be enabled: Devin signed in is
+    /// ready with no settings at all, and only a turn-off lists an agent
+    /// as not enabled.
     #[test]
     fn every_coding_agent_here_is_listed_with_its_state() {
         use openagents_chat::router::{Engine as Agent, EngineState as S};
@@ -2138,36 +2159,52 @@ mod tests {
                 word(Provider::Codex, S::Ready),
                 word(Provider::Claude, S::Limited),
                 word(Provider::Grok, S::Ready),
-                word(Provider::OpenCode, S::NotEnabled),
-                word(Provider::Devin, S::NotEnabled),
+                word(Provider::Devin, S::Ready),
+                word(Provider::OpenCode, S::NotSignedIn),
             ]
         );
-        // The settings' order, and an allowed engine that is installed but
-        // not signed in says so.
+        // A settings file from before #10184 that left Devin out of
+        // `coder.providers` is only an order: Devin, signed in, is ready.
         let mut settings = settings::Coder::default();
         settings.providers = vec![
-            settings::Choice::new(Provider::Devin),
             settings::Choice::new(Provider::Claude),
+            settings::Choice::new(Provider::Codex),
         ];
+        let run = run.with_settings(settings.clone());
+        assert_eq!(
+            listed(&run),
+            vec![
+                word(Provider::Claude, S::Limited),
+                word(Provider::Codex, S::Ready),
+                word(Provider::Grok, S::Ready),
+                word(Provider::Devin, S::Ready),
+                word(Provider::OpenCode, S::NotSignedIn),
+            ]
+        );
+        // Only a turn-off leaves an agent out, listed last as not enabled.
+        settings.disabled = vec![Provider::Devin, Provider::Grok];
         let run = run.with_settings(settings);
         assert_eq!(
             listed(&run),
             vec![
-                word(Provider::Devin, S::Ready),
                 word(Provider::Claude, S::Limited),
-                word(Provider::Codex, S::NotEnabled),
+                word(Provider::Codex, S::Ready),
+                word(Provider::OpenCode, S::NotSignedIn),
                 word(Provider::Grok, S::NotEnabled),
-                word(Provider::OpenCode, S::NotEnabled),
+                word(Provider::Devin, S::NotEnabled),
             ]
         );
-        let run = local(dir.path(), opencode_and_devin).with_installed(|_| false);
+        // OpenCode signed in with a model of its own configuration runs.
+        let run = local(dir.path(), opencode_and_devin)
+            .with_installed(|_| false)
+            .with_opencode_model(|| Some("anthropic/claude-sonnet-5".into()));
         assert_eq!(
             listed(&run),
             vec![
                 word(Provider::Codex, S::NotSignedIn),
                 word(Provider::Claude, S::NotSignedIn),
-                word(Provider::OpenCode, S::NotEnabled),
-                word(Provider::Devin, S::NotEnabled),
+                word(Provider::Devin, S::Ready),
+                word(Provider::OpenCode, S::Ready),
             ]
         );
         // Nothing installed or signed in: only the two the engine report
@@ -2598,10 +2635,11 @@ mod tests {
                 && matches!(p.why, PassedOver::Refused { .. }))
         ));
         // The card does not also say it falls back to Codex (#10073); Grok
-        // Build, signed in here, is the fallback after Claude Code (#10091).
+        // Build and Devin, signed in here, are the fallbacks after Claude
+        // Code (#10091, #10184).
         assert_eq!(
             shown_fallbacks(&order[1..], &runner),
-            vec!["grok:default".to_owned()]
+            vec!["grok:default".to_owned(), "devin:default".to_owned()]
         );
         // A fresher probe reading under the limit lifts the refusal: Codex
         // runs again, as the engine reading says.
@@ -2625,7 +2663,8 @@ mod tests {
             shown_fallbacks(&order[1..], &runner),
             vec![
                 "claude:claude-opus-5-5".to_owned(),
-                "grok:default".to_owned()
+                "grok:default".to_owned(),
+                "devin:default".to_owned()
             ]
         );
         std::fs::remove_file(&usage_file).unwrap();
@@ -2645,7 +2684,7 @@ mod tests {
         let why = none.choose(&policy).unwrap_err();
         assert!(
             why.contains(
-                "None of the coding agents your settings allow (Codex, Claude Code, Grok Build) \
+                "None of the coding agents Coder can use (Codex, Claude Code, Grok Build, Devin) \
                  is signed in"
             ),
             "{why}"
@@ -2659,6 +2698,12 @@ mod tests {
     fn claude_only() -> settings::Coder {
         settings::Coder {
             providers: vec![settings::Choice::new(Provider::Claude)],
+            disabled: vec![
+                Provider::Codex,
+                Provider::Grok,
+                Provider::Devin,
+                Provider::OpenCode,
+            ],
             ..settings::Coder::default()
         }
     }
@@ -2687,6 +2732,7 @@ mod tests {
                 ROUTES
                     .iter()
                     .map(|(p, m)| (*p, (*m).to_owned()))
+                    .chain([(Provider::Devin, acp_client::devin::DEFAULT_MODEL.to_owned())])
                     .collect::<Vec<_>>()
             );
             assert_eq!(policy.engine.model, ROUTES[0].1);
@@ -2780,7 +2826,8 @@ mod tests {
             .unwrap_err();
         assert!(
             why.starts_with(
-                "Claude Code is not signed in on this computer, and your settings allow only it."
+                "Claude Code is not signed in on this computer, and every other coding agent is \
+                 turned off in your settings."
             ),
             "{why}"
         );
@@ -2800,7 +2847,12 @@ mod tests {
         let (order, _) = run.choose(&policy).unwrap();
         assert_eq!(
             order.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            vec!["claude:claude-opus-5-5", "codex:gpt-6-sol"]
+            vec![
+                "claude:claude-opus-5-5",
+                "codex:gpt-6-sol",
+                "grok:default",
+                "devin:default"
+            ]
         );
 
         // OpenCode and Devin are routes like the others.
@@ -2823,7 +2875,7 @@ mod tests {
         assert!(
             none.choose(&policy)
                 .unwrap_err()
-                .contains("None of the coding agents your settings allow (OpenCode, Devin)")
+                .contains("None of the coding agents Coder can use (OpenCode, Devin, Codex")
         );
     }
 
@@ -3067,13 +3119,18 @@ mod tests {
         assert_eq!(
             none.predict(None).unwrap(),
             Runner::NotSignedIn {
-                providers: vec!["codex".into(), "claude".into(), "grok".into()]
+                providers: vec![
+                    "codex".into(),
+                    "claude".into(),
+                    "grok".into(),
+                    "devin".into()
+                ]
             },
             "no login, whatever the books say"
         );
         assert_eq!(
             none.predict(None).unwrap().text(),
-            "None of Codex, Claude Code, Grok Build is signed in on this computer. \
+            "None of Codex, Claude Code, Grok Build, Devin is signed in on this computer. \
              Sign in to one to run Coder here."
         );
     }
@@ -3197,14 +3254,13 @@ mod tests {
                 "codex",
                 "You asked for Grok Build; it is not signed in here, so Codex is running.",
             ),
-            // Devin, a paid API, runs only when the settings name it.
+            // Devin, signed in, runs with nothing set (#10184).
             (
                 both,
                 false,
                 Provider::Devin,
-                "codex",
-                "You asked for Devin; it is not one of the engines your Coder settings \
-                 allow, so Codex is running.",
+                "devin",
+                "You asked for Devin; it is signed in and has capacity.",
             ),
         ];
         for (index, (probe, refused, asked, runs, reason)) in cases.into_iter().enumerate() {
@@ -3253,6 +3309,25 @@ mod tests {
                 );
             }
         }
+        // Only an agent the person turned off is passed over as such.
+        let off = settings::Coder {
+            disabled: vec![Provider::Devin],
+            ..settings::Coder::default()
+        };
+        let run = local(&dir.path().join("off"), both)
+            .with_launcher(Box::new(Held))
+            .with_settings(off);
+        let record = run
+            .start_requested(&top, "Fix it", "Fix it.", None, &[], Some(Provider::Devin))
+            .unwrap();
+        assert_eq!(record.turns[0].provider, "codex");
+        assert!(
+            record.turns[0]
+                .reason
+                .starts_with("You asked for Devin; it is turned off in your Coder settings"),
+            "{}",
+            record.turns[0].reason
+        );
         // No request: the settings' order, as before.
         let run = local(&dir.path().join("plain"), both).with_launcher(Box::new(Held));
         let record = run.start(&top, "Fix it", "Fix it.", None).unwrap();

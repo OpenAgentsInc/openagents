@@ -5,8 +5,9 @@
 //! computer: `$OPENAGENTS_SETTINGS`, else `~/.openagents/settings.json`
 //! ([`path`]). A missing file, or a missing field, means the default, and
 //! the defaults are exactly what a computer does with no file at all
-//! (#10032, #10045, #10091, #10104): Codex, then Claude Code, then Grok
-//! Build (each only when signed in here), a coding request runs at once,
+//! (#10032, #10045, #10091, #10104, #10184): every coding agent signed in
+//! here, Codex first, then Claude Code, Grok Build, Devin, and OpenCode
+//! (each only when signed in here), a coding request runs at once,
 //! a fresh usage reading at or above 90% passes a provider over, any Git
 //! checkout is a project, and every step is approved: commands run as the
 //! person's own user with full access, so each engine's own permission
@@ -16,7 +17,8 @@
 //! {
 //!   "schema": "openagents.settings.v1",
 //!   "coder": {
-//!     "providers": ["codex", "claude", "grok"],
+//!     "providers": ["claude"],
+//!     "disabled": ["devin"],
 //!     "start": "at_once",
 //!     "usage_threshold_percent": 90,
 //!     "projects": [],
@@ -25,9 +27,15 @@
 //! }
 //! ```
 //!
-//! OpenCode and Devin are never on by default: OpenCode has no default
-//! model (it names its own `provider/model`), and Devin bills a paid API
-//! per run, so each runs only when the person names it.
+//! Coding agents are opt-out (#10184): no one edits a settings file to use
+//! an agent they have signed in to. `coder.disabled` names the agents the
+//! person turned off, and only those are never used; `coder.providers` is
+//! an order preference (and a model per agent, `NAME:MODEL`): the agents it
+//! names are tried first, in its order, and every other agent follows in
+//! the default order. A file from before #10184 whose `providers` left an
+//! agent out therefore reads as that order, with the agent left out still
+//! available. OpenCode runs on the model its own configuration names (its
+//! `model`), unless `providers` names one as `opencode:PROVIDER/MODEL`.
 //!
 //! A file that does not parse, or names a value outside its closed set, is
 //! never read as the defaults: a local run then refuses and names the file,
@@ -55,13 +63,15 @@ pub const SCHEMA: &str = "openagents.settings.v1";
 pub const PATH_VAR: &str = "OPENAGENTS_SETTINGS";
 /// The most routes a local run admits: a first route and its fallbacks.
 pub const MAX_PROVIDERS: usize = 1 + super::adapter::MAX_FALLBACKS;
-/// The providers a local run can use, in their default order.
+/// The providers a local run can use, in their default order: Codex
+/// first (the owner's choice), then Claude Code, Grok Build, Devin, and
+/// OpenCode.
 pub const PROVIDERS: [Provider; 5] = [
     Provider::Codex,
     Provider::Claude,
     Provider::Grok,
-    Provider::OpenCode,
     Provider::Devin,
+    Provider::OpenCode,
 ];
 
 /// The settings file: `$OPENAGENTS_SETTINGS`, else
@@ -183,6 +193,21 @@ impl Choice {
     }
 }
 
+impl Choice {
+    /// What tells two choices apart: its route, or OpenCode named without
+    /// a model, which runs on OpenCode's own configured one (#10184).
+    fn key(&self) -> Result<Route, String> {
+        if self.provider == Provider::OpenCode && self.model.is_none() {
+            return Ok(Route {
+                provider: Provider::OpenCode,
+                model: String::new(),
+                effort: None,
+            });
+        }
+        self.route()
+    }
+}
+
 impl std::fmt::Display for Choice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.model {
@@ -229,7 +254,7 @@ impl std::str::FromStr for Choice {
             }
         };
         let choice = Choice { provider, model };
-        choice.route()?;
+        choice.key()?;
         Ok(choice)
     }
 }
@@ -270,17 +295,11 @@ impl Start {
     }
 }
 
-/// Codex, then Claude Code, then Grok Build (#10091): the engines that
-/// need no model named and no paid API of their own. A provider that is not
-/// signed in here is passed over with that reason, so allowing it costs
-/// nothing. OpenCode needs a model and Devin is a paid API, so neither is a
-/// default.
-fn default_providers() -> Vec<Choice> {
-    vec![
-        Choice::new(Provider::Codex),
-        Choice::new(Provider::Claude),
-        Choice::new(Provider::Grok),
-    ]
+/// The default model OpenCode's own configuration names on this computer
+/// ([`acp_client::opencode::configured_model`]).
+#[must_use]
+pub fn opencode_model() -> Option<String> {
+    acp_client::opencode::configured_model(&|name| std::env::var_os(name))
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -305,11 +324,16 @@ fn is_default_access(access: &Access) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Coder {
-    /// The providers a run may use, first preferred; each only when it is
-    /// signed in here and has capacity. At least one, at most
-    /// [`MAX_PROVIDERS`].
-    #[serde(default = "default_providers")]
+    /// The order Coder tries agents in, first preferred, and the model
+    /// each runs (#10184): an order preference, never a list of what may
+    /// run. Agents it leaves out follow in the default order. Empty: the
+    /// default order. At most [`MAX_PROVIDERS`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub providers: Vec<Choice>,
+    /// The agents the person turned off: the only ones never used
+    /// (#10184). Empty: every agent signed in here may run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled: Vec<Provider>,
     /// Whether a coding request runs at once or asks first.
     #[serde(default)]
     pub start: Start,
@@ -333,7 +357,8 @@ pub struct Coder {
 impl Default for Coder {
     fn default() -> Self {
         Coder {
-            providers: default_providers(),
+            providers: Vec::new(),
+            disabled: Vec::new(),
             start: Start::default(),
             usage_threshold_percent: default_threshold(),
             projects: Vec::new(),
@@ -346,9 +371,6 @@ impl Coder {
     /// # Errors
     /// The first value outside what a local run admits.
     pub fn validate(&self) -> Result<(), String> {
-        if self.providers.is_empty() {
-            return Err("coder.providers names no provider; name at least one".into());
-        }
         if self.providers.len() > MAX_PROVIDERS {
             return Err(format!(
                 "coder.providers names more than {MAX_PROVIDERS} providers"
@@ -356,11 +378,26 @@ impl Coder {
         }
         let mut routes: Vec<Route> = Vec::new();
         for choice in &self.providers {
-            let route = choice.route()?;
+            let route = choice.key()?;
             if routes.contains(&route) {
                 return Err(format!("coder.providers names {choice} twice"));
             }
             routes.push(route);
+        }
+        for provider in &self.disabled {
+            if !PROVIDERS.contains(provider) {
+                return Err(format!(
+                    "coder.disabled names {provider}, which is no agent here"
+                ));
+            }
+        }
+        if PROVIDERS
+            .iter()
+            .all(|provider| self.disabled.contains(provider))
+        {
+            return Err(
+                "coder.disabled turns off every coding agent; leave at least one on".into(),
+            );
         }
         if let Some(percent) = self.usage_threshold_percent
             && !(1..=100).contains(&percent)
@@ -378,25 +415,102 @@ impl Coder {
         Ok(())
     }
 
-    /// The admitted routes, in preference order.
-    ///
-    /// # Errors
-    /// As [`Coder::validate`].
-    pub fn routes(&self) -> Result<Vec<Route>, String> {
-        self.validate()?;
-        self.providers.iter().map(Choice::route).collect()
+    /// Whether the person turned `provider` off.
+    #[must_use]
+    pub fn is_disabled(&self, provider: Provider) -> bool {
+        self.disabled.contains(&provider)
     }
 
-    /// The providers admitted, in preference order, each once.
+    /// Every agent not turned off, in the order Coder tries them (#10184):
+    /// the ones `providers` names, in its order, then every other one in
+    /// [`PROVIDERS`]' order, each with its model. OpenCode named without a
+    /// model runs on `opencode_model`, OpenCode's own configured default,
+    /// and is left out when there is none. At most [`MAX_PROVIDERS`].
+    #[must_use]
+    pub fn choices_with(&self, opencode_model: Option<&str>) -> Vec<Choice> {
+        let on = |provider: Provider| !self.is_disabled(provider);
+        let mut out: Vec<Choice> = self
+            .providers
+            .iter()
+            .filter(|choice| on(choice.provider))
+            .cloned()
+            .collect();
+        for provider in PROVIDERS {
+            if on(provider) && !self.providers.iter().any(|c| c.provider == provider) {
+                out.push(Choice::new(provider));
+            }
+        }
+        out.into_iter()
+            .filter_map(|choice| {
+                if choice.provider == Provider::OpenCode && choice.model.is_none() {
+                    return opencode_model.map(|model| Choice {
+                        provider: Provider::OpenCode,
+                        model: Some(model.to_owned()),
+                    });
+                }
+                Some(choice)
+            })
+            .take(MAX_PROVIDERS)
+            .collect()
+    }
+
+    /// The routes a run may use, in preference order: [`Coder::choices_with`].
+    ///
+    /// # Errors
+    /// As [`Coder::validate`], or no agent is left to run.
+    pub fn routes_with(&self, opencode_model: Option<&str>) -> Result<Vec<Route>, String> {
+        self.validate()?;
+        let routes = self
+            .choices_with(opencode_model)
+            .iter()
+            .map(Choice::route)
+            .collect::<Result<Vec<_>, _>>()?;
+        if routes.is_empty() {
+            return Err(
+                "every coding agent but OpenCode is turned off, and OpenCode names no model: \
+                 set one in OpenCode's own configuration (its `model`)"
+                    .into(),
+            );
+        }
+        Ok(routes)
+    }
+
+    /// [`Coder::routes_with`] with OpenCode's configured model here.
+    ///
+    /// # Errors
+    /// As [`Coder::routes_with`].
+    pub fn routes(&self) -> Result<Vec<Route>, String> {
+        self.routes_with(opencode_model().as_deref())
+    }
+
+    /// Every agent not turned off, in the order Coder tries them, each
+    /// once, whether or not it has a model ([`Coder::choices_with`]).
     #[must_use]
     pub fn provider_list(&self) -> Vec<Provider> {
         let mut out: Vec<Provider> = Vec::new();
         for choice in &self.providers {
-            if !out.contains(&choice.provider) {
+            if !out.contains(&choice.provider) && !self.is_disabled(choice.provider) {
                 out.push(choice.provider);
             }
         }
+        for provider in PROVIDERS {
+            if !out.contains(&provider) && !self.is_disabled(provider) {
+                out.push(provider);
+            }
+        }
         out
+    }
+
+    /// Every agent in the order a settings screen lists them: the ones not
+    /// turned off, in the order Coder tries them, then the ones turned off.
+    #[must_use]
+    pub fn listing(&self) -> Vec<(Provider, bool)> {
+        let on = self.provider_list();
+        let off = PROVIDERS.into_iter().filter(|p| !on.contains(p));
+        on.iter()
+            .map(|p| (*p, true))
+            .chain(off.map(|p| (p, false)))
+            .collect()
     }
 
     /// Whether the Git checkout whose top level is `top` counts as a
@@ -437,9 +551,10 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 5] {
+pub const fn keys() -> [&'static str; 6] {
     [
         "coder.providers",
+        "coder.disabled",
         "coder.start",
         "coder.usage_threshold_percent",
         "coder.projects",
@@ -517,6 +632,13 @@ impl Settings {
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
             ),
+            "coder.disabled" => json!(
+                coder
+                    .disabled
+                    .iter()
+                    .map(|p| p.as_str())
+                    .collect::<Vec<_>>()
+            ),
             "coder.start" => json!(coder.start.as_str()),
             "coder.usage_threshold_percent" => json!(coder.usage_threshold_percent),
             "coder.projects" => json!(
@@ -555,6 +677,16 @@ impl Settings {
                     .iter()
                     .map(|item| item.parse())
                     .collect::<Result<_, _>>()?;
+            }
+            "coder.disabled" => {
+                let mut disabled: Vec<Provider> = Vec::new();
+                for item in list(value) {
+                    let provider = agent(&item)?;
+                    if !disabled.contains(&provider) {
+                        disabled.push(provider);
+                    }
+                }
+                coder.disabled = disabled;
             }
             "coder.start" => {
                 coder.start = match value.trim() {
@@ -607,29 +739,19 @@ impl Settings {
         Ok(())
     }
 
-    /// Let `provider` run or not, as a settings screen's toggle does:
-    /// turned on, it is added after the providers already allowed, with
-    /// its default model; turned off, every entry naming it is removed.
+    /// Turn `provider` on or off, as a settings screen's toggle does
+    /// (#10184): only a turn-off is recorded (`coder.disabled`); turning it
+    /// back on removes that, and `coder.providers`' order is kept as it is.
     ///
     /// # Errors
-    /// The change is not valid ([`Coder::validate`]): it would leave no
-    /// provider, or the provider has no default model (OpenCode names its
-    /// own). The settings are unchanged then.
+    /// The change is not valid ([`Coder::validate`]): it would turn every
+    /// agent off. The settings are unchanged then.
     pub fn allow(&mut self, provider: Provider, on: bool) -> Result<(), String> {
         let mut coder = self.coder.clone();
         if on {
-            if coder
-                .providers
-                .iter()
-                .any(|choice| choice.provider == provider)
-            {
-                return Ok(());
-            }
-            let choice = Choice::new(provider);
-            choice.route()?;
-            coder.providers.push(choice);
-        } else {
-            coder.providers.retain(|choice| choice.provider != provider);
+            coder.disabled.retain(|p| *p != provider);
+        } else if !coder.disabled.contains(&provider) {
+            coder.disabled.push(provider);
         }
         coder.validate()?;
         self.coder = coder;
@@ -645,6 +767,7 @@ impl Settings {
         let coder = &mut self.coder;
         match key {
             "coder.providers" => coder.providers = default.providers,
+            "coder.disabled" => coder.disabled = default.disabled,
             "coder.start" => coder.start = default.start,
             "coder.usage_threshold_percent" => {
                 coder.usage_threshold_percent = default.usage_threshold_percent;
@@ -655,6 +778,22 @@ impl Settings {
         }
         Ok(())
     }
+}
+
+/// The agent a person names: `codex`, `claude`, `grok`, `devin`, or
+/// `opencode`.
+///
+/// # Errors
+/// `name` is no coding agent here.
+pub fn agent(name: &str) -> Result<Provider, String> {
+    Provider::from_config(name.trim())
+        .filter(|provider| PROVIDERS.contains(provider))
+        .ok_or_else(|| {
+            format!(
+                "`{}` is not a coding agent here: codex, claude, grok, devin, or opencode",
+                name.trim()
+            )
+        })
 }
 
 fn expand_home(text: &str) -> PathBuf {
@@ -671,27 +810,40 @@ fn expand_home(text: &str) -> PathBuf {
 mod tests {
     use super::*;
 
-    /// A settings screen's toggle adds a provider last, removes every
-    /// entry of one, and refuses to leave none or to add OpenCode with no
-    /// model, changing nothing then.
+    const ALL: [Provider; 5] = [
+        Provider::Codex,
+        Provider::Claude,
+        Provider::Grok,
+        Provider::Devin,
+        Provider::OpenCode,
+    ];
+
+    /// A settings screen's toggle records only a turn-off (#10184):
+    /// turning an agent off puts it in `coder.disabled`, turning it back on
+    /// takes it out, the order is kept, and turning every agent off is
+    /// refused, changing nothing then.
     #[test]
-    fn a_toggle_allows_and_removes_a_provider_and_keeps_the_settings_valid() {
+    fn a_toggle_records_only_what_is_turned_off() {
         let mut settings = Settings::default();
         settings.allow(Provider::Grok, false).unwrap();
+        assert_eq!(settings.coder.disabled, vec![Provider::Grok]);
+        assert!(settings.coder.providers.is_empty());
         assert_eq!(
             settings.coder.provider_list(),
-            vec![Provider::Codex, Provider::Claude]
+            vec![
+                Provider::Codex,
+                Provider::Claude,
+                Provider::Devin,
+                Provider::OpenCode
+            ]
         );
         settings.allow(Provider::Grok, true).unwrap();
-        assert_eq!(
-            settings.coder.provider_list(),
-            vec![Provider::Codex, Provider::Claude, Provider::Grok]
-        );
+        assert_eq!(settings, Settings::default());
         settings.allow(Provider::Grok, true).unwrap();
-        assert_eq!(settings.coder.providers.len(), 3);
-        settings.allow(Provider::Devin, true).unwrap();
-        assert_eq!(settings.coder.providers.len(), 4);
-        settings.allow(Provider::Devin, false).unwrap();
+        assert_eq!(settings, Settings::default());
+        // Turning on OpenCode with no model named is no error: it runs on
+        // OpenCode's own configured model.
+        settings.allow(Provider::OpenCode, true).unwrap();
         settings
             .set(
                 "coder.providers",
@@ -700,11 +852,128 @@ mod tests {
             )
             .unwrap();
         settings.allow(Provider::Codex, false).unwrap();
-        assert_eq!(settings.coder.provider_list(), vec![Provider::Claude]);
+        assert_eq!(
+            settings.coder.provider_list(),
+            vec![
+                Provider::Claude,
+                Provider::Grok,
+                Provider::Devin,
+                Provider::OpenCode
+            ]
+        );
+        for provider in [Provider::Grok, Provider::Devin, Provider::OpenCode] {
+            settings.allow(provider, false).unwrap();
+        }
         let before = settings.clone();
         assert!(settings.allow(Provider::Claude, false).is_err());
-        assert!(settings.allow(Provider::OpenCode, true).is_err());
         assert_eq!(settings, before);
+        // The order survives a turn-off and back.
+        settings.allow(Provider::Codex, true).unwrap();
+        assert_eq!(
+            settings.get("coder.providers").unwrap(),
+            json!(["codex:gpt-6-mini", "claude", "codex"])
+        );
+    }
+
+    /// Opt-out (#10184): no settings means every agent, Codex first; a
+    /// turn-off excludes only that agent; a list from before #10184 is an
+    /// order, so an agent it leaves out still runs after the ones it names.
+    #[test]
+    fn every_agent_runs_unless_turned_off_and_a_list_is_only_an_order() {
+        let order = |coder: &Coder| -> Vec<Provider> {
+            coder
+                .routes_with(Some("anthropic/claude-sonnet-5"))
+                .unwrap()
+                .iter()
+                .map(|route| route.provider)
+                .collect()
+        };
+        let none = Coder::default();
+        assert_eq!(order(&none), ALL.to_vec());
+        assert_eq!(none.provider_list(), ALL.to_vec());
+        // Devin is on with nothing set: no one enables a signed-in agent.
+        assert!(
+            none.routes_with(None)
+                .unwrap()
+                .iter()
+                .any(|r| r.provider == Provider::Devin)
+        );
+        // OpenCode runs on its own configured model, and is left out of
+        // the routes (not the list) when it names none.
+        let opencode = none
+            .routes_with(Some("anthropic/claude-sonnet-5"))
+            .unwrap()
+            .into_iter()
+            .find(|route| route.provider == Provider::OpenCode)
+            .unwrap();
+        assert_eq!(opencode.model, "anthropic/claude-sonnet-5");
+        assert!(
+            !none
+                .routes_with(None)
+                .unwrap()
+                .iter()
+                .any(|r| r.provider == Provider::OpenCode)
+        );
+
+        let mut off = Coder::default();
+        off.disabled = vec![Provider::Devin];
+        assert_eq!(
+            order(&off),
+            vec![
+                Provider::Codex,
+                Provider::Claude,
+                Provider::Grok,
+                Provider::OpenCode
+            ]
+        );
+
+        // The owner's file before #10184: Devin was left out, so it never
+        // ran. It now reads as an order, and Devin follows.
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        std::fs::write(
+            &file,
+            format!(r#"{{"schema":"{SCHEMA}","coder":{{"providers":["claude","codex"]}}}}"#),
+        )
+        .unwrap();
+        let legacy = Settings::load(&file).unwrap().coder;
+        assert_eq!(
+            order(&legacy),
+            vec![
+                Provider::Claude,
+                Provider::Codex,
+                Provider::Grok,
+                Provider::Devin,
+                Provider::OpenCode
+            ]
+        );
+        // A named model is kept, and a disabled agent the order names is
+        // still off.
+        let mut named = legacy.clone();
+        named.providers = vec![
+            "devin".parse().unwrap(),
+            "codex:gpt-6-mini".parse().unwrap(),
+        ];
+        named.disabled = vec![Provider::Devin, Provider::OpenCode];
+        let routes = named
+            .routes_with(Some("anthropic/claude-sonnet-5"))
+            .unwrap();
+        assert_eq!(routes[0].provider, Provider::Codex);
+        assert_eq!(routes[0].model, "gpt-6-mini");
+        assert_eq!(
+            routes.iter().map(|r| r.provider).collect::<Vec<_>>(),
+            vec![Provider::Codex, Provider::Claude, Provider::Grok]
+        );
+        assert_eq!(
+            named.listing(),
+            vec![
+                (Provider::Codex, true),
+                (Provider::Claude, true),
+                (Provider::Grok, true),
+                (Provider::Devin, false),
+                (Provider::OpenCode, false),
+            ]
+        );
     }
 
     #[test]
@@ -715,7 +984,7 @@ mod tests {
         assert_eq!(settings, Settings::default());
         let coder = &settings.coder;
         assert_eq!(
-            coder.routes().unwrap(),
+            coder.routes_with(None).unwrap()[..3].to_vec(),
             vec![
                 Route {
                     provider: Provider::Codex,
@@ -734,14 +1003,10 @@ mod tests {
                 },
             ]
         );
-        // OpenCode needs a model and Devin is a paid API: neither is on
-        // unless the person names it (#10091).
-        assert!(!coder.provider_list().contains(&Provider::OpenCode));
-        assert!(!coder.provider_list().contains(&Provider::Devin));
-        assert_eq!(
-            settings.get("coder.providers").unwrap(),
-            json!(["codex", "claude", "grok"])
-        );
+        // Every agent is on with nothing set (#10184).
+        assert_eq!(coder.provider_list(), ALL.to_vec());
+        assert_eq!(settings.get("coder.providers").unwrap(), json!([]));
+        assert_eq!(settings.get("coder.disabled").unwrap(), json!([]));
         assert_eq!(coder.start, Start::AtOnce);
         assert_eq!(
             coder.usage_threshold_percent,
@@ -798,9 +1063,11 @@ mod tests {
             "{".to_owned(),
             r#"{"schema":"other"}"#.to_owned(),
             format!(r#"{{"schema":"{SCHEMA}","coder":{{"provider":["claude"]}}}}"#),
-            format!(r#"{{"schema":"{SCHEMA}","coder":{{"providers":[]}}}}"#),
             format!(r#"{{"schema":"{SCHEMA}","coder":{{"providers":["vertex"]}}}}"#),
-            format!(r#"{{"schema":"{SCHEMA}","coder":{{"providers":["opencode"]}}}}"#),
+            format!(r#"{{"schema":"{SCHEMA}","coder":{{"disabled":["vertex"]}}}}"#),
+            format!(
+                r#"{{"schema":"{SCHEMA}","coder":{{"disabled":["codex","claude","grok","devin","opencode"]}}}}"#
+            ),
             format!(r#"{{"schema":"{SCHEMA}","coder":{{"providers":["codex","codex"]}}}}"#),
             format!(r#"{{"schema":"{SCHEMA}","coder":{{"start":"later"}}}}"#),
             format!(r#"{{"schema":"{SCHEMA}","coder":{{"usage_threshold_percent":0}}}}"#),
@@ -840,6 +1107,9 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("code")).unwrap();
         settings.set("coder.projects", "code", dir.path()).unwrap();
         settings.set("coder.access", "full", dir.path()).unwrap();
+        settings
+            .set("coder.disabled", "grok, grok", dir.path())
+            .unwrap();
         settings.save(&file).unwrap();
         let loaded = Settings::load(&file).unwrap();
         assert_eq!(loaded, settings);
@@ -848,9 +1118,15 @@ mod tests {
             loaded.get("coder.providers").unwrap(),
             json!(["claude", "opencode:anthropic/claude-sonnet-5", "devin"])
         );
+        assert_eq!(loaded.get("coder.disabled").unwrap(), json!(["grok"]));
         assert_eq!(
             loaded.coder.provider_list(),
-            vec![Provider::Claude, Provider::OpenCode, Provider::Devin]
+            vec![
+                Provider::Claude,
+                Provider::OpenCode,
+                Provider::Devin,
+                Provider::Codex
+            ]
         );
         assert_eq!(loaded.get("coder.start").unwrap(), "ask_first");
         assert_eq!(loaded.get("coder.usage_threshold_percent").unwrap(), 75);
@@ -864,8 +1140,9 @@ mod tests {
         // A bad value changes nothing.
         let mut edited = loaded.clone();
         for (key, value) in [
-            ("coder.providers", ""),
             ("coder.providers", "gemini"),
+            ("coder.disabled", "vertex"),
+            ("coder.disabled", "codex,claude,grok,devin,opencode"),
             ("coder.start", "soon"),
             ("coder.usage_threshold_percent", "101"),
             ("coder.projects", "missing-folder"),
