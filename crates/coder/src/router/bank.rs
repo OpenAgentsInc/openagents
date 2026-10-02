@@ -611,8 +611,8 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
         // A records entry is picked by code: from the Gym's records on a
         // Gym or eval route, from the admitted-capability set on
         // `capability.missing` or a dispatch stem that names a capability
-        // or the engine the person asked for, or from the deck list on
-        // `presentation.open`.
+        // or the engine the person asked for, from the deck list on
+        // `presentation.open`, or by surface on `standing.rule`.
         let capability_slot = entry.facts.values().any(|key| {
             key.starts_with("capability.")
                 || key.starts_with("engine.")
@@ -622,6 +622,7 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
             route.is_gym()
                 || *route == RouteId::CapabilityMissing
                 || *route == RouteId::PresentationOpen
+                || *route == RouteId::StandingRule
                 || (*route == RouteId::WorkDispatch && capability_slot)
         });
         // A `.here` variant is shown only on a computer, beside its base,
@@ -666,7 +667,8 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
             push(
                 id,
                 "a records entry answers Gym and eval routes, capability.missing, \
-                 presentation.open, or a dispatch stem with a capability or engine slot only"
+                 presentation.open, standing.rule, or a dispatch stem with a capability or \
+                 engine slot only"
                     .into(),
             );
         }

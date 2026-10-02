@@ -31,6 +31,11 @@ pub struct Rule {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_until: Option<u64>,
     pub triggers: Vec<Trigger>,
+    /// Typed predicates that must all hold for a triggered evaluation to
+    /// act (phase 2). Empty for the disk rule, whose condition is its
+    /// goal's start level.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<Condition>,
     pub goal: Goal,
     /// Run in order until the goal is met.
     pub actions: Vec<Action>,
@@ -82,6 +87,12 @@ pub enum Origin {
         plugin: String,
         version: String,
     },
+    /// Compiled from a message in conversation (phase 2) and confirmed by
+    /// the person: the chat thread (or `cli`) and the message's words.
+    Conversation {
+        thread: String,
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +107,63 @@ pub enum Trigger {
     TaskEnded,
     /// The host starts.
     HostStart,
+    /// Every day at a local wall-clock time `HH:MM`. A run missed while
+    /// the computer slept runs once when the runner next looks.
+    Daily { at: String },
+    /// A watched path changed: created, removed, or modified (its size or
+    /// modification time moved). Paths are absolute or under `~`.
+    FsEvent { paths: Vec<String> },
+}
+
+/// How a Coder task ended, for [`Condition::TaskOutcome`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskOutcome {
+    /// It finished and nothing failed.
+    Succeeded,
+    /// Its run or its checks failed.
+    Failed,
+    /// It was cancelled.
+    Cancelled,
+}
+
+/// A typed predicate over what code observes before acting. All of a
+/// rule's conditions must hold.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Condition {
+    /// The fullest watched volume has less free space than `level`.
+    FreeBelow { level: Level },
+    /// The task whose end triggered the evaluation ended this way. Holds
+    /// only for a `TaskEnded` evaluation.
+    TaskOutcome { outcomes: Vec<TaskOutcome> },
+    /// No Coder task is queued or running.
+    NoTaskRunning,
+    /// A path exists (absolute or under `~`).
+    PathExists { path: String },
+    /// The local time is within `[from, to)`, `HH:MM`; `to` before `from`
+    /// wraps past midnight.
+    TimeBetween { from: String, to: String },
+    /// A bounded Jev judgment: the Noul `question` over the observation,
+    /// read against the named setting (`background.judgment` by default)
+    /// at `threshold` percent. The only place a model appears in
+    /// evaluation; without a judge it does not hold.
+    Judgment {
+        question: String,
+        setting: String,
+        threshold: u8,
+    },
+}
+
+/// Parse `HH:MM` into minutes past midnight.
+#[must_use]
+pub fn clock(at: &str) -> Option<u32> {
+    let (hours, minutes) = at.split_once(':')?;
+    if hours.len() != 2 || minutes.len() != 2 {
+        return None;
+    }
+    let (hours, minutes): (u32, u32) = (hours.parse().ok()?, minutes.parse().ok()?);
+    (hours < 24 && minutes < 60).then_some(hours * 60 + minutes)
 }
 
 /// `max(bytes, percent of the volume)`.
@@ -204,6 +272,14 @@ pub enum Action {
     CargoCleanPartial,
     /// Empty the background trash, oldest first (emergency only).
     EmptyTrash,
+    /// Tell the person: the host's log, the rule's state, and the
+    /// terminal's transcript. `text` is shown as written.
+    Notify { text: String },
+    /// Bring a Git checkout up to date with its upstream: `git fetch`,
+    /// then `git merge --ff-only`, only when the checkout is clean and
+    /// has no commits its upstream lacks; otherwise it changes nothing
+    /// and says why. No other command runs.
+    GitFastForward { repo: String },
 }
 
 impl Action {
@@ -215,7 +291,16 @@ impl Action {
             Action::PruneWorktrees => vec![Class::Worktrees],
             Action::CargoCleanPartial => vec![Class::Incremental],
             Action::EmptyTrash => vec![Class::Trash],
+            Action::Notify { .. } | Action::GitFastForward { .. } => Vec::new(),
         }
+    }
+
+    /// Whether this action deletes from the candidate classes (the disk
+    /// cleanup planner runs it), rather than notifying or updating a
+    /// checkout.
+    #[must_use]
+    pub fn cleans(&self) -> bool {
+        !matches!(self, Action::Notify { .. } | Action::GitFastForward { .. })
     }
 }
 
@@ -274,6 +359,7 @@ pub fn disk() -> Rule {
             Trigger::TaskEnded,
             Trigger::HostStart,
         ],
+        conditions: Vec::new(),
         goal: Goal {
             start: Level {
                 bytes: 30 * GB,
@@ -370,6 +456,21 @@ impl Rule {
         self.triggers.iter().any(|trigger| trigger == wanted)
     }
 
+    /// Whether the rule cleans the disk: any of its actions deletes from
+    /// the candidate classes. Such a rule runs when free space is below
+    /// its goal's start level; a rule without one acts whenever its
+    /// conditions hold.
+    #[must_use]
+    pub fn cleans(&self) -> bool {
+        self.actions.iter().any(Action::cleans)
+    }
+
+    /// Whether the rule was made in conversation.
+    #[must_use]
+    pub fn conversational(&self) -> bool {
+        matches!(self.origin, Origin::Conversation { .. })
+    }
+
     /// Check a rule before it is saved.
     ///
     /// # Errors
@@ -379,18 +480,23 @@ impl Rule {
             return Err(format!("schema must be {SCHEMA}"));
         }
         let plugin = matches!(self.origin, Origin::Plugin { .. });
-        if !plugin && built_in(&self.id).is_none() {
+        let conversation = self.conversational();
+        if !plugin && !conversation && built_in(&self.id).is_none() {
             return Err(format!(
-                "`{}` is not a rule this host runs: the built-in `disk`, or a rule an enabled plugin brings",
+                "`{}` is not a rule this host runs: the built-in `disk`, a rule an enabled plugin brings, or one made in conversation",
                 self.id
             ));
         }
-        if plugin && built_in(&self.id).is_some() {
+        if (plugin || conversation) && built_in(&self.id).is_some() {
+            return Err(format!("only the built-in rule can be `{}`", self.id));
+        }
+        if !id_like(&self.id) {
             return Err(format!(
-                "a plugin cannot replace the built-in rule `{}`",
+                "a rule id is 1 to 40 lowercase letters, digits, and dashes, not `{}`",
                 self.id
             ));
         }
+        self.validate_phase2()?;
         if self.goal.stop.bytes < self.goal.start.bytes
             || self.goal.stop.percent < self.goal.start.percent
         {
@@ -416,6 +522,97 @@ impl Rule {
             }
             if root == "~/" || root == "/" || root == "~" {
                 return Err("an allow root cannot be the whole home or disk".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Whether `id` is a rule id: 1 to 40 of `a-z`, `0-9`, and `-`.
+#[must_use]
+pub fn id_like(id: &str) -> bool {
+    (1..=40).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn path_like(path: &str) -> bool {
+    (path.starts_with("~/") || path.starts_with('/'))
+        && !path.contains("..")
+        && path.len() <= 512
+        && !path.chars().any(char::is_control)
+}
+
+impl Rule {
+    /// The checks for the phase 2 kinds: times, paths, texts, settings.
+    fn validate_phase2(&self) -> Result<(), String> {
+        for trigger in &self.triggers {
+            match trigger {
+                Trigger::Daily { at } if clock(at).is_none() => {
+                    return Err(format!("`{at}` is not a time of day (HH:MM)"));
+                }
+                Trigger::FsEvent { paths } => {
+                    if paths.is_empty() || paths.len() > 16 {
+                        return Err("a file trigger watches 1 to 16 paths".into());
+                    }
+                    if let Some(bad) = paths.iter().find(|path| !path_like(path)) {
+                        return Err(format!("watched path `{bad}` must be absolute or under ~"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        for condition in &self.conditions {
+            match condition {
+                Condition::TimeBetween { from, to }
+                    if clock(from).is_none() || clock(to).is_none() =>
+                {
+                    return Err(format!("`{from}`-`{to}` is not a span of the day (HH:MM)"));
+                }
+                Condition::PathExists { path } if !path_like(path) => {
+                    return Err(format!("path `{path}` must be absolute or under ~"));
+                }
+                Condition::Judgment {
+                    question,
+                    setting,
+                    threshold,
+                } => {
+                    if question.trim().is_empty() || question.len() > 300 {
+                        return Err("a judgment's question is 1 to 300 bytes".into());
+                    }
+                    if !setting.starts_with("background.") || *threshold > 100 {
+                        return Err("a judgment names a `background.` setting and a percent".into());
+                    }
+                }
+                Condition::TaskOutcome { outcomes } if outcomes.is_empty() => {
+                    return Err("a task outcome condition names at least one outcome".into());
+                }
+                _ => {}
+            }
+        }
+        for action in &self.actions {
+            match action {
+                Action::Notify { text } if text.trim().is_empty() || text.len() > 280 => {
+                    return Err("a notification is 1 to 280 bytes".into());
+                }
+                Action::GitFastForward { repo } if !path_like(repo) => {
+                    return Err(format!("checkout `{repo}` must be absolute or under ~"));
+                }
+                _ => {}
+            }
+        }
+        if self.cleans() && matches!(self.origin, Origin::Conversation { .. }) {
+            // A rule made in conversation deletes only within the host's
+            // own roots, like a plugin's.
+            let roots = crate::plugins::host_roots();
+            let inside = |path: &String| {
+                roots
+                    .iter()
+                    .any(|root| path == root || path.starts_with(&format!("{root}/")))
+            };
+            if let Some(bad) = self.safety.allow.iter().find(|path| !inside(path)) {
+                return Err(format!("`{bad}` is outside the folders the host cleans"));
             }
         }
         Ok(())

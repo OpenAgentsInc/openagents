@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 pub type FactsFn = fn(&Path) -> Result<Vec<TaskFact>, String>;
 
 static FACTS: OnceLock<FactsFn> = OnceLock::new();
+static JUDGE: OnceLock<Arc<dyn background::engine::Judge>> = OnceLock::new();
 static RUNNER: OnceLock<(Layout, background::runner::Handle)> = OnceLock::new();
 
 /// Name the task store reader the runner uses. Without one, the classes
@@ -23,6 +24,12 @@ static RUNNER: OnceLock<(Layout, background::runner::Handle)> = OnceLock::new();
 /// skipped.
 pub fn set_facts(facts: FactsFn) {
     let _ = FACTS.set(facts);
+}
+
+/// Name the judge a rule's `Judgment` condition asks (Jev, from the
+/// program that starts the host). Without one, a judgment never holds.
+pub fn set_judge(judge: Arc<dyn background::engine::Judge>) {
+    let _ = JUDGE.set(judge);
 }
 
 /// Start the runner over the task store `tasks`. `OPENAGENTS_BACKGROUND=off`
@@ -48,13 +55,14 @@ pub(crate) fn start(tasks: &Path) {
         let store = tasks.to_owned();
         Arc::new(move || read(&store)) as Arc<dyn background::Facts>
     });
-    let handle = background::runner::start(
+    let handle = background::runner::start_with(
         layout.clone(),
         facts,
+        JUDGE.get().cloned(),
         Box::new(|line| eprintln!("coder host: {line}")),
     );
     let _ = RUNNER.set((layout, handle));
-    eprintln!("coder host: background rules on (disk cleanup)");
+    eprintln!("coder host: background rules on");
 }
 
 /// Answer a `background.*` operation.

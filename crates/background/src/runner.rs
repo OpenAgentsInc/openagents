@@ -1,21 +1,25 @@
 //! The runner the host starts: one per computer (`runner.lock`), on its own
-//! thread. It checks free space only on the triggers the rule names: at
-//! host start (`HostStart`), on the rule's own `Interval`, and when a Coder
-//! task ends (`TaskEnded`); a rule with no triggers never runs by itself.
+//! thread. It evaluates each rule only on the triggers the rule names: at
+//! host start (`HostStart`), on the rule's own `Interval` (jittered by up
+//! to 10%), when a Coder task ends (`TaskEnded`, once per ended task for a
+//! rule that reads the outcome), at a local time (`Daily`, catching up
+//! once after sleep), and when a watched path changes (`FsEvent`, looked
+//! at every 30 seconds); a rule with no triggers never runs by itself.
 //! A check runs the rule when a volume is below its start level and the
 //! cooldown has passed (or at once in an emergency). A run someone asks for
 //! (`openagents background run`, `/background`, `background.run`) is
 //! separate and always allowed.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::Duration;
 
+use crate::engine::{self, Clock, Event, Judge};
 use crate::inuse::System;
 use crate::paths::{self, Layout};
-use crate::plan::{Env, Facts, observe};
+use crate::plan::{Env, Facts, TaskFact, observe};
 use crate::rule::{Rule, Trigger};
 use crate::run::{self, Cause, Report};
 use crate::store::{self, State};
@@ -53,32 +57,55 @@ pub type Say = Box<dyn Fn(&str) + Send>;
 /// Start the runner on its own thread.
 #[must_use]
 pub fn start(layout: Layout, facts: Option<Arc<dyn Facts>>, say: Say) -> Handle {
+    start_with(layout, facts, None, say)
+}
+
+/// Start the runner with a judge for `Judgment` conditions.
+#[must_use]
+pub fn start_with(
+    layout: Layout,
+    facts: Option<Arc<dyn Facts>>,
+    judge: Option<Arc<dyn Judge>>,
+    say: Say,
+) -> Handle {
     let (sender, receiver) = channel();
     let _ = std::thread::Builder::new()
         .name("background".into())
-        .spawn(move || Runner::new(layout, facts, say).serve(&receiver));
+        .spawn(move || Runner::new(layout, facts, judge, say).serve(&receiver));
     Handle { sender }
 }
 
 struct Runner {
     layout: Layout,
     facts: Option<Arc<dyn Facts>>,
+    judge: Option<Arc<dyn Judge>>,
     say: Say,
+    /// The tasks seen ended at the last look; `None` before the first.
     ended: Option<BTreeSet<String>>,
+    /// Each rule's next interval check.
+    next: BTreeMap<String, u64>,
 }
 
-/// How often the runner looks for ended tasks.
-const TASK_POLL: Duration = Duration::from_secs(30);
+/// How often the runner looks for ended tasks, watched files, and daily
+/// times.
+const POLL: Duration = Duration::from_secs(30);
 /// How long after the host starts it makes the first check.
 const START_DELAY: Duration = Duration::from_secs(20);
 
 impl Runner {
-    fn new(layout: Layout, facts: Option<Arc<dyn Facts>>, say: Say) -> Self {
+    fn new(
+        layout: Layout,
+        facts: Option<Arc<dyn Facts>>,
+        judge: Option<Arc<dyn Judge>>,
+        say: Say,
+    ) -> Self {
         Self {
             layout,
             facts,
+            judge,
             say,
             ended: None,
+            next: BTreeMap::new(),
         }
     }
 
@@ -103,36 +130,69 @@ impl Runner {
             State::update(&self.layout, &rule.id, |state| state.runner = Some(pid));
         }
         std::thread::sleep(START_DELAY);
-        self.check(Cause::HostStart);
-        // No interval trigger, no interval checks. The rule is read again
-        // after every wake, so an edit takes effect without a restart.
-        let mut next = self.interval().map(|every| paths::now() + every);
-        let mut next_tasks = paths::now() + TASK_POLL.as_secs();
+        self.check_all(Cause::HostStart, &Event::default());
+        // Baselines: the first look at tasks and files fires nothing.
+        let _ = self.newly_ended();
+        let _ = engine::poll_files(&self.layout, &self.rules());
+        let mut next_poll = paths::now() + POLL.as_secs();
         loop {
-            let deadline = next.map_or(next_tasks, |at| at.min(next_tasks));
-            let wait = deadline.saturating_sub(paths::now()).max(1);
+            // Each rule's schedule is read again after every wake, so an
+            // edit takes effect without a restart.
+            let rules = self.rules();
+            let now = paths::now();
+            self.schedule(&rules, now);
+            let deadline = self
+                .next
+                .values()
+                .copied()
+                .min()
+                .map_or(next_poll, |at| at.min(next_poll));
+            let wait = deadline.saturating_sub(now).max(1);
             match requests.recv_timeout(Duration::from_secs(wait)) {
                 Ok(Request::Run { rule }) => self.manual(&rule),
-                Ok(Request::TaskEnded) => self.check(Cause::TaskEnded),
+                Ok(Request::TaskEnded) => self.tasks_ended(),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
             let now = paths::now();
-            if now >= next_tasks {
-                next_tasks = now + TASK_POLL.as_secs();
-                if self.task_ended() {
-                    self.check(Cause::TaskEnded);
-                }
+            if now >= next_poll {
+                next_poll = now + POLL.as_secs();
+                self.tasks_ended();
+                self.files();
+                self.daily(Clock::here());
             }
-            next = match (self.interval(), next) {
-                (None, _) => None,
-                (Some(every), None) => Some(now + every),
-                (Some(every), Some(at)) if now >= at => {
-                    self.check(Cause::Interval);
-                    Some(now + every)
+            let rules = self.rules();
+            let due: Vec<Rule> = rules
+                .into_iter()
+                .filter(|rule| self.next.get(&rule.id).is_some_and(|at| now >= *at))
+                .collect();
+            for rule in due {
+                if let Some(every) = rule.interval() {
+                    self.next
+                        .insert(rule.id.clone(), engine::next_interval(&rule.id, every, now));
                 }
-                (Some(every), Some(at)) => Some(at.min(now + every)),
-            };
+                self.check_one(&rule, Cause::Interval, &Event::default());
+            }
+        }
+    }
+
+    /// Keep one interval schedule per rule that has an `Interval`
+    /// trigger, and none for the rest.
+    fn schedule(&mut self, rules: &[Rule], now: u64) {
+        self.next.retain(|id, _| {
+            rules
+                .iter()
+                .any(|rule| rule.id == *id && rule.interval().is_some())
+        });
+        for rule in rules {
+            if let Some(every) = rule.interval() {
+                let at = self
+                    .next
+                    .entry(rule.id.clone())
+                    .or_insert_with(|| engine::next_interval(&rule.id, every, now));
+                // A shorter interval after an edit takes effect now.
+                *at = (*at).min(now + every + every / 10);
+            }
         }
     }
 
@@ -149,8 +209,9 @@ impl Runner {
     }
 
     /// The rules this computer runs: the built-in one unless it is off,
-    /// and each enabled plugin's. Read afresh on every check, so turning a
-    /// plugin on or off takes effect at the next one.
+    /// each enabled plugin's, and each made in conversation that is on.
+    /// Read afresh on every check, so turning a plugin on or off takes
+    /// effect at the next one.
     fn rules(&self) -> Vec<Rule> {
         store::list(&self.layout)
             .into_iter()
@@ -159,31 +220,87 @@ impl Runner {
             .collect()
     }
 
-    /// The shortest interval of the rules that run, if any has an
-    /// `Interval` trigger.
-    fn interval(&self) -> Option<u64> {
-        self.rules().iter().filter_map(Rule::interval).min()
-    }
-
-    /// Whether a task ended since the last look.
-    fn task_ended(&mut self) -> bool {
+    /// The tasks that ended since the last look.
+    fn newly_ended(&mut self) -> Vec<TaskFact> {
         let Some(facts) = &self.facts else {
-            return false;
+            return Vec::new();
         };
         let Ok(tasks) = facts.tasks() else {
-            return false;
+            return Vec::new();
         };
-        let ended: BTreeSet<String> = tasks
-            .into_iter()
-            .filter(|task| task.ended)
-            .map(|task| task.id)
-            .collect();
-        let new = self
-            .ended
-            .as_ref()
-            .is_some_and(|before| ended.difference(before).next().is_some());
-        self.ended = Some(ended);
+        let ended: Vec<TaskFact> = tasks.into_iter().filter(|task| task.ended).collect();
+        let ids: BTreeSet<String> = ended.iter().map(|task| task.id.clone()).collect();
+        let new = match &self.ended {
+            Some(before) => ended
+                .into_iter()
+                .filter(|task| !before.contains(&task.id))
+                .collect(),
+            None => Vec::new(),
+        };
+        self.ended = Some(ids);
         new
+    }
+
+    /// Each newly ended task is one `TaskEnded` evaluation for the rules
+    /// that read its outcome, and one check for the rest.
+    fn tasks_ended(&mut self) {
+        let ended = self.newly_ended();
+        if ended.is_empty() {
+            return;
+        }
+        for rule in self.rules() {
+            if engine::per_task(&rule) {
+                for task in &ended {
+                    let event = Event {
+                        task: Some(task.clone()),
+                        paths: Vec::new(),
+                    };
+                    self.check_one(&rule, Cause::TaskEnded, &event);
+                }
+            } else {
+                let event = Event {
+                    task: ended.last().cloned(),
+                    paths: Vec::new(),
+                };
+                self.check_one(&rule, Cause::TaskEnded, &event);
+            }
+        }
+    }
+
+    fn files(&mut self) {
+        let rules = self.rules();
+        for (id, paths) in engine::poll_files(&self.layout, &rules) {
+            if let Some(rule) = rules.iter().find(|rule| rule.id == id) {
+                let event = Event { task: None, paths };
+                self.check_one(rule, Cause::FsEvent, &event);
+            }
+        }
+    }
+
+    fn daily(&mut self, clock: Clock) {
+        let state = State::load(&self.layout);
+        for rule in self.rules() {
+            let times: Vec<&String> = rule
+                .triggers
+                .iter()
+                .filter_map(|trigger| match trigger {
+                    Trigger::Daily { at } => Some(at),
+                    _ => None,
+                })
+                .collect();
+            if times.is_empty() {
+                continue;
+            }
+            let last = state.rules.get(&rule.id).and_then(|s| s.last_daily);
+            if last.is_none() {
+                engine::mark_daily(&self.layout, &rule.id, clock.now);
+                continue;
+            }
+            if times.iter().any(|at| engine::daily_due(at, last, clock)) {
+                engine::mark_daily(&self.layout, &rule.id, clock.now);
+                self.check_one(&rule, Cause::Daily, &Event::default());
+            }
+        }
     }
 
     fn env(&self) -> Env<'_> {
@@ -200,15 +317,40 @@ impl Runner {
         let Ok(rule) = store::load(&self.layout, id) else {
             return;
         };
-        let result = run::run(&self.env(), &rule, Cause::Manual, false, true);
+        let result = if rule.cleans() && rule.conditions.is_empty() {
+            run::run(&self.env(), &rule, Cause::Manual, false, true)
+        } else {
+            engine::evaluate(
+                &self.env(),
+                &rule,
+                Cause::Manual,
+                &Event::default(),
+                Clock::here(),
+                self.judge.as_deref(),
+                false,
+            )
+            .map(|report| report.unwrap_or_else(engine::nothing))
+        };
         self.finish(&rule, result);
     }
 
-    fn check(&self, cause: Cause) {
+    fn check_all(&self, cause: Cause, event: &Event) {
         for rule in self.rules() {
-            if let Some(result) = check(&self.env(), &rule, cause) {
-                self.finish(&rule, result);
-            }
+            self.check_one(&rule, cause, event);
+        }
+    }
+
+    fn check_one(&self, rule: &Rule, cause: Cause, event: &Event) {
+        let result = check_with(
+            &self.env(),
+            rule,
+            cause,
+            event,
+            Clock::here(),
+            self.judge.as_deref(),
+        );
+        if let Some(result) = result {
+            self.finish(rule, result);
         }
     }
 
@@ -235,6 +377,43 @@ impl Runner {
     }
 }
 
+/// One automatic evaluation of any rule: nothing unless the rule names
+/// the trigger ([`fires`]). A disk cleanup rule with no conditions is
+/// [`check`]; any other rule acts when its conditions hold and its
+/// cooldown has passed ([`engine::evaluate`]).
+pub fn check_with(
+    env: &Env<'_>,
+    rule: &Rule,
+    cause: Cause,
+    event: &Event,
+    clock: Clock,
+    judge: Option<&dyn Judge>,
+) -> Option<Result<Report, String>> {
+    if rule.cleans() && rule.conditions.is_empty() {
+        return check(env, rule, cause);
+    }
+    if cause == Cause::Manual || !fires(rule, cause) || !rule.active(env.now) {
+        return None;
+    }
+    let last_run = State::load(env.layout)
+        .rules
+        .get(&rule.id)
+        .and_then(|state| state.last_run);
+    if last_run.is_some_and(|last| env.now < last + rule.cooldown_secs) {
+        return None;
+    }
+    State::update(env.layout, &rule.id, |state| {
+        state.last_check = Some(env.now);
+        state.next_check = rule.interval().map(|every| env.now + every);
+    });
+    if rule.cleans() {
+        // Conditions first, then the usual low-space check.
+        engine::holds(env, rule, event, clock, judge).ok()?;
+        return check(env, rule, cause);
+    }
+    engine::evaluate(env, rule, cause, event, clock, judge, false).transpose()
+}
+
 /// Whether an evaluation with `cause` may happen for `rule`: a run someone
 /// asked for always may; an automatic one only on a trigger the rule names.
 /// `Interval` (and `Threshold`, which is checked on the interval) need an
@@ -246,6 +425,14 @@ pub fn fires(rule: &Rule, cause: Cause) -> bool {
         Cause::Interval | Cause::Threshold => rule.interval().is_some(),
         Cause::HostStart => rule.has(&Trigger::HostStart),
         Cause::TaskEnded => rule.has(&Trigger::TaskEnded),
+        Cause::Daily => rule
+            .triggers
+            .iter()
+            .any(|trigger| matches!(trigger, Trigger::Daily { .. })),
+        Cause::FsEvent => rule
+            .triggers
+            .iter()
+            .any(|trigger| matches!(trigger, Trigger::FsEvent { .. })),
     }
 }
 

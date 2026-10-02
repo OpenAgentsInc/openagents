@@ -1,0 +1,30 @@
+{
+  "$comment": "Labeled requests for the background rule compiler (#10157): each message with the readings a correct compile acts on, against the built-in disk rule and one rule made in conversation (low-disk-30gb, a low disk warning). `expect` is draft, question, or unchanged; `also` is another reading as right (a free-space level is a new rule or a change to an existing one); `intent`, `what`, `change`, and `rule` are the catalog options of crates/background/src/compile.rs. Scored by the ignored live test in crates/openagents-cli/src/background.rs (BACKGROUND_COMPILE_EVAL=1).",
+  "schema": "openagents.background.compile-labeled.v1",
+  "rows": [
+    {"message": "keep my disk above 50 GB free; clear old build caches first", "intent": "define", "what": "free_space", "expect": "draft", "also": {"intent": "edit", "rule": "disk", "change": "free_level"}},
+    {"message": "make sure there is always 100gb free on this mac", "intent": "define", "what": "free_space", "expect": "draft", "also": {"intent": "edit", "rule": "disk", "change": "free_level"}},
+    {"message": "remove finished coder worktrees every night", "intent": "define", "what": "prune_worktrees", "expect": "draft"},
+    {"message": "warn me when free space drops under 25 GB", "intent": "define", "what": "disk_alert", "expect": "draft", "also": {"intent": "edit", "rule": "low-disk-30gb", "change": "free_level"}},
+    {"message": "tell me whenever a coder run fails", "intent": "define", "what": "task_failed", "expect": "draft"},
+    {"message": "let me know every time a coder task finishes", "intent": "define", "what": "task_ended", "expect": "draft"},
+    {"message": "every morning pull main in ~/work/openagents", "intent": "define", "what": "git_update", "expect": "draft"},
+    {"message": "keep ~/work/psionic up to date every day at 7am", "intent": "define", "what": "git_update", "expect": "draft"},
+    {"message": "run my backup script every night", "intent": "define", "what": "unsupported", "expect": "question"},
+    {"message": "keep my disk from filling up", "intent": "define", "what": "free_space", "expect": "question"},
+    {"message": "only keep 2 agent target dirs", "intent": "edit", "rule": "disk", "change": "keep_count", "expect": "draft"},
+    {"message": "never touch ~/.openagents/pylon", "intent": "edit", "rule": "disk", "change": "deny_path", "expect": "draft"},
+    {"message": "keep 200 GB free", "intent": "edit", "rule": "disk", "change": "free_level", "expect": "draft"},
+    {"message": "clean old build caches first", "intent": "edit", "rule": "disk", "change": "already", "expect": "unchanged"},
+    {"message": "don't delete worktrees, just tell me", "intent": "edit", "rule": "disk", "change": "report_only", "expect": "draft"},
+    {"message": "check the disk every 10 minutes", "intent": "edit", "rule": "disk", "change": "interval", "expect": "draft"},
+    {"message": "count build folders as old after 7 days", "intent": "edit", "rule": "disk", "change": "idle_days", "expect": "draft"},
+    {"message": "pause disk cleanup until tomorrow", "intent": "pause", "rule": "disk", "expect": "draft"},
+    {"message": "turn off the disk cleanup for a week", "intent": "pause", "rule": "disk", "expect": "draft"},
+    {"message": "resume disk cleanup", "intent": "resume", "rule": "disk", "expect": "draft"},
+    {"message": "stop the low disk warnings for now", "intent": "pause", "rule": "low-disk-30gb", "expect": "draft"},
+    {"message": "delete the low disk warning rule", "intent": "remove", "rule": "low-disk-30gb", "expect": "draft"},
+    {"message": "clean up my disk right now", "intent": "none", "expect": "question"},
+    {"message": "what's the weather in Austin", "intent": "none", "expect": "question"}
+  ]
+}

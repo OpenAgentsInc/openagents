@@ -468,6 +468,12 @@ pub trait Coder: Send + Sync {
     fn plugin_command(&self, _argv: &[String], _timeout: Duration) -> Result<Ran, String> {
         Err("Plugins are not made here.".into())
     }
+    /// Whether a background rule compiled from this computer's words waits
+    /// under draft `id` to be confirmed (#10157): `openagents background
+    /// draft` kept one.
+    fn drafted(&self, _id: &str) -> bool {
+        false
+    }
 }
 
 /// How a command a reply proposed may run here ([`Coder::permit`]).
@@ -554,6 +560,18 @@ impl Coder for NoCoder {
     fn trajectories(&self, _: &Path, _: &str) -> Vec<Value> {
         Vec::new()
     }
+}
+
+/// The background-rule draft a thread's words are kept under: the
+/// thread's id, as `openagents background draft --id` keeps it.
+#[must_use]
+pub fn standing_draft(thread: &str) -> String {
+    let id: String = thread
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(64)
+        .collect();
+    if id.is_empty() { "cli".into() } else { id }
 }
 
 /// What happens during an operation, in order. The JSON `openagents chat
@@ -750,6 +768,10 @@ pub enum Op {
     RunCoder { thread: String },
     /// Run the command the thread's last reply proposed, confirmed.
     RunCommand { thread: String },
+    /// Read `text` as a background rule on this computer (#10157), as
+    /// the terminal's `/background WORDS` asks: the rule and its dry run
+    /// are shown, and [`Op::RunCommand`] saves it.
+    Standing { thread: String, text: String },
     /// Replay the thread's task from its first event and keep streaming.
     Follow { thread: String },
     /// Stop the thread's running task.
@@ -768,7 +790,8 @@ impl Op {
             | Op::RunCommand { thread }
             | Op::Follow { thread }
             | Op::Stop { thread }
-            | Op::Answer { thread, .. } => thread,
+            | Op::Answer { thread, .. }
+            | Op::Standing { thread, .. } => thread,
         }
     }
 }
@@ -1133,6 +1156,14 @@ impl Client {
                 })
             }
             Op::RunCommand { thread } => Ok(self.confirmed(&thread, sink).await),
+            Op::Standing { thread, text } => {
+                if let Backend::Computer { label, .. } = &self.backend {
+                    let message = format!("Background rules for this thread are made on {label}.");
+                    sink(Event::Failure { thread, message });
+                    return Ok(Ended::Failed);
+                }
+                Ok(self.standing(&thread, &text, sink).await)
+            }
             Op::Follow { thread } | Op::Stop { thread } | Op::Answer { thread, .. }
                 if matches!(self.backend, Backend::Computer { .. }) =>
             {
@@ -1349,6 +1380,10 @@ impl Client {
         match reply {
             Some(reply) if !reply.stopped => {
                 let plugin = reply.meta.as_ref().and_then(|meta| meta.plugin.clone());
+                let standing = reply
+                    .meta
+                    .as_ref()
+                    .is_some_and(crate::router::Meta::standing);
                 // Say who will run it, from what the run itself reads here.
                 let mut turns = [reply];
                 let store = self.store(id);
@@ -1409,6 +1444,12 @@ impl Client {
                     && !matches!(self.backend, Backend::Computer { .. })
                 {
                     return Ok(self.plugin(id, flow, sink).await);
+                }
+                // A standing rule (#10157): this computer compiles the
+                // message into a rule and shows it with its dry run; it is
+                // saved only once confirmed.
+                if !coding && standing && !matches!(self.backend, Backend::Computer { .. }) {
+                    return Ok(self.standing(id, text, sink).await);
                 }
                 // A command the reply proposed runs here: at once when it
                 // only reads, else after a confirm (#10170).
@@ -1841,6 +1882,38 @@ impl Client {
         if ok { Ended::Done } else { Ended::Failed }
     }
 
+    /// Compile `text` into a background rule on this computer (#10157):
+    /// `openagents background draft` runs here at once (it only shows and
+    /// keeps a draft), and when a rule waits, saving it is offered as a
+    /// command to confirm ([`Op::RunCommand`]).
+    async fn standing(&mut self, id: &str, text: &str, sink: &mut Sink<'_>) -> Ended {
+        let draft = standing_draft(id);
+        let mut argv = vec![
+            "background".to_owned(),
+            "draft".to_owned(),
+            "--id".to_owned(),
+            draft.clone(),
+        ];
+        if let Some(dir) = &self.dir {
+            argv.push("--project".to_owned());
+            argv.push(dir.display().to_string());
+        }
+        argv.push("--".to_owned());
+        argv.push(text.to_owned());
+        let ended = self.command(id, argv, true, false, sink).await;
+        if ended != Ended::Done {
+            return ended;
+        }
+        if self.coder.drafted(&draft) {
+            sink(Event::Command {
+                thread: id.to_owned(),
+                argv: vec!["background".to_owned(), "apply".to_owned(), draft],
+                confirm: true,
+            });
+        }
+        Ended::Done
+    }
+
     /// Run the command the thread's last reply proposed, after the person
     /// confirmed it.
     async fn confirmed(&mut self, id: &str, sink: &mut Sink<'_>) -> Ended {
@@ -1854,6 +1927,15 @@ impl Client {
         if let Backend::Computer { label, .. } = &self.backend {
             let message = format!("Commands for this thread run on {label}.");
             return refuse(sink, &message);
+        }
+        // A background rule drafted for this thread waits first: from
+        // `/background WORDS`, or from a reply the router read as a
+        // standing rule (#10157).
+        let draft = standing_draft(id);
+        if self.coder.drafted(&draft) {
+            let argv = vec!["background".to_owned(), "apply".to_owned(), draft.clone()];
+            let ended = self.command(id, argv, true, true, sink).await;
+            return ended;
         }
         let argv = match self
             .apply(Command::Read {

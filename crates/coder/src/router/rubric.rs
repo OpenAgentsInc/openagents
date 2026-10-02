@@ -230,7 +230,10 @@ pub fn route(route: RouteId) -> Value {
                  for a plugin with us (eval.author), including tests for one of our Gym \
                  plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside \
                  their code and computer, such as email, a calendar, or a booking \
-                 (capability.missing)",
+                 (capability.missing); something to keep happening on its own from now on, \
+                 such as keeping disk space free, a cleanup or pull every morning, or telling \
+                 them whenever a run fails, or a change to such a background rule \
+                 (standing.rule)",
             ),
             &[
                 "fix the typo in my README",
@@ -467,7 +470,10 @@ pub fn route(route: RouteId) -> Value {
                  (work.dispatch); an openagents command for their own account or devices \
                  (cli); the wallet (wallet); advice or an explanation with nothing to do now \
                  (general); making a new capability with us (eval.author); opening, showing, \
-                 or presenting one of our decks or slide presentations (presentation.open)",
+                 or presenting one of our decks or slide presentations (presentation.open); \
+                 something to keep happening on its own on their own computer, such as \
+                 keeping disk space free or telling them whenever a Coder run fails \
+                 (standing.rule)",
             ),
             &[
                 "Book me a flight to Denver next Friday",
@@ -496,6 +502,32 @@ pub fn route(route: RouteId) -> Value {
                 "let's run through the deck",
                 "open the pitch deck",
                 "present the slides please",
+            ],
+        ),
+        RouteId::StandingRule => option(
+            "The user wants something to keep happening on its own on their computer from \
+             now on, over time or whenever something happens, rather than done once now: a \
+             standing instruction such as keeping free disk space above a level, cleaning up \
+             old build folders or finished worktrees on a schedule, telling them whenever a \
+             Coder run fails or ends or the disk runs low, or keeping a checkout up to date \
+             every morning; or a change to such a background rule (how much space it keeps, \
+             how many build folders it keeps, a folder it must never touch, deleting or only \
+             reporting something, when it runs), or pausing, resuming, or removing one",
+            Some(
+                "Doing it once now, such as cleaning up the disk or pulling main today, or \
+                 writing a script or cron job in their code (work.dispatch); a one-time \
+                 reminder at a time, or anything outside their computer, such as email or a \
+                 calendar (capability.missing); how background rules work in general \
+                 (product.kb); listing what rules run or what an openagents command shows \
+                 (cli)",
+            ),
+            &[
+                "keep my disk above 50 GB free",
+                "every morning pull main in ~/work/openagents",
+                "tell me whenever a coder run fails",
+                "only keep 2 agent target dirs",
+                "pause disk cleanup until tomorrow",
+                "never touch ~/.openagents/pylon",
             ],
         ),
         RouteId::Unknown => Value::from(RouteId::Unknown.description()),

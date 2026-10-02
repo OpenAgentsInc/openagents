@@ -781,6 +781,15 @@ impl App {
                 Vec::new()
             }
             Draft::With(Slash::Resume, arg) => vec![Action::Resume(arg)],
+            // `/background WORDS`: the words become a background rule on
+            // this computer, shown with its dry run; Enter saves it.
+            Draft::With(Slash::Background, words) if !self.busy() => {
+                self.push(Row::Turn(Who::You, format!("/background {words}")));
+                vec![Action::Run(Op::Standing {
+                    thread: self.thread.clone(),
+                    text: words,
+                })]
+            }
             Draft::With(slash, _) => self.command(slash),
             Draft::Message(text) => self.send(text),
         }
@@ -896,7 +905,7 @@ impl App {
             Op::Send { .. } => Phase::Replying,
             Op::Follow { .. } => Phase::Following,
             Op::RunCoder { .. } | Op::Answer { .. } => Phase::Following,
-            Op::Stop { .. } | Op::RunCommand { .. } => Phase::Working,
+            Op::Stop { .. } | Op::RunCommand { .. } | Op::Standing { .. } => Phase::Working,
         };
         self.partial.clear();
         if let Op::Send { .. } = op {

@@ -799,6 +799,32 @@ text = "Decks open in the OpenAgents desktop app, so we can't show one here."
 sources = ["crates/openagents-desktop/src/shell.rs"]
 
 # ---------------------------------------------------------------------------
+# standing.rule (#10157): the user asked for something to keep happening on
+# its own on their computer, or a change to such a background rule. Picked
+# by code by surface: in a terminal, the computer compiles the message into
+# a rule and shows it with its dry run beside this line; nothing is saved
+# until the person confirms. Elsewhere, the line says where rules are made.
+# ---------------------------------------------------------------------------
+
+[[answer]]
+id = "standing.rule"
+version = 1
+routes = ["standing.rule"]
+records = true
+when = "Picked by code: in a terminal, the user asks for something to keep happening on its own on this computer, or a change to such a background rule"
+text = "Drafting a background rule for this computer. Nothing is saved until you confirm it."
+sources = ["docs/background/2026-10-02-background-processes.md", "crates/background/src/compile.rs"]
+
+[[answer]]
+id = "standing.elsewhere"
+version = 1
+routes = ["standing.rule"]
+records = true
+when = "Picked by code: the user asks for something to keep happening on its own on a computer, anywhere but a terminal on that computer"
+text = "Background rules run on your computer, so we set them up there: ask in OpenAgents Terminal, or run `openagents background add --message` with what you want. You see the rule and what it would do before anything is saved."
+sources = ["docs/background/2026-10-02-background-processes.md", "crates/openagents-cli/src/background.rs"]
+
+# ---------------------------------------------------------------------------
 # refuse, warn, and clarify
 # ---------------------------------------------------------------------------
 

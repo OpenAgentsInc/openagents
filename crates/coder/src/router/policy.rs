@@ -177,6 +177,11 @@ pub const PRESENTATION_ROUTE: f64 = 0.70;
 /// The least `deck` probability at which the reading names the deck to
 /// open.
 pub const DECK_CONFIDENCE: f64 = 0.60;
+
+/// The `standing.rule` probability at which a message is served as a
+/// background rule (#10157): in a terminal, the computer then compiles it
+/// and shows the rule; elsewhere, the line says where rules are made.
+pub const STANDING_ROUTE: f64 = 0.60;
 /// The least `engine` probability at which a dispatch offer names the
 /// engine the person asked for (#10076). An unsure reading is no
 /// preference: a wrong engine put first costs more than none.
@@ -785,6 +790,21 @@ fn presentation(
     })
 }
 
+/// Rule 2b: a standing rule. In a terminal, `standing.rule`, which the
+/// terminal's computer follows with the compiled rule; on every other
+/// surface, `standing.elsewhere`.
+fn standing(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Option<Tier> {
+    if routing.route != RouteId::StandingRule || routing.route_p < STANDING_ROUTE {
+        return None;
+    }
+    let id = if situation.context.surface() == Surface::Terminal {
+        "standing.rule"
+    } else {
+        "standing.elsewhere"
+    };
+    final_of(bank, facts, id)
+}
+
 /// Rule 10: the missing-capability line, when both readings agree that
 /// the request calls for a capability none of the admitted ones covers.
 fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
@@ -968,6 +988,13 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
             return tier;
         }
         return answered(routing);
+    }
+
+    // 2b. A standing rule (#10157): something to keep happening on the
+    // user's computer. A terminal compiles it on the computer beside this
+    // line; elsewhere the line says where rules are made.
+    if let Some(tier) = standing(routing, bank, facts, situation) {
+        return tier;
     }
 
     // 3. T0.

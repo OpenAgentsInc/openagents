@@ -1069,6 +1069,19 @@ impl Meta {
         self.tier.as_deref() == Some("canned") && self.answer.is_some()
     }
 
+    /// The router served the terminal's standing-rule line (#10157): the
+    /// `standing.rule` route with its `standing.rule` answer, which the
+    /// computer follows with the compiled rule. Exact enum values, never
+    /// the reply's text.
+    pub fn standing(&self) -> bool {
+        self.route.as_deref() == Some("standing.rule")
+            && self
+                .answer
+                .as_deref()
+                .and_then(|answer| answer.split('@').next())
+                == Some("standing.rule")
+    }
+
     /// Nothing to keep.
     pub fn is_empty(&self) -> bool {
         *self == Meta::default()

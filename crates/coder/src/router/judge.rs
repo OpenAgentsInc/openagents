@@ -7,7 +7,7 @@
 //! | Id | Type | Reads |
 //! | --- | --- | --- |
 //! | `action` | Choice | Classify's measured `coder-turns-v2` wording, unchanged |
-//! | `route` | Choice | the [`RouteId`] catalog (20 routes in `chat-router-v4`), each with its rubric, plus `none` |
+//! | `route` | Choice | the [`RouteId`] catalog (21 routes in `chat-router-v5`), each with its rubric, plus `none` |
 //! | `answer` | Choice | every selectable bank entry with its `when`, plus `none` |
 //! | `needs_specifics` | Noul | whether a good reply must refer to the user's particulars |
 //! | `lane` | Choice | `coder::first`'s wording: chat, computer, or none |

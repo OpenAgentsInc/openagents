@@ -4,7 +4,7 @@
   "type": "judgment",
   "verdict": "respond",
   "line": "Our chat runs on Google's Gemini 3.8 Flash through the Vercel AI Gateway. A small, fast model, Jev from TypeSafe, reads each message first to choose how we answer.",
-  "set": "chat-router-v4@DIGEST",
+  "set": "chat-router-v5@DIGEST",
   "bank": "chat-answers-v1@DIGEST",
   "route": "meta",
   "route_p": 0.93,

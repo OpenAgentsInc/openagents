@@ -85,14 +85,15 @@ pub fn coding_engine(word: &str) -> Option<CodingEngine> {
 /// `chat-router-v3` the `capability.missing` route and the `capability`
 /// question over the admitted set ([`capability`]), and `chat-router-v4`
 /// the `presentation.open` route and the `deck` question a desktop turn
-/// asks (#10058). Its identity on the wire is [`set_id`], the name with the
+/// asks (#10058), and `chat-router-v5` the `standing.rule` route
+/// (#10157). Its identity on the wire is [`set_id`], the name with the
 /// digest of the `route` question it asks.
-pub const SET: &str = "chat-router-v4";
+pub const SET: &str = "chat-router-v5";
 
 /// The digest of the question set: SHA-256, in hex, of the canonical JSON
 /// of the `route` question ([`judge::route`]), computed the way the Gym
 /// digests a question set (`gym::questions::QuestionSet::digest`), so the
-/// committed `crates/gym/questions/chat-router-route-v5.json` and a
+/// committed `crates/gym/questions/chat-router-route-v6.json` and a
 /// running worker name the same digest for the same question, and a
 /// changed route list or rubric is a changed set. The bank, the facts,
 /// the command groups, and the tools are outside it: the route question
@@ -120,6 +121,11 @@ pub fn set_id() -> String {
     format!("{SET}@{}", &set_digest()[..12])
 }
 
+/// The fourth question set. A request that names it is routed with
+/// [`SET`]; a judgment recorded under it reads with [`RouteId::parse`],
+/// since its twenty route words are all still routes.
+pub const SET_V4: &str = "chat-router-v4";
+
 /// The third question set. A request that names it is routed with
 /// [`SET`]; a judgment recorded under it reads with [`RouteId::parse`],
 /// since its nineteen route words are all still routes.
@@ -137,10 +143,14 @@ pub const SET_V2: &str = "chat-router-v2";
 pub const SET_V1: &str = "chat-router-v1";
 
 /// Whether a request's `router` field asks for routing: it names [`SET`],
-/// [`SET_V3`], [`SET_V2`], or [`SET_V1`]. An exact enum value, not text.
+/// [`SET_V4`], [`SET_V3`], [`SET_V2`], or [`SET_V1`]. An exact enum value,
+/// not text.
 #[must_use]
 pub fn asks_router(value: &serde_json::Value) -> bool {
-    matches!(value.as_str(), Some(SET | SET_V3 | SET_V2 | SET_V1))
+    matches!(
+        value.as_str(),
+        Some(SET | SET_V4 | SET_V3 | SET_V2 | SET_V1)
+    )
 }
 
 /// The decks the desktop app ships (`openagents_deck::decks()`), read
@@ -208,6 +218,10 @@ pub enum RouteId {
     /// Open, show, or present one of our decks in the desktop app's slide
     /// viewer (#10058).
     PresentationOpen,
+    /// Something to keep happening on its own on the user's computer, or
+    /// a change to such a background rule (#10157): compiled into a typed
+    /// rule on the computer, shown, and saved only once confirmed.
+    StandingRule,
     /// The judge chose `none`, or did not answer.
     Unknown,
 }
@@ -241,9 +255,10 @@ impl RouteId {
     ];
 
     /// Every route the `route` question offers, in order (`Unknown` is its
-    /// `none`). `chat-router-v3` added `capability.missing`, and
-    /// `chat-router-v4` `presentation.open`.
-    pub const ALL: [RouteId; 20] = [
+    /// `none`). `chat-router-v3` added `capability.missing`,
+    /// `chat-router-v4` `presentation.open`, and `chat-router-v5`
+    /// `standing.rule`.
+    pub const ALL: [RouteId; 21] = [
         RouteId::Meta,
         RouteId::Smalltalk,
         RouteId::General,
@@ -264,6 +279,7 @@ impl RouteId {
         RouteId::EvalCredit,
         RouteId::CapabilityMissing,
         RouteId::PresentationOpen,
+        RouteId::StandingRule,
     ];
 
     /// Whether this is one of the Gym and eval routes.
@@ -296,6 +312,7 @@ impl RouteId {
             RouteId::EvalCredit => "eval.credit",
             RouteId::CapabilityMissing => "capability.missing",
             RouteId::PresentationOpen => "presentation.open",
+            RouteId::StandingRule => "standing.rule",
             RouteId::Unknown => "none",
         }
     }
@@ -408,6 +425,13 @@ impl RouteId {
                  presented now; not a question about what a deck or talk says, and not making \
                  a new deck"
             }
+            RouteId::StandingRule => {
+                "The user wants something to keep happening on its own on their computer, \
+                 over time or whenever something happens (a standing instruction or background \
+                 rule: keep free disk space above a level, clean up on a schedule, tell them \
+                 when a Coder run fails, keep a checkout up to date every morning), or changes, \
+                 pauses, resumes, or removes such a rule; not something to do once now"
+            }
             RouteId::Unknown => "None of these fits the message",
         }
     }
@@ -434,6 +458,7 @@ impl RouteId {
             RouteId::Cli | RouteId::Wallet | RouteId::Account | RouteId::PresentationOpen => {
                 RouteFamily::Screens
             }
+            RouteId::StandingRule => RouteFamily::Work,
             RouteId::Clarify | RouteId::Refuse | RouteId::End | RouteId::CapabilityMissing => {
                 RouteFamily::Boundaries
             }

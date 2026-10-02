@@ -142,6 +142,13 @@ pub fn facts(store: &Path) -> Result<Vec<background::TaskFact>, String> {
                 worktree: workspace.to_owned(),
                 target: legacy(store, workspace),
                 ended: ended(task),
+                failed: task.execution == super::Execution::Failed
+                    || task.checks == super::Checks::Failed,
+                cancelled: task.status == super::Status::Cancelled,
+                running: matches!(
+                    task.status,
+                    super::Status::Queued | super::Status::Running | super::Status::CancelRequested
+                ),
             }
         })
         .collect())

@@ -250,6 +250,19 @@ pub fn admit(mut asked: Rule, plugin: &Installed) -> Result<Rule, String> {
             }
         }
     }
+    for action in &asked.actions {
+        match action {
+            rule::Action::Notify { .. } if !asked.needs.notify => {
+                return Err(named("it notifies without asking for needs.notify".into()));
+            }
+            rule::Action::GitFastForward { .. } => {
+                return Err(named(
+                    "a plugin's rule cannot update a Git checkout; that is a rule made here".into(),
+                ));
+            }
+            _ => {}
+        }
+    }
     let task_classes = [Class::EndedTargets, Class::Worktrees];
     if !asked.needs.tasks && granted.iter().any(|class| task_classes.contains(class)) {
         return Err(named(

@@ -398,6 +398,13 @@ impl Coder for Here {
         run_for(argv, timeout, false)
     }
 
+    /// A draft `openagents background draft` kept in this user's
+    /// `~/.openagents/background/drafts`, while it is fresh.
+    fn drafted(&self, id: &str) -> bool {
+        background::Layout::from_env()
+            .is_ok_and(|layout| background::compile::drafted(&layout, id, background::paths::now()))
+    }
+
     fn trajectories(&self, store: &Path, task: &str) -> Vec<Value> {
         let Ok(task) = super::Store::open(store).and_then(|tasks| tasks.show(task)) else {
             return Vec::new();

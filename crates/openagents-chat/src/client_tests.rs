@@ -1306,8 +1306,22 @@ impl Coder for Commands {
         match argv.join(" ").as_str() {
             "wallet status" => Permit::Now,
             "wallet init" => Permit::Confirm,
+            _ if argv.starts_with(&["background".to_owned(), "draft".to_owned()]) => Permit::Now,
+            _ if argv.starts_with(&["background".to_owned(), "apply".to_owned()]) => {
+                Permit::Confirm
+            }
             _ => Permit::Never,
         }
+    }
+    fn drafted(&self, id: &str) -> bool {
+        let ran = self.ran.lock().unwrap();
+        let drafted = ran.iter().any(|argv| {
+            argv.get(1).is_some_and(|w| w == "draft") && argv.get(3).is_some_and(|w| w == id)
+        });
+        let applied = ran
+            .iter()
+            .any(|argv| argv.get(1).is_some_and(|w| w == "apply"));
+        drafted && !applied
     }
     fn run_command(&self, argv: &[String]) -> Result<Ran, String> {
         self.ran.lock().unwrap().push(argv.to_vec());
@@ -1405,6 +1419,96 @@ async fn a_command_that_changes_something_waits_for_the_confirm_and_money_never_
     let (_, _, ended) = drain(client.stream(Op::RunCommand { thread })).await;
     assert_eq!(ended, Ok(Ended::Failed));
     assert!(coder.ran.lock().unwrap().is_empty());
+}
+
+/// The router served the terminal's standing-rule line (#10157).
+struct Standing;
+
+impl Door for Standing {
+    fn ask(
+        &self,
+        _: Vec<Turn>,
+        _: Context,
+        reply: Arc<std::sync::Mutex<Reply>>,
+    ) -> BoxFuture<'static, ()> {
+        Box::pin(async move {
+            let mut reply = lock(&reply);
+            reply.text =
+                "Drafting a background rule for this computer. Nothing is saved until you confirm it."
+                    .into();
+            reply.meta = Meta {
+                route: Some("standing.rule".into()),
+                tier: Some("canned".into()),
+                answer: Some("standing.rule@1".into()),
+                ..Meta::default()
+            };
+            reply.done = true;
+        })
+    }
+}
+
+/// #10157: a standing rule compiles on this computer at once (the draft
+/// only shows and keeps a rule), and saving it waits for the confirm.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_standing_rule_is_drafted_here_and_saved_only_on_confirm() {
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(Commands::default());
+    let client = in_process(Arc::new(Standing), options(dir.path()), coder.clone());
+    let thread = new_id();
+    let message = "keep my disk above 50 GB free";
+    let (events, client, ended) =
+        drain(client.stream(send(&thread, message, Start::Settings))).await;
+    assert_eq!(ended, Ok(Ended::Done));
+    let draft = crate::client::standing_draft(&thread);
+    {
+        let ran = coder.ran.lock().unwrap();
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        assert_eq!(
+            &ran[0][..4],
+            ["background", "draft", "--id", draft.as_str()]
+        );
+        assert_eq!(ran[0].last().map(String::as_str), Some(message));
+    }
+    let words = |argv: &[String]| argv.join(" ");
+    assert!(
+        matches!(events.last(), Some(Event::Command { argv, confirm: true, .. })
+            if words(argv) == format!("background apply {draft}")),
+        "{events:?}"
+    );
+    let (events, _, ended) = drain(client.stream(Op::RunCommand {
+        thread: thread.clone(),
+    }))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done));
+    assert!(
+        matches!(events.last(), Some(Event::Ran { ok: true, .. })),
+        "{events:?}"
+    );
+    assert_eq!(
+        coder.ran.lock().unwrap().last().unwrap(),
+        &vec!["background".to_owned(), "apply".to_owned(), draft]
+    );
+}
+
+/// The words of a terminal's `/background WORDS` compile the same way,
+/// with no worker turn.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn background_words_from_the_terminal_compile_the_same_way() {
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(Commands::default());
+    let client = in_process(Arc::new(Standing), options(dir.path()), coder.clone());
+    let thread = new_id();
+    let (events, _, ended) = drain(client.stream(Op::Standing {
+        thread: thread.clone(),
+        text: "only keep 2 agent target dirs".into(),
+    }))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done));
+    assert!(
+        matches!(events.last(), Some(Event::Command { confirm: true, .. })),
+        "{events:?}"
+    );
+    assert_eq!(coder.ran.lock().unwrap().len(), 1);
 }
 
 /// A worker that plans three read-only runs with a summary, then answers a

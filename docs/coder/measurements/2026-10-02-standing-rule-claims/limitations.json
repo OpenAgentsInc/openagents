@@ -1,0 +1,91 @@
+{
+  "v": "openagents.eval-limitations.v1",
+  "requires": [],
+  "limitations": [
+    "no baseline arm ran: the previous router version was not kept runnable, so this record claims no change and its verdict is inconclusive; the gate's product floors are judged below",
+    "the subject's definition is not a published NIP-CAP head; its id's publisher is the evaluator's local provenance id, and identity is `version` (the question set and bank by digest, the judge by name), never `content`: the model behind the judge is not pinned",
+    "the rows were written and labeled by the router's authors (labels.json); no second author has validated the suite",
+    "the eval wires the CLI route and the tool question but no knowledge base, so a row expecting a grounded reply reads as the model alone here; grounded rows are counted on their route, not their tier",
+    "one run of each row; the run-to-run spread of every measure is the gate's pending measurement",
+    "the calibration maps were fitted on the 408 calibration rows and scored on the held-out rows; whether the worker serves them is CODER_WORKER_ROUTER_CALIBRATION, off by default (route map: failed; answer map: passed)",
+    "gate router-v1 scored_rows>=30: passed (scored_rows is 254, at or above the floor of 30)",
+    "gate router-v1 canned_precision_at_or_above_floor: passed (canned precision 1.000 against a floor of 0.980)",
+    "gate router-v1 dispatch_precision_at_or_above_floor: passed (dispatch precision 0.977 against a floor of 0.900)",
+    "gate router-v1 baseline_arm_ran: unverifiable (no baseline ran, so this record claims no change)",
+    "gate router-v1 canned_precision_not_worse: unverifiable (not judged: no baseline ran, so this record claims no change)",
+    "gate router-v1 canned_precision_improves: unverifiable (not judged: no baseline ran, so this record claims no change)",
+    "gate router-v1 route_accuracy_not_materially_worse: unverifiable (not judged: no baseline ran, so this record claims no change)",
+    "gate router-v1 canned_recall_not_materially_worse: unverifiable (not judged: no baseline ran, so this record claims no change)",
+    "gate router-v1 dispatch_precision_not_materially_worse: unverifiable (not judged: no baseline ran, so this record claims no change)",
+    "gate router-v1 ece_not_materially_worse: unverifiable (not judged: no baseline ran, so this record claims no change)"
+  ],
+  "partial": null,
+  "gate_outcome": {
+    "gate_id": "router-v1",
+    "gate_digest": "gate:4433b518bbffd29d55451cf63e864e8086d8ffa0f9b4f3a47e066459164a5619",
+    "group": "chat-router-v5/held_out",
+    "verdict": "unverifiable",
+    "criteria": [
+      {
+        "name": "scored_rows>=30",
+        "rank": 1,
+        "verdict": "passed",
+        "detail": "scored_rows is 254, at or above the floor of 30"
+      },
+      {
+        "name": "canned_precision_at_or_above_floor",
+        "rank": 1,
+        "verdict": "passed",
+        "detail": "canned precision 1.000 against a floor of 0.980"
+      },
+      {
+        "name": "dispatch_precision_at_or_above_floor",
+        "rank": 1,
+        "verdict": "passed",
+        "detail": "dispatch precision 0.977 against a floor of 0.900"
+      },
+      {
+        "name": "baseline_arm_ran",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "no baseline ran, so this record claims no change"
+      },
+      {
+        "name": "canned_precision_not_worse",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: no baseline ran, so this record claims no change"
+      },
+      {
+        "name": "canned_precision_improves",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: no baseline ran, so this record claims no change"
+      },
+      {
+        "name": "route_accuracy_not_materially_worse",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: no baseline ran, so this record claims no change"
+      },
+      {
+        "name": "canned_recall_not_materially_worse",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: no baseline ran, so this record claims no change"
+      },
+      {
+        "name": "dispatch_precision_not_materially_worse",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: no baseline ran, so this record claims no change"
+      },
+      {
+        "name": "ece_not_materially_worse",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: no baseline ran, so this record claims no change"
+      }
+    ]
+  }
+}

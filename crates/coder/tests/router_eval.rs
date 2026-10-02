@@ -23,7 +23,8 @@
 //! for the chat, or more work for Coder's next turn, and near misses,
 //! #10094), or `essays` (our essays and the ideas in them, and near
 //! misses, #10099), or `plugin_create` (asking to make a new plugin, and
-//! ordinary coding asks near it, #10177). Every run
+//! ordinary coding asks near it, #10177), or `standing` (background rules
+//! from conversation and their near misses, #10157). Every run
 //! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
@@ -44,7 +45,7 @@
 //!
 //! Systems:
 //!
-//! - `chat-router-v4` (`live_router`): the router's Jev question set and
+//! - `chat-router-v5` (`live_router`): the router's Jev question set and
 //!   policy table, in `Mode::Router`, with the `tool` question over the
 //!   product corpus's tool catalog as the deployed worker asks it
 //!   (`ROUTER_EVAL_GYM=off` leaves it out) and the `capability` question
@@ -108,6 +109,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let followup = |row: &Row| row.tags.iter().any(|tag| tag == "coder_followup");
     let essays = |row: &Row| row.tags.iter().any(|tag| tag == "essays");
     let plugin_create = |row: &Row| row.tags.iter().any(|tag| tag == "plugin_create");
+    let standing = |row: &Row| row.tags.iter().any(|tag| tag == "standing");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
@@ -122,6 +124,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
                         && !followup(r)
                         && !essays(r)
                         && !plugin_create(r)
+                        && !standing(r)
                 })
                 .collect(),
             format!("{split}-v1-rows"),
@@ -165,6 +168,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "delegation" => (
             rows.into_iter().filter(|r| delegation(r)).collect(),
             format!("{split}-delegation-rows"),
+        ),
+        "standing" => (
+            rows.into_iter().filter(|r| standing(r)).collect(),
+            format!("{split}-standing-rows"),
         ),
         _ => (rows, split.to_string()),
     }

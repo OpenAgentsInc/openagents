@@ -1,11 +1,11 @@
 //! The labeled route sets as Gym suites (#9925, #9936, #9960, #10058).
 //!
-//! `crates/gym/suites/chat-router-v4.json` is generated from
-//! `crates/coder/fixtures/chat-router/routes-v4.json`: one `route` item per
+//! `crates/gym/suites/chat-router-v5.json` is generated from
+//! `crates/coder/fixtures/chat-router/routes-v5.json`: one `route` item per
 //! row, its state the one the router's judgment reads, its truth the
 //! labeled route. Held-out rows are the locked partition, so the Gym's
 //! ledger records the one read of them. The question text,
-//! `crates/gym/questions/chat-router-route-v5.json`, is
+//! `crates/gym/questions/chat-router-route-v6.json`, is
 //! [`coder::router_eval::route_question`], which is the production router's
 //! structured `route` question ([`coder::router::judge::route`]), so Gym
 //! scores measure what production asks. These tests fail when the fixture
@@ -27,8 +27,8 @@ use std::path::{Path, PathBuf};
 
 use coder::generate::{Message, Role};
 use coder::router_eval::{
-    SUITE, SUITE_QUESTIONS, SUITE_QUESTIONS_V1, SUITE_QUESTIONS_V2, SUITE_QUESTIONS_V3, SUITE_V1,
-    SUITE_V2, SUITE_V3, Set, partition_of, route_question,
+    SUITE, SUITE_QUESTIONS, SUITE_QUESTIONS_V1, SUITE_QUESTIONS_V2, SUITE_QUESTIONS_V3,
+    SUITE_QUESTIONS_V4, SUITE_V1, SUITE_V2, SUITE_V3, SUITE_V4, Set, partition_of, route_question,
 };
 use gym::suite::{Item, Partition, Suite};
 use serde_json::{Value, json};
@@ -138,13 +138,27 @@ fn v3() -> Suite {
 
 fn v4() -> Suite {
     suite(
-        &Set::fixture(),
-        SUITE,
-        SUITE_QUESTIONS,
+        &Set::v4(),
+        SUITE_V4,
+        SUITE_QUESTIONS_V4,
         coder::router_claim::GATE,
         "The chat router's labeled route set for chat-router-v4 (#10058), from \
          crates/coder/fixtures/chat-router/routes-v4.json: the v3 rows and rows for \
          the presentation.open route and its near misses, across 20 routes, labeled \
+         with the route a correct router takes. The fixture's held-out rows are the \
+         locked partition.",
+    )
+}
+
+fn v5() -> Suite {
+    suite(
+        &Set::fixture(),
+        SUITE,
+        SUITE_QUESTIONS,
+        coder::router_claim::GATE,
+        "The chat router's labeled route set for chat-router-v5 (#10157), from \
+         crates/coder/fixtures/chat-router/routes-v5.json: the v4 rows and rows for \
+         the standing.rule route and its near misses, across 21 routes, labeled \
          with the route a correct router takes. The fixture's held-out rows are the \
          locked partition.",
     )
@@ -171,16 +185,20 @@ fn committed(name: &str) -> Suite {
 
 #[test]
 fn the_gym_suites_are_the_labeled_sets() {
-    let v4_committed = committed(SUITE);
-    assert_eq!(v4_committed.digest, v4().digest, "regenerate the suite");
-    assert_eq!(v4_committed.questions.as_deref(), Some(SUITE_QUESTIONS));
+    let v5_committed = committed(SUITE);
+    assert_eq!(v5_committed.digest, v5().digest, "regenerate the suite");
+    assert_eq!(v5_committed.questions.as_deref(), Some(SUITE_QUESTIONS));
     assert_eq!(
-        v4_committed.gate.as_deref(),
+        v5_committed.gate.as_deref(),
         Some(coder::router_claim::GATE),
         "regenerate the suite"
     );
     gym::gate::load(coder::router_claim::GATE).expect("the named gate is a committed rule");
-    // The v1, v2, and v3 suites are kept as recorded.
+    // The v1, v2, v3, and v4 suites are kept as recorded.
+    let v4_committed = committed(SUITE_V4);
+    assert_eq!(v4_committed.digest, v4().digest);
+    assert_eq!(v4_committed.questions.as_deref(), Some(SUITE_QUESTIONS_V4));
+    gym::questions::load(SUITE_QUESTIONS_V4).expect("the v4 question set still reads");
     let v3_committed = committed(SUITE_V3);
     assert_eq!(v3_committed.digest, v3().digest);
     assert_eq!(v3_committed.questions.as_deref(), Some(SUITE_QUESTIONS_V3));
@@ -267,7 +285,7 @@ fn write_the_gym_suite() {
     }
     std::fs::write(
         gym(&format!("suites/{SUITE}.json")),
-        serde_json::to_string_pretty(&v4()).expect("serializes") + "\n",
+        serde_json::to_string_pretty(&v5()).expect("serializes") + "\n",
     )
     .expect("writes the suite");
     std::fs::write(

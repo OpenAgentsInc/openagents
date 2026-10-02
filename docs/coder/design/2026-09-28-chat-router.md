@@ -1949,3 +1949,43 @@ ran. Two changes:
   desktop app still get the authoring interview until their clients run
   the computer's steps. A plugin that only brings skills now resolves
   without a program (`Package::resolve` refuses one that carries nothing).
+
+## Standing instructions: `standing.rule` (2026-10-02)
+
+"Keep my disk above 50 GB free", "every morning pull main in
+~/work/openagents", and "tell me whenever a Coder run fails" are not runs:
+they are background rules the host keeps running
+([background processes](../../background/2026-10-02-background-processes.md),
+#10157; the agentic execution router's "Standing rule" route family,
+section 13.9). So are changes to one: "only keep 2 agent target dirs",
+"pause disk cleanup until tomorrow".
+
+### The question set: `chat-router-v5`
+
+The `route` Choice gains `standing.rule`: something to keep happening on
+its own on the user's computer, over time or whenever something happens,
+or a change, pause, resume, or removal of such a rule; its rubric names
+the neighbors (doing it once now and writing a cron job in their code are
+`work.dispatch`; a one-time reminder or email is `capability.missing`; how
+rules work is `product.kb`; listing rules is `cli`), and `work.dispatch`
+and `capability.missing` name it back. Requests naming `chat-router-v4`
+and earlier are routed with v5.
+
+### Policy
+
+Rule 2b, after risk and the close-call rule and before prepared answers:
+`standing.rule` at 0.60 or more serves `standing.rule` ("Drafting a
+background rule for this computer. Nothing is saved until you confirm
+it.") on the terminal surface, and `standing.elsewhere` (rules are set up
+on the computer, in OpenAgents Terminal or with `openagents background add
+--message`) everywhere else. Both are picked by code (`records = true`),
+never offered to the `answer` question.
+
+The worker never compiles a rule: it cannot see the computer's rules or
+disk. The terminal's client, seeing the `standing.rule` route with the
+`standing.rule` answer (exact enum values), runs `openagents background
+draft --id THREAD -- WORDS` on its computer (read-only: it shows a card
+and keeps a draft) and offers `openagents background apply THREAD` as a
+command to confirm. The compiler asks Jev over typed catalogs and code
+fills bounded fields; below `background.compile` it asks one question
+instead.

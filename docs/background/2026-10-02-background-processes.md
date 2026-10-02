@@ -5,7 +5,8 @@ Status: phase 1 (the disk monitor) implemented, 2026-10-02: `crates/background`,
 and NIP-HOST `background.*`; see "Phase 1 as built" at the end. Plugins
 can now bring background rules that run only while turned on
 ([Disk cleanup as a plugin](2026-10-02-disk-cleanup-plugin.md), #10165).
-Phases 2 and 3 are design. Issues:
+Phase 2 (rules from conversation and the general rule engine) implemented
+the same day; see "Phase 2 as built" at the end. Phase 3 is design. Issues:
 umbrella [#10155](https://github.com/OpenAgentsInc/openagents/issues/10155),
 phase 1 [#10156](https://github.com/OpenAgentsInc/openagents/issues/10156),
 phase 2 [#10157](https://github.com/OpenAgentsInc/openagents/issues/10157),
@@ -544,3 +545,76 @@ Where the implementation differs from the design above, and why:
   detached, on its commit), since stashes belong to the repository.
 - **Low-disk log writes** are buffered in memory and flushed with the next
   record; there is no preallocated file.
+
+## Phase 2 as built
+
+Rules from conversation (#10157). Where the implementation differs from the
+design above, and why:
+
+- **One route, not two.** The chat router has one `standing.rule` route
+  (`chat-router-v5`), described to Jev as "something to keep happening on
+  its own on their computer, or a change, pause, resume, or removal of such
+  a rule; not something to do once now". Whether a message defines, edits,
+  pauses, resumes, or removes a rule is the compiler's first question, over
+  the rules this computer actually has, which the worker cannot see. Policy
+  rule 2b serves `standing.rule` ("Drafting a background rule for this
+  computer. Nothing is saved until you confirm it.") in a terminal and
+  `standing.elsewhere` (where rules are made) on the phone, desktop, and
+  web. The labeled set `routes-v5.json` adds 42 standing rows and 14 near
+  misses (doing it once now, a one-time reminder, email, cron in general,
+  how rules work, listing rules); see the measurement in
+  `docs/coder/measurements/2026-10-02-standing-rule-route.md`.
+- **The compiler** (`background::compile`) asks one Jev request with eight
+  Choice questions over typed catalogs: `intent` (define, edit, pause,
+  resume, remove, none), `rule` (the rules there are, or new), `what` (keep
+  free space, prune worktrees, warn on low disk, tell me when a run fails,
+  tell me when a run ends, keep a checkout up to date, unsupported),
+  `change` (free level, keep count, a folder to never touch, report only,
+  delete again, idle days, interval, time of day, already does it, other),
+  `when`, `part_of_day`, `class`, and `pause_for`. Each choice it acts on
+  must read at or above `background.compile` (0.6); otherwise it asks one
+  question. Only then does code read bounded fields from the words
+  (`compile::fields`: sizes, percents, counts, durations, times of day,
+  dates, paths); a missing one is a question too ("How much free space
+  should it keep, in GB?"). Nothing selects by keywords.
+- **Drafts.** A compiled rule is a draft (`background/drafts/<id>.json`,
+  one per chat thread), shown as a card: the rule in plain lines (When, If,
+  Does, Keeps, Never touches, Status), or for an edit only the lines that
+  change (`- ` before, `+ ` after), then its dry run now. `openagents
+  background apply ID` (Enter in the terminal, `openagents chat
+  run-command` after `chat send`) saves it; a draft is good for a day, and
+  an edit applies only to the rule as it was when drafted. A rule made in
+  conversation is on once confirmed (only plugin rules start off), records
+  `origin: conversation { thread, message }`, and only uses the host's
+  built-in actions; deleting stays inside the host's own roots, as for a
+  plugin. Removing the built-in rule or a plugin's turns it off instead.
+- **Surfaces.** The chat client runs `openagents background draft --id
+  THREAD -- WORDS` on the computer when the worker served `standing.rule`
+  (read-only, so it runs at once), then offers `background apply THREAD`
+  as a command to confirm. `/background WORDS` in the terminal does the
+  same without the worker. `openagents background add --message TEXT
+  [--yes]` and `edit ID --message TEXT [--yes]` use the same compiler;
+  without `--yes` they keep the draft and print the apply command.
+- **New actions.** `Notify { text }` (with `{task}`, `{outcome}`, and
+  `{free}` filled by code) and `GitFastForward { repo }`: `git fetch`, then
+  `git merge --ff-only` only when the checkout is clean and has no commit
+  its upstream lacks; otherwise it changes nothing and says why. A dry run
+  fetches nothing. A plugin's rule may notify only with `needs.notify` and
+  may never update a checkout. There is still no shell action.
+- **The engine** (`background::engine`, the runner). Triggers: `Interval`
+  per rule, jittered by up to 10%; `Daily { at }` in local time, where the
+  first sight of a rule only sets a baseline and a time missed while the
+  computer slept runs once at the next look; `TaskEnded`, evaluated once
+  per newly ended task for a rule that reads the outcome; `HostStart`; and
+  `FsEvent { paths }`. Conditions: `FreeBelow`, `TaskOutcome`,
+  `NoTaskRunning`, `PathExists`, `TimeBetween`, and `Judgment` (a Jev Noul
+  read at the rule's percent, setting `background.judgment`, 0.8 by
+  default, with the host's judge; without one it never holds). Each rule
+  has its cooldown. Disk cleanup actions still run through the planner
+  with every safety check, the run lock, the log, and undo; the other
+  actions are recorded in the same log as `steps`.
+- **File triggers poll.** `FsEvent` compares each watched path's existence,
+  size, and modification time every 30 seconds (`background/watched.json`)
+  instead of using FSEvents or inotify: the runner already wakes on that
+  period for ended tasks, it needs no new dependency, and a rule that
+  watches a file does not need sub-second reaction.

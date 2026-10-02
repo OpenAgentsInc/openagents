@@ -20,6 +20,10 @@ pub enum Cause {
     Threshold,
     TaskEnded,
     HostStart,
+    /// A `Daily` trigger's time passed.
+    Daily,
+    /// A watched path changed.
+    FsEvent,
     /// Someone asked: `openagents background run`, `/background`, or
     /// `background.run`.
     Manual,
@@ -79,6 +83,10 @@ pub struct Record {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notified: Option<String>,
     pub escalated: bool,
+    /// What the rule did that is not a deletion: notifications and
+    /// checkout updates (phase 2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<crate::engine::Step>,
 }
 
 impl Record {
@@ -99,6 +107,7 @@ impl Record {
             freed_measured: 0,
             notified: None,
             escalated: false,
+            steps: Vec::new(),
         }
     }
 }
@@ -114,6 +123,16 @@ pub struct Report {
     /// The one line, when there is anything to say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notice: Option<String>,
+    /// A dry run's steps that are not deletions (a real run's are in its
+    /// record).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<crate::engine::Step>,
+}
+
+/// A new run's id.
+#[must_use]
+pub fn new_id(now: u64) -> String {
+    run_id(now)
 }
 
 fn run_id(now: u64) -> String {
@@ -162,6 +181,7 @@ pub fn run(
             plan,
             record: None,
             notice: None,
+            steps: Vec::new(),
         });
     }
     let _lock = lock(env.layout)?;
@@ -236,6 +256,7 @@ pub fn execute(env: &Env<'_>, rule: &Rule, cause: Cause, plan: Plan) -> Report {
         freed_measured: measured,
         notified: notice.clone(),
         escalated: false,
+        steps: Vec::new(),
     };
     if !record.actions.is_empty() || record.notified.is_some() {
         store::append(env.layout, &record);
@@ -245,6 +266,7 @@ pub fn execute(env: &Env<'_>, rule: &Rule, cause: Cause, plan: Plan) -> Report {
         plan,
         record: Some(record),
         notice,
+        steps: Vec::new(),
     }
 }
 

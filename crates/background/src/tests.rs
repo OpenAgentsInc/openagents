@@ -73,6 +73,7 @@ impl Home {
             worktree: worktree.to_owned(),
             target: target.to_owned(),
             ended,
+            ..TaskFact::default()
         });
     }
 

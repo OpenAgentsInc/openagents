@@ -40,13 +40,17 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// # Errors
 /// No such rule, or its file does not parse, validate, or admit.
 pub fn load(layout: &Layout, id: &str) -> Result<Rule, String> {
+    if !rule::id_like(id) {
+        return Err(format!("no rule `{id}`"));
+    }
     let plugin = if rule::built_in(id).is_some() {
         None
     } else {
         match crate::plugins::rule(layout, id) {
             Some(Ok((plugin, rule))) => Some((plugin, rule)),
             Some(Err(why)) => return Err(why),
-            None => return Err(format!("no rule `{id}`")),
+            // A rule made in conversation, or none.
+            None => return load_conversation(layout, id),
         }
     };
     let path = layout.rules().join(format!("{id}.json"));
@@ -82,7 +86,54 @@ pub fn load(layout: &Layout, id: &str) -> Result<Rule, String> {
     }
 }
 
-/// Every rule: the built-in `disk`, then each enabled plugin's rules.
+/// A rule made in conversation: its file, whose origin must say so.
+fn load_conversation(layout: &Layout, id: &str) -> Result<Rule, String> {
+    let path = layout.rules().join(format!("{id}.json"));
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("no rule `{id}`"));
+        }
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    let rule: Rule =
+        serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))?;
+    if rule.id != id {
+        return Err(format!("{} holds rule `{}`", path.display(), rule.id));
+    }
+    if !rule.conversational() {
+        // A plugin's rule whose plugin is off or gone: no rule here.
+        return Err(format!("no rule `{id}`"));
+    }
+    rule.validate()?;
+    Ok(rule)
+}
+
+/// The ids of the rules made in conversation, from the rules folder.
+fn conversation_ids(layout: &Layout) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(layout.rules()) else {
+        return Vec::new();
+    };
+    let mut ids: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let id = name.strip_suffix(".json")?.to_owned();
+            (rule::id_like(&id) && rule::built_in(&id).is_none()).then_some(id)
+        })
+        .filter(|id| {
+            std::fs::read(layout.rules().join(format!("{id}.json")))
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                .is_some_and(|value| value["origin"]["kind"] == "conversation")
+        })
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// Every rule: the built-in `disk`, then each enabled plugin's rules,
+/// then the rules made in conversation.
 #[must_use]
 pub fn list(layout: &Layout) -> Vec<Result<Rule, (String, String)>> {
     let mut rules = vec![load(layout, "disk").map_err(|why| ("disk".to_owned(), why))];
@@ -92,7 +143,32 @@ pub fn list(layout: &Layout) -> Vec<Result<Rule, (String, String)>> {
             Err(failed) => Err(failed),
         });
     }
+    let listed: Vec<String> = rules
+        .iter()
+        .map(|rule| match rule {
+            Ok(rule) => rule.id.clone(),
+            Err((id, _)) => id.clone(),
+        })
+        .collect();
+    for id in conversation_ids(layout) {
+        if !listed.contains(&id) {
+            rules.push(load_conversation(layout, &id).map_err(|why| (id.clone(), why)));
+        }
+    }
     rules
+}
+
+/// Remove a rule made in conversation. The built-in rule and plugins'
+/// rules are paused or turned off instead.
+///
+/// # Errors
+/// It is not a rule made in conversation, or the file cannot be removed.
+pub fn remove(layout: &Layout, id: &str) -> Result<(), String> {
+    load_conversation(layout, id)?;
+    std::fs::remove_file(layout.rules().join(format!("{id}.json")))
+        .map_err(|error| error.to_string())?;
+    State::forget(layout, id);
+    Ok(())
 }
 
 /// Save a validated rule as a new version of its file.
@@ -110,6 +186,7 @@ pub fn save(layout: &Layout, rule: &Rule) -> Result<Rule, String> {
                 crate::plugins::admit(edited, &plugin)?;
             }
             Some(Err(why)) => return Err(why),
+            None if rule.conversational() => {}
             None => return Err(format!("no rule `{}`", rule.id)),
         }
     }
@@ -148,6 +225,9 @@ pub struct RuleState {
     /// The last notification and when it was sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notice: Option<(u64, String)>,
+    /// When a `Daily` trigger last ran (or the runner first saw it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_daily: Option<u64>,
     /// The host process that runs the rules, when one does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
@@ -166,6 +246,16 @@ impl State {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default()
+    }
+
+    /// Drop a removed rule's state.
+    pub fn forget(layout: &Layout, id: &str) {
+        let mut state = Self::load(layout);
+        if state.rules.remove(id).is_some()
+            && let Ok(bytes) = serde_json::to_vec_pretty(&state)
+        {
+            let _ = write_atomic(&layout.state(), &bytes);
+        }
     }
 
     /// Change one rule's state and save.

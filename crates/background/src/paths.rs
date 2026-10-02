@@ -79,6 +79,17 @@ impl Layout {
     pub fn trash(&self) -> PathBuf {
         self.background().join("trash")
     }
+    /// Rules compiled in conversation and not yet confirmed, one per
+    /// thread (or per `add`), `drafts/<id>.json`.
+    #[must_use]
+    pub fn drafts(&self) -> PathBuf {
+        self.background().join("drafts")
+    }
+    /// What the file trigger last saw of its watched paths.
+    #[must_use]
+    pub fn watched(&self) -> PathBuf {
+        self.background().join("watched.json")
+    }
     /// Held by the one runner on this computer for its lifetime.
     #[must_use]
     pub fn runner_lock(&self) -> PathBuf {

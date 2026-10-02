@@ -18,7 +18,18 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
   list            Each rule: on or paused, free space, and its last result.
   show ID         The rule's definition, version, and digest.
   add --file PATH Add or replace a rule from a JSON file.
-  edit ID         Edit the rule as JSON in $EDITOR, then show its dry run.
+  add --message TEXT [--yes]
+                  Make a rule from your words (Jev reads them over the
+                  host's built-in triggers, conditions, and actions); show
+                  it and its dry run, and save it with --yes or apply.
+  edit ID [--message TEXT] [--yes]
+                  Change the rule: as your words say (shown as the lines
+                  that change, with the dry run), or as JSON in $EDITOR.
+  draft TEXT... [--id ID] [--project DIR] [--thread ID]
+                  Read words as a new rule, a change, a pause, a resume, or
+                  a removal; show it and its dry run and keep it as draft
+                  ID, saving nothing. The chat and /background use this.
+  apply DRAFT     Save what draft DRAFT shows.
   pause ID [--until TIME]
                   Stop the rule, until TIME (2h, 1d, 2026-10-03, or seconds
                   since the epoch) or until resumed.
@@ -31,9 +42,12 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
   undo RUN        Recreate the worktrees that run removed.
 Every command takes --tasks DIR (the Coder task store, default
 ~/.openagents/tasks). Rules run in the host on their own: the built-in
-disk rule, and each rule a plugin brings while the plugin is on here
-(openagents plugin enable). These commands look at them, change them, or
-run one now.";
+disk rule, each rule a plugin brings while the plugin is on here
+(openagents plugin enable), and each rule made from words and confirmed.
+These commands look at them, change them, or run one now. Words become a
+rule through Jev (TYPESAFE_API_KEY or ~/.openagents/jev.json); a rule
+only uses the host's own actions (delete build caches and finished
+worktrees, notify, fast-forward a clean checkout), never another command.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -43,6 +57,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("add", Effect::LocalWrite),
     Declared::computer("edit", Effect::LocalWrite),
+    // A draft is shown and kept, never applied: it changes no rule.
+    Declared::computer("draft", Effect::ReadOnly),
+    Declared::computer("apply", Effect::LocalWrite),
     Declared::computer("pause", Effect::LocalWrite),
     Declared::computer("resume", Effect::LocalWrite),
     Declared::computer("run", Effect::LocalWrite),
@@ -58,7 +75,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
-    let args = match Args::parse(rest, &["dry-run", "stats"]) {
+    let args = match Args::parse(rest, &["dry-run", "stats", "yes"]) {
         Ok(args) => args,
         Err(message) => return output.usage("background", &message, USAGE),
     };
@@ -74,8 +91,14 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let result = match command.as_str() {
         "list" => list(output, &layout),
         "show" => need_id().and_then(|id| show(output, &layout, &id)),
+        "add" if args.option("message").is_some() => from_words(output, &layout, &args, None),
         "add" => add(output, &layout, &args),
+        "edit" if args.option("message").is_some() => {
+            need_id().and_then(|id| from_words(output, &layout, &args, Some(&id)))
+        }
         "edit" => need_id().and_then(|id| edit(output, &layout, &id)),
+        "draft" => draft(output, &layout, &args),
+        "apply" => need_id().and_then(|id| apply(output, &layout, &id)),
         "pause" => need_id().and_then(|id| pause(output, &layout, &id, &args, false)),
         "resume" => need_id().and_then(|id| pause(output, &layout, &id, &args, true)),
         "run" => need_id().and_then(|id| run_now(output, &layout, &id, args.switch("dry-run"))),
@@ -143,6 +166,231 @@ fn add(output: &Output, layout: &Layout, args: &Args) -> Result<(), Failure> {
     let saved = store::save(layout, &rule).map_err(Failure::Refused)?;
     output.emit(&json!({ "rule": saved }), |_| {
         format!("Saved {} version {}.", saved.id, saved.version)
+    });
+    Ok(())
+}
+
+/// Jev through Coder's decision door (`coder::decision::from_env`):
+/// `TYPESAFE_API_KEY` or the key in `~/.openagents/jev.json`.
+pub(crate) struct JevJudge {
+    client: jev::Client,
+}
+
+impl JevJudge {
+    pub(crate) fn from_env() -> Option<Self> {
+        // The same door the rest of Coder decides through: the configured
+        // decision profile, `TYPESAFE_API_KEY`, or `~/.openagents/jev.json`.
+        let client = coder::decision::from_env().ok().flatten()?;
+        Some(Self { client })
+    }
+}
+
+impl background::engine::Judge for JevJudge {
+    fn ask(
+        &self,
+        state: &str,
+        questions: &[(String, background::engine::Question)],
+    ) -> Result<std::collections::BTreeMap<String, background::engine::Answer>, String> {
+        use background::engine::{Answer, Question};
+        let mut asked = jev::Questions::new();
+        for (id, question) in questions {
+            asked = match question {
+                Question::Noul(text) => asked.with(id.clone(), jev::Noul::new(text.clone())),
+                Question::Choice {
+                    instructions,
+                    options,
+                } => {
+                    let mut choice = jev::Choice::new(instructions.clone(), Default::default());
+                    for (name, what) in options {
+                        choice = choice.option(name.clone(), what.clone());
+                    }
+                    asked.with(id.clone(), choice)
+                }
+            };
+        }
+        let request = jev::SystemOneRequest::new(state.to_owned(), asked);
+        let client = self.client.clone();
+        // Its own runtime on its own thread, whatever the caller runs on.
+        let response = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())?
+                .block_on(client.system_one(request))
+                .map_err(|error| error.to_string())
+        })
+        .join()
+        .map_err(|_| "the Jev request stopped".to_owned())??;
+        let mut answers = std::collections::BTreeMap::new();
+        for (id, question) in questions {
+            let answer = match question {
+                Question::Noul(_) => Answer {
+                    noul: response.noul(id).ok().map(|answer| answer.noul),
+                    choice: Vec::new(),
+                },
+                Question::Choice { .. } => Answer {
+                    noul: None,
+                    choice: response
+                        .choice(id)
+                        .map(|answer| {
+                            answer
+                                .probabilities
+                                .iter()
+                                .map(|(name, p)| (name.clone(), *p))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                },
+            };
+            answers.insert(id.clone(), answer);
+        }
+        Ok(answers)
+    }
+}
+
+/// What words compiled to, shown: the card and its dry run, or the
+/// question, or why nothing changes. `Some(id)` when a draft waits.
+pub(crate) fn compile_words(
+    layout: &Layout,
+    message: &str,
+    thread: &str,
+    project: Option<PathBuf>,
+) -> Result<(Vec<String>, Option<String>, Value), String> {
+    use background::compile::{self, Compiled, Context};
+    let judge = JevJudge::from_env().ok_or(
+        "Jev is not set up here: set TYPESAFE_API_KEY or put the key in ~/.openagents/jev.json.",
+    )?;
+    let clock = background::engine::Clock::here();
+    let context = Context {
+        thread: thread.to_owned(),
+        project,
+        clock,
+    };
+    let compiled = compile::compile(layout, message, &context, &judge)?;
+    match compiled {
+        Compiled::Draft(draft) => {
+            let store_dir = layout.store.clone();
+            let facts = move || coder::task::background_facts(&store_dir);
+            let env = background::Env {
+                layout,
+                facts: Some(&facts),
+                volumes: &background::volume::Statvfs,
+                processes: &background::inuse::System,
+                now: clock.now,
+            };
+            let mut lines = compile::card(&draft);
+            lines.extend(compile::show_dry_run(&compile::dry_run(
+                &env, &draft, clock,
+            )));
+            compile::save_draft(layout, &draft)?;
+            let value = json!({ "draft": *draft, "card": lines });
+            Ok((lines, Some(draft.id.clone()), value))
+        }
+        Compiled::Question { text, readings } => {
+            compile::drop_draft(layout, thread);
+            let value = json!({
+                "question": text,
+                "readings": readings,
+            });
+            Ok((vec![text], None, value))
+        }
+        Compiled::Unchanged { text } => {
+            compile::drop_draft(layout, thread);
+            Ok((vec![text.clone()], None, json!({ "unchanged": text })))
+        }
+    }
+}
+
+/// `add --message` and `edit ID --message`: compile, show, and save with
+/// `--yes`; otherwise keep the draft and say how to save it.
+fn from_words(
+    output: &Output,
+    layout: &Layout,
+    args: &Args,
+    edit: Option<&str>,
+) -> Result<(), Failure> {
+    let message = args.option("message").unwrap_or_default().trim().to_owned();
+    if message.is_empty() {
+        return Err(Failure::Usage("--message needs words".into()));
+    }
+    // `edit ID` names the rule; the words then say what changes.
+    let text = match edit {
+        Some(id) => {
+            let rule = store::load(layout, id).map_err(Failure::Refused)?;
+            format!("For the rule {} ({}): {message}", rule.name, rule.id)
+        }
+        None => message.clone(),
+    };
+    let id = format!("cli-{}", background::paths::now());
+    let (lines, drafted, mut value) =
+        compile_words(layout, &text, &id, std::env::current_dir().ok())
+            .map_err(Failure::Refused)?;
+    if let Some(draft) = drafted.as_deref()
+        && args.switch("yes")
+    {
+        let (_, saved) = background::compile::apply(layout, draft, background::paths::now())
+            .map_err(Failure::Refused)?;
+        value["saved"] = json!(saved);
+        output.emit(&value, |_| {
+            let mut out = lines.clone();
+            out.push(match &saved {
+                Some(rule) => format!("Saved {} version {}.", rule.id, rule.version),
+                None => "Removed.".into(),
+            });
+            out.join("\n")
+        });
+        return Ok(());
+    }
+    output.emit(&value, |_| {
+        let mut out = lines.clone();
+        if let Some(draft) = &drafted {
+            out.push(format!(
+                "Nothing is saved yet. Save it: openagents background apply {draft}"
+            ));
+        }
+        out.join("\n")
+    });
+    Ok(())
+}
+
+/// `draft TEXT...`: compile and show, keep the draft, save nothing.
+fn draft(output: &Output, layout: &Layout, args: &Args) -> Result<(), Failure> {
+    let message = args.positional().join(" ").trim().to_owned();
+    if message.is_empty() {
+        return Err(Failure::Usage("draft needs words".into()));
+    }
+    let id = args.option("id").or(args.option("thread")).map_or_else(
+        || format!("cli-{}", background::paths::now()),
+        str::to_owned,
+    );
+    let project = args
+        .option("project")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok());
+    let (lines, _, value) = compile_words(
+        layout,
+        &message,
+        &background::compile::draft_id(&id),
+        project,
+    )
+    .map_err(Failure::Refused)?;
+    output.emit(&value, |_| lines.join("\n"));
+    Ok(())
+}
+
+/// `apply DRAFT`: save what the draft shows.
+fn apply(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
+    let (draft, saved) = background::compile::apply(layout, id, background::paths::now())
+        .map_err(Failure::Refused)?;
+    output.emit(&json!({ "draft": draft, "saved": saved }), |_| match &saved {
+        Some(rule) => match draft.kind {
+            background::compile::Kind::Define => format!(
+                "Saved {} ({}). It runs on its own from now on; openagents background list shows it.",
+                rule.name, rule.id
+            ),
+            _ => format!("Saved {} version {}.", rule.name, rule.version),
+        },
+        None => format!("Removed {}.", draft.rule.name),
     });
     Ok(())
 }
@@ -460,6 +708,106 @@ pub(crate) fn watchers() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The compiler's labeled set (`crates/background/fixtures/compile-v1.json`)
+    /// against hosted Jev: run with `BACKGROUND_COMPILE_EVAL=1` and
+    /// `TYPESAFE_API_KEY` set, `-- --ignored --nocapture`. Prints each row and
+    /// the accuracy of the readings the compiler acts on.
+    #[test]
+    #[ignore = "asks hosted Jev"]
+    fn live_compile_eval() {
+        use background::compile::{self, Compiled, Context};
+        if std::env::var_os("BACKGROUND_COMPILE_EVAL").is_none() {
+            return;
+        }
+        let judge = JevJudge::from_env().expect("TYPESAFE_API_KEY");
+        let set: Value =
+            serde_json::from_str(include_str!("../../background/fixtures/compile-v1.json"))
+                .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let layout = Layout::new(dir.path(), None).unwrap();
+        // One rule made in conversation beside the built-in one.
+        let mut alert = background::rule::disk();
+        alert.id = "low-disk-30gb".into();
+        alert.name = "Tell me when free space is below 30 GB".into();
+        alert.origin = background::rule::Origin::Conversation {
+            thread: "eval".into(),
+            message: "tell me when my disk has less than 30 GB free".into(),
+        };
+        alert.enabled = true;
+        alert.triggers = vec![background::rule::Trigger::Interval { every_secs: 300 }];
+        alert.conditions = vec![background::rule::Condition::FreeBelow {
+            level: background::rule::Level {
+                bytes: 30 * background::rule::GB,
+                percent: 0,
+            },
+        }];
+        alert.actions = vec![background::rule::Action::Notify {
+            text: "Disk space is low: {free} free.".into(),
+        }];
+        alert.cooldown_secs = 6 * 3600;
+        store::save(&layout, &alert).unwrap();
+        let context = Context {
+            thread: "eval".into(),
+            project: Some(dir.path().join("work/openagents")),
+            clock: background::engine::Clock::here(),
+        };
+        let (mut rows, mut right, mut kinds) = (0, 0, 0);
+        for row in set["rows"].as_array().unwrap() {
+            let message = row["message"].as_str().unwrap();
+            let rules: Vec<background::Rule> = store::list(&layout)
+                .into_iter()
+                .filter_map(Result::ok)
+                .collect();
+            let answers = background::engine::Judge::ask(
+                &judge,
+                &compile::state(message, &rules),
+                &compile::questions(&rules),
+            )
+            .unwrap_or_else(|why| panic!("{message:?}: {why}"));
+            let top = |q: &str| {
+                answers
+                    .get(q)
+                    .and_then(|a| a.top())
+                    .map(|(id, p)| (id.to_owned(), p))
+            };
+            let agrees = |labels: &Value, say: bool| {
+                let mut all = true;
+                for field in ["intent", "what", "change", "rule"] {
+                    if let Some(want) = labels[field].as_str() {
+                        let got = top(field);
+                        if got.as_ref().map(|(id, _)| id.as_str()) != Some(want) {
+                            all = false;
+                            if say {
+                                println!("  {message:?}: {field} {got:?}, want {want}");
+                            }
+                        }
+                    }
+                }
+                all
+            };
+            let ok = agrees(row, false) || (row["also"].is_object() && agrees(&row["also"], false));
+            if !ok {
+                agrees(row, true);
+            }
+            let compiled = compile::from_answers(message, &rules, &context, &answers, &layout.home);
+            let kind = match &compiled {
+                Compiled::Draft(_) => "draft",
+                Compiled::Question { .. } => "question",
+                Compiled::Unchanged { .. } => "unchanged",
+            };
+            let expect = row["expect"].as_str().unwrap();
+            println!(
+                "{} {message:?} -> {kind} (intent {:?})",
+                if ok && kind == expect { "ok  " } else { "MISS" },
+                top("intent")
+            );
+            rows += 1;
+            right += usize::from(ok);
+            kinds += usize::from(kind == expect);
+        }
+        println!("readings right: {right}/{rows}; compiled kind right: {kinds}/{rows}");
+    }
 
     #[test]
     fn times_read_as_durations_dates_and_seconds() {

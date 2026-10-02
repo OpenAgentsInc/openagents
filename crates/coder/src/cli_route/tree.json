@@ -5226,7 +5226,8 @@
               "add"
             ],
             "usage": [
-              "add --file PATH"
+              "add --file PATH",
+              "add --message TEXT [--yes]"
             ],
             "forms": [
               {
@@ -5240,6 +5241,25 @@
                     "name": "file",
                     "value": "PATH",
                     "open": true
+                  }
+                ]
+              },
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "message",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "yes",
+                    "optional": true
                   }
                 ]
               }
@@ -5257,7 +5277,7 @@
               "edit"
             ],
             "usage": [
-              "edit ID"
+              "edit ID [--message TEXT] [--yes]"
             ],
             "forms": [
               {
@@ -5269,11 +5289,103 @@
                   {
                     "kind": "positional",
                     "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "message",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "yes",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Edit the rule as JSON in $EDITOR, then show its dry run.",
+            "summary": "Change the rule: as your words say (shown as the lines that change, with the dry run), or as JSON in $EDITOR.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "draft",
+          "leaf": {
+            "path": [
+              "background",
+              "draft"
+            ],
+            "usage": [
+              "draft TEXT... [--id ID] [--project DIR] [--thread ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "draft"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT",
+                    "repeated": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "id",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read words as a new rule, a change, a pause, a resume, or a removal; show it and its dry run and keep it as draft ID, saving nothing. The chat and /background use this.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "apply",
+          "leaf": {
+            "path": [
+              "background",
+              "apply"
+            ],
+            "usage": [
+              "apply DRAFT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "apply"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DRAFT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Save what draft DRAFT shows.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -5454,6 +5566,44 @@
           "kind": "option",
           "name": "file",
           "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "message",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "yes",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "id",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "thread",
+          "value": "ID",
           "open": true,
           "optional": true,
           "repeated": true

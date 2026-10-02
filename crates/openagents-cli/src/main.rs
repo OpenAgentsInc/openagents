@@ -356,6 +356,10 @@ async fn host(arguments: &[String]) -> u8 {
     coder_host::control::set_local_result(coder::task::local::result_in);
     #[cfg(unix)]
     coder_host::background::set_facts(coder::task::background_facts);
+    #[cfg(unix)]
+    if let Some(judge) = background::JevJudge::from_env() {
+        coder_host::background::set_judge(std::sync::Arc::new(judge));
+    }
     coder_host::cli::run(arguments, open).await
 }
 

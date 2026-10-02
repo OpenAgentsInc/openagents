@@ -18,7 +18,7 @@ use crate::rule::{Class, Rule, glob};
 use crate::volume::{Space, Volumes};
 
 /// What the task store says about one Coder task.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskFact {
     pub id: String,
     /// Its worktree (the task's workspace path).
@@ -28,6 +28,15 @@ pub struct TaskFact {
     /// Finished or cancelled, checks not running, group clear: the
     /// task store's own `ended` test.
     pub ended: bool,
+    /// Its run or its checks failed.
+    #[serde(default)]
+    pub failed: bool,
+    /// It was cancelled.
+    #[serde(default)]
+    pub cancelled: bool,
+    /// It is queued or running.
+    #[serde(default)]
+    pub running: bool,
 }
 
 /// Reads the task store.
@@ -162,7 +171,7 @@ impl VolumePlan {
 }
 
 /// What a run would do now.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub volumes: Vec<VolumePlan>,
     pub kept: Vec<Kept>,

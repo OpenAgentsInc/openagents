@@ -72,6 +72,7 @@ impl Slash {
     pub const fn argument(self) -> Option<&'static str> {
         match self {
             Slash::Resume => Some("[ID or title]"),
+            Slash::Background => Some("[words]"),
             _ => None,
         }
     }
@@ -96,7 +97,7 @@ impl Slash {
             Slash::Connect => "pair a phone with this computer by QR code",
             Slash::Plugins => "list plugins and run one installed here",
             Slash::Background => {
-                "the background rules, such as disk cleanup: show, run, pause, log"
+                "background rules: show, run, pause, log; /background WORDS makes or changes one"
             }
             Slash::Import => "copy this computer's Claude Code and Codex sessions in as threads",
             Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",
