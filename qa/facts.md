@@ -48,7 +48,8 @@ finding. When the product changes, change this file in the same commit.
   later because of usage" is a finding.
 - Chat messages are encrypted before they leave the device; the relay sees
   only the encrypted form and keeps nothing. The chat service stores no
-  message text. To answer, it sends the conversation to Space Bunny Alpha
+  message text. To answer, it sends the conversation to Jev (TypeSafe, through
+  the Vercel AI Gateway) to route it, then to Space Bunny Alpha
   through OpenRouter (whose provider may keep it, not to train on), and to
   Google's Gemini through the Vercel AI Gateway when Space Bunny can't
   answer.

@@ -668,7 +668,8 @@ class Gate:
                 outcome = f"did not finish: {coder.get('failure') or coder.get('asked')}"
             reply += f"\n\n[the screen then showed a Coder run that {outcome}]"
         if row.get("autostart"):
-            reply += "\n\n[the computer's Coder journal] " + json.dumps(row["autostart"])[:800]
+            events = ", ".join(str(e.get("event")) for e in row["autostart"])
+            reply += f"\n\n[harness: the computer's Coder journal recorded {events}]"
         if row.get("run_coder_offered"):
             reply += "\n\n[the chat shows a Run Coder button]"
         if row.get("coder_started"):
