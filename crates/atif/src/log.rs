@@ -69,7 +69,7 @@
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
@@ -226,12 +226,46 @@ impl Log {
 /// The sync is the whole point of the module: without it the line sits in
 /// the operating system's cache, and a killed process leaves a file that is
 /// shorter than what the agent had already done.
+///
+/// A write that fails part way, as one does when the disk fills (#10237),
+/// is cut back off, so the log never holds half a line that the next
+/// record would be glued onto.
 fn write_line(file: &mut File, record: &Value) -> io::Result<()> {
     let mut line = serde_json::to_string(record).map_err(io::Error::other)?;
     line.push('\n');
-    file.write_all(line.as_bytes())?;
-    file.flush()?;
-    file.sync_data()
+    write_whole(file, line.as_bytes())
+}
+
+/// Writes `bytes` at the end of `file` and syncs them, or leaves the file
+/// as long as it was.
+fn write_whole<W: Write + Seek + Truncate>(file: &mut W, bytes: &[u8]) -> io::Result<()> {
+    let start = file.seek(SeekFrom::End(0))?;
+    let written = file
+        .write_all(bytes)
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync());
+    if written.is_err() {
+        let _ = file.cut(start);
+        let _ = file.seek(SeekFrom::Start(start));
+    }
+    written
+}
+
+/// What [`write_whole`] needs beyond writing: cutting a file back and
+/// syncing it.
+trait Truncate {
+    fn cut(&mut self, length: u64) -> io::Result<()>;
+    fn sync(&mut self) -> io::Result<()>;
+}
+
+impl Truncate for File {
+    fn cut(&mut self, length: u64) -> io::Result<()> {
+        self.set_len(length)
+    }
+
+    fn sync(&mut self) -> io::Result<()> {
+        self.sync_data()
+    }
 }
 
 /// A session log read back.
@@ -610,6 +644,68 @@ pub fn session_id(at: u64) -> String {
 mod tests {
     use super::*;
     use crate::document::{Call, Outcome, Source};
+
+    /// A writer that takes `room` bytes, then refuses as a full disk does.
+    struct Full {
+        bytes: Vec<u8>,
+        position: u64,
+        room: usize,
+    }
+
+    impl Write for Full {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            let free = self.room.saturating_sub(self.bytes.len());
+            if free == 0 {
+                return Err(io::Error::from_raw_os_error(28));
+            }
+            let taken = free.min(bytes.len());
+            self.bytes.extend_from_slice(&bytes[..taken]);
+            self.position = self.bytes.len() as u64;
+            Ok(taken)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Seek for Full {
+        fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
+            self.position = match to {
+                SeekFrom::Start(at) => at,
+                SeekFrom::End(_) | SeekFrom::Current(_) => self.bytes.len() as u64,
+            };
+            Ok(self.position)
+        }
+    }
+
+    impl Truncate for Full {
+        fn cut(&mut self, length: u64) -> io::Result<()> {
+            self.bytes.truncate(length as usize);
+            Ok(())
+        }
+
+        fn sync(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_line_the_disk_cannot_hold_is_cut_back_off() {
+        // #10237: a full disk took half a step; the next step must not be
+        // glued onto it.
+        let mut file = Full {
+            bytes: b"{\"a\":1}\n".to_vec(),
+            position: 0,
+            room: 12,
+        };
+        let error = write_whole(&mut file, b"{\"step\":\"long\"}\n").unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(28));
+        assert_eq!(file.bytes, b"{\"a\":1}\n");
+        file.room = 64;
+        write_whole(&mut file, b"{\"b\":2}\n").unwrap();
+        assert_eq!(file.bytes, b"{\"a\":1}\n{\"b\":2}\n");
+    }
 
     fn a_session() -> Session {
         Session::opening(

@@ -2368,6 +2368,26 @@ pub fn default_controller() -> std::result::Result<PathBuf, String> {
         })
 }
 
+/// This running program: the path it was started from, without the
+/// ` (deleted)` Linux appends once that file is replaced or removed, and a
+/// path that opens or starts this very program even then (#10237): Linux's
+/// `/proc/self/exe`, elsewhere that same path. A long-running owner reads
+/// or re-executes itself through the second, so a rebuild that replaced
+/// its file neither fails its next launch nor swaps its engine mid-flow.
+///
+/// # Errors
+/// The program's path cannot be found.
+pub fn running_program() -> std::io::Result<(PathBuf, PathBuf)> {
+    let named = controller_executable_path(std::env::current_exe()?);
+    let image = Path::new("/proc/self/exe");
+    let image = if cfg!(target_os = "linux") && image.exists() {
+        image.to_path_buf()
+    } else {
+        named.clone()
+    };
+    Ok((named, image))
+}
+
 /// Linux appends ` (deleted)` when a running executable has been replaced.
 /// Keep its directory even if the original executable no longer exists.
 fn controller_executable_path(exe: PathBuf) -> PathBuf {
@@ -4467,6 +4487,53 @@ mod tests {
         assert_eq!(find(), Some(beside.clone()));
         std::fs::remove_file(beside).unwrap();
         assert_eq!(find(), Some(installed));
+    }
+
+    /// #10237: a program whose file a rebuild replaced still finds and
+    /// starts itself. A copy of this test binary removes its own file, then
+    /// reports what [`running_program`] gives it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_replaced_program_still_starts_itself() {
+        const CHILD: &str = "OPENAGENTS_TEST_RUNNING_PROGRAM";
+        if std::env::var_os(CHILD).is_some() {
+            let exe = std::env::current_exe().unwrap();
+            std::fs::remove_file(&exe).unwrap();
+            let (named, image) = running_program().unwrap();
+            let bytes = std::fs::read(&image).unwrap();
+            let started = std::process::Command::new(&image)
+                .arg("--list")
+                .output()
+                .unwrap();
+            println!(
+                "NAMED={} IMAGE={} READ={} STARTED={}",
+                named.display(),
+                image.display(),
+                !bytes.is_empty(),
+                started.status.success()
+            );
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let copy = temp.path().join("openagents");
+        std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
+        let output = std::process::Command::new(&copy)
+            .args([
+                "--exact",
+                "task::autostart::tests::a_replaced_program_still_starts_itself",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let printed = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{printed}");
+        assert!(!copy.exists());
+        let expected = format!(
+            "NAMED={} IMAGE=/proc/self/exe READ=true STARTED=true",
+            copy.display()
+        );
+        assert!(printed.contains(&expected), "{printed}");
     }
 
     /// #10074: the Mac app's `openagents` CLI lives in `Contents/Helpers`

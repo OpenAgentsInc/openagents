@@ -860,8 +860,52 @@ impl Owner {
         )
     }
 
+    /// Records `event`, waiting out a full disk ([`wait_out_full_disk`]):
+    /// an owner that gave up there would leave its run to be ended as
+    /// [`OWNER_ENDED`] while the host's cleanup frees space (#10237).
     pub(super) fn record(&self, event: Event) -> Result<Task, Error> {
-        Store::open_for_owner(&self.dir)?.record(self, event, 1)
+        wait_out_full_disk(STORAGE_FULL_WAIT, STORAGE_FULL_STEP, || {
+            Store::open_for_owner(&self.dir)?.record(self, event.clone(), 1)
+        })
+    }
+}
+
+/// How long an owner waits for disk space to record an event (#10237).
+/// The host frees space when its disk is almost full, within a minute.
+pub const STORAGE_FULL_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
+const STORAGE_FULL_STEP: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Whether `error` is a full disk or an exhausted quota: one the host's
+/// disk cleanup can clear, so worth waiting out (#10237).
+#[must_use]
+pub fn storage_full(error: &Error) -> bool {
+    matches!(error, Error::Io(error) if io_storage_full(error))
+}
+
+/// [`storage_full`] for an I/O error.
+#[must_use]
+pub fn io_storage_full(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded
+    )
+}
+
+/// Runs `attempt` again every `step` while it fails for a full disk, for
+/// up to `wait`; any other outcome, or the last one, is returned.
+pub(super) fn wait_out_full_disk<T>(
+    wait: std::time::Duration,
+    step: std::time::Duration,
+    mut attempt: impl FnMut() -> Result<T, Error>,
+) -> Result<T, Error> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        match attempt() {
+            Err(error) if storage_full(&error) && std::time::Instant::now() < deadline => {
+                std::thread::sleep(step);
+            }
+            outcome => return outcome,
+        }
     }
 }
 

@@ -268,6 +268,41 @@ async fn existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts() 
     assert!(Host::admit(&store, &grant).await.is_err());
 }
 
+/// #10237: a disk that fills while a run keeps its evidence no longer ends
+/// the engine before it records a result, which left the run to be ended
+/// as "owner process ended". A full disk that clears is waited out; one
+/// that stays full ends the run as `disk_full`, its result recorded.
+#[tokio::test]
+async fn a_full_disk_is_waited_out_or_recorded_never_left_to_the_settler() {
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    host.fill_disk(3, Duration::from_secs(60));
+    host.append(&atif::Step::said(
+        atif::Source::System,
+        "kept after the wait",
+    ))
+    .unwrap();
+    host.fill_disk(usize::MAX, Duration::ZERO);
+    assert!(
+        host.append(&atif::Step::said(atif::Source::System, "lost"))
+            .is_err()
+    );
+    let task = host.finish("model_finished", true, json!({})).unwrap();
+    let run = task.run.as_ref().unwrap();
+    let result = run.result.as_ref().unwrap();
+    assert_eq!(result.ending, coder::task::adapter::DISK_FULL);
+    assert_ne!(result.ending, coder::task::owner::OWNER_ENDED);
+    assert_eq!(result.exit_code, Some(1));
+    assert!(result.output_incomplete && result.group_clear);
+    assert_eq!(task.status, task::Status::Finished);
+    assert_eq!(task.execution, task::Execution::Failed);
+    // Nothing is left for the settler to end.
+    let mut opened = Store::open(&store).unwrap();
+    assert!(opened.settle("fixture").unwrap().is_none());
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("kept after the wait") && !trace.contains("\"lost\""));
+}
+
 /// Why a run has no Jev, as a step's judgment says it.
 const NO_JEV: &str = "Jev is unreachable: the fixture has no service";
 

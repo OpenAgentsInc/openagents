@@ -1144,3 +1144,44 @@ fn a_run_record_names_its_payer_by_fingerprint_only() {
     let read: ResultRecord = serde_json::from_value(value).unwrap();
     assert_eq!(read, result);
 }
+
+/// #10237: an owner whose disk filled waits for the host's cleanup rather
+/// than exiting, which left its run to be ended as "owner process ended".
+#[test]
+fn an_owner_waits_out_a_full_disk_and_nothing_else() {
+    let full = || Error::Io(std::io::Error::from(std::io::ErrorKind::StorageFull));
+    assert!(storage_full(&full()));
+    assert!(storage_full(&Error::Io(std::io::Error::from(
+        std::io::ErrorKind::QuotaExceeded
+    ))));
+    assert!(!storage_full(&Error::Io(std::io::Error::other("other"))));
+    assert!(!storage_full(&Error::Busy));
+    #[cfg(unix)]
+    assert!(io_storage_full(&std::io::Error::from_raw_os_error(
+        libc::ENOSPC
+    )));
+
+    let step = std::time::Duration::from_millis(1);
+    let mut attempts = 0;
+    let recorded = wait_out_full_disk(std::time::Duration::from_secs(60), step, || {
+        attempts += 1;
+        if attempts < 3 {
+            Err(full())
+        } else {
+            Ok(attempts)
+        }
+    });
+    assert_eq!(recorded.unwrap(), 3);
+
+    let mut attempts = 0;
+    let refused = wait_out_full_disk(std::time::Duration::from_secs(60), step, || {
+        attempts += 1;
+        Err::<(), _>(Error::Corrupt("not a full disk"))
+    });
+    assert!(matches!(refused, Err(Error::Corrupt(_))));
+    assert_eq!(attempts, 1);
+
+    // The wait is bounded: past it, the full disk is the answer.
+    let gave_up = wait_out_full_disk(std::time::Duration::ZERO, step, || Err::<(), _>(full()));
+    assert!(gave_up.is_err_and(|error| storage_full(&error)));
+}
