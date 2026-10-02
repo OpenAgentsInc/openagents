@@ -16,6 +16,7 @@ use std::process::ExitCode;
 
 // `connect`, `labor`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
+mod argv;
 mod catalog;
 mod chat;
 mod computer;
@@ -63,7 +64,7 @@ mod x402_native;
 mod x402_phone;
 mod zone;
 
-pub use coder::argv::Args;
+pub use argv::Args;
 pub use out::{EXIT_FAILURE, EXIT_USAGE, Output};
 
 pub const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]
@@ -137,6 +138,7 @@ fn main() -> ExitCode {
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
     let json = arguments.iter().any(|argument| argument == "--json");
     arguments.retain(|argument| argument != "--json");
+    argv::normalize_help(&mut arguments);
     let output = Output::new(json);
     let Some((command, rest)) = arguments.split_first() else {
         // On a terminal, bare `openagents` is OpenAgents Terminal.
@@ -150,6 +152,10 @@ fn main() -> ExitCode {
     let code = match command.as_str() {
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
+            0
+        }
+        "version" | "doctor" if rest.first().is_some_and(|word| word == "--help") => {
+            println!("usage: openagents {command} [--json]");
             0
         }
         "version" | "--version" => {
@@ -169,6 +175,7 @@ fn main() -> ExitCode {
         "connect" => connect::run(&output, &rest),
         "verse" => world::run(&output, &rest),
         // `openagents xp …` is `openagents verse xp …`.
+        "xp" if rest.first().is_some_and(|word| word == "--help") => world::run(&output, &rest),
         "xp" => world::run(
             &output,
             &std::iter::once("xp".to_owned())
