@@ -455,9 +455,11 @@ fn model(routing: &Routing) -> Tier {
 pub const WALLET_NOTE: &str = "A wallet in this chat is always the user's built-in OpenAgents \
 wallet, which holds bitcoin over Lightning and on-chain. Never ask which wallet, app, provider, or \
 exchange they mean, and never name another wallet, app, or exchange. In a terminal on their \
-computer, `openagents wallet status` shows its balance and receiving address; in the OpenAgents app, \
-the Wallet screen does. We never move money from this chat: sending happens in the wallet, where \
-the user confirms it.";
+computer, `openagents wallet info` shows its balances and node id and `openagents wallet fund` \
+prints a receiving address; in the OpenAgents app, the Wallet screen shows both. A message that \
+only mentions their balance, sats, or bitcoin asks for their balance: answer that, without asking \
+what they want. We never move money from this chat: sending happens in the wallet, where the user \
+confirms it.";
 
 /// Rule 3a: a wallet request in a terminal descends the `wallet` command
 /// group: the typed `route` reading is sure the message is about the
@@ -479,6 +481,19 @@ fn terminal_wallet(routing: &Routing, situation: &Situation) -> Option<Tier> {
             also: Vec::new(),
             lead: opener_lead(routing),
         })
+}
+
+/// The built-in wallet's read-only overview, `openagents wallet info`
+/// (its balances, node id, and network): what a sure wallet request in a
+/// terminal runs when the descent picks no command, so the chat checks
+/// the wallet instead of asking what the user wants (#10170).
+#[must_use]
+pub fn wallet_overview() -> super::seams::CliProposal {
+    super::seams::CliProposal {
+        argv: vec![WALLET_GROUP.to_owned(), "info".to_owned()],
+        effect: super::Effect::ReadOnly,
+        runs_on: super::RunsOn::ThisDevice,
+    }
 }
 
 /// The command group of the built-in wallet.
@@ -1173,6 +1188,13 @@ mod tests {
         }
         assert!(WALLET_NOTE.contains("built-in OpenAgents wallet"));
         assert!(WALLET_NOTE.contains("Never ask which wallet"));
+        // The overview is a read-only command of this build's tree.
+        let overview = wallet_overview();
+        assert_eq!(
+            crate::cli_route::gate::effect_here(&overview.argv),
+            Some(crate::cli_route::tree::Effect::ReadOnly)
+        );
+        assert_eq!(overview.effect, crate::router::Effect::ReadOnly);
     }
 
     /// On the website (#10106) work, commands, and screens become the

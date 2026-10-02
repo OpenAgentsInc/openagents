@@ -2596,6 +2596,21 @@ impl Job {
                 outcome = &mut seam, if seam_waiting => {
                     seam_waiting = false;
                     let Some((routing, tier)) = pending.take() else { continue };
+                    // A sure wallet request in a terminal whose descent
+                    // found no command still checks the built-in wallet:
+                    // its read-only overview (#10170).
+                    let outcome = match outcome {
+                        SeamOutcome::Cli(Ok(CliAnswer::NoCommand))
+                            if matches!(tier, Tier::Cli { .. })
+                                && routing.route == router::RouteId::Wallet
+                                && turn.context.surface() == router::Surface::Terminal =>
+                        {
+                            SeamOutcome::Cli(Ok(CliAnswer::Proposal(
+                                router::policy::wallet_overview(),
+                            )))
+                        }
+                        outcome => outcome,
+                    };
                     match (outcome, &tier) {
                         (
                             SeamOutcome::Continued(continued),
