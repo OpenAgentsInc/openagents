@@ -9,9 +9,11 @@ is copied. The shared application crate serves desktop and phone consumers.
 ## Behavior
 
 Cmd on macOS and Ctrl elsewhere map N to new chat, F to search, K to the
-palette, comma to Settings, period to stop receiving a reply, and Tab to the
-next chat (Shift reverses it). Shift+F10 and the context-menu key open the chat
-menu. Right-clicking a sidebar conversation opens the same menu for that chat.
+palette, comma to Settings, and period to stop receiving a reply.
+Ctrl+Tab moves to the next chat, and Ctrl+Shift+Tab moves to the previous chat
+on every desktop platform. On macOS, these use the physical Control key, not
+Cmd, because macOS reserves Cmd+Tab for switching apps. Shift+F10 and the
+context-menu key open the chat menu. Right-clicking a sidebar conversation opens the same menu for that chat.
 The palette also lists saved chats. Commands use the existing typed chat
 requests; opening an overlay preserves the message draft.
 

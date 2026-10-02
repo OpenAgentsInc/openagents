@@ -37,6 +37,7 @@ fn key(app: &mut DesktopApp, name: &str, command: bool, now: Instant) -> bool {
             key: name,
             text: None,
             command,
+            control: false,
             alt: false,
             shift: false,
         },

@@ -1496,6 +1496,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                         TextInput::Key {
                             key: &key,
                             text: event.text.as_deref(),
+                            control: self.modifiers.control_key(),
                             command: self.modifiers.super_key() || self.modifiers.control_key(),
                             alt: self.modifiers.alt_key(),
                             shift: self.modifiers.shift_key(),

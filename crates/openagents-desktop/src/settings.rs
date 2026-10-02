@@ -387,6 +387,7 @@ const SIDEBAR_SHORTCUT: openagents_chat_app::commands::Binding =
         label: "Show or hide the sidebar",
         key: "B",
         command: true,
+        control: false,
         shift: false,
         action: openagents_chat_app::commands::Action::Dismiss,
     };
@@ -726,6 +727,23 @@ mod tests {
         let view = view(&settings, true, None, &model, 0);
         assert!(find(&view, "settings-archived-more").is_some());
         assert!(find(&view, &format!("settings-archived-{ARCHIVED_LIMIT}")).is_none());
+    }
+
+    #[test]
+    fn shortcut_rows_show_control_for_chat_navigation() {
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut settings = Settings::default();
+        settings.pane = Pane::Shortcuts;
+        let rendered = view(&settings, true, None, &model, 0);
+        for (index, label, chord) in [
+            (5, "Next chat", "Ctrl+Tab"),
+            (6, "Previous chat", "Ctrl+Shift+Tab"),
+        ] {
+            let row = find(&rendered, &format!("settings-shortcut-{index}")).unwrap();
+            let words = crate::screens::words(row);
+            assert!(words.iter().any(|word| word == label), "{words:?}");
+            assert!(words.iter().any(|word| word == chord), "{words:?}");
+        }
     }
 
     #[test]

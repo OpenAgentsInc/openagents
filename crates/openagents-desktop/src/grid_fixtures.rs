@@ -389,6 +389,7 @@ fn episode_289_title_slide_over_the_grid() {
         rust_native_desktop::input::TextInput::Key {
             key: "ArrowRight",
             text: None,
+            control: false,
             command: false,
             alt: false,
             shift: false,

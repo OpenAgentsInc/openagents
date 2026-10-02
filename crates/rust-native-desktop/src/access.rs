@@ -272,6 +272,7 @@ pub fn answer<A: crate::App>(app: &mut A, request: Request, now: Instant) -> Opt
             TextInput::Key {
                 key,
                 text: None,
+                control: false,
                 command,
                 alt: false,
                 shift: false,

@@ -301,6 +301,7 @@ impl Field {
                 command,
                 alt,
                 shift,
+                ..
             } => {
                 let composing = self
                     .draft
@@ -695,6 +696,7 @@ mod tests {
                 TextInput::Key {
                     key: " ",
                     text: Some(" "),
+                    control: false,
                     command: false,
                     alt: false,
                     shift: false,
@@ -736,6 +738,7 @@ mod tests {
             TextInput::Key {
                 key: "End",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: true,
@@ -761,6 +764,7 @@ mod tests {
                 TextInput::Key {
                     key: "Enter",
                     text: Some("\r"),
+                    control: false,
                     command: false,
                     alt: false,
                     shift: false
@@ -777,6 +781,7 @@ mod tests {
             TextInput::Key {
                 key: "Enter",
                 text: Some("\r"),
+                control: false,
                 command: false,
                 alt: false,
                 shift: true,
@@ -790,6 +795,7 @@ mod tests {
                 TextInput::Key {
                     key: "Enter",
                     text: Some("\r"),
+                    control: false,
                     command: false,
                     alt: false,
                     shift: false
@@ -802,6 +808,7 @@ mod tests {
             TextInput::Key {
                 key: "z",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: false,
@@ -813,6 +820,7 @@ mod tests {
             TextInput::Key {
                 key: "z",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: true,

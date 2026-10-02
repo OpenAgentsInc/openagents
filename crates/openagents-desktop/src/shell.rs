@@ -2525,6 +2525,7 @@ mod tests {
             TextInput::Key {
                 key: "Enter",
                 text: Some("\r"),
+                control: false,
                 command: false,
                 alt: false,
                 shift: false
@@ -2544,6 +2545,7 @@ mod tests {
             TextInput::Key {
                 key: "Enter",
                 text: Some("\r"),
+                control: false,
                 command: false,
                 alt: false,
                 shift: false
@@ -2915,6 +2917,7 @@ mod tests {
             TextInput::Key {
                 key: "h",
                 text: Some("h"),
+                control: false,
                 command: false,
                 alt: false,
                 shift: false
@@ -2955,6 +2958,7 @@ mod tests {
                             TextInput::Key {
                                 key: "h",
                                 text: Some("h"),
+                                control: false,
                                 command: false,
                                 alt: false,
                                 shift: false,
@@ -4660,6 +4664,7 @@ mod chat_management {
             TextInput::Key {
                 key: "a",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: false,
@@ -4671,6 +4676,7 @@ mod chat_management {
             TextInput::Key {
                 key: "Enter",
                 text: None,
+                control: false,
                 command: false,
                 alt: false,
                 shift: false,
@@ -4700,6 +4706,7 @@ mod chat_management {
             TextInput::Key {
                 key: "a",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: false,
@@ -4712,6 +4719,7 @@ mod chat_management {
             TextInput::Key {
                 key: "a",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: false,
@@ -5570,6 +5578,7 @@ mod command_fixtures {
             TextInput::Key {
                 key,
                 text: None,
+                control: command && key == "Tab",
                 command,
                 alt: false,
                 shift

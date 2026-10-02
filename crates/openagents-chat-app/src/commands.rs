@@ -33,18 +33,24 @@ pub enum Scope {
 }
 
 /// The platform adapter supplies Cmd on macOS and Ctrl on other desktops.
-pub fn shortcut(key: &str, command: bool, shift: bool, scope: Scope) -> Option<Action> {
+pub fn shortcut(
+    key: &str,
+    command: bool,
+    control: bool,
+    shift: bool,
+    scope: Scope,
+) -> Option<Action> {
     if matches!(scope, Scope::Composing | Scope::Overlay) {
         return None;
     }
     if key == "ContextMenu" || (key == "F10" && shift) {
         return Some(Action::Menu);
     }
+    if key == "Tab" {
+        return control.then_some(Action::Cycle(shift));
+    }
     if !command {
         return None;
-    }
-    if key == "Tab" {
-        return Some(Action::Cycle(shift));
     }
     if shift {
         return None;
@@ -77,6 +83,8 @@ pub struct Binding {
     pub key: &'static str,
     /// Cmd on macOS, Ctrl elsewhere.
     pub command: bool,
+    /// The physical Control key on every platform.
+    pub control: bool,
     pub shift: bool,
     pub action: Action,
 }
@@ -88,6 +96,7 @@ pub fn bindings() -> Vec<Binding> {
         label,
         key,
         command,
+        control: key == "Tab",
         shift,
         action,
     };
@@ -97,18 +106,19 @@ pub fn bindings() -> Vec<Binding> {
         binding("Commands", "K", true, false, Action::Palette),
         binding("Settings", ",", true, false, Action::Settings),
         binding("Stop receiving reply", ".", true, false, Action::Stop),
-        binding("Next chat", "Tab", true, false, Action::Cycle(false)),
-        binding("Previous chat", "Tab", true, true, Action::Cycle(true)),
+        binding("Next chat", "Tab", false, false, Action::Cycle(false)),
+        binding("Previous chat", "Tab", false, true, Action::Cycle(true)),
         binding("Chat actions", "F10", false, true, Action::Menu),
     ]
 }
 
-/// How `binding` reads on this platform: `Cmd+Shift+Tab` on macOS,
-/// `Ctrl+Shift+Tab` elsewhere. Words, not the ⌘ symbol, which not every
-/// app font draws.
+/// How `binding` reads on this platform. Chat cycling uses Control everywhere.
+/// Use words because not every app font draws the ⌘ symbol.
 pub fn chord(binding: &Binding, macos: bool) -> String {
     let mut parts = vec![];
-    if binding.command {
+    if binding.control {
+        parts.push("Ctrl");
+    } else if binding.command {
         parts.push(if macos { "Cmd" } else { "Ctrl" });
     }
     if binding.shift {
@@ -323,27 +333,33 @@ mod tests {
     #[test]
     fn keys_respect_composition_and_overlay_scopes() {
         for scope in [Scope::Window, Scope::Editor] {
-            assert_eq!(shortcut("n", true, false, scope), Some(Action::NewChat));
-            assert_eq!(shortcut("k", true, false, scope), Some(Action::Palette));
+            assert_eq!(
+                shortcut("n", true, true, false, scope),
+                Some(Action::NewChat)
+            );
+            assert_eq!(
+                shortcut("k", true, true, false, scope),
+                Some(Action::Palette)
+            );
         }
         for scope in [Scope::Composing, Scope::Overlay] {
-            assert!(shortcut("n", true, false, scope).is_none());
+            assert!(shortcut("n", true, true, false, scope).is_none());
         }
-        assert!(shortcut("n", false, false, Scope::Window).is_none());
+        assert!(shortcut("n", false, false, false, Scope::Window).is_none());
         assert_eq!(
-            shortcut("f", true, false, Scope::Editor),
+            shortcut("f", true, true, false, Scope::Editor),
             Some(Action::Search)
         );
         assert_eq!(
-            shortcut(",", true, false, Scope::Window),
+            shortcut(",", true, true, false, Scope::Window),
             Some(Action::Settings)
         );
         assert_eq!(
-            shortcut(".", true, false, Scope::Editor),
+            shortcut(".", true, true, false, Scope::Editor),
             Some(Action::Stop)
         );
         assert_eq!(
-            shortcut("Tab", true, true, Scope::Window),
+            shortcut("Tab", false, true, true, Scope::Window),
             Some(Action::Cycle(true))
         );
     }
@@ -353,17 +369,58 @@ mod tests {
         assert_eq!(bindings.len(), 8);
         for binding in &bindings {
             assert_eq!(
-                shortcut(binding.key, binding.command, binding.shift, Scope::Window),
+                shortcut(
+                    binding.key,
+                    binding.command,
+                    binding.control,
+                    binding.shift,
+                    Scope::Window
+                ),
                 Some(binding.action.clone()),
                 "{}",
                 binding.label
             );
         }
         let previous = &bindings[6];
-        assert_eq!(chord(previous, true), "Cmd+Shift+Tab");
+        assert_eq!(chord(previous, true), "Ctrl+Shift+Tab");
         assert_eq!(chord(previous, false), "Ctrl+Shift+Tab");
         assert_eq!(chord(&bindings[0], true), "Cmd+N");
         assert_eq!(chord(&bindings[7], false), "Shift+F10");
+    }
+
+    #[test]
+    fn chat_cycle_requires_physical_control_on_every_platform() {
+        for command in [false, true] {
+            for shift in [false, true] {
+                for scope in [Scope::Window, Scope::Editor] {
+                    assert_eq!(
+                        shortcut("Tab", command, true, shift, scope),
+                        Some(Action::Cycle(shift))
+                    );
+                    assert_eq!(shortcut("Tab", command, false, shift, scope), None);
+                }
+                for scope in [Scope::Composing, Scope::Overlay] {
+                    assert_eq!(shortcut("Tab", command, true, shift, scope), None);
+                }
+            }
+        }
+        for binding in bindings()
+            .iter()
+            .filter(|b| matches!(b.action, Action::Cycle(_)))
+        {
+            assert!(binding.control);
+            assert!(!binding.command);
+            for macos in [false, true] {
+                assert_eq!(
+                    chord(binding, macos),
+                    if binding.shift {
+                        "Ctrl+Shift+Tab"
+                    } else {
+                        "Ctrl+Tab"
+                    }
+                );
+            }
+        }
     }
 
     #[test]

@@ -2279,6 +2279,7 @@ impl Panel {
         let TextInput::Key {
             key,
             command,
+            control,
             shift,
             ..
         } = event
@@ -2299,7 +2300,8 @@ impl Panel {
         } else {
             Scope::Window
         };
-        let Some(action) = openagents_chat_app::commands::shortcut(key, *command, *shift, scope)
+        let Some(action) =
+            openagents_chat_app::commands::shortcut(key, *command, *control, *shift, scope)
         else {
             return false;
         };
@@ -5197,6 +5199,7 @@ mod start_setting_tests {
             TextInput::Key {
                 key: "v",
                 text: None,
+                control: false,
                 command: true,
                 alt: false,
                 shift: false,

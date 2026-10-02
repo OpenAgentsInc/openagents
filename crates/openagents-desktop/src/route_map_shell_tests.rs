@@ -233,6 +233,7 @@ fn keys_reach_the_map_and_reduce_motion_moves_at_once() {
         rust_native_desktop::input::TextInput::Key {
             key: "=",
             text: None,
+            control: false,
             command: true,
             alt: false,
             shift: false,
@@ -325,6 +326,7 @@ fn the_map_opens_when_the_offer_arrives_without_a_tap() {
             TextInput::Key {
                 key: "Enter",
                 text: None,
+                control: false,
                 command: false,
                 alt: false,
                 shift: false,

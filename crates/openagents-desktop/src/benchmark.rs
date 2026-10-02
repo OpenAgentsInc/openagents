@@ -298,6 +298,7 @@ impl App for Fixture {
                     rust_native_desktop::input::TextInput::Key {
                         key: "a",
                         text: None,
+                        control: false,
                         command: true,
                         alt: false,
                         shift: false,
@@ -316,6 +317,7 @@ impl App for Fixture {
                     rust_native_desktop::input::TextInput::Key {
                         key: "ArrowDown",
                         text: None,
+                        control: false,
                         command: false,
                         alt: false,
                         shift: false,

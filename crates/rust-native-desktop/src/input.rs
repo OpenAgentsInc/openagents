@@ -44,6 +44,8 @@ pub enum TextInput<'a> {
     Key {
         key: &'a str,
         text: Option<&'a str>,
+        /// The physical Control key on every platform.
+        control: bool,
         command: bool,
         alt: bool,
         shift: bool,

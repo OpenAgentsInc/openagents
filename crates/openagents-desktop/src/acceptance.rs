@@ -1850,6 +1850,7 @@ fn ui_new_chat_top(gate: &mut Gate) -> Outcome {
         TextInput::Key {
             key: "n",
             text: None,
+            control: false,
             command: true,
             alt: false,
             shift: false,
