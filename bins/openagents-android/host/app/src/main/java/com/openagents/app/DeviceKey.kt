@@ -113,7 +113,7 @@ object DeviceKey {
     }
 
     /** Deletes a provider key and its Keystore key. */
-    fun deleteProviderKey(context: Context, provider: String) = synchronized(lock) {
+    fun deleteProviderKey(context: Context, provider: String): Unit = synchronized(lock) {
         val purpose = providerPurpose(provider) ?: return
         file(context, purpose).delete()
         runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias(purpose)) }
