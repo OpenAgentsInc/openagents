@@ -12,7 +12,7 @@ inside the `openagents` program, which installs on its own with one command
 (below; first release `1.0.0-rc.1`,
 [#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). The
 [scope](scope.md) records why it is built this way and the decisions taken on
-its open questions.
+its open questions. What Coder Terminal has that this lacks, and a roadmap: [gap analysis](2026-10-02-coder-terminal-gap-analysis.md).
 
 ## Install
 
