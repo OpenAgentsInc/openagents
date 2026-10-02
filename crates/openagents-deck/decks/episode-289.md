@@ -7,6 +7,15 @@ source: the owner's episode number, 2026-10-01
 ---
 
 layout: statement
+id: map
+scene: map
+source: the route map (#10085), live in the desktop slide viewer, full slide, to pan, zoom and select before the chat starts
+
+—
+
+---
+
+layout: statement
 id: routes
 scene: routes
 source: the route map (#10085), live in the desktop slide viewer, with a scripted chat lighting each message's route

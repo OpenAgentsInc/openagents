@@ -579,6 +579,8 @@ mod tests {
         assert_eq!(viewer.scene(), None, "the overview has no scene");
         viewer.key("Escape", false);
         viewer.key("ArrowRight", false);
+        assert_eq!(viewer.scene(), Some("map"));
+        viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), Some("routes"));
         viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), Some("routes-plugin"));
@@ -588,6 +590,7 @@ mod tests {
         assert_eq!(viewer.scene(), Some("essays"));
         viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), Some("download"));
+        assert_eq!(viewer.slides().len(), 7);
     }
 
     /// The deck list comes from the shipped scripts, the default first,

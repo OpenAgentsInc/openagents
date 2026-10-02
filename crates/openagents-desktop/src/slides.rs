@@ -61,7 +61,11 @@ pub const NODE: &str = "slides-overlay";
 pub const FRAME: Duration = Duration::from_millis(16);
 /// How often the host asks for a frame while the future map plays.
 pub const FUTURE_FRAME: Duration = Duration::from_millis(33);
-/// The scene that shows the live route map in the slide.
+/// The scene that shows the live route map alone, full slide, to look
+/// around before the chat starts.
+pub const MAP: &str = "map";
+/// The scene that shows the live route map with the scripted chat beside
+/// it.
 pub const ROUTES: &str = "routes";
 /// The scene that goes on with the chat as a person makes a plugin.
 pub const ROUTES_PLUGIN: &str = "routes-plugin";
@@ -173,9 +177,16 @@ impl Slides {
         })
     }
 
-    /// Whether the showing slide is the live route map, so the host
-    /// hands it the data ([`Slides::routes_local`]).
+    /// Whether the showing slide is the live route map, alone or with
+    /// the chat, so the host hands it the data ([`Slides::routes_local`]).
+    /// Both slides share one map, so the view carries over.
     pub fn wants_routes(&self) -> bool {
+        matches!(self.viewer.scene(), Some(MAP | ROUTES))
+    }
+
+    /// Whether the showing slide plays the scripted chat beside the map;
+    /// the `map` slide has the map alone.
+    pub fn on_chat(&self) -> bool {
         self.viewer.scene() == Some(ROUTES)
     }
 
@@ -339,7 +350,7 @@ impl Slides {
         {
             return Some(now + FRAME);
         }
-        if (self.on_future() || self.wants_routes() || self.on_plugin()) && !self.reduce_motion {
+        if (self.on_future() || self.on_chat() || self.on_plugin()) && !self.reduce_motion {
             return Some(now + FUTURE_FRAME);
         }
         self.routes().and_then(|page| page.next_wake(now))
@@ -444,7 +455,7 @@ impl Slides {
                 }
             }
         }
-        if self.wants_routes() && self.phase != Phase::Closed {
+        if self.on_chat() && self.phase != Phase::Closed {
             let reduce = self.reduce_motion;
             let chat = self.chat.get_or_insert_with(|| RouteChat::new(reduce));
             chat.advance(now);
@@ -452,9 +463,15 @@ impl Slides {
             if let Some((page, _)) = &mut self.routes {
                 page.set_light(chat.light(page.map()));
             }
-        } else if let Some(chat) = &mut self.chat {
-            // Off its slide: the next visit starts the conversation over.
-            chat.reset();
+        } else {
+            if let Some(chat) = &mut self.chat {
+                // Off its slide: the next visit starts the conversation over.
+                chat.reset();
+            }
+            if let Some((page, _)) = &mut self.routes {
+                // The map alone lights no route.
+                page.set_light(None);
+            }
         }
         if let Some(page) = self.routes_mut() {
             moved |= page.tick(now);
@@ -632,7 +649,11 @@ impl Slides {
     fn map_input(&mut self, event: SurfaceInput, now: Instant) -> bool {
         let (width, height) = self.size;
         let slide = Layout::of(width, height, self.fullscreen, 1.0).slide;
-        let (_, slide) = crate::route_chat::split(slide);
+        let slide = if self.on_chat() {
+            crate::route_chat::split(slide).1
+        } else {
+            slide
+        };
         let Some(page) = self.routes_mut() else {
             return false;
         };
@@ -813,6 +834,14 @@ impl Slides {
         self.viewer.layout(px(layout.slide));
         self.viewer.paint(frame, px(layout.slide));
         if self.wants_routes()
+            && !self.on_chat()
+            && let Some((page, _)) = &mut self.routes
+        {
+            // The map alone, full slide.
+            page.set_light(None);
+            page.set_unit(unit);
+            page.paint(frame, px(layout.slide));
+        } else if self.on_chat()
             && let Some((page, _)) = &mut self.routes
         {
             let (column, map) = crate::route_chat::split(px(layout.slide));

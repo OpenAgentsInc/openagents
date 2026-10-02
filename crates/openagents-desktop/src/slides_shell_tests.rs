@@ -385,11 +385,12 @@ fn the_viewer_opens_when_the_offer_arrives_not_on_the_next_input() {
     }
 }
 
-/// The Episode 289 deck's second slide hosts the Map page's graph, live
+/// The Episode 289 deck's second slide hosts the Map page's graph alone,
+/// full slide; its third hosts the same graph beside a scripted chat, live
 /// and interactive: a click selects a node and shows its details, a drag
 /// pans it, and the arrow keys still change slides unless a drag is held.
-/// Its third slide goes on with the chat as a person makes a plugin and
-/// others use it, and its fourth plays the map growing over the years. With
+/// Its fourth slide goes on with the chat as a person makes a plugin and
+/// others use it, and its fifth plays the map growing over the years. With
 /// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
 #[test]
 fn episode_289_hosts_the_live_route_map_and_its_future() {
@@ -409,7 +410,62 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         }
         frame
     };
+    // The second slide is the live map alone, full slide, to look around:
+    // no chat, no lit route, and a click where the full-slide map draws
+    // the router selects it and shows its details.
     assert!(key(&mut app, "ArrowRight", false, open));
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 7");
+    app.tick(open);
+    let _ = rust_native_desktop::capture(&mut app, WIDTH, HEIGHT, 2.0);
+    {
+        let slides = app.presentation().unwrap();
+        assert!(slides.wants_routes() && !slides.on_chat());
+        assert!(slides.chat().is_none(), "no chat on the map alone");
+        let page = slides.routes().expect("the slide holds the live map");
+        assert!(page.light().is_none());
+        let slide = Layout::of(WIDTH, HEIGHT, false, 1.0).slide;
+        let (w, h) = page.size();
+        assert!(
+            (w - slide.w).abs() < 1.0 && (h - slide.h).abs() < 1.0,
+            "{w}x{h}"
+        );
+        let front = page.camera().to_screen(
+            openagents_chat_app::route_map::layout::Point::default(),
+            w,
+            h,
+        );
+        let (cx, cy) = (slide.x + front.x, slide.y + front.y);
+        App::surface_input(
+            &mut app,
+            RESOURCE,
+            SurfaceInput::Down {
+                x: cx,
+                y: cy,
+                shift: false,
+            },
+            open,
+        );
+        App::surface_input(&mut app, RESOURCE, SurfaceInput::Up { x: cx, y: cy }, open);
+    }
+    {
+        let page = app.presentation().unwrap().routes().unwrap();
+        assert_eq!(
+            page.selected().map(|i| page.map().nodes[i].id.as_str()),
+            Some("front")
+        );
+    }
+    write(&mut app, "episode-289-map");
+    assert!(app.presentation().unwrap().chat().is_none());
+    // Esc lets the selection go; the map stays on the slide.
+    assert!(key(&mut app, "Escape", false, open));
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 7");
+    assert_eq!(
+        app.presentation().unwrap().routes().unwrap().selected(),
+        None
+    );
+    app.tick(open + Duration::from_secs(1));
+    assert!(key(&mut app, "ArrowRight", false, open));
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 7");
     let wake = app.tick(open).expect("the chat asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     // Mid route: the first message's pulse on its way to its answer, then
@@ -471,7 +527,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         Some("front"),
         "a click selects, and the slide stays"
     );
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 7");
     // Tab steps to the next node; its details show on the slide.
     assert!(key(&mut app, "Tab", false, open));
     let selected = write(&mut app, "episode-289-routes-selected");
@@ -494,7 +550,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         },
     );
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 7");
     input(
         &mut app,
         SurfaceInput::Up {
@@ -509,7 +565,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     // Once let go, the arrow changes slides: the chat goes on as a
     // person makes a plugin on the same map.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "3 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "4 / 7");
     let wake = app.tick(open).expect("the story asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let story = |app: &DesktopApp| {
@@ -548,7 +604,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert_ne!(made.pixels, used.pixels);
     // The future plays next.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "4 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "5 / 7");
     let wake = app.tick(open).expect("the future asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().label();
@@ -599,10 +655,10 @@ fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
         }
         frame
     };
-    for _ in 0..4 {
+    for _ in 0..5 {
         assert!(key(&mut app, "ArrowRight", false, open));
     }
-    assert_eq!(app.presentation().unwrap().counter(), "5 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "6 / 7");
     let wake = app.tick(open).expect("the cards ask for frames");
     assert!(wake <= open + Duration::from_millis(20));
     let entering = write(&mut app, "episode-289-essays-entering");
@@ -626,7 +682,7 @@ fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
     // A click on a card opens it, and the slide stays.
     input(&mut app, SurfaceInput::Down { x, y, shift: false });
     input(&mut app, SurfaceInput::Up { x, y });
-    assert_eq!(app.presentation().unwrap().counter(), "5 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "6 / 7");
     // A click beside the cards goes on.
     let (gap_x, gap_y) = (slide.x + 4.0, slide.y + 4.0);
     input(
@@ -637,7 +693,7 @@ fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
             shift: false,
         },
     );
-    assert_eq!(app.presentation().unwrap().counter(), "6 / 6");
+    assert_eq!(app.presentation().unwrap().counter(), "7 / 7");
     app.tick(open + Duration::from_secs(4));
     app.tick(open + Duration::from_secs(6));
     write(&mut app, "episode-289-download");

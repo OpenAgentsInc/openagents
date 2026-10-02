@@ -155,8 +155,9 @@ pub struct Slide {
     /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
     pub scale: Option<u8>,
     /// A live scene a host may draw in the slide's place, one of
-    /// [`SCENES`]: `grid`, the Verse's Grid behind the slide; `routes`, the
-    /// live route map; `routes-plugin`, the live route map as a person
+    /// [`SCENES`]: `grid`, the Verse's Grid behind the slide; `map`, the
+    /// live route map alone, full slide, to look around; `routes`, the
+    /// live route map with a scripted chat beside it; `routes-plugin`, the live route map as a person
     /// makes a plugin and others use it; `routes-future`, the route map
     /// growing over the years; `essays`, two essays as GitHub link cards;
     /// `download`, openagents.com/download in a browser window. A host with
@@ -166,8 +167,9 @@ pub struct Slide {
 }
 
 /// The live scenes a slide may name (`scene: grid`).
-pub const SCENES: [&str; 6] = [
+pub const SCENES: [&str; 7] = [
     "grid",
+    "map",
     "routes",
     "routes-plugin",
     "routes-future",
