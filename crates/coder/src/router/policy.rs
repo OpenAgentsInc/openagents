@@ -41,8 +41,11 @@
 //!    [`CLI_GROUP_BEAM`], with the next likely groups descended beside it;
 //!    or `cli` at [`GROUNDED_ROUTE`] and a group at [`CLI_GROUP_SURE`]:
 //!    the CLI seam proposes, and the gate decides.
-//! 8. **T2 grounded.** `route` = `product.kb` or `codebase.kb` at
-//!    [`GROUNDED_ROUTE`].
+//! 8. **T2 grounded.** `route` = `product.kb`, `meta`, or `codebase.kb`
+//!    at [`GROUNDED_ROUTE`]. Below it, and in a close call (rule 2), a
+//!    question about us (`product.kb` or `meta` the argmax, or a close
+//!    runner-up of `general`, `clarify`, or `none`) is still grounded,
+//!    never left to the model alone (#10135, #10137).
 //! 9. **Gym and eval.** `gym.news` at [`GROUNDED_ROUTE`], or another
 //!    `eval.*` route at [`EVAL_ROUTE`]: `eval.author` is a step of the
 //!    interview ([`Tier::Author`]), `eval.credit` the bank's
@@ -748,6 +751,11 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         && routing.route != RouteId::Unknown
         && routing.route_p - second_p < CLOSE_MARGIN
     {
+        // A question about us is answered from what we documented, not
+        // asked back or left to the model (#10137).
+        if let Some(tier) = knowledge(routing) {
+            return tier;
+        }
         if routing.clarify_p >= CLARIFY_WINS {
             return clarify(bank, facts, situation);
         }
@@ -768,7 +776,7 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         {
             return tier;
         }
-        return model(routing);
+        return answered(routing);
     }
 
     // 3. T0.
@@ -828,18 +836,13 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     }
 
     // 8. T2.
-    if routing.route_p >= GROUNDED_ROUTE {
-        let corpus = match routing.route {
-            RouteId::ProductKb => Some(Corpus::Product),
-            RouteId::CodebaseKb => Some(Corpus::Codebase),
-            _ => None,
+    if routing.route_p >= GROUNDED_ROUTE
+        && let Some(corpus) = corpus_of(routing.route)
+    {
+        return Tier::Grounded {
+            corpus,
+            lead: opener_lead(routing),
         };
-        if let Some(corpus) = corpus {
-            return Tier::Grounded {
-                corpus,
-                lead: opener_lead(routing),
-            };
-        }
     }
 
     // 9. Gym and eval.
@@ -884,8 +887,46 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         return clarify(bank, facts, situation);
     }
 
-    // 13. T3.
-    model(routing)
+    // 13. T3, grounded when the question is about us.
+    answered(routing)
+}
+
+/// The corpus a knowledge route answers from: product documentation for
+/// `product.kb` and for `meta` (our limits, pricing, privacy, and model,
+/// once no prepared answer fits), the repository for `codebase.kb`.
+fn corpus_of(route: RouteId) -> Option<Corpus> {
+    match route {
+        RouteId::ProductKb | RouteId::Meta => Some(Corpus::Product),
+        RouteId::CodebaseKb => Some(Corpus::Codebase),
+        _ => None,
+    }
+}
+
+/// A grounded reply for a question about us that no surer rule served:
+/// the argmax route is a knowledge route at any probability, or one is
+/// the close runner-up of a route with no answer of its own (`general`,
+/// `clarify`, `none`). A follow-up that leaves the prepared answers reads
+/// the documentation rather than letting the model invent plans, limits,
+/// accounts, or platforms (#10135, #10136, #10137).
+fn knowledge(routing: &Routing) -> Option<Tier> {
+    let corpus = corpus_of(routing.route).or_else(|| {
+        let (second, second_p) = routing.runner_up?;
+        (matches!(
+            routing.route,
+            RouteId::General | RouteId::Clarify | RouteId::Unknown
+        ) && routing.route_p - second_p < CLOSE_MARGIN)
+            .then(|| corpus_of(second))
+            .flatten()
+    })?;
+    Some(Tier::Grounded {
+        corpus,
+        lead: opener_lead(routing),
+    })
+}
+
+/// Rule 2's and rule 13's last answer: [`knowledge`], else the model.
+fn answered(routing: &Routing) -> Tier {
+    knowledge(routing).unwrap_or_else(|| model(routing))
 }
 
 fn clarify(bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
@@ -1072,8 +1113,17 @@ mod tests {
             routed(RouteId::Meta, 0.9, "meta.model", 0.9, 0.3),
             routed(RouteId::Smalltalk, 0.9, "meta.model", 0.9, 0.0),
         ] {
+            // A meta question no prepared answer serves is grounded
+            // (#10135); never a whole answer.
             assert!(
-                matches!(router(&routing), Tier::Model { .. }),
+                matches!(
+                    router(&routing),
+                    Tier::Model { .. }
+                        | Tier::Grounded {
+                            corpus: Corpus::Product,
+                            ..
+                        }
+                ),
                 "{routing:?} -> {:?}",
                 router(&routing)
             );
@@ -1210,8 +1260,8 @@ mod tests {
     /// canned answer or an unsupported offer.
     #[test]
     fn a_close_call_does_less() {
-        let mut close = routed(RouteId::Meta, 0.5, "meta.capabilities", 0.9, 0.1);
-        close.runner_up = Some((RouteId::General, 0.4));
+        let mut close = routed(RouteId::General, 0.5, "meta.capabilities", 0.9, 0.1);
+        close.runner_up = Some((RouteId::Smalltalk, 0.4));
         assert!(matches!(router(&close), Tier::Model { .. }));
         close.clarify_p = 0.4;
         assert!(matches!(router(&close), Tier::Model { note: Some(_), .. }));
@@ -1219,6 +1269,40 @@ mod tests {
             decided(&close, &Context::default(), true),
             Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
         ));
+    }
+
+    /// A question about us is grounded in the product documentation when
+    /// no surer rule serves it: a meta follow-up no prepared answer fits,
+    /// a product question below the grounded bar or in a close call with
+    /// a clarify, and a general reading whose close runner-up is
+    /// `product.kb` (#10135, #10136, #10137). A general question stays
+    /// with the model.
+    #[test]
+    fn questions_about_us_are_grounded_below_the_bar() {
+        let grounded = |routing: &Routing| {
+            matches!(
+                router(routing),
+                Tier::Grounded {
+                    corpus: Corpus::Product,
+                    ..
+                }
+            )
+        };
+        let meta = routed(RouteId::Meta, 0.97, "none", 0.0, 0.15);
+        assert!(grounded(&meta), "{:?}", router(&meta));
+        let unsure = routed(RouteId::Meta, 0.5, "none", 0.0, 0.28);
+        assert!(grounded(&unsure), "{:?}", router(&unsure));
+        let mut iphone = routed(RouteId::ProductKb, 0.42, "none", 0.0, 0.09);
+        iphone.runner_up = Some((RouteId::Clarify, 0.35));
+        iphone.clarify_p = 0.45;
+        assert!(grounded(&iphone), "{:?}", router(&iphone));
+        let mut general = routed(RouteId::General, 0.45, "none", 0.0, 0.1);
+        general.runner_up = Some((RouteId::ProductKb, 0.4));
+        assert!(grounded(&general), "{:?}", router(&general));
+        general.runner_up = Some((RouteId::ProductKb, 0.1));
+        assert!(matches!(router(&general), Tier::Model { .. }));
+        let poem = routed(RouteId::General, 0.9, "none", 0.0, 0.1);
+        assert!(matches!(router(&poem), Tier::Model { .. }));
     }
 
     #[test]

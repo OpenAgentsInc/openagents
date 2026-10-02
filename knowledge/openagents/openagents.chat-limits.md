@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-limits
-version: 2
+version: 3
 kind: product
 title: "How many messages the chat allows"
 summary: >-
@@ -13,8 +13,10 @@ applies_when: >-
   costs.
 answer: >-
   Send us as many messages as you like: we don't cap how many you send in a
-  minute or in a day. If you ever see "Couldn't reach OpenAgents; try again.",
-  send the message again.
+  minute or in a day, and we don't throttle you or charge per message.
+  There's no plan, account, quota, or fair-use cap behind that, so there's
+  nothing to look up. If you ever see "Couldn't reach OpenAgents; try
+  again.", send the message again.
 status: admitted
 author: openagents
 provenance:
@@ -25,11 +27,12 @@ provenance:
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-01: the owner removed every usage limit (#10120); rewritten from the cited documents."
+  - "2026-10-02: the answer says there is no throttle, per-message charge, plan, account, quota, or fair-use cap behind the missing limit (#10135)."
 ---
 
 ## Answer
 
-Send us as many messages as you like: we don't cap how many you send in a minute or in a day. If you ever see "Couldn't reach OpenAgents; try again.", send the message again.
+Send us as many messages as you like: we don't cap how many you send in a minute or in a day, and we don't throttle you or charge per message. There's no plan, account, quota, or fair-use cap behind that, so there's nothing to look up. If you ever see "Couldn't reach OpenAgents; try again.", send the message again.
 
 ## Details
 

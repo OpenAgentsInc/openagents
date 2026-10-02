@@ -424,7 +424,7 @@ measurement.
 | Offer: dispatch | `route` = `work.dispatch` p ≥ 0.70, or `lane` = computer p ≥ 0.75 | ≥ 90 %; a false offer costs one ignored card |
 | Offer: CLI | `route` = `cli` p ≥ 0.75 and `cli_group` p ≥ 0.60 | ≥ 95 % that the group is right; the command still needs confirmation |
 | Refuse or warn | `risk` ∈ {secret_shared, asks_for_secret, harmful} with p ≥ 0.60 | recall matters more: warn when unsure, refuse only at p ≥ 0.85 |
-| T2 grounded | `route` ∈ {product.kb, codebase.kb} p ≥ 0.60 | measured on answer quality, not routing |
+| T2 grounded | `route` ∈ {product.kb, meta, codebase.kb} p ≥ 0.60; below it, or in a close call, `product.kb` or `meta` as the argmax or the close runner-up of `general`, `clarify`, or `none` (#10135) | measured on answer quality, not routing |
 
 Fallbacks, all toward today's behavior:
 

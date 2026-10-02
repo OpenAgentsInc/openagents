@@ -1104,7 +1104,9 @@ impl Context {
                     note.push_str(&format!(" (named {name:?})"));
                 }
                 note.push_str(
-                    ", and that computer is where Coder, our coding agent, works. Never tell \
+                    ", and that computer is where Coder, our coding agent, works. Our replies \
+                     are written by our chat worker's models over the network, so each message \
+                     leaves the computer: never say the chat runs locally. Never tell \
                      the user to connect a computer and never say we can't reach their \
                      computer; explain connecting another computer or a phone only when they \
                      ask about that.",
@@ -1874,6 +1876,14 @@ commands.";
 pub const PRODUCT_LINKS: &str = " When you summarize or describe a document a passage \
 links, such as one of our essays, give its link from the passage.";
 
+/// What else the product note lets a grounded reply say, and what it
+/// must never invent (#10135, #10136): the facts about this chat in its
+/// instructions count, and nothing beyond the passages and those facts.
+pub const PRODUCT_FACTS: &str = " What the instructions above state about this chat (where \
+it runs, its computer, its coding agents, the model answering) also counts. Never invent plans, \
+subscriptions, prices, quotas, usage caps, rate limits, throttling, accounts, sign-ups, API keys \
+to bring, settings, or apps that the passages do not name.";
+
 /// The instruction a grounded model gets: answer only from `passages`, and
 /// cite their ids.
 #[must_use]
@@ -1892,6 +1902,7 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
     if corpus == Corpus::Product {
         // A summary of one of our essays links it (#10102).
         note.push_str(PRODUCT_LINKS);
+        note.push_str(PRODUCT_FACTS);
     }
     if let Some(commit) = commit {
         note.push_str(&format!(" Say that this is as of commit {commit}."));
