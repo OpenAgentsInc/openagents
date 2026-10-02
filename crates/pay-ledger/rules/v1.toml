@@ -1,0 +1,17 @@
+version = 1
+effective = "2026-10-15T00:00:00Z"
+
+[plugin_call]
+author = "fee"
+openagents = "rest"
+
+[hosted_resource]
+resource_owner_bps = 9000
+openagents = "rest"
+
+[bonus]
+first_paid_call_msat = 1_000_000
+launch_match_bps = 10000
+launch_match_until = "2026-12-14T00:00:00Z"
+launch_match_cap_msat_per_month = 50_000_000
+funded_by = "openagents_share"
