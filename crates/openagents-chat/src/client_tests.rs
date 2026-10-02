@@ -836,3 +836,118 @@ async fn a_host_that_stops_answering_mid_reply_is_read_again() {
         "{events:?}"
     );
 }
+
+/// A host whose first sends go unanswered, as while it restarts, then
+/// answers; it counts the sends it took.
+struct Restarting {
+    misses: u32,
+    unanswered: bool,
+    took: Arc<Mutex<Vec<String>>>,
+}
+
+impl Host for Restarting {
+    fn apply(&mut self, command: Command, _: Caller) -> BoxFuture<'_, Result<Snapshot, String>> {
+        self.unanswered = false;
+        let answer = match command {
+            Command::Send { .. } if self.misses > 0 => {
+                self.misses -= 1;
+                self.unanswered = true;
+                Err("OpenAgents on this computer is not answering.".to_owned())
+            }
+            Command::Send { request, .. } => {
+                self.took.lock().unwrap().push(request);
+                Ok(Snapshot {
+                    busy: true,
+                    ..Snapshot::default()
+                })
+            }
+            _ => Ok(Snapshot::default()),
+        };
+        Box::pin(async move { answer })
+    }
+
+    fn migrate(&mut self, _: &Path) -> BoxFuture<'_, Migration> {
+        Box::pin(async { Migration::Quiet })
+    }
+
+    fn unanswered(&self) -> bool {
+        self.unanswered
+    }
+}
+
+/// The owner's follow-up hit a host that had restarted (2026-10-02): the
+/// send failed "the host did not answer". Now a send the host does not
+/// answer is sent again once it does, under the same send ID, and the
+/// screen says it is waiting.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn a_send_to_a_restarting_host_goes_through_once_it_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let took = Arc::new(Mutex::new(Vec::new()));
+    let host = Restarting {
+        misses: 2,
+        unanswered: false,
+        took: took.clone(),
+    };
+    let client = Client::over_host(
+        Box::new(host),
+        PathBuf::from("/nowhere/control.sock"),
+        options(dir.path()),
+        Arc::new(NoCoder),
+    );
+    let thread = new_id();
+    let mut op = send(&thread, "ok, now open issues for them", Start::Settings);
+    if let Op::Send { new, .. } = &mut op {
+        *new = false;
+    }
+    let (events, _, _) = drain(client.stream(op)).await;
+    let names: Vec<String> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Offline { retry_in, .. } => Some(format!("offline {retry_in}")),
+            Event::Online { .. } => Some("online".into()),
+            Event::Accepted { .. } => Some("accepted".into()),
+            Event::Failure { message, .. } => Some(format!("failure {message}")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        names,
+        ["offline 2", "offline 4", "online", "accepted"],
+        "{events:?}"
+    );
+    assert_eq!(took.lock().unwrap().len(), 1);
+}
+
+/// A refusal in the host's own words is not waited out.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn a_refused_send_is_not_sent_again() {
+    let dir = tempfile::tempdir().unwrap();
+    struct Refusing;
+    impl Host for Refusing {
+        fn apply(&mut self, _: Command, _: Caller) -> BoxFuture<'_, Result<Snapshot, String>> {
+            Box::pin(async { Err("Chat not found.".to_owned()) })
+        }
+        fn migrate(&mut self, _: &Path) -> BoxFuture<'_, Migration> {
+            Box::pin(async { Migration::Quiet })
+        }
+    }
+    let client = Client::over_host(
+        Box::new(Refusing),
+        PathBuf::from("/nowhere/control.sock"),
+        options(dir.path()),
+        Arc::new(NoCoder),
+    );
+    let thread = new_id();
+    let mut op = send(&thread, "hello", Start::Settings);
+    if let Op::Send { new, .. } = &mut op {
+        *new = false;
+    }
+    let (events, _, ended) = drain(client.stream(op)).await;
+    assert_eq!(ended, Ok(Ended::Refused));
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, Event::Offline { .. })),
+        "{events:?}"
+    );
+}

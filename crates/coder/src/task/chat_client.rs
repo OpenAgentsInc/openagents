@@ -257,6 +257,7 @@ impl Dial for Control {
                 socket: socket.to_path_buf(),
                 older: false,
                 broken: false,
+                used: false,
             }) as Box<dyn Host>)
         })
     }
@@ -276,7 +277,16 @@ struct ControlHost {
     /// client reading a streaming reply picks it up again once the host is
     /// back (#10151).
     broken: bool,
+    /// The connection already carried a call. One that sat idle may have
+    /// outlived its host: a restart (an update, `systemctl restart`)
+    /// leaves the client a dead socket that fails the next write.
+    used: bool,
 }
+
+/// What a host that is not answering says, in place of the transport's
+/// own words.
+pub(crate) const NOT_ANSWERING: &str =
+    "OpenAgents on this computer is not answering. It may be restarting; try again.";
 
 impl ControlHost {
     async fn call(&mut self, op: Op) -> openagents_connect::Result<Reply> {
@@ -284,14 +294,28 @@ impl ControlHost {
             self.stream = connect(&self.socket).await.map_err(|error| {
                 openagents_connect::Error::new(
                     openagents_connect::Code::Unavailable,
-                    format!("the host did not answer: {error}"),
+                    format!("no host at the control socket: {error}"),
                 )
             })?;
             self.broken = false;
+            self.used = false;
         }
         let id = self.next;
         self.next += 1;
-        let result = control::call(&mut self.stream, &Request::new(id, op)).await;
+        let request = Request::new(id, op);
+        let mut result = control::call(&mut self.stream, &request).await;
+        // The host restarted since this connection's last call: the
+        // connection is dead, and the new host never saw the request. Ask
+        // it again at once on a new connection. A chat send carries its
+        // send ID, so the service takes it once however often it is asked.
+        if self.used
+            && matches!(&result, Err(error) if error.code == openagents_connect::Code::Unavailable)
+            && let Ok(stream) = connect(&self.socket).await
+        {
+            self.stream = stream;
+            result = control::call(&mut self.stream, &request).await;
+        }
+        self.used = true;
         self.broken = result.is_err();
         result
     }
@@ -327,6 +351,7 @@ impl Host for ControlHost {
                 match connect(&self.socket).await {
                     Ok(stream) => {
                         self.stream = stream;
+                        self.used = false;
                         result = self
                             .call(Op::Chat {
                                 command,
@@ -334,16 +359,20 @@ impl Host for ControlHost {
                             })
                             .await;
                     }
-                    Err(error) => return Err(format!("the host did not answer: {error}")),
+                    Err(_) => return Err(NOT_ANSWERING.into()),
                 }
             }
             match result {
                 Ok(Reply::Chat { snapshot }) => Ok(snapshot),
                 Ok(Reply::Refused { message, .. }) => Err(message),
                 Ok(_) => Err("the host answered another question".into()),
-                Err(error) => Err(format!("the host did not answer: {error}")),
+                Err(_) => Err(NOT_ANSWERING.into()),
             }
         })
+    }
+
+    fn unanswered(&self) -> bool {
+        self.broken
     }
 
     /// It asks on a connection of its own: an older host ends a connection
@@ -377,6 +406,91 @@ mod tests {
         let settings = super::super::settings::Coder::default();
         assert_eq!(settings.start, super::super::settings::Start::AtOnce);
         assert_eq!(settings.access, super::super::adapter::Access::Full);
+    }
+
+    /// One host on `socket` that answers every chat command with an empty
+    /// snapshot, until it is aborted.
+    #[cfg(unix)]
+    fn serve(socket: &Path) -> tokio::task::JoinHandle<()> {
+        let _ = std::fs::remove_file(socket);
+        let listener = tokio::net::UnixListener::bind(socket).unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                // One connection at a time, on this task, so aborting it
+                // ends the connection too, as a host's exit does.
+                while let Ok(Some(request)) = control::next_request(&mut stream).await {
+                    let reply = Reply::Chat {
+                        snapshot: Snapshot::default(),
+                    };
+                    let response = control::Response::new(request.id, reply);
+                    if control::respond(&mut stream, &response).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    /// The owner's follow-up (2026-10-02) went to a connection the host's
+    /// restart had closed, and failed "the host did not answer —
+    /// unavailable, write failed". A connection that outlived its host now
+    /// opens a new one and asks again, so the send goes through.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_send_after_the_host_restarted_goes_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("control.sock");
+        let first = serve(&socket);
+        let mut host = Control.dial(&socket).await.expect("the host answers");
+        let read = Command::Read {
+            chat: "0".repeat(32),
+            before: None,
+        };
+        host.apply(read.clone(), Caller::CLI).await.unwrap();
+        // The host restarts: the old one and its connections end, and a
+        // new one listens on the same socket.
+        first.abort();
+        let _ = first.await;
+        tokio::task::yield_now().await;
+        let second = serve(&socket);
+        let sent = host
+            .apply(
+                Command::Send {
+                    chat: "0".repeat(32),
+                    request: "1".repeat(32),
+                    text: "ok, create issues for them".into(),
+                },
+                Caller::CLI,
+            )
+            .await;
+        assert!(sent.is_ok(), "{sent:?}");
+        assert!(!host.unanswered());
+        second.abort();
+    }
+
+    /// No host at all: the send fails in plain words, and says the host
+    /// did not answer, so the client waits for it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_host_that_is_gone_is_said_plainly() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("control.sock");
+        let first = serve(&socket);
+        let mut host = Control.dial(&socket).await.expect("the host answers");
+        let read = Command::Read {
+            chat: "0".repeat(32),
+            before: None,
+        };
+        host.apply(read.clone(), Caller::CLI).await.unwrap();
+        first.abort();
+        let _ = first.await;
+        std::fs::remove_file(&socket).unwrap();
+        let sent = host.apply(read, Caller::CLI).await;
+        assert_eq!(sent, Err(NOT_ANSWERING.to_owned()));
+        assert!(host.unanswered());
     }
 
     #[test]

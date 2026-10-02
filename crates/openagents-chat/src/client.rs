@@ -200,6 +200,13 @@ pub trait Host: Send + Sync {
     /// Ask the host to take in the threads kept without one in `home`
     /// (absolute), on a connection of its own.
     fn migrate(&mut self, home: &Path) -> BoxFuture<'_, Migration>;
+
+    /// Whether the last [`Host::apply`] failed because the host did not
+    /// answer (it is restarting, or gone), rather than refusing in its
+    /// own words. A send that failed so is asked again once it answers.
+    fn unanswered(&self) -> bool {
+        false
+    }
 }
 
 /// How a client reaches this computer's host.
@@ -985,10 +992,16 @@ impl Client {
         timeout: Duration,
         sink: &mut Sink<'_>,
     ) -> Result<Ended, Error> {
+        let mut interrupt = (self.interrupt)();
         if new {
-            self.apply(Command::Create {
-                chat: id.to_owned(),
-            })
+            self.delivered(
+                id,
+                Command::Create {
+                    chat: id.to_owned(),
+                },
+                &mut interrupt,
+                sink,
+            )
             .await
             .map_err(failed)?;
         }
@@ -997,11 +1010,16 @@ impl Client {
         }
         let request = new_id();
         let sent = self
-            .apply(Command::Send {
-                chat: id.to_owned(),
-                request: request.clone(),
-                text: text.to_owned(),
-            })
+            .delivered(
+                id,
+                Command::Send {
+                    chat: id.to_owned(),
+                    request: request.clone(),
+                    text: text.to_owned(),
+                },
+                &mut interrupt,
+                sink,
+            )
             .await;
         let sent = match sent {
             Ok(sent) => sent,
@@ -1023,7 +1041,6 @@ impl Client {
         let mut shown = String::new();
         let mut snapshot = sent;
         let mut stopped = false;
-        let mut interrupt = (self.interrupt)();
         // Each try waits `timeout` for its reply; a try the relay never
         // took, or a read the host did not answer, is tried again after a
         // pause that doubles up to `OFFLINE_MOST`, until it goes through or
@@ -1178,6 +1195,40 @@ impl Client {
         };
         coder_report(sink, id, true, &message, None);
         Ended::Done
+    }
+
+    /// `command`, asked again after a pause while the host does not
+    /// answer (it restarted, or is restarting) until it does or the person
+    /// stops waiting; a refusal in the host's own words ends it at once. A
+    /// send carries its send ID, so the service takes it once however
+    /// often it is asked.
+    async fn delivered(
+        &mut self,
+        id: &str,
+        command: Command,
+        interrupt: &mut BoxFuture<'static, ()>,
+        sink: &mut Sink<'_>,
+    ) -> Result<Snapshot, String> {
+        let mut down = 0u32;
+        loop {
+            let result = self.apply(command.clone()).await;
+            let unanswered = match &self.backend {
+                Backend::Host { link, .. } | Backend::Computer { link, .. } => link.unanswered(),
+                Backend::Local { .. } => false,
+            };
+            if result.is_ok() && down > 0 {
+                sink(Event::Online {
+                    thread: id.to_owned(),
+                });
+            }
+            if result.is_ok() || !unanswered {
+                return result;
+            }
+            down += 1;
+            if !self.pause(id, down, interrupt, sink).await {
+                return result;
+            }
+        }
     }
 
     /// Say the chat cannot be reached, and wait before try `attempt`.

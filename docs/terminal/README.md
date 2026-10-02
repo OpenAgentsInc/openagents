@@ -115,7 +115,10 @@ When OpenAgents cannot be reached (no network, the relay down, or this
 computer's host restarting), the screen says so once and the top line reads
 `offline · trying again in 4s · Esc stops`. It asks again after a pause that
 doubles up to 30 seconds, until the reply comes or Esc stops it; what had
-streamed stays, and the reply streams on once it is back.
+streamed stays, and the reply streams on once it is back. A message sent
+after the host restarted goes on a new connection at once, and one sent
+while it restarts waits the same way and goes through once it answers
+([#10168](https://github.com/OpenAgentsInc/openagents/issues/10168)).
 
 The transcript looks as Grok Build's does, in its Grok Night colors (Grok
 Day on a light background) on its #141414 field. No turn carries a label:
