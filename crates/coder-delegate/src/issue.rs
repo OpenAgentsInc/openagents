@@ -1123,11 +1123,13 @@ pub async fn gate(
         }
         Err(why) => (vec![format!("the tests could not run: {why}")], None),
     };
-    problems.extend(style_problems(&diff));
+    // Style and plain-language findings are advice for the review step
+    // ([`review_request`]), never a reason to hold a change back: as gates
+    // they failed one-line docs fixes three rounds running on a Jev reading
+    // near 0.1 (owner, 2026-10-02: velocity first).
     problems.extend(unsourced_figures(workdir, &diff));
     problems.extend(broken_links(workdir, &diff));
     problems.extend(stale_dependents(workdir, jev, recorder).await);
-    problems.extend(unclear_text(&diff, jev, recorder).await);
     (problems, tested)
 }
 
