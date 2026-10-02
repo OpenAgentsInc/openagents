@@ -1,0 +1,4013 @@
+{
+ "schema": "openagents.route.eval-split.v1",
+ "set": "route-families-v1",
+ "about": "Labeled route families for the agentic execution router (docs/api/2026-10-02-agentic-execution-router.md, section 5 and 13; #10205). Seeded from the chat router fixtures: every wallet-v1 row (#10170, defaults before questions), every coder_followup row of routes-v4 (#10171), and up to three tune and three held-out rows per other chat route; new rows cover dispatch plans (#10183), issue work, continuation and steering, standing rules (#10157), plugin creation (#10177), local commands, and defaults. routes-v4 held_out rows are test here; tune on tune rows only. expect is the family-specific detail a correct route also needs.",
+ "rows": [
+  {
+   "id": "wallet/w01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "check my wallet balance"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w01"
+  },
+  {
+   "id": "wallet/w02",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "check the wallet shit"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w02"
+  },
+  {
+   "id": "wallet/w03",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "balance and wallet address basic readonly identifying shit"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w03"
+  },
+  {
+   "id": "wallet/w04",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "balance?"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w04"
+  },
+  {
+   "id": "wallet/w05",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how many sats do I have"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w05"
+  },
+  {
+   "id": "wallet/w06",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's my wallet address"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w06"
+  },
+  {
+   "id": "wallet/w07",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "my sats"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w07"
+  },
+  {
+   "id": "wallet/w08",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "show me my bitcoin balance"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w08"
+  },
+  {
+   "id": "wallet/w09",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "whats in my wallet rn"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w09"
+  },
+  {
+   "id": "wallet/w10",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how much btc have i got"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only",
+    "argv_prefix": [
+     "wallet"
+    ],
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w10"
+  },
+  {
+   "id": "wallet/w11",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "send 1000 sats to bc1qexample"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "money_movement": "never_from_chat",
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w11"
+  },
+  {
+   "id": "wallet/w12",
+   "split": "tune",
+   "surface": "phone",
+   "messages": [
+    {
+     "role": "user",
+     "text": "check my wallet balance"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared_or_model",
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w12"
+  },
+  {
+   "id": "wallet/w13",
+   "split": "test",
+   "surface": "phone",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how many sats do I have"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared_or_model",
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w13"
+  },
+  {
+   "id": "wallet/w14",
+   "split": "tune",
+   "surface": "desktop",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's my wallet address"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared_or_model",
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w14"
+  },
+  {
+   "id": "wallet/w15",
+   "split": "test",
+   "surface": "phone",
+   "messages": [
+    {
+     "role": "user",
+     "text": "send 1000 sats to my friend"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "money_movement": "never_from_chat",
+    "default": "built_in_wallet"
+   },
+   "chat_route": "wallet",
+   "source": "wallet-v1:w15"
+  },
+  {
+   "id": "followup/coder-followup-001-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "summarize what happened"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-001"
+  },
+  {
+   "id": "followup/coder-followup-002-general",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "what did you change?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-002"
+  },
+  {
+   "id": "followup/coder-followup-003-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "why did it use Codex?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-003"
+  },
+  {
+   "id": "followup/coder-followup-004-general",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "what commands did it run"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-004"
+  },
+  {
+   "id": "followup/coder-followup-005-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "which files did it touch"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-005"
+  },
+  {
+   "id": "followup/coder-followup-006-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "did the tests pass?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-006"
+  },
+  {
+   "id": "followup/coder-followup-007-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "explain the change it made"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-007"
+  },
+  {
+   "id": "followup/coder-followup-008-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "tldr?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-008"
+  },
+  {
+   "id": "followup/coder-followup-009-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "so what did coder find"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-009"
+  },
+  {
+   "id": "followup/coder-followup-010-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+    },
+    {
+     "role": "user",
+     "text": "why did it fail?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-010"
+  },
+  {
+   "id": "followup/coder-followup-011-general",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, was stopped in this chat.)"
+    },
+    {
+     "role": "user",
+     "text": "why did it stop?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-011"
+  },
+  {
+   "id": "followup/coder-followup-012-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "what was the result"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-012"
+  },
+  {
+   "id": "followup/coder-followup-013-general",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "was that on claude or codex"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-013"
+  },
+  {
+   "id": "followup/coder-followup-014-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "how did it decide what to change"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-014"
+  },
+  {
+   "id": "followup/coder-followup-015-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "can you explain the diff in plain english"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-015"
+  },
+  {
+   "id": "followup/coder-followup-016-general",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "what does the new function do"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-016"
+  },
+  {
+   "id": "followup/coder-followup-017-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "is it done?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-017"
+  },
+  {
+   "id": "followup/coder-followup-018-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+    },
+    {
+     "role": "user",
+     "text": "what happened"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-018"
+  },
+  {
+   "id": "followup/coder-followup-019-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "give me a one line summary of the run"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-019"
+  },
+  {
+   "id": "followup/coder-followup-020-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "why didn't it run on claude like I asked"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-020"
+  },
+  {
+   "id": "followup/coder-followup-001-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "now add a test"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-001"
+  },
+  {
+   "id": "followup/coder-followup-002-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "fix that too"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-002"
+  },
+  {
+   "id": "followup/coder-followup-003-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "do the same for the other crate"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-003"
+  },
+  {
+   "id": "followup/coder-followup-004-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "now also list the top-level files in a note"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-004"
+  },
+  {
+   "id": "followup/coder-followup-005-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "also update the changelog"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-005"
+  },
+  {
+   "id": "followup/coder-followup-006-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "run the tests again"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-006"
+  },
+  {
+   "id": "followup/coder-followup-007-work.dispatch",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+    },
+    {
+     "role": "user",
+     "text": "try again"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-007"
+  },
+  {
+   "id": "followup/coder-followup-008-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "undo that change"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-008"
+  },
+  {
+   "id": "followup/coder-followup-009-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "rename the function to parse_args too"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-009"
+  },
+  {
+   "id": "followup/coder-followup-010-work.dispatch",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "commit it"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-010"
+  },
+  {
+   "id": "followup/coder-followup-011-work.dispatch",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "can you also fix the lint warnings"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-011"
+  },
+  {
+   "id": "followup/coder-followup-012-work.dispatch",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "do it for the cli crate as well"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-012"
+  },
+  {
+   "id": "followup/coder-followup-013-work.dispatch",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, was stopped in this chat.)"
+    },
+    {
+     "role": "user",
+     "text": "keep going"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-013"
+  },
+  {
+   "id": "followup/coder-followup-014-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "now open a pull request"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-014"
+  },
+  {
+   "id": "followup/coder-followup-015-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "add docs for the new function"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-015"
+  },
+  {
+   "id": "followup/coder-followup-016-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "now make it handle empty input"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-016"
+  },
+  {
+   "id": "followup/coder-followup-017-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, ended its run in this chat without finishing it.)"
+    },
+    {
+     "role": "user",
+     "text": "try it again on claude"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-017"
+  },
+  {
+   "id": "followup/coder-followup-018-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "revert the README edit"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-018"
+  },
+  {
+   "id": "followup/coder-followup-019-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, was stopped in this chat.)"
+    },
+    {
+     "role": "user",
+     "text": "finish what you started"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-019"
+  },
+  {
+   "id": "followup/coder-followup-020-work.dispatch",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "also delete the old helper"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "continuation": "next_turn"
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/coder-followup-020"
+  },
+  {
+   "id": "followup/coder-followup-near-001-general",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing test in my parser crate"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to fix the failing test in your parser crate."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "what's the difference between git merge and rebase"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/coder-followup-near-001"
+  },
+  {
+   "id": "followup/coder-followup-near-002-meta",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add an installation section to my README"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to add an installation section to your README."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "who are you"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/coder-followup-near-002"
+  },
+  {
+   "id": "followup/coder-followup-near-003-cli",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run cargo clippy and fix the warnings"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to run cargo clippy and fix the warnings."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "is my laptop online right now"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/coder-followup-near-003"
+  },
+  {
+   "id": "followup/coder-followup-near-004-smalltalk",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look through my repo and tell me how auth works"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to look through your repository and explain how auth works."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "thank you, that helps"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/coder-followup-near-004"
+  },
+  {
+   "id": "followup/coder-followup-near-005-meta",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version to 0.4.0 and update the changelog"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder to bump the version and update the changelog."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "what is Coder?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/coder-followup-near-005"
+  },
+  {
+   "id": "followup/coder-followup-near-006-meta",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do a test delegation to claude"
+    },
+    {
+     "role": "assistant",
+     "text": "We'll dispatch Coder, asking for Claude Code, to take this on, with this conversation as its task."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "can you write code?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/coder-followup-near-006"
+  },
+  {
+   "id": "chat/meta/001",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Who are you?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/001"
+  },
+  {
+   "id": "chat/meta/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "who r u"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/002"
+  },
+  {
+   "id": "chat/meta/003",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what is this app exactly?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/003"
+  },
+  {
+   "id": "chat/meta/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "introduce yourself pls"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/004"
+  },
+  {
+   "id": "chat/meta/005",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "are you a real person or a bot"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/005"
+  },
+  {
+   "id": "chat/meta/007",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "so what is openagents"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "meta",
+   "source": "routes-v4:meta/007"
+  },
+  {
+   "id": "chat/smalltalk/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "hey"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/001"
+  },
+  {
+   "id": "chat/smalltalk/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "hello?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/002"
+  },
+  {
+   "id": "chat/smalltalk/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "hi there"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/003"
+  },
+  {
+   "id": "chat/smalltalk/008",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "こんにちは"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/008"
+  },
+  {
+   "id": "chat/smalltalk/011",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "thank you so much"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/011"
+  },
+  {
+   "id": "chat/smalltalk/015",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Obrigado!"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "smalltalk",
+   "source": "routes-v4:smalltalk/015"
+  },
+  {
+   "id": "chat/general/001",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's a closure in rust"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/001"
+  },
+  {
+   "id": "chat/general/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "explain CRDTs simply"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/002"
+  },
+  {
+   "id": "chat/general/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "write a regex for emails"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/003"
+  },
+  {
+   "id": "chat/general/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "should I use postgres or sqlite for a small side project"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/004"
+  },
+  {
+   "id": "chat/general/006",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how much is chatgpt plus per month"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/006"
+  },
+  {
+   "id": "chat/general/014",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "help me write a polite email declining a meeting"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "general",
+   "source": "routes-v4:general/014"
+  },
+  {
+   "id": "chat/product.kb/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how do I connect my Mac"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "product.kb",
+   "source": "routes-v4:product.kb/001"
+  },
+  {
+   "id": "chat/product.kb/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's the Grid"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "product.kb",
+   "source": "routes-v4:product.kb/002"
+  },
+  {
+   "id": "chat/product.kb/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what is the verse"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "product.kb",
+   "source": "routes-v4:product.kb/003"
+  },
+  {
+   "id": "chat/product.kb/006",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's NIP-CJ"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "product.kb",
+   "source": "routes-v4:product.kb/006"
+  },
+  {
+   "id": "chat/product.kb/008",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how do quests work in the verse"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "product.kb",
+   "source": "routes-v4:product.kb/008"
+  },
+  {
+   "id": "chat/product.kb/010",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how do I pair my laptop with the phone app"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "product.kb",
+   "source": "routes-v4:product.kb/010"
+  },
+  {
+   "id": "chat/codebase.kb/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "where is the chat worker quota implemented"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "codebase.kb",
+   "source": "routes-v4:codebase.kb/001"
+  },
+  {
+   "id": "chat/codebase.kb/002",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what does kind 25900 carry"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "codebase.kb",
+   "source": "routes-v4:codebase.kb/002"
+  },
+  {
+   "id": "chat/codebase.kb/003",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how does Coder pick a provider"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "codebase.kb",
+   "source": "routes-v4:codebase.kb/003"
+  },
+  {
+   "id": "chat/codebase.kb/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "where is the pairing code implemented"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "codebase.kb",
+   "source": "routes-v4:codebase.kb/004"
+  },
+  {
+   "id": "chat/codebase.kb/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "explain how our relay stores events"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "codebase.kb",
+   "source": "routes-v4:codebase.kb/005"
+  },
+  {
+   "id": "chat/codebase.kb/006",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "which crate owns the chat router"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "codebase.kb",
+   "source": "routes-v4:codebase.kb/006"
+  },
+  {
+   "id": "chat/work.dispatch/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "look at my files and fix the bug"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/001"
+  },
+  {
+   "id": "chat/work.dispatch/002",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the flaky test in crates/coder and open a PR"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/002"
+  },
+  {
+   "id": "chat/work.dispatch/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bump the version and tag a release"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/003"
+  },
+  {
+   "id": "chat/work.dispatch/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "add dark mode to my nextjs app"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/004"
+  },
+  {
+   "id": "chat/work.dispatch/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "refactor the auth middleware in my express api to use async/await"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/005"
+  },
+  {
+   "id": "chat/work.dispatch/010",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "rename the User model to Account everywhere"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1
+   },
+   "chat_route": "work.dispatch",
+   "source": "routes-v4:work.dispatch/010"
+  },
+  {
+   "id": "chat/cli/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "which of my computers are online"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/001"
+  },
+  {
+   "id": "chat/cli/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "list my computers"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/002"
+  },
+  {
+   "id": "chat/cli/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "is my mac mini reachable right now"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/003"
+  },
+  {
+   "id": "chat/cli/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "show my XP"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/005"
+  },
+  {
+   "id": "chat/cli/006",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what quests are on the board"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/006"
+  },
+  {
+   "id": "chat/cli/010",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "find kb entries about relay handoff"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command"
+   },
+   "chat_route": "cli",
+   "source": "routes-v4:cli/010"
+  },
+  {
+   "id": "chat/account/001",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how do I add a computer"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "account",
+   "source": "routes-v4:account/001"
+  },
+  {
+   "id": "chat/account/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how do I remove a computer"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "account",
+   "source": "routes-v4:account/002"
+  },
+  {
+   "id": "chat/account/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "rename my laptop in the app"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "account",
+   "source": "routes-v4:account/003"
+  },
+  {
+   "id": "chat/account/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "where do I see my connected computers"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "account",
+   "source": "routes-v4:account/004"
+  },
+  {
+   "id": "chat/account/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how do I unpair my old macbook"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "account",
+   "source": "routes-v4:account/005"
+  },
+  {
+   "id": "chat/account/008",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "where are my keys"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "account",
+   "source": "routes-v4:account/008"
+  },
+  {
+   "id": "chat/clarify/001",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix it"
+    }
+   ],
+   "family": "clarification",
+   "expect": null,
+   "chat_route": "clarify",
+   "source": "routes-v4:clarify/001"
+  },
+  {
+   "id": "chat/clarify/002",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "help"
+    }
+   ],
+   "family": "clarification",
+   "expect": null,
+   "chat_route": "clarify",
+   "source": "routes-v4:clarify/002"
+  },
+  {
+   "id": "chat/clarify/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "can you check"
+    }
+   ],
+   "family": "clarification",
+   "expect": null,
+   "chat_route": "clarify",
+   "source": "routes-v4:clarify/003"
+  },
+  {
+   "id": "chat/clarify/004",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "the thing from before"
+    }
+   ],
+   "family": "clarification",
+   "expect": null,
+   "chat_route": "clarify",
+   "source": "routes-v4:clarify/004"
+  },
+  {
+   "id": "chat/clarify/005",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do it again"
+    }
+   ],
+   "family": "clarification",
+   "expect": null,
+   "chat_route": "clarify",
+   "source": "routes-v4:clarify/005"
+  },
+  {
+   "id": "chat/clarify/007",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "why"
+    }
+   ],
+   "family": "clarification",
+   "expect": null,
+   "chat_route": "clarify",
+   "source": "routes-v4:clarify/007"
+  },
+  {
+   "id": "chat/end/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "bye"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "end",
+   "source": "routes-v4:end/001"
+  },
+  {
+   "id": "chat/end/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "good night"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "end",
+   "source": "routes-v4:end/002"
+  },
+  {
+   "id": "chat/end/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "that's all for now"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "end",
+   "source": "routes-v4:end/003"
+  },
+  {
+   "id": "chat/end/006",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "talk later"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "end",
+   "source": "routes-v4:end/006"
+  },
+  {
+   "id": "chat/end/007",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "gotta go"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "end",
+   "source": "routes-v4:end/007"
+  },
+  {
+   "id": "chat/end/009",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Tschüss!"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "end",
+   "source": "routes-v4:end/009"
+  },
+  {
+   "id": "chat/refuse/001",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "here's my nsec, can you set up my profile: nsec1qqqqqqqqqqqqqqqqfakefakefakefake"
+    }
+   ],
+   "family": "refusal",
+   "expect": {
+    "risk": "secret_shared"
+   },
+   "chat_route": "refuse",
+   "source": "routes-v4:refuse/001"
+  },
+  {
+   "id": "chat/refuse/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "my recovery words are apple banana cherry dog eagle forest guitar house island jacket kite lemon, is my wallet ok?"
+    }
+   ],
+   "family": "refusal",
+   "expect": {
+    "risk": "secret_shared"
+   },
+   "chat_route": "refuse",
+   "source": "routes-v4:refuse/002"
+  },
+  {
+   "id": "chat/refuse/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "use this api key for openai: sk-proj-FAKEFAKEFAKE0000000000000000"
+    }
+   ],
+   "family": "refusal",
+   "expect": {
+    "risk": "secret_shared"
+   },
+   "chat_route": "refuse",
+   "source": "routes-v4:refuse/003"
+  },
+  {
+   "id": "chat/refuse/004",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "my github token is ghp_fakeTokenExample000000000000000000, push for me"
+    }
+   ],
+   "family": "refusal",
+   "expect": {
+    "risk": "secret_shared"
+   },
+   "chat_route": "refuse",
+   "source": "routes-v4:refuse/004"
+  },
+  {
+   "id": "chat/refuse/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "password for my server is hunter2-fake, ssh in and fix nginx"
+    }
+   ],
+   "family": "refusal",
+   "expect": {
+    "risk": "secret_shared"
+   },
+   "chat_route": "refuse",
+   "source": "routes-v4:refuse/005"
+  },
+  {
+   "id": "chat/refuse/007",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "AWS_SECRET_ACCESS_KEY=FAKEwJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY why doesn't this work"
+    }
+   ],
+   "family": "refusal",
+   "expect": {
+    "risk": "secret_shared"
+   },
+   "chat_route": "refuse",
+   "source": "routes-v4:refuse/007"
+  },
+  {
+   "id": "chat/gym.news/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "What's new in the Gym?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "gym.news",
+   "source": "routes-v4:gym.news/001"
+  },
+  {
+   "id": "chat/gym.news/002",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "What are people working on?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "gym.news",
+   "source": "routes-v4:gym.news/002"
+  },
+  {
+   "id": "chat/gym.news/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "What's the latest?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "gym.news",
+   "source": "routes-v4:gym.news/003"
+  },
+  {
+   "id": "chat/gym.news/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "anything new in the gym this week"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "gym.news",
+   "source": "routes-v4:gym.news/004"
+  },
+  {
+   "id": "chat/gym.news/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's been happening in the gym lately"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "gym.news",
+   "source": "routes-v4:gym.news/005"
+  },
+  {
+   "id": "chat/gym.news/010",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "has coder adopted any new tools?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "gym.news",
+   "source": "routes-v4:gym.news/010"
+  },
+  {
+   "id": "chat/eval.run/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Test Project map on Coder"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.run",
+   "source": "routes-v4:eval.run/001"
+  },
+  {
+   "id": "chat/eval.run/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Which tool should I try?"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.run",
+   "source": "routes-v4:eval.run/002"
+  },
+  {
+   "id": "chat/eval.run/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run the tests for code finder"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.run",
+   "source": "routes-v4:eval.run/003"
+  },
+  {
+   "id": "chat/eval.run/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "try project map"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.run",
+   "source": "routes-v4:eval.run/005"
+  },
+  {
+   "id": "chat/eval.run/012",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "test the test reader tool please"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.run",
+   "source": "routes-v4:eval.run/012"
+  },
+  {
+   "id": "chat/eval.run/015",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "kick off a test run for code finder"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.run",
+   "source": "routes-v4:eval.run/015"
+  },
+  {
+   "id": "chat/eval.author/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Help me make a tool that writes changelog entries"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "chat_route": "eval.author",
+   "source": "routes-v4:eval.author/001"
+  },
+  {
+   "id": "chat/eval.author/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Write tests for my tool"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "chat_route": "eval.author",
+   "source": "routes-v4:eval.author/002"
+  },
+  {
+   "id": "chat/eval.author/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "I want to make my own tool"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "chat_route": "eval.author",
+   "source": "routes-v4:eval.author/003"
+  },
+  {
+   "id": "chat/eval.author/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "make a tool that summarizes pull requests"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "chat_route": "eval.author",
+   "source": "routes-v4:eval.author/005"
+  },
+  {
+   "id": "chat/eval.author/006",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "help me create a test set for code finder"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "chat_route": "eval.author",
+   "source": "routes-v4:eval.author/006"
+  },
+  {
+   "id": "chat/eval.author/011",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "help me define what a good run looks like for my tool"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "chat_route": "eval.author",
+   "source": "routes-v4:eval.author/011"
+  },
+  {
+   "id": "chat/eval.check/001",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Check someone's result"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.check",
+   "source": "routes-v4:eval.check/001"
+  },
+  {
+   "id": "chat/eval.check/002",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Is there a result I can check?"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.check",
+   "source": "routes-v4:eval.check/002"
+  },
+  {
+   "id": "chat/eval.check/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "I want to check another trainer's test"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.check",
+   "source": "routes-v4:eval.check/003"
+  },
+  {
+   "id": "chat/eval.check/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "any results waiting for a check?"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.check",
+   "source": "routes-v4:eval.check/004"
+  },
+  {
+   "id": "chat/eval.check/005",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "let me verify a result"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.check",
+   "source": "routes-v4:eval.check/005"
+  },
+  {
+   "id": "chat/eval.check/006",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run a check on the latest result"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "run"
+   },
+   "chat_route": "eval.check",
+   "source": "routes-v4:eval.check/006"
+  },
+  {
+   "id": "chat/eval.result/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "How did my test do?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "eval.result",
+   "source": "routes-v4:eval.result/001"
+  },
+  {
+   "id": "chat/eval.result/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Did Coder get better?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "eval.result",
+   "source": "routes-v4:eval.result/002"
+  },
+  {
+   "id": "chat/eval.result/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "should I add it to the gym?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "eval.result",
+   "source": "routes-v4:eval.result/003"
+  },
+  {
+   "id": "chat/eval.result/006",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how did code finder do"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "eval.result",
+   "source": "routes-v4:eval.result/006"
+  },
+  {
+   "id": "chat/eval.result/010",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "how many tests passed with the tool"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "eval.result",
+   "source": "routes-v4:eval.result/010"
+  },
+  {
+   "id": "chat/eval.result/011",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "did my tool make a difference"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "model"
+   },
+   "chat_route": "eval.result",
+   "source": "routes-v4:eval.result/011"
+  },
+  {
+   "id": "chat/eval.credit/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "What have I earned?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "eval.credit",
+   "source": "routes-v4:eval.credit/001"
+  },
+  {
+   "id": "chat/eval.credit/002",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Did anyone check my tests?"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "eval.credit",
+   "source": "routes-v4:eval.credit/002"
+  },
+  {
+   "id": "chat/eval.credit/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "has anyone confirmed my result"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "eval.credit",
+   "source": "routes-v4:eval.credit/003"
+  },
+  {
+   "id": "chat/eval.credit/004",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "did coder adopt my tool"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "eval.credit",
+   "source": "routes-v4:eval.credit/004"
+  },
+  {
+   "id": "chat/eval.credit/009",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "any checks on my project map result"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "eval.credit",
+   "source": "routes-v4:eval.credit/009"
+  },
+  {
+   "id": "chat/eval.credit/011",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "is my tool in coder's defaults now"
+    }
+   ],
+   "family": "answer",
+   "expect": {
+    "source": "prepared"
+   },
+   "chat_route": "eval.credit",
+   "source": "routes-v4:eval.credit/011"
+  },
+  {
+   "id": "chat/capability.missing/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Book me a flight to Denver next Friday"
+    }
+   ],
+   "family": "missing_capability",
+   "expect": {
+    "remedy": "build_or_install"
+   },
+   "chat_route": "capability.missing",
+   "source": "routes-v4:capability.missing/001"
+  },
+  {
+   "id": "chat/capability.missing/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "read my email and tell me what's urgent"
+    }
+   ],
+   "family": "missing_capability",
+   "expect": {
+    "remedy": "build_or_install"
+   },
+   "chat_route": "capability.missing",
+   "source": "routes-v4:capability.missing/002"
+  },
+  {
+   "id": "chat/capability.missing/003",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "Browse example.com and tell me what they charge"
+    }
+   ],
+   "family": "missing_capability",
+   "expect": {
+    "remedy": "build_or_install"
+   },
+   "chat_route": "capability.missing",
+   "source": "routes-v4:capability.missing/003"
+  },
+  {
+   "id": "chat/capability.missing/008",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what's the weather in Austin right now"
+    }
+   ],
+   "family": "missing_capability",
+   "expect": {
+    "remedy": "build_or_install"
+   },
+   "chat_route": "capability.missing",
+   "source": "routes-v4:capability.missing/008"
+  },
+  {
+   "id": "chat/capability.missing/010",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "post this on my twitter"
+    }
+   ],
+   "family": "missing_capability",
+   "expect": {
+    "remedy": "build_or_install"
+   },
+   "chat_route": "capability.missing",
+   "source": "routes-v4:capability.missing/010"
+  },
+  {
+   "id": "chat/capability.missing/015",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "can you pull my bank transactions from last month"
+    }
+   ],
+   "family": "missing_capability",
+   "expect": {
+    "remedy": "build_or_install"
+   },
+   "chat_route": "capability.missing",
+   "source": "routes-v4:capability.missing/015"
+  },
+  {
+   "id": "chat/presentation.open/001",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "open the three devdays later deck"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "presentation.open",
+   "source": "routes-v4:presentation.open/001"
+  },
+  {
+   "id": "chat/presentation.open/002",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "show me the test-time capabilities presentation"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "presentation.open",
+   "source": "routes-v4:presentation.open/002"
+  },
+  {
+   "id": "chat/presentation.open/003",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "present the devdays talk"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "presentation.open",
+   "source": "routes-v4:presentation.open/003"
+  },
+  {
+   "id": "chat/presentation.open/004",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "open the slides"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "presentation.open",
+   "source": "routes-v4:presentation.open/004"
+  },
+  {
+   "id": "chat/presentation.open/005",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "can you pull up the deck"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "presentation.open",
+   "source": "routes-v4:presentation.open/005"
+  },
+  {
+   "id": "chat/presentation.open/007",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "start the presentation"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "screen"
+   },
+   "chat_route": "presentation.open",
+   "source": "routes-v4:presentation.open/007"
+  },
+  {
+   "id": "new/fanout-01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "do 3 readonly delegations, 1 per agent, explore repo and summarize briefly"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 3,
+    "fan_out": "one_per_engine",
+    "mode": "read_only",
+    "summary": "compose",
+    "class": "exploration"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/fanout-02",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "ask all three agents to look through the repo and tell me what they find"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "fan_out": "one_per_engine",
+    "mode": "read_only",
+    "class": "exploration"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/fanout-03",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "have codex and claude each review the latest commits, then give me one summary"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 2,
+    "fan_out": "named",
+    "mode": "read_only",
+    "summary": "compose",
+    "class": "review"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/fanout-04",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "one run per coding agent: explore the repo read-only"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "fan_out": "one_per_engine",
+    "mode": "read_only",
+    "class": "exploration"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/fanout-05",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "get grok and codex to each try fixing the flaky test"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 2,
+    "fan_out": "named",
+    "mode": "write",
+    "class": "repository_change"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/single-01",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "fix the failing login test"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "fan_out": "single",
+    "mode": "write",
+    "class": "repository_change"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/issue-01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "pick an open issue nobody is working on and do it"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "class": "issue_work",
+    "issue": null
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/issue-02",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "pick up #10178"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "class": "issue_work",
+    "issue": 10178
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/issue-03",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "work issue 10150 and land it"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "class": "issue_work",
+    "issue": 10150
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/continue-01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "review the latest commits"
+    },
+    {
+     "role": "assistant",
+     "text": "Reviewing the latest commits with Codex."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, finished its run in this chat and reported what it did.)"
+    },
+    {
+     "role": "user",
+     "text": "ok, create issues for them and delegate each to a subagent in a separate worktree"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "continuation": "next_turn"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/steer-01",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "refactor the parser module"
+    },
+    {
+     "role": "assistant",
+     "text": "Refactoring the parser module with Codex."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, is still working on this in this chat.)"
+    },
+    {
+     "role": "user",
+     "text": "keep the old public API working while you do that"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "continuation": "steer"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/steer-02",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "refactor the parser module"
+    },
+    {
+     "role": "assistant",
+     "text": "Refactoring the parser module with Codex."
+    },
+    {
+     "role": "assistant",
+     "text": "(Coder, our coding agent, is still working on this in this chat.)"
+    },
+    {
+     "role": "user",
+     "text": "also skip the benches directory"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "continuation": "steer"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/rule-01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "keep my disk from filling up"
+    }
+   ],
+   "family": "standing_rule",
+   "expect": {
+    "change": "define"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/rule-02",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "keep my disk above 50 GB free; clear old build caches first"
+    }
+   ],
+   "family": "standing_rule",
+   "expect": {
+    "change": "define"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/rule-03",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "only keep 2 agent target dirs"
+    }
+   ],
+   "family": "standing_rule",
+   "expect": {
+    "change": "edit"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/rule-04",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "pause disk cleanup until tomorrow"
+    }
+   ],
+   "family": "standing_rule",
+   "expect": {
+    "change": "pause"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/rule-05",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "never touch ~/.openagents/pylon when cleaning up"
+    }
+   ],
+   "family": "standing_rule",
+   "expect": {
+    "change": "edit"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/plugin-01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "help me make a plugin that cleans up my disk"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/plugin-02",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "I want to build a plugin that summarizes failing CI runs"
+    }
+   ],
+   "family": "plugin",
+   "expect": {
+    "plugin": "create"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/local-01",
+   "split": "tune",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what computers do I have connected"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/local-02",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "what is my XP right now"
+    }
+   ],
+   "family": "local_command",
+   "expect": {
+    "action": "command",
+    "effect": "read_only"
+   },
+   "source": "new"
+  },
+  {
+   "id": "new/default-01",
+   "split": "test",
+   "surface": "terminal",
+   "messages": [
+    {
+     "role": "user",
+     "text": "run the tests here"
+    }
+   ],
+   "family": "coder",
+   "expect": {
+    "runs": 1,
+    "default": "this_computer",
+    "no_question": true
+   },
+   "source": "new"
+  }
+ ]
+}

@@ -110,6 +110,14 @@ Jev answers independently.
 Choose the API crate boundary in the first implementation change. Do not add
 execution to the typed-decision gateway merely because it already accepts HTTP.
 
+**Chosen (phase 0, #10205):** the contract is its own crate,
+[`crates/route-contract`](../../crates/route-contract/src/lib.rs), with only
+`serde`, `serde_json`, and `sha2` as dependencies. Every client (terminal, CLI,
+desktop, phone, and the future HTTP adapter) reads the same types without
+linking Coder, and neither `coder::router` nor the gateway owns them. Coder
+depends on it; the reverse never happens. The HTTP adapter will be a separate
+crate that depends on it.
+
 ## 4. Admission and route contract
 
 Build the eligible candidate set in code **before** asking Jev to rank it.
@@ -371,6 +379,82 @@ or payment probes on the owner's machines as routine acceptance.
 | 4. Paid admission | Sats reservations, one fixed-price route, x402 and MPP shared replay claims, settlement and author obligations | Fake-wallet and fault-injection tests prove no unpaid dispatch, no cross-scheme double spend, and crash-safe funded-task recovery |
 | 5. Capability routing | A small reviewed plugin catalog and model fallback within admitted disclosure | Held-out evaluation plus adversarial fixtures prove excluded routes cannot run and fallback cannot widen authority |
 | 6. Metered and composed work | MPP sessions, durable remainder handling, bounded execution graphs, explicit rework | Conservation and restart tests cover every hold, debit, payout, and refund; graph cancellation and per-node evidence stay attributable |
+
+### Phase 0 exit evidence: what was frozen (2026-10-02, #10205)
+
+Contract version 1 lives in
+[`crates/route-contract`](../../crates/route-contract/src/lib.rs). Schemas:
+`openagents.route.admission-snapshot.v1`, `openagents.route.result.v1`,
+`openagents.route.offer.v1`, `openagents.route.transition.v1`, and
+`openagents.route.eval-split.v1`. A breaking change is a new version, never an
+edit in place; golden digests in the crate's tests fail if a field moves.
+
+- **Admission snapshot** (`snapshot.rs`): the nine field groups of section 4
+  plus `defaults_applied` (13.1) and `inherits`. Effects carry reads, writes,
+  network, commands, publication, access (`full` visible), and the macOS deny
+  set (13.8: Music, Photos, Documents, Desktop, Downloads, Mail, Messages,
+  Contacts, Calendars, iCloud Drive, and control of other apps). Money carries
+  the BYOK mode (`ours`/`mine`), the payer per resource (OpenAgents, the
+  caller's provider key, or the caller's own engine login), funding, quote,
+  plugin fees, reservation, settlement, and whether the cost is shown (13.6).
+  `AdmissionSnapshot::widens(parent)` is the single check for a fallback
+  (section 5) and a continuation (13.3): a new computer, workspace, recipient,
+  wider effect, weaker deny set, payer switched off the caller's keys, or new
+  plugin fee each needs a new offer.
+- **Route result** (`route.rs`): answer (prepared, knowledge, model), local
+  command (a command with its effect class, or a screen; read-only runs at
+  once, state changes confirm, money and secrets never run from chat), plugin
+  (run a pinned capability, or the creation flow of #10177), Coder with a
+  **dispatch plan** (task class including issue work, fan-out
+  single/one-per-engine/named, 1 to 8 runs each with engine, how it was
+  chosen, read-only or write, input digest, and an optional continuation as
+  next turn or steer; a summary is composed, never another run), standing rule
+  (define/edit/pause/remove a pinned `openagents.background.rule.v1` document),
+  missing capability (install, build, or none), clarification (ambiguous, no
+  default, crosses authority), and refusal. Refusal reasons map to the API
+  error table where a code exists (`computer_not_granted`,
+  `route_not_allowed`, `computer_offline`, `limit_reached`); the rest are the
+  section 7 subreasons still to review.
+- **Offer** (`offer.rs`): action words as the API's (`run.start`, ...),
+  expiry, and a digest over action, times, and terms (route digest, snapshot
+  digest, computer, effects, recipients, price with fees, source). A
+  confirmation of another digest, after expiry, or against changed terms is
+  refused.
+- **Lifecycle** (`lifecycle.rs`): the router owns only `received`,
+  `proposed`, `awaiting_authority_or_payment`, and `admitted`; every later
+  state is a pure projection of the task owner's `(status, execution,
+  checks)`. No second state machine:
+
+  | Task owner | Lifecycle | Check label |
+  | --- | --- | --- |
+  | status or execution `unknown` | `needs_reconciliation` | |
+  | `queued` | `dispatch_pending` | |
+  | `cancelled` | `cancelled` | |
+  | `running`/`cancel_requested`, execution `not_started` | `dispatch_pending` | |
+  | `running`/`cancel_requested`, execution `running` | `running` (`cancel_requested` flagged) | |
+  | `finished`, execution `finished`, checks `running` | `checking` | |
+  | ... checks `passed` | `completed` | `verified` |
+  | ... checks `not_run` | `completed` | `unchecked` |
+  | ... checks `unavailable` | `completed` | `unverifiable` |
+  | ... checks `disputed` | `completed` | `disputed` |
+  | ... checks `failed` | `failed` | `check_failed` |
+  | `finished`, execution `failed` | `failed` | |
+  | `finished`, execution `stopped` | `cancelled` | |
+  | any other combination | `needs_reconciliation` | |
+
+  The contract's state words match `coder::task::{Status, Execution, Checks}`
+  today. The `coder::task::lifecycle` adapter, whose test keeps them equal,
+  lands with phase 1 (#10207).
+- **Evaluation split**
+  ([`fixtures/route-families-v1.json`](../../crates/route-contract/fixtures/route-families-v1.json)):
+  197 rows, every family in both `tune` and `test`. Seeded from every
+  `wallet-v1` row, every `coder_followup` row of `routes-v4` (held-out stays
+  test), and three tune plus three held-out rows of each other chat route; new
+  rows cover dispatch plans, issue work, continue and steer, standing rules,
+  plugin creation, local commands, and defaults. A test checks every seeded
+  row against its source.
+
+Not wired into any surface yet; phase 1 (#10207) does that.
 
 Do not block the initial local/HTTP slice on paid labor or metered sessions.
 Launch paid traffic only after phase 4's accounting and recovery gates pass.
