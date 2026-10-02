@@ -102,9 +102,52 @@ and `crates/openagents-cli` (`plugin list|run|test|defaults`):
 
 ## How the plugin was made
 
-The disk cleanup plugin is made through OpenAgents, as a user would:
-asking in chat for a plugin that keeps the disk from filling up, letting
-OpenAgents build it, drafting and approving its tests, running them, and
-publishing the result. The conversation, each place the flow fell short,
-and the fix for each are recorded in
-[#10165](https://github.com/OpenAgentsInc/openagents/issues/10165).
+`plugins/disk-cleanup` came out of OpenAgents, driven as a user would, on
+2026-10-02 (#10165):
+
+1. **Asked in chat** (`openagents chat`, thread
+   `06904082b508c7130af68f9a00386d37`): "Help me make a plugin that keeps
+   my disk from filling up. It should run in the background on this
+   computer and be off unless I turn it on. Same behaviour as the built-in
+   disk monitor: …" with the thresholds, the six kinds of folders, what it
+   must never touch, dry run, log, and undo. The router chose
+   `work.dispatch` and offered Coder; Codex built the package (record,
+   pinned rule, README) and its tests in the `background` crate. It chose
+   to start the rule paused, so the first real run waits for a dry run, as
+   the spec's safety rule 5 asks, and turned the built-in rule off for new
+   hosts.
+2. **Asked for one change** in the same thread: plan worktrees exactly as
+   the built-in does (it had refused worktrees with no task record).
+   Coder's second turn did, with a test that the plugin plans exactly what
+   the built-in plans.
+3. **Wrote its tests with the interview** (`openagents plugin test init
+   plugins/disk-cleanup`): approved the description; said what a good and
+   a failed run look like and to grade the reply; approved the six tests
+   (four where it should help, two where it should stay out of the way),
+   the checks, and the size.
+4. **Ran them** (`openagents plugin test run plugins/disk-cleanup`):
+   **No clear change**, 6 of 6 with the plugin and 6 of 6 without (one
+   test 2 of 3 with). The tests ask Coder about cleanup policy, which it
+   answers well either way; what the plugin adds is the work it does in
+   the background, which a Coder turn does not exercise.
+5. **Published the result** to the Gym: suite release
+   `d3c07460b9dc685a690f783991e39f03482fe6551f2aceb9dc105868f96efd25`,
+   result `7b7bda59b41a3a0d7295ff2dd5f5c8532ddad5d07509768aff26278f49627893`
+   on `wss://relay.openagents.com`.
+6. **Turned it on** on each computer with `openagents plugin install
+   plugins/disk-cleanup`, `openagents plugin enable disk-cleanup`, a dry
+   run compared with the built-in rule's, and `openagents background resume
+   disk-cleanup`.
+
+### Where the flow fell short
+
+| Friction | Fix |
+| --- | --- |
+| A plugin could not run in the background, ask for a delete capability, or be turned on per computer. | `background::plugins`, `package.json` `background`, `plugin install|enable|disable|installed`, `/plugins` Space (72cf012985). |
+| "Help me make a plugin …" with no details got a plan reply and a Coder offer, not the interview; with details it went straight to Coder. The interview only writes tests for a plugin that exists. | None yet: building first, then `plugin test init`, worked. |
+| `plugin test init` sent the model door an empty conversation, which the gateway refuses (`input: Too small`). | The person's request is the first message. |
+| A background plugin's tests admitted nothing in the subject arm (no program, no skills). | The subject arm reads each pinned background rule as guidance. |
+| The interview cannot try or run the tests itself from a terminal; it prints the command. | None yet. |
+| Tests that grade files a run makes fail: a `coder -p` turn answered in chat. | Asked the interview to grade the reply. |
+| `plugin test publish` uploads suite files to the relay, which refuses uploads (405); there is no public store for a person's suite. | Released with `--blobs-dir`, copied the files to the eval blob bucket, and published with `--blossom` naming it. |
+| Nothing publishes a plugin itself to a registry (a NIP-EXT listing); the Gym holds its test result. | None yet. |

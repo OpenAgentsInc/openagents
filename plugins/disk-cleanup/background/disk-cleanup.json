@@ -1,0 +1,108 @@
+{
+  "schema": "openagents.background.rule.v1",
+  "id": "disk-cleanup",
+  "name": "Disk cleanup",
+  "version": 1,
+  "origin": {
+    "kind": "file",
+    "path": "background/disk-cleanup.json"
+  },
+  "enabled": false,
+  "triggers": [
+    {
+      "kind": "interval",
+      "every_secs": 300
+    },
+    {
+      "kind": "threshold"
+    },
+    {
+      "kind": "task_ended"
+    },
+    {
+      "kind": "host_start"
+    }
+  ],
+  "goal": {
+    "start": {
+      "bytes": 30000000000,
+      "percent": 5
+    },
+    "stop": {
+      "bytes": 60000000000,
+      "percent": 15
+    },
+    "emergency": {
+      "bytes": 10000000000,
+      "percent": 1
+    },
+    "max_freed": 100000000000
+  },
+  "actions": [
+    {
+      "kind": "delete_caches",
+      "classes": [
+        "ended_targets",
+        "stale_targets"
+      ]
+    },
+    {
+      "kind": "prune_worktrees"
+    },
+    {
+      "kind": "delete_caches",
+      "classes": [
+        "gate_pools"
+      ]
+    },
+    {
+      "kind": "cargo_clean_partial"
+    },
+    {
+      "kind": "empty_trash"
+    }
+  ],
+  "classes": {
+    "agent_targets": [
+      "~/work/openagents-target-agent*"
+    ],
+    "checkouts": [
+      "~/work/*"
+    ],
+    "idle_days": 3,
+    "checkout_days": 7,
+    "keep": 0,
+    "orphan_worktree_days": 7,
+    "gate_idle_hours": 1
+  },
+  "safety": {
+    "allow": [
+      "~/.openagents/targets",
+      "~/.openagents/coder-one/target",
+      "~/.openagents/worktrees",
+      "~/.openagents/gate",
+      "~/.openagents/background/trash",
+      "~/work"
+    ],
+    "deny": [],
+    "report": [
+      "~/.openagents/pylon",
+      "~/Library/Caches",
+      "/private/var/folders"
+    ]
+  },
+  "cooldown_secs": 600,
+  "needs": {
+    "delete": [
+      "ended_targets",
+      "stale_targets",
+      "worktrees",
+      "gate_pools",
+      "incremental",
+      "trash"
+    ],
+    "tasks": true,
+    "notify": true
+  },
+  "paused_until": 18446744073709551615
+}

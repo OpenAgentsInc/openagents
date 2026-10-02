@@ -563,7 +563,8 @@ fn classes_run_in_order_oldest_first_until_the_goal() {
 
 #[test]
 fn cooldown_waits_and_an_emergency_does_not() {
-    let rule: Rule = disk();
+    let mut rule: Rule = disk();
+    rule.enabled = true;
     let total = 1_000 * GB;
     let now = 1_000_000;
     let start = rule.goal.start.of(total);
@@ -625,6 +626,11 @@ fn checked(rule: &Rule, cause: Cause) -> (bool, Option<Cause>) {
 #[test]
 fn each_automatic_check_needs_its_own_trigger() {
     use crate::rule::Trigger;
+    let enabled = || {
+        let mut rule = disk();
+        rule.enabled = true;
+        rule
+    };
     let automatic = [
         (Cause::HostStart, Trigger::HostStart),
         (Cause::TaskEnded, Trigger::TaskEnded),
@@ -632,11 +638,14 @@ fn each_automatic_check_needs_its_own_trigger() {
     ];
     // Every trigger named: each automatic check runs.
     for (cause, _) in &automatic {
-        assert!(checked(&disk(), *cause).0, "{cause:?} with every trigger");
+        assert!(
+            checked(&enabled(), *cause).0,
+            "{cause:?} with every trigger"
+        );
     }
     // One trigger removed: only that path stops.
     for (_, removed) in &automatic {
-        let mut rule = disk();
+        let mut rule = enabled();
         rule.triggers.retain(|trigger| trigger != removed);
         for (cause, trigger) in &automatic {
             let ran = checked(&rule, *cause).0;
@@ -644,7 +653,7 @@ fn each_automatic_check_needs_its_own_trigger() {
         }
     }
     // No interval trigger: no interval schedule at all.
-    let mut rule = disk();
+    let mut rule = enabled();
     rule.triggers
         .retain(|trigger| !matches!(trigger, Trigger::Interval { .. }));
     assert_eq!(rule.interval(), None);
@@ -652,8 +661,11 @@ fn each_automatic_check_needs_its_own_trigger() {
     assert!(!crate::runner::fires(&rule, Cause::Threshold));
     // An interval check records `threshold` when the rule names it, and
     // `interval` when it does not.
-    assert_eq!(checked(&disk(), Cause::Interval).1, Some(Cause::Threshold));
-    let mut rule = disk();
+    assert_eq!(
+        checked(&enabled(), Cause::Interval).1,
+        Some(Cause::Threshold)
+    );
+    let mut rule = enabled();
     rule.triggers
         .retain(|trigger| *trigger != Trigger::Threshold);
     assert_eq!(checked(&rule, Cause::Interval).1, Some(Cause::Interval));
@@ -882,4 +894,119 @@ fn an_edit_on_this_computer_cannot_widen_a_plugin_rule_and_its_files_are_never_c
     // Installed plugins are on the host's own deny list.
     let deny = home.layout.deny(&disk());
     assert!(deny.contains(&home.layout.extensions()));
+}
+
+#[test]
+fn shipped_disk_cleanup_package_is_pinned_opt_in_and_matches_host_policy() {
+    let home = Home::new();
+    let text = include_str!("../../../plugins/disk-cleanup/background/disk-cleanup.json");
+    let package: serde_json::Value =
+        serde_json::from_str(include_str!("../../../plugins/disk-cleanup/package.json")).unwrap();
+    assert_eq!(
+        package["background"][0]["digest"],
+        crate::plugins::digest(text)
+    );
+    let rule: Rule = serde_json::from_str(text).unwrap();
+    assert!(!rule.enabled);
+    assert!(!crate::store::load(&home.layout, "disk").unwrap().enabled);
+    assert_eq!(rule.goal, disk().goal);
+    assert_eq!(rule.triggers, disk().triggers);
+    assert_eq!(rule.actions, disk().actions);
+    assert_eq!(rule.needs.delete, crate::rule::Class::ALL);
+    install(&home, "disk-cleanup", &rule);
+    assert!(crate::plugins::rules(&home.layout).is_empty());
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
+    let admitted = crate::store::load(&home.layout, "disk-cleanup").unwrap();
+    assert!(!admitted.active(crate::paths::now()));
+    let ended = home.layout.targets().join("openagents-ended-1111");
+    target(&ended, 4096);
+    home.task(
+        "ended",
+        &home.layout.worktrees().join("ended"),
+        &ended,
+        true,
+    );
+    let facts = home.facts();
+    let volumes = Fixed {
+        free: 20 * GB,
+        total: 100 * GB,
+    };
+    let environment = env(&home, &facts, &volumes, &Idle);
+    let preview = run::run(&environment, &admitted, Cause::Manual, true, true).unwrap();
+    assert!(preview.record.is_none());
+    assert!(ended.exists());
+    assert!(planned(&preview.plan).contains(&ended));
+    let mut resumed = admitted.clone();
+    resumed.paused_until = None;
+    resumed.enabled = true;
+    crate::store::save(&home.layout, &resumed).unwrap();
+    assert!(
+        crate::store::load(&home.layout, "disk-cleanup")
+            .unwrap()
+            .active(environment.now)
+    );
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", false).unwrap();
+    assert!(crate::plugins::rules(&home.layout).is_empty());
+}
+
+#[test]
+fn shipped_plugin_worktree_plan_matches_builtin_including_old_orphans() {
+    let home = Home::new();
+    let (repository, trees) = repo(
+        &home,
+        &[
+            "ended",
+            "running",
+            "old-orphan",
+            "recent-orphan",
+            "dirty-orphan",
+            "unpushed-orphan",
+        ],
+    );
+    home.tasks
+        .lock()
+        .unwrap()
+        .retain(|task| task.id == "ended" || task.id == "running");
+    home.tasks
+        .lock()
+        .unwrap()
+        .iter_mut()
+        .find(|task| task.id == "running")
+        .unwrap()
+        .ended = false;
+    std::fs::write(trees[4].join("file"), "unsaved").unwrap();
+    std::fs::write(trees[5].join("file"), "unpushed").unwrap();
+    git(&trees[5], &["commit", "-qam", "unpushed"]);
+    for index in [1, 2, 4, 5] {
+        age(&trees[index], 8);
+    }
+    age(&trees[3], 6);
+    let rule: Rule = serde_json::from_str(include_str!(
+        "../../../plugins/disk-cleanup/background/disk-cleanup.json"
+    ))
+    .unwrap();
+    install(&home, "disk-cleanup", &rule);
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
+    let admitted = crate::store::load(&home.layout, "disk-cleanup").unwrap();
+    let facts = home.facts();
+    let volumes = low();
+    let environment = env(&home, &facts, &volumes, &Idle);
+    let builtin = plan(&environment, &disk(), false);
+    let preview = plan(&environment, &admitted, false);
+    assert_eq!(
+        serde_json::to_value(&builtin).unwrap(),
+        serde_json::to_value(&preview).unwrap()
+    );
+    let paths = planned(&preview);
+    assert!(paths.contains(&trees[0]));
+    assert!(paths.contains(&trees[2]));
+    for index in [1, 3, 4, 5] {
+        assert!(
+            !paths.contains(&trees[index]),
+            "{} must stay",
+            trees[index].display()
+        );
+    }
+    assert_eq!(git(&repository, &["worktree", "list"]).lines().count(), 7);
+    assert!(trees.iter().all(|tree| tree.exists()));
 }

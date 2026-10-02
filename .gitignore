@@ -19,3 +19,4 @@ bins/coder-android/host/app/google-services.json
 
 # Results `openagents ext eval run` writes beside a catalog extension's suite.
 /crates/plugin-*/evals/results/
+/plugins/*/evals/results/

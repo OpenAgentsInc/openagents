@@ -266,7 +266,7 @@ pub fn disk() -> Rule {
         name: "Disk cleanup".into(),
         version: 1,
         origin: Origin::BuiltIn,
-        enabled: true,
+        enabled: false,
         paused_until: None,
         triggers: vec![
             Trigger::Interval { every_secs: 300 },

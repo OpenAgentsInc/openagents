@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "slug": "disk-cleanup",
+  "name": "Disk cleanup",
+  "summary": "Opt-in background disk cleanup with previews, an audit log, and worktree undo.",
+  "version": "0.1.0",
+  "publisher": "",
+  "provenance": "local file",
+  "background": [
+    {
+      "name": "disk-cleanup",
+      "digest": "d546cb39adc8a7f129b9ce791dc89d77555784f8d8e4e616fbb698caec1bd1f5"
+    }
+  ]
+}

@@ -205,7 +205,7 @@ Safety checks run on every candidate, in code, after any judgment:
 
 ## The disk cleanup monitor
 
-The first built-in rule, `disk`, is enabled by default on every host.
+The first built-in rule, `disk`. Since #10165 it is off on a new host: the same rule ships as the Disk cleanup plugin (`plugins/disk-cleanup`), which a person turns on per computer ([Disk cleanup as a plugin](2026-10-02-disk-cleanup-plugin.md)). A saved `rules/disk.json` keeps its own setting.
 
 ### Default policy
 

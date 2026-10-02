@@ -269,6 +269,10 @@ mod tests {
             "the file alone is no runner"
         );
         lock.lock().unwrap();
+        assert!(super::watchers(&layout).is_empty());
+        let mut rule = crate::store::load(&layout, "disk").unwrap();
+        rule.enabled = true;
+        crate::store::save(&layout, &rule).unwrap();
         assert_eq!(super::watchers(&layout), vec!["disk cleanup".to_owned()]);
         let mut rule = crate::store::load(&layout, "disk").unwrap();
         rule.paused_until = Some(super::now() + 3600);

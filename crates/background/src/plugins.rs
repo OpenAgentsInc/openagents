@@ -228,7 +228,7 @@ pub fn admit(mut asked: Rule, plugin: &Installed) -> Result<Rule, String> {
         version: plugin.version.clone(),
     };
     asked.enabled = true;
-    asked.paused_until = None;
+    // Keep a packaged pause so activation can require a preview first.
     if rule::built_in(&asked.id).is_some() {
         return Err(named(format!(
             "a plugin cannot replace the built-in rule `{}`",
