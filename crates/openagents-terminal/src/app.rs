@@ -10,7 +10,7 @@ use coder_terminal::components::card::Card;
 use coder_terminal::components::run::RunRow;
 use coder_terminal::components::turn::Who;
 use coder_terminal::{ComposerAction, Editor, Intensity, Ladder, Scrollback, handle_key};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use openagents_chat::basic_chats::Summary;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::client::{Event, Kind, Op, Start};
@@ -21,6 +21,7 @@ use ratatui::text::Line;
 
 use crate::rows::{self, Row};
 use crate::slash::{self, Draft, Slash};
+use crate::view::{FileView, RunView, Selection, Shown};
 
 /// What the screen is doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +99,10 @@ pub enum Action {
     Sync,
     /// Put this text on the terminal's clipboard.
     Copy(String),
+    /// Send `text` to the running task (steering).
+    Steer { task: String, text: String },
+    /// Open the file a clicked word names, if it is one, at `line`.
+    OpenFile { path: String, line: Option<usize> },
     /// Close the screen.
     Quit,
 }
@@ -165,6 +170,24 @@ pub struct App {
     pub offline: Option<u64>,
     /// A plugin picked from the list: the next message is its request.
     pub plugin: Option<crate::Plugin>,
+    /// The thread's Coder run alone, every call with its output, for the
+    /// run view.
+    pub run_log: Scrollback<Row, Line<'static>, Wrap>,
+    /// The run view is open (Ctrl+R, `/run`).
+    pub run_view: Option<RunView>,
+    /// A file is open, read only.
+    pub file: Option<FileView>,
+    /// The text the mouse is selecting or selected.
+    pub selection: Option<Selection>,
+    /// What the last frame drew where text can be selected.
+    pub shown: Shown,
+    /// Messages sent to the run that it has not read yet.
+    steering: usize,
+    /// A message started this turn: the turn before it ending does not
+    /// end the run.
+    next_turn: Option<usize>,
+    /// The run's worktree, where the paths it names are.
+    pub worktree: Option<String>,
 }
 
 impl App {
@@ -199,6 +222,14 @@ impl App {
             expanded: false,
             offline: None,
             plugin: None,
+            run_log: transcript(ladder),
+            run_view: None,
+            file: None,
+            selection: None,
+            shown: Shown::default(),
+            steering: 0,
+            next_turn: None,
+            worktree: None,
         }
     }
 
@@ -231,6 +262,25 @@ impl App {
         self.starting = None;
         self.seen.clear();
         self.scroll = 0;
+        self.run_log = transcript(self.ladder);
+        self.run_view = None;
+        self.steering = 0;
+        self.next_turn = None;
+        self.worktree = None;
+    }
+
+    /// Add a row to the run view's log, and show its bottom.
+    fn push_run(&mut self, row: Row) {
+        self.run_log.push(row);
+        if let Some(view) = &mut self.run_view {
+            view.scroll = 0;
+        }
+    }
+
+    /// A row of the run, in the transcript and the run view.
+    fn push_both(&mut self, row: Row) {
+        self.push_run(row.clone());
+        self.push(row);
     }
 
     /// Show a thread's turns, as opening it does.
@@ -280,10 +330,31 @@ impl App {
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let armed = std::mem::take(&mut self.armed);
         let copied = std::mem::take(&mut self.copied);
+        self.selection = None;
         if self.overlay.is_some() {
             return self.overlay_key(key);
         }
+        if self.file.is_some() {
+            self.file_key(key);
+            return Vec::new();
+        }
         match (key.code, ctrl, alt) {
+            (KeyCode::Char('r'), true, _) => {
+                self.toggle_run();
+                Vec::new()
+            }
+            (KeyCode::Esc, _, _) if self.run_view.is_some() && self.plugin.is_none() => {
+                self.run_view = None;
+                Vec::new()
+            }
+            (KeyCode::PageUp, _, _) if self.run_view.is_some() => {
+                self.scroll_view(10);
+                Vec::new()
+            }
+            (KeyCode::PageDown, _, _) if self.run_view.is_some() => {
+                self.scroll_view(-10);
+                Vec::new()
+            }
             (KeyCode::Char('c'), true, _) => {
                 if !self.editor.is_empty() {
                     self.editor.take();
@@ -570,12 +641,26 @@ impl App {
                 self.push(Row::Card(help()));
                 Vec::new()
             }
+            Slash::Run => {
+                self.toggle_run();
+                Vec::new()
+            }
             Slash::Quit => vec![Action::Quit],
         }
     }
 
     /// A message: an answer when Coder waits on one, else a send.
     fn send(&mut self, text: String) -> Vec<Action> {
+        // The run view's composer talks to the run: an answer when it asks,
+        // else a message it reads at its next step.
+        if self.run_view.is_some()
+            && !self.asked
+            && let Some(task) = self.task.clone()
+        {
+            self.push_both(Row::Turn(Who::You, text.clone()));
+            self.steering += 1;
+            return vec![Action::Steer { task, text }];
+        }
         if self.phase == Phase::Replying || self.phase == Phase::Working {
             self.note("Wait for this reply, or press Esc to stop it.");
             self.editor.insert_str(&text);
@@ -585,6 +670,7 @@ impl App {
         self.offer = false;
         if self.asked && self.task.is_some() {
             self.asked = false;
+            self.push_run(Row::Turn(Who::You, text.clone()));
             return vec![Action::Run(Op::Answer {
                 thread: self.thread.clone(),
                 text,
@@ -779,45 +865,191 @@ impl App {
                 self.asked = false;
                 self.starting = None;
                 self.engine = Some(rows::provider(&started.provider));
+                self.worktree = Some(started.worktree.clone());
+                if self.next_turn.is_some_and(|next| started.turn >= next) {
+                    self.next_turn = None;
+                }
                 // One short line (#10115), and who runs only when that is
                 // news: another engine than asked, or one passed over.
-                self.push(Row::Note(started.line(), Intensity::ThreeQuarters));
+                self.push_both(Row::Note(started.line(), Intensity::ThreeQuarters));
                 if let Some(news) = started.news() {
-                    self.note(news);
+                    self.push_both(Row::note(news));
                 }
             }
             CoderEvent::Question(_) | CoderEvent::Approval(_) => self.asked = true,
+            CoderEvent::Step(step)
+                if step.kind == coder_events::StepKind::Message && self.steering > 0 =>
+            {
+                self.steering -= 1;
+                self.push_both(Row::note("Coder read your message."));
+            }
             _ => {}
         }
         if line.event.ends_turn() {
-            self.running = false;
+            // A turn that a message replaced ends; the run goes on with
+            // the next one.
+            let replaced = self
+                .next_turn
+                .is_some_and(|next| openagents_chat::client::turn_of(&line.event) < next);
+            self.running = replaced;
             self.progress = None;
-            if let Some(Row::Tools { stretch, .. }) = self.transcript.last_mut() {
-                stretch.settle();
+            for log in [&mut self.transcript, &mut self.run_log] {
+                if let Some(Row::Tools { stretch, .. }) = log.last_mut() {
+                    stretch.settle();
+                }
             }
         }
         // A command, a tool call, a thought, or what one returned joins the
         // open stretch, or starts one (#10117). A reply draws no row here,
-        // so it never splits one.
-        if let Some(Row::Tools { stretch, .. }) = self.transcript.last_mut()
-            && stretch.push(line.seq, &line.event)
-        {
+        // so it never splits one. The run view shows every call with its
+        // output.
+        if grow(&mut self.transcript, &line, self.expanded) {
             self.scroll = 0;
+        }
+        if grow(&mut self.run_log, &line, true)
+            && let Some(view) = &mut self.run_view
+        {
+            view.scroll = 0;
+        }
+    }
+
+    /// Open the run view, or close it.
+    pub fn toggle_run(&mut self) {
+        if self.run_view.take().is_some() {
             return;
         }
-        let mut stretch = Stretch::default();
-        if stretch.push(line.seq, &line.event) {
-            self.push(Row::Tools {
-                stretch,
-                expanded: self.expanded,
-            });
+        if self.task.is_none() {
+            self.note("This thread has no Coder run yet.");
             return;
         }
-        if let Some(mut row) = rows::run_row(&line.event) {
-            if let RunRow::Result { expanded, .. } = &mut row {
-                *expanded = self.expanded;
+        self.run_view = Some(RunView::default());
+    }
+
+    /// Scroll the run view back (`rows` over 0) or forward.
+    fn scroll_view(&mut self, rows: isize) {
+        if let Some(view) = &mut self.run_view {
+            view.scroll = view.scroll.saturating_add_signed(rows);
+        }
+    }
+
+    /// A key while a file is open: scroll it, or close it.
+    fn file_key(&mut self, key: &KeyEvent) {
+        let height = self.shown.rows.len().max(1);
+        let Some(file) = &mut self.file else {
+            return;
+        };
+        let page = isize::try_from(height.saturating_sub(1).max(1)).unwrap_or(1);
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.file = None,
+            KeyCode::Up => file.scroll(-1, height),
+            KeyCode::Down => file.scroll(1, height),
+            KeyCode::PageUp => file.scroll(-page, height),
+            KeyCode::PageDown | KeyCode::Char(' ') => file.scroll(page, height),
+            KeyCode::Home => file.top = 0,
+            KeyCode::End => file.scroll(isize::MAX, height),
+            _ => {}
+        }
+    }
+
+    /// A file the screen opened: it fills the screen until Esc.
+    pub fn show_file(&mut self, file: FileView) {
+        self.selection = None;
+        self.file = Some(file);
+    }
+
+    /// Where the paths a reply or a run names are: the run's worktree
+    /// first, then the folder the screen runs in.
+    pub fn bases(&self, folder: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
+        self.worktree
+            .iter()
+            .map(std::path::PathBuf::from)
+            .chain(folder.map(std::path::Path::to_path_buf))
+            .collect()
+    }
+
+    /// One mouse event: the wheel scrolls; a drag selects and letting go
+    /// copies; a click on a file's path opens it.
+    pub fn mouse(&mut self, mouse: &MouseEvent) -> Vec<Action> {
+        if self.overlay.is_some() {
+            return Vec::new();
+        }
+        let at = (mouse.column, mouse.row);
+        match mouse.kind {
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                let rows: isize = if mouse.kind == MouseEventKind::ScrollUp {
+                    3
+                } else {
+                    -3
+                };
+                let height = self.shown.rows.len();
+                if let Some(file) = &mut self.file {
+                    file.scroll(-rows, height);
+                } else if self.run_view.is_some() {
+                    self.scroll_view(rows);
+                } else {
+                    self.scroll = self.scroll.saturating_add_signed(rows);
+                }
+                Vec::new()
             }
-            self.push(Row::Run(row));
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.selection = self.shown.contains(at.0, at.1).then_some(Selection {
+                    anchor: at,
+                    head: at,
+                });
+                Vec::new()
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let Some(selection) = &mut self.selection {
+                    let area = self.shown.area;
+                    selection.head = (
+                        at.0.clamp(area.left(), area.right().saturating_sub(1)),
+                        at.1.clamp(area.top(), area.bottom().saturating_sub(1)),
+                    );
+                }
+                Vec::new()
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                let Some(selection) = self.selection else {
+                    return Vec::new();
+                };
+                if selection.is_click() {
+                    self.selection = None;
+                    return self
+                        .shown
+                        .word(at.0, at.1)
+                        .and_then(|word| crate::view::reference(&word))
+                        .map(|(path, line)| Action::OpenFile { path, line })
+                        .into_iter()
+                        .collect();
+                }
+                let text = self.shown.text(&selection);
+                if text.trim().is_empty() {
+                    self.selection = None;
+                    return Vec::new();
+                }
+                vec![Action::Copy(text)]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// A message reached the run: at its next step, or as the turn it
+    /// starts.
+    pub fn steered(&mut self, result: Result<openagents_chat::client::Steering, String>) {
+        use openagents_chat::client::Steering;
+        match result {
+            Ok(Steering::NextStep) => {
+                self.push_both(Row::note("Sent. Coder reads it at its next step."))
+            }
+            Ok(Steering::NextTurn(turn)) => {
+                self.push_both(Row::note("Sent. Coder starts its next turn with it."));
+                self.next_turn = Some(turn);
+                self.running = true;
+            }
+            Err(why) => {
+                self.steering = self.steering.saturating_sub(1);
+                self.push_both(Row::loud(why));
+            }
         }
     }
 
@@ -873,6 +1105,11 @@ impl App {
     pub fn status(&self) -> String {
         match self.phase {
             _ if self.overlay.is_some() => "Esc closes the list".into(),
+            _ if self.file.is_some() => "Esc closes the file".into(),
+            _ if self.run_view.is_some() && !self.asked => {
+                let state = if self.running { "working" } else { "ended" };
+                format!("Coder run · {state} · Enter sends it your message · Esc back")
+            }
             _ if self.plugin.is_some() => format!(
                 "plugin {} · type what to ask · Esc cancels",
                 self.plugin
@@ -917,6 +1154,29 @@ impl App {
             None => thread,
         }
     }
+}
+
+/// Adds a run event to `log`: it joins the open stretch of tool calls,
+/// starts one, or draws its own row. Whether `log` changed.
+fn grow(log: &mut Scrollback<Row, Line<'static>, Wrap>, line: &CoderLine, expanded: bool) -> bool {
+    if let Some(Row::Tools { stretch, .. }) = log.last_mut()
+        && stretch.push(line.seq, &line.event)
+    {
+        return true;
+    }
+    let mut stretch = Stretch::default();
+    if stretch.push(line.seq, &line.event) {
+        log.push(Row::Tools { stretch, expanded });
+        return true;
+    }
+    let Some(mut row) = rows::run_row(&line.event) else {
+        return false;
+    };
+    if let RunRow::Result { expanded: open, .. } = &mut row {
+        *open = expanded;
+    }
+    log.push(Row::Run(row));
+    true
 }
 
 fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
@@ -986,6 +1246,14 @@ pub fn help() -> Card {
             "stop the reply, or stop the Coder run".to_owned(),
         ),
         ("Ctrl+T".to_owned(), "threads".to_owned()),
+        (
+            "Ctrl+R".to_owned(),
+            "the Coder run full screen; what you type there goes to the run".to_owned(),
+        ),
+        (
+            "Mouse".to_owned(),
+            "drag to select and copy; click a file's path to read the file".to_owned(),
+        ),
         (
             "Ctrl+Y".to_owned(),
             "copy the last reply; again, each code block in it".to_owned(),

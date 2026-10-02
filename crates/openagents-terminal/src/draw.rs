@@ -12,6 +12,7 @@ use ratatui::text::Line;
 
 use crate::app::{App, Overlay};
 use crate::rows::Row;
+use crate::view::{Shown, paint};
 
 /// The smallest screen the frame draws on.
 pub const MIN_WIDTH: u16 = 12;
@@ -25,6 +26,9 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     // Too small for the composer's frame: draw nothing until it grows.
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         return (area.x, area.y);
+    }
+    if app.file.is_some() {
+        return draw_file(app, area, buf);
     }
     let status = app.status();
     let tail = app.tail();
@@ -52,10 +56,11 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     }
 
     // The live rows under the transcript: the reply streaming in, and the
-    // run's latest progress.
+    // run's latest progress. The run view shows the run alone.
     let width = log.width.saturating_sub(1);
     let mut live: Vec<Line<'static>> = Vec::new();
-    if !app.partial.is_empty() {
+    let viewing = app.run_view.is_some();
+    if !app.partial.is_empty() && !viewing {
         live.extend(turn::streaming(
             &app.partial,
             frame_for(app.tick),
@@ -66,8 +71,15 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     if let Some(progress) = &app.progress {
         live.extend(run::lines(progress, width, ladder));
     }
-    let scroll = app.scroll;
-    let rows = app.transcript.rows(usize::from(width), |_: &Row| true);
+    let scroll = match app.run_view {
+        Some(view) => view.scroll,
+        None => app.scroll,
+    };
+    let rows = if viewing {
+        app.run_log.rows(usize::from(width), |_: &Row| true)
+    } else {
+        app.transcript.rows(usize::from(width), |_: &Row| true)
+    };
     let mut all: Vec<&Line<'static>> = rows;
     all.extend(live.iter());
     let shown = usize::from(log.height);
@@ -77,7 +89,14 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     for (offset, line) in all[start..end].iter().enumerate() {
         buf.set_line(log.x + 1, log.y + offset as u16, line, width);
     }
-    app.scroll = scroll;
+    match &mut app.run_view {
+        Some(view) => view.scroll = scroll,
+        None => app.scroll = scroll,
+    }
+    app.shown = Shown::capture(buf, log);
+    if let Some(selection) = &app.selection {
+        paint(buf, log, selection, ladder);
+    }
 
     let caret = composer.render(composer_area, buf);
 
@@ -157,6 +176,48 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         .render(area, buf);
     }
     caret
+}
+
+/// The file view: its path on the top row, then the file from its first
+/// shown line, over the whole screen.
+fn draw_file(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+    let ladder = app.ladder;
+    let base = Style::new().bg(ladder.background());
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            buf[(x, y)].reset();
+            buf[(x, y)].set_style(base);
+        }
+    }
+    let Some(file) = &app.file else {
+        return (area.x, area.y);
+    };
+    let width = area.width.saturating_sub(1);
+    let title = Line::styled(
+        format!("{} · read only · Esc closes", file.path),
+        ladder.style(coder_terminal::Intensity::Half),
+    );
+    buf.set_line(area.x + 1, area.y, &title, width);
+    let body = Rect::new(
+        area.x,
+        area.y + 1,
+        area.width,
+        area.height.saturating_sub(1),
+    );
+    for (offset, line) in file
+        .lines
+        .iter()
+        .skip(file.top)
+        .take(usize::from(body.height))
+        .enumerate()
+    {
+        buf.set_line(body.x + 1, body.y + offset as u16, line, width);
+    }
+    app.shown = Shown::capture(buf, body);
+    if let Some(selection) = &app.selection {
+        paint(buf, body, selection, ladder);
+    }
+    (area.x, area.y)
 }
 
 /// A thread row's detail: open now, Coder, archived, and when.

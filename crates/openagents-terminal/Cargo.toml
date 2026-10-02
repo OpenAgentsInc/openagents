@@ -15,6 +15,8 @@ description = "OpenAgents Terminal: a full-screen chat with OpenAgents over the 
 atif = { path = "../atif" }
 # A copy goes to the terminal's clipboard as OSC 52, which is base64.
 base64 = "0.22"
+# The file view highlights code with the grammars code blocks use.
+code-highlight = { path = "../code-highlight" }
 coder-terminal = { path = "../coder-terminal" }
 crossterm = { version = "0.29", features = ["event-stream"] }
 futures-util = "0.3"

@@ -136,6 +136,7 @@ it.
 | Option+Enter (Alt+Enter on Linux), Ctrl+J | A new line in the message. |
 | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
 | Ctrl+T | The thread list. |
+| Ctrl+R | The thread's Coder run full screen (below). Esc or Ctrl+R goes back. |
 | Ctrl+Y | Copy the last reply. Press again for each code block in it, last first. It copies through the terminal (OSC 52), so it works over SSH; in tmux, `set-clipboard on`. |
 | Ctrl+O | Expand every Coder run's tool calls to each call and its output, and each run result's changed files to their diffs, or condense them again. |
 | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
@@ -143,6 +144,7 @@ it.
 | Up, Down | Move in the message, then through your earlier messages, kept across restarts. |
 | Ctrl+C | Clear the message; on an empty line, press it twice to quit. |
 | Ctrl+D | Quit, on an empty line. |
+| Mouse | Drag to select text; letting go copies it (OSC 52, as Ctrl+Y). Click a file's path in a reply or a run to read the file. The wheel scrolls. Most terminals still select their own way with Shift (Option in iTerm2) held. |
 
 The composer keeps the readline keys `coder` has: Ctrl+A and Ctrl+E, Ctrl+W,
 Ctrl+K, Ctrl+U, and Alt+B and Alt+F.
@@ -163,6 +165,7 @@ including text that only starts with a slash, goes to OpenAgents.
 | `/plugins` | List the plugins installed on this computer, then the published ones. Enter on an installed one, then type what to ask it: it runs once on this folder, reading files only, and its reply shows as a card. Esc cancels. |
 | `/import` | Copy this computer's Claude Code and Codex sessions (`~/.claude`, `~/.codex`) into the host's threads, each once: the messages and text replies, without tool calls. The host only reads those folders. Needs the host. |
 | `/expand` | Expand or condense the tool calls (also Ctrl+O). |
+| `/run` | Open the Coder run full screen (also Ctrl+R). |
 | `/help` | Show these commands and keys. |
 | `/quit` | Close the screen; a Coder run keeps going. |
 
@@ -192,6 +195,13 @@ of how much is complete. Runs have no step or time budget.
   thread (`--thread ID`, or the thread list) and the screen follows it again
   from its first event.
 - **A question from Coder** is answered by typing in the composer.
+- **The run full screen.** Ctrl+R shows the run alone: every step, each
+  command with its output, and the result with its diff. What you type there
+  goes to the run, not to the chat: Coder reads it at its next step and says
+  so ("Coder read your message."). A turn that has ended starts again with
+  it. Grok Build, OpenCode, and Devin read instructions only when a turn
+  starts, so their turn stops and the next starts with your message. Esc goes
+  back to the chat; `/stop` stops the run.
 - **A follow-up after a run** goes to the router with what the run did, so
   more work continues the same run.
 - **An issue** ("work on #10034") runs the issue flow in a process of its
@@ -200,6 +210,14 @@ of how much is complete. Runs have no step or time budget.
 
 Coder needs a Git checkout here. Outside one, a host with a project of its own
 runs it there instead, as `openagents chat` does.
+
+## Files
+
+A click on a file's path (`src/app.rs`, `src/app.rs:42`) in a reply or a run
+opens it read only, with line numbers and the code highlighted as code blocks
+are, at that line. A relative path is read from the run's worktree, then from
+the folder you started in. Up, Down, PageUp, PageDown, Home, and End scroll;
+Esc closes it. A click on anything that is not a file here does nothing.
 
 ## Threads
 
@@ -257,6 +275,7 @@ overlay; see [terminal behavior](../coder/runtime/terminal.md)).
   `coder-terminal`'s panic-safe guard and runs each action against the client.
 - `slash`: the closed list of commands.
 - `last`: the last thread per folder.
+- `view`: the run view, the file view, and mouse selection.
 
 What only this program can do (pairing over the host's control socket,
 installing the host service, listing plugins, the settings) reaches the
@@ -273,8 +292,9 @@ cargo test -p coder-terminal
 screen through `coder-vt` (the emulator the phone's terminal screen uses),
 against the in-process backend with
 a scripted chat worker and a fake coding engine on a scratch Git repository:
-a question's answer streams in, a coding message starts a run at once, Esc
-stops it, a second thread starts, the thread list reopens the first with its
+a question's answer streams in, a coding message starts a run at once,
+Ctrl+R shows it full screen and a message there reaches it, a click opens a
+file it names and a drag copies, Esc stops it, a second thread starts, the thread list reopens the first with its
 run, and Ctrl+C twice quits. It also checks the bytes: a white cursor handed
 back on exit, the near-black field, and no amber.
 

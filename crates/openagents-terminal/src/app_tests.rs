@@ -881,3 +881,202 @@ fn another_computers_welcome_names_it() {
     assert!(text.contains("that computer's"), "{text}");
     assert!(!text.contains("│ Agents"), "{text}");
 }
+
+fn run_shown(app: &mut App) -> String {
+    app.run_log
+        .rows(80, |_| true)
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn output(seq: u64, command: &str, text: &str) -> Event {
+    line(
+        seq,
+        CoderEvent::Output(openagents_chat::coder_events::Output {
+            turn: 1,
+            step_id: seq,
+            command: command.into(),
+            exit: Some(0),
+            timed_out: false,
+            seconds: 1.0,
+            text: text.into(),
+            truncated: false,
+        }),
+    )
+}
+
+#[test]
+fn the_run_view_shows_the_run_alone_and_its_composer_steers_it() {
+    let mut app = app();
+    // No run yet: nothing to open.
+    assert!(app.key(&ctrl('r'), 80).is_empty());
+    assert!(app.run_view.is_none());
+    assert!(shown(&mut app).contains("This thread has no Coder run yet."));
+    app.event(reply("Coder is on it.", Meta::default()));
+    app.phase = Phase::Following;
+    app.event(line(1, started()));
+    app.event(output(2, "cargo test", "running 3 tests\nok"));
+    assert!(app.key(&ctrl('r'), 80).is_empty());
+    assert!(app.run_view.is_some());
+    assert!(app.status().starts_with("Coder run · working"));
+    // The run alone, with each command's output; the chat's reply is not
+    // in it.
+    let run = run_shown(&mut app);
+    assert!(run.contains("running 3 tests"), "{run}");
+    assert!(!run.contains("Coder is on it."), "{run}");
+    // What is typed goes to the run, not to the chat.
+    assert_eq!(
+        typed(&mut app, "Use tabs, not spaces."),
+        vec![Action::Steer {
+            task: "t1".into(),
+            text: "Use tabs, not spaces.".into()
+        }]
+    );
+    app.steered(Ok(openagents_chat::client::Steering::NextStep));
+    assert!(run_shown(&mut app).contains("Coder reads it at its next step."));
+    // The run reads it: the trace records the person's message.
+    app.event(line(
+        3,
+        CoderEvent::Step(openagents_chat::coder_events::Step {
+            turn: 1,
+            step_id: 3,
+            kind: coder_events::StepKind::Message,
+            source: "user".into(),
+            text: "Use tabs, not spaces.".into(),
+            call: None,
+        }),
+    ));
+    assert!(run_shown(&mut app).contains("Coder read your message."));
+    // Esc goes back to the chat; the run keeps going.
+    assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
+    assert!(app.run_view.is_none() && app.running);
+    // In the chat, a message goes to the router as before.
+    app.phase = Phase::Idle;
+    assert!(matches!(
+        typed(&mut app, "how is it going?").as_slice(),
+        [Action::Run(Op::Send { .. })]
+    ));
+}
+
+#[test]
+fn a_message_that_starts_the_next_turn_keeps_the_run_going() {
+    let mut app = app();
+    app.event(line(1, started()));
+    app.key(&ctrl('r'), 80);
+    let _ = typed(&mut app, "Stop and use spaces.");
+    app.steered(Ok(openagents_chat::client::Steering::NextTurn(2)));
+    // The turn the message replaced ends as stopped; the run goes on.
+    app.event(line(
+        2,
+        CoderEvent::Stopped(Stopped {
+            turn: 1,
+            message: "Stopped to start again with the person's message.".into(),
+        }),
+    ));
+    assert!(app.running, "the next turn is coming");
+    let mut next = started();
+    if let CoderEvent::CoderStarted(started) = &mut next {
+        started.turn = 2;
+    }
+    app.event(line(3, next));
+    app.event(line(
+        4,
+        CoderEvent::Stopped(Stopped {
+            turn: 2,
+            message: "Stopped by the person.".into(),
+        }),
+    ));
+    assert!(!app.running, "the new turn's end ends it");
+    // A refused message says why.
+    app.steered(Err("Coder could not be reached.".into()));
+    assert!(run_shown(&mut app).contains("Coder could not be reached."));
+}
+
+fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+    MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+#[test]
+fn a_drag_copies_what_it_covers_and_a_click_opens_a_files_path() {
+    let mut app = app();
+    app.shown = crate::view::Shown {
+        area: ratatui::layout::Rect::new(0, 0, 30, 2),
+        rows: ["Changed src/app.rs:12 today", "and README.md"]
+            .iter()
+            .map(|row| format!("{row:<30}").chars().map(String::from).collect())
+            .collect(),
+    };
+    let left = MouseButton::Left;
+    assert!(
+        app.mouse(&mouse(MouseEventKind::Down(left), 8, 0))
+            .is_empty()
+    );
+    assert!(
+        app.mouse(&mouse(MouseEventKind::Drag(left), 2, 1))
+            .is_empty()
+    );
+    assert_eq!(
+        app.mouse(&mouse(MouseEventKind::Up(left), 2, 1)),
+        vec![Action::Copy("src/app.rs:12 today\nand".into())]
+    );
+    assert!(app.selection.is_some(), "the copied text stays marked");
+    // A key clears the mark.
+    app.key(&key(KeyCode::Left), 80);
+    assert!(app.selection.is_none());
+    // A click on a path asks the screen to open that file at its line;
+    // on a plain word, it asks the same, and the screen finds no file.
+    app.mouse(&mouse(MouseEventKind::Down(left), 12, 0));
+    assert_eq!(
+        app.mouse(&mouse(MouseEventKind::Up(left), 12, 0)),
+        vec![Action::OpenFile {
+            path: "src/app.rs".into(),
+            line: Some(12)
+        }]
+    );
+    // A click on a blank asks nothing.
+    app.mouse(&mouse(MouseEventKind::Down(left), 28, 1));
+    assert!(
+        app.mouse(&mouse(MouseEventKind::Up(left), 28, 1))
+            .is_empty()
+    );
+}
+
+#[test]
+fn an_open_file_fills_the_screen_and_esc_closes_it() {
+    let mut app = app();
+    app.event(line(1, started()));
+    assert_eq!(
+        app.bases(Some(std::path::Path::new("/tmp/demo"))),
+        [
+            std::path::PathBuf::from("/tmp/w/t1"),
+            std::path::PathBuf::from("/tmp/demo")
+        ],
+        "the run's worktree first"
+    );
+    let text: String = (1..=50).map(|n| format!("line {n}\n")).collect();
+    app.show_file(crate::view::FileView {
+        path: "/tmp/w/t1/notes.txt".into(),
+        lines: crate::view::file_lines(&text, "txt", app.ladder),
+        top: 0,
+    });
+    assert_eq!(app.status(), "Esc closes the file");
+    // Keys scroll it and never reach the composer.
+    assert!(app.key(&key(KeyCode::PageDown), 80).is_empty());
+    assert!(app.file.as_ref().unwrap().top > 0);
+    assert!(app.key(&key(KeyCode::Char('x')), 80).is_empty());
+    assert!(app.editor.is_empty());
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(app.file.is_none());
+}

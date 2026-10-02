@@ -351,6 +351,28 @@ impl Coder for FakeCoder {
     fn answer(&self, _: &Path, _: &str, _: &str) -> Result<usize, String> {
         Err("the fake engine takes no answers".into())
     }
+    /// The engine reads a message at its next step: the trace records it
+    /// as the person's.
+    fn steer(&self, _: &Path, task: &str, text: &str) -> Result<client::Steering, String> {
+        let task = self.task(task).ok_or("no such task")?;
+        let mut lines = task.lines.lock().unwrap();
+        let seq = lines.len() as u64 + 1;
+        let (id, chat) = (lines[0].task.clone(), lines[0].thread.clone());
+        lines.push(Line {
+            seq,
+            task: id,
+            thread: chat,
+            event: CoderEvent::Step(Step {
+                turn: 1,
+                step_id: 9,
+                kind: StepKind::Message,
+                source: "user".into(),
+                text: text.into(),
+                call: None,
+            }),
+        });
+        Ok(client::Steering::NextStep)
+    }
     fn result(&self, _: &Path, _: &str) -> Option<CoderRun> {
         None
     }
@@ -472,6 +494,32 @@ impl Session {
         self.master.flush().unwrap();
         std::thread::sleep(Duration::from_millis(100));
         self.send(b"\r");
+    }
+
+    /// A left click at `row`, `col` (from 0), as an SGR mouse report.
+    fn click(&mut self, row: usize, col: usize) {
+        let (x, y) = (col + 1, row + 1);
+        self.send(format!("\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m").as_bytes());
+    }
+
+    /// A left-button drag along `row` from `from` to `to`.
+    fn drag(&mut self, row: usize, from: usize, to: usize) {
+        let y = row + 1;
+        self.send(format!("\x1b[<0;{};{y}M", from + 1).as_bytes());
+        self.send(format!("\x1b[<32;{};{y}M", to + 1).as_bytes());
+        self.send(format!("\x1b[<0;{};{y}m", to + 1).as_bytes());
+    }
+
+    /// Wait until the program has written `bytes`.
+    fn wait_raw(&mut self, what: &str, bytes: &str) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !String::from_utf8_lossy(&self.grid.lock().unwrap().raw).contains(bytes) {
+            if Instant::now() > deadline {
+                let _ = self.child.kill();
+                panic!("timed out waiting for {what}");
+            }
+            std::thread::sleep(Duration::from_millis(40));
+        }
     }
 
     /// Wait until the screen shows every one of `texts`.
@@ -668,6 +716,50 @@ fn the_screen_end_to_end() {
         "the run works in a worktree of the scratch repository"
     );
 
+    // Ctrl+R: the run full screen, each command with its output, without
+    // the chat's reply; its composer sends the run a message.
+    session.send(b"\x12");
+    let view = session.wait(
+        "the run view",
+        &[
+            "Coder run · working",
+            "test adds ... FAILED",
+            "◆ Read lib.rs",
+        ],
+    );
+    assert!(
+        !view.contains("Coder can fix that on this computer."),
+        "{view}"
+    );
+    session.typed("use spaces, not tabs");
+    session.wait(
+        "the message sent to the run",
+        &[
+            "use spaces, not tabs",
+            "Coder reads it at its next step.",
+            "Coder read your message.",
+        ],
+    );
+    // A click on a file's path opens it, read only.
+    let (row, col) = find(&session.wait("the path", &["◆ Read lib.rs"]), "lib.rs");
+    session.click(row, col + 1);
+    let file = session.wait(
+        "the file view",
+        &[
+            "lib.rs · read only · Esc closes",
+            "1  pub fn adds() -> u8 { 1 + 1 }",
+        ],
+    );
+    eprintln!("==== file ====\n{file}\n");
+    // A drag selects and copies through the terminal (OSC 52).
+    let (row, col) = find(&file, "pub fn adds");
+    session.drag(row, col, col + 10);
+    session.wait_raw("the selection copied", "\x1b]52;c;cHViIGZuIGFkZHM=");
+    session.send(b"\x1b");
+    session.wait("the run view again", &["Coder run · working"]);
+    session.send(b"\x1b");
+    session.wait("the chat again", &["Coder can fix that on this computer."]);
+
     // Esc stops the run, not the screen.
     session.send(b"\x1b");
     session.wait(
@@ -733,6 +825,20 @@ fn the_screen_end_to_end() {
     assert!(raw.contains("48;2;10;10;10"), "the near-black field");
     assert!(raw.contains("38;2;255;255;255"), "full white text");
     assert!(raw.contains("\x1b[?1049l"), "the alternate screen is left");
+    // Mouse reports on while the screen runs, and off again after.
+    assert!(raw.contains("\x1b[?1000h") && raw.contains("\x1b[?1000l"));
+}
+
+/// The row and column, from 0, where `needle` first shows on `screen`.
+fn find(screen: &str, needle: &str) -> (usize, usize) {
+    screen
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find(needle)
+                .map(|at| (row, line[..at].chars().count()))
+        })
+        .unwrap_or_else(|| panic!("{needle:?} is not on the screen:\n{screen}"))
 }
 
 /// The real program against the live chat worker, by hand:

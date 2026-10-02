@@ -47,6 +47,8 @@ enum Done {
     Plugin(String, Result<String, String>),
     Imported(Result<String, String>),
     Settings(Result<crate::Settings, String>),
+    Steered(Result<client::Steering, String>),
+    File(Result<Option<crate::view::FileView>, String>),
 }
 
 /// The screen with its client and the work it has started.
@@ -71,7 +73,9 @@ struct Screen {
 pub(crate) async fn run(launch: Launch) -> io::Result<Exit> {
     let ladder = Ladder::from_environment();
     let (screen, done) = prepare(launch, ladder).await;
-    let guard = Guard::full_screen()?;
+    // Mouse reports on: the screen selects and copies text itself, and a
+    // click on a file's path opens it.
+    let guard = Guard::full_screen_with_mouse()?;
     guard.arm_panic_hook();
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let result = drive(screen, done, &mut terminal).await;
@@ -195,6 +199,11 @@ async fn drive(
                         screen.act(action).await;
                     }
                 }
+                Some(Ok(TermEvent::Mouse(mouse))) => {
+                    for action in screen.app.mouse(&mouse) {
+                        screen.act(action).await;
+                    }
+                }
                 Some(Ok(_)) => {}
                 Some(Err(error)) => return Err(error),
                 None => screen.quit().await,
@@ -203,7 +212,16 @@ async fn drive(
                 Some(event) => screen.app.event(event),
                 None => screen.finish().await,
             },
-            Some(result) = done.recv() => screen.done(result),
+            Some(result) = done.recv() => {
+                screen.done(result);
+                // A message that started the run's next turn: follow it
+                // when nothing else has the client.
+                if screen.client.is_some() && screen.app.wants_follow() {
+                    screen.start(Op::Follow {
+                        thread: screen.app.thread.clone(),
+                    });
+                }
+            }
             _ = tick.tick() => {
                 screen.app.tick = screen.app.tick.wrapping_add(1);
             }
@@ -235,6 +253,27 @@ impl Screen {
                 if crate::copy::to_clipboard(&text).is_err() {
                     self.app.loud("Could not copy.");
                 }
+            }
+            Action::Steer { task, text } => {
+                let stopper = match &self.client {
+                    Some(client) => client.stopper(&self.app.thread),
+                    None => match self.stopper.clone() {
+                        Some(stopper) => stopper,
+                        None => return,
+                    },
+                };
+                let done = self.done.clone();
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Steered(stopper.steer(&task, &text)));
+                });
+            }
+            Action::OpenFile { path, line } => {
+                let bases = self.app.bases(self.folder.as_deref());
+                let (ladder, done) = (self.app.ladder, self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let opened = crate::view::open(&path, line, &bases, ladder);
+                    let _ = done.send(Done::File(opened));
+                });
             }
             Action::StopRun { task } => {
                 let Some(stopper) = self.stopper.clone() else {
@@ -566,6 +605,11 @@ impl Screen {
 
     fn done(&mut self, result: Done) {
         match result {
+            Done::Steered(result) => self.app.steered(result),
+            Done::File(Ok(Some(file))) => self.app.show_file(file),
+            // A click on a word that names no file here does nothing.
+            Done::File(Ok(None)) => {}
+            Done::File(Err(why)) => self.app.loud(why),
             Done::Stopped(Ok(message)) => self.app.note(message),
             Done::Stopped(Err(why)) => self.app.loud(why),
             Done::Invite(Ok(invite)) => {

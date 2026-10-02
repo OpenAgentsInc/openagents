@@ -39,6 +39,7 @@ pub mod prompts;
 pub mod rows;
 pub mod screen;
 pub mod slash;
+pub mod view;
 
 /// A pairing invitation the host issued: what `/connect` shows.
 #[derive(Clone, Debug, PartialEq, Eq)]

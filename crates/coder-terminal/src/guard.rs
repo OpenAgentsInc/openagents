@@ -18,6 +18,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex, Once};
 
 use crossterm::cursor::{SetCursorStyle, Show};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -42,6 +43,9 @@ pub enum Step {
     CursorStyle,
     /// The cursor painted full white; undoing it hands the color back.
     CursorColor,
+    /// Mouse reports: clicks, drags, and the wheel come to the shell, which
+    /// then does its own selection.
+    MouseCapture,
 }
 
 /// The steps a full-screen shell takes, in the order they apply.
@@ -76,6 +80,7 @@ impl Console for Stdout {
                 out.write_all(CURSOR_COLOR_SET.as_bytes())?;
                 out.flush()
             }
+            Step::MouseCapture => execute!(out, EnableMouseCapture),
         }
     }
 
@@ -89,6 +94,7 @@ impl Console for Stdout {
                 out.write_all(CURSOR_COLOR_RESET.as_bytes())?;
                 out.flush()
             }
+            Step::MouseCapture => execute!(out, DisableMouseCapture),
         }
     }
 }
@@ -166,6 +172,15 @@ impl Guard<Stdout> {
     /// Enters [`FULL_SCREEN`] on standard output and arms the panic hook.
     pub fn full_screen() -> io::Result<Self> {
         let guard = Self::enter(Stdout, &FULL_SCREEN)?;
+        guard.arm_panic_hook();
+        Ok(guard)
+    }
+
+    /// [`Guard::full_screen`] with mouse reports on ([`Step::MouseCapture`]).
+    pub fn full_screen_with_mouse() -> io::Result<Self> {
+        let mut steps = FULL_SCREEN.to_vec();
+        steps.push(Step::MouseCapture);
+        let guard = Self::enter(Stdout, &steps)?;
         guard.arm_panic_hook();
         Ok(guard)
     }

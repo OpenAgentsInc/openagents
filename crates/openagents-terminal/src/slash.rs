@@ -18,13 +18,14 @@ pub enum Slash {
     Plugins,
     Import,
     Expand,
+    Run,
     Help,
     Quit,
 }
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 11] = [
+    pub const ALL: [Slash; 12] = [
         Slash::New,
         Slash::Threads,
         Slash::Stop,
@@ -34,6 +35,7 @@ impl Slash {
         Slash::Plugins,
         Slash::Import,
         Slash::Expand,
+        Slash::Run,
         Slash::Help,
         Slash::Quit,
     ];
@@ -50,6 +52,7 @@ impl Slash {
             Slash::Plugins => "plugins",
             Slash::Import => "import",
             Slash::Expand => "expand",
+            Slash::Run => "run",
             Slash::Help => "help",
             Slash::Quit => "quit",
         }
@@ -67,6 +70,9 @@ impl Slash {
             Slash::Plugins => "list plugins and run one installed here",
             Slash::Import => "copy this computer's Claude Code and Codex sessions in as threads",
             Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",
+            Slash::Run => {
+                "open the Coder run full screen, to watch it and send it messages (Ctrl+R)"
+            }
             Slash::Help => "show these commands and keys",
             Slash::Quit => "close the screen; a Coder run keeps going",
         }
