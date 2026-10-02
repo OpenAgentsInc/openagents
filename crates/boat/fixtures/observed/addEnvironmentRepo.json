@@ -1,0 +1,55 @@
+{
+  "capture": "addEnvironmentRepo",
+  "operation_id": "addEnvironmentRepo",
+  "method": "POST",
+  "path": "/environments/{environmentId}/repos",
+  "case": "no installation for the repository",
+  "status": 404,
+  "captured_at": "2026-09-06T00:44:59Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/addEnvironmentRepo.json",
+    "on": "2026-10-02",
+    "renames": [
+      "value box.error -> sandbox.error"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "elapsed_ms": 620,
+  "request": {
+    "target": "/environments/8d05441f-9371-4111-b4b6-a523df24d158/repos",
+    "headers": {},
+    "body": {
+      "repositoryId": "1",
+      "baseBranch": "main"
+    }
+  },
+  "response_headers": {
+    "content-length": "303",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 404,
+    "code": "repository_not_found",
+    "message": "repository_not_found",
+    "error": {
+      "code": "repository_not_found",
+      "message": "repository_not_found",
+      "status": 404,
+      "details": {
+        "success": false,
+        "error": "repository_not_found"
+      }
+    },
+    "requestId": "req_ed61ed22777448b5942da833a48ddfd0"
+  }
+}

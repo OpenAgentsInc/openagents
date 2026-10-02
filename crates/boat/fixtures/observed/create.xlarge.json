@@ -1,0 +1,43 @@
+{
+  "capture": "create.xlarge",
+  "operation_id": "create",
+  "method": "POST",
+  "path": "/sandboxes",
+  "case": "refused, xlarge needs an explicit machineProvider pin",
+  "status": 400,
+  "captured_at": "2026-09-06T00:20Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "38d55ad926dce9e8bd41f9f181716e8ffd55e31e",
+    "capture_tool": "urllib and curl over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/create.xlarge.json",
+    "on": "2026-10-02",
+    "renames": [
+      "path /boxes -> /sandboxes",
+      "value box.error -> sandbox.error"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 400,
+    "code": "machine_provider_required",
+    "message": "The 'xlarge' size requires an explicit baremetal machineProvider pin. It is operator-allocated and has no public cloud placement.",
+    "error": {
+      "code": "machine_provider_required",
+      "message": "The 'xlarge' size requires an explicit baremetal machineProvider pin. It is operator-allocated and has no public cloud placement.",
+      "status": 400,
+      "details": {
+        "error": "machine_provider_required",
+        "message": "The 'xlarge' size requires an explicit baremetal machineProvider pin. It is operator-allocated and has no public cloud placement."
+      }
+    },
+    "requestId": "req_dede2cf49b12452093229a165cedd3de"
+  }
+}

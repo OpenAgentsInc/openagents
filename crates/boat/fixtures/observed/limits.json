@@ -1,0 +1,179 @@
+{
+  "capture": "limits",
+  "operation_id": "limits",
+  "method": "GET",
+  "path": "/limits",
+  "case": "success",
+  "status": 200,
+  "captured_at": "2026-09-06T00:20Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "38d55ad926dce9e8bd41f9f181716e8ffd55e31e",
+    "capture_tool": "urllib and curl over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/limits.json",
+    "on": "2026-10-02",
+    "renames": [
+      "key activeBoxes -> activeSandboxes",
+      "key boxPlanDollars -> sandboxPlanDollars",
+      "key boxPlanKey -> sandboxPlanKey",
+      "key boxPlanTiers -> sandboxPlanTiers",
+      "key maxActiveBoxes -> maxActiveSandboxes"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "body": {
+    "ok": true,
+    "type": "limits.info",
+    "accessTier": "standard",
+    "blockedReason": null,
+    "currentLimits": {
+      "activeSandboxes": 100,
+      "creationRatePerMinute": 10,
+      "creationRequestsPerDay": 150
+    },
+    "standardLimits": {
+      "activeSandboxes": 100,
+      "creationRatePerMinute": 10,
+      "creationRequestsPerDay": 150
+    },
+    "trialLimits": {
+      "activeSandboxes": 2,
+      "creationRatePerMinute": 5,
+      "creationRequestsPerDay": 75
+    },
+    "upgradeEffects": {
+      "startTrial": {
+        "canCreate": true,
+        "activeSandboxes": 2,
+        "creationRequestsPerDay": 75,
+        "note": "Starts the 7 day trial and unlocks usage, but keeps trial limits until the first payment."
+      },
+      "endTrialOrFirstPayment": {
+        "activeSandboxes": 100,
+        "creationRequestsPerDay": 150,
+        "note": "First payment moves the account to standard limits."
+      },
+      "pack": {
+        "seconds": 2000000,
+        "persistsAcrossMonths": true,
+        "note": "Adds carry-over seconds. If this is the first payment, it also moves the account to standard limits."
+      }
+    },
+    "activeStates": [
+      "provisioned",
+      "cloning",
+      "ready",
+      "idle",
+      "running"
+    ],
+    "maxActiveSandboxes": 100,
+    "maxCreationRequestsPerMinute": 10,
+    "maxCreationRequestsPerDay": 150,
+    "startLimits": {
+      "perMinute": 10,
+      "perHour": 50,
+      "perDay": 150
+    },
+    "creditBalanceHours": 542,
+    "packBalanceHours": 0,
+    "packBalanceDollars": 0,
+    "sandboxPlanKey": "box_20",
+    "sandboxPlanDollars": 20,
+    "sandboxPlanTiers": [
+      {
+        "key": "box_20",
+        "dollars": 20,
+        "displayPrice": "$20/mo",
+        "maxActiveSandboxes": 100,
+        "startsPerMinute": 10,
+        "includedSeconds": 2000000,
+        "purchasable": true
+      },
+      {
+        "key": "box_100",
+        "dollars": 100,
+        "displayPrice": "$100/mo",
+        "maxActiveSandboxes": 250,
+        "startsPerMinute": 28,
+        "includedSeconds": 10000000,
+        "purchasable": true
+      },
+      {
+        "key": "box_500",
+        "dollars": 500,
+        "displayPrice": "$500/mo",
+        "maxActiveSandboxes": 1000,
+        "startsPerMinute": 55,
+        "includedSeconds": 50000000,
+        "purchasable": true
+      },
+      {
+        "key": "box_2000",
+        "dollars": 2000,
+        "displayPrice": "$2000/mo",
+        "maxActiveSandboxes": 1500,
+        "startsPerMinute": 70,
+        "includedSeconds": 200000000,
+        "purchasable": true
+      }
+    ],
+    "hasPaymentHistory": true,
+    "accountPlan": "user",
+    "plan": null,
+    "planName": null,
+    "serviceAccount": false,
+    "unlimited": false,
+    "package": {
+      "dollars": 20,
+      "seconds": 2000000,
+      "secondsPerDollar": 100000
+    },
+    "creditBalanceSeconds": 1951202,
+    "subscriptionQuotaSeconds": 2000000,
+    "subscriptionRemainingSeconds": 1951202,
+    "packBalanceSeconds": 0,
+    "creditPurchasedSeconds": 0,
+    "creditUsedSeconds": 51965,
+    "liveUsageSeconds": 0,
+    "last24hUsageSeconds": 48798,
+    "trialComputeCapSeconds": null,
+    "trialLine": null,
+    "giftLimit": null,
+    "creditSecondsPerDollar": 100000,
+    "billingStatus": "active",
+    "subscriptionStatus": "active",
+    "subscriptionCancelAtPeriodEnd": false,
+    "hasSubscription": true,
+    "hasSeatPlan": true,
+    "subscriptionTrialEndsAt": "2026-08-30T02:42:28.000Z",
+    "subscriptionCurrentPeriodEnd": "2026-09-30T02:42:28.000Z",
+    "checkoutRequired": false,
+    "canStart": true,
+    "startBlockedReason": null,
+    "contactMessage": "if you need more let us talk",
+    "starts": {
+      "unlimited": false,
+      "minute": {
+        "limit": 10,
+        "used": 0,
+        "remaining": 10
+      },
+      "hour": {
+        "limit": 50,
+        "used": 0,
+        "remaining": 50
+      },
+      "day": {
+        "limit": 150,
+        "used": 150,
+        "remaining": 0
+      }
+    },
+    "activeSandboxes": 0
+  }
+}

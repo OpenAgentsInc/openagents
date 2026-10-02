@@ -1,0 +1,221 @@
+{
+  "operation_id": "apiKeyUsage",
+  "method": "GET",
+  "path": "/api-keys/{apiKeyId}/usage",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "api_key_usage",
+  "sdk_response_type": "ApiKeyUsageResponse",
+  "summary": "Get API key usage",
+  "description": "Returns the key's request total for the 30-day UTC window and the sandboxes and Agents it created that still exist, including sandboxes that never got a sandbox row. Works for revoked keys owned by the authenticated account.",
+  "parameters": [
+    {
+      "name": "apiKeyId",
+      "in": "path",
+      "required": true,
+      "description": "API key ID returned by `GET /api-keys`.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/api-keys/sample/usage",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "apiKeyId": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "ApiKeyUsageResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "usage": {
+        "ok": true,
+        "type": "api_key.usage",
+        "id": "sak_123",
+        "name": "Production worker",
+        "keyPrefix": "boat_live",
+        "keyLastFour": "9abc",
+        "sandboxId": null,
+        "createdAt": "2026-05-31T12:00:00Z",
+        "lastUsedAt": "2026-08-25T09:30:00Z",
+        "usage": {
+          "requests": 1842,
+          "windowDays": 30
+        },
+        "resources": {
+          "total": 2,
+          "sandboxes": 1,
+          "agents": 1
+        },
+        "createdResources": [
+          {
+            "kind": "sandbox",
+            "id": "bx_123",
+            "name": "CI build",
+            "state": "ready",
+            "createdAt": "2026-08-24T14:00:00Z"
+          },
+          {
+            "kind": "agent",
+            "id": "agent_456",
+            "name": "Review",
+            "state": "idle",
+            "createdAt": "2026-08-23T12:00:00Z"
+          }
+        ]
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "id": "sample",
+      "name": "sample",
+      "credentialLane": "legacy",
+      "keyPrefix": "sample",
+      "keyLastFour": "sample",
+      "sandboxId": "sample",
+      "createdAt": "sample",
+      "lastUsedAt": "sample",
+      "usage": {
+        "requests": 1,
+        "windowDays": 30
+      },
+      "resources": {
+        "total": 1,
+        "sandboxes": 1,
+        "agents": 1
+      },
+      "expiresAt": "sample",
+      "expired": true,
+      "expiringSoon": true,
+      "scope": {},
+      "createdResources": []
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Usage and created resources for the key.",
+      "schema": "ApiKeyUsageResponse",
+      "binary": false,
+      "published_examples": {
+        "usage": {
+          "ok": true,
+          "type": "api_key.usage",
+          "id": "sak_123",
+          "name": "Production worker",
+          "keyPrefix": "boat_live",
+          "keyLastFour": "9abc",
+          "sandboxId": null,
+          "createdAt": "2026-05-31T12:00:00Z",
+          "lastUsedAt": "2026-08-25T09:30:00Z",
+          "usage": {
+            "requests": 1842,
+            "windowDays": 30
+          },
+          "resources": {
+            "total": 2,
+            "sandboxes": 1,
+            "agents": 1
+          },
+          "createdResources": [
+            {
+              "kind": "sandbox",
+              "id": "bx_123",
+              "name": "CI build",
+              "state": "ready",
+              "createdAt": "2026-08-24T14:00:00Z"
+            },
+            {
+              "kind": "agent",
+              "id": "agent_456",
+              "name": "Review",
+              "state": "idle",
+              "createdAt": "2026-08-23T12:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

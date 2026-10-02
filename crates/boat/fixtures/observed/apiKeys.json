@@ -1,0 +1,106 @@
+{
+  "capture": "apiKeys",
+  "operation_id": "apiKeys",
+  "method": "GET",
+  "path": "/api-keys",
+  "case": "success",
+  "known_deviation": "Captured 2026-09-05, before GET /api-keys returned the required `catalog`; the current shape is fixtures/recorded/apiKeys.json.",
+  "status": 200,
+  "captured_at": "2026-09-06T00:20Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "38d55ad926dce9e8bd41f9f181716e8ffd55e31e",
+    "capture_tool": "urllib and curl over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/apiKeys.json",
+    "on": "2026-10-02",
+    "renames": [
+      "key boxes -> sandboxes"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [
+    "secret-bearing and host-identifying strings are replaced"
+  ],
+  "body": {
+    "ok": true,
+    "type": "api_key.list",
+    "apiKeys": [
+      {
+        "id": "e1489700-dda0-4d4f-836e-1c34ac060030",
+        "name": "Production",
+        "keyPrefix": "[REDACTED_keyPrefix]",
+        "keyLastFour": "[REDACTED_keyLastFour]",
+        "sandboxId": null,
+        "createdAt": "2026-09-05T15:52:43.106Z",
+        "lastUsedAt": "2026-09-06T00:25:31.584Z",
+        "usage": {
+          "requests": 6899,
+          "windowDays": 30
+        },
+        "resources": {
+          "total": 2,
+          "sandboxes": 2,
+          "agents": 0
+        }
+      },
+      {
+        "id": "7eba188c-d6fb-4dc7-98ce-f6ce2fe1fe2c",
+        "name": "Production",
+        "keyPrefix": "[REDACTED_keyPrefix]",
+        "keyLastFour": "[REDACTED_keyLastFour]",
+        "sandboxId": null,
+        "createdAt": "2026-08-25T19:06:02.046Z",
+        "lastUsedAt": "2026-09-05T23:53:24.792Z",
+        "usage": {
+          "requests": 41632,
+          "windowDays": 30
+        },
+        "resources": {
+          "total": 4,
+          "sandboxes": 4,
+          "agents": 0
+        }
+      },
+      {
+        "id": "53a0eb23-ef39-46ad-85b1-eefd42eeda3e",
+        "name": "Production",
+        "keyPrefix": "[REDACTED_keyPrefix]",
+        "keyLastFour": "[REDACTED_keyLastFour]",
+        "sandboxId": null,
+        "createdAt": "2026-08-23T02:43:00.157Z",
+        "lastUsedAt": "2026-08-25T19:32:58.410Z",
+        "usage": {
+          "requests": 0,
+          "windowDays": 30
+        },
+        "resources": {
+          "total": 0,
+          "sandboxes": 0,
+          "agents": 0
+        }
+      },
+      {
+        "id": "bfefe894-40c7-46b9-977c-6d366e34106c",
+        "name": "Production",
+        "keyPrefix": "[REDACTED_keyPrefix]",
+        "keyLastFour": "[REDACTED_keyLastFour]",
+        "sandboxId": null,
+        "createdAt": "2026-07-19T05:21:21.271Z",
+        "lastUsedAt": null,
+        "usage": {
+          "requests": 0,
+          "windowDays": 30
+        },
+        "resources": {
+          "total": 0,
+          "sandboxes": 0,
+          "agents": 0
+        }
+      }
+    ]
+  }
+}

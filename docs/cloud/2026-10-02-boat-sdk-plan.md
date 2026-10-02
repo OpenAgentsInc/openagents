@@ -1,7 +1,7 @@
 # Boat (formerly Ascii Box): our history, their API today, and a Rust SDK plan
 
 - Date: 2026-10-02
-- Status: plan. Nothing here is implemented on `main`.
+- Status: in progress. B1 (`crates/boat`), B2 (streaming, following and killing commands), B3 (fixtures and the gated live test) and B5 (`crates/boat-template`) are on `main`.
 - Parent:
   [Cloud parallel execution audit](2026-10-02-cloud-parallel-execution-audit.md).
   This plan adds Boat as a second placement backend next to the GCE pool that

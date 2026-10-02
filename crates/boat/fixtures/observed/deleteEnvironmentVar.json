@@ -1,0 +1,40 @@
+{
+  "capture": "deleteEnvironmentVar",
+  "operation_id": "deleteEnvironmentVar",
+  "method": "DELETE",
+  "path": "/environments/{environmentId}/vars/{key}",
+  "case": "success",
+  "status": 200,
+  "captured_at": "2026-09-06T00:44:54Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/deleteEnvironmentVar.json",
+    "on": "2026-10-02",
+    "renames": [],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "elapsed_ms": 614,
+  "request": {
+    "target": "/environments/8d05441f-9371-4111-b4b6-a523df24d158/vars/PHASE0_VAR",
+    "headers": {},
+    "body": null
+  },
+  "response_headers": {
+    "content-length": "124",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "type": "environment.updated",
+    "success": true,
+    "versionId": "1af1e102-f799-4176-a096-27002224432d",
+    "versionNumber": 3
+  }
+}

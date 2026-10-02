@@ -1,0 +1,208 @@
+{
+  "operation_id": "createWebhook",
+  "method": "POST",
+  "path": "/webhooks",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "create_webhook",
+  "sdk_response_type": "WebhookSecretResponse",
+  "summary": "Create webhook",
+  "description": "Registers an account-wide endpoint for sandbox lifecycle events. The endpoint must use HTTPS on port 443 and resolve only to public addresses. Redirects are not followed during delivery.\n\nThe signing secret is returned only in this response. An account can register at most 10 unique endpoint URLs.\n",
+  "parameters": [],
+  "request": {
+    "target": "/api/v1/webhooks",
+    "headers": {},
+    "body_schema": "WebhookCreateRequest",
+    "body": {
+      "name": "sample",
+      "url": "sample",
+      "events": []
+    },
+    "sdk_params_json": {
+      "body": {
+        "name": "sample",
+        "url": "sample",
+        "events": []
+      }
+    }
+  },
+  "success": {
+    "status": "201",
+    "schema": "WebhookSecretResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "created": {
+        "ok": true,
+        "type": "webhook.created",
+        "webhook": {
+          "id": "wh_0123456789abcdef01234567",
+          "name": "Production automation",
+          "url": "https://example.com/hooks/sandbox",
+          "events": [
+            "sandbox.ready",
+            "sandbox.error"
+          ],
+          "createdAt": "2026-08-11T12:00:00Z",
+          "updatedAt": "2026-08-11T12:00:00Z"
+        },
+        "secret": "whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "webhook": {
+        "id": "sample",
+        "name": "sample",
+        "url": "sample",
+        "events": [],
+        "createdAt": "sample",
+        "updatedAt": "sample"
+      },
+      "secret": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "201": {
+      "description": "Webhook created. Store the one-time signing secret now.",
+      "schema": "WebhookSecretResponse",
+      "binary": false,
+      "published_examples": {
+        "created": {
+          "ok": true,
+          "type": "webhook.created",
+          "webhook": {
+            "id": "wh_0123456789abcdef01234567",
+            "name": "Production automation",
+            "url": "https://example.com/hooks/sandbox",
+            "events": [
+              "sandbox.ready",
+              "sandbox.error"
+            ],
+            "createdAt": "2026-08-11T12:00:00Z",
+            "updatedAt": "2026-08-11T12:00:00Z"
+          },
+          "secret": "whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "409": {
+      "description": "Request conflicts with current account or sandbox state.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "Conflict"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "409",
+      "shared_response": "Conflict",
+      "description": "Request conflicts with current account or sandbox state.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

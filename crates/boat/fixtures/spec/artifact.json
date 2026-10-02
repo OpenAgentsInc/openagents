@@ -1,0 +1,63 @@
+{
+  "operation_id": "artifact",
+  "method": "GET",
+  "path": "/sandboxes/{sandboxId}/artifacts",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "artifact",
+  "sdk_response_type": "crate::Download",
+  "summary": "Download a sandbox artifact",
+  "description": null,
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    },
+    {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "description": null,
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/artifacts?path=sample",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "path": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": null,
+    "schema_variants": null,
+    "binary": true,
+    "published_examples": {},
+    "schema_sample": null,
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Artifact bytes.",
+      "schema": null,
+      "binary": true,
+      "published_examples": {}
+    }
+  },
+  "failure_cases": []
+}

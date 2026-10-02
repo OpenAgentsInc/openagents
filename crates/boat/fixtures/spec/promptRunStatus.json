@@ -1,0 +1,141 @@
+{
+  "operation_id": "promptRunStatus",
+  "method": "GET",
+  "path": "/sandboxes/{sandboxId}/prompts/{promptId}",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "prompt_run_status",
+  "sdk_response_type": "PromptRunResponse",
+  "summary": "Get prompt run status",
+  "description": "Returns first-class status for a queued/running/finished prompt so clients do not infer completion from sandbox state and events.",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    },
+    {
+      "name": "promptId",
+      "in": "path",
+      "required": true,
+      "description": null,
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/prompts/sample",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "promptId": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "PromptRunResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {},
+    "schema_sample": {
+      "ok": true,
+      "type": "prompt.run",
+      "id": "sample",
+      "promptRun": {
+        "id": "sample",
+        "promptId": "sample",
+        "sandboxId": "sample",
+        "status": "sending",
+        "done": true
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Prompt run status.",
+      "schema": "PromptRunResponse",
+      "binary": false,
+      "published_examples": {}
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

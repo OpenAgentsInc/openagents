@@ -1,0 +1,212 @@
+{
+  "operation_id": "share",
+  "method": "POST",
+  "path": "/sandboxes/{sandboxId}/share",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "share",
+  "sdk_response_type": "ShareResponseBody",
+  "summary": "Share sandbox with the organization",
+  "description": "Let every member of the organization that pays for this sandbox use it.\n\nYour personal logins (GitHub token, Claude and Codex logins, environment secrets,\nthe sandbox's own CLI key) are never pushed to it again and are wiped off its disk\nat its next start, so a teammate never acts as you. Files you wrote stay. One-way:\nthe sandbox stays like a `noEnv` sandbox from then on. A running sandbox stays\n`view` for the organization until you stop and resume it (`restartRequired`).\n\nOnly the person who created the sandbox can share it, and only a sandbox billed to\nan organization. Sharing an already shared sandbox is a no-op.\n",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/share",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": null,
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {},
+    "schema_sample": {
+      "sandbox": {
+        "id": "sample",
+        "name": "sample",
+        "state": "init",
+        "desktopAvailable": true,
+        "snapshotAvailable": true
+      },
+      "restartRequired": true,
+      "message": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "The sandbox is shared.",
+      "schema": null,
+      "binary": false,
+      "published_examples": {}
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "403": {
+      "description": "Authenticated token is not allowed to perform this action.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "forbidden": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 403,
+          "code": "forbidden",
+          "message": "Forbidden",
+          "error": {
+            "code": "forbidden",
+            "message": "Forbidden",
+            "status": 403
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Forbidden"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "403",
+      "shared_response": "Forbidden",
+      "description": "Authenticated token is not allowed to perform this action.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 403,
+        "code": "forbidden",
+        "message": "Forbidden",
+        "error": {
+          "code": "forbidden",
+          "message": "Forbidden",
+          "status": 403
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

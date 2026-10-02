@@ -1,0 +1,146 @@
+{
+  "operation_id": "upgradeEnvironment",
+  "method": "POST",
+  "path": "/environments/{environmentId}/upgrade",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "upgrade_environment",
+  "sdk_response_type": "UpgradeSandboxEnvironmentResponse",
+  "summary": "Upgrade sandboxes to an environment's latest version",
+  "description": "Repoints the caller's active sandboxes from an older version of this environment to its latest version, scrubbing any owner secrets the new version drops and hot-pushing the new config.",
+  "parameters": [
+    {
+      "name": "environmentId",
+      "in": "path",
+      "required": true,
+      "description": null,
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/environments/sample/upgrade",
+    "headers": {},
+    "body_schema": "UpgradeSandboxEnvironmentRequest",
+    "body": {
+      "agentIds": []
+    },
+    "sdk_params_json": {
+      "environmentId": "sample",
+      "body": {
+        "agentIds": []
+      }
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "UpgradeSandboxEnvironmentResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "upgraded": {
+        "success": true,
+        "upgraded": 2,
+        "failed": 0
+      }
+    },
+    "schema_sample": {
+      "success": true,
+      "upgraded": 1,
+      "upgradedLive": 1,
+      "upgradedStopped": 1,
+      "failed": 1,
+      "latestVersionId": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Upgrade result counts.",
+      "schema": "UpgradeSandboxEnvironmentResponse",
+      "binary": false,
+      "published_examples": {
+        "upgraded": {
+          "success": true,
+          "upgraded": 2,
+          "failed": 0
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

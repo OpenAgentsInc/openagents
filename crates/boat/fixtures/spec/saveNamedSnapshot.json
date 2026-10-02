@@ -1,0 +1,195 @@
+{
+  "operation_id": "saveNamedSnapshot",
+  "method": "POST",
+  "path": "/named-snapshots",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "save_named_snapshot",
+  "sdk_response_type": "NamedSnapshotSavingResponse",
+  "summary": "Save a named snapshot",
+  "description": "Freeze a sandbox's current state under a name (`boat snapshot <id> <name>` in the CLI). Answers `202` immediately with the snapshot in `saving`; a running sandbox takes a fresh capture first, which can run minutes. Poll `GET /named-snapshots/{name}` until the status settles at `ready` or `failed`. Reusing one of your existing names replaces that snapshot's artifact once the new save is ready.",
+  "parameters": [],
+  "request": {
+    "target": "/api/v1/named-snapshots",
+    "headers": {},
+    "body_schema": "NamedSnapshotSaveRequest",
+    "body": {
+      "sandboxId": "sample",
+      "name": "sample"
+    },
+    "sdk_params_json": {
+      "body": {
+        "sandboxId": "sample",
+        "name": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "202",
+    "schema": "NamedSnapshotSavingResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {},
+    "schema_sample": {
+      "ok": true,
+      "type": "snapshot.named.saving",
+      "status": "saving",
+      "snapshot": {
+        "name": "sample",
+        "status": "saving",
+        "sourceSandboxId": "sample",
+        "createdAt": "sample"
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "202": {
+      "description": "Save accepted and running in the background.",
+      "schema": "NamedSnapshotSavingResponse",
+      "binary": false,
+      "published_examples": {}
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    },
+    "409": {
+      "description": "`named_snapshot_limit` when you already keep the maximum of 10 named snapshots; remove one first. `save_in_progress` when a save under this name is already running; wait for it to settle rather than retrying immediately.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {}
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "409",
+      "shared_response": null,
+      "description": "`named_snapshot_limit` when you already keep the maximum of 10 named snapshots; remove one first. `save_in_progress` when a save under this name is already running; wait for it to settle rather than retrying immediately.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

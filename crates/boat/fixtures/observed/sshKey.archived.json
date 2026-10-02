@@ -1,0 +1,56 @@
+{
+  "capture": "sshKey.archived",
+  "operation_id": "sshKey",
+  "method": "POST",
+  "path": "/sandboxes/{sandboxId}/sshkey",
+  "case": "archived Box",
+  "status": 400,
+  "captured_at": "2026-09-06T00:45:08Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/sshKey.archived.json",
+    "on": "2026-10-02",
+    "renames": [
+      "path /boxes/{boxId}/sshkey -> /sandboxes/{sandboxId}/sshkey",
+      "value box.error -> sandbox.error"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "elapsed_ms": 566,
+  "request": {
+    "target": "/sandboxes/bx_sg2zeu8d/sshkey",
+    "headers": {},
+    "body": {
+      "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPhase0PlaceholderKeyMaterial000000000000000 phase0"
+    }
+  },
+  "response_headers": {
+    "content-length": "366",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 400,
+    "code": "machine_not_running",
+    "message": "Box machine is not running yet.",
+    "error": {
+      "code": "machine_not_running",
+      "message": "Box machine is not running yet.",
+      "status": 400,
+      "details": {
+        "success": false,
+        "error": "machine_not_running",
+        "message": "Box machine is not running yet."
+      }
+    },
+    "requestId": "req_b3d9252522fc4659b18f56c854fa1dea"
+  }
+}

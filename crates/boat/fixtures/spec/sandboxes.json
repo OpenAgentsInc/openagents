@@ -1,0 +1,189 @@
+{
+  "operation_id": "sandboxes",
+  "method": "GET",
+  "path": "/sandboxes",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "sandboxes",
+  "sdk_response_type": "SandboxListResponse",
+  "summary": "List sandboxes",
+  "description": "Your sandboxes. In an organization's scope (the active wallet, `org`, or `X-Boat-Org`) the list also holds every sandbox that organization pays for, whoever created it; `createdBy` and `access` say whose it is and what you may do with it.",
+  "parameters": [
+    {
+      "name": "org",
+      "in": "query",
+      "required": false,
+      "description": "Billing wallet for this request: an organization you belong to, by id (`team_\u2026`) or by name as `GET /orgs` lists it (case-insensitive), or `personal`. Omitted, the account's active wallet applies (`PATCH /orgs/active`; personal until set). Two organizations sharing the name answer `409 ambiguous_org` and need the id. Sandboxes, snapshots, and environments stay creator-private.",
+      "example_value": "sample"
+    },
+    {
+      "name": "X-Boat-Org",
+      "in": "header",
+      "required": false,
+      "description": "Same as the `org` query parameter. Query wins when both are set.",
+      "example_value": "sample"
+    },
+    {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "description": "Maximum items to return.",
+      "example_value": 1
+    },
+    {
+      "name": "cursor",
+      "in": "query",
+      "required": false,
+      "description": "Opaque pagination cursor returned as `pageInfo.nextCursor`.",
+      "example_value": "sample"
+    },
+    {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "description": "Sort direction for cursor pagination.",
+      "example_value": "asc"
+    },
+    {
+      "name": "state",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated sandbox state filter, for example `ready,idle,running`.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes?org=sample&limit=1&cursor=sample&sort=asc&state=sample",
+    "headers": {
+      "X-Boat-Org": "sample"
+    },
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "org": "sample",
+      "X-Boat-Org": "sample",
+      "limit": 1,
+      "cursor": "sample",
+      "sort": "asc",
+      "state": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "SandboxListResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "sandboxes": {
+        "ok": true,
+        "type": "sandbox.list",
+        "sandboxes": [
+          {
+            "id": "bx_23456789",
+            "name": "Sandbox 2026-05-31 12:00",
+            "state": "idle",
+            "url": "https://machine.on.boat.dev",
+            "ip": "203.0.113.10",
+            "createdAt": "2026-05-31T12:00:00Z",
+            "updatedAt": "2026-05-31T12:05:00Z",
+            "archiveAfter": "2026-05-31T13:00:00Z",
+            "desktopAvailable": true,
+            "desktopUrl": "https://desktop.example/stream.html?token=redacted",
+            "snapshotAvailable": false,
+            "snapshotCompletedAt": null
+          }
+        ]
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sandbox.list",
+      "sandboxes": [],
+      "pageInfo": {
+        "nextCursor": "sample",
+        "hasMore": true,
+        "limit": 1
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Sandboxes owned by the authenticated Boat user.",
+      "schema": "SandboxListResponse",
+      "binary": false,
+      "published_examples": {
+        "sandboxes": {
+          "ok": true,
+          "type": "sandbox.list",
+          "sandboxes": [
+            {
+              "id": "bx_23456789",
+              "name": "Sandbox 2026-05-31 12:00",
+              "state": "idle",
+              "url": "https://machine.on.boat.dev",
+              "ip": "203.0.113.10",
+              "createdAt": "2026-05-31T12:00:00Z",
+              "updatedAt": "2026-05-31T12:05:00Z",
+              "archiveAfter": "2026-05-31T13:00:00Z",
+              "desktopAvailable": true,
+              "desktopUrl": "https://desktop.example/stream.html?token=redacted",
+              "snapshotAvailable": false,
+              "snapshotCompletedAt": null
+            }
+          ]
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    }
+  ]
+}

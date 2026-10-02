@@ -1,0 +1,213 @@
+{
+  "operation_id": "conversations",
+  "method": "GET",
+  "path": "/sandboxes/{sandboxId}/conversations",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "conversations",
+  "sdk_response_type": "ConversationsResponse",
+  "summary": "List boat conversations",
+  "description": "Every conversation on the sandbox, most recently prompted first, with what you need to pick one: how many prompts it holds, whether a turn is running in it right now, the last harness and model it ran on, a preview of its last prompt, and `current`, the one a `POST /prompt` without `new` or `conversationId` would continue. Pass an `id` back as `conversationId` on `POST /prompt` to resume that thread, or as `conversation` on `POST /steer`, `POST /interrupt` and `GET /events` to scope those. See [Integrated agents](/integrated-agents).",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/conversations",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "ConversationsResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "twoConversations": {
+        "ok": true,
+        "type": "conversation.list",
+        "id": "bx_23456789",
+        "conversations": [
+          {
+            "id": "8f1c2b7a-3d4e-4f5a-9b0c-1d2e3f4a5b6c",
+            "createdAt": "2026-09-08T10:05:00.000Z",
+            "lastPromptAt": "2026-09-08T10:05:00.000Z",
+            "prompts": 1,
+            "running": true,
+            "lastHarness": "pi",
+            "lastModel": "claude-sonnet-5",
+            "lastPromptPreview": "Investigate the flaky CI job",
+            "current": true
+          },
+          {
+            "id": "2c0d9e4b-7a1f-4c3e-8b5d-6e7f8a9b0c1d",
+            "createdAt": "2026-09-08T09:40:00.000Z",
+            "lastPromptAt": "2026-09-08T10:03:00.000Z",
+            "prompts": 2,
+            "running": false,
+            "lastHarness": "claude",
+            "lastModel": "claude-opus-4-8",
+            "lastPromptPreview": "Now add tests",
+            "current": false
+          }
+        ]
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "conversation.list",
+      "id": "sample",
+      "conversations": []
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Conversations on the sandbox. A Sandbox that was never prompted returns an empty list.",
+      "schema": "ConversationsResponse",
+      "binary": false,
+      "published_examples": {
+        "twoConversations": {
+          "ok": true,
+          "type": "conversation.list",
+          "id": "bx_23456789",
+          "conversations": [
+            {
+              "id": "8f1c2b7a-3d4e-4f5a-9b0c-1d2e3f4a5b6c",
+              "createdAt": "2026-09-08T10:05:00.000Z",
+              "lastPromptAt": "2026-09-08T10:05:00.000Z",
+              "prompts": 1,
+              "running": true,
+              "lastHarness": "pi",
+              "lastModel": "claude-sonnet-5",
+              "lastPromptPreview": "Investigate the flaky CI job",
+              "current": true
+            },
+            {
+              "id": "2c0d9e4b-7a1f-4c3e-8b5d-6e7f8a9b0c1d",
+              "createdAt": "2026-09-08T09:40:00.000Z",
+              "lastPromptAt": "2026-09-08T10:03:00.000Z",
+              "prompts": 2,
+              "running": false,
+              "lastHarness": "claude",
+              "lastModel": "claude-opus-4-8",
+              "lastPromptPreview": "Now add tests",
+              "current": false
+            }
+          ]
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "402": {
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "PaymentRequired"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "402",
+      "shared_response": "PaymentRequired",
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

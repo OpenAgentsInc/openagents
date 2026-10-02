@@ -1,0 +1,256 @@
+{
+  "operation_id": "repos",
+  "method": "GET",
+  "path": "/repos",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "repos",
+  "sdk_response_type": "ReposResponse",
+  "summary": "List GitHub repositories available to Boat",
+  "description": "Returns GitHub repositories grouped by installation plus the current selected repositories for new Sandboxes.",
+  "parameters": [
+    {
+      "name": "sync",
+      "in": "query",
+      "required": false,
+      "description": "When true, sync from GitHub before returning repository groups.",
+      "example_value": true
+    },
+    {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "description": "Maximum items to return.",
+      "example_value": 1
+    },
+    {
+      "name": "cursor",
+      "in": "query",
+      "required": false,
+      "description": "Opaque pagination cursor returned as `pageInfo.nextCursor`.",
+      "example_value": "sample"
+    },
+    {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "description": "Sort direction for cursor pagination.",
+      "example_value": "asc"
+    },
+    {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "description": "Case-insensitive repository name/fullName filter.",
+      "example_value": "sample"
+    },
+    {
+      "name": "selected",
+      "in": "query",
+      "required": false,
+      "description": "Filter to selected or unselected repositories.",
+      "example_value": true
+    }
+  ],
+  "request": {
+    "target": "/api/v1/repos?sync=true&limit=1&cursor=sample&sort=asc&q=sample&selected=true",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sync": true,
+      "limit": 1,
+      "cursor": "sample",
+      "sort": "asc",
+      "q": "sample",
+      "selected": true
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "ReposResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "repos": {
+        "ok": true,
+        "type": "repos.list",
+        "environmentId": "env_123",
+        "installations": [
+          {
+            "type": "Organization",
+            "accountLogin": "acme",
+            "accountAvatarUrl": "https://github.com/acme.png",
+            "repositories": [
+              {
+                "id": 123456,
+                "databaseId": "repo_org_123456",
+                "name": "web",
+                "fullName": "acme/web",
+                "description": "Marketing site",
+                "url": "https://github.com/acme/web",
+                "private": true,
+                "permissions": "admin",
+                "pushedAt": "2026-05-31T12:00:00Z"
+              }
+            ]
+          }
+        ],
+        "selectedRepositories": [
+          {
+            "id": 123456,
+            "databaseId": "repo_org_123456",
+            "name": "web",
+            "fullName": "acme/web",
+            "private": true,
+            "permissions": "admin",
+            "pushedAt": "2026-05-31T12:00:00Z",
+            "baseBranch": "dev",
+            "setupRoutineId": null,
+            "setupScript": "",
+            "setupBlocking": false
+          }
+        ]
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "installations": [],
+      "environmentId": "sample",
+      "subenvironmentId": "sample",
+      "selectedRepositories": [],
+      "pageInfo": {
+        "nextCursor": "sample",
+        "hasMore": true,
+        "limit": 1
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Repository groups and current sandbox repository selection.",
+      "schema": "ReposResponse",
+      "binary": false,
+      "published_examples": {
+        "repos": {
+          "ok": true,
+          "type": "repos.list",
+          "environmentId": "env_123",
+          "installations": [
+            {
+              "type": "Organization",
+              "accountLogin": "acme",
+              "accountAvatarUrl": "https://github.com/acme.png",
+              "repositories": [
+                {
+                  "id": 123456,
+                  "databaseId": "repo_org_123456",
+                  "name": "web",
+                  "fullName": "acme/web",
+                  "description": "Marketing site",
+                  "url": "https://github.com/acme/web",
+                  "private": true,
+                  "permissions": "admin",
+                  "pushedAt": "2026-05-31T12:00:00Z"
+                }
+              ]
+            }
+          ],
+          "selectedRepositories": [
+            {
+              "id": 123456,
+              "databaseId": "repo_org_123456",
+              "name": "web",
+              "fullName": "acme/web",
+              "private": true,
+              "permissions": "admin",
+              "pushedAt": "2026-05-31T12:00:00Z",
+              "baseBranch": "dev",
+              "setupRoutineId": null,
+              "setupScript": "",
+              "setupBlocking": false
+            }
+          ]
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "409": {
+      "description": "Request conflicts with current account or sandbox state.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "Conflict"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "409",
+      "shared_response": "Conflict",
+      "description": "Request conflicts with current account or sandbox state.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

@@ -1,0 +1,427 @@
+{
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "operations": [
+    {
+      "operation_id": "me",
+      "method": "GET",
+      "path": "/me",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "listOrganizations",
+      "method": "GET",
+      "path": "/orgs",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "setActiveOrganization",
+      "method": "PATCH",
+      "path": "/orgs/active",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "getDataRetention",
+      "method": "GET",
+      "path": "/account/data-retention",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "updateDataRetention",
+      "method": "PATCH",
+      "path": "/account/data-retention",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "getDeletionOperation",
+      "method": "GET",
+      "path": "/deletion-operations/{operationId}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "limits",
+      "method": "GET",
+      "path": "/limits",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "repos",
+      "method": "GET",
+      "path": "/repos",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "selectRepo",
+      "method": "POST",
+      "path": "/repos",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "apiKeys",
+      "method": "GET",
+      "path": "/api-keys",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "createScopedApiKey",
+      "method": "POST",
+      "path": "/api-keys/scoped",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "revokeApiKey",
+      "method": "DELETE",
+      "path": "/api-keys/{apiKeyId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "rotateApiKey",
+      "method": "POST",
+      "path": "/api-keys/{apiKeyId}/rotate",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "apiKeyUsage",
+      "method": "GET",
+      "path": "/api-keys/{apiKeyId}/usage",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "listWebhooks",
+      "method": "GET",
+      "path": "/webhooks",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "createWebhook",
+      "method": "POST",
+      "path": "/webhooks",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "getWebhook",
+      "method": "GET",
+      "path": "/webhooks/{webhookId}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "updateWebhook",
+      "method": "PATCH",
+      "path": "/webhooks/{webhookId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteWebhook",
+      "method": "DELETE",
+      "path": "/webhooks/{webhookId}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "rotateWebhookSigningSecret",
+      "method": "POST",
+      "path": "/webhooks/{webhookId}/rotate",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "secrets",
+      "method": "GET",
+      "path": "/secrets",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "updateSecrets",
+      "method": "POST",
+      "path": "/secrets",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "environments",
+      "method": "GET",
+      "path": "/environments",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "createEnvironment",
+      "method": "POST",
+      "path": "/environments",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "updateEnvironment",
+      "method": "PUT",
+      "path": "/environments/{environmentId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteEnvironment",
+      "method": "DELETE",
+      "path": "/environments/{environmentId}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "upgradeEnvironment",
+      "method": "POST",
+      "path": "/environments/{environmentId}/upgrade",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "setEnvironmentVar",
+      "method": "PUT",
+      "path": "/environments/{environmentId}/vars/{key}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteEnvironmentVar",
+      "method": "DELETE",
+      "path": "/environments/{environmentId}/vars/{key}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "setEnvironmentSecretFile",
+      "method": "PUT",
+      "path": "/environments/{environmentId}/secret-files",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteEnvironmentSecretFile",
+      "method": "DELETE",
+      "path": "/environments/{environmentId}/secret-files",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "addEnvironmentRepo",
+      "method": "POST",
+      "path": "/environments/{environmentId}/repos",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteEnvironmentRepo",
+      "method": "DELETE",
+      "path": "/environments/{environmentId}/repos/{repositoryId}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "sandboxes",
+      "method": "GET",
+      "path": "/sandboxes",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "create",
+      "method": "POST",
+      "path": "/sandboxes",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "get",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "update",
+      "method": "PATCH",
+      "path": "/sandboxes/{sandboxId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteSandbox",
+      "method": "DELETE",
+      "path": "/sandboxes/{sandboxId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "stop",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/stop",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "share",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/share",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "resume",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/resume",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "fork",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/fork",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "prompt",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/prompt",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "events",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/events",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "conversations",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/conversations",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "promptRunStatus",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/prompts/{promptId}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "readFile",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/files",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "writeFile",
+      "method": "PUT",
+      "path": "/sandboxes/{sandboxId}/files",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "command",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/commands",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "commandStatus",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/commands/{processId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "artifact",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/artifacts",
+      "published_response_examples": 0
+    },
+    {
+      "operation_id": "steer",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/steer",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "interrupt",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/interrupt",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "desktop",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/desktop",
+      "published_response_examples": 4
+    },
+    {
+      "operation_id": "hostPort",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/host",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "sshKey",
+      "method": "POST",
+      "path": "/sandboxes/{sandboxId}/sshkey",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "listNamedSnapshots",
+      "method": "GET",
+      "path": "/named-snapshots",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "saveNamedSnapshot",
+      "method": "POST",
+      "path": "/named-snapshots",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "getNamedSnapshot",
+      "method": "GET",
+      "path": "/named-snapshots/{name}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "deleteNamedSnapshot",
+      "method": "DELETE",
+      "path": "/named-snapshots/{name}",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "listSnapshots",
+      "method": "GET",
+      "path": "/snapshots",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "listSandboxSnapshots",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/snapshots",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "deleteSandboxSnapshots",
+      "method": "DELETE",
+      "path": "/sandboxes/{sandboxId}/snapshots",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "getLatestSandboxSnapshot",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/snapshots/latest",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "usage",
+      "method": "GET",
+      "path": "/sandboxes/{sandboxId}/usage",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "deleteSnapshot",
+      "method": "DELETE",
+      "path": "/snapshots/{snapshotId}",
+      "published_response_examples": 2
+    },
+    {
+      "operation_id": "getSnapshotTree",
+      "method": "GET",
+      "path": "/snapshots/{snapshotId}/tree",
+      "published_response_examples": 3
+    },
+    {
+      "operation_id": "getSnapshotFile",
+      "method": "GET",
+      "path": "/snapshots/{snapshotId}/files",
+      "published_response_examples": 1
+    },
+    {
+      "operation_id": "getSnapshotDownload",
+      "method": "GET",
+      "path": "/snapshots/{snapshotId}/download",
+      "published_response_examples": 2
+    }
+  ]
+}

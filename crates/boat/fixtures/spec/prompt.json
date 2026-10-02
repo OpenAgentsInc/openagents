@@ -1,0 +1,291 @@
+{
+  "operation_id": "prompt",
+  "method": "POST",
+  "path": "/sandboxes/{sandboxId}/prompt",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "prompt",
+  "sdk_response_type": "PromptResponse",
+  "summary": "Prompt Sandbox",
+  "description": "Queue a natural-language work item for an agent harness (Codex, Claude Code, pi, OpenCode, or Prime Agent) inside the sandbox. Observe progress with `GET /sandboxes/{sandboxId}/events`.\n\nA Sandbox runs many conversations in parallel. Set `new: true` to start a fresh one, `conversationId` to continue a specific one, or omit both to continue the most-recently-active conversation; the response returns the `conversationId`. See [Integrated agents](/integrated-agents).",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/prompt",
+    "headers": {},
+    "body_schema": "PromptRequest",
+    "body": {
+      "provider": "codex",
+      "model": "sample",
+      "reasoningEffort": "sample",
+      "fast": true,
+      "new": true,
+      "conversationId": "sample",
+      "prompt": "sample"
+    },
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "body": {
+        "provider": "codex",
+        "model": "sample",
+        "reasoningEffort": "sample",
+        "fast": true,
+        "new": true,
+        "conversationId": "sample",
+        "prompt": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "202",
+    "schema": "PromptResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "queued": {
+        "ok": true,
+        "type": "prompt.queued",
+        "id": "bx_23456789",
+        "promptId": "prompt_123",
+        "conversationId": "8f1c2b7a-3d4e-4f5a-9b0c-1d2e3f4a5b6c",
+        "promptRun": {
+          "id": "prompt_123",
+          "promptId": "prompt_123",
+          "sandboxId": "bx_23456789",
+          "status": "queued",
+          "done": false,
+          "conversationId": "8f1c2b7a-3d4e-4f5a-9b0c-1d2e3f4a5b6c"
+        },
+        "status": "queued",
+        "provider": "codex",
+        "model": "gpt-5.4",
+        "reasoningEffort": "medium",
+        "fast": false
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "prompt.queued",
+      "id": "sample",
+      "promptId": "sample",
+      "conversationId": "sample",
+      "promptRun": {
+        "id": "sample",
+        "promptId": "sample",
+        "sandboxId": "sample",
+        "status": "sending",
+        "done": true
+      },
+      "status": "queued",
+      "provider": "sample",
+      "model": "sample",
+      "reasoningEffort": "sample",
+      "fast": true
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "202": {
+      "description": "Prompt queued.",
+      "schema": "PromptResponse",
+      "binary": false,
+      "published_examples": {
+        "queued": {
+          "ok": true,
+          "type": "prompt.queued",
+          "id": "bx_23456789",
+          "promptId": "prompt_123",
+          "conversationId": "8f1c2b7a-3d4e-4f5a-9b0c-1d2e3f4a5b6c",
+          "promptRun": {
+            "id": "prompt_123",
+            "promptId": "prompt_123",
+            "sandboxId": "bx_23456789",
+            "status": "queued",
+            "done": false,
+            "conversationId": "8f1c2b7a-3d4e-4f5a-9b0c-1d2e3f4a5b6c"
+          },
+          "status": "queued",
+          "provider": "codex",
+          "model": "gpt-5.4",
+          "reasoningEffort": "medium",
+          "fast": false
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "402": {
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "PaymentRequired"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    },
+    "409": {
+      "description": "Request conflicts with current account or sandbox state.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "Conflict"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "402",
+      "shared_response": "PaymentRequired",
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "409",
+      "shared_response": "Conflict",
+      "description": "Request conflicts with current account or sandbox state.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

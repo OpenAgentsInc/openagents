@@ -1,0 +1,112 @@
+{
+  "operation_id": "writeFile",
+  "method": "PUT",
+  "path": "/sandboxes/{sandboxId}/files",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "write_file",
+  "sdk_response_type": "FileWriteResponse",
+  "summary": "Write a file in a sandbox",
+  "description": null,
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/files",
+    "headers": {},
+    "body_schema": "FileWriteRequest",
+    "body": {
+      "path": "sample",
+      "content": "sample",
+      "encoding": "utf8"
+    },
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "body": {
+        "path": "sample",
+        "content": "sample",
+        "encoding": "utf8"
+      }
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "FileWriteResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {},
+    "schema_sample": {
+      "ok": true,
+      "type": "file.written",
+      "success": true,
+      "path": "sample",
+      "encoding": "utf8",
+      "size": 1
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "File written.",
+      "schema": "FileWriteResponse",
+      "binary": false,
+      "published_examples": {}
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+{
+  "operation_id": "listOrganizations",
+  "method": "GET",
+  "path": "/orgs",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "list_organizations",
+  "sdk_response_type": "OrgListResponse",
+  "summary": "List organizations",
+  "description": "The wallets this account can bill: your personal account first, then every organization you belong to, each with its id and name. Either spelling works wherever an org is passed (`org`, `X-Boat-Org`, `teamId`). `active` marks the wallet new sandboxes bill when a request names none; change it with `PATCH /orgs/active`.",
+  "parameters": [],
+  "request": {
+    "target": "/api/v1/orgs",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": null
+  },
+  "success": {
+    "status": "200",
+    "schema": "OrgListResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "orgs": {
+        "ok": true,
+        "type": "org.list",
+        "activeWalletChosen": true,
+        "orgs": [
+          {
+            "id": "4f1c2e0a-7b3d-4a6e-9c8b-2d5e1f0a3b7c",
+            "name": "Personal",
+            "type": "personal",
+            "role": "owner",
+            "memberCount": 1,
+            "active": false
+          },
+          {
+            "id": "team_583fd89e-6d29-4007-b48d-52477656cb0f",
+            "name": "acme",
+            "type": "org",
+            "role": "owner",
+            "memberCount": 3,
+            "subscriptionStatus": "active",
+            "active": true
+          }
+        ]
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "org.list",
+      "activeWalletChosen": true,
+      "orgs": []
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Personal account and organizations.",
+      "schema": "OrgListResponse",
+      "binary": false,
+      "published_examples": {
+        "orgs": {
+          "ok": true,
+          "type": "org.list",
+          "activeWalletChosen": true,
+          "orgs": [
+            {
+              "id": "4f1c2e0a-7b3d-4a6e-9c8b-2d5e1f0a3b7c",
+              "name": "Personal",
+              "type": "personal",
+              "role": "owner",
+              "memberCount": 1,
+              "active": false
+            },
+            {
+              "id": "team_583fd89e-6d29-4007-b48d-52477656cb0f",
+              "name": "acme",
+              "type": "org",
+              "role": "owner",
+              "memberCount": 3,
+              "subscriptionStatus": "active",
+              "active": true
+            }
+          ]
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    }
+  ]
+}

@@ -1,0 +1,326 @@
+{
+  "operation_id": "events",
+  "method": "GET",
+  "path": "/sandboxes/{sandboxId}/events",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "events",
+  "sdk_response_type": "EventsResponse",
+  "summary": "List boat events",
+  "description": "Return Sandbox work, lifecycle, and progress events so product UIs can show what the sandbox is doing. A Sandbox runs many conversations in parallel; this streams **all** of them by default and every event carries a `conversationId`. Filter to one or more with `conversation`. Event payloads are extensible. Clients can long-poll this endpoint with `sort=asc` and a cursor to stream responses. Response events expose agent text, streaming partials via `data.is_streaming`, and tool calls/results via `data.tools`.",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    },
+    {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "description": "Maximum items to return.",
+      "example_value": 1
+    },
+    {
+      "name": "cursor",
+      "in": "query",
+      "required": false,
+      "description": "Opaque pagination cursor returned as `pageInfo.nextCursor`.",
+      "example_value": "sample"
+    },
+    {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "description": "Sort direction for cursor pagination.",
+      "example_value": "asc"
+    },
+    {
+      "name": "type",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated event type filter, for example `prompt,response,steer`.",
+      "example_value": "sample"
+    },
+    {
+      "name": "conversation",
+      "in": "query",
+      "required": false,
+      "description": "Only return events for this conversation id. Repeat the parameter (or comma-separate) for several. Omit to stream every conversation on the sandbox. See [Integrated agents](/integrated-agents).",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/events?limit=1&cursor=sample&sort=asc&type=sample&conversation=sample",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "limit": 1,
+      "cursor": "sample",
+      "sort": "asc",
+      "type": "sample",
+      "conversation": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "EventsResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "progress": {
+        "ok": true,
+        "type": "events.list",
+        "id": "bx_23456789",
+        "events": [
+          {
+            "id": "prompt_123",
+            "type": "prompt",
+            "timestamp": 1780347055370,
+            "taskId": "prompt_123",
+            "data": {
+              "prompt": "Run tests and summarize failures.",
+              "status": "running",
+              "is_reverted": false
+            }
+          },
+          {
+            "id": "response_123-tools",
+            "type": "response",
+            "timestamp": 1780347063427,
+            "taskId": "prompt_123",
+            "data": {
+              "content": "",
+              "model": "gpt-5.4",
+              "tools": [
+                {
+                  "use": {
+                    "id": "call_123",
+                    "type": "tool_use",
+                    "name": "Bash",
+                    "input": {
+                      "command": "npm test"
+                    }
+                  },
+                  "result": {
+                    "type": "tool_result",
+                    "tool_use_id": "call_123",
+                    "is_error": false,
+                    "content": "{\"exitCode\":0}"
+                  }
+                }
+              ],
+              "is_reverted": false
+            }
+          },
+          {
+            "id": "response_123",
+            "type": "response",
+            "timestamp": 1780347065650,
+            "taskId": "prompt_123",
+            "data": {
+              "content": "Tests passed.",
+              "model": "gpt-5.4",
+              "is_reverted": false
+            }
+          }
+        ],
+        "pageInfo": {
+          "nextCursor": null,
+          "hasMore": false,
+          "limit": 100
+        }
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "events.list",
+      "id": "sample",
+      "events": [],
+      "pageInfo": {
+        "nextCursor": "sample",
+        "hasMore": true,
+        "limit": 1
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "The agent's work on the sandbox (prompts, responses), not sandbox lifecycle. A sandbox that was never prompted returns an empty list even though it started, stopped and resumed.",
+      "schema": "EventsResponse",
+      "binary": false,
+      "published_examples": {
+        "progress": {
+          "ok": true,
+          "type": "events.list",
+          "id": "bx_23456789",
+          "events": [
+            {
+              "id": "prompt_123",
+              "type": "prompt",
+              "timestamp": 1780347055370,
+              "taskId": "prompt_123",
+              "data": {
+                "prompt": "Run tests and summarize failures.",
+                "status": "running",
+                "is_reverted": false
+              }
+            },
+            {
+              "id": "response_123-tools",
+              "type": "response",
+              "timestamp": 1780347063427,
+              "taskId": "prompt_123",
+              "data": {
+                "content": "",
+                "model": "gpt-5.4",
+                "tools": [
+                  {
+                    "use": {
+                      "id": "call_123",
+                      "type": "tool_use",
+                      "name": "Bash",
+                      "input": {
+                        "command": "npm test"
+                      }
+                    },
+                    "result": {
+                      "type": "tool_result",
+                      "tool_use_id": "call_123",
+                      "is_error": false,
+                      "content": "{\"exitCode\":0}"
+                    }
+                  }
+                ],
+                "is_reverted": false
+              }
+            },
+            {
+              "id": "response_123",
+              "type": "response",
+              "timestamp": 1780347065650,
+              "taskId": "prompt_123",
+              "data": {
+                "content": "Tests passed.",
+                "model": "gpt-5.4",
+                "is_reverted": false
+              }
+            }
+          ],
+          "pageInfo": {
+            "nextCursor": null,
+            "hasMore": false,
+            "limit": 100
+          }
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "402": {
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "PaymentRequired"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "402",
+      "shared_response": "PaymentRequired",
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

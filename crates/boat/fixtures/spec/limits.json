@@ -1,0 +1,264 @@
+{
+  "operation_id": "limits",
+  "method": "GET",
+  "path": "/limits",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "limits",
+  "sdk_response_type": "LimitsResponse",
+  "summary": "Get Boat limits",
+  "description": "Check remaining machine starts, compute time, credits, access readiness, and concurrent-sandbox capacity for the wallet a create would bill: the `org` / `X-Boat-Org` you pass (id or name), else the account's active wallet, else personal. The response carries `teamId` when an organization wallet was read.",
+  "parameters": [
+    {
+      "name": "org",
+      "in": "query",
+      "required": false,
+      "description": "Billing wallet for this request: an organization you belong to, by id (`team_\u2026`) or by name as `GET /orgs` lists it (case-insensitive), or `personal`. Omitted, the account's active wallet applies (`PATCH /orgs/active`; personal until set). Two organizations sharing the name answer `409 ambiguous_org` and need the id. Sandboxes, snapshots, and environments stay creator-private.",
+      "example_value": "sample"
+    },
+    {
+      "name": "X-Boat-Org",
+      "in": "header",
+      "required": false,
+      "description": "Same as the `org` query parameter. Query wins when both are set.",
+      "example_value": "sample"
+    },
+    {
+      "name": "teamId",
+      "in": "query",
+      "required": false,
+      "description": "Legacy alias for `org`. Takes precedence over `org` / `X-Boat-Org` when set.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/limits?org=sample&teamId=sample",
+    "headers": {
+      "X-Boat-Org": "sample"
+    },
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "org": "sample",
+      "X-Boat-Org": "sample",
+      "teamId": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "LimitsResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "ready": {
+        "ok": true,
+        "type": "limits.info",
+        "canStart": true,
+        "activeSandboxes": 1,
+        "activeStates": [
+          "provisioned",
+          "cloning",
+          "ready",
+          "idle",
+          "running"
+        ],
+        "sandboxPlanKey": "box_20",
+        "sandboxPlanDollars": 20,
+        "maxActiveSandboxes": 100,
+        "maxCreationRequestsPerMinute": 10,
+        "maxCreationRequestsPerDay": null,
+        "startLimits": {
+          "perMinute": 10,
+          "perHour": 50,
+          "perDay": 150
+        },
+        "starts": {
+          "unlimited": false,
+          "minute": {
+            "limit": 10,
+            "used": 3,
+            "remaining": 7
+          },
+          "hour": {
+            "limit": 50,
+            "used": 12,
+            "remaining": 38
+          },
+          "day": {
+            "limit": 150,
+            "used": 47,
+            "remaining": 103
+          }
+        },
+        "billingStatus": "active",
+        "creditBalanceSeconds": 7200,
+        "creditBalanceHours": 2,
+        "packBalanceSeconds": 500000,
+        "packBalanceHours": 138.89,
+        "packBalanceDollars": 5
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "accessTier": "sample",
+      "blockedReason": "sample",
+      "currentLimits": {},
+      "standardLimits": {},
+      "trialLimits": {},
+      "upgradeEffects": {},
+      "canStart": true,
+      "checkoutRequired": true,
+      "startBlockedReason": "sample",
+      "contactMessage": "sample",
+      "activeSandboxes": 1,
+      "activeStates": [],
+      "maxActiveSandboxes": 1,
+      "maxCreationRequestsPerMinute": 1,
+      "maxCreationRequestsPerDay": 1,
+      "startLimits": {},
+      "starts": {},
+      "creditBalanceHours": 1.0,
+      "packBalanceHours": 1.0,
+      "packBalanceDollars": 1.0,
+      "hasPaymentHistory": true,
+      "package": {},
+      "subscriptionQuotaSeconds": 1,
+      "subscriptionRemainingSeconds": 1,
+      "packBalanceSeconds": 1,
+      "creditPurchasedSeconds": 1,
+      "creditUsedSeconds": 1,
+      "liveUsageSeconds": 1,
+      "creditSecondsPerDollar": 1,
+      "sandboxPlanKey": "sample",
+      "sandboxPlanDollars": 1.0,
+      "sandboxPlanTiers": [],
+      "accountPlan": "sample",
+      "plan": "sample",
+      "planName": "sample",
+      "serviceAccount": true,
+      "unlimited": true,
+      "hasSeatPlan": true,
+      "last24hUsageSeconds": 1,
+      "trialComputeCapSeconds": 1,
+      "trialLine": "sample",
+      "giftLimit": {},
+      "billingStatus": "sample",
+      "subscriptionStatus": "sample",
+      "subscriptionCancelAtPeriodEnd": true,
+      "hasSubscription": true,
+      "subscriptionTrialEndsAt": "sample",
+      "subscriptionCurrentPeriodEnd": "sample",
+      "creditBalanceSeconds": 1,
+      "teamId": "sample",
+      "teamRole": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Current creation and concurrent-boat limits.",
+      "schema": "LimitsResponse",
+      "binary": false,
+      "published_examples": {
+        "ready": {
+          "ok": true,
+          "type": "limits.info",
+          "canStart": true,
+          "activeSandboxes": 1,
+          "activeStates": [
+            "provisioned",
+            "cloning",
+            "ready",
+            "idle",
+            "running"
+          ],
+          "sandboxPlanKey": "box_20",
+          "sandboxPlanDollars": 20,
+          "maxActiveSandboxes": 100,
+          "maxCreationRequestsPerMinute": 10,
+          "maxCreationRequestsPerDay": null,
+          "startLimits": {
+            "perMinute": 10,
+            "perHour": 50,
+            "perDay": 150
+          },
+          "starts": {
+            "unlimited": false,
+            "minute": {
+              "limit": 10,
+              "used": 3,
+              "remaining": 7
+            },
+            "hour": {
+              "limit": 50,
+              "used": 12,
+              "remaining": 38
+            },
+            "day": {
+              "limit": 150,
+              "used": 47,
+              "remaining": 103
+            }
+          },
+          "billingStatus": "active",
+          "creditBalanceSeconds": 7200,
+          "creditBalanceHours": 2,
+          "packBalanceSeconds": 500000,
+          "packBalanceHours": 138.89,
+          "packBalanceDollars": 5
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    }
+  ]
+}

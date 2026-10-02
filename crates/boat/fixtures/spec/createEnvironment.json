@@ -1,0 +1,162 @@
+{
+  "operation_id": "createEnvironment",
+  "method": "POST",
+  "path": "/environments",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "create_environment",
+  "sdk_response_type": "SandboxEnvironmentListResponse",
+  "summary": "Create a sandbox environment",
+  "description": "Create a new named environment. It starts on version 1 with all fine-grained flags on and `safeForThirdParties` off.",
+  "parameters": [],
+  "request": {
+    "target": "/api/v1/environments",
+    "headers": {},
+    "body_schema": "CreateSandboxEnvironmentRequest",
+    "body": {
+      "name": "sample"
+    },
+    "sdk_params_json": {
+      "body": {
+        "name": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "SandboxEnvironmentListResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {},
+    "schema_sample": {
+      "ok": true,
+      "type": "environments.list",
+      "environments": []
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Environment created; full list returned.",
+      "schema": "SandboxEnvironmentListResponse",
+      "binary": false,
+      "published_examples": {}
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "409": {
+      "description": "Request conflicts with current account or sandbox state.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "Conflict"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "409",
+      "shared_response": "Conflict",
+      "description": "Request conflicts with current account or sandbox state.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

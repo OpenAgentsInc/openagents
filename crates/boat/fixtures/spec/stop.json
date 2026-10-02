@@ -1,0 +1,209 @@
+{
+  "operation_id": "stop",
+  "method": "POST",
+  "path": "/sandboxes/{sandboxId}/stop",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "stop",
+  "sdk_response_type": "SandboxActionResponse",
+  "summary": "Stop and archive sandbox",
+  "description": "Stop active work and archive/snapshot the sandbox for later resume or fork.\n\nA stop always saves the sandbox's disk first. If that save is failing, the stop is\nrefused and the sandbox keeps running so your work is not discarded, we retry\nautomatically and email you. You are not billed for time spent in that state.\n\nSet `force: true` to stop anyway, accepting the loss of everything written since\nthe last successful snapshot. This is irreversible; only reach for it after a\nstop has already failed.\n",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/stop",
+    "headers": {},
+    "body_schema": "StopRequest",
+    "body": {
+      "force": true
+    },
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "body": {
+        "force": true
+      }
+    }
+  },
+  "success": {
+    "status": "202",
+    "schema": "SandboxActionResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "archiving": {
+        "ok": true,
+        "type": "sandbox.stopping",
+        "id": "bx_23456789",
+        "status": "archiving",
+        "sandbox": {
+          "id": "bx_23456789",
+          "name": "Sandbox 2026-05-31 12:00",
+          "state": "archiving",
+          "desktopAvailable": true,
+          "snapshotAvailable": false
+        }
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "id": "sample",
+      "status": "sample",
+      "sandbox": {
+        "id": "sample",
+        "name": "sample",
+        "state": "init",
+        "desktopAvailable": true,
+        "snapshotAvailable": true
+      },
+      "giftLimitNotice": "sample",
+      "conversationId": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "202": {
+      "description": "Boat archival started or already in progress.",
+      "schema": "SandboxActionResponse",
+      "binary": false,
+      "published_examples": {
+        "archiving": {
+          "ok": true,
+          "type": "sandbox.stopping",
+          "id": "bx_23456789",
+          "status": "archiving",
+          "sandbox": {
+            "id": "bx_23456789",
+            "name": "Sandbox 2026-05-31 12:00",
+            "state": "archiving",
+            "desktopAvailable": true,
+            "snapshotAvailable": false
+          }
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

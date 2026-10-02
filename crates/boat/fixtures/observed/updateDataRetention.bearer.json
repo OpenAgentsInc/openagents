@@ -1,0 +1,56 @@
+{
+  "capture": "updateDataRetention.bearer",
+  "operation_id": "updateDataRetention",
+  "method": "PATCH",
+  "path": "/account/data-retention",
+  "case": "bearer key refused",
+  "status": 403,
+  "captured_at": "2026-09-06T00:44:43Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/updateDataRetention.bearer.json",
+    "on": "2026-10-02",
+    "renames": [
+      "value box.error -> sandbox.error"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "elapsed_ms": 645,
+  "request": {
+    "target": "/account/data-retention",
+    "headers": {},
+    "body": {
+      "enabled": false,
+      "confirmation": "delete archived box data"
+    }
+  },
+  "response_headers": {
+    "cache-control": "no-store",
+    "content-length": "449",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 403,
+    "code": "session_required",
+    "message": "Changing data retention requires a dashboard browser login session.",
+    "error": {
+      "code": "session_required",
+      "message": "Changing data retention requires a dashboard browser login session.",
+      "status": 403,
+      "details": {
+        "error": "session_required",
+        "message": "Changing data retention requires a dashboard browser login session."
+      }
+    },
+    "requestId": "req_63f6edcfe0a2493a8eb92abf4466a94f"
+  }
+}

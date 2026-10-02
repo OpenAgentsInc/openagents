@@ -1,0 +1,55 @@
+{
+  "capture": "createEnvironment.duplicate",
+  "operation_id": "createEnvironment",
+  "method": "POST",
+  "path": "/environments",
+  "case": "duplicate name",
+  "status": 409,
+  "captured_at": "2026-09-06T00:44:51Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/createEnvironment.duplicate.json",
+    "on": "2026-10-02",
+    "renames": [
+      "value box.error -> sandbox.error"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "elapsed_ms": 663,
+  "request": {
+    "target": "/environments",
+    "headers": {},
+    "body": {
+      "name": "phase0-capture"
+    }
+  },
+  "response_headers": {
+    "content-length": "384",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 409,
+    "code": "create_failed",
+    "message": "Environment 'phase0-capture' already exists",
+    "error": {
+      "code": "create_failed",
+      "message": "Environment 'phase0-capture' already exists",
+      "status": 409,
+      "details": {
+        "success": false,
+        "error": "create_failed",
+        "message": "Environment 'phase0-capture' already exists"
+      }
+    },
+    "requestId": "req_b2e0a0f1fef049b48614e73e7022984c"
+  }
+}

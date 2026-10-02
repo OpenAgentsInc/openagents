@@ -1,0 +1,225 @@
+{
+  "operation_id": "hostPort",
+  "method": "POST",
+  "path": "/sandboxes/{sandboxId}/host",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "host_port",
+  "sdk_response_type": "HostPortResponse",
+  "summary": "Expose a sandbox port on a public HTTPS URL",
+  "description": "Registers a stable `https://<sandbox-subdomain>-<port>.on.boat.dev` route for a port inside the sandbox and opens the sandbox firewall for it. Idempotent: calling it again for the same sandbox and port returns the same URL and token.",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/host",
+    "headers": {},
+    "body_schema": "HostPortRequest",
+    "body": {
+      "port": 1,
+      "public": true,
+      "title": "sample"
+    },
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "body": {
+        "port": 1,
+        "public": true,
+        "title": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "HostPortResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "hosted": {
+        "ok": true,
+        "type": "port.hosted",
+        "success": true,
+        "port": 3000,
+        "url": "https://swift-otter-9021-3000.on.boat.dev?_token=redacted",
+        "isProtected": true,
+        "access": "private"
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "success": true,
+      "port": 1,
+      "url": "sample",
+      "isProtected": true,
+      "access": "private"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "The public HTTPS URL for the port.",
+      "schema": "HostPortResponse",
+      "binary": false,
+      "published_examples": {
+        "hosted": {
+          "ok": true,
+          "type": "port.hosted",
+          "success": true,
+          "port": 3000,
+          "url": "https://swift-otter-9021-3000.on.boat.dev?_token=redacted",
+          "isProtected": true,
+          "access": "private"
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "402": {
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "PaymentRequired"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "402",
+      "shared_response": "PaymentRequired",
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

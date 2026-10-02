@@ -1,0 +1,56 @@
+{
+  "capture": "deleteSandbox.missingHeader",
+  "operation_id": "deleteSandbox",
+  "method": "DELETE",
+  "path": "/sandboxes/{sandboxId}",
+  "case": "confirmation header missing",
+  "status": 409,
+  "captured_at": "2026-09-06T00:45:05Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/deleteBox.missingHeader.json",
+    "on": "2026-10-02",
+    "renames": [
+      "path /boxes/{boxId} -> /sandboxes/{sandboxId}",
+      "operation deleteBox -> deleteSandbox",
+      "value box.error -> sandbox.error"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [],
+  "elapsed_ms": 604,
+  "request": {
+    "target": "/sandboxes/bx_sg2zeu8d",
+    "headers": {},
+    "body": null
+  },
+  "response_headers": {
+    "cache-control": "no-store",
+    "content-length": "495",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 409,
+    "code": "delete_confirmation_required",
+    "message": "Set X-Ascii-Confirm-Delete to the exact target id: bx_sg2zeu8d",
+    "error": {
+      "code": "delete_confirmation_required",
+      "message": "Set X-Ascii-Confirm-Delete to the exact target id: bx_sg2zeu8d",
+      "status": 409,
+      "details": {
+        "error": "delete_confirmation_required",
+        "message": "Set X-Ascii-Confirm-Delete to the exact target id: bx_sg2zeu8d",
+        "targetId": "bx_sg2zeu8d"
+      }
+    },
+    "requestId": "req_0e883963e5a64734b8979050cfebe620"
+  }
+}

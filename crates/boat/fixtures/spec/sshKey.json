@@ -1,0 +1,217 @@
+{
+  "operation_id": "sshKey",
+  "method": "POST",
+  "path": "/sandboxes/{sandboxId}/sshkey",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "ssh_key",
+  "sdk_response_type": "SshKeyResponse",
+  "summary": "Configure sandbox SSH key",
+  "description": "Adds an OpenSSH public key to the running sandbox so the caller can SSH as user `user`. The response carries `machineIp`, which is the host to connect to on port 22.\n\nThis is also how you reach your own machine from inside a sandbox without the CLI: authorize the key, then open a reverse tunnel with stock OpenSSH, and a port on your machine answers at `127.0.0.1:<port>` inside the sandbox for as long as the ssh process runs.\n\n```bash\nssh -o ExitOnForwardFailure=yes -i ~/.ssh/id_ed25519 -N -R 7777:127.0.0.1:7777 user@<machineIp>\n```\n\n`boat forward <id> --reverse --local 7777` is the same tunnel with the key handling and redial done for you.\n",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/sshkey",
+    "headers": {},
+    "body_schema": "SshKeyRequest",
+    "body": {
+      "key": "sample"
+    },
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "body": {
+        "key": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "SshKeyResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "configured": {
+        "ok": true,
+        "type": "ssh_key.configured",
+        "success": true,
+        "machineIp": "203.0.113.10",
+        "sshUser": "user"
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "success": true,
+      "machineIp": "sample",
+      "sshUser": "sample",
+      "sshEndpoint": "sample",
+      "hostKey": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "SSH key setup result.",
+      "schema": "SshKeyResponse",
+      "binary": false,
+      "published_examples": {
+        "configured": {
+          "ok": true,
+          "type": "ssh_key.configured",
+          "success": true,
+          "machineIp": "203.0.113.10",
+          "sshUser": "user"
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "402": {
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "PaymentRequired"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "402",
+      "shared_response": "PaymentRequired",
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

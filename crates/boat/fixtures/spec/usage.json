@@ -1,0 +1,218 @@
+{
+  "operation_id": "usage",
+  "method": "GET",
+  "path": "/sandboxes/{sandboxId}/usage",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "usage",
+  "sdk_response_type": "SandboxUsageResponse",
+  "summary": "Get boat usage",
+  "description": "Machine time one sandbox consumed, and what it costs, so you can bill your own users per sandbox. Same meter as `GET /limits`: billable seconds with the sandbox type's multiplier applied, paused past a refused stop, never counting time stopped. Narrow it to a billing period with `since` and `until`; a period boundary that falls inside a running stretch splits that stretch pro rata. Works while the sandbox runs and after it stops.",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    },
+    {
+      "name": "since",
+      "in": "query",
+      "required": false,
+      "description": "Count from this time, ISO 8601 or Unix epoch seconds. Default is the sandbox's creation.",
+      "example_value": "sample"
+    },
+    {
+      "name": "until",
+      "in": "query",
+      "required": false,
+      "description": "Count up to this time, ISO 8601 or Unix epoch seconds. Default is now.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample/usage?since=sample&until=sample",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "since": "sample",
+      "until": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "SandboxUsageResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "usage": {
+        "ok": true,
+        "type": "sandbox.usage",
+        "sandboxId": "bx_23456789",
+        "sandboxType": "default",
+        "billingMultiplier": 1,
+        "since": "2026-09-01T00:00:00.000Z",
+        "until": "2026-09-14T09:30:00.000Z",
+        "seconds": 4980,
+        "dollars": 0.0498,
+        "secondsPerDollar": 100000,
+        "running": false
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sample",
+      "sandboxId": "sample",
+      "sandboxType": "small",
+      "billingMultiplier": 1.0,
+      "since": "sample",
+      "until": "sample",
+      "seconds": 1,
+      "dollars": 1.0,
+      "secondsPerDollar": 1,
+      "running": true
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Billable machine time for the sandbox inside the window.",
+      "schema": "SandboxUsageResponse",
+      "binary": false,
+      "published_examples": {
+        "usage": {
+          "ok": true,
+          "type": "sandbox.usage",
+          "sandboxId": "bx_23456789",
+          "sandboxType": "default",
+          "billingMultiplier": 1,
+          "since": "2026-09-01T00:00:00.000Z",
+          "until": "2026-09-14T09:30:00.000Z",
+          "seconds": 4980,
+          "dollars": 0.0498,
+          "secondsPerDollar": 100000,
+          "running": false
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

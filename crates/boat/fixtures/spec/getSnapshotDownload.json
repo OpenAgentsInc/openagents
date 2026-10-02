@@ -1,0 +1,188 @@
+{
+  "operation_id": "getSnapshotDownload",
+  "method": "GET",
+  "path": "/snapshots/{snapshotId}/download",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "get_snapshot_download",
+  "sdk_response_type": "SnapshotDownloadResponse",
+  "summary": "Get snapshot download",
+  "description": "Return time-limited signed URLs for every chunk needed to reconstruct the sandbox filesystem at this snapshot (the full chain, base through this generation), plus the inventory. Download the chunks and reassemble them as described by `reconstruct`. The `boat snapshot pull` CLI command does this for you.\n",
+  "parameters": [
+    {
+      "name": "snapshotId",
+      "in": "path",
+      "required": true,
+      "description": "Snapshot id returned by the snapshot list/latest calls.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/snapshots/sample/download",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "snapshotId": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "SnapshotDownloadResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "download": {
+        "ok": true,
+        "type": "snapshot.download",
+        "snapshotId": "7417be09-d419-4ae0-b3fc-7f04a5a71ef1",
+        "sandboxId": "bx_23456789",
+        "kind": "incremental",
+        "generation": 3,
+        "expiresInSeconds": 3600,
+        "reconstruct": "Download every chunk. For each snapshot in ascending generation, concat its chunks by chunkIndex and pipe through `zstd -d | tar -x`.",
+        "inventory": {
+          "r2Key": "chains/4ced5b04/inventory-3.json.zst",
+          "signedUrl": "https://r2.example/chains/4ced5b04/inventory-3.json.zst?sig=redacted"
+        },
+        "chunks": [
+          {
+            "snapshotId": "2db50582-716c-424c-817e-9495484f88dd",
+            "generation": 0,
+            "chunkIndex": 0,
+            "r2Key": "chains/4ced5b04/snapshots/2db50582/chunks/00.tar.zst",
+            "sizeBytes": 209715200,
+            "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "signedUrl": "https://r2.example/chains/4ced5b04/snapshots/2db50582/chunks/00.tar.zst?sig=redacted"
+          }
+        ]
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "snapshot.download",
+      "snapshotId": "sample",
+      "sandboxId": "sample",
+      "kind": "base",
+      "generation": 1,
+      "expiresInSeconds": 1,
+      "reconstruct": "sample",
+      "inventory": {
+        "r2Key": "sample",
+        "signedUrl": "sample"
+      },
+      "chunks": []
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "Signed chunk URLs for the snapshot chain.",
+      "schema": "SnapshotDownloadResponse",
+      "binary": false,
+      "published_examples": {
+        "download": {
+          "ok": true,
+          "type": "snapshot.download",
+          "snapshotId": "7417be09-d419-4ae0-b3fc-7f04a5a71ef1",
+          "sandboxId": "bx_23456789",
+          "kind": "incremental",
+          "generation": 3,
+          "expiresInSeconds": 3600,
+          "reconstruct": "Download every chunk. For each snapshot in ascending generation, concat its chunks by chunkIndex and pipe through `zstd -d | tar -x`.",
+          "inventory": {
+            "r2Key": "chains/4ced5b04/inventory-3.json.zst",
+            "signedUrl": "https://r2.example/chains/4ced5b04/inventory-3.json.zst?sig=redacted"
+          },
+          "chunks": [
+            {
+              "snapshotId": "2db50582-716c-424c-817e-9495484f88dd",
+              "generation": 0,
+              "chunkIndex": 0,
+              "r2Key": "chains/4ced5b04/snapshots/2db50582/chunks/00.tar.zst",
+              "sizeBytes": 209715200,
+              "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+              "signedUrl": "https://r2.example/chains/4ced5b04/snapshots/2db50582/chunks/00.tar.zst?sig=redacted"
+            }
+          ]
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

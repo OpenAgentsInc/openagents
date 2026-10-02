@@ -1,0 +1,111 @@
+{
+  "capture": "sandboxes.badCursor",
+  "operation_id": "sandboxes",
+  "method": "GET",
+  "path": "/sandboxes",
+  "case": "malformed cursor",
+  "status": 200,
+  "captured_at": "2026-09-06T00:45:15Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/boxes.badCursor.json",
+    "on": "2026-10-02",
+    "renames": [
+      "path /boxes -> /sandboxes",
+      "operation boxes -> sandboxes",
+      "key boxes -> sandboxes",
+      "value box.list -> sandbox.list"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [
+    "secret-bearing and host-identifying strings are replaced"
+  ],
+  "elapsed_ms": 625,
+  "request": {
+    "target": "/sandboxes?limit=2&cursor=not-a-cursor",
+    "headers": {},
+    "body": null
+  },
+  "response_headers": {
+    "content-length": "1497",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "type": "sandbox.list",
+    "sandboxes": [
+      {
+        "id": "bx_sg2zeu8d",
+        "name": "phase0-archived-rename",
+        "state": "archived",
+        "error": null,
+        "type": "default",
+        "vcpu": 4,
+        "memoryGB": 8,
+        "billingMultiplier": 1,
+        "machineProvider": null,
+        "url": null,
+        "ip": null,
+        "sshEndpoint": null,
+        "createdAt": "2026-09-05T18:49:08.241Z",
+        "updatedAt": "2026-09-05T18:49:30.530Z",
+        "archiveAfter": null,
+        "desktopAvailable": true,
+        "desktopUrl": null,
+        "snapshotAvailable": true,
+        "snapshotCompletedAt": "2026-09-05T18:49:30.522Z",
+        "snapshotVerifiedAt": "2026-09-05T18:49:30.522Z",
+        "lastSnapshotAttemptAt": "2026-09-05T18:49:28.948Z",
+        "lastSnapshotStatus": "completed",
+        "subdomain": "[REDACTED_subdomain]",
+        "team": null,
+        "setupStatus": null,
+        "setupError": null,
+        "environment": "base",
+        "environmentVersion": 2
+      },
+      {
+        "id": "bx_btm9uxqa",
+        "name": "Box 2026-09-05 17:34",
+        "state": "archived",
+        "error": null,
+        "type": "default",
+        "vcpu": 4,
+        "memoryGB": 8,
+        "billingMultiplier": 1,
+        "machineProvider": null,
+        "url": null,
+        "ip": null,
+        "sshEndpoint": null,
+        "createdAt": "2026-09-05T17:34:22.353Z",
+        "updatedAt": "2026-09-05T17:36:01.770Z",
+        "archiveAfter": null,
+        "desktopAvailable": true,
+        "desktopUrl": null,
+        "snapshotAvailable": true,
+        "snapshotCompletedAt": "2026-09-05T17:36:01.493Z",
+        "snapshotVerifiedAt": "2026-09-05T17:36:01.493Z",
+        "lastSnapshotAttemptAt": "2026-09-05T17:36:00.220Z",
+        "lastSnapshotStatus": "completed",
+        "subdomain": "[REDACTED_subdomain]",
+        "team": null,
+        "setupStatus": null,
+        "setupError": null,
+        "environment": "base",
+        "environmentVersion": 2
+      }
+    ],
+    "pageInfo": {
+      "nextCursor": "MjAyNi0wOS0wNVQxNzozNDoyMi4zNTNaOmJ4X2J0bTl1eHFh",
+      "hasMore": true,
+      "limit": 2
+    }
+  }
+}

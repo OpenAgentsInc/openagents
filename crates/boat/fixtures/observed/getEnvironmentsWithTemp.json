@@ -1,0 +1,122 @@
+{
+  "capture": "getEnvironmentsWithTemp",
+  "operation_id": "environments",
+  "method": "GET",
+  "path": "/environments",
+  "case": "success, two environments",
+  "status": 200,
+  "captured_at": "2026-09-06T00:45:00Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/getEnvironmentsWithTemp.json",
+    "on": "2026-10-02",
+    "renames": [
+      "key boxCount -> sandboxCount",
+      "key passBoxCredentials -> passSandboxCredentials"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [
+    "the list at `environments.versions` held 6 entries and keeps its first 5"
+  ],
+  "elapsed_ms": 608,
+  "request": {
+    "target": "/environments",
+    "headers": {},
+    "body": null
+  },
+  "response_headers": {
+    "content-length": "1777",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "type": "environments.list",
+    "environments": [
+      {
+        "id": "7c4d5e7e-0638-4ca1-ab03-390e726a579b",
+        "name": "base",
+        "isDefault": true,
+        "latestVersionId": "9f66d88c-48dc-4932-8ee6-70c4ef0f3855",
+        "latestVersionNumber": 2,
+        "safeForThirdParties": true,
+        "safetyAnsweredAt": null,
+        "passGithub": true,
+        "passSecrets": true,
+        "passSandboxCredentials": true,
+        "passAgentsCredentials": true,
+        "envContents": "",
+        "secretFiles": [],
+        "selectedRepositories": [],
+        "versions": [
+          {
+            "id": "9f66d88c-48dc-4932-8ee6-70c4ef0f3855",
+            "versionNumber": 2,
+            "sandboxCount": 0,
+            "createdAt": "2026-08-23T02:41:12.657Z"
+          },
+          {
+            "id": "7af342db-a6a8-4bbf-beab-3f11270bef2f",
+            "versionNumber": 1,
+            "sandboxCount": 0,
+            "createdAt": "2026-08-09T19:16:03.963Z"
+          }
+        ]
+      },
+      {
+        "id": "8d05441f-9371-4111-b4b6-a523df24d158",
+        "name": "phase0-capture-renamed",
+        "isDefault": false,
+        "latestVersionId": "0e63a396-5d0f-49df-80a7-5001ab4aff7b",
+        "latestVersionNumber": 6,
+        "safeForThirdParties": false,
+        "safetyAnsweredAt": null,
+        "passGithub": true,
+        "passSecrets": true,
+        "passSandboxCredentials": true,
+        "passAgentsCredentials": true,
+        "envContents": "PHASE0_A=1\nPHASE0_B=two\n",
+        "secretFiles": [],
+        "selectedRepositories": [],
+        "versions": [
+          {
+            "id": "0e63a396-5d0f-49df-80a7-5001ab4aff7b",
+            "versionNumber": 6,
+            "sandboxCount": 0,
+            "createdAt": "2026-09-06T00:44:57.988Z"
+          },
+          {
+            "id": "b6b1a194-b7f0-4e22-9752-610abd84c9a1",
+            "versionNumber": 5,
+            "sandboxCount": 0,
+            "createdAt": "2026-09-06T00:44:56.757Z"
+          },
+          {
+            "id": "c8d56311-8642-4f67-affc-d737907280aa",
+            "versionNumber": 4,
+            "sandboxCount": 0,
+            "createdAt": "2026-09-06T00:44:55.537Z"
+          },
+          {
+            "id": "1af1e102-f799-4176-a096-27002224432d",
+            "versionNumber": 3,
+            "sandboxCount": 0,
+            "createdAt": "2026-09-06T00:44:54.263Z"
+          },
+          {
+            "id": "39a0492b-997d-4115-96dd-0ea29c6d8d36",
+            "versionNumber": 2,
+            "sandboxCount": 0,
+            "createdAt": "2026-09-06T00:44:52.313Z"
+          }
+        ]
+      }
+    ]
+  }
+}

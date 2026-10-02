@@ -1,0 +1,155 @@
+{
+  "operation_id": "getSnapshotFile",
+  "method": "GET",
+  "path": "/snapshots/{snapshotId}/files",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "get_snapshot_file",
+  "sdk_response_type": "crate::Download",
+  "summary": "Download a file or folder from a snapshot",
+  "description": "Stream a single file's bytes, or a folder subtree as a tar archive, directly out of a snapshot, the sandbox can be stopped or archived; the machine is never contacted. Use `GET /snapshots/{snapshotId}/tree` to list paths, then pass one here. Paths are relative to the snapshot root (same space as `tree` entries; docker volumes under `__dockervol__/`). An empty or `/` path downloads the whole snapshot as a tar. Folder responses set `X-Snapshot-File-Count`, `X-Snapshot-Total-Size-Bytes` and `X-Snapshot-Skipped-Base-Image-Files` headers; both response shapes set `X-Snapshot-Entry-Kind` (`file` or `dir`).",
+  "parameters": [
+    {
+      "name": "snapshotId",
+      "in": "path",
+      "required": true,
+      "description": "Snapshot id returned by the snapshot list/latest calls.",
+      "example_value": "sample"
+    },
+    {
+      "name": "path",
+      "in": "query",
+      "required": false,
+      "description": "File or folder path inside the snapshot. Empty for the whole snapshot.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/snapshots/sample/files?path=sample",
+    "headers": {},
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "snapshotId": "sample",
+      "path": "sample"
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": null,
+    "schema_variants": null,
+    "binary": true,
+    "published_examples": {},
+    "schema_sample": null,
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "File bytes (`application/octet-stream`) or folder tar (`application/x-tar`).",
+      "schema": null,
+      "binary": true,
+      "published_examples": {}
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    },
+    "409": {
+      "description": "Path has no downloadable bytes, one of `legacy_snapshot` (pre-inventory snapshot), `snapshot_not_indexed` (content captured before the indexed snapshot format; take a new snapshot or use the download bundle), `base_image_file` (stock image file, not stored in snapshots), or `is_symlink` (request the symlink's target instead).",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {}
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "409",
+      "shared_response": null,
+      "description": "Path has no downloadable bytes, one of `legacy_snapshot` (pre-inventory snapshot), `snapshot_not_indexed` (content captured before the indexed snapshot format; take a new snapshot or use the download bundle), `base_image_file` (stock image file, not stored in snapshots), or `is_symlink` (request the symlink's target instead).",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

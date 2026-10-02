@@ -1,0 +1,61 @@
+{
+  "capture": "createWebhook.invalidUrl",
+  "operation_id": "createWebhook",
+  "method": "POST",
+  "path": "/webhooks",
+  "case": "invalid destination",
+  "status": 400,
+  "captured_at": "2026-09-06T00:44:49Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/createWebhook.invalidUrl.json",
+    "on": "2026-10-02",
+    "renames": [
+      "value box.error -> sandbox.error",
+      "value box.ready -> sandbox.ready"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [
+    "secret-bearing and host-identifying strings are replaced"
+  ],
+  "elapsed_ms": 625,
+  "request": {
+    "target": "/webhooks",
+    "headers": {},
+    "body": {
+      "name": "x",
+      "url": "[REDACTED_url]",
+      "events": [
+        "sandbox.ready"
+      ]
+    }
+  },
+  "response_headers": {
+    "content-length": "323",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "type": "sandbox.error",
+    "status": 400,
+    "code": "invalid_webhook_url",
+    "message": "Webhook URL is invalid",
+    "error": {
+      "code": "invalid_webhook_url",
+      "message": "Webhook URL is invalid",
+      "status": 400,
+      "details": {
+        "error": "invalid_webhook_url",
+        "message": "Webhook URL is invalid"
+      }
+    },
+    "requestId": "req_df9391b6253f4af4a2ddbcf3d62b15d7"
+  }
+}

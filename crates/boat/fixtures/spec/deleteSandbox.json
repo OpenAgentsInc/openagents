@@ -1,0 +1,211 @@
+{
+  "operation_id": "deleteSandbox",
+  "method": "DELETE",
+  "path": "/sandboxes/{sandboxId}",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "delete_sandbox",
+  "sdk_response_type": "DeletionOperationResponse",
+  "summary": "Permanently delete sandbox data",
+  "description": "Accept irreversible background deletion of the sandbox machine, snapshots, and content-bearing records. This is not archive: the sandbox cannot be resumed. Named snapshots and other shared artifacts remain independent. Poll the returned operation until `completed`.",
+  "parameters": [
+    {
+      "name": "sandboxId",
+      "in": "path",
+      "required": true,
+      "description": "Public Sandbox id returned by create/list/get sandbox calls.",
+      "example_value": "sample"
+    },
+    {
+      "name": "X-Ascii-Confirm-Delete",
+      "in": "header",
+      "required": true,
+      "description": "Must exactly equal the target `sandboxId` or `snapshotId`. A missing or mismatched value returns `409` without accepting deletion.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes/sample",
+    "headers": {
+      "X-Ascii-Confirm-Delete": "sample"
+    },
+    "body_schema": null,
+    "body": null,
+    "sdk_params_json": {
+      "sandboxId": "sample",
+      "X-Ascii-Confirm-Delete": "sample"
+    }
+  },
+  "success": {
+    "status": "202",
+    "schema": "DeletionOperationResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {},
+    "schema_sample": {
+      "ok": true,
+      "type": "deletion.operation",
+      "operation": {
+        "id": "sample",
+        "kind": "sandbox",
+        "targetId": "sample",
+        "reason": "explicit",
+        "status": "pending",
+        "attemptCount": 1,
+        "requestedAt": "sample",
+        "completedAt": "sample"
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "202": {
+      "description": "Deletion confirmed and accepted for background processing.",
+      "schema": "DeletionOperationResponse",
+      "binary": false,
+      "published_examples": {}
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "403": {
+      "description": "Authenticated token is not allowed to perform this action.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "forbidden": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 403,
+          "code": "forbidden",
+          "message": "Forbidden",
+          "error": {
+            "code": "forbidden",
+            "message": "Forbidden",
+            "status": 403
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Forbidden"
+    },
+    "404": {
+      "description": "Resource not found.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NotFound"
+    },
+    "409": {
+      "description": "Request conflicts with current account or sandbox state.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "Conflict"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "403",
+      "shared_response": "Forbidden",
+      "description": "Authenticated token is not allowed to perform this action.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 403,
+        "code": "forbidden",
+        "message": "Forbidden",
+        "error": {
+          "code": "forbidden",
+          "message": "Forbidden",
+          "status": 403
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "404",
+      "shared_response": "NotFound",
+      "description": "Resource not found.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 404,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 404
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "409",
+      "shared_response": "Conflict",
+      "description": "Request conflicts with current account or sandbox state.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

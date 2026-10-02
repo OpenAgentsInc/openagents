@@ -1,0 +1,299 @@
+{
+  "operation_id": "create",
+  "method": "POST",
+  "path": "/sandboxes",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "create",
+  "sdk_response_type": "CreateSandboxResponse",
+  "summary": "Create sandbox",
+  "description": "Provision a new cloud computer. Store the returned `sandbox.id` with your product job/session record. Send an `Idempotency-Key` header to make this call safe to retry after a lost response without creating a second billable sandbox.",
+  "parameters": [
+    {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": false,
+      "description": "Optional exactly-once key for creating a sandbox. Send your own opaque, account-unique value (a UUID) to make `POST /sandboxes` safe to retry when the response is lost (network timeout, 5xx): the first request creates the sandbox and binds it to the key; every later request with the **same account, key, and request body** returns that same sandbox instead of creating a second, billable one. Behavior: keys are retained for **24 hours**; a concurrent or early retry while the first sandbox is still being minted returns `409` `idempotency_in_progress` (retry shortly, same key); reusing a key with a **different body** returns `409` `idempotency_key_reused`; timeouts and 5xx are safe to retry with the same key; a create that fails before the sandbox exists releases the key within ~2 minutes so a retry can create the sandbox. Omit the header to keep the default (non-idempotent) behavior.",
+      "example_value": "sample"
+    },
+    {
+      "name": "org",
+      "in": "query",
+      "required": false,
+      "description": "Billing wallet for this request: an organization you belong to, by id (`team_\u2026`) or by name as `GET /orgs` lists it (case-insensitive), or `personal`. Omitted, the account's active wallet applies (`PATCH /orgs/active`; personal until set). Two organizations sharing the name answer `409 ambiguous_org` and need the id. Sandboxes, snapshots, and environments stay creator-private.",
+      "example_value": "sample"
+    },
+    {
+      "name": "X-Boat-Org",
+      "in": "header",
+      "required": false,
+      "description": "Same as the `org` query parameter. Query wins when both are set.",
+      "example_value": "sample"
+    }
+  ],
+  "request": {
+    "target": "/api/v1/sandboxes?org=sample",
+    "headers": {
+      "Idempotency-Key": "sample",
+      "X-Boat-Org": "sample"
+    },
+    "body_schema": "CreateSandboxRequest",
+    "body": {
+      "type": "small",
+      "ttlSeconds": 1,
+      "env": {},
+      "environment": "sample",
+      "noEnv": true,
+      "snapshots": true,
+      "failFast": true,
+      "setupScript": "sample",
+      "org": "sample",
+      "teamId": "sample",
+      "from": "sample"
+    },
+    "sdk_params_json": {
+      "Idempotency-Key": "sample",
+      "org": "sample",
+      "X-Boat-Org": "sample",
+      "body": {
+        "type": "small",
+        "ttlSeconds": 1,
+        "env": {},
+        "environment": "sample",
+        "noEnv": true,
+        "snapshots": true,
+        "failFast": true,
+        "setupScript": "sample",
+        "org": "sample",
+        "teamId": "sample",
+        "from": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "202",
+    "schema": "CreateSandboxResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "provisioning": {
+        "ok": true,
+        "type": "sandbox.created",
+        "status": "provisioning",
+        "ttlSeconds": 3600,
+        "sandbox": {
+          "id": "bx_23456789",
+          "name": "Sandbox 2026-05-31 12:00",
+          "state": "provisioning",
+          "url": null,
+          "ip": null,
+          "createdAt": "2026-05-31T12:00:00Z",
+          "updatedAt": "2026-05-31T12:00:00Z",
+          "archiveAfter": "2026-05-31T13:00:00Z",
+          "desktopAvailable": false,
+          "desktopUrl": null,
+          "snapshotAvailable": false,
+          "snapshotCompletedAt": null
+        }
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "sandbox.created",
+      "status": "provisioning",
+      "ttlSeconds": 1,
+      "sandbox": {
+        "id": "sample",
+        "name": "sample",
+        "state": "init",
+        "desktopAvailable": true,
+        "snapshotAvailable": true
+      },
+      "giftLimitNotice": "sample"
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "202": {
+      "description": "Boat accepted for provisioning.",
+      "schema": "CreateSandboxResponse",
+      "binary": false,
+      "published_examples": {
+        "provisioning": {
+          "ok": true,
+          "type": "sandbox.created",
+          "status": "provisioning",
+          "ttlSeconds": 3600,
+          "sandbox": {
+            "id": "bx_23456789",
+            "name": "Sandbox 2026-05-31 12:00",
+            "state": "provisioning",
+            "url": null,
+            "ip": null,
+            "createdAt": "2026-05-31T12:00:00Z",
+            "updatedAt": "2026-05-31T12:00:00Z",
+            "archiveAfter": "2026-05-31T13:00:00Z",
+            "desktopAvailable": false,
+            "desktopUrl": null,
+            "snapshotAvailable": false,
+            "snapshotCompletedAt": null
+          }
+        }
+      }
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "402": {
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "PaymentRequired"
+    },
+    "409": {
+      "description": "Request conflicts with current account or sandbox state.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "Conflict"
+    },
+    "429": {
+      "description": "Machine start or concurrent-sandbox limit reached. Create, fork and resume each count as one machine start against your plan's start limits (see the Billing guide; `rate_limited`, naming the window you hit). A sandbox that would exceed your plan's concurrent-sandbox cap is refused with `limit_reached`, or `member_limit_reached` when an organization owner has capped you below the plan.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "RateLimited"
+    },
+    "503": {
+      "description": "No capacity. `no_ready_machine`: a `failFast` create, fork or resume found no ready machine of that type; nothing was started, billed, or counted, and a resumed sandbox stays stopped. `out_of_capacity`: creates and forks are paused until the provisioning queue drains.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {},
+      "shared_response": "NoReadyMachine"
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "402",
+      "shared_response": "PaymentRequired",
+      "description": "Account cannot currently create or operate sandboxes. The error body may include a dashboard billing URL, but billing actions are not part of the v1 API.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "409",
+      "shared_response": "Conflict",
+      "description": "Request conflicts with current account or sandbox state.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "429",
+      "shared_response": "RateLimited",
+      "description": "Machine start or concurrent-sandbox limit reached. Create, fork and resume each count as one machine start against your plan's start limits (see the Billing guide; `rate_limited`, naming the window you hit). A sandbox that would exceed your plan's concurrent-sandbox cap is refused with `limit_reached`, or `member_limit_reached` when an organization owner has capped you below the plan.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 429,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 429
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "503",
+      "shared_response": "NoReadyMachine",
+      "description": "No capacity. `no_ready_machine`: a `failFast` create, fork or resume found no ready machine of that type; nothing was started, billed, or counted, and a resumed sandbox stays stopped. `out_of_capacity`: creates and forks are paused until the provisioning queue drains.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 503,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 503
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

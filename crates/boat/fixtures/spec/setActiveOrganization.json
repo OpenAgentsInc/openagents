@@ -1,0 +1,210 @@
+{
+  "operation_id": "setActiveOrganization",
+  "method": "PATCH",
+  "path": "/orgs/active",
+  "source": {
+    "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
+    "spec_path": "crates/boat/schema/boat-v1.yaml",
+    "spec_version": "Boat Public API v1, info.version 1.0.0",
+    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "operation_inventory": "crates/boat/schema/operations.json",
+    "generator": "crates/boat/schema/fixtures.py",
+    "note": "Derived from the pinned specification. No value here is a vendor response."
+  },
+  "sdk_method": "set_active_organization",
+  "sdk_response_type": "ActiveOrgResponse",
+  "summary": "Set the active organization",
+  "description": "Set the wallet new sandboxes bill when a request names none, for this account on every client: the API, the CLI (`boat org switch` sets the same value) and the dashboard. Pass an organization id or name you belong to, or `personal` (or `null`) for your own account. `GET /limits` follows it. Sandboxes already running keep the wallet they were created with; leaving or deleting the organization resets the account to personal.",
+  "parameters": [],
+  "request": {
+    "target": "/api/v1/orgs/active",
+    "headers": {},
+    "body_schema": "ActiveOrgUpdateRequest",
+    "body": {
+      "org": "sample"
+    },
+    "sdk_params_json": {
+      "body": {
+        "org": "sample"
+      }
+    }
+  },
+  "success": {
+    "status": "200",
+    "schema": "ActiveOrgResponse",
+    "schema_variants": null,
+    "binary": false,
+    "published_examples": {
+      "org": {
+        "ok": true,
+        "type": "org.active_updated",
+        "active": {
+          "id": "team_583fd89e-6d29-4007-b48d-52477656cb0f",
+          "name": "acme",
+          "type": "org"
+        }
+      }
+    },
+    "schema_sample": {
+      "ok": true,
+      "type": "org.active_updated",
+      "active": {
+        "id": "sample",
+        "name": "sample",
+        "type": "personal"
+      }
+    },
+    "variant_samples": [],
+    "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."
+  },
+  "responses": {
+    "200": {
+      "description": "The wallet now active.",
+      "schema": "ActiveOrgResponse",
+      "binary": false,
+      "published_examples": {
+        "org": {
+          "ok": true,
+          "type": "org.active_updated",
+          "active": {
+            "id": "team_583fd89e-6d29-4007-b48d-52477656cb0f",
+            "name": "acme",
+            "type": "org"
+          }
+        }
+      }
+    },
+    "400": {
+      "description": "Invalid request body or parameters.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "invalid": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 400,
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "error": {
+            "code": "invalid_json",
+            "message": "Request body must be valid JSON.",
+            "status": 400
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "BadRequest"
+    },
+    "401": {
+      "description": "Missing or invalid bearer token.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {
+        "unauthorized": {
+          "ok": false,
+          "type": "sandbox.error",
+          "status": 401,
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "error": {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+            "status": 401
+          },
+          "requestId": "req_01HX..."
+        }
+      },
+      "shared_response": "Unauthorized"
+    },
+    "403": {
+      "description": "`not_org_member`: no organization with that id or name that you belong to.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {}
+    },
+    "409": {
+      "description": "`ambiguous_org`: several of your organizations share that name; pass the id.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {}
+    }
+  },
+  "failure_cases": [
+    {
+      "status": "400",
+      "shared_response": "BadRequest",
+      "description": "Invalid request body or parameters.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 400,
+        "code": "invalid_json",
+        "message": "Request body must be valid JSON.",
+        "error": {
+          "code": "invalid_json",
+          "message": "Request body must be valid JSON.",
+          "status": 400
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "401",
+      "shared_response": "Unauthorized",
+      "description": "Missing or invalid bearer token.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 401,
+        "code": "unauthorized",
+        "message": "Unauthorized",
+        "error": {
+          "code": "unauthorized",
+          "message": "Unauthorized",
+          "status": 401
+        },
+        "requestId": "req_01HX..."
+      },
+      "body_source": "published example"
+    },
+    {
+      "status": "403",
+      "shared_response": null,
+      "description": "`not_org_member`: no organization with that id or name that you belong to.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 403,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 403
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
+      "status": "409",
+      "shared_response": null,
+      "description": "`ambiguous_org`: several of your organizations share that name; pass the id.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 409,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 409
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    }
+  ]
+}

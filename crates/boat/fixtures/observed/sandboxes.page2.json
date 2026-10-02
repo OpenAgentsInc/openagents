@@ -1,0 +1,111 @@
+{
+  "capture": "sandboxes.page2",
+  "operation_id": "sandboxes",
+  "method": "GET",
+  "path": "/sandboxes",
+  "case": "success, second page from the cursor",
+  "status": 200,
+  "captured_at": "2026-09-06T00:45:14Z",
+  "source": {
+    "vendor_base_url": "https://ascii.dev/api/box/v1",
+    "spec_version": "Box Public API v1, info.version 1.0.0",
+    "spec_sha256": "d8a1c00bc2e6d6f78351671cba553211f795641db65f134c210f11da6df67cc8",
+    "sdk_commit": "695bbbb3a03a2fbebd6f5f1b5cf83d7f33354799",
+    "capture_tool": "urllib over HTTPS with a bearer key from ~/.secrets/box.env"
+  },
+  "ported": {
+    "from": "OpenAgentsInc/coder c8821c72eb crates/coder-box/fixtures/observed/boxes.page2.json",
+    "on": "2026-10-02",
+    "renames": [
+      "path /boxes -> /sandboxes",
+      "operation boxes -> sandboxes",
+      "key boxes -> sandboxes",
+      "value box.list -> sandbox.list"
+    ],
+    "note": "Box names in keys, type and event values, operation ids and paths are renamed to Boat's; vendor message text is kept as captured."
+  },
+  "redactions": [
+    "secret-bearing and host-identifying strings are replaced"
+  ],
+  "elapsed_ms": 687,
+  "request": {
+    "target": "/sandboxes?limit=2&sort=asc&cursor=MjAyNi0wOC0yNVQxOTozNzowMy4yNDhaOmJ4XzhhZjVlaGtq",
+    "headers": {},
+    "body": null
+  },
+  "response_headers": {
+    "content-length": "1524",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "type": "sandbox.list",
+    "sandboxes": [
+      {
+        "id": "bx_xsv6tr39",
+        "name": "openagents-production",
+        "state": "archived",
+        "error": null,
+        "type": "default",
+        "vcpu": 4,
+        "memoryGB": 8,
+        "billingMultiplier": 1,
+        "machineProvider": null,
+        "url": null,
+        "ip": null,
+        "sshEndpoint": null,
+        "createdAt": "2026-08-25T19:37:08.252Z",
+        "updatedAt": "2026-08-25T19:44:06.863Z",
+        "archiveAfter": null,
+        "desktopAvailable": true,
+        "desktopUrl": null,
+        "snapshotAvailable": true,
+        "snapshotCompletedAt": "2026-08-25T19:43:58.807Z",
+        "snapshotVerifiedAt": "2026-08-25T19:43:58.807Z",
+        "lastSnapshotAttemptAt": "2026-08-25T19:43:56.839Z",
+        "lastSnapshotStatus": "completed",
+        "subdomain": "[REDACTED_subdomain]",
+        "team": null,
+        "setupStatus": "done",
+        "setupError": null,
+        "environment": "base",
+        "environmentVersion": 2
+      },
+      {
+        "id": "bx_up225kwc",
+        "name": "openagents-production",
+        "state": "archived",
+        "error": null,
+        "type": "default",
+        "vcpu": 4,
+        "memoryGB": 8,
+        "billingMultiplier": 1,
+        "machineProvider": null,
+        "url": null,
+        "ip": null,
+        "sshEndpoint": null,
+        "createdAt": "2026-08-25T19:55:52.272Z",
+        "updatedAt": "2026-08-25T19:59:51.143Z",
+        "archiveAfter": null,
+        "desktopAvailable": true,
+        "desktopUrl": null,
+        "snapshotAvailable": true,
+        "snapshotCompletedAt": "2026-08-25T19:59:47.115Z",
+        "snapshotVerifiedAt": "2026-08-25T19:59:47.115Z",
+        "lastSnapshotAttemptAt": "2026-08-25T19:59:45.547Z",
+        "lastSnapshotStatus": "completed",
+        "subdomain": "[REDACTED_subdomain]",
+        "team": null,
+        "setupStatus": "failed",
+        "setupError": "exit code 1",
+        "environment": "base",
+        "environmentVersion": 2
+      }
+    ],
+    "pageInfo": {
+      "nextCursor": "MjAyNi0wOC0yNVQxOTo1NTo1Mi4yNzJaOmJ4X3VwMjI1a3dj",
+      "hasMore": true,
+      "limit": 2
+    }
+  }
+}
