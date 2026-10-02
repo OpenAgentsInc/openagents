@@ -62,12 +62,43 @@ fn quoted(text: &str) -> String {
 /// so every test runs the default three times per arm.
 #[must_use]
 pub fn prompt_md(kind: Kind, task: &str) -> String {
+    prompt_md_in(kind, task, None)
+}
+
+/// A known template name for `proposed`, or `None` for a chat test. An
+/// unknown name is the empty folder: the model asked for a files test.
+#[must_use]
+pub fn workspace_template(proposed: Option<&str>) -> Option<String> {
+    let word = proposed.map(str::trim).filter(|w| !w.is_empty())?;
+    let word = word.to_ascii_lowercase();
+    if matches!(word.as_str(), "none" | "no" | "false" | "chat") {
+        return None;
+    }
+    Some(if crate::workspace::TEMPLATES.contains(&word.as_str()) {
+        word
+    } else {
+        "empty".to_string()
+    })
+}
+
+/// `prompt.md` for a test that starts in `workspace` (a template name):
+/// a files test, which runs Coder in a scratch repository holding the
+/// template, lets it write and run commands there, and checks the files
+/// afterwards. With no workspace it is [`prompt_md`]'s chat test.
+#[must_use]
+pub fn prompt_md_in(kind: Kind, task: &str, workspace: Option<&str>) -> String {
     let mut text = format!(
         "+++\nv = {}\nkind = {}\n",
         quoted(CASE_SCHEMA),
         quoted(kind.word())
     );
-    text.push_str("\n[run]\nallowed_operations = [\"read\", \"write\"]\n");
+    match workspace {
+        Some(template) => {
+            text.push_str(&format!("workspace = {}\n", quoted(template)));
+            text.push_str("\n[run]\nallowed_operations = [\"read\", \"write\", \"exec\"]\n");
+        }
+        None => text.push_str("\n[run]\nallowed_operations = [\"read\", \"write\"]\n"),
+    }
     text.push_str("+++\n\n");
     text.push_str(task.trim());
     text.push('\n');
@@ -96,6 +127,24 @@ pub fn outcome_grader(rubric: Option<&str>) -> (String, String) {
     (OUTCOME.to_string(), grader_file(&table, rubric))
 }
 
+/// The starting question of a files test.
+pub const FILES_OUTCOME_QUESTION: &str = "Do the changes to the files do what the task asked?";
+
+/// The starting outcome check of a files test: a `decision` over the diff
+/// of what Coder changed, so the test grades the files, not the reply.
+#[must_use]
+pub fn files_outcome_grader(rubric: Option<&str>) -> (String, String) {
+    let mut table = Table::new();
+    table.insert("type".into(), Toml::String("decision".into()));
+    table.insert(
+        "question".into(),
+        Toml::String(FILES_OUTCOME_QUESTION.into()),
+    );
+    table.insert("threshold".into(), Toml::Float(OUTCOME_THRESHOLD));
+    table.insert("focus".into(), Toml::String("diff".into()));
+    (OUTCOME.to_string(), grader_file(&table, rubric))
+}
+
 /// A `max = 0` check that `operation` never ran, for a test where the tool
 /// should stay out of the way.
 #[must_use]
@@ -114,7 +163,9 @@ pub fn unused_grader(operation: &str) -> (String, String) {
 fn focus_value(focus: &FocusProposal) -> Option<Toml> {
     match focus {
         FocusProposal::Word(word) => match word.as_str() {
-            "last_message" | "trajectory" | "files" => Some(Toml::String(word.clone())),
+            "last_message" | "trajectory" | "files" | "changed" | "diff" => {
+                Some(Toml::String(word.clone()))
+            }
             _ => None,
         },
         FocusProposal::File { file } => {
@@ -236,6 +287,18 @@ pub fn grader(proposal: &GraderProposal, operations: &[String]) -> Option<(Strin
                 table.insert("exists".into(), Toml::Boolean(false));
             }
         }
+        GraderProposal::Command {
+            command, exit_code, ..
+        } => {
+            if command.trim().is_empty() {
+                return None;
+            }
+            table.insert("type".into(), Toml::String("command".into()));
+            table.insert("command".into(), Toml::String(command.trim().into()));
+            if let Some(code) = exit_code.filter(|code| *code != 0) {
+                table.insert("exit_code".into(), Toml::Integer(i64::from(code)));
+            }
+        }
         GraderProposal::OperationUsed {
             operation,
             min,
@@ -288,10 +351,15 @@ pub fn parse(case: &DraftCase) -> Result<Case, CaseError> {
 pub fn reads_files(check: &Check) -> bool {
     match check {
         Check::FileExists { exists, .. } => *exists,
-        Check::Regex { target, .. } => matches!(target, Focus::File(_) | Focus::Files),
-        Check::Decision { focus, .. } | Check::Judge { focus, .. } => {
-            matches!(focus, Focus::File(_) | Focus::Files)
-        }
+        Check::Command { .. } => true,
+        Check::Regex { target, .. } => matches!(
+            target,
+            Focus::File(_) | Focus::Files | Focus::Changed | Focus::Diff
+        ),
+        Check::Decision { focus, .. } | Check::Judge { focus, .. } => matches!(
+            focus,
+            Focus::File(_) | Focus::Files | Focus::Changed | Focus::Diff
+        ),
         _ => false,
     }
 }
@@ -305,7 +373,7 @@ pub fn is_outcome(check: &Check) -> bool {
         Check::Decision { focus, .. } | Check::Judge { focus, .. } => {
             !matches!(focus, Focus::Trajectory)
         }
-        Check::FileExists { .. } => true,
+        Check::FileExists { .. } | Check::Command { .. } => true,
         Check::OperationUsed { .. } | Check::OperationOrder { .. } | Check::Receipt { .. } => false,
     }
 }
@@ -390,6 +458,79 @@ mod tests {
         ))
         .unwrap();
         assert!(!is_outcome(&parsed.graders[0].check));
+    }
+
+    #[test]
+    fn a_files_test_starts_in_a_template_and_checks_files() {
+        assert_eq!(workspace_template(None), None);
+        assert_eq!(workspace_template(Some(" none ")), None);
+        assert_eq!(
+            workspace_template(Some("Rust-Crate")).as_deref(),
+            Some("rust-crate")
+        );
+        assert_eq!(workspace_template(Some("cobol")).as_deref(), Some("empty"));
+        let prompt = prompt_md_in(Kind::ShouldFire, "Add a sub function.", Some("rust-crate"));
+        let command = grader(
+            &GraderProposal::Command {
+                name: "Tests pass".into(),
+                command: "cargo test".into(),
+                exit_code: None,
+            },
+            &[],
+        )
+        .unwrap();
+        let diff = grader(
+            &GraderProposal::Regex {
+                name: "adds sub".into(),
+                pattern: "fn sub".into(),
+                matching: None,
+                target: Some(FocusProposal::Word("diff".into())),
+                flags: None,
+            },
+            &[],
+        )
+        .unwrap();
+        let parsed = parse(&case(
+            prompt,
+            vec![command, diff, files_outcome_grader(None)],
+        ))
+        .unwrap();
+        assert_eq!(parsed.workspace.as_ref().unwrap().template, "rust-crate");
+        assert!(
+            parsed
+                .run
+                .allowed_operations
+                .contains(&crate::case::Grant::Exec)
+        );
+        assert!(parsed.graders.iter().all(|g| reads_files(&g.check)));
+        assert!(matches!(
+            &parsed
+                .graders
+                .iter()
+                .find(|g| g.name == OUTCOME)
+                .unwrap()
+                .check,
+            Check::Decision {
+                focus: Focus::Diff,
+                ..
+            }
+        ));
+        // A command check can't hold in a chat test.
+        let chat = case(
+            prompt_md(Kind::ShouldFire, "Say hi."),
+            vec![
+                grader(
+                    &GraderProposal::Command {
+                        name: "x".into(),
+                        command: "true".into(),
+                        exit_code: Some(0),
+                    },
+                    &[],
+                )
+                .unwrap(),
+            ],
+        );
+        assert!(parse(&chat).is_err());
     }
 
     #[test]

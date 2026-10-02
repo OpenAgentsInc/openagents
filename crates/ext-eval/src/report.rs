@@ -379,21 +379,29 @@ pub(crate) fn runs_artifact(runs: &[GradedRun], artifacts: &mut Artifacts) -> Ar
                 run.arm.word(),
                 run.attempt
             ),
-            &json!({
-                "v": GRADES_SCHEMA,
-                "requires": [],
-                "case": run.case,
-                "arm": run.arm.word(),
-                "attempt": run.attempt,
-                "outcome": run.outcome.coverage_word(),
-                "reason": reason(run),
-                "score": run.score,
-                "passed": run.passed,
-                "cost_usd": run.cost_usd,
-                "seconds": run.seconds,
-                "created_files": run.created_files,
-                "graders": run.graders,
-            }),
+            &{
+                let mut grades = json!({
+                    "v": GRADES_SCHEMA,
+                    "requires": [],
+                    "case": run.case,
+                    "arm": run.arm.word(),
+                    "attempt": run.attempt,
+                    "outcome": run.outcome.coverage_word(),
+                    "reason": reason(run),
+                    "score": run.score,
+                    "passed": run.passed,
+                    "cost_usd": run.cost_usd,
+                    "seconds": run.seconds,
+                    "created_files": run.created_files,
+                    "graders": run.graders,
+                });
+                // Only a files test has changes; a chat test's grades
+                // keep their bytes.
+                if !run.changed_files.is_empty() {
+                    grades["changed_files"] = json!(run.changed_files);
+                }
+                grades
+            },
             GRADES_SCHEMA,
         );
         let mut run_artifacts = Vec::new();

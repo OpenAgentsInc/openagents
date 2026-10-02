@@ -4,7 +4,9 @@
 //!
 //! ```text
 //! home/            HOME: the child's whole personal space
-//!   cwd/           the working directory: the case's fixtures, nothing else
+//!   cwd/           the working directory: the case's fixtures, nothing else;
+//!                  for a files test, a Git repository holding its template
+//!                  and fixtures, committed once
 //!   .openagents/   OPENAGENTS_HOME: fresh, empty stores; the agent's
 //!                  question sets under questions/ in both arms, and the
 //!                  subject's programs under programs/
@@ -48,6 +50,9 @@ pub struct Sandbox {
     /// The canonical root, the path every other path hangs from.
     path: PathBuf,
     keep: bool,
+    /// A files test: the workspace is a Git repository, and its `.git`
+    /// is never one of the run's files.
+    git: bool,
 }
 
 impl Sandbox {
@@ -70,6 +75,7 @@ impl Sandbox {
             root: Some(root),
             path,
             keep,
+            git: case.workspace.is_some(),
         };
         for dir in [
             sandbox.cwd(),
@@ -86,7 +92,12 @@ impl Sandbox {
             std::fs::set_permissions(sandbox.tmp(), std::fs::Permissions::from_mode(0o700))
                 .map_err(io)?;
         }
-        for (relative, bytes) in &case.files.fixtures {
+        let template = case
+            .workspace
+            .as_ref()
+            .map(crate::workspace::Workspace::files)
+            .unwrap_or_default();
+        for (relative, bytes) in template.iter().chain(&case.files.fixtures) {
             let target = sandbox.cwd().join(relative);
             if !target.starts_with(sandbox.cwd()) {
                 return Err(SandboxError::Io(format!(
@@ -98,7 +109,50 @@ impl Sandbox {
             }
             std::fs::write(&target, bytes).map_err(io)?;
         }
+        if sandbox.git {
+            sandbox.commit_fixture();
+        }
         Ok(sandbox)
+    }
+
+    /// Makes a files test's workspace a Git repository with its starting
+    /// files committed, so Coder can read history and `git diff` like in
+    /// any checkout. Runs before the child starts, in an environment
+    /// built from nothing; a host without Git leaves a plain folder.
+    fn commit_fixture(&self) {
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(self.cwd())
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin")
+                .env("HOME", self.tmp())
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        };
+        let _ = git(&["init", "-q", "-b", "main"])
+            && git(&["config", "user.name", "OpenAgents test"])
+            && git(&["config", "user.email", "test@openagents.invalid"])
+            && git(&["config", "commit.gpgsign", "false"])
+            && git(&["add", "-A"])
+            && git(&[
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "The test's starting files",
+            ]);
+    }
+
+    /// Whether the run is a files test.
+    #[must_use]
+    pub const fn files_test(&self) -> bool {
+        self.git
     }
 
     /// The run directory.
@@ -225,7 +279,57 @@ impl Sandbox {
     #[must_use]
     pub fn workspace_files(&self) -> BTreeMap<String, String> {
         let mut files = BTreeMap::new();
-        walk(&self.cwd(), &self.cwd(), &mut files);
+        walk(
+            &self.cwd(),
+            &self.cwd(),
+            self.git,
+            &mut |relative, path, meta| {
+                let value = if meta.file_type().is_symlink() {
+                    let target = std::fs::read_link(path)
+                        .map(|t| t.display().to_string())
+                        .unwrap_or_default();
+                    format!("symlink:{target}")
+                } else {
+                    std::fs::read(path)
+                        .map(|bytes| nostr::contracts::digest_bytes(&bytes))
+                        .unwrap_or_default()
+                };
+                files.insert(relative, value);
+            },
+        );
+        files
+    }
+
+    /// Every regular file under the workspace with its bytes, for a files
+    /// test's changes and diff. A symlink is its target's path, never
+    /// followed; a file over [`MAX_SNAPSHOT_FILE`] is its digest.
+    #[must_use]
+    pub fn workspace_contents(&self) -> BTreeMap<String, Vec<u8>> {
+        let mut files = BTreeMap::new();
+        walk(
+            &self.cwd(),
+            &self.cwd(),
+            self.git,
+            &mut |relative, path, meta| {
+                let value = if meta.file_type().is_symlink() {
+                    let target = std::fs::read_link(path)
+                        .map(|t| t.display().to_string())
+                        .unwrap_or_default();
+                    format!("symlink -> {target}\n").into_bytes()
+                } else if meta.len() > MAX_SNAPSHOT_FILE {
+                    std::fs::read(path)
+                        .map(|bytes| nostr::contracts::digest_bytes(&bytes))
+                        .unwrap_or_default()
+                        .into_bytes()
+                        .into_iter()
+                        .chain([0u8])
+                        .collect()
+                } else {
+                    std::fs::read(path).unwrap_or_default()
+                };
+                files.insert(relative, value);
+            },
+        );
         files
     }
 }
@@ -294,7 +398,103 @@ pub fn network_policy(grants: &BTreeSet<Grant>) -> &'static str {
     }
 }
 
-fn walk(root: &Path, dir: &Path, files: &mut BTreeMap<String, String>) {
+/// The largest file a files test's snapshot holds whole; a larger one is
+/// compared by digest.
+pub const MAX_SNAPSHOT_FILE: u64 = 8 << 20;
+
+/// The operator's toolchain directories a files test reads: Rust's
+/// `~/.cargo` and `~/.rustup` where they exist, so Coder and `command`
+/// checks can build and test (read-only; Cargo's own state goes to the
+/// run's `tmp/`).
+///
+/// On macOS it also holds the developer directory (`xcode-select -p`) and
+/// its bundle: the run puts the real `git`, `cc`, and `ld` from it on
+/// `PATH` ahead of `/usr/bin`'s shims, which need `xcrun` and its caches
+/// outside the boundary.
+#[must_use]
+pub fn toolchains() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| {
+            [".cargo", ".rustup"]
+                .iter()
+                .map(|name| home.join(name))
+                .filter(|path| path.is_dir())
+                .filter_map(|path| path.canonicalize().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(developer) = developer_dir() {
+        // Xcode's shims also load frameworks beside `Contents/Developer`:
+        // the whole bundle is read.
+        let bundle = developer
+            .ancestors()
+            .find(|dir| dir.extension().is_some_and(|ext| ext == "app"))
+            .map(Path::to_path_buf);
+        dirs.push(developer);
+        dirs.extend(bundle);
+    }
+    dirs
+}
+
+/// The macOS SDK the compilers read, found outside the boundary (`xcrun
+/// --show-sdk-path`), so a build inside it needs no `xcrun`.
+#[must_use]
+pub fn sdk_root() -> Option<PathBuf> {
+    static FOUND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            let developer = developer_dir()?;
+            std::process::Command::new("/usr/bin/xcrun")
+                .arg("--show-sdk-path")
+                .env_clear()
+                .env("DEVELOPER_DIR", &developer)
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+                .filter(|dir| dir.is_dir())
+        })
+        .clone()
+}
+
+/// The macOS developer directory the tool shims load, when there is one.
+#[must_use]
+pub fn developer_dir() -> Option<PathBuf> {
+    static FOUND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            if !cfg!(target_os = "macos") {
+                return None;
+            }
+            let selected = std::process::Command::new("/usr/bin/xcode-select")
+                .arg("-p")
+                .env_clear()
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()));
+            selected
+                .into_iter()
+                .chain(std::iter::once(PathBuf::from(
+                    "/Library/Developer/CommandLineTools",
+                )))
+                .find(|dir| dir.is_dir())
+                .and_then(|dir| dir.canonicalize().ok())
+        })
+        .clone()
+}
+
+fn walk(
+    root: &Path,
+    dir: &Path,
+    skip_git: bool,
+    found: &mut dyn FnMut(String, &Path, &std::fs::Metadata),
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -313,18 +513,13 @@ fn walk(root: &Path, dir: &Path, files: &mut BTreeMap<String, String>) {
                     .join("/")
             })
             .unwrap_or_default();
-        if meta.file_type().is_symlink() {
-            let target = std::fs::read_link(&path)
-                .map(|t| t.display().to_string())
-                .unwrap_or_default();
-            files.insert(relative, format!("symlink:{target}"));
+        if meta.file_type().is_symlink() || meta.is_file() {
+            found(relative, &path, &meta);
         } else if meta.is_dir() {
-            walk(root, &path, files);
-        } else if meta.is_file() {
-            let digest = std::fs::read(&path)
-                .map(|bytes| nostr::contracts::digest_bytes(&bytes))
-                .unwrap_or_default();
-            files.insert(relative, digest);
+            if skip_git && path.file_name().is_some_and(|name| name == ".git") {
+                continue;
+            }
+            walk(root, &path, skip_git, found);
         }
     }
 }

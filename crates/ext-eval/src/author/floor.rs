@@ -239,16 +239,24 @@ pub fn enforce(
             continue;
         }
         if parsed.runs < DEFAULT_RUNS {
-            case.prompt = prompt_md(parsed.kind, &parsed.prompt);
+            case.prompt = render::prompt_md_in(
+                parsed.kind,
+                &parsed.prompt,
+                parsed.workspace.as_ref().map(|w| w.template.as_str()),
+            );
             notes.push(format!(
                 "The test {} runs three times with the plugin and three without, so one lucky run doesn't decide it.",
                 case.id
             ));
         }
-        let outcome = parsed
-            .graders
-            .iter()
-            .any(|g| is_outcome(&g.check) && !g.subject_only(&operations));
+        // A files test's outcome is in the files: its outcome check reads
+        // them (a file, the changes, the diff, or a command's exit code).
+        let files_test = parsed.workspace.is_some();
+        let outcome = parsed.graders.iter().any(|g| {
+            is_outcome(&g.check)
+                && !g.subject_only(&operations)
+                && (!files_test || render::reads_files(&g.check))
+        });
         if !outcome {
             let mut name = OUTCOME.to_string();
             let mut n = 2;
@@ -256,13 +264,24 @@ pub fn enforce(
                 name = format!("{OUTCOME}-{n}");
                 n += 1;
             }
-            let (_, text) = outcome_grader(None);
+            let (_, text) = if files_test {
+                render::files_outcome_grader(None)
+            } else {
+                outcome_grader(None)
+            };
             case.graders.push((name, text));
             case.graders.sort_by(|a, b| a.0.cmp(&b.0));
-            notes.push(format!(
-                "We added a check of the outcome to the test {}: every test checks what Coder produced.",
-                case.id
-            ));
+            notes.push(if files_test {
+                format!(
+                    "We added a check of the files to the test {}: a test that starts in a folder checks what Coder changed there.",
+                    case.id
+                )
+            } else {
+                format!(
+                    "We added a check of the outcome to the test {}: every test checks what Coder produced.",
+                    case.id
+                )
+            });
         }
         kept.push(case);
     }
@@ -348,5 +367,39 @@ mod tests {
         assert!(check(&tool, &catalog, &cases, 8).is_empty());
         let parsed = render::parse(&cases[0]).unwrap();
         assert_eq!(parsed.graders.len(), 2, "outcome and no-repo-map");
+    }
+
+    #[test]
+    fn a_files_test_graded_only_on_the_reply_gets_a_check_of_its_files() {
+        let catalog = Catalog::starter();
+        let tool = catalog.tools[0].clone();
+        let files = DraftCase {
+            id: "add-sub".into(),
+            kind: CaseKind::ShouldFire,
+            prompt: render::prompt_md_in(
+                Kind::ShouldFire,
+                "Add a sub function.",
+                Some("rust-crate"),
+            ),
+            graders: vec![outcome_grader(None)],
+        };
+        let (cases, notes) = enforce(&tool, &catalog, vec![files], 8);
+        let case = cases.iter().find(|c| c.id == "add-sub").unwrap();
+        let parsed = render::parse(case).unwrap();
+        assert!(
+            parsed.graders.iter().any(|g| matches!(
+                &g.check,
+                crate::grader::Check::Decision {
+                    focus: crate::grader::Focus::Diff,
+                    ..
+                }
+            )),
+            "{:?}",
+            case.graders
+        );
+        assert!(
+            notes.iter().any(|n| n.contains("check of the files")),
+            "{notes:?}"
+        );
     }
 }

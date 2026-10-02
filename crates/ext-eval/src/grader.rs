@@ -17,7 +17,7 @@ use crate::case::CaseError;
 pub const COMMON_KEYS: [&str; 4] = ["type", "name", "weight", "arm"];
 
 /// The grader types v1 knows, in the order the spec lists them.
-pub const TYPES: [&str; 7] = [
+pub const TYPES: [&str; 8] = [
     "regex",
     "operation_used",
     "operation_order",
@@ -25,7 +25,13 @@ pub const TYPES: [&str; 7] = [
     "decision",
     "judge",
     "receipt",
+    "command",
 ];
+
+/// A `command` check's deadline when it names none, in seconds.
+pub const DEFAULT_COMMAND_SECONDS: u32 = 600;
+/// The longest deadline a `command` check may ask for, in seconds.
+pub const MAX_COMMAND_SECONDS: u32 = 1800;
 
 /// The largest regular expression a grader may compile, in bytes of the
 /// compiled program. The default of the `regex` crate, stated.
@@ -66,6 +72,11 @@ pub enum Focus {
     Files,
     /// The contents of one file in the run's workspace after the run.
     File(String),
+    /// What a files test changed: one `added|modified|deleted <path>` line
+    /// per path.
+    Changed,
+    /// The unified diff of what a files test changed.
+    Diff,
 }
 
 impl Focus {
@@ -77,6 +88,8 @@ impl Focus {
             Self::Trajectory => "trajectory".into(),
             Self::Files => "files".into(),
             Self::File(path) => format!("file {path}"),
+            Self::Changed => "changed".into(),
+            Self::Diff => "diff".into(),
         }
     }
 }
@@ -191,6 +204,16 @@ pub enum Check {
         /// The guest operation.
         operation: String,
     },
+    /// A shell command, run in a files test's workspace after the turn and
+    /// inside the run's boundary, exits with the expected code.
+    Command {
+        /// The command, run with `/bin/sh -c`.
+        command: String,
+        /// The exit code that passes.
+        exit_code: i32,
+        /// How long it may run, 1 to 1800 seconds.
+        deadline_seconds: u32,
+    },
 }
 
 impl Check {
@@ -205,6 +228,21 @@ impl Check {
             Self::Decision { .. } => "decision",
             Self::Judge { .. } => "judge",
             Self::Receipt { .. } => "receipt",
+            Self::Command { .. } => "command",
+        }
+    }
+
+    /// Whether the check reads a files test's workspace: a `command`, or a
+    /// `changed` or `diff` focus.
+    #[must_use]
+    pub const fn needs_workspace(&self) -> bool {
+        match self {
+            Self::Command { .. } => true,
+            Self::Regex { target, .. } => matches!(target, Focus::Changed | Focus::Diff),
+            Self::Decision { focus, .. } | Self::Judge { focus, .. } => {
+                matches!(focus, Focus::Changed | Focus::Diff)
+            }
+            _ => false,
         }
     }
 
@@ -226,6 +264,7 @@ impl Check {
             b"decision" => &["question", "threshold", "focus", "rubric"],
             b"judge" => &["criteria", "focus"],
             b"receipt" => &["operation"],
+            b"command" => &["command", "exit_code", "deadline_seconds"],
             _ => return None,
         })
     }
@@ -469,6 +508,33 @@ fn parse_check(
         "receipt" => Check::Receipt {
             operation: required("operation")?,
         },
+        "command" => {
+            let command = from_body("command")?;
+            let exit_code = match table.get("exit_code") {
+                None => 0,
+                Some(Toml::Integer(code)) => i32::try_from(*code)
+                    .map_err(|_| at(format!("`exit_code` {code} is not an exit code")))?,
+                Some(_) => return Err(at("`exit_code` must be a whole number".into())),
+            };
+            let deadline_seconds = match table.get("deadline_seconds") {
+                None => DEFAULT_COMMAND_SECONDS,
+                Some(Toml::Integer(seconds))
+                    if (1..=i64::from(MAX_COMMAND_SECONDS)).contains(seconds) =>
+                {
+                    u32::try_from(*seconds).unwrap_or(DEFAULT_COMMAND_SECONDS)
+                }
+                Some(_) => {
+                    return Err(at(format!(
+                        "`deadline_seconds` must be a whole number from 1 to {MAX_COMMAND_SECONDS}"
+                    )));
+                }
+            };
+            Check::Command {
+                command,
+                exit_code,
+                deadline_seconds,
+            }
+        }
         other => return Err(at(format!("unknown grader type `{other}`"))),
     })
 }
@@ -514,9 +580,11 @@ fn focus(value: Option<&Toml>, key: &str, origin: &str) -> Result<Focus, CaseErr
             "last_message" => Ok(Focus::LastMessage),
             "trajectory" => Ok(Focus::Trajectory),
             "files" => Ok(Focus::Files),
+            "changed" => Ok(Focus::Changed),
+            "diff" => Ok(Focus::Diff),
             other => Err(at(format!(
-                "`{key}` is `{other}`; it must be last_message, trajectory, files, or \
-                 {{ file = \"<path>\" }}"
+                "`{key}` is `{other}`; it must be last_message, trajectory, files, changed, \
+                 diff, or {{ file = \"<path>\" }}"
             ))),
         },
         Some(Toml::Table(table)) => {

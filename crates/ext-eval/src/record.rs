@@ -5,6 +5,7 @@
 //! [`RunRecord`] per attempt: how it ended, its trajectory, the files it
 //! created, and what it cost.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -12,6 +13,18 @@ use serde::Serialize;
 use crate::artifact::ArtifactRef;
 use crate::case::RunFailure;
 use crate::trajectory::Trajectory;
+use crate::workspace::Change;
+
+/// How a files test's `command` check ran.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CommandRun {
+    /// Its exit code; `None` when it was stopped or ended by a signal.
+    pub exit_code: Option<i32>,
+    /// Whether its deadline stopped it.
+    pub timed_out: bool,
+    /// The last lines of its output (stdout and stderr), scrubbed.
+    pub output: String,
+}
 
 /// One side of a comparison.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -89,6 +102,12 @@ pub struct RunRecord {
     pub created_files: Vec<String>,
     /// The run's workspace after the run, for `{ file = ... }` focus.
     pub workspace: Option<PathBuf>,
+    /// A files test's changes: every path added, modified, or deleted.
+    pub changes: Vec<Change>,
+    /// A files test's unified diff of those changes.
+    pub diff: Option<String>,
+    /// A files test's `command` checks, by grader name, as they ran.
+    pub commands: BTreeMap<String, CommandRun>,
     /// What the run cost, when known.
     pub cost_usd: Option<f64>,
     /// Wall seconds, when known.
@@ -109,6 +128,9 @@ impl RunRecord {
             trajectory: None,
             created_files: Vec::new(),
             workspace: None,
+            changes: Vec::new(),
+            diff: None,
+            commands: BTreeMap::new(),
             cost_usd: None,
             seconds: None,
             receipts: Vec::new(),

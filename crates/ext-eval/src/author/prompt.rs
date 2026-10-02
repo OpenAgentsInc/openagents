@@ -110,16 +110,23 @@ fn case_state(case: &nostr::cj_conversation::DraftCase) -> Value {
                 },
                 Check::OperationOrder { before, after } => format!("{before} runs before {after}"),
                 Check::Receipt { operation } => format!("{operation} replays exactly"),
+                Check::Command {
+                    command, exit_code, ..
+                } => format!("runs `{command}` in the folder and needs exit code {exit_code}"),
             };
             format!("{}: {what}", grader.name)
         })
         .collect();
-    json!({
+    let mut value = json!({
         "test": case.id,
         "kind": case.kind.word(),
         "task": parsed.prompt,
         "checks": checks,
-    })
+    });
+    if let Some(workspace) = &parsed.workspace {
+        value["workspace"] = json!(workspace.template);
+    }
+    value
 }
 
 fn focus_words(focus: &Focus) -> String {
@@ -128,6 +135,8 @@ fn focus_words(focus: &Focus) -> String {
         Focus::Trajectory => "the steps Coder took".into(),
         Focus::Files => "the files Coder made".into(),
         Focus::File(path) => format!("the file {path}"),
+        Focus::Changed => "the files Coder changed".into(),
+        Focus::Diff => "the diff of Coder's changes".into(),
     }
 }
 
@@ -211,16 +220,22 @@ pub fn task(interview: &Interview, need: &Need) -> String {
              following what the person said a good and a failed run look like.\n\n\
              - Each test is a task a person would give Coder, in their words. Name each test \
              for a real task shape.\n\
-             - Each run starts in an empty folder. A task that needs code or files must include \
-             them: paste a short file into the task, or ask Coder to write the files first. Coder \
-             may read and write files but may not run commands, so never ask for shell commands.\n\
+             - When the plugin's purpose is to make or change files (code, docs, config), give \
+             each test where it should help a `workspace`: the folder the run starts in, one of \
+             `empty`, `rust-crate`, `python-package`, or `node-package` (a small project whose \
+             test passes). In that folder Coder writes files and may run commands, and the \
+             checks read the files afterwards; the task asks for the change, as a person would.\n\
+             - A test without a `workspace` starts in an empty folder and is checked on Coder's \
+             reply. A task that needs code must include it (paste a short file into the task). \
+             Coder may not run commands there, so never ask for shell commands.\n\
              - A task never names the plugin, its operations, or anything in \
              `tasks_must_not_name`. A test is a task; whether the plugin helps is what we measure.\n\
              - A test where the plugin should stay out of the way is an ordinary task the plugin \
              can't help with.{}\n\n\
              Answer: {{\"say\": \"one or two sentences about the tests\", \"tests\": \
              [{{\"id\": \"kebab-case-name\", \"kind\": \"should-fire\", \"task\": \"...\", \
-             \"good\": \"one sentence: what a good outcome looks like\"}}]}}",
+             \"good\": \"one sentence: what a good outcome looks like\", \
+             \"workspace\": \"rust-crate, only for a test that changes files\"}}]}}",
             change(asked)
         ),
         Need::Checks { change: asked } => format!(
@@ -236,7 +251,14 @@ pub fn task(interview: &Interview, need: &Need) -> String {
              stay out of the way, add one with `max` 0.\n\
              - Use `regex` (`pattern`, `match`: `contains` or `not_contains`) or `file_exists` \
              (`path`, a glob) only for short, exact things.\n\
-             - `focus` is `last_message` (the default), `files`, or {{\"file\": \"path\"}}.{}\n\n\
+             - `focus` is `last_message` (the default), `files`, or {{\"file\": \"path\"}}.\n\
+             - A test with a `workspace` is checked on its files, not Coder's reply: \
+             `file_exists` for a file it should make, `regex` with `target` {{\"file\": \"path\"}} \
+             for what a file should hold, a `decision` with `focus` `diff` (what Coder changed) \
+             or a file, and a `command` check (`command`, `exit_code`, default 0) that runs in \
+             the folder afterwards, such as `cargo test` in a `rust-crate` folder. `command`, \
+             `diff`, and `changed` (the list of changed paths) work only in a test with a \
+             `workspace`.{}\n\n\
              Answer: {{\"say\": \"how we'd check the tests, one plain line per kind of check\", \
              \"checks\": [{{\"test\": \"<test id>\", \"graders\": [{{\"type\": \"decision\", \
              \"name\": \"short-name\", \"question\": \"...?\", \"focus\": \"last_message\", \

@@ -60,6 +60,7 @@ pub mod record;
 pub mod report;
 pub mod score;
 pub mod trajectory;
+pub mod workspace;
 
 #[cfg(feature = "runner")]
 pub mod arms;

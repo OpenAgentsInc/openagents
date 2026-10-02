@@ -13,7 +13,10 @@
 //! no program when the door doesn't answer. `OA_EVAL_FAKE` picks extra behavior:
 //! `env` dumps the environment to stderr and to `env.txt`; `canary`
 //! reports whether it could read `OA_EVAL_CANARY`; `sleep` prints its
-//! process id and sleeps until it is stopped; `write` writes the reply to `summary.md`.
+//! process id and sleeps until it is stopped; `write` writes the reply to `summary.md`;
+//! `files` acts like a files test's Coder: with the shell on and the
+//! skill in its guidance it adds `CHANGELOG.md` and a line to `README.md`,
+//! and without the skill it changes nothing.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -144,6 +147,17 @@ fn main() {
     };
     if mode == "write" {
         let _ = std::fs::write(cwd.join("summary.md"), &reply);
+    }
+    let shell = std::env::var("CODER_SHELL").unwrap_or_default() != "off";
+    if mode == "files" && shell && guidance.contains("SKILL-MARKER") {
+        let _ = std::fs::write(
+            cwd.join("CHANGELOG.md"),
+            "# Changelog\n\n## Unreleased\n\n- Added the greeting.\n",
+        );
+        if let Ok(mut readme) = std::fs::read_to_string(cwd.join("README.md")) {
+            readme.push_str("\nSee CHANGELOG.md.\n");
+            let _ = std::fs::write(cwd.join("README.md"), readme);
+        }
     }
     append(atif::Step::said(atif::Source::Agent, &reply));
     if let Some(log) = &mut log {

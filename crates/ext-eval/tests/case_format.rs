@@ -682,3 +682,81 @@ fn warnings_name_graders_that_need_a_grant_the_case_lacks() {
             .is_empty()
     );
 }
+
+#[test]
+fn a_workspace_makes_a_files_test_that_writes_and_runs_commands() {
+    let case = parse(
+        &prompt(
+            &format!("{V}\nworkspace = \"rust-crate\""),
+            "Add a sub function.",
+        ),
+        None,
+        &[(
+            "tests.md",
+            "+++\ntype = \"command\"\nexit_code = 0\n+++\n\ncargo test\n",
+        )],
+    )
+    .expect("a files test parses");
+    assert_eq!(case.workspace.as_ref().unwrap().template, "rust-crate");
+    assert!(case.run.allowed_operations.contains(&Grant::Write));
+    assert!(case.run.allowed_operations.contains(&Grant::Exec));
+    assert!(
+        !case.run.deadline_set,
+        "no deadline unless the case sets one"
+    );
+    assert!(matches!(
+        &case.graders[0].check,
+        ext_eval::Check::Command { command, exit_code: 0, deadline_seconds: 600 } if command == "cargo test"
+    ));
+
+    let table = parse(
+        &prompt(&format!("{V}\n[workspace]\n"), "Write a file."),
+        None,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(table.workspace.unwrap().template, "empty");
+
+    let chat = parse(&prompt(V, "Say hi."), None, &[]).unwrap();
+    assert!(chat.workspace.is_none());
+    assert!(!chat.run.allowed_operations.contains(&Grant::Exec));
+}
+
+#[test]
+fn an_unknown_template_names_the_templates() {
+    let text = error(parse(
+        &prompt(&format!("{V}\nworkspace = \"cobol\""), "task"),
+        None,
+        &[],
+    ));
+    assert!(text.contains("`cobol`"), "{text}");
+    assert!(text.contains("rust-crate"), "{text}");
+    let text = error(parse(
+        &prompt(&format!("{V}\n[workspace]\nfixture = \"x\""), "task"),
+        None,
+        &[],
+    ));
+    assert!(text.contains("workspace.fixture"), "{text}");
+}
+
+#[test]
+fn checks_on_the_workspace_need_one() {
+    for grader in [
+        "+++\ntype = \"command\"\n+++\n\ncargo test\n",
+        "+++\ntype = \"regex\"\ntarget = \"diff\"\n+++\n\nfn sub\n",
+        "+++\ntype = \"judge\"\nfocus = \"changed\"\n+++\n\nOnly src changed.\n",
+    ] {
+        let text = error(parse(&prompt(V, "task"), None, &[("g.md", grader)]));
+        assert!(text.contains("has none"), "{text}");
+        assert!(text.contains("workspace = \"empty\""), "{text}");
+    }
+    let text = error(parse(
+        &prompt(&format!("{V}\nworkspace = \"empty\""), "task"),
+        None,
+        &[(
+            "g.md",
+            "+++\ntype = \"command\"\ndeadline_seconds = 0\n+++\n\ntrue\n",
+        )],
+    ));
+    assert!(text.contains("deadline_seconds"), "{text}");
+}

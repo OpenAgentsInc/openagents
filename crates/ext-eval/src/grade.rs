@@ -365,6 +365,42 @@ fn check(case: &Case, grader: &Grader, record: &RunRecord, doors: Doors<'_>) -> 
                 Vec::new(),
             )
         }
+        Check::Command {
+            command, exit_code, ..
+        } => {
+            let Some(ran) = record.commands.get(&grader.name) else {
+                return fail(format!("`{command}` did not run"));
+            };
+            let tail = |output: &str| {
+                let output = output.trim();
+                if output.is_empty() {
+                    String::new()
+                } else {
+                    let last: Vec<&str> = output.lines().rev().take(3).collect();
+                    let last: Vec<&str> = last.into_iter().rev().collect();
+                    format!(": {}", bounded(&last.join(" | "), 300))
+                }
+            };
+            match ran.exit_code {
+                _ if ran.timed_out => fail(format!(
+                    "`{command}` ran past its deadline and was stopped{}",
+                    tail(&ran.output)
+                )),
+                Some(code) if code == *exit_code => (
+                    true,
+                    format!("`{command}` exited {code}; wanted {exit_code}"),
+                    Vec::new(),
+                ),
+                Some(code) => fail(format!(
+                    "`{command}` exited {code}; wanted {exit_code}{}",
+                    tail(&ran.output)
+                )),
+                None => fail(format!(
+                    "`{command}` ended by a signal{}",
+                    tail(&ran.output)
+                )),
+            }
+        }
     }
 }
 
@@ -434,6 +470,19 @@ fn focus_value(focus: &Focus, record: &RunRecord) -> Result<Value, String> {
             .map(crate::trajectory::Trajectory::door_view)
             .ok_or_else(|| "the run wrote no trajectory".to_string()),
         Focus::Files => Ok(Value::String(record.created_files.join("\n"))),
+        Focus::Changed => Ok(Value::String(
+            record
+                .changes
+                .iter()
+                .map(crate::workspace::Change::line)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )),
+        Focus::Diff => record
+            .diff
+            .clone()
+            .map(Value::String)
+            .ok_or_else(|| "the run kept no diff; only a files test has one".to_string()),
         Focus::File(path) => {
             let workspace = record
                 .workspace

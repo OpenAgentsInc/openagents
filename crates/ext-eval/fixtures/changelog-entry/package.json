@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "changelog-entry",
+  "name": "Changelog entry",
+  "summary": "Records every change Coder makes in the repository's CHANGELOG.md, under Unreleased.",
+  "version": "0.1.0",
+  "publisher": "",
+  "provenance": "local file: the example plugin for files tests (#10180)",
+  "program": {
+    "name": "changelog-entry",
+    "digest": "d29d118e4d43587d5838e8472660ec6e95bcbc750405066d4a451849245b1a64"
+  }
+}

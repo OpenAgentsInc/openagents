@@ -32,7 +32,7 @@ use crate::door::{DecisionDoor, Doors};
 use crate::evaluate::{EvalError, Evaluation, conclude, load_gate_named};
 use crate::live::OpenResponsesJudge;
 use crate::proxy::{Proxy, Secret, Upstream};
-use crate::record::{Arm, RunOutcome, RunRecord, run_path};
+use crate::record::{Arm, CommandRun, RunOutcome, RunRecord, run_path};
 use crate::replay::ModuleReplayer;
 use crate::report::{ArmSetup, DoorNames, Identity};
 use crate::sandbox::{self, Sandbox, SandboxError};
@@ -327,6 +327,12 @@ fn now() -> u64 {
 
 /// The grants a case runs with: `read`, and each operation the case asks
 /// for that the operator granted.
+///
+/// A files test (a case with a `workspace`) also gets `write` and `exec`
+/// without `--grant`: its whole point is a scratch repository Coder
+/// changes and runs commands in, and the boundary keeps writes in that
+/// folder and the network to the door. The hosted runner, which never
+/// runs commands, refuses such a case before any run.
 #[must_use]
 pub fn case_grants(case: &Case, operator: &BTreeSet<Grant>) -> BTreeSet<Grant> {
     let mut grants = BTreeSet::from([Grant::Read]);
@@ -334,6 +340,9 @@ pub fn case_grants(case: &Case, operator: &BTreeSet<Grant>) -> BTreeSet<Grant> {
         if operator.contains(grant) {
             grants.insert(*grant);
         }
+    }
+    if case.workspace.is_some() {
+        grants.extend([Grant::Write, Grant::Exec]);
     }
     grants
 }
@@ -504,7 +513,11 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
             arms::effects_ceiling(&grants),
         ))
     };
-    let boundary = match sandbox.confine(&grants, std::slice::from_ref(&setup.agent.path)) {
+    let mut readable = vec![setup.agent.path.clone()];
+    if sandbox.files_test() {
+        readable.extend(sandbox::toolchains());
+    }
+    let boundary = match sandbox.confine(&grants, &readable) {
         Ok(boundary) => boundary,
         Err(SandboxError::Unconfined(_)) => {
             record.outcome = RunOutcome::Errored(RunFailure::UnconfinedHost);
@@ -544,7 +557,11 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
         return refused(record);
     };
     let before = sandbox.workspace_files();
-    let deadline = Duration::from_secs(u64::from(case.run.deadline_seconds));
+    let snapshot = sandbox.files_test().then(|| sandbox.workspace_contents());
+    // A files test runs until Coder is done unless the case set a
+    // deadline; the operator's stop still ends it.
+    let deadline = (!sandbox.files_test() || case.run.deadline_set)
+        .then(|| Duration::from_secs(u64::from(case.run.deadline_seconds)));
     let finished = child::run(command, &sandbox, &env, deadline, cancel);
     drop(boundary);
     let Ok(finished) = finished else {
@@ -609,6 +626,17 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
             created.insert(path.clone(), sandbox::scrub(&bytes, &secret_refs));
         }
     }
+    if let Some(snapshot) = &snapshot {
+        let now = sandbox.workspace_contents();
+        record.changes = crate::workspace::changes(snapshot, &now);
+        let diff = crate::workspace::unified(snapshot, &now);
+        record.diff = Some(
+            String::from_utf8_lossy(&sandbox::scrub(diff.as_bytes(), &secret_refs)).into_owned(),
+        );
+        if record.outcome == RunOutcome::Completed {
+            record.commands = run_commands(case, &sandbox, &grants, cancel, &secret_refs);
+        }
+    }
     record.workspace = Some(sandbox.cwd());
     Made {
         record,
@@ -617,6 +645,91 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
         outputs,
         created,
     }
+}
+
+/// The most bytes of a `command` check's output a record keeps: its tail.
+pub const MAX_COMMAND_OUTPUT: usize = 4096;
+
+/// Runs a files test's `command` checks in its workspace, one after
+/// another, each inside the run's boundary (writes in the workspace and
+/// `tmp/` only, the network closed) under its own deadline.
+fn run_commands(
+    case: &Case,
+    sandbox: &Sandbox,
+    grants: &BTreeSet<Grant>,
+    cancel: &Cancel,
+    secrets: &[&str],
+) -> BTreeMap<String, CommandRun> {
+    let mut ran = BTreeMap::new();
+    for grader in &case.graders {
+        let crate::grader::Check::Command {
+            command,
+            deadline_seconds,
+            ..
+        } = &grader.check
+        else {
+            continue;
+        };
+        if cancel.cancelled() {
+            break;
+        }
+        let failed = |why: &str| CommandRun {
+            exit_code: None,
+            timed_out: false,
+            output: why.to_string(),
+        };
+        let mut checked = grants.clone();
+        checked.remove(&Grant::Network);
+        let result = (|| {
+            let boundary = sandbox
+                .confine(&checked, &sandbox::toolchains())
+                .map_err(|error| error.to_string())?;
+            let shell = boundary
+                .command("/bin/sh", ["-c".to_string(), command.clone()])
+                .map_err(|error| error.to_string())?;
+            let log = sandbox.out().join(format!("command-{}.txt", grader.name));
+            let stdout = std::fs::File::create(&log).map_err(|error| error.to_string())?;
+            let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
+            let finished = child::spawn_and_wait(
+                shell,
+                sandbox,
+                &child::command_environment(sandbox),
+                (stdout, stderr),
+                Some(Duration::from_secs(u64::from(*deadline_seconds))),
+                cancel,
+            )
+            .map_err(|error| error.to_string())?;
+            drop(boundary);
+            let bytes = sandbox::scrub(&std::fs::read(&log).unwrap_or_default(), secrets);
+            let mut start = bytes.len().saturating_sub(MAX_COMMAND_OUTPUT);
+            while start < bytes.len() && (bytes[start] & 0xC0) == 0x80 {
+                start += 1;
+            }
+            let output = String::from_utf8_lossy(&bytes[start..]).into_owned();
+            Ok::<_, String>(match finished.ended {
+                Ended::Exited(code) => CommandRun {
+                    exit_code: code,
+                    timed_out: false,
+                    output,
+                },
+                Ended::TimedOut => CommandRun {
+                    exit_code: None,
+                    timed_out: true,
+                    output,
+                },
+                Ended::Cancelled => CommandRun {
+                    exit_code: None,
+                    timed_out: false,
+                    output: "the operator stopped the run".into(),
+                },
+            })
+        })();
+        ran.insert(
+            grader.name.clone(),
+            result.unwrap_or_else(|why| failed(&format!("the command could not start: {why}"))),
+        );
+    }
+    ran
 }
 
 /// Who a report is about and who wrote it, beyond what the runner knows.
@@ -808,6 +921,21 @@ pub fn write_results(
             json_bytes(&json!(record.created_files)),
         )
         .map_err(io)?;
+        if let Some(diff) = &record.diff {
+            std::fs::write(run_dir.join("diff.patch"), diff).map_err(io)?;
+            std::fs::write(
+                run_dir.join("changed.json"),
+                json_bytes(&json!(record.changes)),
+            )
+            .map_err(io)?;
+        }
+        if !record.commands.is_empty() {
+            std::fs::write(
+                run_dir.join("commands.json"),
+                json_bytes(&json!(record.commands)),
+            )
+            .map_err(io)?;
+        }
         for (path, bytes) in &made.created {
             let target = run_dir.join("files").join(path);
             if !target.starts_with(run_dir.join("files")) {

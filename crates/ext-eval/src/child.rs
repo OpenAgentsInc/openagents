@@ -98,6 +98,11 @@ pub fn environment(spec: &ChildSpec<'_>) -> Vec<(String, String)> {
     if !spec.grants.contains(&Grant::Exec) {
         env.push(("CODER_SHELL".into(), "off".into()));
     }
+    if sandbox.files_test() {
+        let toolchain = toolchain_environment(sandbox);
+        env.retain(|(key, _)| !toolchain.iter().any(|(set, _)| set == key));
+        env.extend(toolchain);
+    }
     if let Some(decision) = spec.decision {
         env.push(("TYPESAFE_BASE_URL".into(), decision.url()));
         env.push((
@@ -119,6 +124,74 @@ pub fn environment(spec: &ChildSpec<'_>) -> Vec<(String, String)> {
     for (key, value) in spec.env {
         env.push((key.clone(), value.clone()));
     }
+    env
+}
+
+/// A files test's toolchain variables: the operator's Rust toolchain on
+/// `PATH` (read-only, see [`crate::sandbox::toolchains`]), and Cargo's
+/// home and build output in the run's `tmp/`, so a build never lands in
+/// the workspace's changes. Replaces the plain `PATH`.
+#[must_use]
+pub fn toolchain_environment(sandbox: &Sandbox) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    let mut path_dirs = Vec::new();
+    let developer = crate::sandbox::developer_dir();
+    for dir in crate::sandbox::toolchains() {
+        if developer.as_ref() == Some(&dir) {
+            env.push(("DEVELOPER_DIR".into(), dir.display().to_string()));
+            for bin in [
+                dir.join("Toolchains/XcodeDefault.xctoolchain/usr/bin"),
+                dir.join("usr/bin"),
+            ] {
+                if bin.is_dir() {
+                    path_dirs.push(bin.display().to_string());
+                }
+            }
+            if let Some(sdk) = crate::sandbox::sdk_root() {
+                env.push(("SDKROOT".into(), sdk.display().to_string()));
+            }
+            continue;
+        }
+        match dir.file_name().and_then(|name| name.to_str()) {
+            Some(".cargo") => path_dirs.push(dir.join("bin").display().to_string()),
+            Some(".rustup") => env.push(("RUSTUP_HOME".into(), dir.display().to_string())),
+            _ => {}
+        }
+    }
+    path_dirs.push(path());
+    env.push(("PATH".into(), path_dirs.join(":")));
+    env.push((
+        "CARGO_HOME".into(),
+        sandbox.tmp().join("cargo").display().to_string(),
+    ));
+    env.push((
+        "CARGO_TARGET_DIR".into(),
+        sandbox.tmp().join("target").display().to_string(),
+    ));
+    env
+}
+
+/// A `command` check's environment: the run's home, temp, and toolchain,
+/// and nothing of the door or the operator's shell.
+#[must_use]
+pub fn command_environment(sandbox: &Sandbox) -> Vec<(String, String)> {
+    let show = |path: PathBuf| path.display().to_string();
+    let mut env: Vec<(String, String)> = vec![
+        ("HOME".into(), show(sandbox.home())),
+        ("TMPDIR".into(), show(sandbox.tmp())),
+        ("TMP".into(), show(sandbox.tmp())),
+        ("LANG".into(), "en_US.UTF-8".into()),
+        ("USER".into(), "eval".into()),
+        ("LOGNAME".into(), "eval".into()),
+        ("TERM".into(), "dumb".into()),
+        ("NO_COLOR".into(), "1".into()),
+        (
+            "GIT_CEILING_DIRECTORIES".into(),
+            show(sandbox.root().to_path_buf()),
+        ),
+        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
+    ];
+    env.extend(toolchain_environment(sandbox));
     env
 }
 
@@ -162,14 +235,33 @@ pub fn arguments(sandbox: &Sandbox) -> Vec<String> {
 ///
 /// Returns the I/O error when the child can't be spawned.
 pub fn run(
-    mut command: Command,
+    command: Command,
     sandbox: &Sandbox,
     env: &[(String, String)],
-    deadline: Duration,
+    deadline: Option<Duration>,
     cancel: &Cancel,
 ) -> std::io::Result<Finished> {
     let stdout = std::fs::File::create(sandbox.out().join("stdout.jsonl"))?;
     let stderr = std::fs::File::create(sandbox.out().join("stderr.txt"))?;
+    spawn_and_wait(command, sandbox, env, (stdout, stderr), deadline, cancel)
+}
+
+/// Spawns `command` like [`run`], with its output to `output` (stdout and
+/// stderr), and waits under `deadline` (none: until it ends or the
+/// operator stops it) and `cancel`.
+///
+/// # Errors
+///
+/// Returns the I/O error when the child can't be spawned.
+pub fn spawn_and_wait(
+    mut command: Command,
+    sandbox: &Sandbox,
+    env: &[(String, String)],
+    output: (std::fs::File, std::fs::File),
+    deadline: Option<Duration>,
+    cancel: &Cancel,
+) -> std::io::Result<Finished> {
+    let (stdout, stderr) = output;
     command
         .env_clear()
         .envs(
@@ -205,7 +297,7 @@ pub fn run(
             stop(&mut child, group);
             break Ended::Cancelled;
         }
-        if started.elapsed() >= deadline {
+        if deadline.is_some_and(|deadline| started.elapsed() >= deadline) {
             stop(&mut child, group);
             break Ended::TimedOut;
         }

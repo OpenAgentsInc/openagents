@@ -132,6 +132,8 @@ pub struct GradedRun {
     pub trajectory: Option<ArtifactRef>,
     /// The files it created.
     pub created_files: Vec<String>,
+    /// What a files test changed, as `added|modified|deleted <path>`.
+    pub changed_files: Vec<String>,
     /// Receipts it left.
     pub receipts: Vec<ArtifactRef>,
 }
@@ -198,6 +200,11 @@ pub fn grade_all(
                 .filter(|seconds| seconds.is_finite() && *seconds >= 0.0),
             trajectory: record.trajectory.map(|trajectory| trajectory.artifact),
             created_files: record.created_files,
+            changed_files: record
+                .changes
+                .iter()
+                .map(crate::workspace::Change::line)
+                .collect(),
             receipts: record.receipts,
         });
     }
@@ -606,6 +613,7 @@ mod tests {
             seconds: None,
             trajectory: None,
             created_files: Vec::new(),
+            changed_files: Vec::new(),
             receipts: Vec::new(),
         }
     }

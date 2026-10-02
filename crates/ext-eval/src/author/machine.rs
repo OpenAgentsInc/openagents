@@ -22,7 +22,10 @@ use super::floor;
 use super::proposal::{
     CaseChecks, ChecksProposal, FixProposal, SayProposal, TestProposal, TestsProposal, ToolProposal,
 };
-use super::render::{self, case_id, outcome_grader, prompt_md, proposed_kind};
+use super::render::{
+    self, case_id, files_outcome_grader, outcome_grader, prompt_md_in, proposed_kind,
+    workspace_template,
+};
 use super::runner::{FULL_RUNS, TRY_RUNS, Tried};
 use super::stage::{Stage, Surface};
 
@@ -488,15 +491,25 @@ impl Interview {
                 n += 1;
             }
             let kind = proposed_kind(&test.kind);
-            let prompt = prompt_md(kind, &test.task);
+            let workspace = workspace_template(test.workspace.as_deref());
+            let prompt = prompt_md_in(kind, &test.task, workspace.as_deref());
             let kept = self.cases.iter().find(|c| {
-                c.id == id && render::parse(c).is_ok_and(|parsed| parsed.prompt == test.task.trim())
+                c.id == id
+                    && render::parse(c).is_ok_and(|parsed| {
+                        parsed.prompt == test.task.trim()
+                            && parsed.workspace.map(|w| w.template) == workspace
+                    })
             });
+            let starting = if workspace.is_some() {
+                files_outcome_grader(test.good.as_deref())
+            } else {
+                outcome_grader(test.good.as_deref())
+            };
             let (prompt, graders) = match kept {
                 Some(existing) if render::wire_kind(kind) == existing.kind => {
                     (existing.prompt.clone(), existing.graders.clone())
                 }
-                _ => (prompt, vec![outcome_grader(test.good.as_deref())]),
+                _ => (prompt, vec![starting]),
             };
             cases.push(DraftCase {
                 id,

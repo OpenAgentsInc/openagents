@@ -25,6 +25,7 @@ fn tests(n_fire: usize, n_quiet: usize) -> TestsProposal {
             kind: "should-fire".into(),
             task: format!("Create three Rust files under src/ and a Cargo.toml, then tell us which file is largest ({i})."),
             good: Some("It names the largest file.".into()),
+            workspace: None,
         });
     }
     for i in 0..n_quiet {
@@ -33,6 +34,7 @@ fn tests(n_fire: usize, n_quiet: usize) -> TestsProposal {
             kind: "should-not-fire".into(),
             task: format!("What does 'monotonic' mean? ({i})"),
             good: None,
+            workspace: None,
         });
     }
     TestsProposal {
@@ -461,6 +463,10 @@ fn random_tests(rng: &mut Rng) -> Vec<TestProposal> {
                 .into(),
             task: rng.pick(TASKS).into(),
             good: Some(rng.pick(&["good", "", "+++"]).into()),
+            workspace: rng
+                .pick(&["", "", "empty", "rust-crate", "cobol"])
+                .to_string()
+                .into(),
         })
         .collect()
 }

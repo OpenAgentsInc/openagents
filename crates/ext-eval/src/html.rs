@@ -281,6 +281,13 @@ fn render_run(out: &mut String, run: &GradedRun) {
             escape(&run.created_files.join(", "))
         );
     }
+    if !run.changed_files.is_empty() {
+        let _ = writeln!(
+            out,
+            "<p class=\"muted\">Changed: <code>{}</code></p>",
+            escape(&run.changed_files.join(", "))
+        );
+    }
     out.push_str("</details>\n");
 }
 

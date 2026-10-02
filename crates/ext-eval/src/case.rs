@@ -17,6 +17,7 @@ use serde::Serialize;
 use toml::{Table, Value as Toml};
 
 use crate::grader::{Check, Focus, Grader};
+use crate::workspace::{TEMPLATES, Workspace};
 
 /// The case schema, written as `v`.
 pub const CASE_SCHEMA: &str = "openagents.eval-case.v1";
@@ -38,7 +39,7 @@ pub const DEFAULT_DEADLINE_SECONDS: u32 = 300;
 pub const ENV_PREFIX: &str = "OA_EVAL_";
 
 /// The keys `prompt.md`'s frontmatter may carry.
-pub const PROMPT_KEYS: [&str; 8] = [
+pub const PROMPT_KEYS: [&str; 9] = [
     "v",
     "name",
     "description",
@@ -47,9 +48,10 @@ pub const PROMPT_KEYS: [&str; 8] = [
     "extensions",
     "runs",
     "run",
+    "workspace",
 ];
 /// The keys `case.toml` may carry: the frontmatter's and `graders`.
-pub const CASE_TOML_KEYS: [&str; 9] = [
+pub const CASE_TOML_KEYS: [&str; 10] = [
     "v",
     "name",
     "description",
@@ -58,8 +60,11 @@ pub const CASE_TOML_KEYS: [&str; 9] = [
     "extensions",
     "runs",
     "run",
+    "workspace",
     "graders",
 ];
+/// The keys of a `[workspace]` table.
+pub const WORKSPACE_KEYS: [&str; 1] = ["template"];
 /// The keys of the `[run]` table.
 pub const RUN_KEYS: [&str; 6] = [
     "prompt",
@@ -220,6 +225,9 @@ impl Grant {
 pub struct RunConfig {
     /// Wall-clock cap, 1 to 1800 seconds.
     pub deadline_seconds: u32,
+    /// Whether the case wrote `deadline_seconds`. A files test that
+    /// didn't runs with no deadline: Coder works until it is done.
+    pub deadline_set: bool,
     /// The door the subject turn uses, as a name the runner's table knows.
     pub door: Option<String>,
     /// The operations the case asks for; `read` is always among them.
@@ -269,6 +277,9 @@ pub struct Case {
     pub prompt: String,
     /// The run configuration.
     pub run: RunConfig,
+    /// The folder a files test starts from; `None` for a chat test, which
+    /// starts empty and is graded on what Coder says.
+    pub workspace: Option<Workspace>,
     /// The graders, `case.toml`'s first and then the files in name order.
     pub graders: Vec<Grader>,
     /// The exact bytes the case was read from.
@@ -551,6 +562,7 @@ impl Case {
                 ));
             }
         };
+        let deadline_set = run_table.contains_key("deadline_seconds");
         let door = optional_string(&run_table, "door", run_source("door"))?;
         let append_instructions = optional_string(
             &run_table,
@@ -577,6 +589,12 @@ impl Case {
                 allowed_operations.insert(grant);
             }
             allowed_operations.insert(Grant::Read);
+        }
+        let workspace = workspace(merged.get("workspace"), source("workspace"))?;
+        if workspace.is_some() {
+            // A files test writes its scratch folder and runs commands in
+            // it, inside the run's boundary: that is what the test is.
+            allowed_operations.extend([Grant::Write, Grant::Exec]);
         }
         let env = match run_table.get("env") {
             None => BTreeMap::new(),
@@ -644,6 +662,19 @@ impl Case {
                 ),
             ));
         }
+        if workspace.is_none()
+            && let Some(grader) = graders.iter().find(|grader| grader.check.needs_workspace())
+        {
+            return Err(invalid(
+                &grader.origin,
+                &format!(
+                    "the `{}` check reads the test's workspace, and the test has none; add \
+                     `workspace = \"empty\"` (or a template: {}) to prompt.md",
+                    grader.check.type_word(),
+                    TEMPLATES.join(", ")
+                ),
+            ));
+        }
         let mut seen = BTreeSet::new();
         for grader in &graders {
             if !seen.insert(grader.name.as_str()) {
@@ -668,11 +699,13 @@ impl Case {
             prompt,
             run: RunConfig {
                 deadline_seconds,
+                deadline_set,
                 door,
                 allowed_operations,
                 append_instructions,
                 env,
             },
+            workspace,
             graders,
             files,
         })
@@ -882,6 +915,38 @@ fn merge(base: &Table, front: &Table) -> Table {
         }
     }
     merged
+}
+
+/// The `workspace` key: a template name, or a table naming one.
+fn workspace(value: Option<&Toml>, file: &str) -> Result<Option<Workspace>, CaseError> {
+    let name = match value {
+        None => return Ok(None),
+        Some(Toml::String(name)) => name.clone(),
+        Some(Toml::Table(table)) => {
+            check_keys(table, &WORKSPACE_KEYS, file, "workspace.")?;
+            match table.get("template") {
+                None => "empty".to_string(),
+                Some(Toml::String(name)) => name.clone(),
+                Some(_) => return Err(invalid(file, "`workspace.template` must be a string")),
+            }
+        }
+        Some(_) => {
+            return Err(invalid(
+                file,
+                "`workspace` must be a template name or a table with `template`",
+            ));
+        }
+    };
+    if !TEMPLATES.contains(&name.as_str()) {
+        return Err(invalid(
+            file,
+            &format!(
+                "the workspace template `{name}` is not one we have; the templates are {}",
+                TEMPLATES.join(", ")
+            ),
+        ));
+    }
+    Ok(Some(Workspace { template: name }))
 }
 
 fn optional_string(table: &Table, key: &str, file: &str) -> Result<Option<String>, CaseError> {

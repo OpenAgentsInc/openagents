@@ -244,7 +244,7 @@ evals/<case>/
 ```
 
 `prompt.md` frontmatter keys: `v`, `name`, `description`, `tags`,
-`kind`, `extensions`, `runs`, and a `[run]` table with `deadline_seconds`,
+`kind`, `extensions`, `runs`, `workspace`, and a `[run]` table with `deadline_seconds`,
 `door`, `allowed_operations`, `append_instructions`, and `env`. Any other
 key is an error that names the allowed set. When both files exist,
 `case.toml` is the base, `prompt.md` frontmatter overrides it, the
@@ -268,6 +268,7 @@ most 1 MiB, with at most 64 grader files per case.
 | `run.allowed_operations` | string[], `["read"]` | Operations the case asks for: `read`, `write`, `exec`, `network`. Only `read` is automatic; the rest need the operator's `--grant` (or the hosted runner's fixed grant, below). |
 | `run.append_instructions` | string | Appended to the child's instructions, in both arms. |
 | `run.env` | map, `{}` | Extra environment. Keys must match `OA_EVAL_[A-Z0-9_]*`; anything else fails the run as `env_var_rejected`. |
+| `workspace` | template name, or a table with `template` | Makes the case a [files test](#files-tests): the run starts in a scratch Git repository holding the template (`empty`, `rust-crate`, `python-package`, `node-package`) and the case's `fixtures/`. |
 | `graders` | list, at least one | See [Graders](#graders). |
 
 The template `openagents ext eval init <name> --bare` writes `prompt.md`:
@@ -311,6 +312,8 @@ What a grader reads (`target` for `regex`, `focus` for `decision` and
 | `trajectory` | The run's rendered ATIF document. A door sees the first and last 12 steps and the final message. |
 | `files` | The paths of files the run created. Paths, not contents. |
 | `{ file = "<path>" }` | The contents of one file in the run's workspace after the run, at most 1 MiB, inside the workspace only. Text only in v1. |
+| `changed` | A files test's changed paths, one `added`, `modified`, or `deleted <path>` line each. |
+| `diff` | A files test's unified diff of those changes (`git diff` style, at most 1 MiB). |
 
 Grader types in v1:
 
@@ -323,6 +326,7 @@ Grader types in v1:
 | `decision` | `question` (a Jev Score or Choice question over the focus), `threshold` | Jev's answer through `POST /v1/systemone` is at or above `threshold` on at least two of three calls. The default grader. |
 | `judge` | `criteria` (the body), `focus` | The chat model door answers `PASS` on at least two of three calls and `FAIL` on none. For prose criteria a typed question can't hold. |
 | `receipt` | `operation` | The Wasm guest's invocation receipt replays exactly on this host (`plugin::replay`). |
+| `command` | `command` (or the body), `exit_code` (0), `deadline_seconds` (600, at most 1800) | In a files test only: the command, run with `/bin/sh -c` in the workspace after the turn and inside the run's boundary (no network), exits with `exit_code`. |
 
 The `receipt` grader is the deterministic floor for Wasm guests: it reruns
 the recorded invocation and compares outcome and fuel. It proves the same
@@ -338,6 +342,47 @@ Choosing graders:
   operations it asked for.
 - A should-not-fire case uses `operation_used` with `max = 0` on the
   extension's operation plus an outcome grader.
+
+### Files tests
+
+A chat test is graded on what Coder says; a plugin that makes Coder
+create or change files needs a test graded on the files
+([#10180](https://github.com/OpenAgentsInc/openagents/issues/10180)). A
+case with `workspace` is a files test:
+
+```markdown
++++
+v = "openagents.eval-case.v1"
+workspace = "rust-crate"
++++
+
+Add a `sub` function to src/lib.rs, with a unit test.
+```
+
+- The runner lays down the template, then the case's `fixtures/`, makes
+  the folder a Git repository with them committed, and runs a real Coder
+  turn there in each arm.
+- The turn may write the folder and run commands (`write` and `exec`)
+  without `--grant`: the boundary keeps every write in the scratch folder
+  and `tmp/` and the network to the door. The operator's Rust toolchain
+  (`~/.cargo`, `~/.rustup`) and, on macOS, the developer directory are
+  readable, with Cargo's home and build output in `tmp/`. The hosted
+  runner never runs commands, so it refuses files tests.
+- The turn has no deadline unless the case sets `run.deadline_seconds`;
+  stopping the run still ends it.
+- Afterwards the checks read the created files (`file_exists`), a file
+  (`{ file = ... }`), the `changed` paths, and the `diff`, and `command`
+  checks run (for example `cargo test --offline` in a `rust-crate`). The
+  results keep each run's `diff.patch`, `changed.json`, and
+  `commands.json`, and the scratch folder is deleted unless `--keep-temp`.
+- `command`, `changed`, and `diff` need a `workspace`; a chat test that
+  names one is refused.
+
+`plugin test init` drafts files tests when the plugin's purpose is to
+make or change files: the model gives such a test a `workspace`, its
+starting check asks about the diff, and it proposes file and `command`
+checks; the floor adds a check of the files to a files test that has
+none. `crates/ext-eval/fixtures/changelog-entry` is a small example.
 
 ### The baseline arm and subject-only graders
 

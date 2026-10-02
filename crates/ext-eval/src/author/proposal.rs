@@ -41,6 +41,10 @@ pub struct TestProposal {
     pub task: String,
     /// What a good outcome is, in a sentence: the starting check.
     pub good: Option<String>,
+    /// The folder a files test starts in: a template name (`empty`,
+    /// `rust-crate`, `python-package`, `node-package`). Absent for a test
+    /// graded on Coder's reply.
+    pub workspace: Option<String>,
 }
 
 /// Tests at step 3.
@@ -57,7 +61,7 @@ pub struct TestsProposal {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum FocusProposal {
-    /// `last_message`, `trajectory`, or `files`.
+    /// `last_message`, `trajectory`, `files`, `changed`, or `diff`.
     Word(String),
     /// `{ "file": "<path>" }`.
     File {
@@ -115,6 +119,18 @@ pub enum GraderProposal {
         #[serde(default)]
         exists: Option<bool>,
     },
+    /// A command run in a files test's folder after the turn exits with
+    /// the expected code.
+    Command {
+        /// A short name.
+        #[serde(default)]
+        name: String,
+        /// The command, such as `cargo test`.
+        command: String,
+        /// The exit code that passes; 0 when absent.
+        #[serde(default)]
+        exit_code: Option<i32>,
+    },
     /// How often an operation ran.
     OperationUsed {
         /// A short name.
@@ -139,6 +155,7 @@ impl GraderProposal {
             Self::Decision { name, .. }
             | Self::Regex { name, .. }
             | Self::FileExists { name, .. }
+            | Self::Command { name, .. }
             | Self::OperationUsed { name, .. } => name,
         }
     }

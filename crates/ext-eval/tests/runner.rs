@@ -393,3 +393,148 @@ fn the_workspace_is_writable_only_with_the_write_grant() {
         );
     }
 }
+
+/// A files test with the fake Coder: the run starts in a Git repository
+/// holding the template and the case's fixtures, Coder may write it and
+/// run commands without `--grant`, the checks read the files, the
+/// changes, the diff, and commands' exit codes, the results keep the
+/// diff, and the scratch folder is gone afterwards. The subject arm (the
+/// skill on) adds the changelog; the baseline doesn't, and fails.
+#[test]
+#[cfg(unix)]
+fn a_files_test_checks_the_files_coder_changed() {
+    let door = fake_door();
+    let work = tempfile::tempdir().unwrap();
+    let temp = work.path().join("tmp");
+    let cargo = !ext_eval::sandbox::toolchains().is_empty();
+    let mut graders = vec![
+        (
+            "made.md",
+            "+++\ntype = \"file_exists\"\npath = \"CHANGELOG.md\"\n+++\n".to_string(),
+        ),
+        (
+            "entry.md",
+            "+++\ntype = \"regex\"\ntarget = { file = \"CHANGELOG.md\" }\n+++\n\n## Unreleased\n"
+                .to_string(),
+        ),
+        (
+            "diff.md",
+            "+++\ntype = \"regex\"\ntarget = \"diff\"\n+++\n\n\\+See CHANGELOG\\.md\n".to_string(),
+        ),
+        (
+            "changed.md",
+            "+++\ntype = \"regex\"\ntarget = \"changed\"\n+++\n\nmodified README\\.md\n"
+                .to_string(),
+        ),
+        (
+            "listed.md",
+            "+++\ntype = \"command\"\n+++\n\ngrep -q Unreleased CHANGELOG.md && git rev-parse --verify -q HEAD\n"
+                .to_string(),
+        ),
+    ];
+    if cargo {
+        graders.push((
+            "builds.md",
+            "+++\ntype = \"command\"\n+++\n\ncargo test --offline --quiet\n".to_string(),
+        ));
+    }
+    let graders: Vec<(&str, &str)> = graders.iter().map(|(n, t)| (*n, t.as_str())).collect();
+    case(
+        work.path(),
+        "changelog",
+        "+++\nv = \"openagents.eval-case.v1\"\nruns = 1\nworkspace = \"rust-crate\"\n\n[run]\nenv = { OA_EVAL_FAKE = \"files\" }\n+++\n\nAdd a greeting and record it.\n",
+        &graders,
+    );
+    let fixture = work.path().join("evals/changelog/fixtures/README.md");
+    std::fs::create_dir_all(fixture.parent().unwrap()).unwrap();
+    std::fs::write(&fixture, "# Fixture\n").unwrap();
+    let suite = ext_eval::Suite::load(&work.path().join("evals"), ext_eval::LoadOptions::default())
+        .unwrap();
+    let subject = subject();
+    let agent = agent();
+    let door_pin = door.door();
+    let mut options = options(&temp);
+    options.grants = BTreeSet::from([Grant::Read]);
+    let setup = Setup {
+        suite: &suite,
+        subject: &subject,
+        agent: &agent,
+        door: &door_pin,
+        decision: None,
+        options: &options,
+    };
+    let outcome = run::run_suite(
+        &setup,
+        &author(),
+        &work.path().join("evals/results"),
+        None,
+        &Cancel::new(),
+        &quiet,
+    )
+    .expect("the suite runs");
+    let runs = &outcome.evaluation.runs;
+    let subject_run = runs.iter().find(|r| r.arm == Arm::Subject).unwrap();
+    let baseline_run = runs.iter().find(|r| r.arm == Arm::Baseline).unwrap();
+    assert_eq!(subject_run.passed, Some(true), "{:#?}", subject_run.graders);
+    assert_eq!(
+        baseline_run.passed,
+        Some(false),
+        "{:#?}",
+        baseline_run.graders
+    );
+    assert_eq!(subject_run.created_files, vec!["CHANGELOG.md".to_string()]);
+    assert_eq!(
+        subject_run.changed_files,
+        vec![
+            "added CHANGELOG.md".to_string(),
+            "modified README.md".to_string()
+        ]
+    );
+    assert!(baseline_run.changed_files.is_empty());
+    let failed: Vec<&str> = baseline_run
+        .graders
+        .iter()
+        .filter(|g| !g.passed)
+        .map(|g| g.name.as_str())
+        .collect();
+    assert!(
+        failed.contains(&"made") && failed.contains(&"listed"),
+        "{failed:?}"
+    );
+    if cargo {
+        let builds = baseline_run
+            .graders
+            .iter()
+            .find(|g| g.name == "builds")
+            .unwrap();
+        assert!(
+            builds.passed,
+            "the template's own test passes: {}",
+            builds.explanation
+        );
+    }
+    let listed = subject_run
+        .graders
+        .iter()
+        .find(|g| g.name == "listed")
+        .unwrap();
+    assert!(
+        listed.explanation.contains("exited 0"),
+        "{}",
+        listed.explanation
+    );
+    let run_dir = outcome.results.join("runs/changelog/subject-1");
+    let diff = std::fs::read_to_string(run_dir.join("diff.patch")).unwrap();
+    assert!(diff.contains("+++ b/CHANGELOG.md"), "{diff}");
+    assert!(diff.contains("+See CHANGELOG.md"), "{diff}");
+    assert!(run_dir.join("changed.json").is_file());
+    assert!(run_dir.join("commands.json").is_file());
+    assert_eq!(outcome.evaluation.verdict, ext_eval::Verdict::Inconclusive);
+    // Cleaned up: no scratch folder is left.
+    let left: Vec<_> = std::fs::read_dir(&temp)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("oa-eval-"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+}
