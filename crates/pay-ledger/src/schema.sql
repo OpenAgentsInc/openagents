@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS settlement (
     payment_hash TEXT NOT NULL UNIQUE,
     resource TEXT NOT NULL,
     plugin_id TEXT,
+    release_id TEXT,
     price_msat INTEGER NOT NULL CHECK(price_msat >= 0),
     received_msat INTEGER NOT NULL CHECK(received_msat >= 0 AND received_msat <= price_msat),
     lsp_fee_msat INTEGER NOT NULL CHECK(lsp_fee_msat = price_msat - received_msat),
@@ -56,6 +57,17 @@ CREATE TABLE IF NOT EXISTS payout_item (
 CREATE TABLE IF NOT EXISTS balance (
     account TEXT PRIMARY KEY,
     prepaid_msat INTEGER NOT NULL CHECK(prepaid_msat >= 0)
+);
+CREATE TABLE IF NOT EXISTS call (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    route TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    plugin_id TEXT,
+    release_id TEXT,
+    outcome TEXT NOT NULL,
+    paid INTEGER NOT NULL CHECK(paid IN (0, 1)),
+    price_msat INTEGER CHECK(price_msat IS NULL OR price_msat >= 0)
 );
 CREATE INDEX IF NOT EXISTS share_party ON share(party);
 CREATE INDEX IF NOT EXISTS payout_item_share ON payout_item(settlement, party, role);

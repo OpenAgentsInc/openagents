@@ -41,6 +41,7 @@ fn call(key: &str, plugin: &str, author: &str, received: i64, fee: i64) -> Settl
         key: key.into(),
         resource: format!("/plugins/{plugin}/invoke"),
         plugin_id: Some(plugin.into()),
+        release_id: None,
         price_msat: received.max(fee),
         received_msat: received,
         rail: Rail::Lightning,

@@ -8,6 +8,7 @@ fn input(key: &str, received: i64, fee: i64) -> SettlementInput {
         key: key.into(),
         resource: "/plugins/demo/invoke".into(),
         plugin_id: Some("demo".into()),
+        release_id: Some("release-1".into()),
         price_msat: received.max(fee),
         received_msat: received,
         rail: Rail::Lightning,
@@ -238,4 +239,30 @@ fn invalid_rules_inputs_and_payouts_are_atomic() {
             .is_err()
     );
     conserved(&ledger);
+}
+
+#[test]
+fn a_settlement_keeps_its_release_and_calls_are_recorded_paid_or_free() {
+    let mut ledger = Ledger::in_memory().unwrap();
+    let recorded = ledger
+        .record_settlement(input("hash-r", 6_000, 1_000))
+        .unwrap();
+    assert_eq!(recorded.release_id.as_deref(), Some("release-1"));
+    let call = |paid: bool, outcome: &str| CallRecord {
+        at: START,
+        route: "invoke".into(),
+        resource: "plugin".into(),
+        plugin_id: Some("demo".into()),
+        release_id: Some("release-1".into()),
+        outcome: outcome.into(),
+        paid,
+        price_msat: Some(6_000),
+    };
+    let first = ledger.record_call(&call(false, "challenged")).unwrap();
+    ledger.record_call(&call(true, "executed")).unwrap();
+    let calls = ledger.calls_since(0).unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].0, first);
+    assert!(!calls[0].1.paid && calls[1].1.paid);
+    assert_eq!(ledger.calls_since(first).unwrap().len(), 1);
 }

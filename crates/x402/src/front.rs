@@ -46,6 +46,9 @@ pub struct Call<'a> {
     /// for a route whose price is its model cost alone: the executor runs
     /// every model call on them and never on ours.
     pub provider_keys: Option<&'a model_access::Keys>,
+    /// The quote a [`Price::Quote`] route priced this call at: the plugin
+    /// release the payment bought, which the executor must run.
+    pub quote: Option<&'a Quote>,
 }
 
 impl Call<'_> {
@@ -74,19 +77,75 @@ impl<F: Fn(&Call<'_>) -> Result<Output, String> + Send + Sync> RouteExecutor for
     }
 }
 
-/// A route's price in msat: fixed, or computed from the request before the
-/// challenge (it must give the same answer when the paid retry arrives).
+/// A route's price in msat: fixed, computed from the request before the
+/// challenge (it must give the same answer when the paid retry arrives),
+/// or a [`Quote`] that also names what the payment buys.
 #[derive(Clone)]
 pub enum Price {
     Fixed(u64),
     Of(Arc<dyn Fn(&Call<'_>) -> Result<u64, String> + Send + Sync>),
+    Quote(Arc<dyn Fn(&Call<'_>) -> Result<Quote, Unpriced> + Send + Sync>),
+}
+
+/// One named part of a quoted price, such as `endpoint` and `author_fee`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PricePart {
+    pub name: String,
+    pub msat: u64,
+}
+
+/// A per-call price and what it buys: for a plugin invocation, the pinned
+/// release and the author whose fee is part of the price. The settlement
+/// carries the plugin, release, author, and fee, so the ledger can split
+/// the fee to the author.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Quote {
+    pub price_msat: u64,
+    /// The parts that sum to `price_msat`; the `402` names each one.
+    pub parts: Vec<PricePart>,
+    pub plugin: Option<String>,
+    pub release: Option<String>,
+    /// The author party the fee is owed to.
+    pub author: Option<String>,
+    pub fee_msat: Option<u64>,
+}
+
+/// Why a [`Price::Quote`] route could not price a call: the status and
+/// typed error the caller gets instead of a `402`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unpriced {
+    pub status: u16,
+    pub kind: String,
+    pub message: String,
 }
 
 impl Price {
-    fn of(&self, call: &Call<'_>) -> Result<u64, String> {
+    fn quote(&self, call: &Call<'_>) -> Result<Quote, Unpriced> {
+        let unpriced = |message: String| Unpriced {
+            status: 400,
+            kind: "unpriced_request".into(),
+            message,
+        };
         match self {
-            Self::Fixed(msat) => Ok(*msat),
-            Self::Of(price) => price(call),
+            Self::Fixed(msat) => Ok(Quote {
+                price_msat: *msat,
+                ..Quote::default()
+            }),
+            Self::Of(price) => price(call).map_err(unpriced).map(|msat| Quote {
+                price_msat: msat,
+                ..Quote::default()
+            }),
+            Self::Quote(quote) => {
+                let quote = quote(call)?;
+                let parts: Option<u64> = quote
+                    .parts
+                    .iter()
+                    .try_fold(0u64, |sum, part| sum.checked_add(part.msat));
+                if !quote.parts.is_empty() && parts != Some(quote.price_msat) {
+                    return Err(unpriced("the price parts do not sum to the price".into()));
+                }
+                Ok(quote)
+            }
         }
     }
 }
@@ -158,6 +217,14 @@ pub struct Settlement {
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin: Option<String>,
+    /// The plugin release the payment bought, for a quoted plugin call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release: Option<String>,
+    /// The author party owed `fee_msat` of this payment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_msat: Option<u64>,
     pub price_msat: u64,
     /// What the wallet received, which an LSP fee can make less than the
     /// price; the invoice amount when the wallet could not say.
@@ -175,6 +242,32 @@ pub struct Settlement {
 /// before it runs.
 pub trait SettlementSink: Send + Sync {
     fn on_settled(&self, settlement: &Settlement) -> Result<(), String>;
+
+    /// One request reached a route, paid or not (the flow stream's `call`
+    /// record). Best effort: it never refuses a call.
+    fn on_call(&self, _usage: &Usage) {}
+}
+
+/// A `call` usage record: one request that reached a route and method.
+/// Carries no payer, request hash, payment hash, or body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Usage {
+    pub route: String,
+    pub resource: String,
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release: Option<String>,
+    /// `executed`, `challenged`, `refused`, `caller_paid`, ...
+    pub outcome: String,
+    pub status: u16,
+    /// Whether a settlement was written for this call.
+    pub paid: bool,
+    /// The quoted price; absent when the call was never priced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_msat: Option<u64>,
+    pub at: u64,
 }
 
 /// What one request did, for the operator's log. Never carries a preimage
@@ -338,6 +431,19 @@ impl<S: ReplayStore> Front<S> {
 
     /// Answer one request at time `now`.
     pub fn handle(&self, request: &Request, now: u64) -> (Response, Event) {
+        let mut usage: Option<Usage> = None;
+        let (response, event) = self.answer(request, now, &mut usage);
+        if let Some(mut usage) = usage {
+            usage.outcome = event.outcome.clone();
+            usage.status = event.status;
+            usage.paid = event.payment_hash.is_some() && event.outcome != "unrecorded";
+            usage.price_msat = event.price_msat;
+            self.sink.on_call(&usage);
+        }
+        (response, event)
+    }
+
+    fn answer(&self, request: &Request, now: u64, usage: &mut Option<Usage>) -> (Response, Event) {
         let mut event = Event {
             method: request.method.clone(),
             target: request.target.clone(),
@@ -377,6 +483,18 @@ impl<S: ReplayStore> Front<S> {
             return done(event, response, "method_not_allowed");
         };
         event.route = Some(route.id.clone());
+        *usage = Some(Usage {
+            route: route.id.clone(),
+            resource: route.resource.clone(),
+            role: route.role.clone(),
+            plugin: route.plugin.clone(),
+            release: None,
+            outcome: String::new(),
+            status: 0,
+            paid: false,
+            price_msat: None,
+            at: now,
+        });
         let url = format!("{}{}", self.config.base_url, request.target);
         let Some(request_hash) = http_binding(&request.method, &url, &request.body, &[])
             .ok()
@@ -422,6 +540,7 @@ impl<S: ReplayStore> Front<S> {
                 request,
                 payment_hash: None,
                 provider_keys: Some(&keys),
+                quote: None,
             };
             return match route.executor.execute(&call) {
                 Ok(output) => {
@@ -459,17 +578,36 @@ impl<S: ReplayStore> Front<S> {
             request,
             payment_hash: None,
             provider_keys: None,
+            quote: None,
         };
-        let price = match route.price.of(&call) {
-            Ok(price) if price > 0 => price,
-            Ok(_) | Err(_) => {
+        let quote = match route.price.quote(&call) {
+            Ok(quote) if quote.price_msat > 0 => quote,
+            Ok(_) => {
                 return done(
                     event,
                     Response::json(400, &json!({"error": {"type": "unpriced_request"}})),
                     "unpriced",
                 );
             }
+            Err(unpriced) => {
+                event.error_reason = Some(unpriced.kind.clone());
+                return done(
+                    event,
+                    Response::json(
+                        unpriced.status,
+                        &json!({"error": {"type": unpriced.kind, "message": unpriced.message}}),
+                    ),
+                    "unpriced",
+                );
+            }
         };
+        if let Some(usage) = usage.as_mut() {
+            if quote.plugin.is_some() {
+                usage.plugin.clone_from(&quote.plugin);
+            }
+            usage.release.clone_from(&quote.release);
+        }
+        let price = quote.price_msat;
         event.price_msat = Some(price);
         let paid = Paid {
             route,
@@ -478,6 +616,7 @@ impl<S: ReplayStore> Front<S> {
             url: &url,
             request_hash: &request_hash,
             price,
+            quote: &quote,
             now,
         };
 
@@ -567,11 +706,24 @@ impl<S: ReplayStore> Front<S> {
             });
 
         let problem = refusal.map_or(Problem::PaymentRequired, |(_, problem)| problem);
-        let price_text = if whole_sats {
-            format!("{price_sats} sats")
-        } else {
-            format!("{} msat", paid.price)
+        let amount = |msat: u64| {
+            if msat % 1000 == 0 {
+                let sats = msat / 1000;
+                format!("{sats} {}", if sats == 1 { "sat" } else { "sats" })
+            } else {
+                format!("{msat} msat")
+            }
         };
+        let mut price_text = amount(paid.price);
+        if !paid.quote.parts.is_empty() {
+            let parts: Vec<String> = paid
+                .quote
+                .parts
+                .iter()
+                .map(|part| format!("{} {}", part.name.replace('_', " "), amount(part.msat)))
+                .collect();
+            price_text = format!("{price_text} ({})", parts.join(" + "));
+        }
         let detail = match refusal {
             None => format!(
                 "This call costs {price_text}. Pay the invoice and retry with PAYMENT-SIGNATURE or Authorization: Payment."
@@ -595,6 +747,15 @@ impl<S: ReplayStore> Front<S> {
         });
         if whole_sats {
             body["price_sats"] = json!(price_sats);
+        }
+        if !paid.quote.parts.is_empty() {
+            body["price_parts"] = json!(paid.quote.parts);
+        }
+        if let Some(plugin) = &paid.quote.plugin {
+            body["plugin"] = json!(plugin);
+        }
+        if let Some(release) = &paid.quote.release {
+            body["release"] = json!(release);
         }
         if let Some(challenge) = &challenge {
             body["challengeId"] = json!(challenge.id);
@@ -758,7 +919,14 @@ impl<S: ReplayStore> Front<S> {
             route: paid.route.id.clone(),
             resource: paid.route.resource.clone(),
             role: paid.route.role.clone(),
-            plugin: paid.route.plugin.clone(),
+            plugin: paid
+                .quote
+                .plugin
+                .clone()
+                .or_else(|| paid.route.plugin.clone()),
+            release: paid.quote.release.clone(),
+            author: paid.quote.author.clone(),
+            fee_msat: paid.quote.fee_msat,
             price_msat: paid.price,
             received_msat: looked_up.unwrap_or(admitted.proof.invoice_amount_msat),
             received_from_wallet: looked_up.is_some(),
@@ -800,6 +968,7 @@ impl<S: ReplayStore> Front<S> {
             request: paid.request,
             payment_hash: Some(&payment_hash),
             provider_keys: None,
+            quote: Some(paid.quote),
         };
         let mut response = match paid.route.executor.execute(&call) {
             Ok(output) => {
@@ -847,6 +1016,7 @@ struct Paid<'a> {
     url: &'a str,
     request_hash: &'a str,
     price: u64,
+    quote: &'a Quote,
     now: u64,
 }
 

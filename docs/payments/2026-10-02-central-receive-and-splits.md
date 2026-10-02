@@ -321,7 +321,14 @@ Only signed, verified events count, as on the phone.
 - **Plugin invocations** (API phase 2): `POST /v1/plugins/{id}/invoke`
   prices `endpoint + fee_msat` from the pinned release, runs the plugin's
   packet through `crates/plugin` (`invoke_with_receipt`), and writes the
-  settlement with the plugin id and author before running it.
+  settlement with the plugin id and author before running it. Shipped in
+  #10193 as a `registry` route of `openagents pay serve`
+  (`crates/openagents-cli/src/pay_plugin.rs`): the quote pins the release,
+  the settlement carries plugin, release, author, and fee, the ledger sink
+  splits the fee to the author, and every call that reaches a route is a
+  `call` record in the ledger. Only a program of one guest step that
+  requires nothing is sold; a `snapshot-read` guest runs with an empty
+  snapshot.
 - **Author-hosted resources:** an author who has an HTTP service registers
   it (`openagents x402 serve --central` or `openagents x402 publish`), and
   we serve it at `https://api.openagents.com/x/{resource}`: our `402`, our

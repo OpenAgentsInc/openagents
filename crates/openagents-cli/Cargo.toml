@@ -61,6 +61,10 @@ uuid = { version = "1", features = ["v4"] }
 # The person's Spark wallet, the same as the phone's (`openagents wallet`).
 openagents-spark = { path = "../spark-wallet" }
 openagents-x402 = { path = "../x402" }
+# `openagents pay serve`: paid plugin invocations run a release's guest
+# (`/v1/plugins/{id}/invoke`), and settlements go to the ledger.
+pay-ledger = { path = "../pay-ledger" }
+plugin = { path = "../plugin" }
 # The playtest triage inbox: reports, drafts, and the triage log.
 playtest = { path = "../playtest" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

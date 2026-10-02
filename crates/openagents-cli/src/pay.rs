@@ -19,6 +19,7 @@ use openagents_x402::{FileReplayStore, ReplayStore, network_id};
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::pay_plugin::{Invoke, LedgerSink, PluginSource, ROLE, RegistrySource};
 use crate::x402::{Node, fail_wallet, open_wallet, replay_dir, toll_floor, x402_home};
 use crate::{Args, Output};
 #[cfg(test)]
@@ -36,8 +37,9 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           scheme, is consumed once across every route, the
                           settlement is appended to the log, and only then
                           does the route run: a command (body on stdin), a
-                          plugin's workflow (body as the request), or an
-                          upstream HTTP service (body forwarded). If the log
+                          plugin's workflow (body as the request), an
+                          upstream HTTP service (body forwarded), or a
+                          published plugin named by the path. If the log
                           cannot be written the call gets a 503, nothing runs,
                           and the same proof stays good for a retry.
 The route file:
@@ -47,6 +49,9 @@ The route file:
   expiry_secs = 300                            # optional
   challenge_key_file = \"/path/key\"             # optional
   settlements = \"/path/settlements.ndjson\"     # optional
+  ledger = \"/path/ledger.sqlite\"               # optional: crates/pay-ledger
+                                               # instead of the NDJSON log
+  plugin_cache = \"/path/plugins\"               # optional
   [[route]]
   id = \"messages\"            path = \"/v1/messages\"     method = \"POST\"
   price_sats = 21            # or price_msat
@@ -55,6 +60,12 @@ The route file:
   description = \"...\"        mime = \"application/json\" # optional
   command = [\"prog\", \"arg\"]  # or plugin_dir = \"DIR\" [workspace = \"DIR\"]
                              # or upstream = \"http://host/path/{id}\"
+                             # or registry = \"wss://relay\" [blossom = URL]
+A registry route (path with {id}, such as /v1/plugins/{id}/invoke) sells
+the published plugin {id} names: its newest signed release, priced at the
+route's price plus the release's fee_msat (the 402 names both parts), run
+once as a sandboxed guest with the body as the request, the fee recorded
+as the author's share.
 A path segment {name} matches any one segment and reaches the command as
 OPENAGENTS_PAY_PARAM_NAME and an upstream URL as {name}. Defaults: the
 replay store ~/.openagents/x402/replay, the challenge key
@@ -89,6 +100,8 @@ pub(crate) struct RouteFile {
     pub expiry_secs: Option<u32>,
     pub challenge_key_file: Option<PathBuf>,
     pub settlements: Option<PathBuf>,
+    pub ledger: Option<PathBuf>,
+    pub plugin_cache: Option<PathBuf>,
     #[serde(rename = "route", default)]
     pub routes: Vec<RouteSpec>,
 }
@@ -112,6 +125,8 @@ pub(crate) struct RouteSpec {
     pub plugin_dir: Option<PathBuf>,
     pub workspace: Option<PathBuf>,
     pub upstream: Option<String>,
+    pub registry: Option<String>,
+    pub blossom: Option<String>,
 }
 
 fn post() -> String {
@@ -135,6 +150,12 @@ impl RouteFile {
             anchor(path);
         }
         if let Some(path) = &mut file.settlements {
+            anchor(path);
+        }
+        if let Some(path) = &mut file.ledger {
+            anchor(path);
+        }
+        if let Some(path) = &mut file.plugin_cache {
             anchor(path);
         }
         for route in &mut file.routes {
@@ -177,6 +198,12 @@ impl RouteSpec {
     }
 
     fn executor(&self) -> Result<Arc<dyn RouteExecutor>, String> {
+        if self.registry.is_some() {
+            return Err(format!(
+                "route {}: give exactly one of command, plugin_dir, upstream, and registry",
+                self.id
+            ));
+        }
         match (&self.command, &self.plugin_dir, &self.upstream) {
             (Some(argv), None, None) => {
                 let Some((program, args)) = argv.split_first() else {
@@ -207,23 +234,59 @@ impl RouteSpec {
                 }))
             }
             _ => Err(format!(
-                "route {}: give exactly one of command, plugin_dir, and upstream",
+                "route {}: give exactly one of command, plugin_dir, upstream, and registry",
                 self.id
             )),
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn route(&self) -> Result<Route, String> {
+        self.route_with(|_| Arc::new(crate::pay_plugin::NoPlugins))
+    }
+
+    /// The route, with `source` resolving a registry route's plugins.
+    pub(crate) fn route_with(
+        &self,
+        source: impl FnOnce(&str) -> Arc<dyn PluginSource>,
+    ) -> Result<Route, String> {
         if self.workspace.is_some() && self.plugin_dir.is_none() {
             return Err(format!("route {}: workspace needs plugin_dir", self.id));
         }
+        if self.blossom.is_some() && self.registry.is_none() {
+            return Err(format!("route {}: blossom needs registry", self.id));
+        }
+        let (price, executor, role): (Price, Arc<dyn RouteExecutor>, String) = match &self.registry
+        {
+            Some(relay) => {
+                if self.command.is_some() || self.plugin_dir.is_some() || self.upstream.is_some() {
+                    return Err(format!(
+                        "route {}: give exactly one of command, plugin_dir, upstream, and registry",
+                        self.id
+                    ));
+                }
+                if !self.path.split('/').any(|segment| segment == "{id}") {
+                    return Err(format!(
+                        "route {}: a registry route's path names the plugin with {{id}}",
+                        self.id
+                    ));
+                }
+                let invoke = Invoke::new(self.price_msat()?, source(relay));
+                (invoke.price(), invoke, ROLE.to_owned())
+            }
+            None => (
+                Price::Fixed(self.price_msat()?),
+                self.executor()?,
+                self.role.clone(),
+            ),
+        };
         Ok(Route {
             id: self.id.clone(),
             method: self.method.clone(),
             path: self.path.clone(),
-            price: Price::Fixed(self.price_msat()?),
-            executor: self.executor()?,
-            role: self.role.clone(),
+            price,
+            executor,
+            role,
             resource: self
                 .resource
                 .clone()
@@ -242,6 +305,32 @@ impl RouteSpec {
     }
 }
 
+impl RouteFile {
+    /// Where a registry route keeps the releases it fetched.
+    pub(crate) fn plugin_cache(&self) -> PathBuf {
+        self.plugin_cache
+            .clone()
+            .unwrap_or_else(|| x402_home().join("plugins"))
+    }
+
+    /// Every route, with registry routes resolving on the relay they name.
+    pub(crate) fn routes(&self) -> Result<Vec<Route>, String> {
+        let cache = self.plugin_cache();
+        self.routes
+            .iter()
+            .map(|spec| {
+                spec.route_with(|relay| {
+                    Arc::new(RegistrySource::new(
+                        relay.to_owned(),
+                        spec.blossom.clone(),
+                        cache.clone(),
+                    ))
+                })
+            })
+            .collect()
+    }
+}
+
 /// The front a route file describes, on `receiver`, `store`, and `sink`.
 pub(crate) fn front<S: ReplayStore>(
     file: &RouteFile,
@@ -251,11 +340,7 @@ pub(crate) fn front<S: ReplayStore>(
     store: S,
     sink: Arc<dyn SettlementSink>,
 ) -> Result<Front<S>, String> {
-    let routes = file
-        .routes
-        .iter()
-        .map(RouteSpec::route)
-        .collect::<Result<Vec<_>, _>>()?;
+    let routes = file.routes()?;
     Front::new(
         Config {
             base_url: file.public_url.clone(),
@@ -510,14 +595,18 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         .settlements
         .clone()
         .unwrap_or_else(|| x402_home().join("settlements.ndjson"));
-    let sink = match NdjsonSettlements::open(&settlements_path) {
-        Ok(sink) => Arc::new(sink),
-        Err(message) => return output.fail("pay", &message),
+    let sink: Arc<dyn SettlementSink> = match &file.ledger {
+        Some(path) => match LedgerSink::open(path) {
+            Ok(sink) => Arc::new(sink),
+            Err(message) => return output.fail("pay", &message),
+        },
+        None => match NdjsonSettlements::open(&settlements_path) {
+            Ok(sink) => Arc::new(sink),
+            Err(message) => return output.fail("pay", &message),
+        },
     };
-    for spec in &file.routes {
-        if let Err(message) = spec.route() {
-            return output.fail("pay", &message);
-        }
+    if let Err(message) = file.routes() {
+        return output.fail("pay", &message);
     }
 
     let (wallet, wallet_config) = match open_wallet() {
@@ -571,7 +660,7 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         .map(|route| {
             let price = match route.price {
                 Price::Fixed(msat) => msat,
-                Price::Of(_) => 0,
+                Price::Of(_) | Price::Quote(_) => 0,
             };
             json!({"id": route.id, "method": route.method, "path": route.path,
                    "price_msat": price, "role": route.role, "resource": route.resource})
@@ -586,7 +675,7 @@ fn serve(output: &Output, words: &[String]) -> u8 {
             "network": network,
             "routes": routes,
             "replay_dir": replay_dir().display().to_string(),
-            "settlements": settlements_path.display().to_string(),
+            "settlements": file.ledger.as_ref().unwrap_or(&settlements_path).display().to_string(),
         }),
         |v| {
             let mut text = format!(
@@ -746,6 +835,7 @@ upstream = "http://127.0.0.1:9/weather/{city}"
                 request: &request,
                 payment_hash: Some("ab"),
                 provider_keys: None,
+                quote: None,
             })
             .unwrap();
         assert_eq!(out.body, b"messages|p1|hello");
@@ -770,6 +860,7 @@ upstream = "http://127.0.0.1:9/weather/{city}"
             request: &request,
             payment_hash: None,
             provider_keys: None,
+            quote: None,
         };
         assert_eq!(
             exec.url_for(&call),

@@ -108,6 +108,8 @@ pub struct SettlementInput {
     pub key: String,
     pub resource: String,
     pub plugin_id: Option<String>,
+    /// The plugin release the payment bought, when it bought one.
+    pub release_id: Option<String>,
     pub price_msat: i64,
     pub received_msat: i64,
     pub rail: Rail,
@@ -136,6 +138,7 @@ pub struct Recorded {
     pub key: String,
     pub resource: String,
     pub plugin_id: Option<String>,
+    pub release_id: Option<String>,
     pub price_msat: i64,
     pub received_msat: i64,
     pub lsp_fee_msat: i64,
@@ -148,6 +151,19 @@ pub struct Recorded {
     /// Launch matches are also in `shares`. First-call awards are separate
     /// claims funded by a journal over unpaid OpenAgents shares.
     pub bonuses: Vec<Bonus>,
+}
+/// One request that reached a route, paid or free. It names no payer,
+/// payment hash, or request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallRecord {
+    pub at: i64,
+    pub route: String,
+    pub resource: String,
+    pub plugin_id: Option<String>,
+    pub release_id: Option<String>,
+    pub outcome: String,
+    pub paid: bool,
+    pub price_msat: Option<i64>,
 }
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Totals {
@@ -321,8 +337,8 @@ impl Ledger {
             (OPENAGENTS, "lsp_fee", 0),
             (OPENAGENTS, "provider", 0),
         ]);
-        tx.execute("INSERT INTO settlement(payment_hash,resource,plugin_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            params![input.key,input.resource,input.plugin_id,input.price_msat,input.received_msat,input.price_msat-input.received_msat,input.rail.as_str(),input.payer_alias,input.settled_at,version,short])?;
+        tx.execute("INSERT INTO settlement(payment_hash,resource,plugin_id,release_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![input.key,input.resource,input.plugin_id,input.release_id,input.price_msat,input.received_msat,input.price_msat-input.received_msat,input.rail.as_str(),input.payer_alias,input.settled_at,version,short])?;
         for (party, role, amount) in shares {
             tx.execute(
                 "INSERT INTO share(settlement,party,role,amount_msat) VALUES(?,?,?,?)",
@@ -343,6 +359,40 @@ impl Ledger {
         let recorded = read_record(&tx, &input.key)?.ok_or(Error::Invalid("missing settlement"))?;
         tx.commit()?;
         Ok(recorded)
+    }
+    /// Record one `call` usage record (a request that reached a route,
+    /// paid or free) for the flow stream; returns its sequence number.
+    pub fn record_call(&mut self, call: &CallRecord) -> Result<i64> {
+        if call.route.is_empty() || call.price_msat.is_some_and(|msat| msat < 0) {
+            return Err(Error::Invalid("call route or price"));
+        }
+        self.connection.execute(
+            "INSERT INTO call(at,route,resource,plugin_id,release_id,outcome,paid,price_msat) VALUES(?,?,?,?,?,?,?,?)",
+            params![call.at, call.route, call.resource, call.plugin_id, call.release_id, call.outcome, call.paid, call.price_msat],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+    /// The `call` records after `seq`, oldest first.
+    pub fn calls_since(&self, seq: i64) -> Result<Vec<(i64, CallRecord)>> {
+        let mut statement = self.connection.prepare(
+            "SELECT seq,at,route,resource,plugin_id,release_id,outcome,paid,price_msat FROM call WHERE seq>? ORDER BY seq",
+        )?;
+        let rows = statement.query_map([seq], |r| {
+            Ok((
+                r.get(0)?,
+                CallRecord {
+                    at: r.get(1)?,
+                    route: r.get(2)?,
+                    resource: r.get(3)?,
+                    plugin_id: r.get(4)?,
+                    release_id: r.get(5)?,
+                    outcome: r.get(6)?,
+                    paid: r.get(7)?,
+                    price_msat: r.get(8)?,
+                },
+            ))
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
     /// Unreserved, unpaid claims for this party, in msat.
     pub fn accrued(&self, party: &str) -> Result<i64> {
@@ -561,8 +611,8 @@ fn first_call_bonus(
     Ok(())
 }
 fn read_record(connection: &Connection, key: &str) -> Result<Option<Recorded>> {
-    let mut record = connection.query_row("SELECT seq,payment_hash,resource,plugin_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short FROM settlement WHERE payment_hash=?", [key], |r| Ok(Recorded {
-        seq:r.get(0)?,key:r.get(1)?,resource:r.get(2)?,plugin_id:r.get(3)?,price_msat:r.get(4)?,received_msat:r.get(5)?,lsp_fee_msat:r.get(6)?,rail:if r.get::<_,String>(7)? == "balance" { Rail::Balance } else { Rail::Lightning },payer_alias:r.get(8)?,settled_at:r.get(9)?,rule_version:r.get(10)?,short:r.get(11)?,shares:vec![],bonuses:vec![]
+    let mut record = connection.query_row("SELECT seq,payment_hash,resource,plugin_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short,release_id FROM settlement WHERE payment_hash=?", [key], |r| Ok(Recorded {
+        seq:r.get(0)?,key:r.get(1)?,resource:r.get(2)?,plugin_id:r.get(3)?,release_id:r.get(12)?,price_msat:r.get(4)?,received_msat:r.get(5)?,lsp_fee_msat:r.get(6)?,rail:if r.get::<_,String>(7)? == "balance" { Rail::Balance } else { Rail::Lightning },payer_alias:r.get(8)?,settled_at:r.get(9)?,rule_version:r.get(10)?,short:r.get(11)?,shares:vec![],bonuses:vec![]
     })).optional()?;
     if let Some(record) = &mut record {
         record.shares = connection.prepare("SELECT settlement,party,role,amount_msat FROM share WHERE settlement=? ORDER BY party,role")?.query_map([key], |r| Ok(Share { settlement:r.get(0)?,party:r.get(1)?,role:r.get(2)?,amount_msat:r.get(3)? }))?.collect::<std::result::Result<_,_>>()?;

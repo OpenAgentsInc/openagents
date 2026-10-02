@@ -42,6 +42,7 @@ mod mcp;
 mod out;
 #[cfg(unix)]
 mod pay;
+mod pay_plugin;
 mod playtest;
 #[cfg(unix)]
 mod plugin_local;

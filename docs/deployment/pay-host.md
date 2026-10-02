@@ -56,7 +56,24 @@ environment file. It reaches the node through the resident's
 `control.sock` (the `open_wallet` path in `crates/openagents-cli/src/x402.rs`
 uses the resident when one answers), keeps its one replay store under
 `OPENAGENTS_X402_HOME`, and its ledger under `/var/lib/openagents-pay/ledger`,
-which the backup already picks up. Add it as its own unit with
+which the backup already picks up (`ledger = "/var/lib/openagents-pay/ledger/ledger.sqlite"`
+in the route file makes `crates/pay-ledger` the settlement sink instead of the
+NDJSON log). Paid plugin invocations (#10193) are one route:
+
+```toml
+[[route]]
+id = "plugin-invoke"
+path = "/v1/plugins/{id}/invoke"
+price_sats = 5            # the endpoint part; the release's fee_msat is added
+registry = "wss://relay.openagents.com"
+```
+
+It resolves `{id}` to the newest signed release, fetches and checks it into
+`plugin_cache` (default `OPENAGENTS_X402_HOME/plugins/<release>`), quotes the
+endpoint price plus the author's fee (the `402` names both), and runs the
+release's single guest step with no grant beyond the request. The ledger's v1
+split rule takes effect 2026-10-15; before then the ledger refuses
+settlements, so paid calls get a `503` and nothing runs. Add it as its own unit with
 `After=openagents-pay.service` and `Requires=openagents-pay.service`; it
 needs `ReadWritePaths=/var/lib/openagents-pay` and the one TCP port Caddy
 proxies to.
