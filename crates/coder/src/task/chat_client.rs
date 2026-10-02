@@ -256,9 +256,31 @@ impl Coder for Here {
         })
     }
 
+    /// The issue the message asks to work, as Jev judges it after
+    /// routing: one it names, or, when it asks Coder to choose one itself,
+    /// an open issue nobody holds ([`super::issue_pick`]). The flow then
+    /// claims it like any other, so an engine run never has to.
     fn issue(&self, request: &str, earlier: &str, dir: &Path) -> Option<Box<dyn Issue>> {
-        super::issue_run::asked_blocking(request, earlier, dir)
-            .map(|reference| Box::new(IssueRef(reference)) as Box<dyn Issue>)
+        Some(
+            match super::issue_run::asked_work_blocking(request, earlier, dir)? {
+                super::issue_run::Asked::Issue(reference) => Box::new(IssueRef {
+                    reference,
+                    picked: None,
+                }),
+                super::issue_run::Asked::Pick => {
+                    match super::issue_run::pick_here(&super::issue_run::Gh, dir) {
+                        Ok((repository, picked)) => Box::new(IssueRef {
+                            reference: super::issue_run::Reference {
+                                repository: Some(repository),
+                                number: picked.number,
+                            },
+                            picked: Some(picked.title),
+                        }),
+                        Err(why) => Box::new(Unpicked(why)),
+                    }
+                }
+            },
+        )
     }
 
     fn follow(
@@ -368,11 +390,19 @@ impl Coder for Here {
     }
 }
 
-struct IssueRef(super::issue_run::Reference);
+struct IssueRef {
+    reference: super::issue_run::Reference,
+    /// The title, when Coder chose the issue itself.
+    picked: Option<String>,
+}
 
 impl Issue for IssueRef {
     fn number(&self) -> u64 {
-        self.0.number
+        self.reference.number
+    }
+
+    fn picked(&self) -> Option<String> {
+        self.picked.clone()
     }
 
     fn begin(
@@ -381,9 +411,11 @@ impl Issue for IssueRef {
         dir: &Path,
         chat: &str,
     ) -> Result<IssueStarted, String> {
-        let runner = super::issue_run::Runner::new(store.to_path_buf());
+        let mut runner = super::issue_run::Runner::new(store.to_path_buf());
+        // A picked issue someone claimed since the pick is left to them.
+        runner.skip_claimed = self.picked.is_some();
         let started = runner
-            .begin(dir, &self.0, Some(chat))
+            .begin(dir, &self.reference, Some(chat))
             .map_err(|refused| refused.to_string())?;
         let record = &started.record;
         Ok(IssueStarted {
@@ -400,6 +432,19 @@ impl Issue for IssueRef {
                 let _ = started.hand_off(local::controller().ok().as_deref());
             }),
         })
+    }
+}
+
+/// A pickup that found no free issue: it starts nothing and says why.
+struct Unpicked(String);
+
+impl Issue for Unpicked {
+    fn number(&self) -> u64 {
+        0
+    }
+
+    fn begin(self: Box<Self>, _: &Path, _: &Path, _: &str) -> Result<IssueStarted, String> {
+        Err(self.0)
     }
 }
 

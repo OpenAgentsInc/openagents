@@ -53,7 +53,7 @@ use openagents_chat::coder_events::{self, CoderEvent, FileChange, IssueLink, Map
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use coder_delegate::issue::Reference;
+pub use coder_delegate::issue::{Asked, Reference};
 
 use super::Status;
 use super::landing;
@@ -364,6 +364,21 @@ pub trait Tracker: crate::claim::Hub {
         title: &str,
         body: &str,
     ) -> Result<String, String>;
+    /// The repository's open issues with what a pickup weighs
+    /// ([`super::issue_pick`]).
+    ///
+    /// # Errors
+    /// Why they cannot be listed.
+    fn open_issues(&self, _repository: &str) -> Result<Vec<super::issue_pick::Open>, String> {
+        Err("this tracker cannot list open issues".into())
+    }
+    /// The repository's open pull requests, for which issues they work.
+    ///
+    /// # Errors
+    /// Why they cannot be listed.
+    fn open_pulls(&self, _repository: &str) -> Result<Vec<super::issue_pick::Pull>, String> {
+        Err("this tracker cannot list open pull requests".into())
+    }
 }
 
 use crate::claim::gh;
@@ -442,6 +457,44 @@ impl Tracker for Gh {
             ],
         )
         .map(|url| url.trim().to_owned())
+    }
+
+    fn open_issues(&self, repository: &str) -> Result<Vec<super::issue_pick::Open>, String> {
+        let text = gh(
+            None,
+            &[
+                "issue",
+                "list",
+                "-R",
+                repository,
+                "--state",
+                "open",
+                "--limit",
+                "200",
+                "--json",
+                "number,title,body,labels,assignees,comments",
+            ],
+        )?;
+        super::issue_pick::parse_issues(&text)
+    }
+
+    fn open_pulls(&self, repository: &str) -> Result<Vec<super::issue_pick::Pull>, String> {
+        let text = gh(
+            None,
+            &[
+                "pr",
+                "list",
+                "-R",
+                repository,
+                "--state",
+                "open",
+                "--limit",
+                "200",
+                "--json",
+                "title,body,headRefName,closingIssuesReferences",
+            ],
+        )?;
+        super::issue_pick::parse_pulls(&text)
     }
 }
 
@@ -555,6 +608,19 @@ pub async fn asked(
     jev: Option<jev::Client>,
     workdir: &Path,
 ) -> Option<Reference> {
+    match asked_with(request, earlier, jev, workdir, false).await? {
+        Asked::Issue(reference) => Some(reference),
+        Asked::Pick => None,
+    }
+}
+
+async fn asked_with(
+    request: &str,
+    earlier: &str,
+    jev: Option<jev::Client>,
+    workdir: &Path,
+    pick: bool,
+) -> Option<Asked> {
     let request = coder_delegate::terminal::Request {
         workdir: workdir.to_path_buf(),
         request: request.to_owned(),
@@ -575,7 +641,7 @@ pub async fn asked(
     };
     let recorder = coder_delegate::record::Recorder::default();
     let _quiet = coder_delegate::say::capture(Box::new(|_| {}));
-    coder_delegate::issue::asked(&request, &recorder).await
+    coder_delegate::issue::asked_work(&request, &recorder, pick).await
 }
 
 /// [`asked`] on a thread of its own, for a caller that may run inside an
@@ -588,6 +654,23 @@ pub fn asked_blocking(request: &str, earlier: &str, workdir: &Path) -> Option<Re
     {
         return None;
     }
+    match on_thread(request, earlier, workdir, false)? {
+        Asked::Issue(reference) => Some(reference),
+        Asked::Pick => None,
+    }
+}
+
+/// What a chat message routed as coding work asks of the repository's
+/// issues, as Jev judges it: an issue it names, or to pick an open issue
+/// nobody is working on ([`super::issue_pick`]). Jev is asked even when
+/// the message names no issue, since a pickup names none. On a thread of
+/// its own, for a caller that may run inside an async runtime.
+#[must_use]
+pub fn asked_work_blocking(request: &str, earlier: &str, workdir: &Path) -> Option<Asked> {
+    on_thread(request, earlier, workdir, true)
+}
+
+fn on_thread(request: &str, earlier: &str, workdir: &Path, pick: bool) -> Option<Asked> {
     let (request, earlier, workdir) = (
         request.to_owned(),
         earlier.to_owned(),
@@ -599,11 +682,31 @@ pub fn asked_blocking(request: &str, earlier: &str, workdir: &Path) -> Option<Re
             .build()
             .ok()?;
         let (jev, _) = crate::delegate_door::jev_from(&crate::delegate_door::env_value);
-        runtime.block_on(asked(&request, &earlier, jev, &workdir))
+        runtime.block_on(asked_with(&request, &earlier, jev, &workdir, pick))
     })
     .join()
     .ok()
     .flatten()
+}
+
+/// Pick an open issue of the repository the checkout at `dir` is in,
+/// under its claim window ([`super::issue_pick`]).
+///
+/// # Errors
+/// GitHub cannot be read, or no open issue is free.
+pub fn pick_here(
+    tracker: &dyn Tracker,
+    dir: &Path,
+) -> Result<(String, super::issue_pick::Picked), String> {
+    let checkout = local::checkout(dir)?;
+    let repository = tracker.repository(&checkout.top)?;
+    let policy = Policy::load(&checkout.top)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let picked = super::issue_pick::pick(tracker, &repository, now, &policy)
+        .map_err(|why| format!("No open issue of {repository} is free to pick up: {why}."))?;
+    Ok((repository, picked))
 }
 
 // ---------------------------------------------------------------------------

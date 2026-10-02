@@ -277,7 +277,15 @@ pub struct Started {
 
 /// The issue flow Jev judged a message asks for, before it starts.
 pub trait Issue: Send {
+    /// The issue's number; `0` for a pickup that found no free issue,
+    /// whose [`Issue::begin`] says why.
     fn number(&self) -> u64;
+
+    /// The issue's title when Coder chose the issue itself (a pickup), so
+    /// the reply names what it picked up.
+    fn picked(&self) -> Option<String> {
+        None
+    }
 
     /// Claim the issue and start its flow in a worktree of the checkout
     /// `dir` is in, for the thread `chat`. Blocking. On success, `finish`
@@ -2139,6 +2147,7 @@ impl Client {
         let dir = here.to_path_buf();
         let chat = id.to_owned();
         let number = issue.number();
+        let picked = issue.picked();
         let flow = std::thread::spawn(move || match issue.begin(&store, &dir, &chat) {
             Ok(begun) => {
                 let IssueStarted {
@@ -2162,13 +2171,12 @@ impl Client {
             Ok(begun) => begun,
             Err(message) => {
                 let _ = flow.join();
-                coder_report(
-                    sink,
-                    id,
-                    false,
-                    &format!("Coder did not take #{number}: {message}"),
-                    None,
-                );
+                let message = if number == 0 {
+                    message
+                } else {
+                    format!("Coder did not take #{number}: {message}")
+                };
+                coder_report(sink, id, false, &message, None);
                 return Ended::Failed;
             }
         };
@@ -2177,7 +2185,10 @@ impl Client {
             sink,
             id,
             true,
-            &format!("Coder took issue #{number} ({url})."),
+            &match &picked {
+                Some(title) => format!("Picking up #{number}: {title}."),
+                None => format!("Coder took issue #{number} ({url})."),
+            },
             Some(serde_json::json!({
                 "host": LOCAL_HOST,
                 "task": record.task,

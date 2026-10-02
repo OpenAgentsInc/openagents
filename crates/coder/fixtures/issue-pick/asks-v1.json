@@ -1,0 +1,31 @@
+{
+  "schema": "openagents.coder.issue-ask-set.v1",
+  "description": "Jev's issue question after the chat router judged a message coding work (#10206): pick = choose an open issue nobody is working on and work it; none = ordinary coding work or a question about issues; #N = work that named issue. Labeled by the author.",
+  "rows": [
+    {"id": "pick-001", "request": "pick one of the open issues anotehr agent isnt working on , comment on it to claim it and delegate", "truth": "pick"},
+    {"id": "pick-002", "request": "grab an unclaimed issue and work it", "truth": "pick"},
+    {"id": "pick-003", "request": "find something in the backlog nobody's on and take it", "truth": "pick"},
+    {"id": "pick-004", "request": "Take the next free issue and ship it.", "truth": "pick"},
+    {"id": "pick-005", "request": "choose a small open issue that isn't claimed and have Coder do it", "truth": "pick"},
+    {"id": "pick-006", "request": "work on whatever open issue no other agent has claimed", "truth": "pick"},
+    {"id": "pick-007", "request": "can you pick up an issue from the repo that's still free and land it", "truth": "pick"},
+    {"id": "pick-008", "request": "go find an open ticket nobody owns and fix it", "truth": "pick"},
+    {"id": "pick-009", "request": "claim one of the open issues and delegate it to coder", "truth": "pick"},
+    {"id": "pick-010", "request": "keep busy: take an unassigned issue and do it", "truth": "pick"},
+    {"id": "pick-011", "request": "start on any coder-sized issue that's open", "truth": "pick"},
+    {"id": "pick-012", "request": "Pick an issue nobody's touching, claim it, and get it merged.", "truth": "pick"},
+    {"id": "none-001", "request": "fix the flaky test in crates/coder-host/tests/control.rs", "truth": "none"},
+    {"id": "none-002", "request": "add a --dry-run flag to openagents chat work", "truth": "none"},
+    {"id": "none-003", "request": "rename the Recorder struct to TaskRecorder across the repo", "truth": "none"},
+    {"id": "none-004", "request": "how many open issues are there right now?", "truth": "none"},
+    {"id": "none-005", "request": "list the open issues labeled coder-sized", "truth": "none"},
+    {"id": "none-006", "request": "summarize what the open issues are about", "truth": "none"},
+    {"id": "none-007", "request": "write a test for the issue picker's claim window", "truth": "none"},
+    {"id": "none-008", "request": "refactor the chat client so issue flows start faster", "truth": "none"},
+    {"id": "none-009", "request": "open a new issue for the slow startup and don't work on it yet", "truth": "none"},
+    {"id": "issue-001", "request": "work on #10184", "truth": "#10184"},
+    {"id": "issue-002", "request": "claim #10203 and do it", "truth": "#10203"},
+    {"id": "issue-003", "request": "do it", "earlier": "assistant: #10150 looks small: the host's restart message is unclear. Want Coder to take it?", "truth": "#10150"},
+    {"id": "issue-004", "request": "take https://github.com/OpenAgentsInc/openagents/issues/10199 and land it", "truth": "#10199"}
+  ]
+}

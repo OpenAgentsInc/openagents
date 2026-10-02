@@ -443,6 +443,23 @@ openagents issue pickup [--label L]          # what to pick up next, in order
 it when the attempt ran nothing (no capacity) or failed, and keeps it while
 a finished attempt waits for review.
 
+**Picking up an issue from a chat.** A message that asks Coder to choose an
+open issue itself, such as "pick one of the open issues nobody is working on
+and take it", names no issue. After the router judges it coding work, Jev's
+issue question answers `pick` ([#10206](https://github.com/OpenAgentsInc/openagents/issues/10206);
+labeled asks in `crates/coder/fixtures/issue-pick/asks-v1.json`, scored by
+`cargo test -p coder --test issue_pick_eval -- --ignored`). Coder then reads
+the open issues and pull requests
+([`coder::task::issue_pick`](../../crates/coder/src/task/issue_pick.rs)) and
+passes over any issue with an assignee, a claim (above), an open pull
+request that closes it, names it, or is on a branch named for it, or a
+holding label (`blocked`, `umbrella`, `epic`, `needs-owner`, `question`,
+`wontfix`, `duplicate`). It takes the first free issue in the pickup order
+above; when none of those is free, the open issue whose body names no other
+open issue, then the shortest, then the oldest. It runs the issue flow on
+it and says "Picking up #N: title."; when no issue is free it says why and
+starts nothing. An engine run never claims or delegates on its own.
+
 ### Coder events
 
 Under `--json`, every event of the task follows the chat's own events as one

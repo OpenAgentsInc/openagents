@@ -72,6 +72,31 @@ struct FakeCoder {
     answered: Mutex<Vec<String>>,
     /// What a working run was sent.
     steered: Mutex<Vec<String>>,
+    /// What a pickup finds: the issue it picked, or why none is free.
+    picks: Option<Result<(u64, String), String>>,
+}
+
+/// An issue a pickup chose, or the reason it found none (number 0).
+struct Picked(u64, Result<String, String>);
+
+impl Issue for Picked {
+    fn number(&self) -> u64 {
+        self.0
+    }
+    fn picked(&self) -> Option<String> {
+        self.1.clone().ok()
+    }
+    fn begin(self: Box<Self>, _: &Path, _: &Path, _: &str) -> Result<IssueStarted, String> {
+        self.1.map(|_| IssueStarted {
+            started: Started {
+                task: "t1".into(),
+                project: "demo".into(),
+                worktree: "/tmp/demo-t1".into(),
+            },
+            url: format!("https://github.com/o/r/issues/{}", self.0),
+            finish: Box::new(|| {}),
+        })
+    }
 }
 
 impl Coder for FakeCoder {
@@ -116,7 +141,10 @@ impl Coder for FakeCoder {
         })
     }
     fn issue(&self, _: &str, _: &str, _: &Path) -> Option<Box<dyn Issue>> {
-        None
+        Some(match self.picks.clone()? {
+            Ok((number, title)) => Box::new(Picked(number, Ok(title))),
+            Err(why) => Box::new(Picked(0, Err(why))),
+        })
     }
     fn follow(&self, _: &Path, task: &str, chat: &str, hint: Option<String>) -> Box<dyn Follow> {
         struct Once(Option<Line>);
@@ -293,6 +321,58 @@ async fn a_coding_reply_starts_coder_at_once_and_streams_its_events() {
         started[0].1,
         Some(nostr::cj_conversation::Engine::ClaudeCode)
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pickup_names_the_issue_it_picked_or_says_none_is_free() {
+    let dir = tempfile::tempdir().unwrap();
+    let door = Arc::new(Worker {
+        contexts: Arc::default(),
+        coding: true,
+    });
+    let coder = Arc::new(FakeCoder {
+        picks: Some(Ok((42, "Fix the thing".into()))),
+        ..FakeCoder::default()
+    });
+    let client = in_process(door.clone(), options(dir.path()), coder.clone());
+    let (events, _, _) = drain(client.stream(send(
+        &new_id(),
+        "pick an open issue nobody is on and take it",
+        Start::Settings,
+    )))
+    .await;
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            Event::Coder { accepted: true, message, .. } if message == "Picking up #42: Fix the thing."
+        )),
+        "{events:?}"
+    );
+    // The flow took it; nothing ran as plain coding work.
+    assert!(coder.started.lock().unwrap().is_empty());
+
+    let coder = Arc::new(FakeCoder {
+        picks: Some(Err(
+            "No open issue of o/r is free to pick up: all 3 are claimed.".into(),
+        )),
+        ..FakeCoder::default()
+    });
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let (events, _, _) = drain(client.stream(send(
+        &new_id(),
+        "pick an open issue nobody is on and take it",
+        Start::Settings,
+    )))
+    .await;
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            Event::Coder { accepted: false, message, .. }
+                if message == "No open issue of o/r is free to pick up: all 3 are claimed."
+        )),
+        "{events:?}"
+    );
+    assert!(coder.started.lock().unwrap().is_empty());
 }
 
 /// A coding message to a thread whose run ended starts the run's next turn

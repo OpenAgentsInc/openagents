@@ -198,6 +198,33 @@ fn issue_url(tail: &str) -> Option<(String, u64, usize)> {
 /// request's own references come first, then the conversation's, the most
 /// recent first; with none, Jev is not asked.
 pub async fn asked<X>(request: &Request<X>, recorder: &Recorder) -> Option<Reference> {
+    match asked_work(request, recorder, false).await? {
+        Asked::Issue(reference) => Some(reference),
+        Asked::Pick => None,
+    }
+}
+
+/// What a turn asks of the repository's issues, as Jev judges it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Asked {
+    /// Work this issue.
+    Issue(Reference),
+    /// Choose an open issue nobody is working on, claim it, and work it.
+    Pick,
+}
+
+/// The option Jev answers for [`Asked::Pick`].
+pub const PICK_OPTION: &str = "pick";
+/// What [`PICK_OPTION`] means to Jev.
+pub const PICK_MEANS: &str = "The request asks the agent to choose an open issue of this repository by itself, one nobody is working on, and work it (claim it, delegate it, or take it), without naming which issue.";
+/// What `none` means to Jev.
+pub const NONE_MEANS: &str = "The request asks for no work on an issue, or only asks about issues.";
+
+/// [`asked`], and, when `pick` is set, whether the turn asks the agent to
+/// choose an open issue itself ([`Asked::Pick`]). With `pick`, Jev is
+/// asked even when the turn names no issue; without it, a turn that names
+/// none asks Jev nothing.
+pub async fn asked_work<X>(request: &Request<X>, recorder: &Recorder, pick: bool) -> Option<Asked> {
     let client = request.jev.clone()?;
     let mut candidates = references(&request.request);
     let mut earlier = references(&request.earlier);
@@ -208,19 +235,10 @@ pub async fn asked<X>(request: &Request<X>, recorder: &Recorder) -> Option<Refer
         }
     }
     candidates.truncate(CANDIDATES_MAX);
-    if candidates.is_empty() {
+    if candidates.is_empty() && !pick {
         return None;
     }
-    let mut choice = jev::Choice::new(WORKS_ISSUE, indexmap::IndexMap::new()).option(
-        "none",
-        "The request asks for no work on an issue, or only asks about issues.",
-    );
-    for candidate in &candidates {
-        choice = choice.option(
-            candidate.option(),
-            format!("Work issue {} now.", candidate.option()),
-        );
-    }
+    let choice = works_issue_choice(&candidates, pick);
     let answer = crate::component::jev::ask(
         &crate::component::jev::JevMode::Live(client),
         recorder,
@@ -239,7 +257,31 @@ pub async fn asked<X>(request: &Request<X>, recorder: &Recorder) -> Option<Refer
     )
     .await;
     let chosen = answer.choice("issue")?;
-    candidates.into_iter().find(|c| c.option() == chosen)
+    if pick && chosen == PICK_OPTION {
+        return Some(Asked::Pick);
+    }
+    candidates
+        .into_iter()
+        .find(|c| c.option() == chosen)
+        .map(Asked::Issue)
+}
+
+/// The Choice question [`asked_work`] asks: none, pick when allowed, and
+/// one option per referenced issue.
+#[must_use]
+pub fn works_issue_choice(candidates: &[Reference], pick: bool) -> jev::Choice {
+    let mut choice =
+        jev::Choice::new(WORKS_ISSUE, indexmap::IndexMap::new()).option("none", NONE_MEANS);
+    if pick {
+        choice = choice.option(PICK_OPTION, PICK_MEANS);
+    }
+    for candidate in candidates {
+        choice = choice.option(
+            candidate.option(),
+            format!("Work issue {} now.", candidate.option()),
+        );
+    }
+    choice
 }
 
 /// The issue as `gh` returns it.

@@ -34,6 +34,7 @@ pub mod checks;
 pub mod cli;
 pub mod commands;
 pub mod interaction;
+pub mod issue_pick;
 pub mod issue_run;
 pub mod landing;
 pub mod local;
