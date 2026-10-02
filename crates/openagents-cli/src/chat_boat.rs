@@ -723,6 +723,8 @@ fn route_record(
             .map(|d| (d * 1_000_000.0).round().max(0.0) as u64),
         wall_ms: u64::try_from(cost.wall.as_millis()).ok(),
         artifacts: Vec::new(),
+        payer: None,
+        payer_keys: Vec::new(),
     };
     json!({
         "schema": "openagents.boat.run.v1",
