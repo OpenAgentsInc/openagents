@@ -110,6 +110,8 @@ pub enum Action {
     Settings,
     /// Turn the setting `key` on or off.
     Change { key: String, on: bool },
+    /// Keep a pasted secret for the setting `key` (a provider key).
+    Secret { key: String, value: String },
     /// Install the host as a service, so chats sync with the phone.
     Sync,
     /// Put this text on the terminal's clipboard.
@@ -185,6 +187,10 @@ pub struct App {
     pub expanded: bool,
     /// The prompt just sent, for the screen to save.
     sent: Option<String>,
+    /// A masked field taking a secret for a setting: its key, its label,
+    /// and its own editor, apart from the composer's so the secret never
+    /// enters the prompt history.
+    pub secret: Option<(String, String, Editor)>,
     /// What the last Ctrl+Y copied: 0 the reply, n its nth code block from
     /// the end. The next Ctrl+Y copies the one before.
     copied: Option<usize>,
@@ -255,6 +261,7 @@ impl App {
             quiet_detach: false,
             seen: HashMap::new(),
             sent: None,
+            secret: None,
             copied: None,
             tick: 0,
             activity: None,
@@ -391,6 +398,28 @@ impl App {
         self.selection = None;
         if self.overlay.is_some() {
             return self.overlay_key(key);
+        }
+        if let Some((setting, label, editor)) = &mut self.secret {
+            if key.code == KeyCode::Esc {
+                let label = label.clone();
+                self.secret = None;
+                self.note(format!("No {label} key was added."));
+                return Vec::new();
+            }
+            if let ComposerAction::Submitted(value) = handle_key(editor, usize::from(width), key) {
+                let setting = setting.clone();
+                self.secret = None;
+                let value = value.trim().to_owned();
+                if value.is_empty() {
+                    self.note("No key was added.");
+                    return Vec::new();
+                }
+                return vec![Action::Secret {
+                    key: setting,
+                    value,
+                }];
+            }
+            return Vec::new();
         }
         if self.file.is_some() {
             self.file_key(key);
@@ -620,6 +649,15 @@ impl App {
         };
         if let (false, Some(why)) = (choice.on, &choice.blocked) {
             self.note(why.clone());
+            return Vec::new();
+        }
+        if choice.secret && !choice.on {
+            self.overlay = None;
+            self.note(format!(
+                "Paste your {} key and press Enter. It won't show. Esc cancels.",
+                choice.label
+            ));
+            self.secret = Some((choice.key, choice.label, Editor::new()));
             return Vec::new();
         }
         vec![Action::Change {
@@ -1475,6 +1513,9 @@ impl App {
             _ if self.run_view.is_some() && !self.asked => {
                 let state = if self.running { "working" } else { "ended" };
                 format!("Coder run · {state} · Enter sends it your message · Esc back")
+            }
+            _ if self.secret.is_some() => {
+                "your key · it won't show · Enter keeps it · Esc cancels".into()
             }
             _ if self.plugin.is_some() => format!(
                 "plugin {} · type what to ask · Esc cancels",

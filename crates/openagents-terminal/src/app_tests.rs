@@ -812,6 +812,59 @@ fn choice(key: &str, on: bool, blocked: Option<&str>) -> crate::Choice {
         label: key.into(),
         on,
         blocked: blocked.map(str::to_owned),
+        secret: false,
+    }
+}
+
+/// A provider key is a masked field (BYOK): Enter on a key not yet added
+/// opens it, what is typed never shows, enters the transcript, or joins
+/// the prompt history, and Enter hands it to the settings; Esc drops it.
+#[test]
+fn a_provider_key_is_pasted_into_a_masked_field() {
+    let mut app = app();
+    let mut row = choice("provider-key:openrouter", false, None);
+    row.label = "OpenRouter".into();
+    row.secret = true;
+    let settings = crate::Settings {
+        path: "/s.json".into(),
+        problem: None,
+        choices: vec![row],
+        status: Some("Running on OpenAgents.".into()),
+    };
+    app.settings(settings.clone());
+    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
+    assert!(app.overlay.is_none());
+    assert!(
+        shown(&mut app)
+            .ends_with("Paste your OpenRouter key and press Enter. It won't show. Esc cancels.")
+    );
+    let actions = typed(&mut app, "sk-or-v1-secret");
+    assert_eq!(
+        actions,
+        vec![Action::Secret {
+            key: "provider-key:openrouter".into(),
+            value: "sk-or-v1-secret".into()
+        }]
+    );
+    assert!(!shown(&mut app).contains("sk-or-v1-secret"));
+    assert!(
+        app.editor
+            .history()
+            .iter()
+            .all(|line| !line.contains("secret"))
+    );
+    assert!(app.take_sent().is_none());
+    app.settings(settings);
+    app.key(&key(KeyCode::Enter), 80);
+    typed_without_enter(&mut app, "half");
+    assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
+    assert!(app.secret.is_none());
+    assert!(shown(&mut app).ends_with("No OpenRouter key was added."));
+}
+
+fn typed_without_enter(app: &mut App, text: &str) {
+    for c in text.chars() {
+        assert!(app.key(&key(KeyCode::Char(c)), 80).is_empty());
     }
 }
 
@@ -824,6 +877,7 @@ fn settings_turn_on_and_off_in_place() {
     let settings = crate::Settings {
         path: "/s.json".into(),
         problem: None,
+        status: None,
         choices: vec![
             choice("start", true, None),
             choice("agent:codex", true, None),

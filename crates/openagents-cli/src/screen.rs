@@ -612,6 +612,12 @@ impl Extras for ProgramExtras {
         Ok(coder_settings(&path))
     }
 
+    fn set_secret(&self, key: &str, value: &str) -> Result<Settings, String> {
+        let path = coder::task::settings::path();
+        keep_provider_key(&path, key, value)?;
+        Ok(coder_settings(&path))
+    }
+
     #[cfg(unix)]
     fn background(&self) -> Result<Vec<openagents_terminal::BackgroundRow>, String> {
         crate::background::rows()
@@ -668,6 +674,11 @@ const AGENT_KEY: &str = "agent:";
 /// ones turned off, as the desktop app's settings page shows them. Agents
 /// are opt-out (#10184): every agent is on unless the person turned it off.
 fn coder_settings(file: &std::path::Path) -> Settings {
+    coder_settings_with(file, &crate::provider_key::stored())
+}
+
+/// [`coder_settings`] with the person's provider keys as `keys`.
+fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Settings {
     use coder::task::settings::{self, Start};
     let loaded = match settings::Settings::load(file) {
         Ok(loaded) => loaded,
@@ -678,6 +689,7 @@ fn coder_settings(file: &std::path::Path) -> Settings {
                     "The settings file cannot be read, so nothing changes here: {why}"
                 )),
                 choices: Vec::new(),
+                status: None,
             };
         }
     };
@@ -686,6 +698,7 @@ fn coder_settings(file: &std::path::Path) -> Settings {
         label: "Start Coder at once".into(),
         on: loaded.coder.start == Start::AtOnce,
         blocked: None,
+        secret: false,
     }];
     choices.extend(loaded.coder.listing().into_iter().map(|(provider, on)| {
         openagents_terminal::Choice {
@@ -693,13 +706,59 @@ fn coder_settings(file: &std::path::Path) -> Settings {
             label: settings::provider_name(provider).to_owned(),
             on,
             blocked: None,
+            secret: false,
         }
     }));
+    // BYOK (#10176): the mode, then one masked field per provider.
+    choices.push(openagents_terminal::Choice {
+        key: PAYER_KEY.into(),
+        label: "Use my keys for everything".into(),
+        on: loaded.models.payer == model_access::Mode::Mine,
+        blocked: (!keys.chat_capable()).then(|| {
+            if keys.get(model_access::Provider::TypeSafe).is_some() {
+                model_access::TYPESAFE_ONLY.to_owned()
+            } else {
+                "Add an OpenRouter or Vercel AI Gateway key first.".to_owned()
+            }
+        }),
+        secret: false,
+    });
+    for provider in model_access::PROVIDERS {
+        let key = keys.get(provider);
+        choices.push(openagents_terminal::Choice {
+            key: format!("{PROVIDER_KEY}{}", provider.word()),
+            label: match key {
+                Some(key) => format!("{} …{}", provider.name(), key.last_four()),
+                None => provider.name().to_owned(),
+            },
+            on: key.is_some(),
+            blocked: None,
+            secret: true,
+        });
+    }
     Settings {
         path: file.to_path_buf(),
         problem: None,
         choices,
+        status: Some(model_access::status_line(loaded.models.payer, keys, None)),
     }
+}
+
+/// The key of the choice "Use my keys for everything" (`models.payer`).
+const PAYER_KEY: &str = "models.payer";
+/// The prefix of each provider key's choice; the provider's word follows.
+const PROVIDER_KEY: &str = "provider-key:";
+
+/// Keep a pasted provider key, after the provider's own check: a refused
+/// key is not kept.
+fn keep_provider_key(file: &std::path::Path, key: &str, value: &str) -> Result<(), String> {
+    let provider = key
+        .strip_prefix(PROVIDER_KEY)
+        .map(model_access::Provider::parse)
+        .transpose()?
+        .ok_or_else(|| format!("`{key}` is not a key here"))?;
+    let _ = file;
+    crate::provider_key::keep(provider, &model_access::ApiKey::new(value))
 }
 
 /// Turn the choice `key` on or off in `file`, through Coder's own loader,
@@ -707,6 +766,30 @@ fn coder_settings(file: &std::path::Path) -> Settings {
 fn change_setting(file: &std::path::Path, key: &str, on: bool) -> Result<(), String> {
     use coder::task::settings::{Settings as File, Start, agent};
     let mut settings = File::load(file)?;
+    if key == PAYER_KEY {
+        let mode = if on {
+            model_access::Mode::Mine
+        } else {
+            model_access::Mode::Ours
+        };
+        settings.set_payer(mode, &crate::provider_key::stored())?;
+        settings.save(file)?;
+        model_access::install(coder::task::settings::access());
+        return Ok(());
+    }
+    if let Some(word) = key.strip_prefix(PROVIDER_KEY) {
+        let provider = model_access::Provider::parse(word)?;
+        if on {
+            return Err(format!("Paste your {} key to add it.", provider.name()));
+        }
+        crate::provider_key::forget(provider)?;
+        let mut settings = File::load(file)?;
+        if settings.settle_payer(&crate::provider_key::stored()) {
+            settings.save(file)?;
+        }
+        model_access::install(coder::task::settings::access());
+        return Ok(());
+    }
     if key == START_KEY {
         settings.coder.start = if on { Start::AtOnce } else { Start::AskFirst };
     } else {
@@ -1035,12 +1118,30 @@ mod tests {
     fn settings_change_through_the_loader() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("settings.json");
-        let shown = coder_settings(&file);
+        let shown = coder_settings_with(&file, &model_access::Keys::none());
         let keys: Vec<(&str, bool)> = shown
             .choices
             .iter()
+            .take(6)
             .map(|choice| (choice.key.as_str(), choice.on))
             .collect();
+        // BYOK rows follow: the mode, off and blocked with no key, then a
+        // masked field per provider.
+        let byok: Vec<(&str, bool, bool)> = shown.choices[6..]
+            .iter()
+            .map(|choice| (choice.key.as_str(), choice.on, choice.secret))
+            .collect();
+        assert_eq!(
+            byok,
+            [
+                ("models.payer", false, false),
+                ("provider-key:openrouter", false, true),
+                ("provider-key:vercel", false, true),
+                ("provider-key:typesafe", false, true)
+            ]
+        );
+        assert!(shown.choices[6].blocked.is_some());
+        assert_eq!(shown.status.as_deref(), Some("Running on OpenAgents."));
         // Opt-out (#10184): every agent is on with no file, Devin and
         // OpenCode too, and none is blocked.
         assert_eq!(
@@ -1054,12 +1155,16 @@ mod tests {
                 ("agent:opencode", true)
             ]
         );
-        assert!(shown.choices.iter().all(|choice| choice.blocked.is_none()));
+        assert!(
+            shown.choices[..6]
+                .iter()
+                .all(|choice| choice.blocked.is_none())
+        );
         change_setting(&file, "start", false).unwrap();
         for agent in ["claude", "grok", "devin", "opencode"] {
             change_setting(&file, &format!("agent:{agent}"), false).unwrap();
         }
-        let shown = coder_settings(&file);
+        let shown = coder_settings_with(&file, &model_access::Keys::none());
         assert!(!shown.choices[0].on);
         let on: Vec<&str> = shown
             .choices

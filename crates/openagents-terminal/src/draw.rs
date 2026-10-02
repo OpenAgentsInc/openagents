@@ -75,7 +75,17 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         .viewed()
         .filter(|held| app.task.as_deref() != Some(held.task.as_str()))
         .and(app.run_view.and_then(|view| view.number));
-    let mut composer = Composer::new(&mut app.editor, ladder)
+    // A secret is drawn as one dot per character, from its own editor.
+    let mut masked = app.secret.as_ref().map(|(_, _, editor)| {
+        let mut masked = coder_terminal::Editor::new();
+        masked.insert_str(&"•".repeat(editor.text().chars().count()));
+        masked
+    });
+    let editor = match masked.as_mut() {
+        Some(masked) => masked,
+        None => &mut app.editor,
+    };
+    let mut composer = Composer::new(editor, ladder)
         .prompt(prompt)
         .status(&status)
         .tokens(&tail);
@@ -180,13 +190,22 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                 "No plugins are installed or published yet.",
             ),
             Overlay::Settings { settings, selected } => (
-                "Settings".to_owned(),
+                settings.status.as_ref().map_or_else(
+                    || "Settings".to_owned(),
+                    |status| format!("Settings · {status}"),
+                ),
                 settings
                     .choices
                     .iter()
                     .map(|choice| Item {
                         label: choice.label.clone(),
-                        detail: if choice.on { "on" } else { "off" }.to_owned(),
+                        detail: match (choice.secret, choice.on) {
+                            (true, true) => "added",
+                            (true, false) => "not added",
+                            (false, true) => "on",
+                            (false, false) => "off",
+                        }
+                        .to_owned(),
                     })
                     .collect(),
                 *selected,

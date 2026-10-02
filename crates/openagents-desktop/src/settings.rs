@@ -38,17 +38,20 @@ pub enum Pane {
     Shortcuts,
     Notifications,
     Coder,
+    /// The person's own model provider keys (BYOK, #10176).
+    Providers,
     Computers,
     Archived,
 }
 
 impl Pane {
-    pub const ALL: [Pane; 7] = [
+    pub const ALL: [Pane; 8] = [
         Pane::Appearance,
         Pane::TextSize,
         Pane::Shortcuts,
         Pane::Notifications,
         Pane::Coder,
+        Pane::Providers,
         Pane::Computers,
         Pane::Archived,
     ];
@@ -60,6 +63,7 @@ impl Pane {
             Pane::Shortcuts => "Keyboard shortcuts",
             Pane::Notifications => "Notifications",
             Pane::Coder => "Coder",
+            Pane::Providers => "Model providers",
             Pane::Computers => "Phones and computers",
             Pane::Archived => "Archived chats",
         }
@@ -72,6 +76,7 @@ impl Pane {
             Pane::Shortcuts => "shortcuts",
             Pane::Notifications => "notifications",
             Pane::Coder => "coder",
+            Pane::Providers => "providers",
             Pane::Computers => "computers",
             Pane::Archived => "archived",
         }
@@ -84,6 +89,7 @@ impl Pane {
             Pane::Shortcuts => Glyph::Terminal,
             Pane::Notifications => Glyph::Flag,
             Pane::Coder => Glyph::Key,
+            Pane::Providers => Glyph::Key,
             Pane::Computers => Glyph::Computer,
             Pane::Archived => Glyph::Archive,
         }
@@ -120,6 +126,24 @@ pub enum Action {
     Restore {
         chat: String,
     },
+    /// Add the provider's key from the clipboard (`openrouter`, `vercel`,
+    /// or `typesafe`), after the provider accepts it. The key is never
+    /// shown.
+    ProviderPaste {
+        provider: String,
+    },
+    /// Test the provider's stored key now.
+    ProviderTest {
+        provider: String,
+    },
+    /// Remove the provider's key.
+    ProviderRemove {
+        provider: String,
+    },
+    /// Run every model call on the person's own keys, or on OpenAgents.
+    ProvidersMine {
+        on: bool,
+    },
 }
 
 impl Action {
@@ -132,7 +156,11 @@ impl Action {
             Action::Pane { .. }
             | Action::Restore { .. }
             | Action::CoderStart { .. }
-            | Action::CoderAgent { .. } => None,
+            | Action::CoderAgent { .. }
+            | Action::ProviderPaste { .. }
+            | Action::ProviderTest { .. }
+            | Action::ProviderRemove { .. }
+            | Action::ProvidersMine { .. } => None,
         }
     }
 }
@@ -175,6 +203,34 @@ pub enum CoderChoices {
     },
 }
 
+/// One provider row on the Model providers page. Never the key: only its
+/// last four characters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProviderRow {
+    /// `openrouter`, `vercel`, or `typesafe`.
+    pub provider: String,
+    /// The name a person reads.
+    pub name: String,
+    /// The key's last four characters, when one is added.
+    pub last_four: Option<String>,
+    /// The last test's line ("Your OpenRouter key works.").
+    pub line: Option<String>,
+    /// Where the person makes a key.
+    pub page: String,
+}
+
+/// The person's own model providers (BYOK), as the page shows them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Providers {
+    pub rows: Vec<ProviderRow>,
+    /// Every model call runs on the person's keys.
+    pub mine: bool,
+    /// Why "Use my keys for everything" can't be turned on now.
+    pub mine_blocked: Option<String>,
+    /// "Running on OpenAgents." or "Running on your keys."
+    pub status: String,
+}
+
 /// Settings' presentation state and the preferences it shows.
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
@@ -188,6 +244,8 @@ pub struct Settings {
     pub notice: Option<String>,
     /// Coder's own settings ([`CoderChoices`]).
     pub coder: CoderChoices,
+    /// The person's own model providers ([`Providers`]); empty until read.
+    pub providers: Providers,
     /// The settings file the window keeps them in; none in a capture or a
     /// test, where they live only in memory.
     pub file: Option<std::path::PathBuf>,
@@ -543,6 +601,110 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
     rows
 }
 
+/// The Model providers page (BYOK, #10176): one row per provider with its
+/// last four characters and its state, Add from clipboard, Test, and
+/// Remove; the switch; and the status line. A key is never drawn.
+fn providers(settings: &Settings) -> Vec<Node<Intent>> {
+    let providers = &settings.providers;
+    let mut rows = vec![title("settings-providers-title", "Your own model providers")];
+    if providers.rows.is_empty() {
+        rows.push(text(
+            "settings-providers-unknown",
+            "Your providers show here when OpenAgents runs on your computer.",
+            TextRole::Status,
+        ));
+        return rows;
+    }
+    rows.push(text(
+        "settings-providers-line",
+        "Add an OpenRouter, Vercel AI Gateway, or TypeSafe API key to run chat replies, Jev, Microcoder, and embeddings on your own account. Copy the key, then choose Add from clipboard.",
+        TextRole::Status,
+    ));
+    for row in &providers.rows {
+        let id = &row.provider;
+        let state = match &row.last_four {
+            Some(last) => format!("{}: added, ends in {last}", row.name),
+            None => format!("{}: not added", row.name),
+        };
+        rows.push(title(&format!("settings-provider-{id}"), &state));
+        let mut actions = vec![chip(button(
+            &format!("settings-provider-{id}-paste"),
+            if row.last_four.is_some() {
+                "Replace from clipboard"
+            } else {
+                "Add from clipboard"
+            },
+            Action::ProviderPaste {
+                provider: id.clone(),
+            },
+            Some(Glyph::Edit),
+            false,
+            true,
+        ))];
+        if row.last_four.is_some() {
+            actions.push(chip(button(
+                &format!("settings-provider-{id}-test"),
+                "Test",
+                Action::ProviderTest {
+                    provider: id.clone(),
+                },
+                None,
+                false,
+                true,
+            )));
+            actions.push(chip(button(
+                &format!("settings-provider-{id}-remove"),
+                "Remove",
+                Action::ProviderRemove {
+                    provider: id.clone(),
+                },
+                None,
+                false,
+                true,
+            )));
+        }
+        rows.push(stack(
+            &format!("settings-provider-{id}-actions"),
+            Axis::Wrap,
+            Space::Sm,
+            actions,
+        ));
+        if let Some(line) = &row.line {
+            rows.push(text(
+                &format!("settings-provider-{id}-line"),
+                line.clone(),
+                TextRole::Status,
+            ));
+        }
+        rows.push(text(
+            &format!("settings-provider-{id}-page"),
+            format!("Make one at {}", row.page),
+            TextRole::Status,
+        ));
+    }
+    let mut switch = toggle(
+        "settings-providers-mine",
+        "Use my keys for everything",
+        providers.mine,
+        Action::ProvidersMine {
+            on: !providers.mine,
+        },
+    );
+    if let Element::Button { enabled, .. } = &mut switch.element {
+        *enabled = providers.mine || providers.mine_blocked.is_none();
+    }
+    rows.push(switch);
+    if let Some(why) = providers.mine_blocked.as_ref().filter(|_| !providers.mine) {
+        rows.push(text("settings-providers-blocked", why.clone(), TextRole::Status));
+    }
+    rows.push(text(
+        "settings-providers-status",
+        providers.status.clone(),
+        TextRole::Status,
+    ));
+    rows
+}
+
 fn archived(settings: &Settings) -> Vec<Node<Intent>> {
     let mut rows = vec![title("settings-archived-title", "Archived chats")];
     if settings.archived.is_empty() {
@@ -662,6 +824,7 @@ pub fn view(
         Pane::Shortcuts => shortcuts(),
         Pane::Notifications => notifications(settings),
         Pane::Coder => coder(settings, model),
+        Pane::Providers => providers(settings),
         Pane::Computers => vec![crate::screens::root(model, now)],
         Pane::Archived => archived(settings),
     };
@@ -716,7 +879,14 @@ mod tests {
             settings.pane = pane;
             let view = view(&settings, true, None, &model, 0);
             for value in crate::screens::words(&view) {
-                assert!(crate::words::banned_in(&value).is_empty(), "{value}");
+                // The Model providers page names the person's own API
+                // keys, the providers' word for them (#10176); nothing
+                // else there is jargon.
+                let banned: Vec<String> = crate::words::banned_in(&value)
+                    .into_iter()
+                    .filter(|word| !(pane == Pane::Providers && word.to_lowercase().starts_with("key")))
+                    .collect();
+                assert!(banned.is_empty(), "{value}");
             }
             assert!(find(&view, &format!("settings-pane-{}", pane.key())).is_some());
             rust_native::View::new("settings-test", 1, view)
@@ -727,6 +897,56 @@ mod tests {
         let view = view(&settings, true, None, &model, 0);
         assert!(find(&view, "settings-archived-more").is_some());
         assert!(find(&view, &format!("settings-archived-{ARCHIVED_LIMIT}")).is_none());
+    }
+
+    /// The Model providers page shows each provider's last four
+    /// characters and never a key, and the switch is off while blocked.
+    #[test]
+    fn the_providers_page_never_draws_a_key() {
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut settings = Settings {
+            pane: Pane::Providers,
+            ..Settings::default()
+        };
+        settings.providers = Providers {
+            rows: vec![ProviderRow {
+                provider: "openrouter".into(),
+                name: "OpenRouter".into(),
+                last_four: Some("abcd".into()),
+                line: Some("Your OpenRouter key works.".into()),
+                page: "https://openrouter.ai/settings/keys".into(),
+            }],
+            mine: false,
+            mine_blocked: None,
+            status: "Running on OpenAgents.".into(),
+        };
+        let rendered = view(&settings, true, None, &model, 0);
+        let words = crate::screens::words(&rendered).join(" ");
+        assert!(words.contains("ends in abcd"), "{words}");
+        assert!(words.contains("Running on OpenAgents."), "{words}");
+        let Some(Node {
+            element: Element::Button { intent, .. },
+            ..
+        }) = find(&rendered, "settings-providers-mine")
+        else {
+            panic!("no switch")
+        };
+        assert_eq!(
+            intent.clone(),
+            Intent::Settings {
+                action: Action::ProvidersMine { on: true }
+            }
+        );
+        settings.providers.mine_blocked = Some("Add an OpenRouter or Vercel AI Gateway key first.".into());
+        let rendered = view(&settings, true, None, &model, 0);
+        let Some(Node {
+            element: Element::Button { enabled, .. },
+            ..
+        }) = find(&rendered, "settings-providers-mine")
+        else {
+            panic!("no switch")
+        };
+        assert!(!enabled);
     }
 
     #[test]

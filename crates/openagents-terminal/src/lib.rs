@@ -84,6 +84,9 @@ pub struct Settings {
     /// What the list turns on or off: when Coder starts, then each coding
     /// agent Coder may use.
     pub choices: Vec<Choice>,
+    /// Who pays for model calls, in one line ("Running on OpenAgents.",
+    /// "Running on your keys."), shown in the list's title.
+    pub status: Option<String>,
 }
 
 /// One setting the list turns on or off.
@@ -95,6 +98,11 @@ pub struct Choice {
     pub on: bool,
     /// Why it cannot be turned on here, when it cannot.
     pub blocked: Option<String>,
+    /// A secret the person pastes to turn it on (a provider key, BYOK):
+    /// Enter on it while off opens a masked field, and the value goes to
+    /// [`Extras::set_secret`], never to the transcript, the prompt
+    /// history, or the screen.
+    pub secret: bool,
 }
 
 /// What the screen needs from this computer beyond the chat client. Every
@@ -163,6 +171,15 @@ pub trait Extras: Send + Sync {
     /// The change is not allowed (the last agent turned off, say) or the
     /// file cannot be written, in words for the person.
     fn change(&self, key: &str, on: bool) -> Result<Settings, String>;
+    /// Keep the secret `value` for the choice `key` (a provider key), and
+    /// the settings after. `value` is never logged or shown.
+    ///
+    /// # Errors
+    /// The provider refused it or it cannot be kept, in words for the
+    /// person.
+    fn set_secret(&self, _key: &str, _value: &str) -> Result<Settings, String> {
+        Err("Keys cannot be added here.".into())
+    }
     /// The host's background rules (`/background`).
     ///
     /// # Errors

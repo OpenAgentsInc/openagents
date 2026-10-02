@@ -8,7 +8,7 @@ use super::DesktopApp;
 use openagents_chat_app::preferences::{Change, Preferences, SECTION};
 use openagents_desktop::chrome::Page;
 use openagents_desktop::model::{Intent, Screen};
-use openagents_desktop::settings::{Action, CoderAgent, CoderChoices};
+use openagents_desktop::settings::{Action, CoderAgent, CoderChoices, ProviderRow, Providers};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -53,6 +53,120 @@ pub fn coder_choices(file: &Path) -> CoderChoices {
     CoderChoices::Read {
         ask_first: settings.coder.start == Start::AskFirst,
         agents,
+    }
+}
+
+/// The person's own model providers (BYOK, #10176) as the page shows
+/// them: the stored keys' last four characters, the mode in `file`, and
+/// the status line. `lines` carries each provider's last test line.
+pub fn providers(
+    file: &Path,
+    keys: &model_access::Keys,
+    lines: &std::collections::BTreeMap<String, String>,
+) -> Providers {
+    let mode = coder::task::settings::Settings::load(file)
+        .map_or(model_access::Mode::Ours, |settings| settings.models.payer);
+    let rows = model_access::PROVIDERS
+        .into_iter()
+        .map(|provider| ProviderRow {
+            provider: provider.word().to_owned(),
+            name: provider.name().to_owned(),
+            last_four: keys.get(provider).map(model_access::ApiKey::last_four),
+            line: lines.get(provider.word()).cloned(),
+            page: provider.key_page().to_owned(),
+        })
+        .collect();
+    Providers {
+        rows,
+        mine: mode == model_access::Mode::Mine,
+        mine_blocked: (!keys.chat_capable()).then(|| {
+            if keys.get(model_access::Provider::TypeSafe).is_some() {
+                model_access::TYPESAFE_ONLY.to_owned()
+            } else {
+                "Add an OpenRouter or Vercel AI Gateway key first.".to_owned()
+            }
+        }),
+        status: model_access::status_line(mode, keys, None),
+    }
+}
+
+/// Each provider's last test line, as the page shows it now.
+fn shown_lines(shown: &Providers) -> std::collections::BTreeMap<String, String> {
+    shown
+        .rows
+        .iter()
+        .filter_map(|row| Some((row.provider.clone(), row.line.clone()?)))
+        .collect()
+}
+
+/// Where the keys live: beside the settings file (`~/.openagents`), in
+/// the keychain too outside a test, which never reads the real one.
+fn key_stores(file: &Path) -> Vec<Box<dyn model_access::store::Store>> {
+    let dir = file.parent().map_or_else(|| PathBuf::from(".openagents"), Path::to_path_buf);
+    if cfg!(test) {
+        vec![Box::new(model_access::store::Files::new(dir))]
+    } else {
+        model_access::store::all(&dir)
+    }
+}
+
+/// The person's stored keys.
+fn stored_keys(file: &Path) -> model_access::Keys {
+    model_access::store::load_all(&key_stores(file))
+}
+
+/// Runs a change on the Model providers page; the line to show for the
+/// provider, or why it could not. Never the key.
+fn change_providers(file: &Path, action: &Action) -> Result<Option<(String, String)>, String> {
+    use model_access::{ApiKey, Mode, Provider, check, store};
+    // A test never reads the clipboard or a provider.
+    #[cfg(test)]
+    if matches!(action, Action::ProviderPaste { .. } | Action::ProviderTest { .. }) {
+        return Err("Not in a test.".into());
+    }
+    let provider = |word: &str| Provider::parse(word);
+    match action {
+        Action::ProviderPaste { provider: word } => {
+            let provider = provider(word)?;
+            let pasted = rust_native_desktop::input::paste()
+                .map(ApiKey::new)
+                .filter(|key| !key.is_empty())
+                .ok_or_else(|| format!("Copy your {} key first, then choose Add from clipboard.", provider.name()))?;
+            let state = check::test(&check::Http, provider, &pasted);
+            if !state.storable() {
+                return Err(state.line(provider));
+            }
+            match key_stores(file).into_iter().next() {
+                Some(target) => target.save(provider, &pasted)?,
+                None => return Err("There is nowhere to keep the key.".into()),
+            }
+            Ok(Some((word.clone(), state.line(provider))))
+        }
+        Action::ProviderTest { provider: word } => {
+            let provider = provider(word)?;
+            let keys = stored_keys(file);
+            let key = keys
+                .get(provider)
+                .ok_or_else(|| format!("No {} key is added.", provider.name()))?;
+            let state = check::test(&check::Http, provider, key);
+            Ok(Some((word.clone(), state.line(provider))))
+        }
+        Action::ProviderRemove { provider: word } => {
+            let provider = provider(word)?;
+            store::delete_everywhere(&key_stores(file), provider)?;
+            let mut settings = coder::task::settings::Settings::load(file)?;
+            if settings.settle_payer(&stored_keys(file)) {
+                settings.save(file)?;
+            }
+            Ok(Some((word.clone(), format!("Removed your {} key.", provider.name()))))
+        }
+        Action::ProvidersMine { on } => {
+            let mut settings = coder::task::settings::Settings::load(file)?;
+            settings.set_payer(if *on { Mode::Mine } else { Mode::Ours }, &stored_keys(file))?;
+            settings.save(file)?;
+            Ok(None)
+        }
+        _ => Ok(None),
     }
 }
 
@@ -130,6 +244,30 @@ impl DesktopApp {
             }
         }
         match action {
+            Action::ProviderPaste { .. }
+            | Action::ProviderTest { .. }
+            | Action::ProviderRemove { .. }
+            | Action::ProvidersMine { .. } => {
+                if let Some(state) = &mut self.navigation
+                    && let Some(file) = state.settings.file.clone()
+                {
+                    let mut lines = shown_lines(&state.settings.providers);
+                    match change_providers(&file, &action) {
+                        Ok(Some((provider, line))) => {
+                            lines.insert(provider, line);
+                            state.settings.notice = None;
+                        }
+                        Ok(None) => state.settings.notice = None,
+                        Err(why) => state.settings.notice = Some(why),
+                    }
+                    state.settings.providers = providers(&file, &stored_keys(&file), &lines);
+                    // Every model call this window makes asks again who pays
+                    // (never from a test, which must not read the real home).
+                    if !cfg!(test) {
+                        model_access::install(coder::task::settings::access());
+                    }
+                }
+            }
             Action::CoderStart { .. } | Action::CoderAgent { .. } => {
                 if let Some(state) = &mut self.navigation
                     && let Some(file) = state.settings.file.clone()
@@ -154,6 +292,12 @@ impl DesktopApp {
                     && let Some(file) = state.settings.file.clone()
                 {
                     state.settings.coder = coder_choices(&file);
+                }
+                if pane == openagents_desktop::settings::Pane::Providers
+                    && let Some(file) = state.settings.file.clone()
+                {
+                    let lines = shown_lines(&state.settings.providers);
+                    state.settings.providers = providers(&file, &stored_keys(&file), &lines);
                 }
                 // Leaving Phones and computers cancels a shown code.
                 if !state.shows_computers() && self.model.screen == Screen::Connect {

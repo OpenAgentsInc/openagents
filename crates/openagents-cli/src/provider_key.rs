@@ -364,6 +364,29 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
     }
 }
 
+/// Test `key` for `provider` and keep it (a settings screen's paste): a
+/// refused key is not kept, and the line says so.
+///
+/// # Errors
+/// The provider refused it, or it cannot be kept.
+pub(crate) fn keep(provider: Provider, key: &ApiKey) -> Result<(), String> {
+    let state = check::test(tester().as_ref(), provider, key);
+    if !state.storable() {
+        return Err(state.line(provider));
+    }
+    store::preferred(&dir()).save(provider, key)?;
+    model_access::install(coder::task::settings::access());
+    Ok(())
+}
+
+/// Remove `provider`'s key from every store.
+///
+/// # Errors
+/// A store refused.
+pub(crate) fn forget(provider: Provider) -> Result<(), String> {
+    store::delete_everywhere(&store::all(&dir()), provider)
+}
+
 /// The one question after a chat-capable key is added.
 fn confirm() -> bool {
     eprint!("Use your keys for everything? [y/N] ");

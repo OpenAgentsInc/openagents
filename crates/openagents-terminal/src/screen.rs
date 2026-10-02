@@ -480,6 +480,12 @@ impl Screen {
                     let _ = done.send(Done::Settings(extras.change(&key, on)));
                 });
             }
+            Action::Secret { key, value } => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Settings(extras.set_secret(&key, &value)));
+                });
+            }
             // Everything below needs the client.
             action => {
                 if self.client.is_none() {
