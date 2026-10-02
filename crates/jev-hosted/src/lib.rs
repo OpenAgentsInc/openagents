@@ -137,6 +137,9 @@ pub fn resolve(
     door: &Door<'_>,
     tune: &dyn Fn(jev::Config) -> jev::Config,
 ) -> Result<Resolved, String> {
+    if let Some(resolved) = theirs(&model_access::current(), door, tune)? {
+        return Ok(resolved);
+    }
     if let Some((key, source)) = local_key(env, dir) {
         let backups = if door.url.trim_end_matches('/') == DOOR {
             local_doors(env, dir)
@@ -150,6 +153,41 @@ pub fn resolve(
         });
     }
     hosted(env, dir, door, tune)
+}
+
+/// Jev on the person's own keys (BYOK, `model_access`), when this process
+/// runs model calls on them (`models.payer` is `mine`): TypeSafe, then the
+/// Vercel AI Gateway, then OpenRouter, each on the person's key, and never
+/// the hosted decision service or a key of ours. `None` under `ours`, or
+/// for a door other than TypeSafe's (a local Kev or Laya door costs nobody).
+///
+/// # Errors
+///
+/// Under `mine`, no key of the person's serves Jev: the one plain line.
+pub fn theirs(
+    access: &model_access::Access,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+) -> Result<Option<Resolved>, String> {
+    if door.url.trim_end_matches('/') != DOOR {
+        return Ok(None);
+    }
+    match access.decisions() {
+        Ok(model_access::Decisions::Ours) => Ok(None),
+        Ok(model_access::Decisions::Theirs { config, order, .. }) => {
+            let client =
+                jev::Client::new(tune(config).base_url(door.url).default_model(door.model))
+                    .map_err(|error| format!("Jev: {error}"))?;
+            let names: Vec<&str> = order.iter().map(|p| p.name()).collect();
+            Ok(Some(Resolved {
+                client,
+                via: Via::Direct {
+                    source: format!("your own keys ({})", names.join(", then ")),
+                },
+            }))
+        }
+        Err(no_door) => Err(no_door.to_string()),
+    }
 }
 
 /// The doors a local TypeSafe key falls back to, in order: the Vercel AI

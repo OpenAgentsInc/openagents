@@ -185,6 +185,10 @@ fn main() -> ExitCode {
     #[cfg(windows)]
     win_notify::claim_app_id();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Who pays for this window's model calls (BYOK, #10176): the settings'
+    // models.payer with the person's stored keys.
+    #[cfg(feature = "app")]
+    model_access::install(coder::task::settings::access());
     reduce_motion();
     #[cfg(windows)]
     if platform::wants_start_host(&args) {

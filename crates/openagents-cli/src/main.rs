@@ -182,7 +182,11 @@ fn main() -> ExitCode {
     // command, never stored (BYOK). An ambient `OPENROUTER_API_KEY` never
     // counts.
     match model_access::Keys::once(&|name| std::env::var(name).ok(), &mut arguments) {
-        Ok(keys) => model_access::remember_once(keys),
+        Ok(keys) => {
+            model_access::remember_once(keys);
+            // Every model call this process makes asks this access who pays.
+            model_access::install(coder::task::settings::access());
+        }
         Err(message) => {
             eprintln!("openagents: {message}");
             return ExitCode::from(EXIT_USAGE);

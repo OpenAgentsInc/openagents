@@ -38,6 +38,7 @@ app = [
     "dep:security-framework",
     "dep:rfd",
     "dep:coder",
+    "dep:model-access",
     "dep:resvg",
 ]
 
@@ -62,6 +63,8 @@ playtest = { path = "../playtest" }
 # Coder on this computer for a chat: the runner `openagents chat` uses
 # (`coder::task::local`), in the window's Coder lane (`src/worker.rs`).
 coder = { path = "../coder", optional = true }
+# Who pays for model calls (BYOK, #10176).
+model-access = { path = "../model-access", optional = true, features = ["http", "keychain"] }
 # Whether Grok Build is installed and signed in here (`model::grok`,
 # #10091); already in the graph through `coder`.
 acp-client = { path = "../acp-client" }

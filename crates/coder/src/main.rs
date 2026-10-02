@@ -318,6 +318,8 @@ fn main() -> ExitCode {
         // SAFETY: no other thread exists yet; the runtime starts below.
         unsafe { std::env::set_var("HOME", profile) };
     }
+    // Who pays for this process's model calls (BYOK, #10176).
+    model_access::install(coder::task::settings::access());
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

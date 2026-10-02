@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 atif = { path = "../atif" }
 jev = { path = "../jev" }
+# Who pays: the person's own keys under BYOK `mine` (#10176).
+model-access = { path = "../model-access" }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }

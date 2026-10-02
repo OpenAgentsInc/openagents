@@ -31,7 +31,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub use access::{Access, ChatDoor, Decisions, Doors, NoDoor, Use};
+pub use access::{
+    Access, ChatDoor, Decisions, Doors, EMBEDDING_MODEL, JUDGE_MODEL, MICROCODER_MODEL, NoDoor,
+    PERSONALIZE_MODEL, Use,
+};
 
 /// A provider the person can hold a key for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -442,6 +445,109 @@ impl Keys {
     }
 }
 
+/// The NIP-CJ feature a job names in `requires` when it carries the
+/// caller's own provider keys in a payer envelope (`payer.keys`).
+pub const PAYER_FEATURE: &str = "payer.keys";
+
+/// The most keys one payer envelope carries: one per provider.
+pub const MAX_ENVELOPE_KEYS: usize = 3;
+
+/// The most bytes one key may be.
+pub const MAX_KEY_BYTES: usize = 512;
+
+impl Keys {
+    /// The payer envelope's plaintext, `[{"provider", "key"}]`, which the
+    /// caller encrypts (NIP-44) to the worker on its own, apart from the
+    /// job's body. The caller drops it once encrypted.
+    #[must_use]
+    pub fn envelope_plaintext(&self) -> String {
+        let items: Vec<serde_json::Value> = self
+            .0
+            .iter()
+            .map(|(provider, key)| serde_json::json!({"provider": provider.word(), "key": key.expose()}))
+            .collect();
+        serde_json::Value::Array(items).to_string()
+    }
+
+    /// Read a payer envelope's plaintext.
+    ///
+    /// # Errors
+    /// A sentence that never carries a key: not a list, too many keys, an
+    /// unknown provider, a blank or oversized key, or a provider twice.
+    pub fn from_envelope_plaintext(text: &str) -> Result<Keys, String> {
+        let value: serde_json::Value =
+            serde_json::from_str(text).map_err(|_| "the payer keys are not JSON".to_owned())?;
+        let items = value
+            .as_array()
+            .ok_or_else(|| "the payer keys are not a list".to_owned())?;
+        if items.is_empty() || items.len() > MAX_ENVELOPE_KEYS {
+            return Err(format!("the payer keys hold 1 to {MAX_ENVELOPE_KEYS} keys"));
+        }
+        let mut keys = Keys::none();
+        for item in items {
+            let provider = item
+                .get("provider")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "a payer key names no provider".to_owned())
+                .and_then(|word| {
+                    PROVIDERS
+                        .into_iter()
+                        .find(|p| p.word() == word)
+                        .ok_or_else(|| "a payer key names an unknown provider".to_owned())
+                })?;
+            let key = item
+                .get("key")
+                .and_then(serde_json::Value::as_str)
+                .map(ApiKey::new)
+                .filter(|key| !key.is_empty() && key.expose().len() <= MAX_KEY_BYTES)
+                .ok_or_else(|| format!("the {} payer key is blank or too long", provider.word()))?;
+            if keys.get(provider).is_some() {
+                return Err(format!("the payer keys name {} twice", provider.word()));
+            }
+            keys.insert(provider, key);
+        }
+        Ok(keys)
+    }
+}
+
+/// The HTTP header an API caller brings its own provider key in:
+/// `OpenAgents-Provider-Key: <provider> <key>`, once per provider.
+pub const PROVIDER_KEY_HEADER: &str = "OpenAgents-Provider-Key";
+
+impl Keys {
+    /// The keys in [`PROVIDER_KEY_HEADER`] values, each `<provider> <key>`.
+    /// No value is no keys.
+    ///
+    /// # Errors
+    /// A sentence that never carries a key: a value that is not
+    /// `<provider> <key>`, an unknown provider, an oversized key, or a
+    /// provider named twice.
+    pub fn from_header_values<'a>(values: impl IntoIterator<Item = &'a str>) -> Result<Keys, String> {
+        let mut keys = Keys::none();
+        for value in values {
+            let (word, key) = value
+                .trim()
+                .split_once(char::is_whitespace)
+                .ok_or_else(|| format!("{PROVIDER_KEY_HEADER} is `<provider> <key>`"))?;
+            let provider = PROVIDERS
+                .into_iter()
+                .find(|p| p.word() == word.trim().to_ascii_lowercase())
+                .ok_or_else(|| {
+                    format!("{PROVIDER_KEY_HEADER} names openrouter, vercel, or typesafe")
+                })?;
+            let key = ApiKey::new(key);
+            if key.is_empty() || key.expose().len() > MAX_KEY_BYTES || key.expose().contains(char::is_whitespace) {
+                return Err(format!("{PROVIDER_KEY_HEADER}: the {} key is not a key", provider.word()));
+            }
+            if keys.get(provider).is_some() {
+                return Err(format!("{PROVIDER_KEY_HEADER} names {} twice", provider.word()));
+            }
+            keys.insert(provider, key);
+        }
+        Ok(keys)
+    }
+}
+
 static ONCE: std::sync::OnceLock<Keys> = std::sync::OnceLock::new();
 
 /// Remember the keys given for this invocation ([`Keys::once`]), so every
@@ -455,6 +561,29 @@ pub fn remember_once(keys: Keys) {
 #[must_use]
 pub fn once_keys() -> Keys {
     ONCE.get().cloned().unwrap_or_default()
+}
+
+static CURRENT: std::sync::RwLock<Option<Access>> = std::sync::RwLock::new(None);
+
+/// Install the access this process's model calls use: each surface builds
+/// one at start (`coder::task::settings::access`) and installs it, and the
+/// call sites that do not take one explicitly (`jev_hosted::resolve`,
+/// `knowledge::search::Embedder`, Microcoder's cloud provider) read it with
+/// [`current`]. A later install replaces it (a settings screen's switch).
+pub fn install(access: Access) {
+    if let Ok(mut slot) = CURRENT.write() {
+        *slot = Some(access);
+    }
+}
+
+/// The installed access, or ours when none is installed.
+#[must_use]
+pub fn current() -> Access {
+    CURRENT
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .unwrap_or_default()
 }
 
 /// The status line every surface shows.
@@ -553,6 +682,38 @@ mod tests {
         );
         assert!(Failure::of_status(p, 400).is_none());
         assert!(!Failure::ModelUnavailable("m".into()).fails_over());
+    }
+
+    #[test]
+    fn the_payer_envelope_reads_back_and_refuses_without_naming_a_key() {
+        let mut keys = Keys::none();
+        keys.insert(Provider::OpenRouter, ApiKey::new("or-key"));
+        keys.insert(Provider::TypeSafe, ApiKey::new("ts-key"));
+        let text = keys.envelope_plaintext();
+        assert_eq!(Keys::from_envelope_plaintext(&text).unwrap(), keys);
+        for bad in [
+            "{}",
+            "[]",
+            r#"[{"provider":"acme","key":"secret-1"}]"#,
+            r#"[{"provider":"openrouter","key":" "}]"#,
+            r#"[{"provider":"openrouter","key":"secret-1"},{"provider":"openrouter","key":"secret-2"}]"#,
+        ] {
+            let error = Keys::from_envelope_plaintext(bad).unwrap_err();
+            assert!(!error.contains("secret"), "{error}");
+        }
+    }
+
+    #[test]
+    fn the_provider_key_header_reads_each_provider_once() {
+        let keys = Keys::from_header_values(["openrouter sk-or-1", "Vercel vk-2"]).unwrap();
+        assert_eq!(keys.get(Provider::OpenRouter).unwrap().expose(), "sk-or-1");
+        assert_eq!(keys.get(Provider::Vercel).unwrap().expose(), "vk-2");
+        assert!(Keys::from_header_values([]).unwrap().is_empty());
+        for bad in ["sk-secret", "acme sk-secret", "openrouter sk-secret more"] {
+            let error = Keys::from_header_values([bad]).unwrap_err();
+            assert!(!error.contains("sk-secret"), "{error}");
+        }
+        assert!(Keys::from_header_values(["openrouter a", "openrouter b"]).is_err());
     }
 
     #[test]

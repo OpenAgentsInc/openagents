@@ -44,6 +44,13 @@ pub struct ChatDoor {
 }
 
 impl ChatDoor {
+    /// The base an Open Responses client appends `/v1/responses` to:
+    /// `https://openrouter.ai/api` or `https://ai-gateway.vercel.sh`.
+    #[must_use]
+    pub fn responses_base(&self) -> &'static str {
+        self.base_url.strip_suffix("/v1").unwrap_or(self.base_url)
+    }
+
     /// Who pays when this door answers.
     #[must_use]
     pub fn payer(&self) -> Payer {

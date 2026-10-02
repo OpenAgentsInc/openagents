@@ -346,6 +346,9 @@ impl Embedder {
     ///
     /// Another name, or the chosen embedder can't be set up.
     pub fn chosen(choice: Option<&str>) -> Result<Self, String> {
+        if let Some(theirs) = Embedder::theirs(&model_access::current()) {
+            return theirs;
+        }
         match choice {
             None => Embedder::from_env(),
             Some("vertex") => Embedder::vertex(),
@@ -354,6 +357,35 @@ impl Embedder {
                 "the embeddings provider can be {EMBEDDINGS_CHOICES}, not {other}"
             )),
         }
+    }
+
+    /// The embedder on the person's own key (BYOK, `model_access`), when
+    /// `access` runs model calls on their keys: the same
+    /// `text-embedding-3-small` on OpenRouter, else the Vercel AI Gateway,
+    /// so caches stay valid. `None` under `ours`; under `mine` with no key
+    /// that embeds, the one plain line, never a key of ours.
+    #[must_use]
+    pub fn theirs(access: &model_access::Access) -> Option<Result<Self, String>> {
+        let doors = match access.chat(model_access::Use::Embeddings) {
+            Ok(model_access::Doors::Ours) => return None,
+            Ok(model_access::Doors::Theirs(doors)) => doors,
+            Err(no_door) => return Some(Err(no_door.to_string())),
+        };
+        let door = doors.into_iter().next()?;
+        let provider = match door.provider {
+            model_access::Provider::Vercel => EmbeddingProvider::Gateway,
+            _ => EmbeddingProvider::Openrouter,
+        };
+        let mut config = openrouter::Config::new(openrouter::ApiKey::new(door.key.expose()))
+            .base_url(door.base_url);
+        if provider == EmbeddingProvider::Gateway {
+            config.title = None;
+        }
+        Some(
+            openrouter::Client::new(config)
+                .map(|client| Embedder::compatible(client, provider))
+                .map_err(|e| e.to_string()),
+        )
     }
 
     /// An embedder on OpenAI's API, with the key from `OPENAI_API_KEY` or
@@ -393,6 +425,9 @@ impl Embedder {
     ///
     /// No key, or the HTTP client can't start.
     pub fn gateway() -> Result<Self, String> {
+        if let Some(theirs) = Embedder::theirs(&model_access::current()) {
+            return theirs;
+        }
         let key = GATEWAY_KEY_VARS
             .iter()
             .find_map(|name| std::env::var(name).ok().filter(|k| !k.trim().is_empty()))
@@ -412,6 +447,9 @@ impl Embedder {
     ///
     /// Neither has a key; the message gives both reasons.
     pub fn from_env() -> Result<Self, String> {
+        if let Some(theirs) = Embedder::theirs(&model_access::current()) {
+            return theirs;
+        }
         Embedder::openai().or_else(|openai| {
             Embedder::openrouter().map_err(|openrouter| format!("{openai}; {openrouter}"))
         })
@@ -784,5 +822,28 @@ impl<E: Embed> Retriever<E> {
         if let Ok(text) = serde_json::to_string(cache) {
             let _ = std::fs::write(path, text);
         }
+    }
+}
+
+#[cfg(test)]
+mod byok_tests {
+    use super::*;
+
+    #[test]
+    fn embeddings_on_the_persons_key_never_fall_back_to_ours() {
+        use model_access::{Access, ApiKey, Keys, Provider};
+        assert!(Embedder::theirs(&Access::ours()).is_none());
+        let mut keys = Keys::none();
+        keys.insert(Provider::Vercel, ApiKey::new("their-gateway"));
+        let embedder = Embedder::theirs(&Access::theirs(keys)).unwrap().unwrap();
+        assert_eq!(embedder.provider, EmbeddingProvider::Gateway);
+        assert_eq!(embedder.model, openrouter::EMBEDDING_MODEL);
+        let mut keys = Keys::none();
+        keys.insert(Provider::TypeSafe, ApiKey::new("ts"));
+        let refused = Embedder::theirs(&Access::theirs(keys)).unwrap();
+        assert_eq!(
+            refused.err().unwrap(),
+            "Your keys can't use openai/text-embedding-3-small."
+        );
     }
 }

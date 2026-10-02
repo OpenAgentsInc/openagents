@@ -11,6 +11,8 @@ codex-transport = { path = "../codex-transport" }
 # The codebase index file is gzip-compressed.
 flate2 = "1"
 openrouter = { path = "../openrouter" }
+# Who pays for an embedding (BYOK, #10176).
+model-access = { path = "../model-access" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 xp-ledger = { path = "../xp-ledger" }

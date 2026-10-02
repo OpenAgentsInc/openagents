@@ -106,6 +106,7 @@ impl ProviderState {
         match self.provider {
             Provider::Codex => "the Codex login",
             Provider::Claude => "the Claude Code login",
+            Provider::Vertex if model_access::current().is_mine() => "your own provider key",
             Provider::Vertex => "the OpenAgents cloud",
             Provider::Devin => "the Devin CLI login",
             Provider::OpenCode => "OpenCode",
@@ -334,9 +335,12 @@ fn provided(
         Provider::Vertex => {
             let door = match cloud {
                 Some(door) => std::sync::Arc::clone(door),
-                None => std::sync::Arc::new(crate::generate::Door::Relay(Box::new(
-                    crate::cloud::door(&super::env_value)?,
-                ))),
+                None => match theirs(&model_access::current())? {
+                    Some(door) => std::sync::Arc::new(door),
+                    None => std::sync::Arc::new(crate::generate::Door::Relay(Box::new(
+                        crate::cloud::door(&super::env_value)?,
+                    ))),
+                },
             };
             Ok(Provided::Vertex(crate::cloud::CloudLane::new(door)))
         }
@@ -346,6 +350,31 @@ fn provided(
         Provider::OpenCode => Err("the loop does not generate through OpenCode".into()),
         Provider::Grok => Err("the loop does not generate through Grok Build".into()),
     }
+}
+
+/// The cloud fallback on the person's own keys (BYOK, `model_access`):
+/// [`model_access::MICROCODER_MODEL`] on OpenRouter, then the Vercel AI
+/// Gateway, through their Open Responses APIs, in place of the OpenAgents
+/// cloud. `None` under `ours`; under `mine` with no key that serves it,
+/// the one plain line, never the OpenAgents cloud.
+///
+/// # Errors
+/// Under `mine`, no key of the person's serves the model.
+pub fn theirs(access: &model_access::Access) -> Result<Option<crate::generate::Door>, String> {
+    use crate::generate::{Door, FallbackDoor, ResponsesDoor};
+    let doors = match access.chat(model_access::Use::Model(model_access::MICROCODER_MODEL)) {
+        Ok(model_access::Doors::Ours) => return Ok(None),
+        Ok(model_access::Doors::Theirs(doors)) => doors,
+        Err(no_door) => return Err(no_door.to_string()),
+    };
+    let mut responses = doors.iter().map(|door| {
+        ResponsesDoor::new(door.responses_base(), door.model.clone(), door.key.expose())
+    });
+    let first = responses.next().ok_or("no door")?;
+    Ok(Some(match responses.next() {
+        Some(second) => Door::Fallback(Box::new(FallbackDoor::new(first, second))),
+        None => Door::Live(first),
+    }))
 }
 
 /// Jev, or a stand-in that says Jev couldn't answer when there's no key.
@@ -974,5 +1003,37 @@ impl coder_delegate::issue::Worker<()> for IssueWorker {
 
     fn runs(&self) -> Option<PathBuf> {
         coder_delegate::credentials::openagents_dir().map(|home| home.join("coder").join("issues"))
+    }
+}
+
+#[cfg(test)]
+mod byok_tests {
+    use super::theirs;
+    use crate::generate::Door;
+    use model_access::{Access, ApiKey, Keys, Provider};
+
+    /// Under BYOK `mine`, Microcoder's cloud fallback runs gpt-6.1-sol on
+    /// the person's OpenRouter key, then their gateway key, through the
+    /// providers' Open Responses APIs, and never the OpenAgents cloud.
+    #[test]
+    fn the_cloud_fallback_runs_on_the_persons_keys_under_mine() {
+        assert!(theirs(&Access::ours()).unwrap().is_none());
+        let mut keys = Keys::none();
+        keys.insert(Provider::OpenRouter, ApiKey::new("their-openrouter"));
+        keys.insert(Provider::Vercel, ApiKey::new("their-gateway"));
+        match theirs(&Access::theirs(keys)).unwrap().unwrap() {
+            Door::Fallback(door) => {
+                assert_eq!(door.primary.url, "https://openrouter.ai/api");
+                assert_eq!(door.primary.model, "openai/gpt-6.1-sol");
+                assert_eq!(door.fallback.url, "https://ai-gateway.vercel.sh");
+            }
+            _ => panic!("not their two doors"),
+        }
+        let mut typesafe = Keys::none();
+        typesafe.insert(Provider::TypeSafe, ApiKey::new("ts"));
+        assert_eq!(
+            theirs(&Access::theirs(typesafe)).err().unwrap(),
+            "Your keys can't use openai/gpt-6.1-sol."
+        );
     }
 }

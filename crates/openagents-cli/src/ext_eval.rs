@@ -388,6 +388,10 @@ fn agent(args: &Args) -> Result<AgentPin, String> {
 /// The door table: `default` is the operator's `CODER_DOOR_*`; a lane
 /// name (`gemini`, `glm`) is the same door running that lane's model.
 fn door(name: Option<&str>) -> Result<Door, String> {
+    let access = model_access::current();
+    if access.is_mine() && std::env::var("CODER_DOOR_KEY").is_err() {
+        return their_door(&access, name);
+    }
     let key = std::env::var("CODER_DOOR_KEY")
         .ok()
         .filter(|key| !key.is_empty())
@@ -426,10 +430,63 @@ fn door(name: Option<&str>) -> Result<Door, String> {
     })
 }
 
+/// The door on the person's own keys (BYOK `mine`): the lane's model on
+/// their OpenRouter key, else their Vercel AI Gateway key; never ours.
+fn their_door(access: &model_access::Access, name: Option<&str>) -> Result<Door, String> {
+    let (name, model) = match name {
+        None | Some("default") => (
+            "default".to_string(),
+            coder::generate::DEFAULT_MODEL.to_string(),
+        ),
+        Some(lane) => match coder::generate::Lane::read(lane) {
+            Some(lane) => (lane.name().to_string(), lane.model().to_string()),
+            None => {
+                return Err(format!(
+                    "no door named {lane}; the table has default, gemini, and glm"
+                ));
+            }
+        },
+    };
+    match access.chat(model_access::Use::Model(&model)) {
+        Ok(model_access::Doors::Theirs(doors)) => {
+            let first = doors.into_iter().next().ok_or("no door")?;
+            Ok(Door {
+                name,
+                url: first.responses_base().to_string(),
+                key: Secret::new(first.key.expose()),
+                model,
+            })
+        }
+        Ok(model_access::Doors::Ours) => Err("no door key".into()),
+        Err(no_door) => Err(no_door.to_string()),
+    }
+}
+
 /// The decision door: `TYPESAFE_API_KEY` (and `TYPESAFE_BASE_URL`), or
 /// the key in `~/.openagents/jev.json`, with Jev's other doors whose keys
 /// are set (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`) asked first.
 fn decision_pin() -> Option<DecisionPin> {
+    // Under BYOK `mine`, the person's own TypeSafe key leads and their
+    // gateway and OpenRouter keys follow; with no TypeSafe key there is no
+    // pin and Jev resolves on their other keys (`jev_hosted::theirs`).
+    let access = model_access::current();
+    if access.is_mine() {
+        let keys = access.keys();
+        let typesafe = keys.get(model_access::Provider::TypeSafe)?;
+        let of = |var: &str| match var {
+            jev::doors::GATEWAY_KEY_VAR => keys
+                .get(model_access::Provider::Vercel)
+                .map(|k| k.expose().to_owned()),
+            jev::doors::OPENROUTER_KEY_VAR => keys
+                .get(model_access::Provider::OpenRouter)
+                .map(|k| k.expose().to_owned()),
+            _ => None,
+        };
+        return Some(
+            DecisionPin::new(jev::defaults::BASE_URL, Secret::new(typesafe.expose()))
+                .with_fallbacks(&of),
+        );
+    }
     let key = std::env::var(jev::env::API_KEY)
         .ok()
         .filter(|key| !key.trim().is_empty())
