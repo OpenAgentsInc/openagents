@@ -1606,6 +1606,7 @@ dependencies = [
  "knowledge",
  "libc",
  "microcoder-loop",
+ "model-access",
  "nostr",
  "nostr-transport",
  "openagents-chat",
@@ -6207,6 +6208,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-access"
+version = "0.1.0"
+dependencies = [
+ "jev",
+ "reqwest 0.12.28",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "monostate"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7462,6 +7477,7 @@ dependencies = [
  "knowledge",
  "libc",
  "microcoder",
+ "model-access",
  "nostr",
  "nostr-relay",
  "openagents-chat",

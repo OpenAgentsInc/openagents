@@ -46,6 +46,7 @@ mod playtest;
 mod plugin_local;
 #[cfg(unix)]
 mod plugin_registry;
+mod provider_key;
 mod quest;
 mod reach;
 mod relay;
@@ -147,6 +148,11 @@ Discovery (NIP-CAP, NIP-PRG), read-only:
   doctor       Show the identities, stores, and relays this command uses.
   version      Show the repository, commit, and tree state.
 
+Global options: --json; --openrouter-key KEY, --vercel-key KEY, --typesafe-key KEY
+run one command on your own provider key, never stored. A key in argv shows up in
+shell history and `ps`: prefer `openagents settings provider-key set PROVIDER` or
+OPENAGENTS_OPENROUTER_KEY, OPENAGENTS_VERCEL_KEY, and OPENAGENTS_TYPESAFE_KEY.
+
 Run `openagents COMMAND --help` for each group's syntax.
 Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
 
@@ -171,6 +177,17 @@ fn main() -> ExitCode {
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
     let json = arguments.iter().any(|argument| argument == "--json");
     arguments.retain(|argument| argument != "--json");
+    // `--openrouter-key`, `--vercel-key`, `--typesafe-key`, and the
+    // `OPENAGENTS_*_KEY` variables: the person's own keys for this one
+    // command, never stored (BYOK). An ambient `OPENROUTER_API_KEY` never
+    // counts.
+    match model_access::Keys::once(&|name| std::env::var(name).ok(), &mut arguments) {
+        Ok(keys) => model_access::remember_once(keys),
+        Err(message) => {
+            eprintln!("openagents: {message}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+    }
     argv::normalize_help(&mut arguments);
     let output = Output::new(json);
     let Some((command, rest)) = arguments.split_first() else {

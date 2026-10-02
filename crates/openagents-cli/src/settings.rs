@@ -16,6 +16,15 @@ pub(crate) const USAGE: &str = "usage: openagents settings COMMAND [OPTIONS]
   unset KEY               Return one setting to its default.
   disable AGENT           Turn a coding agent off: Coder never uses it.
   enable AGENT            Turn a coding agent back on.
+  provider-key set PROVIDER
+                          Add your own OpenRouter, Vercel AI Gateway, or TypeSafe
+                          key, read from a hidden prompt or stdin.
+  provider-key show [PROVIDER]
+                          Your keys: last four characters, label, spend, state.
+  provider-key test [PROVIDER]
+                          Test your keys now.
+  provider-key clear PROVIDER
+                          Remove one of your keys.
 Every coding agent signed in on this computer is used, Codex first; nothing
 needs enabling. Agents: codex, claude, grok, devin, opencode.
 Keys:
@@ -30,6 +39,9 @@ Keys:
   coder.projects                  Folders whose Git checkouts are projects,
                                   comma-separated; empty is any (default).
   coder.access                    full, toolchains, or boundary (default full: every step approved).
+  models.payer                    ours (default: model calls on OpenAgents) or mine (every
+                                  model call on your own keys, never ours; needs an
+                                  OpenRouter or Vercel AI Gateway key).
 Settings live in ~/.openagents/settings.json (OPENAGENTS_SETTINGS overrides the
 file); openagents chat, the desktop app, and a host on this computer read it.";
 
@@ -43,6 +55,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("unset", Effect::LocalWrite),
     Declared::computer("disable", Effect::LocalWrite),
     Declared::computer("enable", Effect::LocalWrite),
+    Declared::computer("provider-key set", Effect::Secret),
+    Declared::computer("provider-key show", Effect::Secret),
+    Declared::computer("provider-key test", Effect::Secret),
+    Declared::computer("provider-key clear", Effect::Secret),
 ];
 
 pub(crate) fn render(value: &Value) -> String {
@@ -65,6 +81,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage("settings", "a command is required", USAGE);
     };
+    if command == "provider-key" {
+        return crate::provider_key::run(output, rest);
+    }
     let args = match Args::parse(rest, &[]) {
         Ok(args) => args,
         Err(message) => return output.usage("settings", &message, USAGE),
@@ -167,7 +186,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                     return code;
                 }
                 let here = std::env::current_dir().unwrap_or_default();
-                loaded.set(&words[0], &words[1], &here)
+                if words[0] == "models.payer" {
+                    crate::provider_key::set_payer(&mut loaded, &words[1])
+                } else {
+                    loaded.set(&words[0], &words[1], &here)
+                }
             } else {
                 if let Err(code) = want(1) {
                     return code;

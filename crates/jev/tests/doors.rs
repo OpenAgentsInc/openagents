@@ -740,3 +740,50 @@ async fn a_key_that_cannot_pay_falls_through_to_a_carried_door_and_is_benched() 
     assert!(!format!("{handed:?}").contains("ts-key"));
     Ok(())
 }
+
+/// A person's own gateway key leading (BYOK, `model-access`): a primary
+/// that names Jev the gateway's way takes the decision at its full URL with
+/// `typesafe-ai/jev`, and OpenRouter after it on the person's own key.
+#[tokio::test]
+async fn a_gateway_primary_names_jev_its_own_way() -> Outcome {
+    let (gateway, gateway_seen) = door(Behavior::Answer(402, NO_CREDITS.into())).await?;
+    let (openrouter, openrouter_seen) = door(Behavior::Answer(200, openrouter_answer())).await?;
+    let failover = Failover::new(
+        Door::new(
+            doors::GATEWAY_DOOR,
+            format!("{gateway}/typesafe/v1/systemone"),
+            Naming::Gateway,
+            ApiKey::new("their-gateway-key"),
+        ),
+        vec![Door::new(
+            doors::OPENROUTER_DOOR,
+            format!("{openrouter}/api/alpha/decisions"),
+            Naming::OpenRouter,
+            ApiKey::new("their-openrouter-key"),
+        )],
+    );
+    let client = Client::new(
+        Config::new()
+            .exchange(doors::exchange(failover))
+            .base_url(doors::TYPESAFE_DOOR)
+            .default_model("jev-1.13.0")
+            .timeout(Duration::from_secs(5))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let response = client.system_one(fixture_request()).await?;
+    assert_eq!(
+        response.service(),
+        Some(json!({"door": doors::OPENROUTER_DOOR}))
+    );
+    let gateway_seen = gateway_seen.lock().await;
+    assert_eq!(gateway_seen[0].path, "/typesafe/v1/systemone");
+    assert_eq!(gateway_seen[0].body["model"], "typesafe-ai/jev");
+    assert_eq!(gateway_seen[0].bearer, "Bearer their-gateway-key");
+    let openrouter_seen = openrouter_seen.lock().await;
+    assert_eq!(openrouter_seen[0].body["model"], "typesafe/jev-1.13");
+    assert_eq!(openrouter_seen[0].bearer, "Bearer their-openrouter-key");
+    Ok(())
+}

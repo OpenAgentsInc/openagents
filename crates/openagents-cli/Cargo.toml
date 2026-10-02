@@ -48,6 +48,9 @@ jev = { path = "../jev" }
 knowledge = { path = "../knowledge" }
 libc = "0.2"
 microcoder = { path = "../microcoder" }
+# BYOK: the person's own provider keys, tested over HTTPS and kept in the
+# keychain or 0600 files.
+model-access = { path = "../model-access", features = ["http", "keychain"] }
 nostr = { path = "../nostr" }
 openagents-wallet = { path = "../wallet" }
 openagents-x402 = { path = "../x402" }

@@ -574,7 +574,11 @@ impl Failover {
         let began = Instant::now();
         let decision = call.method.eq_ignore_ascii_case("POST") && call.path == SYSTEM_ONE_PATH;
         let base = format!("{}{}", self.primary.url.trim_end_matches('/'), call.path);
-        if !decision || self.fallbacks.is_empty() {
+        // A primary that names Jev its own way (the person's gateway or
+        // OpenRouter key leading, `model-access`) takes a decision at its
+        // full URL with its own model name, as a fallback door does.
+        let renamed = self.primary.naming != Naming::Canonical && !self.primary.is_carried();
+        if !decision || (self.fallbacks.is_empty() && !renamed) {
             return self
                 .ask(&self.primary, &base, &call, call.body.clone(), call.timeout)
                 .await;
@@ -604,7 +608,7 @@ impl Failover {
                     _ => left,
                 };
                 asked += 1;
-                let (url, body) = if is_primary || door.is_carried() {
+                let (url, body) = if (is_primary && !renamed) || door.is_carried() {
                     (base.clone(), call.body.clone())
                 } else {
                     let body = request.clone().map(|mut body| {
@@ -619,7 +623,7 @@ impl Failover {
             };
             match answered {
                 Ok(mut reply) if (200..300).contains(&reply.status) => {
-                    if !is_primary
+                    if (!is_primary || renamed)
                         && let Ok(mut value) = serde_json::from_slice::<Value>(&reply.body)
                     {
                         normalize_answer(&mut value);

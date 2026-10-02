@@ -4563,6 +4563,149 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "provider-key",
+          "children": [
+            {
+              "name": "set",
+              "leaf": {
+                "path": [
+                  "settings",
+                  "provider-key",
+                  "set"
+                ],
+                "usage": [
+                  "provider-key set PROVIDER"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "provider-key"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "set"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROVIDER"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Add your own OpenRouter, Vercel AI Gateway, or TypeSafe key, read from a hidden prompt or stdin.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "settings",
+                  "provider-key",
+                  "show"
+                ],
+                "usage": [
+                  "provider-key show [PROVIDER]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "provider-key"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROVIDER",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Your keys: last four characters, label, spend, state.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "test",
+              "leaf": {
+                "path": [
+                  "settings",
+                  "provider-key",
+                  "test"
+                ],
+                "usage": [
+                  "provider-key test [PROVIDER]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "provider-key"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROVIDER",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Test your keys now.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "clear",
+              "leaf": {
+                "path": [
+                  "settings",
+                  "provider-key",
+                  "clear"
+                ],
+                "usage": [
+                  "provider-key clear PROVIDER"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "provider-key"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "clear"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROVIDER"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Remove one of your keys.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         }
       ]
     },

@@ -19,6 +19,8 @@ acp-client = { path = "../acp-client" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
 jev-hosted = { path = "../jev-hosted" }
+# Who pays for a model call (BYOK, #10176).
+model-access = { path = "../model-access" }
 # The authoring interview's machine (`ext_eval::author`), which
 # `eval_author` drives from chat and from `openagents ext eval init`.
 ext-eval = { path = "../ext-eval", default-features = false }

@@ -46,6 +46,12 @@
 //! [`Settings`] is the typed API; [`keys`], [`Settings::get`],
 //! [`Settings::set`], and [`Settings::unset`] are the flat `coder.*` keys
 //! `openagents settings` and a settings screen edit.
+//!
+//! The `models` section holds `payer` (BYOK, #10176): `ours`, the default,
+//! runs model calls on OpenAgents' keys; `mine` runs them on the person's
+//! own provider keys and never on ours (`model_access`). It never holds a
+//! key: the keys live in the keychain or in `0600` files
+//! (`model_access::store`).
 
 use std::path::{Path, PathBuf};
 
@@ -528,12 +534,30 @@ impl Coder {
     }
 }
 
+/// Who pays for model calls (BYOK).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Models {
+    /// `ours` (default) or `mine`.
+    #[serde(default)]
+    pub payer: model_access::Mode,
+}
+
+impl Models {
+    fn is_default(&self) -> bool {
+        *self == Models::default()
+    }
+}
+
 /// The settings file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub schema: String,
     #[serde(default)]
     pub coder: Coder,
+    /// Who pays for model calls; written only when not the default.
+    #[serde(default, skip_serializing_if = "Models::is_default")]
+    pub models: Models,
     /// Other sections, kept as they are.
     #[serde(flatten)]
     pub other: Map<String, Value>,
@@ -544,6 +568,7 @@ impl Default for Settings {
         Settings {
             schema: SCHEMA.into(),
             coder: Coder::default(),
+            models: Models::default(),
             other: Map::new(),
         }
     }
@@ -551,7 +576,7 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 6] {
+pub const fn keys() -> [&'static str; 7] {
     [
         "coder.providers",
         "coder.disabled",
@@ -559,6 +584,7 @@ pub const fn keys() -> [&'static str; 6] {
         "coder.usage_threshold_percent",
         "coder.projects",
         "coder.access",
+        "models.payer",
     ]
 }
 
@@ -649,6 +675,7 @@ impl Settings {
                     .collect::<Vec<_>>()
             ),
             "coder.access" => json!(coder.access.as_str()),
+            "models.payer" => json!(self.models.payer.as_str()),
             _ => return Err(unknown(key)),
         })
     }
@@ -662,6 +689,10 @@ impl Settings {
     /// `key` is not a setting, or `value` is not one of its values; the
     /// settings are unchanged then.
     pub fn set(&mut self, key: &str, value: &str, dir: &Path) -> Result<(), String> {
+        if key == "models.payer" {
+            self.models.payer = model_access::Mode::parse(value)?;
+            return Ok(());
+        }
         let mut coder = self.coder.clone();
         let list = |value: &str| -> Vec<String> {
             value
@@ -774,6 +805,7 @@ impl Settings {
             }
             "coder.projects" => coder.projects = default.projects,
             "coder.access" => coder.access = default.access,
+            "models.payer" => self.models.payer = model_access::Mode::Ours,
             _ => return Err(unknown(key)),
         }
         Ok(())
@@ -796,6 +828,54 @@ pub fn agent(name: &str) -> Result<Provider, String> {
         })
 }
 
+impl Settings {
+    /// Set who pays, as a settings screen's switch does: `mine` is refused
+    /// unless `keys` can answer chat (an OpenRouter or Vercel AI Gateway
+    /// key), and the settings are unchanged then.
+    ///
+    /// # Errors
+    /// The one line a person reads ([`model_access::TYPESAFE_ONLY`], or
+    /// that no key is added).
+    pub fn set_payer(
+        &mut self,
+        payer: model_access::Mode,
+        keys: &model_access::Keys,
+    ) -> Result<(), String> {
+        if payer == model_access::Mode::Mine && !keys.chat_capable() {
+            return Err(if keys.get(model_access::Provider::TypeSafe).is_some() {
+                model_access::TYPESAFE_ONLY.to_owned()
+            } else {
+                "Add an OpenRouter or Vercel AI Gateway key first: openagents settings provider-key set openrouter".to_owned()
+            });
+        }
+        self.models.payer = payer;
+        Ok(())
+    }
+
+    /// After a key is removed: with no chat-capable key left, `mine`
+    /// returns to `ours`. Returns whether it changed.
+    pub fn settle_payer(&mut self, keys: &model_access::Keys) -> bool {
+        if self.models.payer == model_access::Mode::Mine && !keys.chat_capable() {
+            self.models.payer = model_access::Mode::Ours;
+            return true;
+        }
+        false
+    }
+}
+
+/// Who pays for this process's model calls: the settings' `models.payer`
+/// with the person's stored keys, or `mine` over the keys given for this
+/// invocation (`--openrouter-key`, `OPENAGENTS_OPENROUTER_KEY`, and the
+/// rest). Ambient provider variables never count. Settings that cannot be
+/// read leave the payer `ours`.
+#[must_use]
+pub fn access() -> model_access::Access {
+    let mode = load().map_or(model_access::Mode::Ours, |s| s.models.payer);
+    let dir = model_access::store::openagents_dir().unwrap_or_else(|| PathBuf::from(".openagents"));
+    let stored = model_access::store::load_all(&model_access::store::all(&dir));
+    model_access::Access::new(mode, stored, &model_access::once_keys())
+}
+
 fn expand_home(text: &str) -> PathBuf {
     match text.strip_prefix("~/") {
         Some(rest) => std::env::var_os("HOME").map_or_else(
@@ -809,6 +889,41 @@ fn expand_home(text: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_payer_is_ours_by_default_and_mine_needs_a_chat_key() {
+        use model_access::{ApiKey, Keys, Mode, Provider};
+        let mut settings = Settings::default();
+        assert_eq!(settings.get("models.payer").unwrap(), json!("ours"));
+        let text = serde_json::to_string(&settings).unwrap();
+        assert!(!text.contains("models"), "the default is not written");
+        let mut keys = Keys::none();
+        keys.insert(Provider::TypeSafe, ApiKey::new("ts"));
+        assert_eq!(
+            settings.set_payer(Mode::Mine, &keys).unwrap_err(),
+            model_access::TYPESAFE_ONLY
+        );
+        assert_eq!(settings.models.payer, Mode::Ours);
+        keys.insert(Provider::Vercel, ApiKey::new("vk"));
+        settings.set_payer(Mode::Mine, &keys).unwrap();
+        let text = serde_json::to_string(&settings).unwrap();
+        assert!(text.contains(r#""payer":"mine""#) && !text.contains("vk"));
+        // Clearing the last chat-capable key returns the mode to ours.
+        let mut left = Keys::none();
+        left.insert(Provider::TypeSafe, ApiKey::new("ts"));
+        assert!(settings.settle_payer(&left));
+        assert_eq!(settings.models.payer, Mode::Ours);
+        settings
+            .set("models.payer", "mine", Path::new("/"))
+            .unwrap();
+        settings.unset("models.payer").unwrap();
+        assert_eq!(settings.models.payer, Mode::Ours);
+        assert!(
+            settings
+                .set("models.payer", "mine_then_ours", Path::new("/"))
+                .is_err()
+        );
+    }
 
     const ALL: [Provider; 5] = [
         Provider::Codex,
