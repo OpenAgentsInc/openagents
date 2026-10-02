@@ -1263,12 +1263,17 @@ impl Host {
         // Windows programs refuse a verbatim (`\\?\`) working directory.
         let directory = coder_boundary::plain_path(self.workspace());
         let command = match login {
-            // Full access: the owner's own shell, with no sandbox, the
-            // network, and the owner's login environment.
+            // Full access: the owner's own shell, with the network and the
+            // owner's login environment, and no sandbox but the privacy
+            // one: on macOS the places it guards with a privacy prompt
+            // (music, photos, documents, other apps' data) and Apple
+            // Events are denied, so no command makes macOS ask the owner
+            // about Coder (`coder_boundary::privacy`).
             Some(login) => {
-                let mut command = std::process::Command::new(coder_boundary::plain_path(
-                    &self.admission.grant.program,
-                ));
+                let mut command = coder_boundary::privacy::command(
+                    coder_boundary::plain_path(&self.admission.grant.program),
+                    &[self.workspace()],
+                );
                 command
                     .args(&arguments)
                     .current_dir(&directory)

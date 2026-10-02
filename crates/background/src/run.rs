@@ -290,7 +290,7 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
             return action;
         }
     };
-    action.bytes = paths::measure(&item.path).map_or(item.bytes, |m| m.bytes);
+    action.bytes = paths::measure(&item.path, &env.layout.home).map_or(item.bytes, |m| m.bytes);
     let result = match &undo {
         Some(undo) => git::remove(undo).map(|()| Outcome::Removed),
         None => std::fs::remove_dir_all(&item.path)
@@ -307,7 +307,7 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
             action.outcome = Outcome::Failed;
             action.reason = why;
             // A partial deletion still freed something; measure what is left.
-            let left = paths::measure(&item.path).map_or(0, |m| m.bytes);
+            let left = paths::measure(&item.path, &env.layout.home).map_or(0, |m| m.bytes);
             action.bytes = action.bytes.saturating_sub(left);
         }
     }

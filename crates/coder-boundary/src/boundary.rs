@@ -497,6 +497,19 @@ impl Spec {
             }
         }
 
+        // Last, so it wins over every allow above: the places macOS
+        // guards with a privacy prompt stay unread and unwritten, except
+        // a policy path the caller put inside one on purpose.
+        if let Some(home) = crate::privacy::home() {
+            let allowed: Vec<&Path> = readable
+                .iter()
+                .chain(checkout.iter())
+                .chain(&writable)
+                .map(PathBuf::as_path)
+                .collect();
+            profile.push_str(&crate::privacy::rules(&home, &allowed));
+        }
+
         // Validation first, refusal second: on a platform with no
         // backend, every answer above still describes the spec that was
         // asked for. What never happens here is the fallback — there is

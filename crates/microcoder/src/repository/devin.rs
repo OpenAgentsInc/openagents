@@ -609,12 +609,12 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
             .map(str::to_owned)
     });
     let opening = Opening {
-        spec: acp_client::process::Spec {
+        spec: super::private_spec(acp_client::process::Spec {
             program: program.clone(),
             arguments: arguments.clone(),
             cwd: host.workspace().to_path_buf(),
             environment: environment(host).await,
-        },
+        }),
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history_mark())),
         mode: Some(permission.mode_id().into()),

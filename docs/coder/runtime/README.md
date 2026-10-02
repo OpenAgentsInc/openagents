@@ -14,6 +14,7 @@ and unfinished suite acceptance, use the [migration tracker](../migration-status
 | [repository-evidence](repository-evidence.md) | Repository source references |
 | [shell-loop](shell-loop.md) | The shell loop |
 | [subprocesses](subprocesses.md) | Subprocess supervision |
+| [Privacy prompts](privacy-prompts.md) | Why nothing OpenAgents runs makes macOS ask for music, photos, or documents |
 | [terminal](terminal.md) | The terminal's lifecycle, lanes, and scrollback |
 | [traces](traces.md) | Traces |
 | [Task ownership](task-owner.md) | Explicit execution, recovery, corrections, independent checks, retained artifacts, and paged views |

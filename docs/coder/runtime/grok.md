@@ -114,7 +114,8 @@ held to the run's access the way Codex and Claude Code runs are
 ([#10092](https://github.com/OpenAgentsInc/openagents/issues/10092)).
 
 - **Full access** (`--full-access`, or `coder.access: full`) starts the
-  process with `--always-approve`, with no sandbox. A permission request
+  process with `--always-approve`, with no sandbox but the macOS privacy
+  profile ([privacy prompts](privacy-prompts.md)). A permission request
   that still arrives is allowed.
 - **This computer's toolchains** (`toolchains`, a person's default local
   access) omits `--always-approve` and starts the process inside the

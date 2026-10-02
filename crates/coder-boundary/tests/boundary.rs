@@ -631,7 +631,13 @@ mod enforced {
         assert!(deny < allow, "{profile}");
         let open = Boundary::readonly().build().unwrap();
         assert!(!open.confines_reads());
-        assert!(!open.profile().contains("file-read"), "{}", open.profile());
+        // An open boundary denies no read but the privacy-protected
+        // places (`coder_boundary::privacy`).
+        assert!(
+            !open.profile().contains("(deny file-read*)\n"),
+            "{}",
+            open.profile()
+        );
     }
 
     #[test]

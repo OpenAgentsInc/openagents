@@ -34,7 +34,7 @@ coder host autostart on --workspace openagents --max-running 1
 | `--max-steps N`, `--wall-seconds N` | None | Accepted for older scripts and ignored. A run has no step or time limit ([#10103](https://github.com/OpenAgentsInc/openagents/issues/10103)): it ends when Coder finishes or asks, when the task is stopped, or when the loop's stuck guard finds it repeating a failed approach without progress for eight judged steps in a row ([how a run ends](../../cli/chat.md#coder-on-this-computer)). An older `autostart.json` that carries `max_steps` or `wall_seconds` still loads and keeps them, and they are ignored; grants written now carry neither. |
 | `--memory-mib N` | `4096` | Each command's memory limit, 64 MiB to 8 GiB. |
 | `--read-only` | Off | Grant a read-only workspace. Without it, the workspace must be an isolated Git worktree whose common Git directory is outside it. |
-| `--full-access` | Off | Run each task's commands as you, with no sandbox, network access, and your login-shell environment. For your own computer only. See [Full access](#full-access). |
+| `--full-access` | Off | Run each task's commands as you, with network access and your login-shell environment. On macOS the only sandbox keeps them out of the folders macOS guards with a privacy prompt ([privacy prompts](privacy-prompts.md)). For your own computer only. See [Full access](#full-access). |
 | `--controller PATH` | `microcoder` beside `coder`, else `~/.openagents/bin/microcoder` | The engine executable. |
 | `--decision-endpoint URL`, `--decision-model ID` | `https://api.typesafe.ai`, `jev-1.13.0` | The Jev client the engine's grant names. Use an exact version: the engine refuses a reply whose model differs from the admitted one, so an alias such as `jev-latest` fails at the first judgment. |
 | `--keep-engine` | Off | Keep an existing policy's engine (controller, routes, access, and usage probes) and change only the workspaces and `--max-running`; the engine options then set up a first policy only. The desktop app's "Let my phone start Coder here" switch runs `on --keep-engine`, so it never undoes `--full-access`, `--probe-usage`, or a controller you set. Removing a project from the desktop app also takes its label off the policy, and turns the policy off when no project is left. |
@@ -275,9 +275,12 @@ coder host autostart on --workspace openagents \
 
 Each grant then carries `"access": "full"`, and the engine's commands:
 
-- run as you, with the admitted shell and no sandbox: no `sandbox-exec`
-  profile on macOS, no namespaces on Linux, and no write boundary, so Git,
-  `ps`, Xcode's libraries, and everything else your account can use work;
+- run as you, with the admitted shell and no write boundary: no
+  namespaces on Linux, and on macOS only the privacy profile, a
+  `sandbox-exec` profile that allows everything but the folders macOS
+  guards with a privacy prompt and Apple Events
+  ([privacy prompts](privacy-prompts.md)), so Git, `ps`, Xcode's
+  libraries, and everything else your account can use work;
 - reach the network;
 - get your login-shell environment, read once when the task is admitted by
   running your shell (`$SHELL -l -i`, else the account's shell) with

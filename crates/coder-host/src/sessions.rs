@@ -116,15 +116,34 @@ pub fn user_home() -> Option<PathBuf> {
 #[must_use]
 pub fn find(home: &Path) -> Vec<(Source, PathBuf)> {
     let mut found = Vec::new();
+    // Only `~/.claude` and `~/.codex` are read. One that is a link into a
+    // folder macOS guards with a privacy prompt is not followed there:
+    // reading it would make macOS ask the person about Coder.
+    let readable = |dir: &Path| {
+        dir.canonicalize()
+            .is_ok_and(|real| !coder_boundary::privacy::is_protected(&real, home))
+    };
+    if !readable(&home.join(".claude")) {
+        return codex_sessions(home, &readable);
+    }
     for project in dirs(&home.join(".claude").join("projects")) {
         for file in files(&project) {
             found.push((Source::ClaudeCode, file));
         }
     }
-    let mut codex = Vec::new();
-    walk(&home.join(".codex").join("sessions"), 3, &mut codex);
-    found.extend(codex.into_iter().map(|file| (Source::Codex, file)));
+    found.extend(codex_sessions(home, &readable));
     found
+}
+
+fn codex_sessions(home: &Path, readable: &dyn Fn(&Path) -> bool) -> Vec<(Source, PathBuf)> {
+    let mut codex = Vec::new();
+    if readable(&home.join(".codex")) {
+        walk(&home.join(".codex").join("sessions"), 3, &mut codex);
+    }
+    codex
+        .into_iter()
+        .map(|file| (Source::Codex, file))
+        .collect()
 }
 
 /// Read `path` as a session `source` kept. `None` when it cannot be read
@@ -574,6 +593,27 @@ mod tests {
 
     /// Importing copies each session once into the store and never
     /// changes the session files.
+    /// A `.codex` that is a link into a privacy-protected folder is not
+    /// followed there, so importing never makes macOS ask about Coder.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn sessions_behind_a_link_into_a_protected_folder_are_not_read() {
+        let dir = home();
+        let home = dir.path().canonicalize().unwrap();
+        let before = find(&home).len();
+        let kept = home.join("Documents/codex");
+        std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+        std::fs::rename(home.join(".codex"), &kept).unwrap();
+        std::os::unix::fs::symlink(&kept, home.join(".codex")).unwrap();
+        let found = find(&home);
+        assert_eq!(found.len(), before - 1, "{found:?}");
+        assert!(
+            found
+                .iter()
+                .all(|(source, _)| *source == Source::ClaudeCode)
+        );
+    }
+
     #[test]
     fn importing_is_a_copy_and_happens_once() {
         let home = home();

@@ -496,7 +496,9 @@ fn the_dry_run_is_the_executed_plan_and_records_match_deletions() {
     let dry = run::run(&env, &disk(), Cause::Manual, true, true).unwrap();
     assert!(dry.record.is_none());
     for item in dry.plan.items() {
-        expected += crate::paths::measure(&item.path).unwrap().bytes;
+        expected += crate::paths::measure(&item.path, &home.layout.home)
+            .unwrap()
+            .bytes;
     }
     let real = run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
     assert_eq!(planned(&dry.plan), planned(&real.plan));

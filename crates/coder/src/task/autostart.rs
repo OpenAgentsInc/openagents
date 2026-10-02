@@ -1890,8 +1890,10 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        with its local login and prefers a route below
                        PERCENT (default 90) used.
                        --full-access runs each task's commands as you,
-                       with no sandbox, network access, and your
-                       login-shell environment. Use it only on your own
+                       with network access and your login-shell
+                       environment; on macOS a sandbox only keeps them
+                       out of the folders macOS asks about (Music,
+                       Photos, Documents, ...). Use it only on your own
                        computer.
                        --keep-engine keeps an existing policy's engine
                        (controller, routes, access, usage probes, and

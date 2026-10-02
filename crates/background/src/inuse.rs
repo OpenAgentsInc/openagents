@@ -55,7 +55,9 @@ impl Processes for System {
 }
 
 fn lsof_snapshot() -> Result<Snapshot, String> {
-    let output = std::process::Command::new("lsof")
+    // Under the privacy sandbox: `lsof` looks at every open file, and one
+    // inside a place macOS guards would make it ask about this program.
+    let output = coder_boundary::privacy::command("lsof", &[])
         .args(["-n", "-P", "-w", "-F", "pn"])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

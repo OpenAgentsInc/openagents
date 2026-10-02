@@ -437,6 +437,12 @@ pub fn expand(pattern: &str, home: &Path) -> PathBuf {
 #[must_use]
 pub fn glob(pattern: &str, home: &Path) -> Vec<PathBuf> {
     let path = expand(pattern, home);
+    // A privacy-protected folder is never listed or matched: listing one
+    // makes macOS ask the person about this program.
+    let protected = |path: &Path| coder_boundary::privacy::is_protected(path, home);
+    if protected(&path) {
+        return Vec::new();
+    }
     let Some(name) = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -462,6 +468,7 @@ pub fn glob(pattern: &str, home: &Path) -> Vec<PathBuf> {
         .filter(|path| {
             path.file_name()
                 .is_some_and(|name| name.to_string_lossy().starts_with(prefix))
+                && !protected(path)
                 && crate::paths::real_dir(path)
         })
         .collect();

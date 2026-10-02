@@ -910,8 +910,11 @@ impl Inner {
                     format!("the command could not be wrapped: {why}"),
                 )
             })?,
+            // On macOS the terminal stays out of the places the system
+            // guards with a privacy prompt, which nobody at the Mac would
+            // be there to answer (`coder_boundary::privacy`).
             None => {
-                let mut command = Command::new(&program);
+                let mut command = coder_boundary::privacy::command(&program, &[dir.as_path()]);
                 command.args(&args);
                 command
             }

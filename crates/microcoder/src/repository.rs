@@ -471,7 +471,7 @@ async fn run_loop<G: Generate, J: Judge>(
             },
             match configuration.access {
                 coder::task::adapter::Access::Full =>
-                    "Commands run on the owner's own computer as the owner, with full access: no sandbox, network access, and the owner's login-shell environment (PATH with the installed tools, and the real HOME).",
+                    "Commands run on the owner's own computer as the owner, with full access: network access and the owner's login-shell environment (PATH with the installed tools, and the real HOME). The only sandbox keeps commands out of the folders macOS guards with a privacy prompt (Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, Messages, other apps' data, iCloud Drive, /Volumes) and denies Apple Events: there, \"Operation not permitted\" is expected, so don't scan the whole home folder or retry; look elsewhere.",
                 coder::task::adapter::Access::Boundary =>
                     "Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network.",
                 coder::task::adapter::Access::Toolchains =>
@@ -1073,6 +1073,21 @@ fn no_capacity(host: Host, book: &Path, refusals: &[Refusal]) -> Result<task::Ta
             "outcome":{"ending":{"reason":"no_capacity","detail":{"resets_at":resets_at}}},
             "independent_checks":"not_run","billing":"unknown","automatic_crash_resume":false}),
     )
+}
+
+/// A whole coding agent's process, kept on macOS out of the places the
+/// system guards with a privacy prompt (`coder_boundary::privacy`), so
+/// nothing it reads makes macOS ask the owner about Coder. Its workspace
+/// stays allowed even inside one. A spec already inside the run's own
+/// boundary (`sandbox-exec`) carries the same rules and is unchanged.
+fn private_spec(spec: acp_client::process::Spec) -> acp_client::process::Spec {
+    let (program, arguments) =
+        coder_boundary::privacy::argv(spec.program, spec.arguments, &[spec.cwd.as_path()]);
+    acp_client::process::Spec {
+        program,
+        arguments,
+        ..spec
+    }
 }
 
 mod devin;

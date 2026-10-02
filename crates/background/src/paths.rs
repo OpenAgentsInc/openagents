@@ -205,6 +205,14 @@ impl Layout {
         {
             return Some("on the deny list");
         }
+        // Checked before anything on disk is looked at: reading inside
+        // one of these makes macOS ask the person about this program.
+        if coder_boundary::privacy::protected(&self.home)
+            .iter()
+            .any(|protected| path.starts_with(protected) || protected.starts_with(path))
+        {
+            return Some("a macOS privacy-protected folder");
+        }
         match std::fs::symlink_metadata(path) {
             Ok(meta) if meta.file_type().is_symlink() => return Some("a symbolic link"),
             Ok(meta) if !meta.is_dir() => return Some("not a folder"),
@@ -306,11 +314,39 @@ pub struct Measure {
 }
 
 /// Walk `path` without following symbolic links, adding allocated blocks
-/// and noting any folder on another device.
+/// and noting any folder on another device. A folder macOS guards with a
+/// privacy prompt for `home` ([`coder_boundary::privacy`]) is never
+/// entered; measuring one at the top is refused.
 ///
 /// # Errors
-/// `path` cannot be read.
-pub fn measure(path: &Path) -> std::io::Result<Measure> {
+/// `path` cannot be read, or is privacy-protected.
+pub fn measure(path: &Path, home: &Path) -> std::io::Result<Measure> {
+    walk(path, &|inside| {
+        coder_boundary::privacy::is_protected(inside, home)
+    })
+}
+
+/// [`measure`] for a folder whose size is only reported, never cleaned
+/// (`~/Library/Caches`, `/private/var/folders`): it also leaves out every
+/// folder named for one of Apple's own programs
+/// ([`coder_boundary::privacy::private_cache`]), whose caches may hold an
+/// app's private data behind a privacy prompt.
+///
+/// # Errors
+/// As [`measure`].
+pub fn measure_report(path: &Path, home: &Path) -> std::io::Result<Measure> {
+    walk(path, &|inside| {
+        coder_boundary::privacy::private_cache(inside, home)
+    })
+}
+
+fn walk(path: &Path, skip: &dyn Fn(&Path) -> bool) -> std::io::Result<Measure> {
+    if skip(path) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "a macOS privacy-protected folder",
+        ));
+    }
     let top = std::fs::symlink_metadata(path)?;
     let device = top.dev();
     let mut out = Measure {
@@ -329,6 +365,9 @@ pub fn measure(path: &Path) -> std::io::Result<Measure> {
             continue;
         };
         for entry in entries.flatten() {
+            if skip(&entry.path()) {
+                continue;
+            }
             let Ok(meta) = entry.metadata() else {
                 continue;
             };
@@ -399,6 +438,50 @@ mod tests {
     }
 
     #[test]
+    fn privacy_protected_folders_are_never_walked_or_cleaned() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().canonicalize().unwrap();
+        let music = home.join("Music");
+        std::fs::create_dir_all(&music).unwrap();
+        std::fs::write(music.join("song"), vec![1u8; 1 << 20]).unwrap();
+        let caches = home.join("Library/Caches");
+        for name in ["com.apple.Music", "com.apple.dt.Xcode", "Homebrew"] {
+            std::fs::create_dir_all(caches.join(name)).unwrap();
+            std::fs::write(caches.join(name).join("blob"), vec![1u8; 1 << 20]).unwrap();
+        }
+        let protected = cfg!(target_os = "macos");
+        // A walk of the home leaves Music out; measuring Music is refused.
+        let whole = measure(&home, &home).unwrap().bytes;
+        assert_eq!(whole < 3 << 20, protected, "{whole}");
+        assert_eq!(measure(&music, &home).is_err(), protected);
+        // A report-only walk of the caches counts only Homebrew; a
+        // cleaning walk skips just the protected Music cache, not Xcode's.
+        let reported = measure_report(&caches, &home).unwrap().bytes;
+        assert_eq!(reported < 2 << 20, protected, "{reported}");
+        let cleaning = measure(&caches, &home).unwrap().bytes;
+        assert!(cleaning >= 2 << 20, "{cleaning}");
+        assert_eq!(cleaning < 3 << 20, protected, "{cleaning}");
+        // No rule may clean inside one, or clean a folder that holds one.
+        let layout = Layout::new(&home, None).unwrap();
+        let mut rule = crate::rule::disk();
+        rule.safety.allow.push("~".into());
+        rule.safety.allow.push("/Volumes".into());
+        assert!(layout.refuse(&rule, &music).is_some());
+        assert!(layout.refuse(&rule, &home.join("Library")).is_some());
+        if protected {
+            // Beyond the built-in deny list: a rule that allows a removable
+            // volume still never reaches it.
+            assert_eq!(
+                layout.refuse(&rule, Path::new("/Volumes/USB")),
+                Some("a macOS privacy-protected folder")
+            );
+            assert!(crate::rule::glob("~/Music/*", &home).is_empty());
+            assert!(crate::rule::glob("~/Music", &home).is_empty());
+            assert!(!crate::rule::glob("~/*", &home).contains(&music));
+        }
+    }
+
+    #[test]
     fn measure_counts_blocks_and_never_follows_links() {
         let dir = tempfile::tempdir().unwrap();
         let inside = dir.path().join("in");
@@ -407,12 +490,12 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("big"), vec![1u8; 1 << 20]).unwrap();
         std::os::unix::fs::symlink(&outside, inside.join("link")).unwrap();
-        let measured = measure(&inside).unwrap();
+        let measured = measure(&inside, dir.path()).unwrap();
         assert!(measured.bytes < 1 << 20);
-        let once = measure(&outside).unwrap().bytes;
+        let once = measure(&outside, dir.path()).unwrap().bytes;
         assert!(once >= 1 << 20);
         // A hard link to the same file counts once.
         std::fs::hard_link(outside.join("big"), outside.join("again")).unwrap();
-        assert!(measure(&outside).unwrap().bytes < once + 4096 * 4);
+        assert!(measure(&outside, dir.path()).unwrap().bytes < once + 4096 * 4);
     }
 }

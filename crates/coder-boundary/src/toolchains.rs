@@ -191,7 +191,7 @@ pub fn developer_dir() -> Option<PathBuf> {
 
 /// This account's home directory from the account database.
 #[cfg(unix)]
-fn account_home() -> Option<PathBuf> {
+pub(crate) fn account_home() -> Option<PathBuf> {
     use std::ffi::CStr;
     use std::os::unix::ffi::OsStrExt;
     let mut buffer = vec![0 as libc::c_char; 16 * 1024];
@@ -216,7 +216,7 @@ fn account_home() -> Option<PathBuf> {
 }
 
 #[cfg(not(unix))]
-fn account_home() -> Option<PathBuf> {
+pub(crate) fn account_home() -> Option<PathBuf> {
     None
 }
 
@@ -449,6 +449,11 @@ impl Builder {
         let Ok(real) = entry.canonicalize() else {
             return;
         };
+        // A `PATH` directory in a place macOS guards with a privacy prompt
+        // is neither listed nor granted: listing it would prompt.
+        if crate::privacy::home().is_some_and(|home| crate::privacy::is_protected(&real, &home)) {
+            return;
+        }
         if !real.is_dir() {
             return;
         }

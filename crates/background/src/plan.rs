@@ -272,14 +272,14 @@ impl Sizes {
         }
     }
 
-    fn measure(&mut self, path: &Path, touched: u64, now: u64) -> Result<u64, String> {
+    fn measure(&mut self, path: &Path, home: &Path, touched: u64, now: u64) -> Result<u64, String> {
         if let Some(cached) = self.entries.get(path)
             && cached.touched == touched
             && now.saturating_sub(cached.at) < 6 * 3600
         {
             return Ok(cached.bytes);
         }
-        let measured = paths::measure(path).map_err(|error| error.to_string())?;
+        let measured = paths::measure(path, home).map_err(|error| error.to_string())?;
         if measured.foreign {
             return Err("holds another volume".into());
         }
@@ -738,7 +738,12 @@ pub fn plan(env: &Env<'_>, rule: &Rule, force: bool) -> Plan {
                 }
             };
             drop(held);
-            let bytes = match sizes.measure(&candidate.path, candidate.touched, env.now) {
+            let bytes = match sizes.measure(
+                &candidate.path,
+                &env.layout.home,
+                candidate.touched,
+                env.now,
+            ) {
                 Ok(bytes) => bytes,
                 Err(why) => {
                     kept.push(Kept {
@@ -804,7 +809,7 @@ pub(crate) fn not_cleaned(layout: &Layout, rule: &Rule) -> Vec<(PathBuf, u64)> {
         .map(|entry| crate::rule::expand(entry, &layout.home))
         .filter(|path| real_dir(path) && !layout.home.starts_with(path))
         .filter_map(|path| {
-            let bytes = paths::measure(&path).ok()?.bytes;
+            let bytes = paths::measure_report(&path, &layout.home).ok()?.bytes;
             Some((path, bytes))
         })
         .collect();

@@ -13,10 +13,12 @@ default = ["host"]
 # to a host that refuses every open. A client build (mobile, a renderer)
 # disables default features and keeps the portable wire types and client
 # state.
-host = ["dep:libc", "dep:supervise", "dep:windows-sys"]
+host = ["dep:coder-boundary", "dep:libc", "dep:supervise", "dep:windows-sys"]
 
 [dependencies]
 base64 = "0.22"
+# A terminal stays out of the places macOS guards with a privacy prompt.
+coder-boundary = { path = "../coder-boundary", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
