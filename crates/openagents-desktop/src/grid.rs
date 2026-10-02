@@ -821,10 +821,10 @@ impl Backdrop for Layer {
     }
     fn look(&self) -> Option<Look> {
         if self.grid.borrow().deck.is_some() {
-            // Behind a slide: sharp, a little dimmed so the title reads.
+            // Behind a slide: sharp, under a 50% black overlay so the title reads.
             return Some(if self.watch.is_some() {
                 Look {
-                    dim: 0.3,
+                    dim: 0.5,
                     blur: 0.0,
                     scale: 1.0,
                 }
