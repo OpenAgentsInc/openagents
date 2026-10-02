@@ -6,7 +6,7 @@
     Coder finished · 1 file changed · +7 -0
     The demo crate is a tiny Rust 2021 binary that prints demo::add(2, 3) and
     also exposes mul, with TODOs for command-line arguments and subtraction.
-    
+
     src holds lib.rs and main.rs. cargo build finished cleanly (demo v0.1.0),
     and git log --oneline shows one commit: 45f98b7 init. No files were changed.
         added Cargo.lock (+7 -0)
