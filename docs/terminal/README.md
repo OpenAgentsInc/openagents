@@ -50,6 +50,14 @@ first. `OPENAGENTS_BIN_DIR` installs somewhere else. Run the command again to
 update. On Windows, `openagents connect`, `labor`, `service`, `ssh`, `wallet`,
 and `x402` say they need macOS or Linux.
 
+On Windows the screen keeps its files under `%USERPROFILE%\.openagents`
+(the program uses the profile folder as its home when `HOME` is not set).
+No host runs there, since the host's control socket is a Unix socket, so
+threads stay in the program's own store, and `/connect`, `/import`, and
+Ctrl+S say they need a host; `--computer` opens a paired computer's threads.
+The Windows build is checked with `cargo check --target
+x86_64-pc-windows-gnu -p openagents-cli` but has not been run on Windows.
+
 How a release is built and published: [docs/release/terminal.md](../release/terminal.md).
 
 ## Start it

@@ -134,7 +134,24 @@ Discovery (NIP-CAP, NIP-PRG), read-only:
 Run `openagents COMMAND --help` for each group's syntax.
 Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
 
+/// Windows sets no `HOME`, and this program and the crates it runs keep
+/// their files under it (`~/.openagents`, the chat home, the settings): it
+/// is the user's profile folder there, as Git for Windows sets it, rather
+/// than the current folder.
+#[cfg(windows)]
+fn home_from_profile() {
+    if std::env::var_os("HOME").is_none_or(|home| home.is_empty())
+        && let Some(profile) = std::env::var_os("USERPROFILE")
+    {
+        // SAFETY: the first thing `main` does, before any other thread
+        // exists, so nothing reads the environment while it changes.
+        unsafe { std::env::set_var("HOME", profile) };
+    }
+}
+
 fn main() -> ExitCode {
+    #[cfg(windows)]
+    home_from_profile();
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
     let json = arguments.iter().any(|argument| argument == "--json");
     arguments.retain(|argument| argument != "--json");

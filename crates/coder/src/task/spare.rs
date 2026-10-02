@@ -41,6 +41,7 @@ pub const STALE: Duration = Duration::from_secs(15 * 60);
 const WAIT: Duration = Duration::from_secs(20);
 /// How long a spare's files rest before it is observed: a digest is kept
 /// only for a file whose times are settled (two seconds old).
+#[cfg(unix)]
 const SETTLE: Duration = Duration::from_millis(2500);
 /// How long after a start its replacement spare waits, so making it does
 /// not compete with the engine's first steps for the disk.

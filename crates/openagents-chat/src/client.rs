@@ -1795,14 +1795,19 @@ fn now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
-/// `~/.openagents/chat`, or `OPENAGENTS_CHAT_HOME`.
+/// `~/.openagents/chat` (`%USERPROFILE%\.openagents\chat` on Windows), or
+/// `OPENAGENTS_CHAT_HOME`.
 pub fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("OPENAGENTS_CHAT_HOME") {
         return dir.into();
     }
     std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        // Windows has no `HOME`: the profile folder.
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
-        .join(".openagents/chat")
+        .join(".openagents")
+        .join("chat")
 }
 
 /// The throwaway home of one scratch thread.
