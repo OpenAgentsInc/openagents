@@ -119,7 +119,7 @@ follow_serial() {
         # start a line; the journal's copy of the same text is ignored.
         [[ "$line" == OA_* ]] || continue
         case "$line" in
-          OA_CODER_HOST_SETUP*|OA_CODER_HOST_BAKE\ phase*) say "$line" ;;
+          OA_CODER_HOST_SETUP*|OA_CODER_HOST_BAKE\ phase*|OA_CODER_HOST_BAKE_LOG*) say "$line" ;;
         esac
         if [[ "$line" == *"$ok"* ]]; then printf '%s\n' "${line#*"$ok"}"; return 0; fi
         if [[ "$line" == *"$fail"* ]]; then say "$line"; return 1; fi

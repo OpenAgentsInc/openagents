@@ -108,7 +108,7 @@ if [[ ! -s /etc/apt/keyrings/githubcli-archive-keyring.gpg ]]; then
 fi
 as_root apt-get update -q
 as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-  build-essential pkg-config clang cmake protobuf-compiler libssl-dev \
+  build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev libssl-dev \
   ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time \
   >/dev/null
 log packages end
@@ -236,7 +236,11 @@ as_user install -d -m 0755 "$home/.openagents/targets" "$slot"
 # ---------------------------------------------------------------- warm build
 if [[ "$warm" == "true" ]]; then
   log warm-fetch begin
-  as_user sh -c "cd '$repo_dir' && cargo fetch --locked >/dev/null"
+  for attempt in 1 2 3; do
+    as_user sh -c "cd '$repo_dir' && cargo fetch --locked" && break
+    [[ $attempt == 3 ]] && exit 1
+    sleep $(( attempt * 15 ))
+  done
   log warm-fetch end
   # One package per invocation, as a Coder run builds and tests them:
   # Cargo unifies features across the packages of one invocation, so a

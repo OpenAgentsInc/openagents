@@ -26,7 +26,17 @@ if [[ -e /var/lib/oa-coder-host/baked ]]; then
 fi
 
 started="$(date -u +%s)"
-trap 'serial "OA_CODER_HOST_BAKE_FAILED line=$LINENO status=$?"' ERR
+setup_log=/var/log/oa-coder-host-setup.log
+failed() {
+  local status=$? line=$1
+  # The builder is deleted after a failure, so its last output goes to the
+  # serial console, where the orchestrator prints it.
+  if [[ -s "$setup_log" ]]; then
+    tail -n 40 "$setup_log" | while IFS= read -r l; do serial "OA_CODER_HOST_BAKE_LOG $l"; done
+  fi
+  serial "OA_CODER_HOST_BAKE_FAILED line=$line status=$status"
+}
+trap 'failed $LINENO' ERR
 
 rev="$(md oa-rev)"
 repo_url="$(md oa-repo-url)"
@@ -70,6 +80,7 @@ if md oa-setup-script >/var/tmp/oa-coder-host-setup.sh && [[ -s /var/tmp/oa-code
 fi
 bash "$setup" "${setup_args[@]}" 2>&1 \
   | while IFS= read -r line; do
+      printf '%s\n' "$line" >>"$setup_log"
       case "$line" in OA_CODER_HOST_SETUP*) serial "$line" ;; *) printf '%s\n' "$line" ;; esac
     done
 [[ "${PIPESTATUS[0]}" == 0 ]]
