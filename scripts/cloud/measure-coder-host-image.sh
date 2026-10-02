@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+#
+# Measure an `oa-coder-host` image on a fresh VM, the way a pool host would
+# start from it.
+#
+#   scripts/cloud/measure-coder-host-image.sh [IMAGE] [--machine TYPE]
+#
+# IMAGE defaults to the newest image in family oa-coder-host; TYPE to
+# c3-standard-8 (the pool host shape). The VM is spot, has no external
+# address, and is deleted on exit. Its startup script prints, as user coder:
+#   ready              boot to OA_CODER_HOST_READY (measured here, from create)
+#   warm_clone         cargo build -p openagents-cli in the baked clone after
+#                      checking out the fetched origin/main, on the warm slot
+#   warm_tests_clone   cargo test --no-run for the three warm packages there
+#   warm_worktree      the same build in a fresh `git worktree` of origin/main
+#                      on the warm slot (a Coder task's path)
+#   cold_sccache       the same build into an empty target, sccache on
+#   cold_no_sccache    the same build into an empty target, sccache off
+# and the result is one JSON object on stdout.
+set -euo pipefail
+
+PROJECT="${OA_PROJECT:-openagentsgemini}"
+ZONE="${OA_ZONE:-us-central1-a}"
+HOST_SA="oa-coder-host@${PROJECT}.iam.gserviceaccount.com"
+machine="c3-standard-8"
+image=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --machine) machine="${2:?}"; shift 2 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    *) image="$1"; shift ;;
+  esac
+done
+g() { gcloud --project "$PROJECT" --quiet "$@"; }
+say() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
+if [[ -z "$image" ]]; then
+  image="$(g compute images describe-from-family oa-coder-host --format='value(name)')"
+fi
+vm="oa-coder-host-measure-$(date -u +%Y%m%d%H%M%S)"
+trap 'g compute instances delete "$vm" --zone "$ZONE" >/dev/null 2>&1 || true' EXIT
+
+script="$(mktemp)"
+cat >"$script" <<'GUEST'
+#!/bin/bash
+set -uo pipefail
+out() { echo "OA_CODER_HOST_MEASURE $*" >/dev/ttyS0; }
+until [[ -e /run/oa-coder-host/ready ]]; do sleep 1; done
+manifest=/home/coder/.openagents/coder-host.json
+slot="$(jq -r .warm_target.slot "$manifest")"
+as_coder() { runuser -u coder -- env HOME=/home/coder PATH=/home/coder/.cargo/bin:/usr/local/bin:/usr/bin:/bin "$@"; }
+timed() {
+  local name="$1"; shift
+  local t0 t1 rc
+  t0="$(date +%s.%N)"
+  as_coder bash -c "$*" >"/var/tmp/measure-$name.log" 2>&1
+  rc=$?
+  t1="$(date +%s.%N)"
+  out "$name seconds=$(awk -v a="$t0" -v b="$t1" 'BEGIN{printf "%.1f", b-a}') rc=$rc"
+}
+repo=/home/coder/openagents
+behind="$(as_coder git -C $repo rev-list --count HEAD..origin/main)"
+out "baked_behind_origin_main commits=$behind"
+timed warm_clone "cd $repo && git checkout -q --detach origin/main && CARGO_TARGET_DIR=$slot cargo build --locked -p openagents-cli"
+timed warm_tests_clone "cd $repo && CARGO_TARGET_DIR=$slot cargo test --locked --no-run --keep-going -p openagents-cli -p microcoder -p coder"
+timed worktree_add "git -C $repo worktree add -q --detach /home/coder/wt origin/main"
+timed warm_worktree "cd /home/coder/wt && CARGO_TARGET_DIR=$slot cargo build --locked -p openagents-cli"
+timed cold_sccache "cd /home/coder/wt && CARGO_TARGET_DIR=/home/coder/cold-a cargo build --locked -p openagents-cli"
+timed cold_no_sccache "cd /home/coder/wt && OA_SCCACHE=0 CARGO_TARGET_DIR=/home/coder/cold-b cargo build --locked -p openagents-cli"
+out "sccache_stats $(as_coder sccache --show-stats 2>/dev/null | grep -E 'Compile requests executed|Cache hits  |Cache misses  ' | tr -s ' ' | tr '\n' ';')"
+out "done"
+GUEST
+say "measuring $image on $vm ($machine spot)"
+t0="$(date +%s)"
+g compute instances create "$vm" --zone "$ZONE" --machine-type "$machine" \
+  --provisioning-model=SPOT --instance-termination-action=DELETE \
+  --image "$image" --image-project "$PROJECT" --boot-disk-type pd-balanced --boot-disk-size 200GB \
+  --no-address --service-account "$HOST_SA" --scopes cloud-platform \
+  --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring \
+  --labels openagents-managed=coder-host-measure \
+  --metadata serial-port-enable=TRUE,block-project-ssh-keys=TRUE \
+  --metadata-from-file "startup-script=$script" >/dev/null
+rm -f "$script"
+
+start=0; ready=""; results=()
+deadline=$(( t0 + 7200 ))
+while (( $(date +%s) < deadline )); do
+  out="$(g compute instances get-serial-port-output "$vm" --zone "$ZONE" --start "$start" --format=json 2>/dev/null || true)"
+  if [[ -n "$out" ]]; then
+    start="$(jq -r '.next' <<<"$out")"
+    while IFS= read -r line; do
+      case "$line" in
+        *OA_CODER_HOST_READY*)
+          if [[ -z "$ready" ]]; then ready="$(( $(date +%s) - t0 ))"; say "ready after ${ready}s: ${line#*OA_CODER_HOST_READY }"; fi ;;
+        "OA_CODER_HOST_MEASURE done"*) break 2 ;;
+        OA_CODER_HOST_MEASURE*) results+=("${line#OA_CODER_HOST_MEASURE }"); say "${line#OA_CODER_HOST_MEASURE }" ;;
+      esac
+    done < <(jq -r '.contents' <<<"$out" | tr -d '\r')
+  fi
+  sleep 5
+done
+printf '%s\n' "${results[@]}" | jq -R . | jq -s --arg image "$image" --arg machine "$machine" --arg ready "$ready" \
+  '{image:$image, machine:$machine, create_to_ready_seconds_poll5:($ready|tonumber? // null), results:.}'
