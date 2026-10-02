@@ -1288,6 +1288,12 @@ pub fn fix_request(workdir: &Path, number: u64, problems: &[String]) -> String {
 
 /// The Cargo packages whose directories `diff` touches, by name.
 pub fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
+    let root = std::fs::read_to_string(workdir.join("Cargo.toml")).unwrap_or_default();
+    // The root's `exclude = [...]` list, as text.
+    let excluded = root
+        .split_once("\nexclude")
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .map_or("", |(list, _)| list);
     let mut packages: Vec<String> = Vec::new();
     for line in diff.lines() {
         let Some(path) = line.strip_prefix("+++ b/") else {
@@ -1299,6 +1305,15 @@ pub fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
             if let Ok(text) = std::fs::read_to_string(&manifest)
                 && text.contains("[package]")
             {
+                // A package outside the root workspace (its own workspace, or
+                // listed in the root's `exclude`) can't be tested by name from
+                // the root: `cargo test -p openagents-mobile` fails with
+                // "cannot specify features for packages outside of workspace".
+                if text.lines().any(|l| l.trim() == "[workspace]")
+                    || excluded.contains(&format!("\"{}\"", at.display()))
+                {
+                    break;
+                }
                 let name = text
                     .lines()
                     .skip_while(|l| l.trim() != "[package]")
@@ -1963,6 +1978,27 @@ mod tests {
             prose("It keeps `Rc<RefCell<Vec<Step>>>`. See https://x.io/a or [the docs](a.md#b)."),
             "It keeps (code). See or the docs."
         );
+    }
+
+    #[test]
+    fn changed_packages_skip_packages_outside_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/inside\"]\nexclude = [\"crates/excluded\"]\n",
+        )
+        .unwrap();
+        for (crate_dir, manifest) in [
+            ("crates/inside", "[package]\nname = \"inside\"\n"),
+            ("crates/excluded", "[package]\nname = \"excluded\"\n"),
+            ("crates/own", "[package]\nname = \"own\"\n\n[workspace]\n"),
+        ] {
+            std::fs::create_dir_all(root.join(crate_dir).join("src")).unwrap();
+            std::fs::write(root.join(crate_dir).join("Cargo.toml"), manifest).unwrap();
+        }
+        let diff = "+++ b/crates/inside/src/lib.rs\n+++ b/crates/excluded/src/lib.rs\n+++ b/crates/own/src/lib.rs\n";
+        assert_eq!(changed_packages(root, diff), vec!["inside".to_string()]);
     }
 
     #[test]
