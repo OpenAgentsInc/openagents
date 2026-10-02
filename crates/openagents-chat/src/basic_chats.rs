@@ -1003,8 +1003,9 @@ impl BasicChats {
     /// and Coder link (`crate::migrate`). `Ok(false)` when this store
     /// already holds it, in the list or as a record, which is left
     /// untouched. On a failed write nothing is kept in memory, so a later
-    /// attempt writes it again.
-    pub(crate) fn adopt(
+    /// attempt writes it again. The host imports Claude Code and Codex
+    /// sessions the same way (`coder_host::sessions`).
+    pub fn adopt(
         &mut self,
         summary: Summary,
         turns: Vec<Turn>,

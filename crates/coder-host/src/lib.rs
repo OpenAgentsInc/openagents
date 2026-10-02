@@ -42,6 +42,8 @@ mod publish;
 #[cfg(feature = "host")]
 pub mod serve;
 #[cfg(feature = "host")]
+pub mod sessions;
+#[cfg(feature = "host")]
 pub mod settings;
 #[cfg(feature = "host")]
 pub mod spend;

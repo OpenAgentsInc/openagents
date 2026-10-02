@@ -45,6 +45,7 @@ enum Done {
     Sync(Result<String, String>),
     Plugins(Result<Vec<crate::Plugin>, String>),
     Plugin(String, Result<String, String>),
+    Imported(Result<String, String>),
     Settings(Result<crate::Settings, String>),
 }
 
@@ -289,6 +290,14 @@ impl Screen {
                 tokio::task::spawn_blocking(move || {
                     let ran = extras.run_plugin(&key, &request, folder.as_deref());
                     let _ = done.send(Done::Plugin(name, ran));
+                });
+            }
+            Action::Import => {
+                self.app
+                    .note("Copying Claude Code and Codex sessions into this computer's threads…");
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Imported(extras.import()));
                 });
             }
             Action::Settings => {
@@ -609,6 +618,8 @@ impl Screen {
                 self.app.settings(settings);
             }
             Done::Settings(Err(why)) => self.app.loud(why),
+            Done::Imported(Ok(message)) => self.app.note(message),
+            Done::Imported(Err(why)) => self.app.loud(why),
         }
     }
 

@@ -88,6 +88,8 @@ pub enum Action {
         name: String,
         request: String,
     },
+    /// Copy Claude Code and Codex sessions in as threads.
+    Import,
     /// Show the Coder settings.
     Settings,
     /// Turn the setting `key` on or off.
@@ -547,6 +549,7 @@ impl App {
             Slash::Settings => vec![Action::Settings],
             Slash::Connect => vec![Action::Connect],
             Slash::Plugins => vec![Action::Plugins],
+            Slash::Import => vec![Action::Import],
             Slash::Expand => {
                 self.toggle_tools();
                 Vec::new()

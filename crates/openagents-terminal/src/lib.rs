@@ -122,6 +122,12 @@ pub trait Extras: Send + Sync {
     /// It did not run or did not finish, in words for the person.
     fn run_plugin(&self, key: &str, request: &str, folder: Option<&Path>)
     -> Result<String, String>;
+    /// Copy this computer's Claude Code and Codex sessions into the host's
+    /// threads, each once. The words to show.
+    ///
+    /// # Errors
+    /// No host runs, or it refused, in words for the person.
+    fn import(&self) -> Result<String, String>;
     /// The Coder settings on this computer.
     fn settings(&self) -> Settings;
     /// Turn the choice `key` on or off, and the settings after.
@@ -151,6 +157,9 @@ impl Extras for NoExtras {
     }
     fn run_plugin(&self, _: &str, _: &str, _: Option<&Path>) -> Result<String, String> {
         Err("Plugins do not run here.".into())
+    }
+    fn import(&self) -> Result<String, String> {
+        Err("Importing sessions needs this computer's host; none runs here.".into())
     }
     fn settings(&self) -> Settings {
         Settings::default()

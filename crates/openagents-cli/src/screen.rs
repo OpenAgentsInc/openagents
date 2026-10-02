@@ -460,6 +460,20 @@ impl Extras for ProgramExtras {
         plugin_reply(&String::from_utf8_lossy(&output.stdout))
     }
 
+    fn import(&self) -> Result<String, String> {
+        if !self.host_answers() {
+            return Err("Importing sessions needs this computer's host, which keeps the threads every app shows. Open the OpenAgents app, or run `openagents host serve --control`.".into());
+        }
+        match self.call(Op::ChatImport {})? {
+            Reply::ChatImported {
+                imported,
+                present,
+                skipped,
+            } => Ok(imported_words(imported, present, skipped)),
+            _ => Err(other_answer()),
+        }
+    }
+
     fn settings(&self) -> Settings {
         coder_settings(&coder::task::settings::path())
     }
@@ -469,6 +483,27 @@ impl Extras for ProgramExtras {
         change_setting(&path, key, on)?;
         Ok(coder_settings(&path))
     }
+}
+
+/// What an import did, in words.
+fn imported_words(imported: u32, present: u32, skipped: u32) -> String {
+    let sessions = |count: u32| format!("{count} session{}", if count == 1 { "" } else { "s" });
+    let mut words = if imported == 0 {
+        "No new Claude Code or Codex sessions to copy.".to_owned()
+    } else {
+        format!(
+            "Copied {} from Claude Code and Codex in as threads; Ctrl+T lists them.",
+            sessions(imported)
+        )
+    };
+    if present > 0 {
+        let were = if present == 1 { "was" } else { "were" };
+        words.push_str(&format!(" {} {were} copied before.", sessions(present)));
+    }
+    if skipped > 0 {
+        words.push_str(&format!(" {} held nothing to copy.", sessions(skipped)));
+    }
+    words
 }
 
 /// The key of the choice "Start Coder at once".
@@ -915,6 +950,18 @@ mod tests {
             "no package.json"
         );
         assert!(plugin_reply("").is_err());
+    }
+
+    #[test]
+    fn an_import_says_what_it_copied() {
+        assert_eq!(
+            imported_words(2, 0, 0),
+            "Copied 2 sessions from Claude Code and Codex in as threads; Ctrl+T lists them."
+        );
+        assert_eq!(
+            imported_words(0, 1, 3),
+            "No new Claude Code or Codex sessions to copy. 1 session was copied before. 3 sessions held nothing to copy."
+        );
     }
 
     #[test]

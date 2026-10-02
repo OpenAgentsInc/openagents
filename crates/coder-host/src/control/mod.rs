@@ -295,6 +295,15 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             Err(ChatRefusal::Unavailable(message)) => refused("unavailable", message),
             Err(ChatRefusal::Chat(message)) => refused("chat", message),
         },
+        Op::ChatImport {} => match import_sessions(shared) {
+            Ok(report) => Reply::ChatImported {
+                imported: u32::try_from(report.imported).unwrap_or(u32::MAX),
+                present: u32::try_from(report.present).unwrap_or(u32::MAX),
+                skipped: u32::try_from(report.skipped).unwrap_or(u32::MAX),
+            },
+            Err(ChatRefusal::Unavailable(message)) => refused("unavailable", message),
+            Err(ChatRefusal::Chat(message)) => refused("chat", message),
+        },
         Op::Task { .. } | Op::ImportTask { .. } => {
             refused("unavailable", "task broker requires its own lane")
         }
@@ -1356,6 +1365,22 @@ pub(crate) fn migrate_chats(
             .map_or(0, |elapsed| elapsed.as_secs()),
     )
     .map_err(refuse)
+}
+
+/// Copy this user's Claude Code and Codex sessions into the host's threads
+/// (`crate::sessions`), each once.
+pub(crate) fn import_sessions(
+    shared: &Shared,
+) -> std::result::Result<crate::sessions::Report, ChatRefusal> {
+    let home = crate::sessions::user_home()
+        .ok_or_else(|| ChatRefusal::Chat("this user has no home folder".into()))?;
+    let mut state = shared
+        .chats
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    open_chats(shared, &mut state)?;
+    let chats = state.as_mut().expect("initialized chat state");
+    crate::sessions::import(&home, chats).map_err(ChatRefusal::Chat)
 }
 
 /// Apply one chat service command to the host's threads

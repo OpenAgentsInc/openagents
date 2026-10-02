@@ -109,6 +109,11 @@ pub enum Op {
     /// (`openagents_chat::migrate`). The host reads that home's device key
     /// itself, and refuses a scratch store or a home another user owns.
     ChatMigrate { home: String },
+    /// Copy the Claude Code and Codex sessions of the host's user
+    /// (`~/.claude/projects`, `~/.codex/sessions`) into the host's threads,
+    /// each once (`coder_host::sessions`). The host only reads those
+    /// folders.
+    ChatImport {},
     /// The host's identity, reachability, and counts.
     Status {},
     /// Whether tailnet admission serves, and where (#10125). A separate
@@ -202,6 +207,13 @@ pub enum Reply {
     ChatMigrated {
         moved: u32,
         present: u32,
+    },
+    /// What `chat_import` did: sessions taken in as threads now, sessions
+    /// already imported, and files that held no conversation it could read.
+    ChatImported {
+        imported: u32,
+        present: u32,
+        skipped: u32,
     },
     Status(Status),
     /// Tailnet admission (#10125): `address` is the tailnet `IP:PORT` it
