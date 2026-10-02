@@ -84,8 +84,14 @@ cat >/usr/local/libexec/oa-coder-host-ready <<'READY'
 set -uo pipefail
 install -d -m 0755 /run/oa-coder-host
 rm -f /run/oa-coder-host/no-sccache /run/oa-coder-host/ready
-fetch="ok"
-timeout 60 runuser -u coder -- git -C /home/coder/openagents fetch --quiet origin main || fetch="failed"
+# Egress is through Cloud NAT, which can lag a fresh VM's boot; retry.
+fetch="failed"
+for attempt in 1 2 3 4 5 6; do
+  if timeout 30 runuser -u coder -- git -C /home/coder/openagents fetch --quiet origin main; then
+    fetch="ok"; [[ $attempt == 1 ]] || fetch="ok-after-$attempt"; break
+  fi
+  sleep 5
+done
 sccache="ok"
 runuser -u coder -- env HOME=/home/coder /usr/local/bin/sccache --stop-server >/dev/null 2>&1 || true
 if ! timeout 30 runuser -u coder -- env HOME=/home/coder /usr/local/bin/sccache --start-server >/dev/null 2>&1; then

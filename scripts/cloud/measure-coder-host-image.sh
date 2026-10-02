@@ -11,9 +11,10 @@
 #   ready              boot to OA_CODER_HOST_READY (measured here, from create)
 #   warm_clone         cargo build -p openagents-cli in the baked clone after
 #                      checking out the fetched origin/main, on the warm slot
-#   warm_tests_clone   cargo test --no-run for the three warm packages there
+#   warm_tests_clone   its test targets there (cargo build --tests)
 #   warm_worktree      the same build in a fresh `git worktree` of origin/main
 #                      on the warm slot (a Coder task's path)
+#   edit_rebuild       one edit to openagents-cli's main.rs, then the build
 #   cold_sccache       the same build into an empty target, sccache on
 #   cold_no_sccache    the same build into an empty target, sccache off
 # and the result is one JSON object on stdout.
@@ -61,9 +62,10 @@ repo=/home/coder/openagents
 behind="$(as_coder git -C $repo rev-list --count HEAD..origin/main)"
 out "baked_behind_origin_main commits=$behind"
 timed warm_clone "cd $repo && git checkout -q --detach origin/main && CARGO_TARGET_DIR=$slot cargo build --locked -p openagents-cli"
-timed warm_tests_clone "cd $repo && CARGO_TARGET_DIR=$slot cargo test --locked --no-run --keep-going -p openagents-cli -p microcoder -p coder"
+timed warm_tests_clone "cd $repo && CARGO_TARGET_DIR=$slot cargo build --locked --keep-going --tests -p openagents-cli"
 timed worktree_add "git -C $repo worktree add -q --detach /home/coder/wt origin/main"
 timed warm_worktree "cd /home/coder/wt && CARGO_TARGET_DIR=$slot cargo build --locked -p openagents-cli"
+timed edit_rebuild "cd /home/coder/wt && echo '// measure' >> crates/openagents-cli/src/main.rs && CARGO_TARGET_DIR=$slot cargo build --locked -p openagents-cli"
 timed cold_sccache "cd /home/coder/wt && CARGO_TARGET_DIR=/home/coder/cold-a cargo build --locked -p openagents-cli"
 timed cold_no_sccache "cd /home/coder/wt && OA_SCCACHE=0 CARGO_TARGET_DIR=/home/coder/cold-b cargo build --locked -p openagents-cli"
 out "sccache_stats $(as_coder sccache --show-stats 2>/dev/null | grep -E 'Compile requests executed|Cache hits  |Cache misses  ' | tr -s ' ' | tr '\n' ';')"

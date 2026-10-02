@@ -34,7 +34,8 @@ case "${1:-}" in
 esac
 
 step='set -euo pipefail
-command -v jq >/dev/null || { apt-get update -qq >/dev/null && apt-get install -y -qq jq >/dev/null; }
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null && apt-get install -y -qq git jq >/dev/null
 git clone -q --depth 1 --filter=blob:none --sparse https://github.com/OpenAgentsInc/openagents.git oa
 git -C oa sparse-checkout set scripts/cloud
 oa/scripts/cloud/build-coder-host-image.sh --apply'

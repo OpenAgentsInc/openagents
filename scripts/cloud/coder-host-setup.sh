@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-log() { printf 'OA_CODER_HOST_SETUP %s t=%s %s\n' "$1" "$(date -u +%s)" "${2:-}"; }
+log() { local phase="$1"; shift; printf 'OA_CODER_HOST_SETUP %s t=%s %s\n' "$phase" "$(date -u +%s)" "$*"; }
 
 if [[ "$(id -u)" == 0 ]]; then
   SUDO=""
@@ -224,22 +224,28 @@ as_user install -d -m 0755 "$home/.openagents/targets" "$slot"
 
 # ---------------------------------------------------------------- warm build
 if [[ "$warm" == "true" ]]; then
-  pkg_args=()
-  for p in "${WARM_PACKAGES[@]}"; do pkg_args+=(-p "$p"); done
   log warm-fetch begin
   as_user sh -c "cd '$repo_dir' && cargo fetch --locked >/dev/null"
   log warm-fetch end
-  log warm-build begin
-  as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo build --locked ${pkg_args[*]}"
-  log warm-build end
-  log warm-tests begin
-  # --keep-going: one test target that does not compile on main must not
-  # leave the rest of the test dependencies cold.
-  if as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo test --locked --no-run --keep-going ${pkg_args[*]}"; then
-    log warm-tests end
-  else
-    log warm-tests end "partial=true"
-  fi
+  # One package per invocation, as a Coder run builds and tests them:
+  # Cargo unifies features across the packages of one invocation, so a
+  # combined build would leave the per-package feature sets cold.
+  # `--tests` builds each package's test targets (its dev-dependencies
+  # included); --keep-going keeps one test target that does not compile on
+  # main from leaving the rest cold.
+  partial=""
+  for p in "${WARM_PACKAGES[@]}"; do
+    log warm-build begin "package=$p"
+    as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo build --locked -p $p"
+    log warm-build end "package=$p"
+    log warm-tests begin "package=$p"
+    if as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo build --locked --keep-going --tests -p $p"; then
+      log warm-tests end "package=$p"
+    else
+      partial="$partial $p"
+      log warm-tests end "package=$p partial=true"
+    fi
+  done
   if [[ "$release_binary" == "true" ]]; then
     log release begin
     rel="$home/.cache/oa-release-target"
@@ -261,6 +267,7 @@ jq -n \
   --arg repo_dir "$repo_dir" \
   --arg slot "$slot" \
   --arg warm "$warm" \
+  --arg partial "${partial:-}" \
   --arg packages "${WARM_PACKAGES[*]}" \
   --arg rustc "$(version_of rustc --version)" \
   --arg sccache "$(version_of sccache --version)" \
@@ -272,7 +279,8 @@ jq -n \
   --arg grok "$(version_of grok --version)" \
   --arg openagents "$(version_of openagents --version)" \
   '{schema:"openagents.coder_host.v1", built_at:$built_at, rev:$rev, repo_dir:$repo_dir,
-    warm_target:{slot:$slot, warm:($warm=="true"), packages:($packages|split(" "))},
+    warm_target:{slot:$slot, warm:($warm=="true"), packages:($packages|split(" ")),
+                 tests_not_compiling:($partial|split(" ")|map(select(length>0)))},
     tools:{rustc:$rustc, sccache:$sccache, sccache_bucket:$sccache_bucket, node:$node, gh:$gh,
            codex:$codex, claude:$claude, grok:$grok, openagents:$openagents},
     logins:"none"}' | as_user tee "$manifest" >/dev/null
