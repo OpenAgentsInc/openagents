@@ -1,7 +1,7 @@
 # OpenAgents video archive: index, history, and themes
 
-This guide covers the committed transcript archive as of 2026-09-26:
-**288 numbered episode files covering every number from 001 through 288**. The unreleased 288 [preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and [draft script](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md) are no longer in the tree; those links go to their last committed versions.
+This guide covers the committed transcript archive as of 2026-10-02:
+**289 numbered episode files covering every number from 001 through 289**. The unreleased 288 [preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and [draft script](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md) are no longer in the tree; those links go to their last committed versions.
 The archive follows OpenAgents from document chat and its first coding agent
 to agent markets, operator workrooms, the Coder product suite, and measured
 System One coding-agent experiments.
@@ -24,7 +24,8 @@ feature survived every reset or exists in today's repository.
 ## Archive coverage and source limits
 
 The episode titles and video links for 001–287 follow the owner’s definitive
-catalog supplied on 2026-09-26. The session recorded as 288 was not released
+catalog supplied on 2026-09-26. Episodes 288 and 289 are the newer recordings
+transcribed in this archive. The session recorded as 288 was not released
 under that number, and neither was the unrecorded **Test-Time Capabilities**
 draft script. 288 is **[Three DevDays Later](288.md)**, the launch-preview
 recording. The earlier [288 preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and
@@ -50,6 +51,7 @@ the recording or publication date.
 | [285](285.md) | **Bendcoder**, a 02:10:55.02 prototype session. It tests an approach and language, not comparative benchmark superiority. |
 | [287](287.md) | A 02:35:36.90 build-and-measurement session. Results discussed during iteration must retain their configuration, task set, and measurement limits. |
 | [288](288.md) | **Three DevDays Later.** 02:58.57 launch-preview recording, cut from 03:22 of `recording-20260930-132914.mp4`: OpenAI's developer marketplace and its zero revenue share, permissionless protocols on Nostr, and the OpenAgents 1.0.0 announcement. |
+| [289](289.md) | **OpenAgents.** 04:40.13 overview of the composable general agent, plugin and eval creation, Lightning micropayments, open protocols, and the version 1.0 rollout. |
 
 The summaries use *plans*, *proposes*, *announces*, *demonstrates*, and
 *reports* deliberately. An announcement can establish historical intent;
