@@ -2,12 +2,13 @@
 
 Design notes for putting OpenAgents itself, the composable general agent,
 behind an API that partner apps, websites, other agents, and self-hosters
-can call. Nothing here is implemented as a public API yet; the documents say
-what exists today that it would sit on.
+can call. Nothing here is implemented as a public API yet. The public face is
+plain HTTP with an API key; Nostr stays inside our own front, as the CLI
+hides it today; payment is x402.
 
 | Document | What it covers |
 | --- | --- |
-| [The OpenAgents API (speculative design, 2026-10-02)](2026-10-02-openagents-api.md) | What "OpenAgents behind an API" means, the shape options and the recommended layering, resources and events, where it runs, identity and safety, cost, a phased path, and open questions. |
+| [The OpenAgents API (design, 2026-10-02)](2026-10-02-openagents-api.md) | The owner's decisions; plain HTTP at `api.openagents.com` with curl examples for every main call; how our front turns each call into NIP traffic and where keys live; x402 Lightning payment with the 402, pay, retry flow; the endpoint-to-NIP table and the NIP gaps; where it runs; the phased path; and what is still open. |
 
 Related: the existing keyed HTTP [decision gateway](../decision-models/service/gateway.md)
 (System One judgments, not the agent), the [chat worker](../deployment/chat-worker.md)
