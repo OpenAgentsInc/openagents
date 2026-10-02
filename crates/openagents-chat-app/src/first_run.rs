@@ -48,7 +48,7 @@ pub const SUGGESTIONS_SHOWN: usize = 4;
 
 /// Every new chat's suggestions, in order (`SCR-15.E06`). A new chat shows
 /// the first [`SUGGESTIONS_SHOWN`] the person has not used yet (tapped, or
-/// sent the same words); once all are used, none.
+/// sent the same words) first, then used ones, so there are always four.
 pub const SUGGESTIONS: &[Suggestion] = &[
     Suggestion {
         id: "meta.who",

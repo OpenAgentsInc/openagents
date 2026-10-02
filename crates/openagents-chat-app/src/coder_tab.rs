@@ -3233,8 +3233,8 @@ impl CoderTab {
 
     /// The suggestions in the phone's order, each with the ID a rank job
     /// knows it by: the first few of [`crate::first_run::SUGGESTIONS`] not
-    /// used on this device (tapped, or their words sent), on every new
-    /// chat; none once all are used. Each is a question to send, never a
+    /// used on this device (tapped, or their words sent), then used ones,
+    /// so every new chat shows four. Each is a question to send, never a
     /// previous chat (those are behind the menu) and never a way to run
     /// Coder on a computer (that is an offer under a reply).
     fn candidates(&self) -> Vec<(String, Node<Intent>)> {

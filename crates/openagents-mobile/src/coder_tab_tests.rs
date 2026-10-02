@@ -1900,28 +1900,27 @@ fn a_used_followup_chip_never_shows_again() {
     );
 }
 
-/// Once every suggestion is used, a new chat shows none.
+/// Unused suggestions come first; once they run out, used ones fill in, so
+/// a new chat always shows four.
 #[test]
-fn every_suggestion_used_shows_none() {
+fn a_new_chat_always_shows_four_suggestions() {
     let hand = Hand::default();
     let mut fixture =
         Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    let mut tapped = Vec::new();
     for round in 0..crate::first_run::SUGGESTIONS.len() {
         let screen = fixture.render();
         let shown = suggestions(&screen);
-        let left = crate::first_run::SUGGESTIONS.len() - round;
-        assert_eq!(shown.len(), left.min(4), "round {round}: {shown:?}");
+        assert_eq!(shown.len(), 4, "round {round}: {shown:?}");
+        assert!(!tapped.contains(&shown[0].0), "round {round}: {shown:?}");
+        tapped.push(shown[0].0.clone());
         fixture.tap(&shown[0].0);
         hand.say("An answer.", true);
         fixture.tap("coder-new");
     }
     let screen = fixture.render();
-    assert!(
-        suggestions(&screen).is_empty(),
-        "{:?}",
-        suggestions(&screen)
-    );
-    assert!(node(&screen, "coder-suggestions").is_none());
+    assert_eq!(suggestions(&screen).len(), 4, "{:?}", suggestions(&screen));
+    assert!(node(&screen, "coder-suggestions").is_some());
     assert_eq!(kinds(&screen, "composer"), 1);
 }
 

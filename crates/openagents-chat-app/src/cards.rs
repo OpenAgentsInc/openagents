@@ -142,15 +142,19 @@ pub fn reply_actions_for(
 pub fn suggestions(
     used: &[String],
 ) -> impl Iterator<Item = &'static crate::first_run::Suggestion> + '_ {
-    crate::first_run::SUGGESTIONS
-        .iter()
-        .filter(|suggestion| {
-            !openagents_chat::basic_chats::suggestion_used(
-                used,
-                Some(suggestion.id),
-                &[suggestion.label, suggestion.message],
-            )
-        })
+    let fresh = |suggestion: &&crate::first_run::Suggestion| {
+        !openagents_chat::basic_chats::suggestion_used(
+            used,
+            Some(suggestion.id),
+            &[suggestion.label, suggestion.message],
+        )
+    };
+    // The ones not used yet come first; used ones fill the rest, so a new
+    // chat always shows suggestions (owner, 2026-10-01).
+    let all = crate::first_run::SUGGESTIONS.iter();
+    all.clone()
+        .filter(fresh)
+        .chain(all.filter(move |suggestion| !fresh(suggestion)))
         .take(crate::first_run::SUGGESTIONS_SHOWN)
 }
 
