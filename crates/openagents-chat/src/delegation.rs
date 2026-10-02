@@ -35,10 +35,12 @@ pub fn prompt(chat_title: &str, turns: &[Turn]) -> String {
 /// The person's message asked OpenAgents to delegate, and maybe to one
 /// engine (`requested`, the offer's typed engine, never read from text);
 /// by the time an engine reads this, that request is done. So the engine
-/// is told the routing is settled, that its job is the person's task, and
-/// never to start another coding engine's command line to perform the
-/// delegation; and that a message with no task beyond the delegation
-/// itself gets a small, harmless check of the project. Which engine a
+/// is told the routing is settled, to do the work the message names (a
+/// "test delegation" that also says "clone grok-build to ~" clones it,
+/// owner 2026-10-02), never to start another coding engine's command line,
+/// and that only a message with no task beyond the handoff itself gets a
+/// small, harmless check of the project. It is told to report the work,
+/// not the handoff: Grok Build answered "The delegation ran here…". Which engine a
 /// message names is the router's typed judgment; whether it asks for more
 /// than the delegation is the engine's own reading of it.
 #[must_use]
@@ -60,13 +62,15 @@ pub fn routing(requested: Option<nostr::cj_conversation::Engine>) -> String {
             .to_owned(),
     };
     format!(
-        "{asked}Your job is the person's task, done here in this project with your own \
-         commands. This run is the delegation: never start another coding engine's command \
-         line (such as `claude`, `codex`, `devin`, `opencode`, or `grok`) as a sub-process, to \
-         do the task or to test a delegation, and never ask the person for another engine's \
-         login. If the message asks for nothing beyond the delegation itself, such as a test \
-         delegation, the task is a small, harmless check of this project: look at what it \
-         holds, change nothing, and tell the person in a few sentences what you found."
+        "{asked}Do what the person's message asks, here, with your own commands: when it \
+         names work, such as cloning a repository, running something, or changing files, do \
+         that work. You never start another coding engine's command line (such as `claude`, \
+         `codex`, `devin`, `opencode`, or `grok`) as a sub-process, and you never ask the \
+         person for another engine's login. Only when the message asks for nothing but the handoff \
+         itself, such as a bare test delegation, is the task a small, harmless check of this \
+         project: look at what it holds, change nothing, and tell the person in a few \
+         sentences what you found. Tell the person about the work, not about how this run \
+         was started."
     )
 }
 
@@ -395,14 +399,21 @@ mod tests {
             "if you are Claude Code, you are the engine they asked for",
             "Claude Code could not run on this computer now",
             "which engine runs instead",
-            "Your job is the person's task",
+            "Do what the person's message asks",
+            "such as cloning a repository",
+            "do that work",
             "never start another coding engine's command line",
             "`claude`",
             "never ask the person for another engine's login",
+            "Only when the message asks for nothing but the handoff",
             "a small, harmless check of this project",
             "change nothing",
+            "not about how this run was started",
         ] {
             assert!(text.contains(needle), "{needle:?} missing from {text}");
+        }
+        for leaked in ["This run is the delegation", "Your job is"] {
+            assert!(!text.contains(leaked), "{leaked:?} in {text}");
         }
         assert_eq!(
             crate::basic_chats::handoff_request(&text).as_deref(),

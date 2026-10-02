@@ -155,8 +155,13 @@ pub struct App {
     /// The highest event of each task already shown, so following a run
     /// again never repeats a row.
     seen: HashMap<String, u64>,
-    /// Frames drawn, for the spinner.
+    /// Ticks of the 30 fps animation clock, for the spinner
+    /// ([`coder_terminal::grok_spinner`]).
     pub tick: u64,
+    /// What is happening while nothing else shows it, beside the spinner:
+    /// "Starting Grok Build…", "Grok Build connected · grok-4.7",
+    /// "Thinking…", and the tick it began at, for its timer.
+    pub activity: Option<(String, u64)>,
     /// Tool calls show expanded: each call with its output (Ctrl+O,
     /// `/expand`). Condensed by default.
     pub expanded: bool,
@@ -219,6 +224,7 @@ impl App {
             sent: None,
             copied: None,
             tick: 0,
+            activity: None,
             expanded: false,
             offline: None,
             plugin: None,
@@ -260,6 +266,7 @@ impl App {
         self.offer = false;
         self.engine = None;
         self.starting = None;
+        self.activity = None;
         self.seen.clear();
         self.scroll = 0;
         self.run_log = transcript(self.ladder);
@@ -313,6 +320,13 @@ impl App {
     /// Whether an operation runs on the client now.
     pub fn busy(&self) -> bool {
         self.phase != Phase::Idle
+    }
+
+    /// Whether a spinner is on the screen: the composer's while anything
+    /// runs, and the live line's.
+    #[must_use]
+    pub fn animating(&self) -> bool {
+        self.busy() || self.live_status().is_some()
     }
 
     /// Whether the run should be followed again once the client is free:
@@ -706,6 +720,34 @@ impl App {
             Op::Stop { .. } => Phase::Working,
         };
         self.partial.clear();
+        if let Op::Send { .. } = op {
+            self.doing("Replying…");
+        }
+    }
+
+    /// Say what is happening now beside the spinner; the same words keep
+    /// their timer.
+    fn doing(&mut self, text: impl Into<String>) {
+        let text = text.into();
+        if self.activity.as_ref().is_none_or(|(now, _)| *now != text) {
+            self.activity = Some((text, self.tick));
+        }
+    }
+
+    /// The spinner's line while something is in progress and nothing
+    /// streams it: what is happening and for how long.
+    #[must_use]
+    pub fn live_status(&self) -> Option<(&str, std::time::Duration)> {
+        let (text, since) = self.activity.as_ref()?;
+        let shown = self.partial.is_empty()
+            && !self.asked
+            && (self.running || self.phase == Phase::Replying || self.starting.is_some());
+        shown.then(|| {
+            (
+                text.as_str(),
+                coder_terminal::grok_spinner::elapsed(self.tick.saturating_sub(*since)),
+            )
+        })
     }
 
     /// The operation ended.
@@ -716,6 +758,7 @@ impl App {
         self.partial.clear();
         if !self.running {
             self.progress = None;
+            self.activity = None;
         }
         if let Some(message) = failed {
             self.loud(message);
@@ -749,12 +792,15 @@ impl App {
                     self.phase = Phase::Following;
                     // The rail says who is starting from the reply on: a
                     // start never leaves the screen silent (#10115).
-                    self.starting = Some(
-                        meta.runner
-                            .as_ref()
-                            .and_then(|runner| runner.provider())
-                            .map_or_else(|| "Starting Coder…".to_owned(), coder_events::starting),
-                    );
+                    let starting = meta
+                        .runner
+                        .as_ref()
+                        .and_then(|runner| runner.provider())
+                        .map_or_else(|| "Starting Coder…".to_owned(), coder_events::starting);
+                    self.doing(starting.clone());
+                    self.starting = Some(starting);
+                } else if !self.running {
+                    self.activity = None;
                 }
             }
             Event::ReplyFailed {
@@ -768,7 +814,9 @@ impl App {
             }
             Event::Failure { message, .. } => self.loud(message),
             Event::Starting { engine, .. } => {
-                self.starting = Some(coder_events::starting(&engine));
+                let starting = coder_events::starting(&engine);
+                self.doing(starting.clone());
+                self.starting = Some(starting);
             }
             Event::Coder {
                 accepted,
@@ -791,6 +839,7 @@ impl App {
                     }
                 } else {
                     self.starting = None;
+                    self.activity = None;
                     self.loud(message);
                 }
             }
@@ -844,13 +893,55 @@ impl App {
     }
 
     /// One event of the thread's Coder task.
+    /// Where a replayed event, already shown, leaves the run.
+    fn replayed(&mut self, event: &CoderEvent) {
+        match event {
+            CoderEvent::CoderStarted(_) => {
+                self.running = true;
+                self.asked = false;
+                self.starting = None;
+            }
+            event if event.ends_turn() => {
+                let replaced = self
+                    .next_turn
+                    .is_some_and(|next| openagents_chat::client::turn_of(event) < next);
+                self.running = replaced;
+                self.asked = matches!(event, CoderEvent::Question(_) | CoderEvent::Approval(_));
+                self.progress = None;
+                self.activity = None;
+            }
+            _ => {}
+        }
+    }
+
     fn line(&mut self, line: CoderLine) {
         let seen = self.seen.entry(line.task.clone()).or_insert(0);
         if line.seq != 0 && line.seq <= *seen {
+            // A follow that starts again replays the task from its first
+            // event. Its rows are already here, but where the run stands
+            // still comes from them: a replay of a turn that ended must
+            // not leave the screen working with nothing coming.
+            self.replayed(&line.event);
             return;
         }
         *seen = line.seq.max(*seen);
         self.task = Some(line.task.clone());
+        match &line.event {
+            CoderEvent::Status(status) => {
+                self.running = true;
+                self.doing(status.text.clone());
+                return;
+            }
+            CoderEvent::Step(step) => match step.kind {
+                coder_events::StepKind::Command | coder_events::StepKind::ToolCall => {
+                    self.doing("Running…");
+                }
+                coder_events::StepKind::Message => {}
+                _ => self.doing("Working…"),
+            },
+            CoderEvent::Output(_) => self.doing("Working…"),
+            _ => {}
+        }
         match &line.event {
             CoderEvent::Progress(progress) => {
                 self.running = true;
@@ -861,6 +952,8 @@ impl App {
                 self.running = true;
                 self.asked = false;
                 self.starting = None;
+                // The run is launched; its engine has not said anything yet.
+                self.doing(coder_events::starting(&started.provider));
                 self.engine = Some(rows::provider(&started.provider));
                 self.worktree = Some(started.worktree.clone());
                 if self.next_turn.is_some_and(|next| started.turn >= next) {
@@ -890,6 +983,7 @@ impl App {
                 .is_some_and(|next| openagents_chat::client::turn_of(&line.event) < next);
             self.running = replaced;
             self.progress = None;
+            self.activity = None;
             for log in [&mut self.transcript, &mut self.run_log] {
                 if let Some(Row::Tools { stretch, .. }) = log.last_mut() {
                     stretch.settle();

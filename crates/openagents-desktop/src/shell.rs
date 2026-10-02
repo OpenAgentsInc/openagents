@@ -6611,10 +6611,7 @@ mod coder_events {
             text.contains("tool \"Run\" \"printf 'import unittest\\\\n' > test_slugs.py\" [done]"),
             "{text}"
         );
-        assert!(
-            text.contains("working \"Coder is working · step 1 · 0s\""),
-            "{text}"
-        );
+        assert!(text.contains("working \"Working · step 1 · 0s\""), "{text}");
     }
 }
 

@@ -1220,7 +1220,13 @@ impl Client {
         if snapshot.coder.is_some() && matches!(self.backend, Backend::Computer { .. }) {
             return self.elsewhere(id, sink).await;
         }
-        if let Some(coder) = &snapshot.coder {
+        // A run this computer started that still works: follow it. One
+        // whose last turn ended takes the new message as its next turn,
+        // as a start does (#10094); following it would only replay what
+        // is already on the screen, with nothing coming.
+        if let Some(coder) = &snapshot.coder
+            && !(coder.host == LOCAL_HOST && self.result(id, &coder.task).await.is_some())
+        {
             coder_report(
                 sink,
                 id,
@@ -1787,6 +1793,7 @@ pub fn turn_of(event: &CoderEvent) -> usize {
         CoderEvent::ProviderSwitched(e) => e.turn,
         CoderEvent::Question(e) | CoderEvent::Approval(e) => e.turn,
         CoderEvent::Progress(e) => e.turn,
+        CoderEvent::Status(e) => e.turn,
         CoderEvent::Result(e) => e.turn,
         CoderEvent::Failure(e) => e.turn,
         CoderEvent::Stopped(e) => e.turn,

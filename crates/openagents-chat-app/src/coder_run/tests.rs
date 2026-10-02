@@ -92,6 +92,7 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
             "provider_switched",
             "question",
             "result",
+            "status",
             "step",
             "stopped"
         ],
@@ -117,7 +118,9 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
         "I added test_slugs.py.",
         "1 file changed · +2 −0",
         "added test_slugs.py +2 −0",
-        "Worked for 0s · ran a command · thought 2 times",
+        // The fixture's seconds are its recording's own.
+        "Worked for ",
+        "s · ran a command · thought 2 times",
     ] {
         assert!(
             text.contains(expected),
@@ -184,7 +187,7 @@ fn a_running_turn_shows_its_progress_and_open_command() {
     let text = text_of(&rows);
     // No budget on the running line (#10103): the step and the time, and
     // Jev's estimate of how much is done once it has one.
-    assert!(text.contains("Coder is working · step 1 · 0s"), "{text}");
+    assert!(text.contains("Working · step 1 · 0s"), "{text}");
     assert!(!text.contains(" of 24"), "{text}");
     assert!(text.contains("Stop Coder"));
     assert_eq!(run.mode(), Mode::Queue);

@@ -45,6 +45,12 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 
+# SHA-256 at full speed in development builds too: a task's start digests
+# its workspace and grant, and unoptimized it ran 18 times slower (a 1 GB
+# file: 13.1 s against 0.74 s on CoderOS).
+[profile.dev.package.sha2]
+opt-level = 3
+
 # The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The
 # guests are checked in and inlined into `programs/evidence-guests.json`,
 # so size is a review cost. No native build uses it.

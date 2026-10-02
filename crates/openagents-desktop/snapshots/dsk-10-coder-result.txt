@@ -11,7 +11,7 @@ tool "Run" "printf 'import unittest\\n' > test_slugs.py" [done]
   code "$ printf 'import unittest\\n' > test_slugs.py"
 tool "Thinking" "Done." [done]
   code "Done."
-status "Worked for 0s · ran a command · thought 2 times"
+status "Worked for 1s · ran a command · thought 2 times"
 vertical stack [card]
   body "Coder asks"
   markdown "Should the test cover empty input too?"
@@ -26,10 +26,10 @@ tool "Run" "printf 'x = 1\\n' >> test_slugs.py" [done]
   code "$ printf 'x = 1\\n' >> test_slugs.py"
 tool "Thinking" "Done." [done]
   code "Done."
-status "Worked for 0s · ran a command · thought 2 times"
+status "Worked for 1s · ran a command · thought 2 times"
 vertical stack [card]
   body "Coder finished"
   markdown "I added test_slugs.py."
   body "1 file changed · +2 −0"
   status "added test_slugs.py +2 −0"
-  status "In /tmp/scratch/worktrees/slugs-4e90697d9c5f"
+  status "In /tmp/scratch/worktrees/slugs-7c47252f2dec"

@@ -66,6 +66,10 @@ struct FakeCoder {
     predicts: Option<Runner>,
     /// The project folders it was asked to make ready.
     warmed: Mutex<Vec<PathBuf>>,
+    /// The task's last turn ended.
+    ended: bool,
+    /// What it was told to continue with.
+    answered: Mutex<Vec<String>>,
 }
 
 impl Coder for FakeCoder {
@@ -133,11 +137,20 @@ impl Coder for FakeCoder {
     fn stop(&self, _: &Path, _: &str) -> Result<(), String> {
         Ok(())
     }
-    fn answer(&self, _: &Path, _: &str, _: &str) -> Result<usize, String> {
+    fn answer(&self, _: &Path, _: &str, text: &str) -> Result<usize, String> {
+        self.answered.lock().unwrap().push(text.to_owned());
         Ok(2)
     }
     fn result(&self, _: &Path, _: &str) -> Option<CoderRun> {
-        None
+        self.ended.then(|| CoderRun {
+            ending: crate::router::RunEnding::Finished,
+            turn: 1,
+            engine: Some("grok".into()),
+            model: None,
+            summary: "Done.".into(),
+            files: Vec::new(),
+            commands: Vec::new(),
+        })
     }
     fn trajectories(&self, _: &Path, _: &str) -> Vec<Value> {
         Vec::new()
@@ -274,6 +287,62 @@ async fn a_coding_reply_starts_coder_at_once_and_streams_its_events() {
         started[0].1,
         Some(nostr::cj_conversation::Engine::ClaudeCode)
     );
+}
+
+/// A coding message to a thread whose run ended starts the run's next turn
+/// with it; one to a thread whose run still works follows that run. A
+/// follow of an ended run only replayed what the screen showed, and the
+/// screen sat on "working" with nothing coming (owner, 2026-10-02).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_message_to_an_ended_run_continues_it_and_one_to_a_working_run_follows_it() {
+    for ended in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let door = Arc::new(Worker {
+            contexts: Arc::default(),
+            coding: true,
+        });
+        let coder = Arc::new(FakeCoder {
+            ended,
+            ..FakeCoder::default()
+        });
+        let client = in_process(door, options(dir.path()), coder.clone());
+        let thread = new_id();
+        let (_, client, _) =
+            drain(client.stream(send(&thread, "clone grok-build to ~", Start::Settings))).await;
+        let mut again = send(&thread, "summarize its latest 3 commits", Start::Settings);
+        if let Op::Send { new, .. } = &mut again {
+            *new = false;
+        }
+        let (events, _, _) = drain(client.stream(again)).await;
+        let said: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Coder {
+                    accepted: true,
+                    message,
+                    ..
+                } => Some(message.as_str()),
+                _ => None,
+            })
+            .collect();
+        let answered = coder.answered.lock().unwrap().clone();
+        if ended {
+            assert_eq!(
+                said,
+                ["Coder continues task t1 with your message."],
+                "{events:?}"
+            );
+            assert_eq!(answered, ["summarize its latest 3 commits"]);
+        } else {
+            assert_eq!(said, ["Following task t1."], "{events:?}");
+            assert!(answered.is_empty());
+        }
+        assert_eq!(
+            coder.started.lock().unwrap().len(),
+            1,
+            "one task, never two"
+        );
+    }
 }
 
 /// A start says who is starting before its own work, then lets the run's

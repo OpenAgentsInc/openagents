@@ -39,6 +39,7 @@ mod composer;
 pub mod decision;
 mod editor;
 pub mod events;
+pub mod grok_spinner;
 pub mod guard;
 pub mod hairline;
 mod intensity;

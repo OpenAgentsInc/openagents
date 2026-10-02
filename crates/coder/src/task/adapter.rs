@@ -744,16 +744,29 @@ impl Host {
         }
         let context = checks::Context::capture(&task, &workspace, grant.requirements.as_ref())?;
         let controller = std::env::current_exe()?.canonicalize()?;
-        let controller_digest = digest_bytes(&std::fs::read(&controller)?);
-        if configuration
-            .expected_controller_digest
-            .as_ref()
-            .is_some_and(|expected| expected != &controller_digest)
-        {
-            return Err(Error::InvalidCommand(
-                "the repository controller differs from its grant",
-            ));
-        }
+        // Only a pinned controller is read and digested, as its launcher
+        // does (#10115): a development build is a gigabyte, and digesting
+        // it held every start for thirteen seconds before the engine ran
+        // (owner, 2026-10-02). An unpinned one is named by its path, size,
+        // and modification time.
+        let controller_digest = match &configuration.expected_controller_digest {
+            Some(expected) => {
+                let digest = digest_bytes(&std::fs::read(&controller)?);
+                if expected != &digest {
+                    return Err(Error::InvalidCommand(
+                        "the repository controller differs from its grant",
+                    ));
+                }
+                Some(digest)
+            }
+            None => None,
+        };
+        let controller_file = std::fs::metadata(&controller).ok();
+        let controller_bytes = controller_file.as_ref().map(std::fs::Metadata::len);
+        let controller_modified = controller_file
+            .and_then(|file| file.modified().ok())
+            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|at| at.as_millis());
         let admission = owner::Admission {
             grant: grant.clone(),
             grant_digest: digest_bytes(bytes),
@@ -815,7 +828,7 @@ impl Host {
                 "Repository adapter admitted by the local operator.",
             )
             .noting("admission", json!(admission))
-            .noting("controller",json!({"path":controller,"digest":controller_digest,"version":env!("CARGO_PKG_VERSION")}))
+            .noting("controller",json!({"path":controller,"digest":controller_digest,"bytes":controller_bytes,"modified_ms":controller_modified,"version":env!("CARGO_PKG_VERSION")}))
             .noting("capabilities", configuration.capabilities())
             .noting(
                 "command_environment",

@@ -138,13 +138,14 @@ fn a_policy_file_is_read_and_its_absence_is_the_safe_default() {
     assert!(Land::parse("force").is_err());
 }
 
-/// This repository's own policy lands on main after the checks.
+/// This repository's own policy lands on main after the checks: fmt, and
+/// no clippy (8afcce4131).
 #[test]
 fn this_repository_lands_on_main_with_its_checks() {
     let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let policy = Policy::load(&top).unwrap();
     assert_eq!(policy.land, Land::Main);
-    assert!(policy.fmt && policy.clippy);
+    assert!(policy.fmt && !policy.clippy);
     // #10103: no step limit and no continuation turns.
     assert_eq!((policy.max_steps, policy.continue_turns), (None, None));
 }

@@ -359,9 +359,9 @@ impl Stream {
     /// Takes `event` when it is tool activity, returning the lines now
     /// final; `None` when it is not, after which the caller prints
     /// [`Stream::flush`]'s lines and then the event its own way. Progress
-    /// is neither: `Some` with nothing to print.
+    /// and a status are neither: `Some` with nothing to print.
     pub fn push(&mut self, seq: u64, event: &CoderEvent) -> Option<Vec<String>> {
-        if matches!(event, CoderEvent::Progress(_)) {
+        if matches!(event, CoderEvent::Progress(_) | CoderEvent::Status(_)) {
             return Some(Vec::new());
         }
         if !self.pending.push(seq, event) {

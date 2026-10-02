@@ -1155,3 +1155,103 @@ fn the_owners_runs_draw_their_markdown() {
     );
     assert!(text.contains("at detached commit fe70e10131"), "{text}");
 }
+
+fn finished() -> CoderEvent {
+    CoderEvent::Result(openagents_chat::coder_events::Finished {
+        turn: 1,
+        summary: "Done.".into(),
+        files_changed: Vec::new(),
+        insertions: 0,
+        deletions: 0,
+        worktree: "/w".into(),
+        trajectory: "/t".into(),
+        issue: None,
+    })
+}
+
+/// Following a run again replays it from its first event: the rows already
+/// shown stay as they are, but the replay still says where the run stands.
+/// A replayed turn that ended leaves the screen idle; before, it stayed
+/// "working" and followed the run again and again with nothing coming
+/// (owner, 2026-10-02).
+#[test]
+fn a_replayed_run_that_ended_leaves_the_screen_idle() {
+    let mut app = app();
+    app.event(line(1, started()));
+    app.event(line(2, finished()));
+    assert!(!app.running);
+    let before = shown(&mut app);
+    // The next message's follow of the same task.
+    app.began(&Op::Follow {
+        thread: app.thread.clone(),
+    });
+    app.event(Event::Coder {
+        thread: app.thread.clone(),
+        accepted: true,
+        message: "Following task t1.".into(),
+        task: Some(serde_json::json!({"task": "t1"})),
+        quiet: true,
+    });
+    assert!(app.running);
+    app.event(line(1, started()));
+    app.event(line(2, finished()));
+    app.ended(None);
+    assert!(!app.running, "the replay ended the turn");
+    assert!(!app.wants_follow());
+    assert!(app.live_status().is_none());
+    assert_eq!(shown(&mut app), before, "nothing shown twice");
+}
+
+/// While a run has nothing to show, the line under the transcript says
+/// what it is doing beside Grok Build's spinner, from the run's own
+/// events, and how long it has been at it.
+#[test]
+fn the_spinner_line_says_what_the_run_is_doing() {
+    use openagents_chat::coder_events::Status;
+    let status = |seq: u64, text: &str| {
+        line(
+            seq,
+            CoderEvent::Status(Status {
+                turn: 1,
+                step_id: seq,
+                text: text.into(),
+            }),
+        )
+    };
+    let mut app = app();
+    app.event(Event::Starting {
+        thread: app.thread.clone(),
+        engine: "grok".into(),
+    });
+    assert_eq!(
+        app.live_status().map(|(text, _)| text),
+        Some("Starting Grok Build…")
+    );
+    app.event(line(1, started()));
+    app.tick += 30;
+    let (text, waited) = app.live_status().unwrap();
+    assert_eq!(text, "Starting Codex…");
+    assert_eq!(coder_terminal::grok_spinner::timer(waited), "1.0s");
+    app.event(status(2, "Grok Build connected · grok-4.7"));
+    app.event(status(3, "Thinking…"));
+    assert_eq!(app.live_status().map(|(text, _)| text), Some("Thinking…"));
+    let rows = shown(&mut app);
+    assert!(
+        !rows.contains("Thinking…") && !rows.contains("connected"),
+        "{rows}"
+    );
+    let drawn = crate::draw::working(
+        "Thinking…",
+        std::time::Duration::from_millis(1200),
+        4,
+        app.ladder,
+    );
+    let drawn: String = drawn
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert_eq!(drawn, "  ⠙ Thinking… 1.2s");
+    app.event(line(4, finished()));
+    assert!(app.live_status().is_none());
+}

@@ -47,6 +47,14 @@ Ported, with changes noted at the top of each file:
                             <- xai-grok-markdown/src/parse.rs, src/style.rs
   coder-terminal/src/ladder.rs (the #141414 field)
                             <- xai-grok-pager-render/src/theme/groknight.rs
+  coder-terminal/src/grok_spinner.rs
+                            <- xai-grok-pager-render/src/glyphs.rs
+                               (braille_spinner_frames),
+                               xai-grok-pager/src/views/turn_status.rs
+                               (SPINNER_DIVISOR, render_starting_session),
+                               xai-grok-pager-render/src/util.rs
+                               (format_duration),
+                               src/theme/groknight.rs (gray_dim)
 
 Syntax definitions come from the two-face crate (MIT OR Apache-2.0,
 Copyright (c) 2023 The two-face developers) and syntect (MIT).

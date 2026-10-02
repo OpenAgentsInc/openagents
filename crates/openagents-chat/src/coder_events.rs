@@ -51,6 +51,10 @@ pub enum CoderEvent {
     Question(Asked),
     Approval(Asked),
     Progress(Progress),
+    /// What the run is doing while it has nothing else to show yet: its
+    /// engine starting, connected, or thinking. A status line, never a
+    /// row of the transcript.
+    Status(Status),
     Result(Finished),
     Failure(Failure),
     Stopped(Stopped),
@@ -68,6 +72,7 @@ impl CoderEvent {
             CoderEvent::Question(_) => "question",
             CoderEvent::Approval(_) => "approval",
             CoderEvent::Progress(_) => "progress",
+            CoderEvent::Status(_) => "status",
             CoderEvent::Result(_) => "result",
             CoderEvent::Failure(_) => "failure",
             CoderEvent::Stopped(_) => "stopped",
@@ -86,6 +91,16 @@ impl CoderEvent {
                 | CoderEvent::Stopped(_)
         )
     }
+}
+
+/// What the run is doing now, from a step the engine's adapter recorded:
+/// "Starting Grok Build…", "Grok Build connected · grok-4.7",
+/// "Thinking…".
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Status {
+    pub turn: usize,
+    pub step_id: u64,
+    pub text: String,
 }
 
 /// A turn started: where, and on which provider.
@@ -960,6 +975,14 @@ impl Mapper {
             }
             return events;
         }
+        if let Some(text) = status(&extra) {
+            events.push(CoderEvent::Status(Status {
+                turn: self.turn,
+                step_id: id,
+                text,
+            }));
+            return events;
+        }
         if let Some(record) = extra.get("microcoder") {
             let event = &record["event"];
             let at_seconds = record["seconds"].as_f64();
@@ -1342,6 +1365,7 @@ pub fn text(event: &CoderEvent) -> Option<String> {
                 .unwrap_or_default(),
             p.seconds
         ),
+        CoderEvent::Status(status) => format!("  {}", status.text),
         CoderEvent::Question(a) | CoderEvent::Approval(a) => format!(
             "Coder asks: {}{}",
             a.text.trim(),
@@ -1403,6 +1427,41 @@ pub fn provider_name(provider: &Value) -> String {
         Some(other) => other.into(),
         None => "The provider".into(),
     }
+}
+
+/// The status an adapter's effect step says, if it says one: an engine's
+/// session opening ("Starting Grok Build…") and opened ("Grok Build
+/// connected · grok-4.7"), and a prompt or model request going out
+/// ("Thinking…"). Commands and decisions say nothing here: their own rows
+/// show them.
+fn status(extra: &Value) -> Option<String> {
+    let engine = |kind: &str, suffix: &str| {
+        kind.strip_suffix(suffix)
+            .map(|provider| provider_name(&Value::String(provider.to_owned())))
+    };
+    if let Some(kind) = extra.pointer("/effect/kind").and_then(Value::as_str) {
+        if let Some(engine) = engine(kind, "_session") {
+            return Some(format!("Starting {engine}…"));
+        }
+        if kind.ends_with("_prompt") || kind.ends_with("_request") || kind == "generation" {
+            return Some("Thinking…".to_owned());
+        }
+        return None;
+    }
+    let kind = extra
+        .pointer("/effect_result/kind")
+        .and_then(Value::as_str)?;
+    let engine = engine(kind, "_session")?;
+    let result = &extra["effect_result"]["result"];
+    if result.get("error").is_some_and(|error| !error.is_null()) {
+        return None;
+    }
+    Some(
+        match result["model"].as_str().filter(|model| !model.is_empty()) {
+            Some(model) => format!("{engine} connected · {model}"),
+            None => format!("{engine} connected"),
+        },
+    )
 }
 
 /// At most `max` bytes of `text`, cut at a character boundary, and whether
@@ -2467,5 +2526,46 @@ mod tests {
         assert_eq!(stopped.turn, 2);
         assert!(stopped.commands.is_empty());
         assert!(run_result(&[]).is_none());
+    }
+
+    /// The steps Grok Build's adapter records before its first word, as a
+    /// real run recorded them, become the status the terminal shows beside
+    /// its spinner: starting, connected with the model it reported, then
+    /// thinking. A command's intent says nothing: its own row shows it.
+    #[test]
+    fn an_engines_start_becomes_status() {
+        let statuses = |steps: &[Value]| -> Vec<String> {
+            let mut mapper = Mapper::new(1, None);
+            steps
+                .iter()
+                .flat_map(|step| mapper.step(step))
+                .filter_map(|event| match event {
+                    CoderEvent::Status(status) => Some(status.text),
+                    _ => None,
+                })
+                .collect()
+        };
+        let steps = [
+            json!({"step_id": 6, "source": "system", "message": "Adapter effect intent retained before dispatch.",
+                "extensions": {"effect": {"sequence": 1, "kind": "grok_session", "arguments": {}}}}),
+            json!({"step_id": 7, "source": "system", "message": "Adapter effect observation retained.",
+                "extensions": {"effect_result": {"sequence": 1, "kind": "grok_session",
+                    "result": {"session": "01a0", "pid": 37416, "model": "grok-4.7"}}}}),
+            json!({"step_id": 9, "source": "system", "message": "Adapter effect intent retained before dispatch.",
+                "extensions": {"effect": {"sequence": 2, "kind": "grok_prompt", "arguments": {}}}}),
+            json!({"step_id": 10, "source": "system", "message": "Adapter effect intent retained before dispatch.",
+                "extensions": {"effect": {"sequence": 3, "kind": "command", "arguments": {}}}}),
+        ];
+        assert_eq!(
+            statuses(&steps),
+            [
+                "Starting Grok Build…",
+                "Grok Build connected · grok-4.7",
+                "Thinking…"
+            ]
+        );
+        let failed = json!({"step_id": 7, "source": "system",
+            "extensions": {"effect_result": {"kind": "grok_session", "result": {"error": "no login"}}}});
+        assert!(statuses(&[failed]).is_empty());
     }
 }

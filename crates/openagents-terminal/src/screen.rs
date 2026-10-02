@@ -34,8 +34,9 @@ use crate::{Exit, Extras, Interrupter, Invite, Launch, Resume, last, prompts};
 const CONTEXT_WAIT: Duration = Duration::from_secs(5);
 /// How often a pairing code checks for the phone that scanned it.
 const PAIR_POLL: Duration = Duration::from_secs(1);
-/// The spinner's frame time.
-const TICK: Duration = Duration::from_millis(100);
+/// The spinner's clock: Grok Build's 30 fps animation tick, each frame
+/// held four of them ([`coder_terminal::grok_spinner`]).
+const TICK: Duration = coder_terminal::grok_spinner::TICK;
 
 /// What a piece of work off the loop sends back.
 enum Done {
@@ -177,13 +178,21 @@ async fn drive(
 ) -> io::Result<Exit> {
     let mut keys = EventStream::new();
     let mut tick = tokio::time::interval(TICK);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut poll = tokio::time::interval(PAIR_POLL);
+    // A tick redraws only when a spinner is on the screen and turns to its
+    // next frame (its timer moves with it); everything else redraws at
+    // once.
+    let mut dirty = true;
     loop {
-        terminal.draw(|frame| {
-            let area = frame.area();
-            let caret = crate::draw::draw(&mut screen.app, area, frame.buffer_mut());
-            frame.set_cursor_position(caret);
-        })?;
+        if dirty {
+            terminal.draw(|frame| {
+                let area = frame.area();
+                let caret = crate::draw::draw(&mut screen.app, area, frame.buffer_mut());
+                frame.set_cursor_position(caret);
+            })?;
+        }
+        dirty = true;
         if screen.quit {
             break;
         }
@@ -224,6 +233,8 @@ async fn drive(
             }
             _ = tick.tick() => {
                 screen.app.tick = screen.app.tick.wrapping_add(1);
+                dirty = screen.app.animating()
+                    && coder_terminal::grok_spinner::turns(screen.app.tick);
             }
             _ = poll.tick(), if screen.invite.is_some() && !screen.polling => screen.poll(),
         }

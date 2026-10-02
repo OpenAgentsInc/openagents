@@ -182,7 +182,7 @@ pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
             text: asked.text.trim().to_owned(),
             hint: asked.answer.clone(),
         },
-        CoderEvent::Progress(_) => return None,
+        CoderEvent::Progress(_) | CoderEvent::Status(_) => return None,
         CoderEvent::Result(result) => RunRow::Result {
             summary: result.summary.trim().to_owned(),
             files: result

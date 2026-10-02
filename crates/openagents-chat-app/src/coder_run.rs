@@ -1037,6 +1037,7 @@ pub fn turn_of(line: &Line) -> usize {
         CoderEvent::ProviderSwitched(e) => e.turn,
         CoderEvent::Question(e) | CoderEvent::Approval(e) => e.turn,
         CoderEvent::Progress(e) => e.turn,
+        CoderEvent::Status(e) => e.turn,
         CoderEvent::Result(e) => e.turn,
         CoderEvent::Failure(e) => e.turn,
         CoderEvent::Stopped(e) => e.turn,
@@ -1227,10 +1228,12 @@ impl Rows {
             }
             CoderEvent::Progress(progress) => {
                 self.seconds = progress.seconds;
-                // "Coder is working · step 5 · ≈40% done · 9s": Jev's
+                // "Working · step 5 · ≈40% done · 9s": Jev's
                 // estimate of how much is complete, never a budget.
                 self.progress = Some(progress.line());
             }
+            // The terminal's status line; the run's own rows say the rest.
+            CoderEvent::Status(_) => {}
             CoderEvent::Question(asked) => {
                 self.flush_reply();
                 self.drop_repeated_reply(&asked.text);

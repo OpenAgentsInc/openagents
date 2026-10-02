@@ -4,7 +4,7 @@
 
 use coder_terminal::components::overlay::{Item, ListOverlay};
 use coder_terminal::components::{run, turn};
-use coder_terminal::{Composer, PROMPT, frame_for};
+use coder_terminal::{Composer, PROMPT, grok_spinner};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -13,6 +13,29 @@ use ratatui::text::Line;
 use crate::app::{App, Overlay};
 use crate::rows::Row;
 use crate::view::{Shown, paint};
+
+/// Grok Build's spinner frame at animation tick `tick`, as one cell.
+fn spinner_char(tick: u64) -> char {
+    grok_spinner::frame(tick).chars().next().unwrap_or(PROMPT)
+}
+
+/// The line that says what is in progress, as Grok Build draws its
+/// "Starting session…": the spinner, the words, and the timer, all in
+/// its dim gray.
+pub fn working(
+    text: &str,
+    elapsed: std::time::Duration,
+    tick: u64,
+    ladder: coder_terminal::Ladder,
+) -> Line<'static> {
+    let style = grok_spinner::style(ladder);
+    Line::from(vec![
+        ratatui::text::Span::raw("  "),
+        ratatui::text::Span::styled(format!("{} ", grok_spinner::frame(tick)), style),
+        ratatui::text::Span::styled(text.to_owned(), style),
+        ratatui::text::Span::styled(format!(" {}", grok_spinner::timer(elapsed)), style),
+    ])
+}
 
 /// The smallest screen the frame draws on.
 pub const MIN_WIDTH: u16 = 12;
@@ -31,9 +54,12 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         return draw_file(app, area, buf);
     }
     let status = app.status();
+    let working_line = app
+        .live_status()
+        .map(|(text, elapsed)| working(text, elapsed, app.tick, ladder));
     let tail = app.tail();
     let busy = app.busy();
-    let prompt = if busy { frame_for(app.tick) } else { PROMPT };
+    let prompt = if busy { spinner_char(app.tick) } else { PROMPT };
     let mut composer = Composer::new(&mut app.editor, ladder)
         .prompt(prompt)
         .status(&status)
@@ -66,6 +92,7 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     if let Some(progress) = &app.progress {
         live.extend(run::lines(progress, width, ladder));
     }
+    live.extend(working_line);
     let scroll = match app.run_view {
         Some(view) => view.scroll,
         None => app.scroll,
