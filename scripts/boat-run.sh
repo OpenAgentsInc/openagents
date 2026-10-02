@@ -42,9 +42,14 @@ for _ in $(seq 1 60); do
 done
 top=$(git rev-parse --show-toplevel)
 git -C "$top" add -N . >/dev/null 2>&1 || true
-patch=$(git -C "$top" diff origin/main | base64 | tr -d '\n')
+# The patch goes up through the files API, not the command line: a large
+# diff overflows the argument list (a 740 KB patch failed that way).
+git -C "$top" diff --binary origin/main > "$state/$name.patch"
+upload=$(python3 -c "import json,sys,base64;print(json.dumps({'path':'/tmp/oa-change.patch','content':base64.b64encode(open(sys.argv[1],'rb').read()).decode(),'encoding':'base64'}))" "$state/$name.patch")
+written=$(printf '%s' "$upload" | req -X PUT "$api/sandboxes/$id/files" -d @- | field type)
+[ "$written" = file.written ] || { echo "boat: the patch upload failed" >&2; exit 1; }
 user_cmd=$(printf '%q ' "$@")
-script="set -e; cd ~; [ -d openagents/.git ] || git clone -q https://github.com/OpenAgentsInc/openagents.git; cd openagents; git fetch -q origin; git reset -q --hard origin/main; git clean -qfd; echo '$patch' | base64 -d | git apply --allow-empty; export CARGO_INCREMENTAL=0; $user_cmd"
+script="set -e; cd ~; [ -d openagents/.git ] || git clone -q https://github.com/OpenAgentsInc/openagents.git; cd openagents; git fetch -q origin; git reset -q --hard origin/main; git clean -qfd; [ -s /tmp/oa-change.patch ] && git apply /tmp/oa-change.patch; export CARGO_INCREMENTAL=0; $user_cmd"
 body=$(python3 -c "import json,sys;print(json.dumps({'command':sys.argv[1],'detached':True}))" "$script")
 pid=$(req -X POST "$api/sandboxes/$id/commands" -d "$body" | field processId)
 [ -n "$pid" ] || { echo "boat: the command did not start" >&2; exit 1; }
@@ -54,4 +59,9 @@ while :; do
   st=$(printf '%s' "$out" | field status)
   [ "$st" = exited ] && break; sleep 5
 done
-printf '%s' "$out" | python3 -c "import json,sys;d=json.load(sys.stdin);sys.stdout.write(d.get('stdout') or '');sys.stderr.write(d.get('stderr') or '');sys.exit(d.get('exitCode') or 0)"
+printf '%s' "$out" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+sys.stdout.write(d.get('stdout') or '');sys.stderr.write(d.get('stderr') or '')
+code=d.get('exitCode')
+sys.exit(1 if code is None else code)"
