@@ -472,36 +472,112 @@ fn task(
             "the task broker admits task operations only",
         ));
     }
-    let failed = || {
-        coder_access::Error::new(
-            Code::Unavailable,
-            "the local Coder task request could not be kept",
-        )
+    match owner_key(shared)? {
+        Some(owner) => signed(shared, request, operation, owner, dispatcher),
+        // The owner key lives elsewhere, such as on the person's other
+        // computer that paired this host. The control socket is this
+        // account's own, so its request carries the owner's authority.
+        None => {
+            operation.validate()?;
+            local_identity(shared, &request, &operation)?;
+            shared
+                .authority
+                .local(|host, now| host.handle_local_owner(&request, &operation, now, dispatcher))?
+        }
+    }
+}
+
+/// Keep which operation a local request identity names, so a retry
+/// dispatches it again and another operation under it is refused, as the
+/// signed path's record does.
+fn local_identity(
+    shared: &Shared,
+    request: &str,
+    operation: &Operation,
+) -> coder_access::Result<()> {
+    let root = control_root(shared)?.join("local-task-calls");
+    let cache = openagents_chat::cache::Cache::open(&root, &shared.secret)
+        .map_err(|_| unavailable("the host's task request record could not be opened"))?;
+    match cache
+        .read::<Operation>(request)
+        .map_err(|_| unavailable("the host's task request record could not be read"))?
+    {
+        Some(kept) if kept == *operation => Ok(()),
+        Some(_) => Err(coder_access::Error::new(
+            Code::Conflict,
+            "task request identity reused",
+        )),
+        None => cache
+            .write(request, operation)
+            .map_err(|_| unavailable("the host's task request record could not be saved")),
+    }
+}
+
+fn control_root(shared: &Shared) -> coder_access::Result<std::path::PathBuf> {
+    shared
+        .config
+        .control
+        .as_ref()
+        .map(|control| control.root.clone())
+        .ok_or_else(|| unavailable("this host has no control directory to keep task requests in"))
+}
+
+fn unavailable(message: &str) -> coder_access::Error {
+    coder_access::Error::new(Code::Unavailable, message)
+}
+
+/// The owner key this host keeps, if any. Each way it cannot be read is
+/// its own refusal; an absent key or key source is `None`.
+fn owner_key(shared: &Shared) -> coder_access::Result<Option<SecretKey>> {
+    let Some(keys) = shared.config.keys.as_ref() else {
+        return Ok(None);
     };
-    let keys = shared.config.keys.as_ref().ok_or_else(failed)?;
     // Load only. An existing host must never mint a different owner to answer.
-    let bytes = keys
+    let Some(bytes) = keys
         .0
         .load(KeyName::Owner)
-        .map_err(|_| failed())?
-        .ok_or_else(failed)?;
-    let owner = SecretKey::from_byte_array(*bytes.expose()).map_err(|_| failed())?;
-    let relay = shared.config.primary().map_err(|_| failed())?;
+        .map_err(|_| unavailable("the owner key could not be read from the host's key store"))?
+    else {
+        return Ok(None);
+    };
+    let owner = SecretKey::from_byte_array(*bytes.expose()).map_err(|_| {
+        coder_access::Error::new(
+            Code::Malformed,
+            "the owner key in the host's key store is not a valid key",
+        )
+    })?;
+    if coder_reach::pubkey(&owner) != shared.owner {
+        // A stored key that is not this host's owner cannot sign for it;
+        // the local path answers as the owner the store names.
+        return Ok(None);
+    }
+    Ok(Some(owner))
+}
+
+/// A task request signed with the owner key this host keeps, as a phone's
+/// would be, and kept until its reply so a retry reuses it.
+fn signed(
+    shared: &Shared,
+    request: String,
+    operation: Operation,
+    owner: SecretKey,
+    dispatcher: &mut Dispatcher,
+) -> coder_access::Result<coder_access::protocol::Outcome> {
+    let relay = shared
+        .config
+        .primary()
+        .map_err(|_| unavailable("this host has no relay to address owner requests to"))?;
     let client = Client::owner(&shared.host_key, relay, owner, shared.config.policy)?;
     let now = coder_access::unix_time()?;
     operation.validate()?;
     let prepared = client.prepare_with_id(operation.clone(), now, request.clone())?;
-    let root = shared
-        .config
-        .control
-        .as_ref()
-        .ok_or_else(failed)?
-        .root
-        .join("task-calls");
-    let cache = openagents_chat::cache::Cache::open(&root, &shared.secret).map_err(|_| failed())?;
+    let root = control_root(shared)?.join("task-calls");
+    let cache = openagents_chat::cache::Cache::open(&root, &shared.secret)
+        .map_err(|_| unavailable("the host's task request record could not be opened"))?;
+    let saved = || unavailable("the host's task request record could not be saved");
     let pending = match cache
         .read::<coder_access::client::Pending>(&request)
-        .map_err(|_| failed())?
+        .map_err(|_| unavailable("the host's task request record could not be read"))?
     {
         Some(pending) => {
             if pending.request.op != operation
@@ -515,12 +591,12 @@ fn task(
             if pending.request.expires_at >= now {
                 pending
             } else {
-                cache.write(&request, &prepared).map_err(|_| failed())?;
+                cache.write(&request, &prepared).map_err(|_| saved())?;
                 prepared
             }
         }
         None => {
-            cache.write(&request, &prepared).map_err(|_| failed())?;
+            cache.write(&request, &prepared).map_err(|_| saved())?;
             prepared
         }
     };

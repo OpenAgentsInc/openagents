@@ -24,6 +24,9 @@ const MAX_GRANTS: usize = 128;
 const MAX_INVITATIONS: usize = 64;
 const MAX_ENROLLMENTS: usize = 32;
 const MAX_REPLIES: usize = 1024;
+/// What a retained local owner request records in place of a signed
+/// event id, which is always 64 hex characters.
+const LOCAL_REQUEST: &str = "local";
 const MAX_EPOCHS: usize = 1024;
 /// How far a device's clock may trail the host's: the same bound readers
 /// allow for an `issued_at` ahead of them.
@@ -686,7 +689,14 @@ impl Host {
                         // retained: a thread polled while its reply streams
                         // would otherwise fill the store with pages.
                         let result = match self.execute(
-                            &mut store, &mut book, &secret, &request, event, &p, now, dispatch,
+                            &mut store,
+                            &mut book,
+                            &secret,
+                            &request,
+                            (&event.id, &event.pubkey),
+                            &p,
+                            now,
+                            dispatch,
                         )? {
                             Ok(outcome) => ReplyResult::Ok { outcome },
                             Err(error) => refused(error),
@@ -694,7 +704,14 @@ impl Host {
                         (result, false)
                     } else {
                         let result = match self.execute(
-                            &mut store, &mut book, &secret, &request, event, &p, now, dispatch,
+                            &mut store,
+                            &mut book,
+                            &secret,
+                            &request,
+                            (&event.id, &event.pubkey),
+                            &p,
+                            now,
+                            dispatch,
                         )? {
                             Ok(outcome) => ReplyResult::Ok { outcome },
                             Err(error) => refused(error),
@@ -728,6 +745,83 @@ impl Host {
         Ok(reply)
     }
 
+    /// Run one task operation for this host's owner, asked over the host's
+    /// same-user control socket rather than signed with the owner key.
+    ///
+    /// The control socket is reachable only by the account the host runs
+    /// as, which already holds the host's store and can make any key its
+    /// owner (`reown`), so it carries the owner's authority. A host whose
+    /// owner key lives elsewhere, such as on the person's other computer,
+    /// still takes local task requests this way. The admitted intent is
+    /// retained before the effect, as for a signed request, so a retry of
+    /// `request` dispatches the same idempotency key; a signed request may
+    /// not reuse it.
+    ///
+    /// # Errors
+    /// Refuses an operation other than the task broker's, a malformed
+    /// request identity or operation, a reused identity, or a store that
+    /// cannot be read or saved. A dispatcher refusal is the inner error.
+    pub fn handle_local_owner(
+        &self,
+        request: &str,
+        op: &Operation,
+        now: u64,
+        dispatch: &mut dyn Dispatch,
+    ) -> Result<std::result::Result<Outcome, Error>> {
+        if !matches!(
+            op,
+            Operation::CreateTask { .. }
+                | Operation::SteerTask { .. }
+                | Operation::CancelTask { .. }
+                | Operation::ArchiveTask { .. }
+                | Operation::CommandTask { .. }
+                | Operation::QueueTask { .. }
+                | Operation::ListWorkspaces {}
+        ) {
+            return fail(Code::Forbidden, "only task operations are taken locally");
+        }
+        identity(request).map_err(Error::from)?;
+        op.validate()?;
+        let (mut store, secret, mut book) = self.open()?;
+        book.prune(now);
+        let owner = book.owner.clone();
+        if book
+            .replies
+            .get(request)
+            .is_some_and(|r| r.request_event != LOCAL_REQUEST || r.signer != owner)
+        {
+            return fail(Code::Conflict, "request identity reused");
+        }
+        let local = Request {
+            v: REQUEST.into(),
+            requires: Vec::new(),
+            request: request.into(),
+            host: book.host.clone(),
+            grant: None,
+            epoch: None,
+            relay: String::new(),
+            issued_at: now,
+            expires_at: now.saturating_add(MAX_REQUEST_LIFETIME),
+            op: op.clone(),
+        };
+        let principal = Principal {
+            key: owner.clone(),
+            rights: Rights::all(),
+            grant: None,
+            expires_at: u64::MAX,
+        };
+        self.execute(
+            &mut store,
+            &mut book,
+            &secret,
+            &local,
+            (LOCAL_REQUEST, &owner),
+            &principal,
+            now,
+            dispatch,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute(
         &self,
@@ -735,7 +829,7 @@ impl Host {
         book: &mut Book,
         secret: &SecretKey,
         request: &Request,
-        event: &Event,
+        origin: (&str, &str),
         p: &Principal,
         now: u64,
         dispatch: &mut dyn Dispatch,
@@ -871,8 +965,8 @@ impl Host {
                 book.replies.insert(
                     request.request.clone(),
                     Retained {
-                        request_event: event.id.clone(),
-                        signer: event.pubkey.clone(),
+                        request_event: origin.0.to_owned(),
+                        signer: origin.1.to_owned(),
                         expires_at: request.expires_at,
                         reply: None,
                     },
@@ -964,8 +1058,8 @@ impl Host {
                 book.replies.insert(
                     request.request.clone(),
                     Retained {
-                        request_event: event.id.clone(),
-                        signer: event.pubkey.clone(),
+                        request_event: origin.0.to_owned(),
+                        signer: origin.1.to_owned(),
                         expires_at: request.expires_at,
                         reply: None,
                     },
