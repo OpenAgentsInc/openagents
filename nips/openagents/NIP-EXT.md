@@ -41,7 +41,8 @@ display name, administrator listing, or transport login does not confer it.
 A `3184` body has `package`, `version` (human-readable string), and
 `manifest: ArtifactRef` with schema `openagents.package.v1`, and optionally
 `fee_msat` (the author's per-call fee in millisatoshis) and `payout` (a
-Lightning address or a 66-hex compressed node key); a nonzero `fee_msat`
+mainnet bare Spark address (`spark1…`, Bech32m with a compressed identity key),
+Lightning address, or a 66-hex compressed node key); a nonzero `fee_msat`
 requires `payout`, so the fee and where it is paid are part of the signed
 release. Signer MUST equal the package root. A release is identified by its event ID and manifest digest,
 not its version label. Different events rebinding a package/version to different
@@ -374,3 +375,7 @@ and malformed/conflict paths are fixture-backed. Required client cases include
 tampering, unavailable historical bytes, cycles, source replacement, label
 equivocation, stale/withheld checkpoints, namespace spoofing, interrupted
 installation, uninstall failure, rollback, and preservation of active pins.
+
+Publishers may accept `--fee-sats N` and convert it to `fee_msat` with checked
+multiplication by 1,000. Non-mainnet Spark prefixes and invoice-bearing Spark
+addresses are not reusable payout destinations and must be refused.

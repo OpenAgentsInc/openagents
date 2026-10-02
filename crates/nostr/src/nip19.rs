@@ -229,6 +229,10 @@ pub fn decode(text: &str) -> Result<(String, Vec<u8>), Nip19Error> {
 }
 
 fn decode_within(text: &str, max: usize) -> Result<(String, Vec<u8>), Nip19Error> {
+    decode_variant(text, max, 1)
+}
+
+fn decode_variant(text: &str, max: usize, variant: u32) -> Result<(String, Vec<u8>), Nip19Error> {
     if text.len() > max || !text.is_ascii() {
         return Err(Nip19Error::InvalidLength);
     }
@@ -255,11 +259,52 @@ fn decode_within(text: &str, max: usize) -> Result<(String, Vec<u8>), Nip19Error
             .ok_or(Nip19Error::InvalidCharacter)?;
         words.push(word as u8);
     }
-    if polymod(&expand_prefix(prefix), &words) != 1 {
+    if polymod(&expand_prefix(prefix), &words) != variant {
         return Err(Nip19Error::InvalidChecksum);
     }
     let payload = &words[..words.len() - CHECKSUM_CHARS];
     Ok((prefix.to_owned(), from_words(payload)?))
+}
+
+/// Validate a mainnet Spark payout address with a bare identity key.
+/// Invoice-bearing addresses are not reusable payout destinations.
+/// Reimplemented from Spark's public address encoding: Bech32m over a
+/// protobuf field 1 containing a compressed secp256k1 key.
+pub(crate) fn check_spark_payout(text: &str) -> bool {
+    if !text.starts_with("spark1") {
+        return false;
+    }
+    let Ok((prefix, bytes)) = decode_variant(text, 90, 0x2bc8_30a3) else {
+        return false;
+    };
+    prefix == "spark"
+        && bytes.len() == 35
+        && bytes[..2] == [10, 33]
+        && secp256k1::PublicKey::from_slice(&bytes[2..]).is_ok()
+}
+
+#[cfg(test)]
+pub(crate) fn spark_fixture(prefix: &str) -> String {
+    let key = secp256k1::PublicKey::from_secret_key(
+        &secp256k1::Secp256k1::new(),
+        &SecretKey::from_byte_array([1; 32]).unwrap(),
+    );
+    let mut bytes = vec![10, 33];
+    bytes.extend_from_slice(&key.serialize());
+    let mut words = to_words(&bytes);
+    let mut padded = words.clone();
+    padded.extend_from_slice(&[0; 6]);
+    let sum = polymod(&expand_prefix(prefix), &padded) ^ 0x2bc8_30a3;
+    for i in 0..6 {
+        words.push(((sum >> (5 * (5 - i))) & 31) as u8);
+    }
+    format!(
+        "{prefix}1{}",
+        words
+            .iter()
+            .map(|w| CHARSET[*w as usize] as char)
+            .collect::<String>()
+    )
 }
 
 fn checksum(prefix: &str, words: &[u8]) -> [u8; CHECKSUM_CHARS] {

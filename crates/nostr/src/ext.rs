@@ -949,7 +949,7 @@ fn parse_release(event: &Event, object: &Map<String, Value>) -> Result<(), Contr
 }
 
 /// Check a release's `payout`: a Lightning address (`name@domain`) or a
-/// Lightning node's 33-byte compressed public key as 66 lowercase hex
+/// mainnet bare Spark address, or a Lightning node's 33-byte compressed public key as 66 lowercase hex
 /// digits. A release that charges a `fee_msat` must name one; the fee and
 /// the address are part of the signed, pinned release (API G9).
 ///
@@ -976,7 +976,7 @@ pub fn check_payout(payout: &str) -> Result<(), ContractError> {
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
     });
-    if node_key || address {
+    if node_key || address || crate::nip19::check_spark_payout(payout) {
         Ok(())
     } else {
         Err(malformed("payout"))
@@ -1543,6 +1543,11 @@ mod tests {
         release(json!({})).unwrap();
         release(json!({"fee_msat": 1000, "payout": "alice@getalby.com"})).unwrap();
         release(json!({"fee_msat": 0})).unwrap();
+        let spark = crate::nip19::spark_fixture("spark");
+        release(json!({"fee_msat": 1000, "payout": spark})).unwrap();
+        assert!(release(json!({"payout": crate::nip19::spark_fixture("sparkrt")})).is_err());
+        assert!(release(json!({"payout": format!("{spark}x")})).is_err());
+        assert!(release(json!({"payout": "spark1notanaddress"})).is_err());
         release(json!({"payout": format!("02{}", "ab".repeat(32))})).unwrap();
         assert!(release(json!({"fee_msat": 1000})).is_err());
         assert!(release(json!({"fee_msat": -1, "payout": "a@b.co"})).is_err());

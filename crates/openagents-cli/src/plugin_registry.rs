@@ -411,8 +411,12 @@ pub(crate) fn publish(
     now: u64,
 ) -> Result<Published, String> {
     if let Some(fee) = fee {
-        nostr::ext::check_payout(&fee.payout)
-            .map_err(|_| format!("{} is not a Lightning address or node key", fee.payout))?;
+        nostr::ext::check_payout(&fee.payout).map_err(|_| {
+            format!(
+                "{} is not a mainnet Spark address, Lightning address, or node key",
+                fee.payout
+            )
+        })?;
     }
     let pubkey = signer.pubkey().to_string();
     let body = packed.release_body(fee);
@@ -830,23 +834,48 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
     })
 }
 
+fn publication_fee(
+    msat: Option<&str>,
+    sats: Option<&str>,
+    payout: Option<&str>,
+) -> Result<Option<Fee>, String> {
+    if msat.is_some() && sats.is_some() {
+        return Err("Use either --fee-msat or --fee-sats, not both".into());
+    }
+    let amount = match (msat, sats) {
+        (Some(value), _) => value
+            .parse::<u64>()
+            .map_err(|_| "--fee-msat takes a whole number of millisatoshis")?,
+        (_, Some(value)) => value
+            .parse::<u64>()
+            .ok()
+            .and_then(|n| n.checked_mul(1000))
+            .ok_or("--fee-sats takes a whole number that fits in u64 millisatoshis")?,
+        _ => 0,
+    };
+    match payout {
+        Some(payout) => {
+            nostr::ext::check_payout(payout).map_err(|_| "Invalid payout destination")?;
+            Ok(Some(Fee {
+                msat: amount,
+                payout: payout.to_owned(),
+            }))
+        }
+        None if msat.is_some() || sats.is_some() => Err("A fee needs --payout".into()),
+        None => Ok(None),
+    }
+}
+
 fn publish_command(args: &Args) -> Result<Value, String> {
     let dir = PathBuf::from(args.positional().first().map_or(".", String::as_str));
     let dir = dir
         .canonicalize()
         .map_err(|error| format!("{}: {error}", dir.display()))?;
-    let fee = match (args.option("fee-msat"), args.option("payout")) {
-        (None, None) => None,
-        (fee, Some(payout)) => Some(Fee {
-            msat: fee
-                .map_or(Ok(0), str::parse::<u64>)
-                .map_err(|_| "--fee-msat takes a whole number of millisatoshis".to_owned())?,
-            payout: payout.to_owned(),
-        }),
-        (Some(_), None) => {
-            return Err("--fee-msat needs --payout, the Lightning address paid".into());
-        }
-    };
+    let fee = publication_fee(
+        args.option("fee-msat"),
+        args.option("fee-sats"),
+        args.option("payout"),
+    )?;
     let signer = signer_for(args.option("as"))?;
     let packed = pack(&dir, signer.pubkey())?;
     let relay = relay_url(args.option("relay"));
@@ -1273,5 +1302,31 @@ mod tests {
         .unwrap();
         let refused = pack(work.path(), signer("11").pubkey()).unwrap_err();
         assert!(refused.contains("--as PROFILE"), "{refused}");
+    }
+}
+
+#[cfg(test)]
+mod fee_option_tests {
+    use super::*;
+    #[test]
+    fn sats_convert_without_overflow_or_ambiguous_units() {
+        assert_eq!(
+            publication_fee(None, Some("2"), Some("alice@example.com"))
+                .unwrap()
+                .unwrap()
+                .msat,
+            2000
+        );
+        assert!(
+            publication_fee(
+                None,
+                Some("18446744073709551615"),
+                Some("alice@example.com")
+            )
+            .is_err()
+        );
+        assert!(publication_fee(Some("1"), Some("1"), Some("alice@example.com")).is_err());
+        assert!(publication_fee(None, Some("2"), None).is_err());
+        assert!(publication_fee(None, Some("-1"), Some("alice@example.com")).is_err());
     }
 }
