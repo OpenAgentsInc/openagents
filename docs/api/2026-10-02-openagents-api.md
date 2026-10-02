@@ -33,6 +33,7 @@ no revenue) and [Episode 289](../transcripts/289.md):
 | D13 | **Prepaid sats balances.** An account is created without signup; its API keys draw on a sats balance topped up with a Lightning invoice; per-call 402 stays the keyless path (section 5.3). |
 | D14 | **`GET /v1/models` soon, OpenAI-shaped**, with prices in sats (section 4.1). |
 | D15 | **OpenAI's API conventions where they fit:** `x-request-id`, client request ids, rate-limit headers for third-party keys, a written versioning policy, an `llms.txt` index and `.md` docs, and an error-codes page (section 3). Prices are always in sats. |
+| D16 | **API users set any limits they want on their own account and keys** (section 5.4): spending caps, a maximum price per call, allowed models, routes, and scopes, rate caps, expiry, allowed computers for runs, and plugin fee ceilings. They are the user's own choices, set through the API, shown when they apply, and named in a `limit_reached` error when hit. We never impose limits on the users of our own apps. |
 
 ## 1. What the API is
 
@@ -148,6 +149,7 @@ announced in the API changelog (published beside `llms.txt`) before it ships.
 | `401` | `authentication` | `invalid_key`, `key_revoked` |
 | `402` | `payment_required` | `payment_required`, `balance_insufficient`, `invoice_expired`, `preimage_mismatch` |
 | `403` | `permission` | `scope_missing`, `computer_not_granted` |
+| `403` (`429` for a rate cap, with `Retry-After`) | `limit_reached` | `limit_reached`, with `"limit"` naming which of the user's own limits was hit (such as `"spend_day"` or `"allowed_models"`) and its value |
 | `404` | `not_found` | `thread_not_found`, `run_not_found`, `model_not_found` |
 | `409` | `conflict` | `idempotency_conflict`, `run_already_stopped` |
 | `422` | `unprocessable` | `route_not_allowed`, `plugin_refused` |
@@ -646,10 +648,9 @@ curl $OA/balance -H "Authorization: Bearer $KEY"
   `GET /v1/topups/auto` and `DELETE /v1/topups/auto` read and remove it.
 - **Keys:** `GET /v1/keys`, `POST /v1/keys`, `GET /v1/keys/{id}`,
   `PATCH /v1/keys/{id}`, `DELETE /v1/keys/{id}`, all drawing on the account's
-  one balance. A key holder may set a spending cap and an expiry on its own
-  keys, to contain a leaked key; we never set one. This is the gateway's
-  existing key model (pause, rotate, revoke) with a sats balance in place of
-  a plan.
+  one balance, each with whatever limits its owner sets (section 5.4). This
+  is the gateway's existing key model (pause, rotate, revoke) with a sats
+  balance in place of a plan.
 - **Calls debit the balance after they succeed.** Unlike per-call payment,
   which must price a call before the router runs, a balance is charged what
   the call actually did: a prepared answer costs less than a knowledge
@@ -664,7 +665,55 @@ curl $OA/balance -H "Authorization: Bearer $KEY"
   time, key, and error `code`, filterable by key, model, and date;
   `GET /v1/topups` lists top-ups.
 
-### 5.4 Prices
+### 5.4 Your own limits
+
+An API user can put any limits they want on their account and on each key
+(D16). They are the user's choices, for budgeting, for handing a key to a
+script or a teammate, or for containing a leaked key. All are optional and
+can be changed at any time.
+
+| Limit | Field |
+| --- | --- |
+| Spending caps | `spend_per_call_sats`, `spend_day_sats`, `spend_week_sats`, `spend_month_sats`, `spend_total_sats` |
+| Highest price for one call | `max_price_sats` (a request can also send its own, lower) |
+| Allowed models | `allowed_models`, such as `["openagents-fast"]` |
+| Allowed routes | `allowed_routes`, such as `["answer", "knowledge"]` |
+| Scopes | `scopes` (section 8) |
+| Rate caps | `requests_per_minute`, `requests_per_day`, `concurrent_requests` |
+| Expiry | `expires_at` |
+| Computers for runs | `allowed_computers` (ids from `/v1/computers`) |
+| Plugin fees | `max_plugin_fee_sats` per call, `allowed_plugins` |
+
+Account-wide limits apply to every key; a key's own limits apply on top.
+
+```sh
+curl -X PATCH $OA/keys/key_… -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"limits":{"spend_day_sats":2000,"allowed_models":["openagents-fast"],"expires_at":"2026-12-31T00:00:00Z"}}'
+
+curl -X PUT $OA/account/limits -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"spend_month_sats":100000,"max_plugin_fee_sats":50}'
+curl $OA/account/limits -H "Authorization: Bearer $KEY"
+```
+
+**Shown when they apply.** A response that a user-set limit shaped carries one
+`openagents-limit` header per limit, such as
+`openagents-limit: spend_day; remaining_sats=1200; resets=2026-10-03T00:00:00Z`,
+and the same entries in the `usage` record's `limits`. A user-set rate cap
+also fills the `x-ratelimit-*` headers.
+
+**When one is hit**, the call is refused before it runs or costs anything:
+
+```json
+{"error":{"type":"limit_reached","code":"limit_reached","limit":"spend_day",
+  "value_sats":2000,"resets":"2026-10-03T00:00:00Z",
+  "message":"This key's daily spending limit of 2,000 sats is reached. You set it; change it with PATCH /v1/keys/key_….",
+  "request_id":"req_…"}}
+```
+
+A route the user's limits exclude comes back as an offer or a refusal naming
+the limit, never as a silent downgrade.
+
+### 5.5 Prices
 
 Prices are in sats, published in `/v1/models` and here. Illustrative until
 the price list is set:
@@ -778,9 +827,10 @@ None needs a new event kind.
   scope approves a POL action by itself.
 - **Audit:** a usage line per call (ids and fixed words, no message text),
   run records, x402 settlement records, and plugin payout splits.
-- **No usage limits in our apps.** Partner abuse is handled by key pause and
-  revoke, per-key concurrency bounds, the engineering bounds every worker
-  already has, and payment.
+- **Limits are the user's.** API users set their own (section 5.4). We
+  impose none on the users of our own apps. Third-party traffic is protected
+  by key pause and revoke, per-key concurrency bounds, the engineering bounds
+  every worker already has, and payment.
 
 ## 9. The cost selling point
 
@@ -817,6 +867,7 @@ records ([#10161](https://github.com/OpenAgentsInc/openagents/issues/10161)).
   (`openagents`, `openagents-fast`) with sats pricing.
 - Accounts without signup, keys, `GET /v1/balance`, and Lightning top-ups.
 - L402 beside x402 on every `402`.
+- User-set limits on accounts and keys (section 5.4), with `limit_reached`.
 - The conventions in section 3: `x-request-id`, `X-Client-Request-Id`,
   `openagents-processing-ms`, `openagents-version`, rate-limit headers for
   third-party keys, header-size limits, the error-codes page, the versioning
@@ -867,6 +918,6 @@ speaks Nostr natively.
 
 What remains is setting numbers, not design:
 
-1. The price list (section 5.4 is illustrative), the keyless free tier's
+1. The price list (section 5.5 is illustrative), the keyless free tier's
    size, and the top-up minimum and maximum.
 2. The free plan, if any, that a new key gets.
