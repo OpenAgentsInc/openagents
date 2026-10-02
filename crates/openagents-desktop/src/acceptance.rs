@@ -28,6 +28,9 @@ mod closed_loop;
 /// `phone-dead-task` (#10124).
 #[path = "acceptance_dead_task.rs"]
 mod dead_task;
+/// `persona`: the simulated-user QA run's turns (docs/qa/simulated-users.md).
+#[path = "acceptance_persona.rs"]
+mod persona;
 use crate::worker::Context;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::coder_events::{CoderEvent, Line};
@@ -74,6 +77,10 @@ pub const SCENARIOS: [&str; 26] = [
     "phone-dead-task",
     "phone-agents",
 ];
+
+/// The simulated-user QA run's scenario: run only when `--only persona`
+/// names it alone, never as part of the gate (docs/qa/simulated-users.md).
+pub const PERSONA: &str = "persona";
 
 /// How long a reply may take.
 const REPLY_WAIT: Duration = Duration::from_secs(150);
@@ -148,15 +155,19 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
     let chosen: Vec<&str> = match only {
         Some(names) => {
             let names: Vec<&str> = names.split(',').filter(|n| !n.is_empty()).collect();
-            for name in &names {
-                if !SCENARIOS.contains(name) {
-                    return Err(format!("unknown scenario {name}"));
+            if names == [PERSONA] {
+                vec![PERSONA]
+            } else {
+                for name in &names {
+                    if !SCENARIOS.contains(name) {
+                        return Err(format!("unknown scenario {name}"));
+                    }
                 }
+                SCENARIOS
+                    .into_iter()
+                    .filter(|name| names.contains(name))
+                    .collect()
             }
-            SCENARIOS
-                .into_iter()
-                .filter(|name| names.contains(name))
-                .collect()
         }
         None => SCENARIOS.to_vec(),
     };
@@ -216,6 +227,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
             "phone-closed-loop" => closed_loop::phone_closed_loop(&mut gate),
             "phone-dead-task" => dead_task::phone_dead_task(&mut gate),
             "phone-agents" => phone_agents(&mut gate),
+            PERSONA => persona::persona(&mut gate),
             _ => unreachable!(),
         };
         gate.record(name, outcome);

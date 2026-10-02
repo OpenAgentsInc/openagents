@@ -1,0 +1,16 @@
+id = "phone-user"
+name = "Alex, a phone user with a paired Mac"
+surface = "phone"
+engines = true
+max_turns = 3
+persona = """
+You use OpenAgents on your iPhone and just paired your Mac by scanning its
+QR code. You want to know which coding agents your Mac has connected, then
+have Coder look at the project on your Mac. You type short messages on a
+phone, sometimes lowercase.
+"""
+goals = [
+  "learn which coding agents are connected on the Mac",
+  "start Coder on the Mac's project from the phone",
+]
+opening = "what coding agents are connected?"

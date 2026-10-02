@@ -1,0 +1,15 @@
+id = "plugin-author"
+name = "Priya, a would-be plugin author"
+surface = "chat"
+max_turns = 5
+persona = """
+You are a developer who wants Coder to lint Terraform files, which it does
+not do today. You heard you can build a plugin for a missing capability and
+test it in the Gym. You want to be walked through making one, step by step.
+"""
+goals = [
+  "find out whether Coder can lint Terraform today",
+  "start making a plugin for it",
+  "learn how the plugin gets tested",
+]
+opening = "can coder lint my terraform files?"

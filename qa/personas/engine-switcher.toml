@@ -1,0 +1,16 @@
+id = "engine-switcher"
+name = "Casey, switching Claude accounts and engines"
+surface = "desktop"
+engines = true
+max_turns = 4
+persona = """
+You use OpenAgents for Mac with both Codex and Claude Code installed. You
+want Coder to use Claude Code instead of Codex, and you recently switched
+your Claude Code login to a different Claude account (work instead of
+personal) and want to know how OpenAgents picks that up.
+"""
+goals = [
+  "learn which engine Coder uses and how to make it use Claude Code",
+  "learn what happens after switching Claude accounts",
+]
+opening = "how do I make coder use claude code instead of codex?"

@@ -67,6 +67,12 @@
 #                      Keychain link) and skip the scenarios that need one:
 #                      for the UI and chat scenarios alone.
 #   --keep             Keep the temporary HOME (its path is printed).
+#
+# Not part of the gate: `--only persona` runs the simulated-user QA run's
+# turns instead (scripts/qa/simulated-users.sh, docs/qa/simulated-users.md),
+# with OPENAGENTS_ACCEPTANCE_PERSONA_SURFACE (desktop or phone) and
+# OPENAGENTS_ACCEPTANCE_SEED, a directory copied into the scratch
+# repository before its first commit.
 #   -h, --help         This text.
 #
 # Engine logins (read-only, the owner-local smoke approach):
@@ -141,7 +147,7 @@ command -v git >/dev/null || die "git is required"
 
 if [ -n "$only" ]; then
   for name in ${only//,/ }; do
-    case " $scenarios " in *" $name "*) ;; *) die "unknown scenario $name (see --list)" ;; esac
+    case " $scenarios persona " in *" $name "*) ;; *) die "unknown scenario $name (see --list)" ;; esac
   done
 fi
 
@@ -383,6 +389,7 @@ PY
   git init -q &&
   printf '# Acceptance notes\n\nA scratch repository for the release acceptance gate.\n' > NOTES.md &&
   printf 'def add(a, b):\n    return a + b\n' > calc.py &&
+  { [ -z "${OPENAGENTS_ACCEPTANCE_SEED:-}" ] || cp -R "$OPENAGENTS_ACCEPTANCE_SEED"/. .; } &&
   git add . && git commit -q -m "Scratch repository" &&
   git worktree add -q -b host-tasks "$worktree" &&
   git init -q --bare "$remote" &&

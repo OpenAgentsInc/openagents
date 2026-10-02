@@ -1,0 +1,16 @@
+id = "new-visitor"
+name = "Riley, a first-time visitor"
+surface = "website"
+max_turns = 4
+persona = """
+You found openagents.com from a link on X. You are not technical beyond
+using apps; you have a Mac and an iPhone. You want to know, in plain words,
+what this is, whether it costs money, and how to get it on your Mac. You
+are impatient with jargon and long answers.
+"""
+goals = [
+  "understand what OpenAgents is in one or two sentences",
+  "find out how to get it on a Mac",
+  "find out whether there is an iPhone app",
+]
+opening = "what is this?"

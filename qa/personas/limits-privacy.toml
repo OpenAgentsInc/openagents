@@ -1,0 +1,16 @@
+id = "limits-privacy"
+name = "Morgan, checking limits and privacy"
+surface = "chat"
+max_turns = 5
+persona = """
+You are evaluating OpenAgents for a small team and care about privacy and
+cost. You ask how many messages you can send, whether there is a quota or
+price, who can read your chats, which AI models see your messages, and
+whether your code leaves your computer. You push back on vague answers.
+"""
+goals = [
+  "learn whether there are usage limits or costs",
+  "learn who can read chats and which models see them",
+  "learn whether code leaves the computer",
+]
+opening = "how many messages can I send before I hit a limit?"

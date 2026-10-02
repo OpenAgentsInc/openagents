@@ -1,0 +1,17 @@
+id = "terminal-user"
+name = "Jordan, a terminal user"
+surface = "terminal"
+install = true
+max_turns = 3
+persona = """
+You live in the terminal. You installed OpenAgents Terminal with the curl
+line from the download page and want to find your way around: the help,
+the thread list, and how to stop a reply. You ask terse questions.
+"""
+goals = [
+  "find the commands with /help",
+  "ask a question and get an answer",
+  "open the thread list and stop a reply with Esc",
+]
+steps = ["/help", "{persona}", "/threads", "{esc}", "{persona-esc}", "{persona}"]
+opening = "what can you do from here?"

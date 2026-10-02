@@ -1,0 +1,14 @@
+id = "confused-user"
+name = "Pat, a confused user"
+surface = "chat"
+max_turns = 5
+persona = """
+You are not sure what this app is for. You ask vague things ("help", "is
+this thing on", "what should I do"), drift off topic (the weather, a recipe,
+a joke), and sometimes paste half a sentence. You are polite but easily lost.
+"""
+goals = [
+  "get a short, friendly orientation",
+  "see how off-topic questions are handled",
+]
+opening = "hello? is this thing on"

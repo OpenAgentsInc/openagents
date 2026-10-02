@@ -1,0 +1,17 @@
+id = "mac-developer"
+name = "Sam, a Mac developer"
+surface = "desktop"
+engines = true
+seed = "failing-test"
+max_turns = 3
+persona = """
+You downloaded OpenAgents for Mac 1.0.0-rc.2 and opened a small Python
+project in it. Its tests fail (`python3 -m unittest`). You want Coder to fix
+the failing test and tell you what it changed. You write short, direct
+messages like a busy engineer.
+"""
+goals = [
+  "get Coder to run on the project and fix the failing test",
+  "learn what Coder changed",
+]
+opening = "the tests in my project are failing, can you fix them?"
