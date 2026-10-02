@@ -375,6 +375,17 @@ fn newest_template(snapshots: &[NamedSnapshot]) -> Option<String> {
         .max()
 }
 
+/// An SDK error with Boat's error code, when it sent one (never the body).
+fn why(error: &boat::Error) -> String {
+    match error {
+        boat::Error::Api(api) => match api.code() {
+            Some(code) => format!("{error} ({code})"),
+            None => error.to_string(),
+        },
+        other => other.to_string(),
+    }
+}
+
 fn nonce() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -408,7 +419,7 @@ async fn build_seed(
             ..Default::default()
         })
         .await
-        .map_err(|e| format!("could not create the seed sandbox: {e}"))?;
+        .map_err(|e| format!("could not create the seed sandbox: {}", why(&e)))?;
     let id = created.sandbox.id;
     say(
         output,
@@ -422,7 +433,7 @@ async fn build_seed(
         client
             .wait_until_ready(&id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
             .await
-            .map_err(|e| format!("seed {id} did not become ready: {e}"))?;
+            .map_err(|e| format!("seed {id} did not become ready: {}", why(&e)))?;
         let process = client
             .exec_detached(
                 &id,
@@ -432,7 +443,7 @@ async fn build_seed(
                 },
             )
             .await
-            .map_err(|e| format!("the seed setup did not start: {e}"))?;
+            .map_err(|e| format!("the seed setup did not start: {}", why(&e)))?;
         let mut follower = client
             .follow_command(
                 &id,
@@ -499,7 +510,7 @@ async fn start(
             })
             .await
             .map(|created| created.sandbox.id)
-            .map_err(|e| format!("could not start a sandbox from {name}: {e}")),
+            .map_err(|e| format!("could not start a sandbox from {name}: {}", why(&e))),
         Source::Seed(seed) => client
             .fork(&ForkParams {
                 sandbox_id: seed.clone(),
@@ -514,7 +525,7 @@ async fn start(
             })
             .await
             .map(|forked| forked.id)
-            .map_err(|e| format!("could not fork seed {seed}: {e}")),
+            .map_err(|e| format!("could not fork seed {seed}: {}", why(&e))),
     }
 }
 
@@ -525,18 +536,27 @@ async fn stop_and_wait(client: &boat::Client, id: &str) -> Result<(), String> {
             ..Default::default()
         })
         .await
-        .map_err(|e| format!("could not stop {id}: {e}"))?;
+        .map_err(|e| format!("could not stop {id}: {}", why(&e)))?;
     let deadline = Instant::now() + Duration::from_secs(1_800);
     loop {
-        let state = client
+        // A read can fail while Boat stops the machine (a 502 was seen):
+        // keep reading until the deadline.
+        let state = match client
             .get(&GetParams {
                 sandbox_id: id.into(),
                 ..Default::default()
             })
             .await
-            .map_err(|e| format!("could not read {id}: {e}"))?
-            .sandbox
-            .state;
+        {
+            Ok(info) => info.sandbox.state,
+            Err(e) if Instant::now() > deadline => {
+                return Err(format!("could not read {id}: {}", why(&e)));
+            }
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
         if matches!(state.as_str(), "stopped" | "archived") {
             return Ok(());
         }
@@ -544,6 +564,73 @@ async fn stop_and_wait(client: &boat::Client, id: &str) -> Result<(), String> {
             return Err(format!("{id} did not stop (state {state})"));
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+/// Whether a refusal means the machine is not reachable yet: a sandbox
+/// started from a template reports `ready` a few seconds before Boat can
+/// run commands on it, and refuses them with `400 sandbox_direct_failed` or
+/// `409 sandbox_starting` (seen 2026-10-02). Neither ran the command.
+fn not_reachable_yet(error: &boat::Error) -> bool {
+    matches!(error, boat::Error::Api(api)
+        if matches!(api.code(), Some("sandbox_direct_failed" | "sandbox_starting")))
+}
+
+/// Waits until `id` runs a command: `true`, once a second, up to five
+/// minutes. Only then does the run's own command go, which is never resent.
+async fn reachable(client: &boat::Client, id: &str) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(300);
+    loop {
+        let tried = client
+            .command(&CommandParams {
+                sandbox_id: id.into(),
+                body: CommandRequest {
+                    command: "true".into(),
+                    timeout_seconds: Some(30),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await;
+        match tried {
+            Ok(_) => return Ok(()),
+            Err(e) if not_reachable_yet(&e) && Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Err(e) => return Err(format!("{id} does not run commands: {}", why(&e))),
+        }
+    }
+}
+
+/// Ends a run's sandbox. A landed run's sandbox is deleted at once (a delete
+/// stops it). Any other is asked to stop and kept: stopped is free, and the
+/// stop finishes on Boat's side without this command waiting for it.
+async fn end_run(client: &boat::Client, id: &str, delete: bool) -> &'static str {
+    if delete {
+        let deleted = client
+            .delete_sandbox(&DeleteSandboxParams {
+                sandbox_id: id.into(),
+                x_ascii_confirm_delete: id.into(),
+                ..Default::default()
+            })
+            .await;
+        match deleted {
+            Ok(_) => return "deleted",
+            Err(e) => eprintln!("boat: could not delete {id}: {}", why(&e)),
+        }
+    }
+    match client
+        .stop(&StopParams {
+            sandbox_id: id.into(),
+            ..Default::default()
+        })
+        .await
+    {
+        Ok(_) => "stopped",
+        Err(e) => {
+            eprintln!("boat: could not stop {id}: {}", why(&e));
+            "stop_failed"
+        }
     }
 }
 
@@ -841,8 +928,7 @@ async fn run_issue(
         outcome.as_str(),
         "landed" | "pull_request" | "skipped" | "closed" | "unchanged"
     );
-    let state = teardown(&client, &id, landed).await;
-    // Usage is read after the stop, so it covers the whole run.
+    // Usage is read as the run ends, before a delete removes the sandbox.
     let usage = client
         .usage(&UsageParams {
             sandbox_id: id.clone(),
@@ -850,6 +936,7 @@ async fn run_issue(
         })
         .await
         .ok();
+    let state = end_run(&client, &id, landed).await;
     let cost = Cost {
         wall,
         machine_seconds: usage.as_ref().map(|u| u.seconds),
@@ -899,11 +986,12 @@ async fn follow(
     client
         .wait_until_ready(id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
         .await
-        .map_err(|e| format!("{id} did not become ready: {e}"))?;
+        .map_err(|e| format!("{id} did not become ready: {}", why(&e)))?;
+    reachable(client, id).await?;
     let written = client
         .write_text(id, ENV_FILE, &credentials.file())
         .await
-        .map_err(|e| format!("the run's credentials could not be written: {e}"))?;
+        .map_err(|e| format!("the run's credentials could not be written: {}", why(&e)))?;
     if written.type_ != "file.written" {
         return Err("the run's credentials could not be written".into());
     }
@@ -916,7 +1004,7 @@ async fn follow(
             },
         )
         .await
-        .map_err(|e| format!("the flow did not start on {id}: {e}"))?;
+        .map_err(|e| format!("the flow did not start on {id}: {}", why(&e)))?;
     let mut follower = client
         .follow_command(
             id,
@@ -935,7 +1023,7 @@ async fn follow(
     let mut last = None;
     loop {
         let frame = tokio::select! {
-            frame = follower.next() => frame.map_err(|e| format!("following {id}: {e}"))?,
+            frame = follower.next() => frame.map_err(|e| format!("following {id}: {}", why(&e)))?,
             changed = stopping.changed() => {
                 if changed.is_ok() && *stopping.borrow() {
                     let _ = client.kill_command(id, process.pid, Signal::Term).await;
