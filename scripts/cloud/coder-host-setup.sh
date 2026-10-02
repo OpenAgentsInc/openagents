@@ -20,12 +20,14 @@
 #   - with --warm: a warm Cargo target for openagents-cli, microcoder and
 #     coder (their libraries, binaries and test targets) in the Coder target
 #     slot the task runner leases first, and the release `openagents`
-#     binary in /usr/local/bin.
+#     binary in /usr/local/bin. The workspace's own test executables,
+#     binaries and incremental caches are then pruned (--no-prune keeps
+#     them): a Coder worktree never reuses them.
 #
 # Usage (as root, or as a user with passwordless sudo):
 #   scripts/cloud/coder-host-setup.sh [--user NAME] [--repo-dir DIR]
 #       [--repo-url URL] [--rev REV] [--warm] [--no-release-binary]
-#       [--sccache-bucket BUCKET] [--no-engines]
+#       [--sccache-bucket BUCKET] [--no-engines] [--no-prune]
 #
 # Run as root it sets up the user `coder` (created if missing); run as any
 # other user it sets up that user. It never prints a secret and never reads
@@ -40,6 +42,7 @@ warm="false"
 release_binary="true"
 sccache_bucket=""
 engines="true"
+prune="true"
 # Pinned tool versions. The Rust toolchain itself comes from the repository's
 # rust-toolchain.toml; this is only the fallback before the clone exists.
 RUST_TOOLCHAIN_DEFAULT="1.97.1"
@@ -59,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     --no-release-binary) release_binary="false"; shift ;;
     --sccache-bucket) sccache_bucket="${2:?}"; shift 2 ;;
     --no-engines) engines="false"; shift ;;
+    --no-prune) prune="false"; shift ;;
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) echo "coder-host-setup: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -253,6 +257,18 @@ if [[ "$warm" == "true" ]]; then
       log warm-tests end "package=$p partial=true"
     fi
   done
+  if [[ "$prune" == "true" ]]; then
+    # A Coder run builds in its own worktree, at a path unlike this clone's,
+    # so the workspace's own outputs (test executables, binaries,
+    # incremental caches) are never reused there: measured, they were 57 of
+    # 77 GiB. Dependency rlibs, rmeta and build-script outputs are what a
+    # worktree build reuses; they stay. A build in the clone itself relinks.
+    log warm-prune begin
+    as_user find "$slot/debug/deps" -maxdepth 1 -type f -executable ! -name '*.so' -delete
+    as_user find "$slot/debug" -maxdepth 1 -type f -executable -delete
+    as_user rm -rf "$slot/debug/incremental"
+    log warm-prune end "slot_bytes=$(du -sb "$slot" | cut -f1)"
+  fi
   if [[ "$release_binary" == "true" ]]; then
     log release begin
     rel="$home/.cache/oa-release-target"

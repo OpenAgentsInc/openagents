@@ -57,14 +57,16 @@ case "$mode" in
     ;;
   apply)
     action=create
+    headers=(--headers "Content-Type=application/json")
     if gcloud scheduler jobs describe "$JOB" --location "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
       action=update
+      headers=(--update-headers "Content-Type=application/json")
     fi
     gcloud scheduler jobs "$action" http "$JOB" \
       --location "$REGION" --project "$PROJECT" \
       --schedule "$SCHEDULE" --time-zone "Etc/UTC" \
       --uri "$uri" --http-method POST \
-      --headers "Content-Type=application/json" \
+      "${headers[@]}" \
       --message-body "$body" \
       --oauth-service-account-email "$RUNNER_SA" \
       --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \

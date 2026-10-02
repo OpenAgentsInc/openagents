@@ -59,6 +59,8 @@ timed() {
   out "$name seconds=$(awk -v a="$t0" -v b="$t1" 'BEGIN{printf "%.1f", b-a}') rc=$rc"
 }
 repo=/home/coder/openagents
+gib() { awk '{s+=$1} END {printf "%.1f", s/1073741824}'; }
+out "sizes slot_gib=$(du -sb "$slot" | cut -f1 | gib) incremental_gib=$(du -sb "$slot/debug/incremental" 2>/dev/null | cut -f1 | gib) build_scripts_gib=$(du -sb "$slot/debug/build" 2>/dev/null | cut -f1 | gib) deps_executables_gib=$(find "$slot/debug/deps" -maxdepth 1 -type f -executable ! -name '*.so' -printf '%s\n' | gib) deps_rlib_gib=$(find "$slot/debug/deps" -maxdepth 1 -name '*.rlib' -printf '%s\n' | gib) deps_rmeta_gib=$(find "$slot/debug/deps" -maxdepth 1 -name '*.rmeta' -printf '%s\n' | gib) bin_gib=$(find "$slot/debug" -maxdepth 1 -type f -printf '%s\n' | gib)"
 behind="$(as_coder git -C $repo rev-list --count HEAD..origin/main)"
 out "baked_behind_origin_main commits=$behind"
 timed warm_clone "cd $repo && git checkout -q --detach origin/main && CARGO_TARGET_DIR=$slot cargo build --locked -p openagents-cli"
