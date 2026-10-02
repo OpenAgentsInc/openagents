@@ -1784,18 +1784,21 @@ fn a_proposed_command_shows_itself_and_enter_runs_it() {
     app.fresh = false;
     app.event(Event::Command {
         thread: app.thread.clone(),
-        argv: vec!["wallet".into(), "status".into()],
+        argv: vec!["wallet".into(), "balance".into()],
         confirm: false,
     });
     assert!(app.command.is_none());
     app.event(Event::Ran {
         thread: app.thread.clone(),
-        argv: vec!["wallet".into(), "status".into()],
+        argv: vec!["wallet".into(), "balance".into()],
         ok: true,
-        output: "balance: 2100 sats".into(),
+        output: "Your balance is ₿2,100 (0.00002100 BTC).".into(),
     });
     let screen = shown(&mut app);
-    assert!(screen.contains("openagents wallet status"), "{screen}");
-    assert!(screen.contains("balance: 2100 sats"), "{screen}");
+    assert!(screen.contains("openagents wallet balance"), "{screen}");
+    assert!(
+        screen.contains("Your balance is ₿2,100 (0.00002100 BTC)."),
+        "{screen}"
+    );
     assert!(!screen.contains("Enter"), "{screen}");
 }

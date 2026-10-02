@@ -60,6 +60,53 @@ fn completions_usage() -> &'static str {
         .unwrap_or("usage: openagents completions SHELL")
 }
 
+/// `openagents x402`'s help with `x402 node`'s commands among its own, as
+/// `node init`, `node info`, and so on.
+fn x402_usage() -> &'static str {
+    static USAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    USAGE.get_or_init(|| {
+        let rows = |usage: &str| -> (Vec<String>, Vec<String>) {
+            let mut lines = usage.lines().skip(1);
+            let mut rows = Vec::new();
+            let mut notes = Vec::new();
+            for line in lines.by_ref() {
+                if !line.is_empty() && !line.starts_with(' ') {
+                    notes.push(line.to_owned());
+                    break;
+                }
+                rows.push(line.to_owned());
+            }
+            notes.extend(lines.map(str::to_owned));
+            (rows, notes)
+        };
+        let (own, notes) = rows(crate::x402::USAGE);
+        let (node, _) = rows(crate::x402_node::USAGE);
+        let mut text = vec![
+            crate::x402::USAGE
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_owned(),
+        ];
+        text.extend(own);
+        text.extend(node.into_iter().map(|line| match line.strip_prefix("  ") {
+            Some(rest) if !rest.starts_with(' ') => format!("  node {rest}"),
+            _ => line,
+        }));
+        text.extend(notes);
+        text.join("\n")
+    })
+}
+
+fn x402_effects() -> &'static [Declared] {
+    static EFFECTS: std::sync::OnceLock<Vec<Declared>> = std::sync::OnceLock::new();
+    EFFECTS.get_or_init(|| {
+        let mut all = crate::x402::EFFECTS.to_vec();
+        all.extend_from_slice(crate::x402_node::EFFECTS);
+        all
+    })
+}
+
 /// Every group's help, in no particular order; `build` follows the
 /// top-level table's.
 pub fn help() -> Vec<GroupHelp<'static>> {
@@ -126,7 +173,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("labor", Some(crate::labor::USAGE), crate::labor::EFFECTS),
         group("key", Some(crate::key::USAGE), crate::key::EFFECTS),
         group("wallet", Some(crate::wallet::USAGE), crate::wallet::EFFECTS),
-        group("x402", Some(crate::x402::USAGE), crate::x402::EFFECTS),
+        group("x402", Some(x402_usage()), x402_effects()),
         group("kb", Some(crate::kb::USAGE), crate::kb::EFFECTS),
         group("relay", Some(crate::relay::USAGE), crate::relay::EFFECTS),
         group(
@@ -218,16 +265,27 @@ mod tests {
             tree.leaf(&words).map(|leaf| leaf.effect)
         };
         for path in [
-            "wallet pay",
-            "wallet send",
-            "wallet channel open",
+            "x402 node pay",
+            "x402 node send",
+            "x402 node channel open",
             "x402 fetch",
             "x402 buy",
             "x402 call",
         ] {
             assert_eq!(effect(path), Some(Effect::Spends), "{path}");
         }
-        assert_eq!(effect("wallet export"), Some(Effect::Secret));
+        assert_eq!(effect("x402 node export"), Some(Effect::Secret));
+        // The person's wallet is plain and read-only here; the x402 node
+        // is never under it.
+        assert_eq!(effect("wallet balance"), Some(Effect::ReadOnly));
+        assert_eq!(effect("wallet address"), Some(Effect::ReadOnly));
+        let wallet = tree.group("wallet").expect("the wallet group");
+        for leaf in wallet.leaves() {
+            let text = format!("{} {}", leaf.summary, leaf.usage.join(" ")).to_lowercase();
+            for word in crate::wallet::TECHNICAL {
+                assert!(!text.contains(word), "{} names {word}", leaf.command());
+            }
+        }
         for path in ["computer approve", "computer invite", "computer revoke"] {
             assert_eq!(effect(path), Some(Effect::Grants), "{path}");
         }

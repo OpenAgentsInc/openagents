@@ -511,30 +511,38 @@ admits), `transition` (a record was refused or the evidence conflicts),
 `store`, `relay`, or `execution`. Nothing in the group authors a record, widens
 a grant, or retries an execution.
 
-## Wallet (x402 Lightning rail)
+## Your wallet (`openagents wallet`)
 
-`openagents wallet` runs an embedded [ldk-node](https://github.com/lightningdevkit/ldk-node)
+`openagents wallet` is the person's wallet on this computer. Its answers are
+plain: `openagents wallet balance` prints one sentence ("Your balance is
+₿12,000 (0.00012000 BTC).") and `openagents wallet address` one line ("Your
+address: …"). Neither names a node, a network, a chain server, channels, or
+liquidity. `--json` keeps machine fields (`balance_sats`, `address`).
+
+## The x402 node (`openagents x402 node`, the Lightning rail)
+
+`openagents x402 node` runs an embedded [ldk-node](https://github.com/lightningdevkit/ldk-node)
 Lightning node from `crates/wallet`. Its node key is held only by this
 wallet, so its node id is a valid x402 `payTo`; it issues the exact-amount
 invoices NIP-X402 receivers need and pays them as a buyer.
 
 ```sh
-openagents wallet init --network testnet     # bitcoin, testnet, signet, or regtest (--esplora URL)
-openagents wallet info --json                # node_id is the x402 payTo
-openagents wallet fund                       # on-chain address to fund channels from
-openagents wallet channel open NODE_ID@HOST:PORT --sats 100000
-openagents wallet channel list
-openagents wallet invoice --msat 1000 --request-hash HEX64 --json
-openagents wallet pay BOLT11 --max-fee-msat 50 --wait 60 --json
-openagents wallet lookup PAYMENT_HASH
-openagents wallet backup DIR                 # seed + config + store snapshot, digests in backup.json
-openagents wallet restore DIR                # into an empty wallet home
-openagents wallet channel close USER_CHANNEL_ID COUNTERPARTY [--force]
-openagents wallet serve                      # the resident node: events as JSON lines, answers control.sock
-openagents wallet service install            # run `wallet serve` from login on (launchd or systemd --user)
+openagents x402 node init --network testnet     # bitcoin, testnet, signet, or regtest (--esplora URL)
+openagents x402 node info --json                # node_id is the x402 payTo
+openagents x402 node fund                       # on-chain address to fund channels from
+openagents x402 node channel open NODE_ID@HOST:PORT --sats 100000
+openagents x402 node channel list
+openagents x402 node invoice --msat 1000 --request-hash HEX64 --json
+openagents x402 node pay BOLT11 --max-fee-msat 50 --wait 60 --json
+openagents x402 node lookup PAYMENT_HASH
+openagents x402 node backup DIR                 # seed + config + store snapshot, digests in backup.json
+openagents x402 node restore DIR                # into an empty wallet home
+openagents x402 node channel close USER_CHANNEL_ID COUNTERPARTY [--force]
+openagents x402 node serve                      # the resident node: events as JSON lines, answers control.sock
+openagents x402 node service install            # run `x402 node serve` from login on (launchd or systemd --user)
 ```
 
-`wallet serve` is the resident node. It binds `control.sock` in the wallet
+`x402 node serve` is the resident node. It binds `control.sock` in the wallet
 home and answers every other wallet command, and every `x402` command that
 needs the node, over that socket; `info` then reports `resident` with the
 serving pid and uptime, and a payment through it completes in well under a
@@ -544,9 +552,9 @@ receive on. A second `serve` under the same home is refused while the first
 answers; a socket left by a killed resident is replaced. The resident dials
 its stored channel peers every 5 seconds until they connect, so a
 counterpart that comes online is usable within seconds rather than the
-node's own one-minute retry. `wallet service install` writes a launchd
+node's own one-minute retry. `x402 node service install` writes a launchd
 agent (`com.openagents.wallet`, `gui/UID`) or a systemd user unit that runs
-`openagents --json wallet serve` for this wallet home with restart on exit,
+`openagents --json x402 node serve` for this wallet home with restart on exit,
 and `service status` reports both the manager's view and the resident that
 answers.
 
@@ -597,8 +605,8 @@ settles at once; x402 buyers retry a failed payment with a fresh challenge.
 
 ```sh
 # Signet on Mutinynet against MoneyDevKit's staging LSP.
-openagents wallet init --network signet --lsp mdk
-openagents --json wallet invoice --msat 21000000 --request-hash HASH
+openagents x402 node init --network signet --lsp mdk
+openagents --json x402 node invoice --msat 21000000 --request-hash HASH
 # {"bolt11":"lntbs210u1…","pay_to":"<this node id>","description_hash":"HASH",…}
 ```
 
@@ -606,14 +614,14 @@ openagents --json wallet invoice --msat 21000000 --request-hash HASH
 revision), which adds the LSPS4 client; upstream `ldk-node` 0.7 has none.
 
 ```sh
-openagents wallet init --network bitcoin --lsp olympus
+openagents x402 node init --network bitcoin --lsp olympus
 # Quote 200 000 sats of inbound capacity; nothing is paid yet.
-openagents --json wallet channel buy --lsp-sats 200000
+openagents --json x402 node channel buy --lsp-sats 200000
 # {"order_id":"a4ac…","bolt11":{"state":"expectpayment","fee_total_sat":7728,
 #   "invoice":"lnbc77280n1…"},"onchain":null,"channel":null,"paid":null}
 # Pay the order from this wallet and watch for the LSP to fund it.
-openagents --json wallet channel buy --lsp-sats 200000 --pay lightning
-openagents --json wallet channel order ORDER_ID
+openagents --json x402 node channel buy --lsp-sats 200000 --pay lightning
+openagents --json x402 node channel order ORDER_ID
 ```
 
 Against Olympus mainnet a 200 000 sat order quoted 7 728 sats, three
@@ -621,7 +629,7 @@ confirmations required, and funding within six blocks, and offered BOLT11
 only (`onchain` was null). Olympus therefore expects the fee over
 Lightning, so a node with no channel first funds itself (`fund`), opens an
 outbound channel to Olympus with `channel open 031b30…@45.79.192.236:9735
---sats N`, and pays the order through it; `--pay onchain` and `wallet send
+--sats N`, and pays the order through it; `--pay onchain` and `x402 node send
 ADDRESS --sats N` serve LSPs that quote an on-chain address. The order document
 also reports `client_balance_sat` (`--our-sats`, sats the LSP pushes to this
 side), `channel_expiry_blocks` (`--expiry-blocks`, default 13 000, about 90
@@ -637,12 +645,12 @@ copy of that store can broadcast a revoked commitment and lose the
 channel's balance as a penalty.
 
 ```sh
-openagents --json wallet backup ~/wallet-backups/2026-09-27
+openagents --json x402 node backup ~/wallet-backups/2026-09-27
 # {"path":"…","created_at":1790567142,"store":true,"resident_running":true,
 #  "files":[{"path":"seed",…},{"path":"config.json",…},{"path":"ldk/ldk_node_data.sqlite",…}]}
-openagents --json wallet info                    # last_backup: {at, path, files, bytes}
-openagents wallet export --reveal                # the mnemonic, on stdout, nothing else
-openagents wallet export                         # refused: exit 64
+openagents --json x402 node info                    # last_backup: {at, path, files, bytes}
+openagents x402 node export --reveal                # the mnemonic, on stdout, nothing else
+openagents x402 node export                         # refused: exit 64
 ```
 
 `backup DIR` writes the seed, `config.json`, and a consistent snapshot of
@@ -657,16 +665,16 @@ Two ways back, into an empty wallet home:
 
 ```sh
 # Full restore: seed, config, and the channel store.
-openagents --json wallet restore ~/wallet-backups/2026-09-27
+openagents --json x402 node restore ~/wallet-backups/2026-09-27
 # Seed only: the mnemonic on stdin, never on the command line.
-cat mnemonic.txt | openagents wallet init --network bitcoin --mnemonic -
+cat mnemonic.txt | openagents x402 node init --network bitcoin --mnemonic -
 ```
 
 `restore` verifies every digest against the manifest before it copies
 anything and refuses a home that already has a seed. After a full
 restore, never run the old copy again: two nodes on one store is the
-revoked-commitment case above. Start the restored node once (`wallet
-info` or `wallet serve`) and it resyncs; channels opened after the
+revoked-commitment case above. Start the restored node once (`x402 node
+info` or `x402 node serve`) and it resyncs; channels opened after the
 backup are unknown to it and fall under the seed-only rule.
 
 A restore from the seed alone has the same node id (a
@@ -674,7 +682,7 @@ A restore from the seed alone has the same node id (a
 funding addresses across both restore paths) but no channels. The
 funds in each channel then come back only when the counterparty
 force-closes: reconnect to it and ask it to close, or if the peer is
-another `openagents wallet`, run `channel close USER_CHANNEL_ID
+another `openagents x402 node`, run `channel close USER_CHANNEL_ID
 COUNTERPARTY --force` there. LDK's on-chain sweeper on the restored node
 claims its side of the closing transaction once it sees it. `channel
 close` without `--force` is the cooperative close for a channel this
@@ -835,7 +843,7 @@ is not terminal. Neither command pays or reruns on a timeout; reconcile with
 other's challenges.
 
 First paid round trip on record (testnet, 2026-09-28, relay
-`wss://relay.openagents.com`): two `openagents wallet` nodes on one
+`wss://relay.openagents.com`): two `openagents x402 node` nodes on one
 machine, a 100,000 sat private channel between them (funding
 `329336d0…1944`, block 5151355), provider `native-serve --slug echo
 --msat 1000 -- cat` on the receiving node, buyer `buy … --as buyer` on the

@@ -1,7 +1,7 @@
 {
   "schema": "openagents.chat-router.wallet-eval.v1",
   "set": "chat-wallet-v1",
-  "about": "Wallet requests always mean the built-in OpenAgents wallet (#10170). A terminal row expects the wallet's commands (`command`): the router descends the `wallet` group, so a read-only request runs on the computer. A `send` row expects the wallet's own send answer, never a command. An `answer` row (phone, desktop) expects a wallet answer: a prepared wallet entry, or the model told WALLET_NOTE; never a clarifying question. No reply may name a wallet in `forbidden`. `recorded` is Jev's response body for the row, rewritten by the live test with WALLET_EVAL_RECORD=1.",
+  "about": "Wallet requests always mean the built-in OpenAgents wallet (#10170). A terminal row expects the wallet's commands (`command`): the router descends the `wallet` group, so a read-only request runs on the computer. A `send` row expects the wallet's own send answer, never a command. An `answer` row (phone, desktop) expects a wallet answer: a prepared wallet entry, or the model told WALLET_NOTE; never a clarifying question. No reply may name a wallet in `forbidden`. `recorded` is Jev's response body for the row, rewritten by the live test with WALLET_EVAL_RECORD=1. A wallet answer is plain: a terminal row runs `wallet balance` or `wallet address`, whose output is one sentence, and no answer, command summary, or prepared text contains a word in `technical` (#10170 follow-up: `wallet info` printed the x402 node's id, network, Esplora server, channels, and inbound liquidity).",
   "forbidden": [
     "MetaMask",
     "Phantom",
@@ -13,6 +13,18 @@
     "exchange account",
     "which wallet",
     "which provider"
+  ],
+  "technical": [
+    "node",
+    "testnet",
+    "signet",
+    "esplora",
+    "channel",
+    "liquidity",
+    "inbound",
+    "outbound",
+    "msat",
+    "ldk"
   ],
   "rows": [
     {

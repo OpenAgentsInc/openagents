@@ -1,5 +1,5 @@
 //! One handle for a command that needs the node: the resident node when a
-//! `wallet serve` answers under the wallet home, else a node this process
+//! `x402 node serve` answers under the wallet home, else a node this process
 //! opens and stops itself.
 
 use std::path::Path;

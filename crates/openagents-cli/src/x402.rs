@@ -1,6 +1,7 @@
 //! `openagents x402`: sell one operation over HTTP or MCP for an exact
-//! Lightning payment, or buy one. Both roles use the wallet under
-//! `openagents wallet`.
+//! Lightning payment, or buy one. Both roles use this computer's Lightning
+//! node under `openagents x402 node` (`x402_node`), never the person's
+//! Spark wallet (`openagents wallet`).
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -153,7 +154,9 @@ over the last 24 hours, from the ledger) hold whatever the flags say. Without
 Replay records live in ~/.openagents/x402/replay, native purchases in
 ~/.openagents/x402/native, the policy in ~/.openagents/x402/policy.json, and
 the ledger in ~/.openagents/x402/ledger.ndjson. The preimage is printed only
-with --show-proof. Add --json before `x402` for one JSON document.";
+with --show-proof. Add --json before `x402` for one JSON document.
+Both roles use this computer's Lightning node; set it up and run it with
+`openagents x402 node` (see `openagents x402 node --help`).";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -198,6 +201,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "advertise" => advertise(output, rest),
         "policy" => policy(output, rest),
         "ledger" => ledger(output, rest),
+        "node" => crate::x402_node::run(output, rest),
         other => output.usage("x402", &format!("unknown command `{other}`"), USAGE),
     }
 }
@@ -216,7 +220,7 @@ pub(crate) fn replay_dir() -> PathBuf {
     x402_home().join("replay")
 }
 
-/// The resident node when `wallet serve` answers, else a node opened here.
+/// The resident node when `x402 node serve` answers, else a node opened here.
 pub(crate) fn open_wallet() -> Result<(Opened, WalletConfig), WalletError> {
     let home = config::home();
     let wallet_config = WalletConfig::load(&home)?;
@@ -583,7 +587,7 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
             return output.fail(
                 "x402",
                 &format!(
-                    "paid retry failed: {error}; proof for payment {} is in `openagents wallet lookup`",
+                    "paid retry failed: {error}; proof for payment {} is in `openagents x402 node lookup`",
                     proof.payment_hash
                 ),
             );
@@ -852,7 +856,7 @@ pub(crate) fn pay_invoice(
             waited_secs,
         }) => {
             return Err(format!(
-                "payment {payment_hash} is still pending after {waited_secs}s; run `openagents wallet lookup {payment_hash}`, then retry to reuse the proof"
+                "payment {payment_hash} is still pending after {waited_secs}s; run `openagents x402 node lookup {payment_hash}`, then retry to reuse the proof"
             ));
         }
         Err(error) => return Err(error.to_string()),
@@ -1162,7 +1166,7 @@ fn call(output: &Output, words: &[String]) -> u8 {
         Err(message) => output.fail(
             "x402",
             &format!(
-                "paid retry failed: {message}; proof for payment {} is in `openagents wallet lookup`",
+                "paid retry failed: {message}; proof for payment {} is in `openagents x402 node lookup`",
                 proof.payment_hash
             ),
         ),

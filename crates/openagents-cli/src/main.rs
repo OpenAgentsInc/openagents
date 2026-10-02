@@ -65,6 +65,8 @@ mod x402;
 #[cfg(unix)]
 mod x402_native;
 #[cfg(unix)]
+mod x402_node;
+#[cfg(unix)]
 mod x402_phone;
 mod zone;
 
@@ -112,9 +114,9 @@ Labor (NIP-MKT, NIP-LAB):
 
 Keys, relays, and money:
   key          Show or create Nostr identities.
-  wallet       This computer's OpenAgents wallet, a Lightning node (ldk-node):
-               balances, funding address, payments, channels, and x402.
-  x402         Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1).
+  wallet       Your OpenAgents wallet: your balance and an address to get paid at.
+  x402         Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1),
+               through this computer's Lightning node (`x402 node`).
   kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
@@ -214,6 +216,12 @@ fn main() -> ExitCode {
         #[cfg(unix)]
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        // `wallet serve` is the x402 node's resident under its old name,
+        // which services installed before 2026-10-02 still start.
+        #[cfg(unix)]
+        "wallet" if rest.first().is_some_and(|word| word == "serve") => {
+            x402_node::run(&output, &rest)
+        }
         #[cfg(unix)]
         "wallet" => wallet::run(&output, &rest),
         #[cfg(unix)]
@@ -338,7 +346,7 @@ fn doctor(output: &Output) -> u8 {
         ("computers", computer::store_dir(None)),
         ("tasks", openagents.join("tasks")),
         ("sov", sov::home()),
-        ("wallet", openagents_wallet::config::home()),
+        ("x402_node", openagents_wallet::config::home()),
     ];
     let mut report = serde_json::Map::new();
     report.insert("version".into(), version_line().into());

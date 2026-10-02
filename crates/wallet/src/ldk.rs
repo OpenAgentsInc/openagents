@@ -488,7 +488,7 @@ impl LightningWallet for LdkWallet {
             self.node.force_close_channel(
                 &id,
                 counterparty,
-                Some("openagents wallet channel close --force".to_owned()),
+                Some("openagents x402 node channel close --force".to_owned()),
             )
         } else {
             self.node.close_channel(&id, counterparty)

@@ -504,9 +504,9 @@
    "message": "what's my wallet balance?",
    "expect": "proposal",
    "command": [
-    "wallet",
-    "info"
-   ]
+      "wallet",
+      "balance"
+    ]
   },
   {
    "id": "r51",
@@ -575,13 +575,14 @@
   {
    "id": "r57",
    "surface": "terminal",
-   "message": "list my wallet's lightning channels",
+   "message": "list the x402 node's lightning channels",
    "expect": "proposal",
    "command": [
-    "wallet",
-    "channel",
-    "list"
-   ]
+      "x402",
+      "node",
+      "channel",
+      "list"
+    ]
   },
   {
    "id": "r58",
@@ -627,9 +628,9 @@
    "message": "check my wallet balance",
    "expect": "proposal",
    "command": [
-    "wallet",
-    "info"
-   ]
+      "wallet",
+      "balance"
+    ]
   },
   {
    "id": "r64",
@@ -637,9 +638,9 @@
    "message": "balance and wallet address basic readonly identifying shit",
    "expect": "proposal",
    "command": [
-    "wallet",
-    "info"
-   ]
+      "wallet",
+      "balance"
+    ]
   },
   {
    "id": "r65",
@@ -647,9 +648,9 @@
    "message": "how many sats do I have",
    "expect": "proposal",
    "command": [
-    "wallet",
-    "info"
-   ]
+      "wallet",
+      "balance"
+    ]
   },
   {
    "id": "r66",

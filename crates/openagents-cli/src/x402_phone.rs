@@ -69,7 +69,7 @@ impl PhonePayer {
 
 fn unsupported<T>() -> Result<T, WalletError> {
     Err(WalletError::Setup(
-        "the phone payer only pays invoices; use `openagents wallet` for anything else".into(),
+        "the phone payer only pays invoices; use `openagents x402 node` for anything else".into(),
     ))
 }
 

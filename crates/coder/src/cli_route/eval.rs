@@ -337,12 +337,16 @@ mod tests {
         );
         assert!(wrong.valid && !wrong.correct);
         let none = set.rows.iter().find(|row| row.expect == "none").unwrap();
-        let bad = score(tree, none, &proposal(&["wallet", "info"], Effect::ReadOnly));
+        let bad = score(
+            tree,
+            none,
+            &proposal(&["wallet", "balance"], Effect::ReadOnly),
+        );
         assert!(!bad.correct && bad.off_list);
         let money = score(
             tree,
             none,
-            &proposal(&["wallet", "pay", "x"], Effect::Spends),
+            &proposal(&["x402", "node", "pay", "x"], Effect::Spends),
         );
         assert!(money.forbidden);
         let ok = score(tree, none, &Outcome::NoCommand { trail: Vec::new() });

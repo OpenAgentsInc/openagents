@@ -7900,1013 +7900,62 @@
     },
     {
       "name": "wallet",
-      "summary": "This computer's OpenAgents wallet, a Lightning node (ldk-node): balances, funding address, payments, channels, and x402.",
+      "summary": "Your OpenAgents wallet: your balance and an address to get paid at.",
       "children": [
         {
-          "name": "init",
+          "name": "balance",
           "leaf": {
             "path": [
               "wallet",
-              "init"
+              "balance"
             ],
             "usage": [
-              "init [--network NET] [--esplora URL] [--listen HOST:PORT] [--lsp NODE_ID@HOST:PORT|olympus|mdk [--lsp-protocol lsps1|lsps2|lsps4] [--lsp-token TOKEN] [--lsp-min-msat N]] [--trust NODE_ID]... [--mnemonic -]"
+              "balance"
             ],
             "forms": [
               {
                 "tokens": [
                   {
                     "kind": "literal",
-                    "word": "init"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "network",
-                    "value": "NET",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "esplora",
-                    "value": "URL",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "listen",
-                    "value": "HOST:PORT",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "lsp",
-                    "value": "NODE_ID@HOST:PORT|olympus|mdk",
-                    "choices": [
-                      "olympus",
-                      "mdk"
-                    ],
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "lsp-protocol",
-                    "value": "lsps1|lsps2|lsps4",
-                    "choices": [
-                      "lsps1",
-                      "lsps2",
-                      "lsps4"
-                    ],
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "lsp-token",
-                    "value": "TOKEN",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "lsp-min-msat",
-                    "value": "N",
-                    "open": true,
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "trust",
-                    "value": "NODE_ID",
-                    "open": true,
-                    "optional": true,
-                    "repeated": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "mnemonic",
-                    "value": "-",
-                    "choices": [
-                      "-"
-                    ],
-                    "optional": true
+                    "word": "balance"
                   }
                 ]
               }
             ],
-            "summary": "Write config.json and a seed. NET is bitcoin, testnet, signet, or regtest (default signet). --lsp olympus picks the Olympus (ZEUS) LSPS1 peer for the network; --lsp mdk picks the MoneyDevKit LSPS4 peer (bitcoin, or Mutinynet on signet, which also sets --esplora), whose just-in-time channel needs no funding first. A peer given by hand is LSPS2 unless --lsp-protocol says otherwise. This node signs its invoices on every protocol, as x402 requires of payTo. --trust lets that peer open anchor channels here without an on-chain reserve (your own nodes). Running init again keeps the seed. --mnemonic - reads a BIP39 mnemonic from stdin to restore a seed into a home that has none.",
-            "effect": "local_write",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "info",
-          "leaf": {
-            "path": [
-              "wallet",
-              "info"
-            ],
-            "usage": [
-              "info"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "info"
-                  }
-                ]
-              }
-            ],
-            "summary": "Node id (the x402 payTo), network, balances, paths, and the last backup.",
+            "summary": "Your balance, in one plain sentence.",
             "effect": "read_only",
             "runs_on": "screen",
             "screen": "wallet"
           }
         },
         {
-          "name": "export",
+          "name": "address",
           "leaf": {
             "path": [
               "wallet",
-              "export"
+              "address"
             ],
             "usage": [
-              "export --reveal"
+              "address"
             ],
             "forms": [
               {
                 "tokens": [
                   {
                     "kind": "literal",
-                    "word": "export"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "reveal"
+                    "word": "address"
                   }
                 ]
               }
             ],
-            "summary": "Print the seed mnemonic. Refuses without --reveal.",
-            "effect": "secret",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "backup",
-          "leaf": {
-            "path": [
-              "wallet",
-              "backup"
-            ],
-            "usage": [
-              "backup DIR"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "backup"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "DIR"
-                  }
-                ]
-              }
-            ],
-            "summary": "Copy the seed, config.json, and a consistent snapshot of the node store into a new directory DIR with a digest manifest; safe beside a resident.",
-            "effect": "secret",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "restore",
-          "leaf": {
-            "path": [
-              "wallet",
-              "restore"
-            ],
-            "usage": [
-              "restore DIR"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "restore"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "DIR"
-                  }
-                ]
-              }
-            ],
-            "summary": "Verify DIR's manifest and copy it into an empty wallet home. A restore from the seed alone leaves channels behind; see `channel close --force`.",
-            "effect": "secret",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "status",
-          "leaf": {
-            "path": [
-              "wallet",
-              "status"
-            ],
-            "usage": [
-              "status"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "status"
-                  }
-                ]
-              }
-            ],
-            "summary": "Chain sync state and queued node events.",
+            "summary": "An address to receive bitcoin at.",
             "effect": "read_only",
             "runs_on": "screen",
             "screen": "wallet"
           }
-        },
-        {
-          "name": "fund",
-          "leaf": {
-            "path": [
-              "wallet",
-              "fund"
-            ],
-            "usage": [
-              "fund"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "fund"
-                  }
-                ]
-              }
-            ],
-            "summary": "Print a fresh on-chain funding address.",
-            "effect": "local_write",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "channel",
-          "children": [
-            {
-              "name": "open",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "channel",
-                  "open"
-                ],
-                "usage": [
-                  "channel open NODE_ID@HOST:PORT --sats N [--announce] [--wait SECONDS]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "channel"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "open"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "NODE_ID@HOST:PORT"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "sats",
-                        "value": "N",
-                        "open": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "announce",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "wait",
-                        "value": "SECONDS",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Open a channel funded from the on-chain balance and stay online until the funding transaction is broadcast (state `pending`), up to --wait (default 60).",
-                "effect": "spends",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            },
-            {
-              "name": "list",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "channel",
-                  "list"
-                ],
-                "usage": [
-                  "channel list"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "channel"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "list"
-                      }
-                    ]
-                  }
-                ],
-                "summary": "List channels with capacity and readiness.",
-                "effect": "read_only",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            },
-            {
-              "name": "close",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "channel",
-                  "close"
-                ],
-                "usage": [
-                  "channel close USER_CHANNEL_ID COUNTERPARTY [--force]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "channel"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "close"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "USER_CHANNEL_ID"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "COUNTERPARTY"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "force",
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Close a channel cooperatively (peer online), or with --force broadcast the latest commitment. After a restore without the store, ask the counterparty to force-close and let the node sweep.",
-                "effect": "spends",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            },
-            {
-              "name": "buy",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "channel",
-                  "buy"
-                ],
-                "usage": [
-                  "channel buy --lsp-sats N [--our-sats N] [--expiry-blocks N] [--announce] [--pay lightning|onchain]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "channel"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "buy"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "lsp-sats",
-                        "value": "N",
-                        "open": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "our-sats",
-                        "value": "N",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "expiry-blocks",
-                        "value": "N",
-                        "open": true,
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "announce",
-                        "optional": true
-                      },
-                      {
-                        "kind": "option",
-                        "name": "pay",
-                        "value": "lightning|onchain",
-                        "choices": [
-                          "lightning",
-                          "onchain"
-                        ],
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Order an inbound channel from the LSPS1 provider set by init. Prints the order with its fee and the BOLT11 and on-chain ways to pay it; --pay settles from this wallet right away. Default --expiry-blocks 13000 (about 90 days).",
-                "effect": "spends",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            },
-            {
-              "name": "order",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "channel",
-                  "order"
-                ],
-                "usage": [
-                  "channel order ORDER_ID"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "channel"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "order"
-                      },
-                      {
-                        "kind": "positional",
-                        "name": "ORDER_ID"
-                      }
-                    ]
-                  }
-                ],
-                "summary": "The LSP's current state of an order; `channel` is set once the LSP has funded it.",
-                "effect": "read_only",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            }
-          ]
-        },
-        {
-          "name": "send",
-          "leaf": {
-            "path": [
-              "wallet",
-              "send"
-            ],
-            "usage": [
-              "send ADDRESS --sats N"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "send"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "ADDRESS"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "sats",
-                    "value": "N",
-                    "open": true
-                  }
-                ]
-              }
-            ],
-            "summary": "Send N base units (₿N) on-chain from the wallet's balance.",
-            "effect": "spends",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "invoice",
-          "leaf": {
-            "path": [
-              "wallet",
-              "invoice"
-            ],
-            "usage": [
-              "invoice --msat N --request-hash HEX64 [--expiry SECONDS]"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "invoice"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "msat",
-                    "value": "N",
-                    "open": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "request-hash",
-                    "value": "HEX64",
-                    "open": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "expiry",
-                    "value": "SECONDS",
-                    "open": true,
-                    "optional": true
-                  }
-                ]
-              }
-            ],
-            "summary": "Issue an exact-amount BOLT11 whose description hash is the request hash (x402 receiver).",
-            "effect": "local_write",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "pay",
-          "leaf": {
-            "path": [
-              "wallet",
-              "pay"
-            ],
-            "usage": [
-              "pay BOLT11 --max-fee-msat N [--wait SECONDS]"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "pay"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "BOLT11"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "max-fee-msat",
-                    "value": "N",
-                    "open": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "wait",
-                    "value": "SECONDS",
-                    "open": true,
-                    "optional": true
-                  }
-                ]
-              }
-            ],
-            "summary": "Pay within the fee cap and print the preimage (x402 payer). Paying twice returns the same proof.",
-            "effect": "spends",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "lookup",
-          "leaf": {
-            "path": [
-              "wallet",
-              "lookup"
-            ],
-            "usage": [
-              "lookup PAYMENT_HASH"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "lookup"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "PAYMENT_HASH"
-                  }
-                ]
-              }
-            ],
-            "summary": "The store's record of a payment, either direction.",
-            "effect": "read_only",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "serve",
-          "leaf": {
-            "path": [
-              "wallet",
-              "serve"
-            ],
-            "usage": [
-              "serve [--seconds N]"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "serve"
-                  },
-                  {
-                    "kind": "option",
-                    "name": "seconds",
-                    "value": "N",
-                    "open": true,
-                    "optional": true
-                  }
-                ]
-              }
-            ],
-            "summary": "Keep the node online as the resident: print events as JSON lines and answer other wallet and x402 commands over control.sock in the wallet home.",
-            "effect": "long_running",
-            "runs_on": "screen",
-            "screen": "wallet"
-          }
-        },
-        {
-          "name": "service",
-          "children": [
-            {
-              "name": "install",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "service",
-                  "install"
-                ],
-                "usage": [
-                  "service install|uninstall|status [--binary PATH]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "service"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "install"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "binary",
-                        "value": "PATH",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Run `wallet serve` as a launchd agent or systemd user unit, started at login.",
-                "effect": "local_write",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            },
-            {
-              "name": "uninstall",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "service",
-                  "uninstall"
-                ],
-                "usage": [
-                  "service install|uninstall|status [--binary PATH]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "service"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "uninstall"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "binary",
-                        "value": "PATH",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Run `wallet serve` as a launchd agent or systemd user unit, started at login.",
-                "effect": "local_write",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            },
-            {
-              "name": "status",
-              "leaf": {
-                "path": [
-                  "wallet",
-                  "service",
-                  "status"
-                ],
-                "usage": [
-                  "service install|uninstall|status [--binary PATH]"
-                ],
-                "forms": [
-                  {
-                    "tokens": [
-                      {
-                        "kind": "literal",
-                        "word": "service"
-                      },
-                      {
-                        "kind": "literal",
-                        "word": "status"
-                      },
-                      {
-                        "kind": "option",
-                        "name": "binary",
-                        "value": "PATH",
-                        "open": true,
-                        "optional": true
-                      }
-                    ]
-                  }
-                ],
-                "summary": "Run `wallet serve` as a launchd agent or systemd user unit, started at login.",
-                "effect": "read_only",
-                "runs_on": "screen",
-                "screen": "wallet"
-              }
-            }
-          ]
         }
       ],
       "options": [
-        {
-          "kind": "option",
-          "name": "network",
-          "value": "NET",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "esplora",
-          "value": "URL",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "listen",
-          "value": "HOST:PORT",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "lsp",
-          "value": "NODE_ID@HOST:PORT|olympus|mdk",
-          "choices": [
-            "olympus",
-            "mdk"
-          ],
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "lsp-protocol",
-          "value": "lsps1|lsps2|lsps4",
-          "choices": [
-            "lsps1",
-            "lsps2",
-            "lsps4"
-          ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "lsp-token",
-          "value": "TOKEN",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "lsp-min-msat",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "trust",
-          "value": "NODE_ID",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "mnemonic",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "reveal",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "force",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "sats",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "announce",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "wait",
-          "value": "SECONDS",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "lsp-sats",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "our-sats",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "expiry-blocks",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "pay",
-          "value": "lightning|onchain",
-          "choices": [
-            "lightning",
-            "onchain"
-          ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "msat",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "request-hash",
-          "value": "HEX64",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "expiry",
-          "value": "SECONDS",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "max-fee-msat",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "seconds",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "binary",
-          "value": "PATH",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
         {
           "kind": "option",
           "name": "json",
@@ -8917,7 +7966,7 @@
     },
     {
       "name": "x402",
-      "summary": "Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1).",
+      "summary": "Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1), through this computer's Lightning node (`x402 node`).",
       "children": [
         {
           "name": "serve",
@@ -9847,6 +8896,899 @@
             "runs_on": "screen",
             "screen": "wallet"
           }
+        },
+        {
+          "name": "node",
+          "children": [
+            {
+              "name": "init",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "init"
+                ],
+                "usage": [
+                  "node init [--network NET] [--esplora URL] [--listen HOST:PORT] [--lsp NODE_ID@HOST:PORT|olympus|mdk [--lsp-protocol lsps1|lsps2|lsps4] [--lsp-token TOKEN] [--lsp-min-msat N]] [--trust NODE_ID]... [--mnemonic -]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "init"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "network",
+                        "value": "NET",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "esplora",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "listen",
+                        "value": "HOST:PORT",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lsp",
+                        "value": "NODE_ID@HOST:PORT|olympus|mdk",
+                        "choices": [
+                          "olympus",
+                          "mdk"
+                        ],
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lsp-protocol",
+                        "value": "lsps1|lsps2|lsps4",
+                        "choices": [
+                          "lsps1",
+                          "lsps2",
+                          "lsps4"
+                        ],
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lsp-token",
+                        "value": "TOKEN",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lsp-min-msat",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "trust",
+                        "value": "NODE_ID",
+                        "open": true,
+                        "optional": true,
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mnemonic",
+                        "value": "-",
+                        "choices": [
+                          "-"
+                        ],
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Write config.json and a seed. NET is bitcoin, testnet, signet, or regtest (default signet). --lsp olympus picks the Olympus (ZEUS) LSPS1 peer for the network; --lsp mdk picks the MoneyDevKit LSPS4 peer (bitcoin, or Mutinynet on signet, which also sets --esplora), whose just-in-time channel needs no funding first. A peer given by hand is LSPS2 unless --lsp-protocol says otherwise. This node signs its invoices on every protocol, as x402 requires of payTo. --trust lets that peer open anchor channels here without an on-chain reserve (your own nodes). Running init again keeps the seed. --mnemonic - reads a BIP39 mnemonic from stdin to restore a seed into a home that has none.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "info",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "info"
+                ],
+                "usage": [
+                  "node info"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "info"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Node id (the x402 payTo), network, balances, paths, and the last backup.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "export",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "export"
+                ],
+                "usage": [
+                  "node export --reveal"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "export"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reveal"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Print the seed mnemonic. Refuses without --reveal.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "backup",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "backup"
+                ],
+                "usage": [
+                  "node backup DIR"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "backup"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "DIR"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Copy the seed, config.json, and a consistent snapshot of the node store into a new directory DIR with a digest manifest; safe beside a resident.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "restore",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "restore"
+                ],
+                "usage": [
+                  "node restore DIR"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "restore"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "DIR"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Verify DIR's manifest and copy it into an empty wallet home. A restore from the seed alone leaves channels behind; see `channel close --force`.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "status",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "status"
+                ],
+                "usage": [
+                  "node status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "status"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Chain sync state and queued node events.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "fund",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "fund"
+                ],
+                "usage": [
+                  "node fund"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "fund"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Print a fresh on-chain funding address.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "channel",
+              "children": [
+                {
+                  "name": "open",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "channel",
+                      "open"
+                    ],
+                    "usage": [
+                      "node channel open NODE_ID@HOST:PORT --sats N [--announce] [--wait SECONDS]"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "channel"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "open"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "NODE_ID@HOST:PORT"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "sats",
+                            "value": "N",
+                            "open": true
+                          },
+                          {
+                            "kind": "option",
+                            "name": "announce",
+                            "optional": true
+                          },
+                          {
+                            "kind": "option",
+                            "name": "wait",
+                            "value": "SECONDS",
+                            "open": true,
+                            "optional": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Open a channel funded from the on-chain balance and stay online until the funding transaction is broadcast (state `pending`), up to --wait (default 60).",
+                    "effect": "spends",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "list",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "channel",
+                      "list"
+                    ],
+                    "usage": [
+                      "node channel list"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "channel"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "list"
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "List channels with capacity and readiness.",
+                    "effect": "read_only",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "close",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "channel",
+                      "close"
+                    ],
+                    "usage": [
+                      "node channel close USER_CHANNEL_ID COUNTERPARTY [--force]"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "channel"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "close"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "USER_CHANNEL_ID"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "COUNTERPARTY"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "force",
+                            "optional": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Close a channel cooperatively (peer online), or with --force broadcast the latest commitment. After a restore without the store, ask the counterparty to force-close and let the node sweep.",
+                    "effect": "spends",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "buy",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "channel",
+                      "buy"
+                    ],
+                    "usage": [
+                      "node channel buy --lsp-sats N [--our-sats N] [--expiry-blocks N] [--announce] [--pay lightning|onchain]"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "channel"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "buy"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "lsp-sats",
+                            "value": "N",
+                            "open": true
+                          },
+                          {
+                            "kind": "option",
+                            "name": "our-sats",
+                            "value": "N",
+                            "open": true,
+                            "optional": true
+                          },
+                          {
+                            "kind": "option",
+                            "name": "expiry-blocks",
+                            "value": "N",
+                            "open": true,
+                            "optional": true
+                          },
+                          {
+                            "kind": "option",
+                            "name": "announce",
+                            "optional": true
+                          },
+                          {
+                            "kind": "option",
+                            "name": "pay",
+                            "value": "lightning|onchain",
+                            "choices": [
+                              "lightning",
+                              "onchain"
+                            ],
+                            "optional": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Order an inbound channel from the LSPS1 provider set by init. Prints the order with its fee and the BOLT11 and on-chain ways to pay it; --pay settles from this wallet right away. Default --expiry-blocks 13000 (about 90 days).",
+                    "effect": "spends",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "order",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "channel",
+                      "order"
+                    ],
+                    "usage": [
+                      "node channel order ORDER_ID"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "channel"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "order"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "ORDER_ID"
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "The LSP's current state of an order; `channel` is set once the LSP has funded it.",
+                    "effect": "read_only",
+                    "runs_on": "connected_computer"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "send",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "send"
+                ],
+                "usage": [
+                  "node send ADDRESS --sats N"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "send"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ADDRESS"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "sats",
+                        "value": "N",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send N base units (₿N) on-chain from the wallet's balance.",
+                "effect": "spends",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "invoice",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "invoice"
+                ],
+                "usage": [
+                  "node invoice --msat N --request-hash HEX64 [--expiry SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "invoice"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "msat",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request-hash",
+                        "value": "HEX64",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expiry",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Issue an exact-amount BOLT11 whose description hash is the request hash (x402 receiver).",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "pay",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "pay"
+                ],
+                "usage": [
+                  "node pay BOLT11 --max-fee-msat N [--wait SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "pay"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "BOLT11"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "max-fee-msat",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Pay within the fee cap and print the preimage (x402 payer). Paying twice returns the same proof.",
+                "effect": "spends",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "lookup",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "lookup"
+                ],
+                "usage": [
+                  "node lookup PAYMENT_HASH"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "lookup"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PAYMENT_HASH"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "The store's record of a payment, either direction.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "serve",
+              "leaf": {
+                "path": [
+                  "x402",
+                  "node",
+                  "serve"
+                ],
+                "usage": [
+                  "node serve [--seconds N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "node"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "serve"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "seconds",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Keep the node online as the resident: print events as JSON lines and answer other wallet and x402 commands over control.sock in the wallet home.",
+                "effect": "long_running",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "service",
+              "children": [
+                {
+                  "name": "install",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "service",
+                      "install"
+                    ],
+                    "usage": [
+                      "node service install|uninstall|status [--binary PATH]"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "service"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "install"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "binary",
+                            "value": "PATH",
+                            "open": true,
+                            "optional": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Run `x402 node serve` as a launchd agent or systemd user unit, started at login.",
+                    "effect": "local_write",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "uninstall",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "service",
+                      "uninstall"
+                    ],
+                    "usage": [
+                      "node service install|uninstall|status [--binary PATH]"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "service"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "uninstall"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "binary",
+                            "value": "PATH",
+                            "open": true,
+                            "optional": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Run `x402 node serve` as a launchd agent or systemd user unit, started at login.",
+                    "effect": "local_write",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "status",
+                  "leaf": {
+                    "path": [
+                      "x402",
+                      "node",
+                      "service",
+                      "status"
+                    ],
+                    "usage": [
+                      "node service install|uninstall|status [--binary PATH]"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "node"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "service"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "status"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "binary",
+                            "value": "PATH",
+                            "open": true,
+                            "optional": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Run `x402 node serve` as a launchd agent or systemd user unit, started at login.",
+                    "effect": "read_only",
+                    "runs_on": "connected_computer"
+                  }
+                }
+              ]
+            }
+          ]
         }
       ],
       "options": [
@@ -10148,7 +10090,160 @@
         },
         {
           "kind": "option",
+          "name": "network",
+          "value": "NET",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "esplora",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lsp",
+          "value": "NODE_ID@HOST:PORT|olympus|mdk",
+          "choices": [
+            "olympus",
+            "mdk"
+          ],
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lsp-protocol",
+          "value": "lsps1|lsps2|lsps4",
+          "choices": [
+            "lsps1",
+            "lsps2",
+            "lsps4"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lsp-token",
+          "value": "TOKEN",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lsp-min-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "trust",
+          "value": "NODE_ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "mnemonic",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reveal",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "force",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sats",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "announce",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lsp-sats",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "our-sats",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expiry-blocks",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pay",
+          "value": "lightning|onchain",
+          "choices": [
+            "lightning",
+            "onchain"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "request-hash",
+          "value": "HEX64",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "binary",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "json",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
           "optional": true,
           "repeated": true
         }

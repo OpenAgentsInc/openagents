@@ -455,10 +455,11 @@ fn model(routing: &Routing) -> Tier {
 pub const WALLET_NOTE: &str = "A wallet in this chat is always the user's built-in OpenAgents \
 wallet, which holds bitcoin over Lightning and on-chain. Never ask which wallet, app, provider, or \
 exchange they mean, and never name another wallet, app, or exchange. In a terminal on their \
-computer, `openagents wallet info` shows its balances and node id and `openagents wallet fund` \
-prints a receiving address; in the OpenAgents app, the Wallet screen shows both. A message that \
-only mentions their balance, sats, or bitcoin asks for their balance: answer that, without asking \
-what they want. We never move money from this chat: sending happens in the wallet, where the user \
+computer, `openagents wallet balance` says their balance and `openagents wallet address` gives an \
+address to get paid at; in the OpenAgents app, the Wallet screen shows both. A message that only \
+mentions their balance, sats, or bitcoin asks for their balance: answer that, without asking what \
+they want. Say amounts in plain words and never mention nodes, networks, servers, channels, or \
+liquidity. We never move money from this chat: sending happens in the wallet, where the user \
 confirms it.";
 
 /// Rule 3a: a wallet request in a terminal descends the `wallet` command
@@ -483,14 +484,14 @@ fn terminal_wallet(routing: &Routing, situation: &Situation) -> Option<Tier> {
         })
 }
 
-/// The built-in wallet's read-only overview, `openagents wallet info`
-/// (its balances, node id, and network): what a sure wallet request in a
-/// terminal runs when the descent picks no command, so the chat checks
-/// the wallet instead of asking what the user wants (#10170).
+/// The built-in wallet's read-only balance, `openagents wallet balance`,
+/// one plain sentence: what a sure wallet request in a terminal runs when
+/// the descent picks no command, so the chat checks the wallet instead of
+/// asking what the user wants (#10170).
 #[must_use]
 pub fn wallet_overview() -> super::seams::CliProposal {
     super::seams::CliProposal {
-        argv: vec![WALLET_GROUP.to_owned(), "info".to_owned()],
+        argv: vec![WALLET_GROUP.to_owned(), "balance".to_owned()],
         effect: super::Effect::ReadOnly,
         runs_on: super::RunsOn::ThisDevice,
     }
@@ -1141,7 +1142,7 @@ mod tests {
     }
 
     /// #10170: a wallet request in a terminal descends the wallet's
-    /// commands, so "balance and wallet address" runs `wallet status`
+    /// commands, so "balance and wallet address" runs `wallet balance`
     /// rather than the model asking which wallet; elsewhere the model is
     /// told the wallet is ours ([`WALLET_NOTE`]).
     #[test]
@@ -1188,6 +1189,17 @@ mod tests {
         }
         assert!(WALLET_NOTE.contains("built-in OpenAgents wallet"));
         assert!(WALLET_NOTE.contains("Never ask which wallet"));
+        // The note names the plain commands, never the x402 node's.
+        assert!(WALLET_NOTE.contains("openagents wallet balance"));
+        for word in [
+            "wallet info",
+            "wallet fund",
+            "node id",
+            "Esplora",
+            "testnet",
+        ] {
+            assert!(!WALLET_NOTE.contains(word), "{word}");
+        }
         // The overview is a read-only command of this build's tree.
         let overview = wallet_overview();
         assert_eq!(

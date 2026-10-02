@@ -1,4 +1,4 @@
-//! The resident node: one `wallet serve` process holds the node open and
+//! The resident node: one `x402 node serve` process holds the node open and
 //! answers other wallet commands over a Unix socket at `home/control.sock`.
 //!
 //! One JSON request per connection, one JSON response, each on a single
@@ -135,7 +135,7 @@ impl Server {
         if path.exists() {
             if RemoteWallet::probe(home).is_some() {
                 return Err(WalletError::Setup(format!(
-                    "another wallet serve already answers at {}",
+                    "another x402 node serve already answers at {}",
                     path.display()
                 )));
             }

@@ -119,7 +119,7 @@ pub fn write(home: &Path, dest: &Path) -> Result<Manifest, WalletError> {
     let seed = home.join(SEED_FILE);
     if !seed.exists() {
         return Err(WalletError::Setup(format!(
-            "no seed at {}; run `openagents wallet init`",
+            "no seed at {}; run `openagents x402 node init`",
             seed.display()
         )));
     }

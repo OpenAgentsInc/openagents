@@ -78,17 +78,20 @@ mod tests {
 
     #[test]
     fn a_command_here_has_its_tree_effect_only_when_its_words_parse() {
-        assert_eq!(effect_here(&words("wallet status")), Some(Effect::ReadOnly));
+        assert_eq!(
+            effect_here(&words("wallet balance")),
+            Some(Effect::ReadOnly)
+        );
         assert_eq!(effect_here(&words("computer list")), Some(Effect::ReadOnly));
         assert_eq!(
-            effect_here(&words("wallet send bc1qexample --sats 1000")),
+            effect_here(&words("x402 node send bc1qexample --sats 1000")),
             Some(Effect::Spends)
         );
         assert_eq!(
-            effect_here(&words("wallet export --reveal")),
+            effect_here(&words("x402 node export --reveal")),
             Some(Effect::Secret)
         );
-        assert_eq!(effect_here(&words("wallet status --bogus")), None);
+        assert_eq!(effect_here(&words("wallet balance --bogus")), None);
         assert_eq!(effect_here(&words("wallet")), None);
         assert_eq!(effect_here(&words("rm -rf")), None);
     }

@@ -1,7 +1,9 @@
 //! The wallet eval (#10170): every wallet request means the built-in
 //! OpenAgents wallet. The router never asks which wallet, never names
 //! another one, and in a terminal it descends the wallet's own commands,
-//! so a balance or address request runs `openagents wallet status` there.
+//! so a balance or address request runs `openagents wallet balance` or
+//! `openagents wallet address` there, whose answer is one plain sentence.
+//! No answer names the x402 node's internals (the set's `technical` words).
 //!
 //! The set is `crates/coder/fixtures/chat-router/wallet-v1.json`. Each row
 //! keeps Jev's recorded response body, and
@@ -36,6 +38,7 @@ use serde_json::Value;
 #[derive(Deserialize)]
 struct Set {
     forbidden: Vec<String>,
+    technical: Vec<String>,
     rows: Vec<Row>,
 }
 
@@ -118,6 +121,11 @@ fn judged(row: &Row, tier: &Tier, forbidden: &[String]) -> Option<String> {
     {
         return Some(format!("names {word}"));
     }
+    if let Some((_, text)) = canned(tier)
+        && let Some(word) = technical(&text, &set().technical)
+    {
+        return Some(format!("says {word}"));
+    }
     let wallet_commands = matches!(tier, Tier::Cli { group, .. } if group == "wallet");
     let ok = match row.expect.as_str() {
         "command" => wallet_commands,
@@ -135,6 +143,57 @@ fn judged(row: &Row, tier: &Tier, forbidden: &[String]) -> Option<String> {
         return Some(format!("asks what they mean: {tier:?}"));
     }
     (!ok).then(|| format!("expected {} but got {tier:?}", row.expect))
+}
+
+/// The first `technical` word `text` contains, ignoring case.
+fn technical<'a>(text: &str, words: &'a [String]) -> Option<&'a String> {
+    let text = text.to_lowercase();
+    words
+        .iter()
+        .find(|word| text.contains(&word.to_lowercase()))
+}
+
+/// A wallet answer in a terminal is the plain balance or address: the
+/// overview the router runs is `wallet balance`, and no command in the
+/// wallet group, nor any prepared wallet answer, says a technical word.
+#[test]
+fn wallet_answers_are_plain() {
+    let set = set();
+    assert_eq!(
+        coder::router::policy::wallet_overview().argv,
+        vec!["wallet".to_owned(), "balance".to_owned()]
+    );
+    let tree = coder::cli_route::tree::bundled();
+    let wallet = tree.group("wallet").expect("the wallet group");
+    let mut commands = Vec::new();
+    for leaf in wallet.leaves() {
+        commands.push(leaf.path.join(" "));
+        let text = format!("{} {}", leaf.summary, leaf.usage.join(" "));
+        assert!(
+            technical(&text, &set.technical).is_none(),
+            "{} says {:?}",
+            leaf.command(),
+            technical(&text, &set.technical)
+        );
+    }
+    for command in ["wallet balance", "wallet address"] {
+        assert!(commands.iter().any(|c| c == command), "{command}");
+    }
+    assert!(
+        technical(&wallet.summary, &set.technical).is_none(),
+        "{}",
+        wallet.summary
+    );
+    for answer in &Bank::builtin().answers {
+        if answer.id.starts_with("wallet.") {
+            assert!(
+                technical(answer.text.as_deref().unwrap_or_default(), &set.technical).is_none(),
+                "{} says {:?}",
+                answer.id,
+                technical(answer.text.as_deref().unwrap_or_default(), &set.technical)
+            );
+        }
+    }
 }
 
 #[test]
@@ -302,6 +361,9 @@ fn live_hosted_chat() {
         let wallet = command
             .as_ref()
             .is_some_and(|argv| argv.first().is_some_and(|word| word == "wallet"));
+        if let Some(word) = technical(&text, &set.technical) {
+            why = why.or(Some(format!("says {word}")));
+        }
         match row.expect.as_str() {
             "command" if !wallet => why = why.or(Some(format!("no wallet command: {text:?}"))),
             "send" if command.is_some() => why = why.or(Some("proposed a command".into())),

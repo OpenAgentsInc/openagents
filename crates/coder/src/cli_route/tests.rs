@@ -266,11 +266,11 @@ async fn free_text_is_written_by_the_model_and_checked() {
 #[tokio::test]
 async fn money_is_never_proposed_and_costs_no_model_call() {
     for surface in [Surface::Phone, Surface::Desktop, Surface::Terminal] {
-        let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "pay")]);
+        let (jev, _) = judge(vec![sure(descend::LEVEL_QUESTION, "fetch")]);
         let model = canned("{}");
         let route = CommandRoute::new(jev, model.clone());
         let outcome = route
-            .outcome(&ask("wallet", "pay this invoice lnbc1...", surface))
+            .outcome(&ask("x402", "buy https://example.com/paid", surface))
             .await
             .unwrap();
         assert!(

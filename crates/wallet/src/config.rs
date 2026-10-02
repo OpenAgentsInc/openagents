@@ -284,7 +284,7 @@ impl WalletConfig {
         let path = home.join(CONFIG_FILE);
         let text = std::fs::read_to_string(&path).map_err(|error| {
             WalletError::Setup(format!(
-                "wallet is not initialized ({}: {error}); run `openagents wallet init`",
+                "wallet is not initialized ({}: {error}); run `openagents x402 node init`",
                 path.display()
             ))
         })?;
@@ -333,7 +333,7 @@ pub fn load_or_create_seed(
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Err(WalletError::Setup(format!(
-                "no seed at {}; run `openagents wallet init`",
+                "no seed at {}; run `openagents x402 node init`",
                 path.display()
             )))
         }
