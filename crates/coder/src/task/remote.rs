@@ -52,8 +52,12 @@ impl Inbox {
     /// a device may name to their roots; a device never sends a path.
     #[must_use]
     pub fn new(store: impl Into<PathBuf>, workspaces: BTreeMap<String, PathBuf>) -> Self {
+        let store = store.into();
+        if store.join(super::STORE_FILE).exists() {
+            let _ = super::targets::cleanup(&store);
+        }
         Self {
-            store: store.into(),
+            store,
             workspaces,
             autostart: None,
             preferences: Arc::new(std::sync::Mutex::new(BTreeMap::new())),

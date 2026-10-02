@@ -44,6 +44,7 @@ pub mod review;
 pub mod settings;
 pub mod spare;
 pub mod steer;
+pub(crate) mod targets;
 pub mod usage;
 pub mod view;
 /// Per-engine steering semantics; see [`coder_delegate::steering`].

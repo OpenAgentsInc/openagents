@@ -34,6 +34,14 @@ The [submit fixture](../fixtures/tasks/submit.json) names a synthetic
 The [cancel fixture](../fixtures/tasks/cancel.json) targets revision `1`, the
 revision of a newly queued task. Cancellation advances it to revision `2`.
 
+Full-access repository runs lease one of four Cargo build slots per project
+under `~/.openagents/targets/`, outside the worktree. Sequential tasks reuse
+cached builds; simultaneous runs use separate locked slots. On host startup
+and when a run releases its slot, Coder removes known ended tasks' legacy
+build directories and trims idle slots to a total 64 GiB budget, removing
+incremental caches first. Locked slots and unknown legacy directories remain;
+live builds can temporarily exceed the budget.
+
 Without `--store`, the inbox uses `~/.openagents/tasks`. All successful
 commands print JSON to standard output. Store and command refusals print
 JSON to standard error and exit `1`; invalid CLI syntax exits `64`.
