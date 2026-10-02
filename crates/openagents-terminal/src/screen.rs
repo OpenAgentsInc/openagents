@@ -426,6 +426,12 @@ impl Screen {
                     let _ = done.send(Done::Turned(name, extras.turn_plugin(&id, on)));
                 });
             }
+            Action::InstallPlugin { id, name } => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Turned(name, extras.install_plugin(&id)));
+                });
+            }
             Action::RunPlugin { key, name, request } => {
                 self.app.note(format!("Running {name}…"));
                 let (extras, done, folder) =

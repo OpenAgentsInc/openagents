@@ -811,7 +811,7 @@ pub(crate) fn fetch(client: &mut Client, filter: Value) -> Result<Vec<Event>, St
     Ok(events)
 }
 
-fn blossom(args: &Args, relay: &str) -> Result<ext_eval::blob::Blossom, String> {
+pub(crate) fn blossom(args: &Args, relay: &str) -> Result<ext_eval::blob::Blossom, String> {
     match args.option("blossom") {
         Some(base) => ext_eval::blob::Blossom::new(base),
         None => ext_eval::blob::Blossom::for_relay(relay),

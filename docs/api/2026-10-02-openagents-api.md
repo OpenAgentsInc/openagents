@@ -837,7 +837,7 @@ Each gap is closed in the NIP, not with a side channel in the front.
 | G6 | Attachments. CJ conversation content is strings only. | CJ request `attachments` as bounded ArtifactRefs, as HOST `task.create` already takes `images`. |
 | G7 | Confirmations and quotes. CJ offers have no stable id or price. | Offers gain `id` and optional `price_msat`, so a confirmation and an x402 quote bind to one offer. |
 | G8 | A person must see which app holds a grant. HOST device listings have no label. | An enrollment `label` (the app's name) kept in the grant and shown in `devices`. |
-| G9 | Plugin fees and payouts (D7, D9). EXT releases name no fee or payout address. | Optional `fee_msat` and `payout` (Lightning address or node key) in the EXT release, signed by the author, so the fee is part of the pinned release. |
+| G9 | Plugin fees and payouts (D7, D9). EXT releases name no fee or payout address. | Optional `fee_msat` and `payout` (Lightning address or node key) in the EXT release, signed by the author, so the fee is part of the pinned release. Landed 2026-10-02 in NIP-EXT and `openagents plugin publish --fee-msat N --payout ADDRESS` (#10182). |
 
 None needs a new event kind.
 

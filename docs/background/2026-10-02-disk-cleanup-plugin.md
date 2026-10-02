@@ -134,7 +134,15 @@ and `crates/openagents-cli` (`plugin list|run|test|defaults`):
    `d3c07460b9dc685a690f783991e39f03482fe6551f2aceb9dc105868f96efd25`,
    result `7b7bda59b41a3a0d7295ff2dd5f5c8532ddad5d07509768aff26278f49627893`
    on `wss://relay.openagents.com`.
-6. **Turned it on** on each computer with `openagents plugin install
+6. **Published the plugin** (#10182) with `openagents plugin publish
+   plugins/disk-cleanup` from the same key: id
+   `0b010805ac08dd95c8344799cc1bf0fc99c22631345a6ffe44d05067ed4610f3:disk-cleanup`,
+   release `c25978cd4dfd3ac73e60a5c337e5ebbcfeeb2467ed5fa70a751253b6b02beb3a`,
+   listing `0ea516da6bccb10719009e146affec4f50aac66ee7d1aa246d3eee842c1dc4a9`
+   on `wss://relay.openagents.com`, its files in the eval blob bucket
+   (the relay still refused uploads, #10181). `openagents plugin install
+   disk-cleanup` fetches and checks it, off.
+7. **Turned it on** on each computer with `openagents plugin install
    plugins/disk-cleanup`, `openagents plugin enable disk-cleanup`, a dry
    run compared with the built-in rule's, and `openagents background resume
    disk-cleanup`.
@@ -150,4 +158,4 @@ and `crates/openagents-cli` (`plugin list|run|test|defaults`):
 | The interview cannot try or run the tests itself from a terminal; it prints the command. | None yet. |
 | Tests that grade files a run makes fail: a `coder -p` turn answered in chat. | Asked the interview to grade the reply. |
 | `plugin test publish` uploads suite files to the relay, which refuses uploads (405); there is no public store for a person's suite. | Released with `--blobs-dir`, copied the files to the eval blob bucket, and published with `--blossom` naming it. |
-| Nothing publishes a plugin itself to a registry (a NIP-EXT listing); the Gym holds its test result. | None yet. |
+| Nothing publishes a plugin itself to a registry (a NIP-EXT listing); the Gym holds its test result. | `openagents plugin publish`, `search`, and `install NAME` (#10182). |

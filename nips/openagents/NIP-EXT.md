@@ -39,8 +39,11 @@ display name, administrator listing, or transport login does not confer it.
 ## Release and package manifest
 
 A `3184` body has `package`, `version` (human-readable string), and
-`manifest: ArtifactRef` with schema `openagents.package.v1`. Signer MUST equal
-the package root. A release is identified by its event ID and manifest digest,
+`manifest: ArtifactRef` with schema `openagents.package.v1`, and optionally
+`fee_msat` (the author's per-call fee in millisatoshis) and `payout` (a
+Lightning address or a 66-hex compressed node key); a nonzero `fee_msat`
+requires `payout`, so the fee and where it is paid are part of the signed
+release. Signer MUST equal the package root. A release is identified by its event ID and manifest digest,
 not its version label. Different events rebinding a package/version to different
 manifests are publisher equivocation: clients MUST report a conflict and MUST
 NOT choose by timestamp. A verified installed pin remains explicit.

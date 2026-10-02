@@ -88,6 +88,8 @@ pub enum Action {
     Plugins,
     /// Turn the installed plugin `id` on or off.
     TurnPlugin { id: String, name: String, on: bool },
+    /// Install the published plugin `id` on this computer, off.
+    InstallPlugin { id: String, name: String },
     /// Run the installed plugin `key` with `request`.
     RunPlugin {
         key: String,
@@ -505,6 +507,16 @@ impl App {
                         let picked = rows.get(*selected).cloned();
                         self.overlay = None;
                         if let Some(plugin) = picked {
+                            if let (None, Some(id)) = (&plugin.key, &plugin.id) {
+                                self.note(format!(
+                                    "Installing {}; it starts off, and Space in /plugins turns it on.",
+                                    plugin.name
+                                ));
+                                return vec![Action::InstallPlugin {
+                                    id: id.clone(),
+                                    name: plugin.name,
+                                }];
+                            }
                             self.pick(plugin);
                         }
                     }

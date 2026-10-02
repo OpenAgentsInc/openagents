@@ -923,7 +923,7 @@ fn parse_release(event: &Event, object: &Map<String, Value>) -> Result<(), Contr
     reject(
         object,
         &[
-            "v", "requires", "type", "package", "version", "manifest", "meta",
+            "v", "requires", "type", "package", "version", "manifest", "fee_msat", "payout", "meta",
         ],
         "release",
     )?;
@@ -936,7 +936,51 @@ fn parse_release(event: &Event, object: &Map<String, Value>) -> Result<(), Contr
     }
     let _version = label(require(object, "version", "release")?)?;
     parse_artifact(require(object, "manifest", "release")?)?;
+    let fee = match object.get("fee_msat") {
+        None => 0,
+        Some(value) => value.as_u64().ok_or_else(|| malformed("fee_msat"))?,
+    };
+    match object.get("payout") {
+        Some(value) => check_payout(text(value, "payout")?)?,
+        None if fee > 0 => return Err(malformed("payout")),
+        None => {}
+    }
     Ok(())
+}
+
+/// Check a release's `payout`: a Lightning address (`name@domain`) or a
+/// Lightning node's 33-byte compressed public key as 66 lowercase hex
+/// digits. A release that charges a `fee_msat` must name one; the fee and
+/// the address are part of the signed, pinned release (API G9).
+///
+/// # Errors
+///
+/// Returns a malformed refusal for anything else.
+pub fn check_payout(payout: &str) -> Result<(), ContractError> {
+    let node_key = payout.len() == 66
+        && (payout.starts_with("02") || payout.starts_with("03"))
+        && payout
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    let address = payout.split_once('@').is_some_and(|(name, domain)| {
+        !name.is_empty()
+            && name.len() <= 64
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"._-+".contains(&byte))
+            && domain.len() <= 253
+            && domain.contains('.')
+            && !domain.starts_with('.')
+            && !domain.ends_with('.')
+            && domain
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
+    });
+    if node_key || address {
+        Ok(())
+    } else {
+        Err(malformed("payout"))
+    }
 }
 
 fn parse_revocation(event: &Event, object: &Map<String, Value>) -> Result<(), ContractError> {
@@ -1479,6 +1523,31 @@ mod tests {
             }],
             "dependencies": []
         })
+    }
+
+    #[test]
+    fn a_release_may_charge_a_fee_only_with_a_payout() {
+        let root = signer();
+        let package = format!("{}:demo", root.pubkey());
+        let bytes = br#"{"type":"object"}"#;
+        let release = |extra: Value| {
+            let mut body = json!({
+                "v": 1, "requires": [], "type": "release", "package": package,
+                "version": "1.0.0", "manifest": artifact(bytes)
+            });
+            for (key, value) in extra.as_object().unwrap() {
+                body[key] = value.clone();
+            }
+            parse_record(&sign(RELEASE_KIND, vec![marker("release")], body))
+        };
+        release(json!({})).unwrap();
+        release(json!({"fee_msat": 1000, "payout": "alice@getalby.com"})).unwrap();
+        release(json!({"fee_msat": 0})).unwrap();
+        release(json!({"payout": format!("02{}", "ab".repeat(32))})).unwrap();
+        assert!(release(json!({"fee_msat": 1000})).is_err());
+        assert!(release(json!({"fee_msat": -1, "payout": "a@b.co"})).is_err());
+        assert!(release(json!({"fee_msat": 5, "payout": "not an address"})).is_err());
+        assert!(release(json!({"payout": "ab".repeat(33)})).is_err());
     }
 
     #[test]

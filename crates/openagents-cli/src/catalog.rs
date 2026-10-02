@@ -62,8 +62,19 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   run DIR [--in WORKSPACE] [--request TEXT | --request-file FILE]
         Run the plugin's workflow once on WORKSPACE through Coder's
         program runtime, granted reads only, and print its reply.
-  install DIR
-        Install the plugin in DIR on this computer. It starts off.
+  publish [DIR] [--fee-msat N --payout ADDRESS] [--blossom URL] [--blobs-dir DIR]
+        Publish the plugin in DIR (default .) under your key: its files go
+        to the blob server, then a signed NIP-EXT release and listing.
+        Prints its id, KEY:SLUG. --fee-msat and --payout put a per-call fee
+        and the Lightning address or node key paid into the release.
+        --blobs-dir writes the files by digest for an operator to upload,
+        and --blossom then names where readers fetch them.
+  search [QUERY] [--author PUBKEY] [--limit N]
+        The published plugins that match QUERY, best first; all without one.
+  install DIR | NAME | ID [--blossom URL]
+        Install the plugin in DIR, or a published one by name or id, on this
+        computer. A published one is checked file by file against its signed
+        release. It starts off.
   installed
         The plugins installed on this computer, on or off.
   enable PLUGIN
@@ -104,6 +115,8 @@ for those commands in full.";
 pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("run", Effect::ReadOnly),
+    Declared::computer("publish", Effect::Publishes),
+    Declared::computer("search", Effect::ReadOnly),
     Declared::computer("install", Effect::LocalWrite),
     Declared::computer("installed", Effect::ReadOnly),
     Declared::computer("enable", Effect::LocalWrite),
@@ -183,6 +196,10 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|word| word == "run") {
         return crate::ext_run::run(output, &words[1..]);
+    }
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_registry::run(output, words) {
+        return code;
     }
     #[cfg(unix)]
     if let Some(code) = crate::plugin_local::run(output, words) {

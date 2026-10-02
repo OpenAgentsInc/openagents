@@ -173,7 +173,27 @@ Nothing leaves your computer until you publish. The
 [test specification](../extensions/evaluation.md) has the test format, the
 checks, the sandbox, and how the verdict is decided.
 
-## Publish a plugin and its result
+## Publish a plugin
+
+```sh
+openagents plugin publish ./disk-cleanup   # prints its id, KEY:SLUG
+openagents plugin search disk              # find published plugins
+openagents plugin install disk-cleanup     # by name, or by id; it starts off
+```
+
+`publish` signs the plugin with your key: its files go to the blob
+server by digest, then a NIP-EXT release (`3184`) pins its manifest and
+a listing (`30184`) points at that release. A plugin's id is your public
+key and its slug. Publishing the same version again changes nothing;
+publishing other files under the same version refuses, so raise
+`version` in `package.json`. `--fee-msat N --payout ADDRESS` puts a
+per-call fee and the Lightning address (or node key) paid into the signed
+release. `install` checks the release's signature and revocations and
+every file's digest and size against it before it installs; like a local
+install it leaves the plugin off. In the terminal, `/plugins` lists the
+published plugins too, and Enter installs one.
+
+## Publish a test result
 
 ```sh
 openagents plugin test publish evals/results/<timestamp>/report.json

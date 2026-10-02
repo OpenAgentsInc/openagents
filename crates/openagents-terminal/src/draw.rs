@@ -176,7 +176,7 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                     })
                     .collect(),
                 *selected,
-                "Enter runs an installed one · Space turns it on or off · Esc close",
+                "Enter runs an installed one or installs a published one · Space turns it on or off · Esc close",
                 "No plugins are installed or published yet.",
             ),
             Overlay::Settings { settings, selected } => (

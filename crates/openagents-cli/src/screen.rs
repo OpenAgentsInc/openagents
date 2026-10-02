@@ -522,7 +522,7 @@ impl Extras for ProgramExtras {
             .map_err(|_| "Cannot find this openagents program to list plugins.".to_owned())
             .and_then(|program| {
                 captured(
-                    Command::new(program).args(["--json", "plugin", "list", "--limit", "30"]),
+                    Command::new(program).args(["--json", "plugin", "search", "--limit", "30"]),
                     PLUGINS_WAIT,
                 )
                 .map_err(|why| format!("The plugin catalog could not be read: {why}"))
@@ -530,18 +530,13 @@ impl Extras for ProgramExtras {
             .and_then(|text| plugin_rows(&text));
         match published {
             Ok(published) => {
-                let installed: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
+                let names: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
+                let ids: Vec<String> = rows.iter().filter_map(|row| row.id.clone()).collect();
                 rows.extend(
                     published
                         .into_iter()
-                        .filter(|(name, _)| !installed.contains(name))
-                        .map(|(name, about)| Plugin {
-                            name,
-                            about,
-                            key: None,
-                            on: None,
-                            id: None,
-                        }),
+                        .filter(|row| !names.contains(&row.name))
+                        .filter(|row| row.id.as_ref().is_none_or(|id| !ids.contains(id))),
                 );
             }
             // The ones installed here still run without the catalog.
@@ -575,6 +570,22 @@ impl Extras for ProgramExtras {
     #[cfg(unix)]
     fn turn_plugin(&self, id: &str, on: bool) -> Result<String, String> {
         crate::plugin_local::turn(id, on)
+    }
+
+    #[cfg(unix)]
+    fn install_plugin(&self, id: &str) -> Result<String, String> {
+        let program = std::env::current_exe()
+            .map_err(|_| "Cannot find this openagents program to install it.".to_owned())?;
+        let text = captured(
+            Command::new(program).args(["--json", "plugin", "install", id]),
+            PLUGINS_WAIT * 8,
+        )?;
+        let value: Value = serde_json::from_str(text.trim())
+            .map_err(|_| "The install answered something else.".to_owned())?;
+        match value["error"].as_str() {
+            Some(error) => Err(error.to_owned()),
+            None => Ok(value["text"].as_str().unwrap_or("Installed.").to_owned()),
+        }
     }
 
     fn import(&self) -> Result<String, String> {
@@ -892,7 +903,7 @@ fn plugin_reply(text: &str) -> Result<String, String> {
 }
 
 /// The `(name, what it does)` rows of `openagents --json plugin list`.
-fn plugin_rows(text: &str) -> Result<Vec<(String, String)>, String> {
+fn plugin_rows(text: &str) -> Result<Vec<Plugin>, String> {
     let value: Value = serde_json::from_str(text.trim()).map_err(|_| {
         "The plugin catalog could not be read: it answered something else.".to_owned()
     })?;
@@ -904,18 +915,20 @@ fn plugin_rows(text: &str) -> Result<Vec<(String, String)>, String> {
     })?;
     Ok(items
         .iter()
-        .filter(|item| item["valid"].as_bool().unwrap_or(false))
         .filter_map(|item| {
-            let name = [&item["package"], &item["d"]]
+            let id = item["id"].as_str().filter(|id| !id.is_empty())?;
+            let name = [&item["title"], &item["slug"]]
                 .into_iter()
                 .filter_map(Value::as_str)
-                .find(|name| !name.is_empty())?;
-            let summary = [&item["title"], &item["reason"]]
-                .into_iter()
-                .filter_map(Value::as_str)
-                .find(|text| !text.is_empty())
-                .unwrap_or("");
-            Some((name.to_owned(), summary.to_owned()))
+                .find(|name| !name.is_empty())
+                .unwrap_or(id);
+            Some(Plugin {
+                name: name.to_owned(),
+                about: item["description"].as_str().unwrap_or_default().to_owned(),
+                key: None,
+                on: None,
+                id: Some(id.to_owned()),
+            })
         })
         .collect())
 }
@@ -994,17 +1007,24 @@ mod tests {
     }
 
     #[test]
-    fn plugin_rows_keep_valid_listings() {
-        let text = r#"{"relay":"wss://r","kind":1,"count":3,"items":[
-            {"package":"lint-fixer","title":"Fixes lint","valid":true},
-            {"d":"slug-only","reason":"Why","valid":true},
-            {"package":"broken","title":"Bad","valid":false}
+    fn plugin_rows_keep_published_plugins_with_their_ids() {
+        let text = r#"{"relay":"wss://r","count":3,"items":[
+            {"id":"aa:lint-fixer","slug":"lint-fixer","title":"Lint fixer","description":"Fixes lint"},
+            {"id":"bb:slug-only","slug":"slug-only","title":"","description":"Why"},
+            {"slug":"no-id","title":"Bad"}
         ]}"#;
+        let row = |name: &str, about: &str, id: &str| Plugin {
+            name: name.into(),
+            about: about.into(),
+            key: None,
+            on: None,
+            id: Some(id.into()),
+        };
         assert_eq!(
             plugin_rows(text).unwrap(),
             vec![
-                ("lint-fixer".to_owned(), "Fixes lint".to_owned()),
-                ("slug-only".to_owned(), "Why".to_owned()),
+                row("Lint fixer", "Fixes lint", "aa:lint-fixer"),
+                row("slug-only", "Why", "bb:slug-only"),
             ]
         );
         assert!(

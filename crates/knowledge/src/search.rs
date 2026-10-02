@@ -51,7 +51,15 @@ pub fn words(text: &str) -> Vec<String> {
 /// repeated word.
 #[must_use]
 pub fn bm25(entries: &[Entry], query: &str) -> Vec<f64> {
-    let documents: Vec<Vec<String>> = entries.iter().map(|e| words(&e.search_text())).collect();
+    let texts: Vec<String> = entries.iter().map(Entry::search_text).collect();
+    bm25_texts(&texts, query)
+}
+
+/// [`bm25`] over plain texts, such as a plugin catalog's listings, in
+/// their order.
+#[must_use]
+pub fn bm25_texts(texts: &[String], query: &str) -> Vec<f64> {
+    let documents: Vec<Vec<String>> = texts.iter().map(|text| words(text)).collect();
     let count = documents.len() as f64;
     if documents.is_empty() {
         return Vec::new();

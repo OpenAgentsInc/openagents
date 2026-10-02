@@ -890,6 +890,27 @@ fn space_turns_an_installed_plugin_on_or_off() {
     assert!(app.overlay.is_none());
 }
 
+/// Enter on a published plugin installs it by its id.
+#[test]
+fn enter_installs_a_published_plugin() {
+    let mut app = app();
+    let mut published = plugin("disk-cleanup", false);
+    published.id = Some("aa:disk-cleanup".into());
+    app.overlay = Some(Overlay::Plugins {
+        rows: vec![published],
+        selected: 0,
+    });
+    assert_eq!(
+        app.key(&key(KeyCode::Enter), 80),
+        vec![Action::InstallPlugin {
+            id: "aa:disk-cleanup".into(),
+            name: "disk-cleanup".into(),
+        }]
+    );
+    assert!(app.overlay.is_none());
+    assert!(shown(&mut app).contains("it starts off"));
+}
+
 /// `/plugins` lists them; Enter on an installed one takes the next message
 /// as its request and runs it; one only published says it cannot run here.
 #[test]

@@ -41,6 +41,8 @@ mod out;
 mod playtest;
 #[cfg(unix)]
 mod plugin_local;
+#[cfg(unix)]
+mod plugin_registry;
 mod quest;
 mod reach;
 mod relay;

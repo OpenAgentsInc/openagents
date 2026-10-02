@@ -19,7 +19,7 @@ use crate::Output;
 
 /// The directories a copy leaves out: test results, build output, and
 /// version control.
-const SKIP: &[&str] = &[".git", "target", "results", "node_modules", ".openagents"];
+pub(crate) const SKIP: &[&str] = &[".git", "target", "results", "node_modules", ".openagents"];
 
 /// `openagents plugin COMMAND ...` for the local commands; `None` for any
 /// other command.
@@ -54,6 +54,11 @@ fn layout() -> Result<Layout, String> {
 }
 
 fn install(dir: &Path) -> Result<serde_json::Value, String> {
+    install_into(&layout()?, dir)
+}
+
+/// Installs the plugin in `dir` under `layout`, off.
+pub(crate) fn install_into(layout: &Layout, dir: &Path) -> Result<serde_json::Value, String> {
     let dir = dir
         .canonicalize()
         .map_err(|error| format!("{}: {error}", dir.display()))?;
@@ -61,7 +66,6 @@ fn install(dir: &Path) -> Result<serde_json::Value, String> {
         .map_err(|why| format!("{} is not a plugin: {why}", dir.display()))?;
     Package::resolve(&dir, &package)
         .map_err(|refusal| format!("{} does not resolve: {refusal}", dir.display()))?;
-    let layout = layout()?;
     let key = if is_hex64(&package.publisher) {
         package.publisher.clone()
     } else {
@@ -85,7 +89,7 @@ fn install(dir: &Path) -> Result<serde_json::Value, String> {
     copy(&dir, &staging).map_err(|error| format!("copying {}: {error}", dir.display()))?;
     let _ = std::fs::remove_dir_all(&into);
     std::fs::rename(&staging, &into).map_err(|error| error.to_string())?;
-    let plugin = plugins::find(&layout, &format!("{key}:{}", package.slug))?;
+    let plugin = plugins::find(layout, &format!("{key}:{}", package.slug))?;
     let text = if plugin.enabled {
         format!("Installed {} {version}. It is on.", plugin.name)
     } else {

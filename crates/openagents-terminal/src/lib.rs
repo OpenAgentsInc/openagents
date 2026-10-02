@@ -69,7 +69,8 @@ pub struct Plugin {
     /// Whether it is on on this computer, for one installed here; what
     /// [`Extras::turn_plugin`] is told is `id`.
     pub on: Option<bool>,
-    /// The installed plugin's `KEY:SLUG`.
+    /// The installed plugin's `KEY:SLUG`, or the id a published one
+    /// installs by ([`Extras::install_plugin`]).
     pub id: Option<String>,
 }
 
@@ -138,6 +139,15 @@ pub trait Extras: Send + Sync {
     /// for the person.
     fn turn_plugin(&self, _id: &str, _on: bool) -> Result<String, String> {
         Err("Plugins cannot be turned on here.".into())
+    }
+    /// Install the published plugin `id` on this computer, off; the words
+    /// to show.
+    ///
+    /// # Errors
+    /// It could not be fetched, did not match its signed release, or
+    /// could not be installed, in words for the person.
+    fn install_plugin(&self, _id: &str) -> Result<String, String> {
+        Err("Plugins cannot be installed here.".into())
     }
     /// Copy this computer's Claude Code and Codex sessions into the host's
     /// threads, each once. The words to show.
