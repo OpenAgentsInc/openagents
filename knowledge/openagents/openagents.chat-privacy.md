@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-privacy
-version: 4
+version: 5
 kind: product
 title: "How chat messages travel and who sees them"
 summary: >-
@@ -38,6 +38,7 @@ evidence:
   - "2026-10-01: the chat model is Space Bunny Alpha on OpenRouter first, Gemini 3.8 Flash on the gateway after (#10109); OpenRouter's notice for the model says prompts and completions may be retained by the provider but are not used for training."
   - "2026-10-02: the answer now names Jev's route through the Vercel AI Gateway (its first door since #10110), says the worker stores no message text and that the chat is not answered on the computer, and says no setting turns the providers off (#10136)."
   - "2026-10-02: BYOK (#10176): with **Use my keys for everything** on, messages reach the person's own provider accounts, and the keys travel sealed per message and are never kept."
+  - "2026-10-02: on the person's keys, product, codebase, and Gym lookups stay on, embedded and judged on their keys (#10176)."
 ---
 
 ## Answer
@@ -47,7 +48,7 @@ Each message is encrypted to our chat worker; our relay sees only ciphertext and
 ## Details
 
 - The request carries the conversation, instructions, a client name, and the first-response request, and no credential, model choice, or grant, except your own provider keys when you chose them (below).
-- With **Use my keys for everything** on (your own OpenRouter, Vercel AI Gateway, or TypeSafe key, on a computer), your keys travel with each message, sealed to the worker apart from it, used for that message only, and never stored or logged; the worker records only the provider and a short fingerprint. Your messages then reach your own provider accounts (OpenRouter or the Vercel AI Gateway, and TypeSafe for Jev) under those accounts' data settings, product and codebase lookups are off for those messages, and nothing runs on our keys (#10176).
+- With **Use my keys for everything** on (your own OpenRouter, Vercel AI Gateway, or TypeSafe key, on a computer), your keys travel with each message, sealed to the worker apart from it, used for that message only, and never stored or logged; the worker records only the provider and a short fingerprint. Your messages then reach your own provider accounts (OpenRouter or the Vercel AI Gateway, and TypeSafe for Jev) under those accounts' data settings. Product, codebase, and Gym lookups still answer from our records, with the message embedded and judged on your keys, and nothing runs on our keys (#10176).
 - On a computer (the desktop app or `openagents chat`), or from a phone paired with one, the request also names that computer by the label you gave it and the chat's project folder, with the folder's path only from the computer itself. Only the chat worker and the chat model read them, so the chat knows it is on your computer and can say which folder it works in (#10077).
 - The phone shows only answers signed by the worker's key, tagged to its own request and device.
 - Each message is signed by your device key; the relay is relay.openagents.com, and every event it carries is ephemeral.
