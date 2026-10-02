@@ -250,6 +250,19 @@ pick_microphone() {
         || echo '{"id":null,"name":null,"description":null,"nick":null,"preferred":false}'
 }
 
+# What `pw-record --target` is given for a capture node. PipeWire reads a
+# number there as an object serial, not a node id, so a microphone's id
+# opened some other node (a display's monitor, which records silence); the
+# node's name is unambiguous (2026-10-01). Anything else passes through.
+capture_target() {
+    local target=$1 name
+    case "$target" in
+        ''|*[!0-9]*) printf '%s' "$target"; return 0 ;;
+    esac
+    name=$(microphone_sources | jq -r --argjson want "$target" 'select(.id == $want) | .name // empty' 2>/dev/null | head -1)
+    printf '%s' "${name:-$target}"
+}
+
 # Whether a microphone delivers samples. A one-second capture from a working
 # microphone is about 96 KB at 48 kHz mono; a microphone whose USB stream has
 # stopped writes the 44-byte WAV header and nothing after it, which is what
@@ -257,7 +270,7 @@ pick_microphone() {
 microphone_delivers() {
     local target=$1 probe size=0
     probe=$(mktemp "${TMPDIR:-/tmp}/screen-record-probe.XXXXXX.wav")
-    timeout 1 pw-record --target="$target" --channels 1 --rate "$AUDIO_RATE" "$probe" > /dev/null 2>&1 || true
+    timeout 1 pw-record --target="$(capture_target "$target")" --channels 1 --rate "$AUDIO_RATE" "$probe" > /dev/null 2>&1 || true
     [ -f "$probe" ] && size=$(wc -c < "$probe" 2>/dev/null || echo 0)
     rm -f "$probe"
     [ "$size" -gt 4096 ]
@@ -477,7 +490,7 @@ supervise_audio() {
             else
                 off=$(elapsed_since "$t0")
             fi
-            pw-record --target="$target" --channels 1 --rate "$AUDIO_RATE" "$seg" > /dev/null 2>&1 &
+            pw-record --target="$(capture_target "$target")" --channels 1 --rate "$AUDIO_RATE" "$seg" > /dev/null 2>&1 &
             pid=$!
             echo "$pid" > "${PID_FILE}.audio"
             printf '%s\t%s\t%s\n' "$index" "$off" "$seg" >> "${META_FILE}.audio.segments"

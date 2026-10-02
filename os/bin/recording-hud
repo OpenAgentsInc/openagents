@@ -453,12 +453,13 @@ run_hud() {
     local mic_id="" mic_nick="" mic_present=0 mic_preferred=1 mic_audio=1
     local mic_known=0 last_level_tick=0
     refresh_mic() {
-        local report id nick preferred recording
+        local report id name nick preferred recording
         command -v screen-record >/dev/null 2>&1 || return 0
         report=$(screen-record microphone 2>/dev/null) || return 0
         [[ -n $report ]] || return 0
-        IFS=$'\t' read -r id preferred recording nick < <(printf '%s' "$report" | jq -r '
+        IFS=$'\t' read -r id name preferred recording nick < <(printf '%s' "$report" | jq -r '
             [(.id // "" | tostring),
+             (.name // ""),
              (if .preferred then 1 else 0 end),
              (if .recording then 1 else 0 end),
              (.nick // "")] | @tsv
@@ -475,7 +476,9 @@ run_hud() {
         if [[ $id != "$mic_id" ]]; then
             mic_id=$id
             if [[ -n $id ]]; then
-                start_meter "$id"
+                # By name: PipeWire reads a number as a serial, not a node
+                # id, and opened some other node (2026-10-01).
+                start_meter "${name:-$id}"
             else
                 stop_meter
             fi
