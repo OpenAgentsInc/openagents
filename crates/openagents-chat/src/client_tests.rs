@@ -1803,6 +1803,12 @@ impl Coder for Drafts {
     }
     fn plugin_command(&self, argv: &[String], _: Duration) -> Result<Ran, String> {
         self.ran.lock().unwrap().push(argv.to_vec());
+        // A test run that finishes writes its report where it was told.
+        if let Some(at) = argv.iter().position(|word| word == "--output-dir") {
+            let dir = Path::new(&argv[at + 1]).join("run-1");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("report.json"), "{}").unwrap();
+        }
         Ok(Ran {
             ok: true,
             output: format!("ran {}", argv[1]),
@@ -1880,8 +1886,9 @@ async fn a_plugin_is_drafted_tested_and_turned_on_through_typed_steps() {
     };
     assert_eq!(flow.step(), Some(Step::Publish));
     assert_eq!(Step::from_line(text), Some(Step::Publish));
+    let first = coder.ran.lock().unwrap()[0].clone();
     assert_eq!(
-        coder.ran.lock().unwrap()[0],
+        first[..5],
         [
             "plugin",
             "test",
@@ -1890,6 +1897,7 @@ async fn a_plugin_is_drafted_tested_and_turned_on_through_typed_steps() {
             "--trust"
         ]
     );
+    assert_eq!(first[5], "--output-dir");
 
     let (events, _, ended) = drain(client.stream(Op::Send {
         thread: thread.clone(),

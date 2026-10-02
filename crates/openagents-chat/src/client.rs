@@ -2403,12 +2403,24 @@ impl Client {
                 let Some(dir) = flow.dir().map(|dir| worktree.join(dir)) else {
                     return report(sink, flow, &Outcome::NoPlugin);
                 };
+                // The run's results go to a folder of their own: a run
+                // finished only when it wrote its report there.
+                let results = std::env::temp_dir()
+                    .join("openagents-plugin-runs")
+                    .join(format!(
+                        "{id}-{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_or(0, |since| since.as_millis())
+                    ));
                 let argv: Vec<String> = vec![
                     "plugin".into(),
                     "test".into(),
                     "run".into(),
                     dir.display().to_string(),
                     "--trust".into(),
+                    "--output-dir".into(),
+                    results.display().to_string(),
                 ];
                 sink(Event::Command {
                     thread: id.to_owned(),
@@ -2422,9 +2434,14 @@ impl Client {
                 .await
                 .unwrap_or_else(|error| Err(error.to_string()));
                 let outcome = match ran {
-                    Ok(ran) => Outcome::Ran {
+                    Ok(ran) if wrote_report(&results) => Outcome::Ran {
                         ok: ran.ok,
                         summary: ran.output,
+                    },
+                    // It stopped before a result: the step stays, and saying
+                    // yes again runs it again.
+                    Ok(ran) => Outcome::Failed {
+                        why: format!("the tests didn't run. {}", ran.output.trim()),
                     },
                     Err(why) => Outcome::Failed { why },
                 };
@@ -2614,6 +2631,21 @@ fn cut_note(text: &str) -> String {
         end -= 1;
     }
     format!("{}…", &text[..end])
+}
+
+/// Whether a plugin test run wrote its report (`report.json`) anywhere
+/// under `dir`, which only a run that finished does (#10177).
+fn wrote_report(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.filter_map(Result::ok).any(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                wrote_report(&path)
+            } else {
+                path.file_name().is_some_and(|name| name == "report.json")
+            }
+        })
+    })
 }
 
 /// The plugin step the last reply in `turns` served (#10177).
