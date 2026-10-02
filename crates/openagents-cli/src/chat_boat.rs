@@ -1,0 +1,1291 @@
+//! `openagents chat work --on boat`: each issue's flow runs on a Boat
+//! sandbox of its own instead of this computer (issue #10220, Boat B6;
+//! plan `docs/cloud/2026-10-02-boat-sdk-plan.md` §5.4).
+//!
+//! This computer only orchestrates. For each issue:
+//!
+//! 1. a start is taken from the dispatcher, which keeps under Boat's start
+//!    limits (12 a minute on the $20 plan; [`Starts`]) and refuses when the
+//!    day's starts are gone (`GET /limits`);
+//! 2. a `large` sandbox starts from the newest ready `oa-coder-main-<date>`
+//!    template (#10219), or, when there is none, is forked from a seed this
+//!    command builds once with the same host setup the template uses
+//!    (`scripts/cloud/coder-host-setup.sh --warm`) and deletes at the end;
+//! 3. the run's credentials go to `/tmp/oa-run.env` through the files API,
+//!    and the sandbox's command reads and deletes that file first: `/tmp` is
+//!    outside every Boat snapshot, the sandbox starts with `noEnv`, and no
+//!    credential is ever part of a command line, a template, or this
+//!    command's output ([`Credentials`]);
+//! 4. the sandbox builds `origin/main`'s `openagents` and `microcoder` on
+//!    its warm target and runs `openagents chat work --issues N --json`
+//!    there: the same issue flow as on this computer (claim, worktree,
+//!    engine, checks, the multi-machine landing of #10226, comment, close);
+//! 5. the flow's events stream back here as they arrive, marked with the
+//!    issue, exactly as a local `chat work` shows them;
+//! 6. the sandbox's machine time and list-price cost (`GET
+//!    /sandboxes/{id}/usage`) go into a comment on the issue and into a
+//!    route record (`~/.openagents/boat/runs.jsonl`): placement computer
+//!    `boat`, granted by the operator who typed `--on boat`;
+//! 7. the sandbox stops (a stopped sandbox is free), and is deleted when the
+//!    issue landed. A failed run's sandbox stays stopped for inspection;
+//!    `openagents boat delete ID` removes it.
+//!
+//! Engine logins (`--engine-logins`, or `OA_BOAT_ENGINE_LOGINS`):
+//! `api-keys` (the default) passes provider API keys the issue flow can
+//! use: today Grok Build's `XAI_API_KEY`, from the environment or Secret
+//! Manager `openagents-xai-api-key`. Codex and Claude Code in the flow need
+//! subscription logins, not API keys; `boat` lets Boat write the
+//! subscriptions the owner connected on its dashboard into each sandbox
+//! (Boat then holds those tokens: the owner's choice, B7). See
+//! `docs/cloud/boat-chat-work.md`.
+
+use std::collections::{BTreeMap, VecDeque};
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use boat::{CommandFrame, Nullable, Signal, WaitOptions, models::*, shell_quote};
+use coder::task::issue_run::Land;
+use openagents_chat::coder_events::Line;
+use openagents_chat::tool_groups::Stream;
+use route_contract::lifecycle::{CheckLabel, Lifecycle, Projection};
+use route_contract::record::RunOutcome;
+use route_contract::snapshot::{GrantRef, GrantSource, Placement, WorkspaceBinding};
+use serde_json::{Value, json};
+use tokio::sync::{Semaphore, watch};
+
+use super::{Failure, event, failed};
+use crate::out::Output;
+
+/// The most sandboxes one queue runs at once.
+pub(super) const MAX_PARALLEL: u64 = 16;
+/// The template names Boat B5 saves (#10219).
+const TEMPLATE_PREFIX: &str = "oa-coder-main-";
+/// The sandbox size a run gets: 8 vCPU, 16 GB.
+const SIZE: &str = "large";
+/// A run's sandbox lifetime: a backstop for a lost orchestrator, never a
+/// limit on the run, which this command stops itself when it ends.
+const RUN_TTL_SECONDS: i64 = 12 * 3600;
+/// The seed's lifetime: its setup builds the warm target from nothing.
+const SEED_TTL_SECONDS: i64 = 4 * 3600;
+/// Where a run's credentials wait for the command that reads them.
+const ENV_FILE: &str = "/tmp/oa-run.env";
+/// The placement name the route record carries.
+const COMPUTER: &str = "boat";
+/// Boat's start limit per rolling minute on the $20 plan.
+const STARTS_PER_MINUTE: usize = 12;
+/// The Secret Manager project every credential below is read from.
+const SECRET_PROJECT: &str = "openagentsgemini";
+/// The GitHub token the run pushes and comments with, as the September
+/// pool did: an OAuth token held in Secret Manager.
+const GITHUB_SECRET: &str = "coder-pool-git-token";
+/// Grok Build's key.
+const XAI_SECRET: &str = "openagents-xai-api-key";
+
+/// How a run's coding agents log in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum EngineLogins {
+    /// Provider API keys this command passes per run (`noEnv` sandboxes).
+    ApiKeys,
+    /// The subscriptions the owner connected on Boat's dashboard, which Boat
+    /// writes into each sandbox (`noEnv: false`).
+    Boat,
+}
+
+impl EngineLogins {
+    pub(super) fn parse(word: &str) -> Result<Self, String> {
+        match word.trim() {
+            "api-keys" | "api_keys" => Ok(Self::ApiKeys),
+            "boat" => Ok(Self::Boat),
+            other => Err(format!(
+                "--engine-logins is `api-keys` or `boat`, not `{other}`"
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ApiKeys => "api-keys",
+            Self::Boat => "boat",
+        }
+    }
+}
+
+/// What `chat work --on boat` was asked to do.
+pub(super) struct Request {
+    pub repository: String,
+    pub numbers: Vec<u64>,
+    pub parallel: u64,
+    pub land: Option<Land>,
+    pub logins: EngineLogins,
+    /// A named snapshot to start from instead of the newest template.
+    pub template: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// The dispatcher: Boat's start limits.
+
+/// How long a start must wait so that no more than `per_window` starts fall
+/// in any `window`, given the starts already made (oldest first).
+fn start_wait(
+    recent: &VecDeque<Instant>,
+    now: Instant,
+    window: Duration,
+    per_window: usize,
+) -> Option<Duration> {
+    let live: Vec<&Instant> = recent
+        .iter()
+        .filter(|at| now.duration_since(**at) < window)
+        .collect();
+    if live.len() < per_window {
+        return None;
+    }
+    let oldest = live[live.len() - per_window];
+    Some(window.saturating_sub(now.duration_since(*oldest)))
+}
+
+/// Starts are queued so that no rolling minute holds more than Boat allows.
+struct Starts {
+    window: Duration,
+    per_window: usize,
+    recent: Mutex<VecDeque<Instant>>,
+}
+
+impl Starts {
+    fn new(per_window: usize, window: Duration) -> Self {
+        Self {
+            window,
+            per_window,
+            recent: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    /// Waits for a start and records it.
+    async fn take(&self) {
+        loop {
+            let wait = {
+                let mut recent = self.recent.lock().unwrap_or_else(|e| e.into_inner());
+                let now = Instant::now();
+                while recent
+                    .front()
+                    .is_some_and(|at| now.duration_since(*at) >= self.window)
+                {
+                    recent.pop_front();
+                }
+                match start_wait(&recent, now, self.window, self.per_window) {
+                    None => {
+                        recent.push_back(now);
+                        return;
+                    }
+                    Some(wait) => wait,
+                }
+            };
+            tokio::time::sleep(wait.max(Duration::from_millis(100))).await;
+        }
+    }
+}
+
+/// The day's remaining starts, when Boat says.
+async fn starts_left_today(client: &boat::Client) -> Option<i64> {
+    let limits = client.limits(&LimitsParams::default()).await.ok()?;
+    match &limits.starts.as_ref()?.day {
+        Nullable::Value(day) => day.remaining,
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Credentials.
+
+/// One run's credentials: written to the sandbox's `/tmp` and deleted by the
+/// command that reads them. `Debug` names the variables, never the values.
+#[derive(Clone, Default)]
+struct Credentials {
+    variables: BTreeMap<String, String>,
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("names", &self.variables.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl Credentials {
+    /// The env file: `NAME='value'` lines the command sources with `set -a`.
+    fn file(&self) -> String {
+        self.variables
+            .iter()
+            .map(|(name, value)| format!("{name}={}\n", shell_quote(value)))
+            .collect()
+    }
+}
+
+/// A Secret Manager secret's latest value, through `gcloud` (which honors
+/// `CLOUDSDK_CONFIG`), or `None`. Nothing is printed.
+fn secret(name: &str) -> Option<String> {
+    let output = std::process::Command::new("gcloud")
+        .args([
+            "secrets",
+            "versions",
+            "access",
+            "latest",
+            "--secret",
+            name,
+            "--project",
+            SECRET_PROJECT,
+        ])
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    (output.status.success() && !value.is_empty()).then_some(value)
+}
+
+fn variable(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+}
+
+/// The run's GitHub token: `OA_BOAT_GH_TOKEN`, else Secret Manager
+/// [`GITHUB_SECRET`], else this computer's `gh auth token`.
+fn github_token() -> Option<String> {
+    variable("OA_BOAT_GH_TOKEN")
+        .or_else(|| secret(GITHUB_SECRET))
+        .or_else(|| {
+            let output = std::process::Command::new("gh")
+                .args(["auth", "token"])
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()?;
+            let token = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+            (output.status.success() && !token.is_empty()).then_some(token)
+        })
+}
+
+fn git_config(key: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["config", "--get", key])
+        .output()
+        .ok()?;
+    let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    (output.status.success() && !value.is_empty()).then_some(value)
+}
+
+/// Every credential a run needs, read once for the whole queue.
+fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
+    let mut variables = BTreeMap::new();
+    let token = github_token().ok_or(
+        "no GitHub token for the sandboxes: set OA_BOAT_GH_TOKEN, give gcloud access to \
+         Secret Manager coder-pool-git-token, or sign `gh` in",
+    )?;
+    variables.insert("GH_TOKEN".to_owned(), token);
+    if logins == EngineLogins::ApiKeys {
+        let xai = variable("XAI_API_KEY")
+            .or_else(|| secret(XAI_SECRET))
+            .ok_or(
+                "no engine key for the sandboxes: set XAI_API_KEY or give gcloud access to Secret \
+             Manager openagents-xai-api-key, or use --engine-logins boat once the owner \
+             connected subscriptions on Boat (NEEDS_OWNER: Boat: choose how coding agents log in)",
+            )?;
+        variables.insert("XAI_API_KEY".to_owned(), xai);
+    }
+    for (name, key) in [("OA_GIT_NAME", "user.name"), ("OA_GIT_EMAIL", "user.email")] {
+        if let Some(value) = variable(name).or_else(|| git_config(key)) {
+            variables.insert(name.to_owned(), value);
+        }
+    }
+    Ok(Credentials { variables })
+}
+
+// ---------------------------------------------------------------------------
+// What the sandbox runs.
+
+/// The command a run's sandbox runs: read and delete the credentials, build
+/// `origin/main`'s CLI and engine on the warm target, and run the issue flow
+/// with NDJSON events. No credential appears in it.
+fn run_script(issue: u64, land: Option<Land>) -> String {
+    let land = match land {
+        Some(Land::Main) => " --land main",
+        Some(Land::PullRequest) => " --land pr",
+        None => "",
+    };
+    format!(
+        r#"set -uo pipefail
+if [ -f {ENV_FILE} ]; then set -a; . {ENV_FILE}; set +a; rm -f {ENV_FILE}; fi
+export PATH="$HOME/.cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
+[ -n "${{OA_GIT_NAME:-}}" ] && git config --global user.name "$OA_GIT_NAME"
+[ -n "${{OA_GIT_EMAIL:-}}" ] && git config --global user.email "$OA_GIT_EMAIL"
+unset OA_GIT_NAME OA_GIT_EMAIL
+gh auth setup-git >/dev/null 2>&1 || true
+cd ~/openagents || {{ echo "boat: no clone at ~/openagents" >&2; exit 2; }}
+git fetch -q origin main && git checkout -q --detach origin/main || exit 2
+slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json 2>/dev/null)
+[ -n "$slot" ] && [ "$slot" != null ] || slot=$HOME/openagents/target
+echo "boat: building origin/main $(git rev-parse --short HEAD) on the warm target" >&2
+CARGO_TARGET_DIR="$slot" cargo build -q --locked -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
+  || {{ tail -n 40 /tmp/oa-build.log >&2; exit 3; }}
+mkdir -p ~/.oa-run/bin && cp "$slot/debug/openagents" "$slot/debug/microcoder" ~/.oa-run/bin/
+export OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-run/bin/microcoder
+exec ~/.oa-run/bin/openagents chat work --local --json --issues {issue} --parallel 1{land}
+"#
+    )
+}
+
+/// The seed's setup: the template's own host setup, from `origin/main`.
+const SEED_SCRIPT: &str = r#"set -uo pipefail
+cd ~
+[ -d openagents/.git ] || git clone -q https://github.com/OpenAgentsInc/openagents.git openagents || exit 1
+git -C openagents fetch -q origin main || exit 1
+git -C openagents show origin/main:scripts/cloud/coder-host-setup.sh > /tmp/coder-host-setup.sh || exit 1
+printf '.cache/sccache/\n' > ~/.boxignore
+bash /tmp/coder-host-setup.sh --warm --no-release-binary 2>&1 | grep --line-buffered '^OA_CODER_HOST_SETUP'
+exit "${PIPESTATUS[0]}"
+"#;
+
+// ---------------------------------------------------------------------------
+// Where a run starts.
+
+/// Where every run's sandbox comes from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Source {
+    /// A named snapshot (a B5 template).
+    Template(String),
+    /// A sandbox this command set up and forks for each run.
+    Seed(String),
+}
+
+impl Source {
+    fn name(&self) -> String {
+        match self {
+            Self::Template(name) => name.clone(),
+            Self::Seed(id) => format!("seed {id}"),
+        }
+    }
+}
+
+/// The newest ready template among the named snapshots.
+fn newest_template(snapshots: &[NamedSnapshot]) -> Option<String> {
+    snapshots
+        .iter()
+        .filter(|s| s.name.starts_with(TEMPLATE_PREFIX) && s.status == "ready")
+        .map(|s| s.name.clone())
+        .max()
+}
+
+fn nonce() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
+}
+
+fn wait(timeout: Duration, interval: Duration) -> WaitOptions {
+    WaitOptions {
+        timeout,
+        interval,
+        ..Default::default()
+    }
+}
+
+/// Builds the seed: a `large` sandbox set up as the template is.
+async fn build_seed(
+    client: &boat::Client,
+    output: Output,
+    starts: &Starts,
+) -> Result<String, String> {
+    starts.take().await;
+    let created = client
+        .create(&CreateParams {
+            idempotency_key: Some(format!("oa-chat-work-seed-{}", nonce())),
+            body: Some(CreateSandboxRequest {
+                type_: Some(SIZE.into()),
+                ttl_seconds: Nullable::Value(SEED_TTL_SECONDS),
+                no_env: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("could not create the seed sandbox: {e}"))?;
+    let id = created.sandbox.id;
+    say(
+        output,
+        json!({"event": "boat_seed", "sandbox": id, "state": "building"}),
+        &format!(
+            "boat: no {TEMPLATE_PREFIX}<date> template yet; building seed {id} once with the \
+             template's host setup (tens of minutes), then forking it per issue"
+        ),
+    );
+    let built = async {
+        client
+            .wait_until_ready(&id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
+            .await
+            .map_err(|e| format!("seed {id} did not become ready: {e}"))?;
+        let process = client
+            .exec_detached(
+                &id,
+                CommandRequest {
+                    command: SEED_SCRIPT.into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("the seed setup did not start: {e}"))?;
+        let mut follower = client
+            .follow_command(
+                &id,
+                process.process_id,
+                wait(Duration::from_secs(4 * 3600), Duration::from_secs(10)),
+            )
+            .map_err(|e| e.to_string())?;
+        let mut last = None;
+        while let Some(frame) = follower.next().await.map_err(|e| e.to_string())? {
+            match frame {
+                CommandFrame::Stdout(text) | CommandFrame::Stderr(text) => {
+                    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+                        say(
+                            output,
+                            json!({"event": "boat_seed", "sandbox": id, "line": line}),
+                            &format!("boat: seed {line}"),
+                        );
+                    }
+                }
+                CommandFrame::Started | CommandFrame::Unknown(_) => {}
+                end => last = Some(end),
+            }
+        }
+        match last {
+            Some(CommandFrame::Exit {
+                exit_code: Some(0), ..
+            }) => Ok(()),
+            other => Err(format!("the seed setup failed on {id}: {other:?}")),
+        }?;
+        // Stopping takes the last snapshot, so every fork starts warm.
+        stop_and_wait(client, &id).await
+    }
+    .await;
+    match built {
+        Ok(()) => Ok(id),
+        Err(message) => {
+            teardown(client, &id, true).await;
+            Err(message)
+        }
+    }
+}
+
+/// Starts one run's sandbox from `source`; returns its id.
+async fn start(
+    client: &boat::Client,
+    source: &Source,
+    issue: u64,
+    logins: EngineLogins,
+) -> Result<String, String> {
+    let no_env = logins == EngineLogins::ApiKeys;
+    let key = format!("oa-chat-work-{issue}-{}", nonce());
+    match source {
+        Source::Template(name) => client
+            .create(&CreateParams {
+                idempotency_key: Some(key),
+                body: Some(CreateSandboxRequest {
+                    type_: Some(SIZE.into()),
+                    ttl_seconds: Nullable::Value(RUN_TTL_SECONDS),
+                    no_env: Some(no_env),
+                    from_: Some(name.clone()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .map(|created| created.sandbox.id)
+            .map_err(|e| format!("could not start a sandbox from {name}: {e}")),
+        Source::Seed(seed) => client
+            .fork(&ForkParams {
+                sandbox_id: seed.clone(),
+                idempotency_key: Some(key),
+                body: Some(ForkParamsBody {
+                    type_: Some(SIZE.into()),
+                    ttl_seconds: Nullable::Value(RUN_TTL_SECONDS),
+                    no_env: Some(no_env),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .map(|forked| forked.id)
+            .map_err(|e| format!("could not fork seed {seed}: {e}")),
+    }
+}
+
+async fn stop_and_wait(client: &boat::Client, id: &str) -> Result<(), String> {
+    client
+        .stop(&StopParams {
+            sandbox_id: id.into(),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("could not stop {id}: {e}"))?;
+    let deadline = Instant::now() + Duration::from_secs(1_800);
+    loop {
+        let state = client
+            .get(&GetParams {
+                sandbox_id: id.into(),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| format!("could not read {id}: {e}"))?
+            .sandbox
+            .state;
+        if matches!(state.as_str(), "stopped" | "archived") {
+            return Ok(());
+        }
+        if state == "error" || Instant::now() > deadline {
+            return Err(format!("{id} did not stop (state {state})"));
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+/// Stops `id`, and deletes it when `delete`; reports and never fails.
+async fn teardown(client: &boat::Client, id: &str, delete: bool) -> &'static str {
+    if let Err(message) = stop_and_wait(client, id).await {
+        eprintln!("boat: {message}");
+        return "stop_failed";
+    }
+    if !delete {
+        return "stopped";
+    }
+    let deleted = client
+        .delete_sandbox(&DeleteSandboxParams {
+            sandbox_id: id.into(),
+            x_ascii_confirm_delete: id.into(),
+            ..Default::default()
+        })
+        .await;
+    match deleted {
+        Ok(op) => {
+            let _ = client
+                .wait_for_deletion(
+                    &op.operation.id,
+                    &wait(Duration::from_secs(900), Duration::from_secs(5)),
+                )
+                .await;
+            "deleted"
+        }
+        Err(e) => {
+            eprintln!("boat: could not delete {id}: {e}");
+            "stopped"
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Following the flow.
+
+/// One NDJSON line from the sandbox's `chat work --json`.
+#[derive(Debug, PartialEq)]
+enum Inner {
+    /// The flow's task started (`coder`).
+    Started { task: String, thread: String },
+    /// The flow ended (`issue`).
+    Done {
+        outcome: String,
+        message: String,
+        commits: Vec<String>,
+    },
+    /// One of the flow's events.
+    Event(Box<Line>),
+    /// `queue`, `queue_done`, or anything else.
+    Other,
+}
+
+fn inner(text: &str) -> Inner {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return Inner::Other;
+    };
+    match value["event"].as_str() {
+        Some("coder") => Inner::Started {
+            task: value["task"]["task"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+            thread: value["thread"].as_str().unwrap_or_default().to_owned(),
+        },
+        Some("issue") => Inner::Done {
+            outcome: value["outcome"].as_str().unwrap_or("failed").to_owned(),
+            message: value["message"].as_str().unwrap_or_default().to_owned(),
+            commits: value["commits"]
+                .as_array()
+                .map(|commits| {
+                    commits
+                        .iter()
+                        .filter_map(|c| c.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        },
+        Some("queue" | "queue_done") | None => Inner::Other,
+        Some(_) => serde_json::from_value::<Line>(value)
+            .map_or(Inner::Other, |line| Inner::Event(Box::new(line))),
+    }
+}
+
+/// Prints a message: NDJSON `value` under `--json`, else `text` on stderr.
+fn say(output: Output, value: Value, text: &str) {
+    if output.json() {
+        event(&output, value);
+    } else {
+        eprintln!("{text}");
+    }
+}
+
+/// Dollars at Boat's list price, to the tenth of a cent.
+fn dollars(amount: f64) -> String {
+    format!("${amount:.4}")
+}
+
+/// What a run cost and how long it took.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Cost {
+    wall: Duration,
+    machine_seconds: Option<i64>,
+    dollars: Option<f64>,
+}
+
+/// The issue comment that records where the run ran and what it cost.
+fn cost_comment(
+    sandbox: &str,
+    source: &str,
+    outcome: &str,
+    cost: &Cost,
+    logins: EngineLogins,
+) -> String {
+    let machine = cost
+        .machine_seconds
+        .map_or_else(|| "unknown".to_owned(), |s| format!("{s} s"));
+    let price = cost.dollars.map_or_else(|| "unknown".to_owned(), dollars);
+    format!(
+        "Ran on Boat (`openagents chat work --on boat`): sandbox `{sandbox}` ({SIZE}) from \
+         `{source}`, engine logins `{}`.\n\n\
+         - outcome: {outcome}\n\
+         - wall time (start to end, from the orchestrator): {} s\n\
+         - machine time: {machine}\n\
+         - cost at Boat list price (`GET /sandboxes/{{id}}/usage`): {price}\n",
+        logins.as_str(),
+        cost.wall.as_secs(),
+    )
+}
+
+/// The route record for one run: placement on the `boat` computer the
+/// operator granted, the run's projected outcome, its cost and wall time.
+fn route_record(
+    repository: &str,
+    issue: u64,
+    task: &str,
+    sandbox: &str,
+    source: &str,
+    outcome: &str,
+    cost: &Cost,
+) -> Value {
+    let landed = matches!(outcome, "landed" | "pull_request");
+    let placement = Placement {
+        computer: Some(COMPUTER.into()),
+        workspace: Some(WorkspaceBinding {
+            project: repository.to_owned(),
+            path: None,
+        }),
+        grant: Some(GrantRef {
+            id: format!("boat:{sandbox}"),
+            epoch: 0,
+            source: GrantSource::Operator,
+        }),
+    };
+    let run = RunOutcome {
+        task: task.to_owned(),
+        engine: None,
+        revision: None,
+        projection: Projection {
+            state: if landed {
+                Lifecycle::Completed
+            } else {
+                Lifecycle::Failed
+            },
+            check: if landed {
+                CheckLabel::Verified
+            } else {
+                CheckLabel::CheckFailed
+            },
+            cancel_requested: false,
+        },
+        cost_microusd: cost
+            .dollars
+            .map(|d| (d * 1_000_000.0).round().max(0.0) as u64),
+        wall_ms: u64::try_from(cost.wall.as_millis()).ok(),
+        artifacts: Vec::new(),
+    };
+    json!({
+        "schema": "openagents.boat.run.v1",
+        "issue": issue,
+        "sandbox": sandbox,
+        "source": source,
+        "outcome": outcome,
+        "machine_seconds": cost.machine_seconds,
+        "placement": placement,
+        "run": run,
+    })
+}
+
+fn append_record(record: &Value) {
+    let dir = std::env::var_os("HOME")
+        .map_or_else(|| std::path::PathBuf::from("."), std::path::PathBuf::from)
+        .join(".openagents/boat");
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("runs.jsonl"))
+    {
+        let _ = writeln!(file, "{record}");
+    }
+}
+
+fn comment(repository: &str, issue: u64, body: &str) {
+    let posted = std::process::Command::new("gh")
+        .args([
+            "issue",
+            "comment",
+            &issue.to_string(),
+            "-R",
+            repository,
+            "--body",
+            body,
+        ])
+        .stdout(std::process::Stdio::null())
+        .status();
+    if !posted.is_ok_and(|status| status.success()) {
+        eprintln!("boat: #{issue}: the cost comment could not be posted");
+    }
+}
+
+/// One issue on one sandbox, start to teardown. Returns the `issue` record.
+#[allow(clippy::too_many_arguments)]
+async fn run_issue(
+    client: Arc<boat::Client>,
+    output: Output,
+    request: Arc<Request>,
+    source: Source,
+    credentials: Arc<Credentials>,
+    starts: Arc<Starts>,
+    issue: u64,
+    mut stopping: watch::Receiver<bool>,
+) -> Value {
+    let done = |outcome: &str, message: String, extra: Value| {
+        let mut record = json!({"event": "issue", "issue": issue, "outcome": outcome,
+            "message": message, "placement": COMPUTER});
+        if let (Some(record), Some(extra)) = (record.as_object_mut(), extra.as_object()) {
+            record.extend(extra.clone());
+        }
+        record
+    };
+    if *stopping.borrow() {
+        return done(
+            "not_started",
+            "Stopped before it started.".into(),
+            json!({}),
+        );
+    }
+    if starts_left_today(&client).await == Some(0) {
+        return done(
+            "not_started",
+            "Boat has no starts left today (200 a day on the $20 plan).".into(),
+            json!({}),
+        );
+    }
+    starts.take().await;
+    let began = Instant::now();
+    let id = match start(&client, &source, issue, request.logins).await {
+        Ok(id) => id,
+        Err(message) => return done("not_started", message, json!({})),
+    };
+    say(
+        output,
+        json!({"event": "boat_sandbox", "issue": issue, "sandbox": id, "source": source.name()}),
+        &format!("#{issue}: Boat sandbox {id} from {}", source.name()),
+    );
+
+    let followed = follow(
+        &client,
+        output,
+        &request,
+        &credentials,
+        &id,
+        issue,
+        &mut stopping,
+    )
+    .await;
+    let wall = began.elapsed();
+    let (outcome, message, commits, task, thread) = match followed {
+        Ok(ended) => ended,
+        Err(message) => (
+            "failed".to_owned(),
+            message,
+            Vec::new(),
+            String::new(),
+            String::new(),
+        ),
+    };
+    let landed = matches!(
+        outcome.as_str(),
+        "landed" | "pull_request" | "skipped" | "closed" | "unchanged"
+    );
+    let state = teardown(&client, &id, landed).await;
+    // Usage is read after the stop, so it covers the whole run.
+    let usage = client
+        .usage(&UsageParams {
+            sandbox_id: id.clone(),
+            ..Default::default()
+        })
+        .await
+        .ok();
+    let cost = Cost {
+        wall,
+        machine_seconds: usage.as_ref().map(|u| u.seconds),
+        dollars: usage.as_ref().map(|u| u.dollars),
+    };
+    let record = route_record(
+        &request.repository,
+        issue,
+        &task,
+        &id,
+        &source.name(),
+        &outcome,
+        &cost,
+    );
+    append_record(&record);
+    event(&output, json!({"event": "route_record", "record": record}));
+    if !matches!(outcome.as_str(), "skipped" | "closed" | "not_started") {
+        let body = cost_comment(&id, &source.name(), &outcome, &cost, request.logins);
+        let repository = request.repository.clone();
+        let _ = tokio::task::spawn_blocking(move || comment(&repository, issue, &body)).await;
+    }
+    if !output.json() && state != "deleted" {
+        eprintln!("#{issue}: sandbox {id} is {state}; `openagents boat delete {id}` removes it.");
+    }
+    done(
+        &outcome,
+        message,
+        json!({"sandbox": id, "sandbox_state": state, "source": source.name(),
+            "wall_seconds": wall.as_secs(), "machine_seconds": cost.machine_seconds,
+            "cost_usd": cost.dollars, "commits": commits,
+            "task": (!task.is_empty()).then_some(task),
+            "thread": (!thread.is_empty()).then_some(thread)}),
+    )
+}
+
+/// Runs the flow on sandbox `id` and follows it; returns (outcome, message,
+/// commits, task, thread).
+async fn follow(
+    client: &boat::Client,
+    output: Output,
+    request: &Request,
+    credentials: &Credentials,
+    id: &str,
+    issue: u64,
+    stopping: &mut watch::Receiver<bool>,
+) -> Result<(String, String, Vec<String>, String, String), String> {
+    client
+        .wait_until_ready(id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
+        .await
+        .map_err(|e| format!("{id} did not become ready: {e}"))?;
+    let written = client
+        .write_text(id, ENV_FILE, &credentials.file())
+        .await
+        .map_err(|e| format!("the run's credentials could not be written: {e}"))?;
+    if written.type_ != "file.written" {
+        return Err("the run's credentials could not be written".into());
+    }
+    let process = client
+        .exec_detached(
+            id,
+            CommandRequest {
+                command: run_script(issue, request.land),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("the flow did not start on {id}: {e}"))?;
+    let mut follower = client
+        .follow_command(
+            id,
+            process.process_id,
+            wait(
+                Duration::from_secs(RUN_TTL_SECONDS.unsigned_abs()),
+                Duration::from_secs(2),
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+    let mut pending = String::new();
+    let mut tools = Stream::default();
+    let mut errors: VecDeque<String> = VecDeque::new();
+    let (mut task, mut thread) = (String::new(), String::new());
+    let mut ended: Option<(String, String, Vec<String>)> = None;
+    let mut last = None;
+    loop {
+        let frame = tokio::select! {
+            frame = follower.next() => frame.map_err(|e| format!("following {id}: {e}"))?,
+            changed = stopping.changed() => {
+                if changed.is_ok() && *stopping.borrow() {
+                    let _ = client.kill_command(id, process.pid, Signal::Term).await;
+                    return Err("Stopped: the flow on the sandbox was killed.".into());
+                }
+                continue;
+            }
+        };
+        let Some(frame) = frame else { break };
+        match frame {
+            CommandFrame::Stdout(text) => {
+                pending.push_str(&text);
+                while let Some(at) = pending.find('\n') {
+                    let line: String = pending.drain(..=at).collect();
+                    match inner(line.trim()) {
+                        Inner::Started {
+                            task: t,
+                            thread: th,
+                        } => {
+                            say(
+                                output,
+                                json!({"event": "coder", "issue": issue, "thread": th,
+                                    "accepted": true, "placement": COMPUTER, "sandbox": id,
+                                    "task": {"host": COMPUTER, "task": t, "issue": issue}}),
+                                &format!("#{issue}: Coder took the issue on {id} as task {t}."),
+                            );
+                            (task, thread) = (t, th);
+                        }
+                        Inner::Done {
+                            outcome,
+                            message,
+                            commits,
+                        } => ended = Some((outcome, message, commits)),
+                        Inner::Event(line) => super::work::show(&output, issue, &mut tools, &line),
+                        Inner::Other => {}
+                    }
+                }
+            }
+            CommandFrame::Stderr(text) => {
+                for row in text.lines().filter(|row| !row.trim().is_empty()) {
+                    if !output.json() && row.starts_with("boat:") {
+                        eprintln!("#{issue} {row}");
+                    }
+                    errors.push_back(row.to_owned());
+                    if errors.len() > 20 {
+                        errors.pop_front();
+                    }
+                }
+            }
+            CommandFrame::Started | CommandFrame::Unknown(_) => {}
+            end => last = Some(end),
+        }
+    }
+    match ended {
+        Some((outcome, message, commits)) => Ok((outcome, message, commits, task, thread)),
+        None => {
+            let code = match last {
+                Some(CommandFrame::Exit { exit_code, .. }) => format!("{exit_code:?}"),
+                other => format!("{other:?}"),
+            };
+            let tail = errors.into_iter().collect::<Vec<_>>().join("\n");
+            Err(format!(
+                "The flow on {id} ended without an outcome (exit {code}).\n{tail}"
+            ))
+        }
+    }
+}
+
+/// `chat work --on boat`.
+pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failure> {
+    let output = *output;
+    let client = Arc::new(
+        boat::Client::from_env()
+            .await
+            .map_err(|e| failed(format!("no Boat key: {e} (set BOAT_API_KEY)")))?,
+    );
+    let logins = request.logins;
+    let credentials = Arc::new(
+        tokio::task::spawn_blocking(move || credentials(logins))
+            .await
+            .map_err(|_| failed("the run credentials could not be read"))?
+            .map_err(failed)?,
+    );
+    let starts = Arc::new(Starts::new(STARTS_PER_MINUTE, Duration::from_secs(60)));
+    let named = match &request.template {
+        Some(name) => Some(name.clone()),
+        None => client
+            .list_named_snapshots()
+            .await
+            .ok()
+            .and_then(|list| newest_template(&list.snapshots)),
+    };
+    let (source, seed) = match named {
+        Some(name) => (Source::Template(name), None),
+        None => {
+            let seed = build_seed(&client, output, &starts).await.map_err(failed)?;
+            (Source::Seed(seed.clone()), Some(seed))
+        }
+    };
+    event(
+        &output,
+        json!({"event": "queue", "repository": request.repository, "issues": request.numbers,
+            "parallel": request.parallel, "placement": COMPUTER, "source": source.name(),
+            "engine_logins": logins.as_str()}),
+    );
+    if !output.json() {
+        eprintln!(
+            "Coder works {} issue(s) of {} on Boat, {} at a time, from {}: {}",
+            request.numbers.len(),
+            request.repository,
+            request.parallel,
+            source.name(),
+            request
+                .numbers
+                .iter()
+                .map(|n| format!("#{n}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    let (stop, stopping) = watch::channel(false);
+    let slots = Arc::new(Semaphore::new(
+        usize::try_from(request.parallel).unwrap_or(1),
+    ));
+    let request = Arc::new(request);
+    let mut runs = tokio::task::JoinSet::new();
+    for &issue in &request.numbers {
+        let (client, request, source, credentials, starts, slots, stopping) = (
+            Arc::clone(&client),
+            Arc::clone(&request),
+            source.clone(),
+            Arc::clone(&credentials),
+            Arc::clone(&starts),
+            Arc::clone(&slots),
+            stopping.clone(),
+        );
+        runs.spawn(async move {
+            let _slot = slots.acquire_owned().await;
+            run_issue(
+                client,
+                output,
+                request,
+                source,
+                credentials,
+                starts,
+                issue,
+                stopping,
+            )
+            .await
+        });
+    }
+    let mut results = Vec::new();
+    let interrupt = tokio::signal::ctrl_c();
+    tokio::pin!(interrupt);
+    let mut interrupted = false;
+    loop {
+        let joined = tokio::select! {
+            joined = runs.join_next() => joined,
+            _ = &mut interrupt, if !interrupted => {
+                interrupted = true;
+                let _ = stop.send(true);
+                eprintln!("Stopping: no more sandboxes start, and each running flow is killed and its sandbox stopped.");
+                continue;
+            }
+        };
+        let Some(joined) = joined else { break };
+        let Ok(record) = joined else { continue };
+        event(&output, record.clone());
+        if !output.json() {
+            let cost = record["cost_usd"]
+                .as_f64()
+                .map_or_else(String::new, |d| format!(" Cost {}.", dollars(d)));
+            println!(
+                "#{}: {}. {}{cost} ({} s on {})",
+                record["issue"],
+                record["outcome"].as_str().unwrap_or("failed"),
+                record["message"].as_str().unwrap_or_default(),
+                record["wall_seconds"],
+                record["sandbox"].as_str().unwrap_or("no sandbox"),
+            );
+            let _ = std::io::stdout().flush();
+        }
+        results.push(record);
+    }
+    if let Some(seed) = seed {
+        let state = teardown(&client, &seed, true).await;
+        say(
+            output,
+            json!({"event": "boat_seed", "sandbox": seed, "state": state}),
+            &format!("boat: seed {seed} {state}"),
+        );
+    }
+    let landed = results
+        .iter()
+        .filter(|r| matches!(r["outcome"].as_str(), Some("landed" | "pull_request")))
+        .count();
+    let total: f64 = results.iter().filter_map(|r| r["cost_usd"].as_f64()).sum();
+    event(
+        &output,
+        json!({"event": "queue_done", "issues": results.len(), "landed": landed,
+            "placement": COMPUTER, "cost_usd": total}),
+    );
+    if !output.json() {
+        eprintln!(
+            "Coder landed {landed} of {} issue(s) on Boat; sandboxes cost {} in all.",
+            results.len(),
+            dollars(total)
+        );
+    }
+    let good = results.iter().all(|r| {
+        matches!(
+            r["outcome"].as_str(),
+            Some("landed" | "pull_request" | "skipped" | "closed")
+        )
+    });
+    Ok(if good { 0 } else { crate::EXIT_FAILURE })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starts_wait_only_when_a_rolling_minute_is_full() {
+        let now = Instant::now();
+        let window = Duration::from_secs(60);
+        let mut recent = VecDeque::new();
+        assert_eq!(start_wait(&recent, now, window, 2), None);
+        recent.push_back(now.checked_sub(Duration::from_secs(50)).unwrap());
+        assert_eq!(start_wait(&recent, now, window, 2), None);
+        recent.push_back(now.checked_sub(Duration::from_secs(10)).unwrap());
+        // Full: the oldest of the last two leaves the window in 10 s.
+        assert_eq!(
+            start_wait(&recent, now, window, 2),
+            Some(Duration::from_secs(10))
+        );
+        // A start older than the window no longer counts.
+        let mut old = VecDeque::new();
+        old.push_back(now.checked_sub(Duration::from_secs(61)).unwrap());
+        old.push_back(now.checked_sub(Duration::from_secs(5)).unwrap());
+        assert_eq!(start_wait(&old, now, window, 2), None);
+    }
+
+    #[test]
+    fn the_run_script_holds_no_credential_and_deletes_the_env_file_first() {
+        let script = run_script(10220, Some(Land::Main));
+        let read = script.find(". /tmp/oa-run.env").unwrap();
+        let removed = script.find("rm -f /tmp/oa-run.env").unwrap();
+        let work = script.find("chat work").unwrap();
+        assert!(read < removed && removed < work);
+        assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
+        assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
+        for word in ["GH_TOKEN=", "XAI_API_KEY=", "ghp_", "gho_", "xai-"] {
+            assert!(!script.contains(word), "{word}");
+        }
+        assert!(run_script(1, None).ends_with("--parallel 1\n"));
+    }
+
+    #[test]
+    fn credentials_quote_their_values_and_never_print_them() {
+        let mut credentials = Credentials::default();
+        credentials
+            .variables
+            .insert("GH_TOKEN".into(), "gho_secret'$(x)".into());
+        assert_eq!(credentials.file(), "GH_TOKEN='gho_secret'\\''$(x)'\n");
+        let shown = format!("{credentials:?}");
+        assert!(shown.contains("GH_TOKEN") && !shown.contains("gho_secret"));
+    }
+
+    #[test]
+    fn the_newest_ready_template_wins() {
+        let snapshot = |name: &str, status: &str| NamedSnapshot {
+            name: name.into(),
+            status: status.into(),
+            ..Default::default()
+        };
+        let list = [
+            snapshot("oa-coder-main-20261001", "ready"),
+            snapshot("oa-coder-main-20261003", "pending"),
+            snapshot("oa-coder-main-20261002", "ready"),
+            snapshot("gym-regex-log", "ready"),
+        ];
+        assert_eq!(
+            newest_template(&list).as_deref(),
+            Some("oa-coder-main-20261002")
+        );
+        assert_eq!(newest_template(&list[3..]), None);
+    }
+
+    #[test]
+    fn inner_lines_name_the_task_the_outcome_and_the_events() {
+        assert_eq!(
+            inner(
+                r#"{"event":"coder","issue":7,"thread":"t1","accepted":true,"task":{"host":"local","task":"k1"}}"#
+            ),
+            Inner::Started {
+                task: "k1".into(),
+                thread: "t1".into()
+            }
+        );
+        assert_eq!(
+            inner(
+                r#"{"event":"issue","issue":7,"outcome":"landed","message":"Landed abc.","commits":["abc"]}"#
+            ),
+            Inner::Done {
+                outcome: "landed".into(),
+                message: "Landed abc.".into(),
+                commits: vec!["abc".into()],
+            }
+        );
+        assert_eq!(inner(r#"{"event":"queue","issues":[7]}"#), Inner::Other);
+        assert_eq!(inner("not json"), Inner::Other);
+    }
+
+    #[test]
+    fn the_cost_comment_and_route_record_carry_time_and_price() {
+        let cost = Cost {
+            wall: Duration::from_secs(754),
+            machine_seconds: Some(760),
+            dollars: Some(0.0152),
+        };
+        let body = cost_comment(
+            "bx_1",
+            "oa-coder-main-20261002",
+            "landed",
+            &cost,
+            EngineLogins::ApiKeys,
+        );
+        assert!(body.contains("`bx_1`") && body.contains("754 s") && body.contains("760 s"));
+        assert!(body.contains("$0.0152") && body.contains("`api-keys`"));
+        let record = route_record(
+            "o/r",
+            7,
+            "k1",
+            "bx_1",
+            "oa-coder-main-20261002",
+            "landed",
+            &cost,
+        );
+        assert_eq!(record["placement"]["computer"], "boat");
+        assert_eq!(record["placement"]["grant"]["source"], "operator");
+        assert_eq!(record["run"]["cost_microusd"], 15_200);
+        assert_eq!(record["run"]["wall_ms"], 754_000);
+        assert_eq!(record["run"]["projection"]["state"], "completed");
+        let failed = route_record("o/r", 7, "k1", "bx_1", "s", "failed", &cost);
+        assert_eq!(failed["run"]["projection"]["state"], "failed");
+    }
+
+    #[test]
+    fn engine_logins_are_api_keys_or_boat() {
+        assert_eq!(EngineLogins::parse("api-keys"), Ok(EngineLogins::ApiKeys));
+        assert_eq!(EngineLogins::parse("boat"), Ok(EngineLogins::Boat));
+        assert!(EngineLogins::parse("chatgpt").is_err());
+    }
+}

@@ -66,9 +66,28 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             Failure::Usage("`chat work` needs --issues NUMBERS or --issues LABEL".into())
         })?
         .to_owned();
+    let on_boat = match args.option("on") {
+        None | Some("here") => false,
+        Some("boat") => true,
+        Some(other) => {
+            return Err(Failure::Usage(format!(
+                "--on is `here` or `boat`, not `{other}`"
+            )));
+        }
+    };
+    let most = if on_boat {
+        super::boat::MAX_PARALLEL
+    } else {
+        MAX_PARALLEL
+    };
     let parallel: u64 = args.number("parallel", 1).map_err(Failure::Usage)?;
-    if !(1..=MAX_PARALLEL).contains(&parallel) {
-        return Err(Failure::Usage(format!("--parallel is 1 to {MAX_PARALLEL}")));
+    if !(1..=most).contains(&parallel) {
+        return Err(Failure::Usage(format!("--parallel is 1 to {most}")));
+    }
+    if !on_boat && (args.option("engine-logins").is_some() || args.option("template").is_some()) {
+        return Err(Failure::Usage(
+            "--engine-logins and --template go with --on boat".into(),
+        ));
     }
     let land = args
         .option("land")
@@ -93,6 +112,29 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
         return Err(failed(format!(
             "No open issue in {repository} matches `{spec}`."
         )));
+    }
+    if on_boat {
+        let logins = args
+            .option("engine-logins")
+            .map(str::to_owned)
+            .or_else(|| std::env::var("OA_BOAT_ENGINE_LOGINS").ok())
+            .map_or(Ok(super::boat::EngineLogins::ApiKeys), |word| {
+                super::boat::EngineLogins::parse(&word)
+            })
+            .map_err(Failure::Usage)?;
+        let request = super::boat::Request {
+            repository,
+            numbers,
+            parallel,
+            land,
+            logins,
+            template: args.option("template").map(str::to_owned).or_else(|| {
+                std::env::var("OA_BOAT_TEMPLATE")
+                    .ok()
+                    .filter(|t| !t.is_empty())
+            }),
+        };
+        return super::boat::work(output, request).await;
     }
     let mut backend = super::open(args, None, false, &mut Printer::new(output)).await?;
     let store = local::default_store();
@@ -370,7 +412,7 @@ fn worker(
 
 /// One flow's event: an NDJSON line with its issue, or a line on stderr
 /// marked with it.
-fn show(output: &Output, issue: u64, tools: &mut Stream, line: &Line) {
+pub(super) fn show(output: &Output, issue: u64, tools: &mut Stream, line: &Line) {
     if output.json() {
         if let Ok(mut value) = serde_json::to_value(line) {
             value["issue"] = json!(issue);

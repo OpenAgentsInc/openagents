@@ -27,6 +27,8 @@ pub(crate) const USAGE: &str = "usage: openagents boat COMMAND
                  there with CARGO_INCREMENTAL=0. Output prints as it arrives;
                  the exit code is CMD's. Ctrl-C kills CMD on the sandbox.
   stop NAME      Stop the sandbox NAME; a stopped sandbox costs nothing.
+  delete NAME|ID Delete the sandbox NAME, or the sandbox ID (bx_...), such as
+                 one a Boat issue run kept stopped after it failed.
 The first run for a NAME creates a sandbox (default large, four-hour
 lifetime, no account credentials) and keeps its id in ~/.openagents/boat/NAME.
 The key is BOAT_API_KEY, or Secret Manager boat-api-key through gcloud.
@@ -39,6 +41,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     // Boat bills machine time.
     Declared::computer("run", Effect::Spends),
     Declared::computer("stop", Effect::Publishes),
+    Declared::computer("delete", Effect::Publishes),
 ];
 
 const PATCH_PATH: &str = "/tmp/oa-change.patch";
@@ -61,6 +64,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "stop" => match rest {
             [name] if valid_name(name) => crate::runtime().block_on(stop(output, name)),
             _ => output.usage("boat", "stop takes one NAME", USAGE),
+        },
+        "delete" => match rest {
+            [target] if valid_name(target) => crate::runtime().block_on(delete(output, target)),
+            _ => output.usage("boat", "delete takes one NAME or sandbox ID", USAGE),
         },
         other => output.usage("boat", &format!("unknown command `{other}`"), USAGE),
     }
@@ -505,6 +512,57 @@ async fn stop(output: &Output, name: &str) -> u8 {
             0
         }
         Err(e) => output.fail("boat stop", &format!("{id}: {e}")),
+    }
+}
+
+/// `delete NAME|ID`: a `bx_` ID as given, else the sandbox NAME remembers.
+async fn delete(output: &Output, target: &str) -> u8 {
+    let idfile = state_dir().join(target);
+    let id = if target.starts_with("bx_") {
+        target.to_owned()
+    } else {
+        match std::fs::read_to_string(&idfile)
+            .ok()
+            .map(|text| text.trim().to_owned())
+            .filter(|id| !id.is_empty())
+        {
+            Some(id) => id,
+            None => {
+                output.emit(&json!({ "name": target, "deleted": null }), |_| {
+                    format!("boat: no sandbox named {target}")
+                });
+                return 0;
+            }
+        }
+    };
+    let client = match boat::Client::from_env().await {
+        Ok(client) => client,
+        Err(e) => return output.fail("boat delete", &format!("no Boat key: {e}")),
+    };
+    let deleted = client
+        .delete_sandbox(&DeleteSandboxParams {
+            sandbox_id: id.clone(),
+            x_ascii_confirm_delete: id.clone(),
+            ..Default::default()
+        })
+        .await;
+    match deleted {
+        Ok(_) => {
+            if !target.starts_with("bx_") {
+                let _ = std::fs::remove_file(&idfile);
+            }
+            output.emit(&json!({ "name": target, "deleted": id }), |_| {
+                format!("deleting {id}")
+            });
+            0
+        }
+        Err(e) if is_not_found(&e) => {
+            output.emit(&json!({ "name": target, "deleted": null }), |_| {
+                format!("boat: {id} does not exist")
+            });
+            0
+        }
+        Err(e) => output.fail("boat delete", &format!("{id}: {e}")),
     }
 }
 

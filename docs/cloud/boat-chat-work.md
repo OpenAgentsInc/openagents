@@ -1,0 +1,110 @@
+# `openagents chat work --on boat`: Coder issue runs on Boat sandboxes
+
+- Issue: [#10220](https://github.com/OpenAgentsInc/openagents/issues/10220) (Boat B6)
+- Plan: [Boat SDK plan §5.4](2026-10-02-boat-sdk-plan.md)
+- Code: `crates/openagents-cli/src/chat_boat.rs` (the orchestrator),
+  `crates/openagents-cli/src/chat_work.rs` (`--on`), `crates/boat` (the SDK)
+
+```text
+openagents chat work --on boat --issues 10301,10302 --parallel 2
+```
+
+The computer that runs this command only orchestrates. Nothing is built on
+it. Each issue runs on a Boat sandbox of its own.
+
+## What one issue does
+
+1. **Dispatcher.** A start is taken from a queue that keeps every rolling
+   minute under Boat's start limit (12 a minute on the $20 plan). Before each
+   start, `GET /limits` is read; when the day's starts (200 on the $20 plan)
+   are gone, the issue is reported `not_started` instead of waiting until
+   tomorrow. `--parallel` (1 to 16) is how many sandboxes run at once.
+2. **Start.** A `large` sandbox (8 vCPU, 16 GB, $0.072 an hour) is created
+   `from` the newest ready `oa-coder-main-<date>` named snapshot (the daily
+   template, B5 #10219). `--template NAME` or `OA_BOAT_TEMPLATE` picks
+   another. When no template exists, the command builds one **seed** sandbox
+   with the template's own host setup (`scripts/cloud/coder-host-setup.sh
+   --warm`), stops it, forks it once per issue, and deletes it at the end.
+   The seed takes tens of minutes; a template start takes seconds.
+3. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
+   sandbox's command sources and deletes that file before anything else
+   runs. See below.
+4. **Build.** The sandbox fetches `origin/main` and builds `openagents` and
+   `microcoder` on the template's warm target (a delta build), copies them
+   out of the target slot, and points `OPENAGENTS_CODER_CONTROLLER` at that
+   `microcoder`.
+5. **The issue flow** runs there: `openagents chat work --local --json
+   --issues N --parallel 1` — the same flow as on a Mac: claim comment,
+   worktree of `origin/main`, engine turn, checks, the multi-machine landing
+   of #10226 (fetch, rebase, plain push, jittered retry), evidence comment,
+   close.
+6. **Streaming.** The flow's NDJSON events stream back through
+   `follow_command` and print here exactly as a local `chat work` prints
+   them, marked with the issue. Under `--json` every line carries `issue`;
+   the extra events are `boat_sandbox`, `boat_seed`, and `route_record`, and
+   the final `issue` event adds `sandbox`, `wall_seconds`,
+   `machine_seconds`, and `cost_usd`.
+7. **Cost.** After the sandbox stops, `GET /sandboxes/{id}/usage` gives its
+   machine time and list-price dollars. They go into a comment on the issue
+   and into a route record appended to `~/.openagents/boat/runs.jsonl`:
+   placement computer `boat`, grant source `operator` (the person typed
+   `--on boat`), and a `route_contract::record::RunOutcome` with
+   `cost_microusd` and `wall_ms`.
+8. **Teardown.** The sandbox always stops (stopped is free; Boat's TTL is
+   counted from start, not idleness, so it is only a 12-hour backstop). It
+   is deleted when the issue landed, was skipped, or was closed. A failed
+   run's sandbox stays stopped for inspection; `openagents boat delete ID`
+   removes it. Ctrl-C kills every running flow on its sandbox and stops the
+   sandboxes.
+
+## Credentials
+
+Every credential is read once on the orchestrating computer, and for each
+run is written to the sandbox's `/tmp/oa-run.env`, which the run's command
+reads and deletes first. That keeps credentials:
+
+- out of every template and snapshot: `/tmp` is not captured by Boat
+  snapshots, the sandboxes start with `noEnv: true` (no account credential
+  from Boat), and a run's sandbox is never saved as a named snapshot;
+- out of command lines (Boat records commands) and out of this command's
+  output and logs;
+- gone with the sandbox, which is deleted after landing.
+
+| Variable | Source, first found wins | Used for |
+| --- | --- | --- |
+| `GH_TOKEN` | `OA_BOAT_GH_TOKEN`; Secret Manager `coder-pool-git-token` (the September pool's git token); `gh auth token` on this computer | the flow's `gh` (claim, comments, close) and `git push` through `gh auth setup-git` |
+| `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` | Grok Build, the engine the flow uses under `api-keys` |
+| `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; this computer's `git config user.name/email` | commit identity |
+
+`coder-pool-git-token` is an owner OAuth token with push to the repository.
+A GitHub App installation token (Secret Manager `coder-github-app-key`, one
+hour, one repository) is the narrower follow-up; the reader above is the one
+place to change.
+
+### Engine logins: `--engine-logins api-keys|boat`
+
+The default is `api-keys` (`OA_BOAT_ENGINE_LOGINS` sets the default).
+
+- **`api-keys`.** The issue flow's engines are Codex, Claude Code, and Grok
+  Build. Coder's Codex route needs a ChatGPT login, not an OpenAI API key,
+  and its Claude route needs a Claude Code sign-in; only Grok Build takes an
+  API key (`XAI_API_KEY`). So with `api-keys` the flow runs on Grok Build.
+- **`boat`.** The sandboxes start with `noEnv: false`, so Boat writes the
+  ChatGPT and Claude subscriptions the owner connected on Boat's dashboard
+  (`~/.codex/auth.json`, `~/.claude/.credentials.json`) into each sandbox,
+  refreshing them on its servers before every start. Coder then prefers
+  Codex, then Claude Code, as on the Mac. Boat holds those tokens; that is
+  the owner's decision (B7, NEEDS_OWNER "Boat: choose how coding agents log
+  in"). Switching later is only this flag: nothing else changes.
+
+## Router placement
+
+`--on boat` is the operator naming the computer: the route record's
+placement is `computer: "boat"` with an operator grant
+(`boat:<sandbox id>`). The run never moves to another computer on its own;
+when Boat has no starts left the issue says so and stays open.
+
+## Measured
+
+See the #10220 closing comment for the first real run (issues, wall time,
+machine time, and cost per run).

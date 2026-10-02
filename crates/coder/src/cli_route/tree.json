@@ -3344,7 +3344,7 @@
               "work"
             ],
             "usage": [
-              "work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]"
+              "work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]"
             ],
             "forms": [
               {
@@ -3375,11 +3375,20 @@
                       "pr"
                     ],
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "on",
+                    "value": "boat",
+                    "choices": [
+                      "boat"
+                    ],
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Hand several issues to Coder, one issue flow each, each in its own thread: NUMBERS such as 10050,10051, or a LABEL's open issues. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy.",
+            "summary": "Hand several issues to Coder, one issue flow each, each in its own thread: NUMBERS such as 10050,10051, or a LABEL's open issues. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3446,6 +3455,26 @@
             "main",
             "pr"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "on",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "template",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "engine-logins",
           "optional": true,
           "repeated": true
         },
@@ -5765,6 +5794,35 @@
               }
             ],
             "summary": "Stop the sandbox NAME; a stopped sandbox costs nothing.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "delete",
+          "leaf": {
+            "path": [
+              "boat",
+              "delete"
+            ],
+            "usage": [
+              "delete NAME|ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "delete"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME|ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "Delete the sandbox NAME, or the sandbox ID (bx_...), such as one a Boat issue run kept stopped after it failed.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }

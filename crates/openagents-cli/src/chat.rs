@@ -33,6 +33,8 @@ use serde_json::{Value, json};
 use crate::out::{Output, table};
 use crate::{Args, EXIT_FAILURE, runtime};
 
+#[path = "chat_boat.rs"]
+mod boat;
 #[path = "chat_coder.rs"]
 mod coder_run;
 #[path = "chat_work.rs"]
@@ -77,13 +79,25 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]
+  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]
         Hand several issues to Coder, one issue flow each, each in its own
         thread: NUMBERS such as 10050,10051, or a LABEL's open issues.
         --parallel (1 to 4, default 1) runs that many at once, each in its
         own worktree. Issues claimed in the last hours (the repository's
         claim window) and closed issues are skipped. --land overrides the
         repository's policy.
+        --on boat runs each issue on a Boat sandbox of its own instead of
+        this computer (--parallel up to 16; starts are queued under Boat's
+        start limits): started from the newest oa-coder-main-<date>
+        template (--template NAME picks one; with none, a seed is set up
+        once and forked), the same issue flow runs and lands there, its
+        events stream here, and the sandbox's machine time and cost go in
+        a comment on the issue. The sandbox stops when its run ends and is
+        deleted once the issue landed. --engine-logins api-keys (default:
+        Grok Build's XAI_API_KEY) or boat (subscriptions connected on
+        Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
+        boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
+        coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
@@ -119,7 +133,16 @@ pub(crate) const EFFECTS: &[Declared] = &[
 ];
 
 const OPTIONS: &[&str] = &[
-    "thread", "timeout", "limit", "socket", "issues", "parallel", "land",
+    "thread",
+    "timeout",
+    "limit",
+    "socket",
+    "issues",
+    "parallel",
+    "land",
+    "on",
+    "engine-logins",
+    "template",
 ];
 const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder", "no-run"];
 

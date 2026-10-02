@@ -23,6 +23,7 @@ bitcoin-amount = { path = "../bitcoin-amount" }
 # `openagents boat run`: this checkout's change, built and tested on Boat.
 boat = { path = "../boat" }
 coder = { path = "../coder" }
+route-contract = { path = "../route-contract" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-computers = { path = "../coder-computers" }
 coder-connect = { path = "../coder-connect" }

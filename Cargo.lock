@@ -9359,6 +9359,7 @@ dependencies = [
  "playtest",
  "reqwest 0.12.28",
  "ring",
+ "route-contract",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
