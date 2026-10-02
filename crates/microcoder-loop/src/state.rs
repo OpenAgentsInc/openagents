@@ -4,11 +4,13 @@
 use serde::Serialize;
 
 /// Characters of a command's output kept from its start.
-pub const OUTPUT_HEAD: usize = 1_500;
+pub const OUTPUT_HEAD: usize = 6_000;
 /// Characters of a command's output kept from its end.
-pub const OUTPUT_TAIL: usize = 3_000;
-/// Actions shown in full; older ones are one line each.
-pub const RECENT: usize = 4;
+pub const OUTPUT_TAIL: usize = 6_000;
+/// Actions shown in full; older ones are one line each. Four was too few
+/// to remember what a run had already read: a Codex run on an issue kept
+/// searching for files it had read five steps before (2026-10-02).
+pub const RECENT: usize = 12;
 
 /// One command's result.
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -334,14 +336,16 @@ mod tests {
     #[test]
     fn older_actions_shrink_to_one_line_each() {
         let state = State {
-            actions: (1..=7).map(|n| action(n, &"x".repeat(500))).collect(),
+            actions: (1..=RECENT + 3)
+                .map(|n| action(n, &"x".repeat(500)))
+                .collect(),
             ..State::default()
         };
         let text = state.render_actions();
         assert!(text.contains("- Step 1: reason 1 — `cmd 1` → exit 0"));
-        assert!(text.contains("## Step 7"));
-        assert!(!text.contains("## Step 3"));
-        // Three one-line steps and four full ones, each full output 500 characters.
-        assert!(text.len() < 7 * 500);
+        assert!(text.contains(&format!("## Step {}", RECENT + 3)));
+        assert!(!text.contains("## Step 3\n"));
+        // Three one-line steps and RECENT full ones, each full output 500 characters.
+        assert!(text.len() < (RECENT + 3) * 500);
     }
 }
