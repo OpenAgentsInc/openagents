@@ -337,6 +337,7 @@ impl DesktopApp {
     /// does. Windows has no Grid layer, and its slides keep the plain
     /// background.
     fn deck_scene(&mut self) {
+        self.deck_map();
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             let scene = self.slides.as_mut().and_then(|slides| {
@@ -346,6 +347,30 @@ impl DesktopApp {
             if grid.borrow().deck != scene {
                 grid.borrow_mut().deck = scene;
             }
+        }
+    }
+
+    /// Hands the slide viewer this computer's data for a slide that shows
+    /// the live route map (`scene: routes`), as the Map page gets it.
+    fn deck_map(&mut self) {
+        if !self
+            .slides
+            .as_ref()
+            .is_some_and(openagents_desktop::slides::Slides::wants_routes)
+        {
+            return;
+        }
+        let first = self
+            .slides
+            .as_ref()
+            .is_some_and(|slides| slides.routes().is_none());
+        let local = self.map_local();
+        if let Some(slides) = &mut self.slides {
+            slides.routes_local(local);
+        }
+        // This person's route counts, as the Map page asks for them.
+        if first && let Some(request) = self.chat.as_mut().map(|chat| chat.request_routes()) {
+            self.send(vec![request], Instant::now());
         }
     }
 
@@ -1754,6 +1779,7 @@ impl App for DesktopApp {
 
     fn paint_surface(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) {
         if resource == openagents_desktop::slides::RESOURCE {
+            self.deck_map();
             if let Some(slides) = &mut self.slides {
                 slides.paint(frame, rect);
             }

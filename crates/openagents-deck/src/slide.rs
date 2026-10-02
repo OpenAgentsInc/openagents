@@ -154,11 +154,16 @@ pub struct Slide {
     /// How many times its native size an image slide's image may grow,
     /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
     pub scale: Option<u8>,
-    /// A live scene a host may draw behind the slide (`scene: grid`, the
-    /// Verse's Grid). A host with no scene, and every capture, paints the
-    /// plain background instead.
+    /// A live scene a host may draw in the slide's place, one of
+    /// [`SCENES`]: `grid`, the Verse's Grid behind the slide; `routes`, the
+    /// live route map; `routes-future`, the route map growing over the
+    /// years. A host with no scene, and every capture, paints the plain
+    /// background instead.
     pub scene: Option<String>,
 }
+
+/// The live scenes a slide may name (`scene: grid`).
+pub const SCENES: [&str; 3] = ["grid", "routes", "routes-future"];
 
 /// An image a slide shows: `![alt](path)` in the script, on a line by
 /// itself. The path names a file under `decks/`, compiled in through

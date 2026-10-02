@@ -384,3 +384,109 @@ fn the_viewer_opens_when_the_offer_arrives_not_on_the_next_input() {
         );
     }
 }
+
+/// The Episode 289 deck's second slide hosts the Map page's graph, live
+/// and interactive: a click selects a node and shows its details, a drag
+/// pans it, and the arrow keys still change slides unless a drag is held.
+/// Its third slide plays the map growing over the years. With
+/// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
+#[test]
+fn episode_289_hosts_the_live_route_map_and_its_future() {
+    use openagents_desktop::slides::Layout;
+    let (mut app, start) = shell();
+    app.open_presentation("episode-289", start)
+        .expect("the deck opens");
+    let open = start + OPEN;
+    app.tick(open);
+    let directory = std::env::var_os("OPENAGENTS_SLIDES_CAPTURE").map(std::path::PathBuf::from);
+    let write = |app: &mut DesktopApp, name: &str| {
+        let (frame, scene) = rust_native_desktop::capture(app, WIDTH, HEIGHT, 2.0);
+        assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+        if let Some(directory) = &directory {
+            std::fs::create_dir_all(directory).unwrap();
+            std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap()).unwrap();
+        }
+        frame
+    };
+    assert!(key(&mut app, "ArrowRight", false, open));
+    let map = write(&mut app, "episode-289-routes");
+    let slides = app.presentation().expect("the viewer shows");
+    let page = slides.routes().expect("the slide holds the live map");
+    assert!(page.map().nodes.len() > 20);
+    assert_eq!(page.selected(), None);
+    // A click on the router, where the fitted map draws it, selects it.
+    let slide = Layout::of(WIDTH, HEIGHT, false, 1.0).slide;
+    let (w, h) = page.size();
+    let front = page.camera().to_screen(
+        openagents_chat_app::route_map::layout::Point::default(),
+        w,
+        h,
+    );
+    let (cx, cy) = (slide.x + front.x, slide.y + front.y);
+    let input = |app: &mut DesktopApp, event: SurfaceInput| {
+        App::surface_input(app, RESOURCE, event, open);
+    };
+    input(
+        &mut app,
+        SurfaceInput::Down {
+            x: cx,
+            y: cy,
+            shift: false,
+        },
+    );
+    input(&mut app, SurfaceInput::Up { x: cx, y: cy });
+    let page = app.presentation().unwrap().routes().unwrap();
+    assert_eq!(
+        page.selected().map(|i| page.map().nodes[i].id.as_str()),
+        Some("front"),
+        "a click selects, and the slide stays"
+    );
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 4");
+    // Tab steps to the next node; its details show on the slide.
+    assert!(key(&mut app, "Tab", false, open));
+    let selected = write(&mut app, "episode-289-routes-selected");
+    assert_ne!(map.pixels, selected.pixels);
+    // A drag pans the map; an arrow during it doesn't change the slide.
+    let before = app.presentation().unwrap().routes().unwrap().camera();
+    input(
+        &mut app,
+        SurfaceInput::Down {
+            x: cx,
+            y: cy,
+            shift: false,
+        },
+    );
+    input(
+        &mut app,
+        SurfaceInput::Move {
+            x: cx + 60.0,
+            y: cy + 20.0,
+        },
+    );
+    assert!(key(&mut app, "ArrowRight", false, open));
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 4");
+    input(
+        &mut app,
+        SurfaceInput::Up {
+            x: cx + 60.0,
+            y: cy + 20.0,
+        },
+    );
+    assert_ne!(
+        app.presentation().unwrap().routes().unwrap().camera(),
+        before
+    );
+    // Once let go, the arrow changes slides: the future plays.
+    assert!(key(&mut app, "ArrowRight", false, open));
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 4");
+    let wake = app.tick(open).expect("the future asks for frames");
+    assert!(wake <= open + Duration::from_millis(40));
+    let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().year();
+    app.tick(open + Duration::from_secs(10));
+    assert_eq!(future(&app), 2027);
+    let early = write(&mut app, "episode-289-future-a");
+    app.tick(open + Duration::from_secs(33));
+    assert_eq!(future(&app), 2030);
+    let late = write(&mut app, "episode-289-future-b");
+    assert_ne!(early.pixels, late.pixels);
+}

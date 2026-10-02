@@ -579,6 +579,10 @@ mod tests {
         assert_eq!(viewer.scene(), None, "the overview has no scene");
         viewer.key("Escape", false);
         viewer.key("ArrowRight", false);
+        assert_eq!(viewer.scene(), Some("routes"));
+        viewer.key("ArrowRight", false);
+        assert_eq!(viewer.scene(), Some("routes-future"));
+        viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), None);
     }
 

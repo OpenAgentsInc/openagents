@@ -135,6 +135,25 @@ pub struct MapPage {
     /// The surface's left and right edges in the window, in points, as
     /// last painted: the side panel is to their right.
     surface_right: f32,
+    /// Shown in a deck slide ([`MapPage::presenting`]): no hint or legend,
+    /// and the selection's details on a card over the graph.
+    presenting: bool,
+    /// How far each node has appeared, 0 to 1, while a scene drives the
+    /// map ([`MapPage::set_frame`]); `None` shows every node whole.
+    shown: Option<Vec<f32>>,
+    /// The traffic a scene draws on the edges.
+    traffic: Vec<Pulse>,
+}
+
+/// A dot of traffic on the map: a request on its way out, or a payment on
+/// its way back.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pulse {
+    /// Where it is, in world units.
+    pub at: Point,
+    pub color: Color,
+    /// Its radius, in points.
+    pub radius: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -186,7 +205,62 @@ impl MapPage {
             window_height: 840.0,
             side_offset: 0.0,
             surface_right: f32::MAX,
+            presenting: false,
+            shown: None,
+            traffic: Vec::new(),
         }
+    }
+
+    /// The page as a deck's slide shows it (`scene: routes`): the same
+    /// graph and controls, with no hint or legend over it, and the
+    /// selection's details on a card in the graph's corner, since the
+    /// slide has no side panel.
+    pub fn presenting(map: Map, reduce_motion: bool) -> Self {
+        let mut page = MapPage::new(map, reduce_motion);
+        page.presenting = true;
+        page.legend = false;
+        page
+    }
+
+    /// Whether a press on the graph is held: a click or a drag under way.
+    pub fn pressed(&self) -> bool {
+        self.press.is_some()
+    }
+
+    /// Whether the graph is being dragged.
+    pub fn dragging(&self) -> bool {
+        self.press.is_some_and(|press| press.moved)
+    }
+
+    /// Draws one frame of a scene over this map (`scene: routes-future`):
+    /// where each node sits now, how far each has appeared (0 hides it,
+    /// 1 is whole), the traffic on the edges, and the camera.
+    pub fn set_frame(
+        &mut self,
+        layout: Layout,
+        shown: Vec<f32>,
+        traffic: Vec<Pulse>,
+        camera: Camera,
+    ) {
+        self.layout = layout;
+        self.shown = Some(shown);
+        self.traffic = traffic;
+        self.camera = camera;
+        self.motion = None;
+        self.fitted = true;
+        self.moved = true;
+        self.changed();
+    }
+
+    /// The camera that fits `bounds` in the surface as last painted.
+    pub fn fit_bounds(&self, bounds: (Point, Point), margin: f32) -> Camera {
+        let (w, h) = self.size;
+        Camera::fit(bounds, w.max(1.0), h.max(1.0), margin)
+    }
+
+    /// The surface's size in points as last painted.
+    pub fn size(&self) -> (f32, f32) {
+        self.size
     }
 
     /// The window's height in points, which the map's height follows.
@@ -717,9 +791,19 @@ impl MapPage {
                 && y - r <= rect.y + rect.h
         };
         let lit = self.lit();
+        let appeared = self.shown.clone();
+        let appear = |i: usize| {
+            appeared
+                .as_ref()
+                .map_or(1.0, |a| a.get(i).copied().unwrap_or(1.0))
+        };
         // Edges: the tree under every node, then the other links, fainter.
         for edge in &self.map.edges {
             let (a, b) = (edge.from, edge.to);
+            let grown = appear(a).min(appear(b));
+            if grown <= 0.0 {
+                continue;
+            }
             let shown = self.visible(a) && self.visible(b);
             let (pa, pb) = (px(self.layout.positions[a]), px(self.layout.positions[b]));
             if !segment_visible(pa, pb, rect) {
@@ -741,6 +825,7 @@ impl MapPage {
                 ) => 40,
                 (EdgeKind::Tests, false, true) => 18,
             };
+            color.alpha = (f32::from(color.alpha) * grown).round() as u8;
             if edge.kind == EdgeKind::Tests && !bright {
                 dashed(frame, pa, pb, unit, color);
             } else {
@@ -750,8 +835,12 @@ impl MapPage {
         // Nodes.
         for index in 0..self.map.nodes.len() {
             let node = &self.map.nodes[index];
+            let grown = appear(index);
+            if grown <= 0.0 {
+                continue;
+            }
             let center = px(self.layout.positions[index]);
-            let r = (self.layout.radii[index] * camera.zoom).max(2.5) * unit;
+            let r = (self.layout.radii[index] * camera.zoom).max(2.5) * unit * grown;
             if !on_screen(center, r + 12.0 * unit) {
                 continue;
             }
@@ -760,6 +849,7 @@ impl MapPage {
             if !shown {
                 fill.alpha = 46;
             }
+            fill.alpha = (f32::from(fill.alpha) * grown.min(1.0)).round() as u8;
             let disc = PxRect {
                 x: center.0 - r,
                 y: center.1 - r,
@@ -811,6 +901,38 @@ impl MapPage {
                 );
             }
         }
+        // Traffic, over the edges it travels: a soft glow and a bright core.
+        for pulse in &self.traffic {
+            let center = px(pulse.at);
+            let r = pulse.radius * unit;
+            if !on_screen(center, r * 3.0) {
+                continue;
+            }
+            let glow = r * 2.6;
+            frame.fill(
+                PxRect {
+                    x: center.0 - glow,
+                    y: center.1 - glow,
+                    w: 2.0 * glow,
+                    h: 2.0 * glow,
+                },
+                glow,
+                Color {
+                    alpha: 46,
+                    ..pulse.color
+                },
+            );
+            frame.fill(
+                PxRect {
+                    x: center.0 - r,
+                    y: center.1 - r,
+                    w: 2.0 * r,
+                    h: 2.0 * r,
+                },
+                r,
+                pulse.color,
+            );
+        }
         // Labels, thinned by zoom; a selection's neighbors are always named.
         // Each label sits outside its node, away from the front, so the
         // rings read like a radial tree; one that would overlap a label
@@ -823,7 +945,7 @@ impl MapPage {
         });
         let mut placed: Vec<PxRect> = Vec::new();
         for index in order {
-            if !self.visible(index) && Some(index) != self.selected {
+            if (!self.visible(index) && Some(index) != self.selected) || appear(index) < 0.999 {
                 continue;
             }
             let node = &self.map.nodes[index];
@@ -952,6 +1074,11 @@ impl MapPage {
         if self.legend {
             self.paint_legend(frame, rect, unit);
         }
+        if self.presenting {
+            self.paint_card(frame, rect, unit);
+            frame.restore_clip(clip);
+            return;
+        }
         // The hint, top left.
         let hint = if self.focused {
             "Drag to move · pinch or Cmd+scroll to zoom · arrows, Tab, Esc"
@@ -975,6 +1102,88 @@ impl MapPage {
             visual::FAINT,
         );
         frame.restore_clip(clip);
+    }
+
+    /// The selection's details on a card in the graph's top right corner,
+    /// for a deck slide, which has no side panel: what the inspector
+    /// leads with (the name, kind, what it is, why the router sends things
+    /// there) and its first facts.
+    fn paint_card(&mut self, frame: &mut Frame, rect: PxRect, unit: f32) {
+        use rust_native::layout::display::Weight;
+        let Some(node) = self.selected else {
+            return;
+        };
+        let inspector = self.map.inspect(node);
+        let pad = 14.0 * unit;
+        let width = (300.0 * unit).min(rect.w * 0.42);
+        let inner = width - 2.0 * pad;
+        let mut lines = vec![
+            (
+                inspector.title.clone(),
+                15.0,
+                Weight::Semibold,
+                visual::TEXT,
+            ),
+            (
+                inspector.kind.label().to_string(),
+                11.0,
+                Weight::Medium,
+                inspector.kind.color(),
+            ),
+            (inspector.line.clone(), 12.0, Weight::Regular, visual::MUTED),
+        ];
+        if let Some(why) = &inspector.why {
+            lines.push((why.clone(), 12.0, Weight::Regular, visual::MUTED));
+        }
+        for field in inspector.fields.iter().take(6) {
+            lines.push((
+                format!("{}  {}", field.label, field.value),
+                11.5,
+                Weight::Regular,
+                visual::TEXT,
+            ));
+        }
+        let mut paragraphs = Vec::new();
+        let mut height = 2.0 * pad;
+        for (value, size, weight, color) in lines {
+            let paragraph =
+                self.fonts
+                    .paragraph(&value, font(size * unit, weight, false), Some(inner));
+            if height + paragraph.height > rect.h - 24.0 * unit {
+                break;
+            }
+            height += paragraph.height + 6.0 * unit;
+            paragraphs.push((paragraph, color));
+        }
+        let card = PxRect {
+            x: rect.x + rect.w - width - 12.0 * unit,
+            y: rect.y + 12.0 * unit,
+            w: width,
+            h: height - 6.0 * unit,
+        };
+        frame.fill(
+            card,
+            10.0 * unit,
+            Color {
+                alpha: 235,
+                ..visual::SIDEBAR
+            },
+        );
+        frame.stroke(card, 10.0 * unit, unit, visual::BORDER);
+        let mut y = card.y + pad;
+        for (paragraph, color) in paragraphs {
+            self.fonts.draw(
+                frame,
+                &paragraph,
+                card.x + pad,
+                y,
+                inner,
+                TextAlign::Start,
+                1.0,
+                color,
+            );
+            y += paragraph.height + 6.0 * unit;
+        }
     }
 
     fn paint_legend(&mut self, frame: &mut Frame, rect: PxRect, unit: f32) {

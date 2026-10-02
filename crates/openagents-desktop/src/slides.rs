@@ -14,7 +14,20 @@
 //! The host shows [`Slides::node`] as the window's overlay, laid over the
 //! whole window ([`rust_native_desktop::OverlayPlacement::Cover`]), and
 //! routes the [`RESOURCE`] surface's painting and input here.
+//!
+//! A slide may name a live scene. `scene: grid` asks the host to draw the
+//! Verse's Grid behind it ([`Slides::scene`]). `scene: routes` shows the
+//! Map page's graph ([`MapPage`]) in the slide's place, built from the
+//! host's live data ([`Slides::routes_local`]) and as interactive as on
+//! the Map page: the mouse goes to the map (drag to pan, pinch or Cmd and
+//! the wheel to zoom, click to select and see the node's details, double
+//! click to zoom in), and Tab, Enter, Esc with a selection, and Cmd + − 0
+//! go to it too. The arrow and page keys still change slides, except while
+//! the map is being dragged. `scene: routes-future` shows the same view
+//! fed a growing model instead ([`RouteFuture`]), on the frame clock.
 
+use crate::route_future::RouteFuture;
+use crate::route_map::MapPage;
 use openagents_deck::{Outcome, UnknownDeck, Viewer};
 use rust_native::style::{Color, Style, TextAlign};
 use rust_native::{Element, Node};
@@ -34,6 +47,12 @@ pub const RESOURCE: &str = "slides-viewer";
 pub const NODE: &str = "slides-overlay";
 /// How often the host asks for a frame while the viewer animates.
 pub const FRAME: Duration = Duration::from_millis(16);
+/// How often the host asks for a frame while the future map plays.
+pub const FUTURE_FRAME: Duration = Duration::from_millis(33);
+/// The scene that shows the live route map in the slide.
+pub const ROUTES: &str = "routes";
+/// The scene that shows the route map growing into the future.
+pub const ROUTES_FUTURE: &str = "routes-future";
 
 /// The margin around the viewer's card, in points, when not full screen.
 const MARGIN: f32 = 40.0;
@@ -85,6 +104,11 @@ pub struct Slides {
     scene_host: bool,
     /// The slide's place in the window as last painted, in points.
     slide_at: Option<PxRect>,
+    /// The live route map a `scene: routes` slide shows, once the host
+    /// gave it the data, with what that data was.
+    routes: Option<(MapPage, String)>,
+    /// The growing map a `scene: routes-future` slide shows, once shown.
+    future: Option<RouteFuture>,
 }
 
 /// Ease-out: fast at first, settling at the end.
@@ -118,7 +142,62 @@ impl Slides {
             unit: 1.0,
             scene_host: false,
             slide_at: None,
+            routes: None,
+            future: None,
         })
+    }
+
+    /// Whether the showing slide is the live route map, so the host
+    /// hands it the data ([`Slides::routes_local`]).
+    pub fn wants_routes(&self) -> bool {
+        self.viewer.scene() == Some(ROUTES)
+    }
+
+    /// The data the live route map is built from: this computer's route
+    /// counts and engines. Builds the map the first time and rebuilds it
+    /// when the data changes, keeping the view.
+    pub fn routes_local(&mut self, local: openagents_chat_app::route_map::Local) {
+        let key = format!("{:?}|{:?}", local.routes, local.engines);
+        match &mut self.routes {
+            Some((page, was)) => {
+                if *was == key {
+                    return;
+                }
+                page.refresh(crate::route_map::build(local));
+                *was = key;
+            }
+            None => {
+                let mut page =
+                    MapPage::presenting(crate::route_map::build(local), self.reduce_motion);
+                page.set_unit(self.unit);
+                self.routes = Some((page, key));
+            }
+        }
+        self.changed();
+    }
+
+    /// The live route map, while the slide that shows it is up.
+    pub fn routes(&self) -> Option<&MapPage> {
+        self.routes
+            .as_ref()
+            .filter(|_| self.wants_routes())
+            .map(|(page, _)| page)
+    }
+
+    fn routes_mut(&mut self) -> Option<&mut MapPage> {
+        if !self.wants_routes() || self.phase != Phase::Open {
+            return None;
+        }
+        self.routes.as_mut().map(|(page, _)| page)
+    }
+
+    /// The growing map, once its slide has shown.
+    pub fn future(&self) -> Option<&RouteFuture> {
+        self.future.as_ref()
+    }
+
+    fn on_future(&self) -> bool {
+        self.viewer.scene() == Some(ROUTES_FUTURE)
     }
 
     /// The overlay's node: one surface over the whole window.
@@ -157,7 +236,8 @@ impl Slides {
     /// window's points: the slide's place while it is fully open and asks
     /// for one (the Episode 289 title slide asks for the Grid).
     pub fn scene(&self) -> Option<rust_native_desktop::Rect> {
-        let live = self.scene_host && self.phase == Phase::Open && self.viewer.scene().is_some();
+        let live =
+            self.scene_host && self.phase == Phase::Open && self.viewer.scene() == Some("grid");
         let at = self.slide_at.filter(|_| live)?;
         Some(rust_native_desktop::Rect {
             x: at.x,
@@ -170,7 +250,16 @@ impl Slides {
     /// When the host should next call [`Slides::tick`]: a frame from
     /// `now` while animating, otherwise never.
     pub fn next_wake(&self, now: Instant) -> Option<Instant> {
-        self.animating().then(|| now + FRAME)
+        if self.animating() {
+            return Some(now + FRAME);
+        }
+        if self.phase != Phase::Open {
+            return None;
+        }
+        if self.on_future() && !self.reduce_motion {
+            return Some(now + FUTURE_FRAME);
+        }
+        self.routes().and_then(|page| page.next_wake(now))
     }
 
     pub fn deck_id(&self) -> &str {
@@ -222,7 +311,12 @@ impl Slides {
 
     /// Changes whenever the painting would.
     pub fn version(&self) -> u64 {
-        self.version.wrapping_add(self.viewer.version())
+        let routes = self.routes().map_or(0, MapPage::version);
+        let future = self.future.as_ref().map_or(0, RouteFuture::version);
+        self.version
+            .wrapping_add(self.viewer.version())
+            .wrapping_add(routes)
+            .wrapping_add(future)
     }
 
     fn changed(&mut self) {
@@ -232,8 +326,24 @@ impl Slides {
     /// Advances the animation to `now`, the frame clock's time. Returns
     /// whether anything changed.
     pub fn tick(&mut self, now: Instant) -> bool {
+        let mut moved = false;
+        if self.on_future() && self.phase != Phase::Closed {
+            let reduce = self.reduce_motion;
+            let future = self.future.get_or_insert_with(|| RouteFuture::new(reduce));
+            future.advance(now);
+            moved = true;
+        } else if let Some(future) = &mut self.future {
+            // Off its slide: the next visit plays from today.
+            future.reset();
+        }
+        if let Some(page) = self.routes_mut() {
+            moved |= page.tick(now);
+        }
+        if moved {
+            self.changed();
+        }
         if !self.animating() {
-            return false;
+            return moved;
         }
         let t = now.saturating_duration_since(self.started).as_secs_f32() / OPEN.as_secs_f32();
         let t = t.clamp(0.0, 1.0);
@@ -301,6 +411,10 @@ impl Slides {
             }
             return taken;
         }
+        if let Some(taken) = self.map_key(key, command, now) {
+            self.changed();
+            return taken;
+        }
         let viewer = &self.viewer;
         let settled = !viewer.overview() && !viewer.notes() && !viewer.black();
         match key {
@@ -323,6 +437,32 @@ impl Slides {
         }
         self.changed();
         true
+    }
+
+    /// A key on the live route map's slide that the map takes, if it is
+    /// one: the arrow and page keys wait while the map is dragged (so a
+    /// slide doesn't change under the hand), Cmd + − 0 zoom and fit, Tab
+    /// steps through the nodes, and Enter and Esc zoom into and step out
+    /// of a selection. Everything else changes slides as usual.
+    fn map_key(&mut self, key: &str, command: bool, now: Instant) -> Option<bool> {
+        let page = self.routes_mut()?;
+        let navigation = matches!(
+            key,
+            "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "PageUp" | "PageDown" | " "
+        );
+        if page.pressed() && navigation {
+            return Some(true);
+        }
+        let taken = match (key, command) {
+            ("=" | "+" | "-" | "0", true) | ("Tab", false) => true,
+            ("Enter" | "Escape", false) => page.selected().is_some(),
+            _ => false,
+        };
+        if !taken {
+            return None;
+        }
+        page.key(key, command, false, now);
+        Some(true)
     }
 
     /// Runs a control.
@@ -350,12 +490,73 @@ impl Slides {
         if self.closed() {
             return false;
         }
+        if self.map_input(event, now) {
+            self.changed();
+            return true;
+        }
         if let SurfaceInput::Down { x, y, .. } = event
             && !matches!(self.phase, Phase::Closing)
         {
             let (width, height) = self.size;
             self.click(x, y, width, height, now);
         }
+        true
+    }
+
+    /// Pointer input on the live route map's slide that goes to the map:
+    /// anything over the slide, and the rest of a press that began there.
+    fn map_input(&mut self, event: SurfaceInput, now: Instant) -> bool {
+        let (width, height) = self.size;
+        let slide = Layout::of(width, height, self.fullscreen, 1.0).slide;
+        let Some(page) = self.routes_mut() else {
+            return false;
+        };
+        let (x, y) = match event {
+            SurfaceInput::Down { x, y, .. }
+            | SurfaceInput::Move { x, y }
+            | SurfaceInput::Up { x, y }
+            | SurfaceInput::Wheel { x, y, .. }
+            | SurfaceInput::Zoom { x, y, .. } => (x, y),
+        };
+        let over = contains(slide, x, y);
+        let held =
+            page.pressed() && matches!(event, SurfaceInput::Move { .. } | SurfaceInput::Up { .. });
+        if !over && !held {
+            return false;
+        }
+        let (dx, dy) = (slide.x, slide.y);
+        let local = match event {
+            SurfaceInput::Down { x, y, shift } => SurfaceInput::Down {
+                x: x - dx,
+                y: y - dy,
+                shift,
+            },
+            SurfaceInput::Move { x, y } => SurfaceInput::Move {
+                x: x - dx,
+                y: y - dy,
+            },
+            SurfaceInput::Up { x, y } => SurfaceInput::Up {
+                x: x - dx,
+                y: y - dy,
+            },
+            SurfaceInput::Wheel {
+                x,
+                y,
+                dx: wx,
+                dy: wy,
+            } => SurfaceInput::Wheel {
+                x: x - dx,
+                y: y - dy,
+                dx: wx,
+                dy: wy,
+            },
+            SurfaceInput::Zoom { x, y, factor } => SurfaceInput::Zoom {
+                x: x - dx,
+                y: y - dy,
+                factor,
+            },
+        };
+        page.input(local, now);
         true
     }
 
@@ -448,6 +649,17 @@ impl Slides {
         self.viewer.set_live_scene(live);
         self.viewer.layout(px(layout.slide));
         self.viewer.paint(frame, px(layout.slide));
+        if self.wants_routes()
+            && let Some((page, _)) = &mut self.routes
+        {
+            page.set_unit(unit);
+            page.paint(frame, px(layout.slide));
+        } else if self.on_future() {
+            let reduce = self.reduce_motion;
+            self.future
+                .get_or_insert_with(|| RouteFuture::new(reduce))
+                .paint(frame, px(layout.slide), unit);
+        }
         self.controls.clear();
         let Some(bar) = layout.bar else {
             return;

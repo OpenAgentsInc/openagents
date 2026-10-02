@@ -7,16 +7,18 @@ source: the owner's episode number, 2026-10-01
 ---
 
 layout: statement
-id: two
-source: owner
+id: routes
+scene: routes
+source: the route map (#10085), live in the desktop slide viewer
 
 —
 
 ---
 
 layout: statement
-id: three
-source: owner
+id: future
+scene: routes-future
+source: docs/transcripts/200.md, the agent network growing
 
 —
 

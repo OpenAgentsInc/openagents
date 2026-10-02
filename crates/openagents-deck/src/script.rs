@@ -61,7 +61,9 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
             Some(("kicker", value)) => slide.kicker = Some(value.to_string()),
             Some(("corner", value)) => slide.corner = Some(value.to_string()),
             Some(("subtitle", value)) => slide.subtitle = Some(value.to_string()),
-            Some(("scene", "grid")) => slide.scene = Some("grid".to_string()),
+            Some(("scene", value)) if crate::slide::SCENES.contains(&value) => {
+                slide.scene = Some(value.to_string());
+            }
             Some(("scene", value)) => {
                 return Err(format!("slide {number} names no scene: {value}"));
             }
