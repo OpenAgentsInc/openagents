@@ -205,12 +205,19 @@ if [[ "$engines" == "true" ]]; then
     as_user bash -c 'curl -fsSL https://x.ai/cli/install.sh | bash' >/dev/null
   fi
   # No engine may be logged in on an image or template.
-  for auth in "$home/.codex/auth.json" "$home/.claude/.credentials.json" "$home/.claude.json" "$home/.grok/auth.json"; do
+  for auth in "$home/.codex/auth.json" "$home/.claude/.credentials.json" "$home/.grok/auth.json"; do
     if [[ -e "$auth" ]]; then
       echo "coder-host-setup: refusing: an engine login exists at $auth" >&2
       exit 3
     fi
   done
+  # ~/.claude.json is Claude Code's settings and state file; Boat's image
+  # ships one with only onboarding and theme. It is a login only when it
+  # carries an account or a key.
+  if [[ -e "$home/.claude.json" ]] && jq -e 'has("oauthAccount") or has("primaryApiKey") or has("customApiKeyResponses")' "$home/.claude.json" >/dev/null 2>&1; then
+    echo "coder-host-setup: refusing: an engine login exists at $home/.claude.json" >&2
+    exit 3
+  fi
   log engines end
 fi
 
