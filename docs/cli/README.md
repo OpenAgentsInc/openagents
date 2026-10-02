@@ -277,6 +277,16 @@ destination, owner, relay, and archives in `ssh-hosts.json`, so `tunnel` and
 first. `--timeout` bounds each command; `tunnel` prints one line when the
 tunnel opens and one when it closes, and ends on Ctrl-C.
 
+## Builds on Boat (`openagents boat`)
+
+- `openagents boat run NAME [--size small|default|large] -- CMD` runs CMD
+  on the Boat sandbox NAME against this checkout's diff from `origin/main`.
+- `openagents boat stop NAME` stops the sandbox; it is free while stopped.
+- `openagents boat delete NAME|ID` deletes the sandbox by name or ID.
+
+Set `BOAT_API_KEY`, or use the Secret Manager secret `boat-api-key` through
+`gcloud`. Run `openagents boat --help` for the full syntax.
+
 ## Reach (NIP-REACH)
 
 Read and edit the owner host directory, read a host's presence, and prove a
