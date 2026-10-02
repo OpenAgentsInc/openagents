@@ -1536,3 +1536,26 @@ the environment file and unit did not change, `coder-worker.service` and
 rollback. The live hosted rows of `crates/coder/tests/dispatch_ack_eval.rs`
 passed: every work reply started with an -ing verb and none said "We'll
 have", "We'll dispatch", "Coder will", or "have Coder".
+
+Release `e1a1e394e2` (2026-10-02 UTC) runs a chat on the caller's own
+provider keys ([#10176](https://github.com/OpenAgentsInc/openagents/issues/10176)):
+a job that names `payer.keys` in `requires` carries the caller's OpenRouter,
+Vercel AI Gateway, or TypeSafe keys sealed to the worker, and runs its model,
+personalizer, and Jev only on them, or is refused (NIP-CJ "Caller-paid model
+calls"); a body naming any other feature is refused `unsupported_feature`; and
+the usage log adds `payer`, `payer_provider`, and `payer_fingerprint`
+(`coder-worker usage --by payer`). It was built with `cargo zigbuild` on a
+Boat sandbox from that commit, installed as
+`/opt/coder-worker/releases/e1a1e394e2` with `knowledge/` from the repository
+and `codebase-kb.gz` copied from `40bfa2b842`, checked with `--check`, and
+put live by moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, and `coder-worker.service` and
+`/opt/coder-worker/current` were not touched. The log names the product KB at
+`openagents-product@e94ce986f225` (106 entries). A live turn from a throwaway
+key answered on our doors as before, and a turn with a fake OpenRouter key was
+refused with "Your OpenRouter key was refused. Update it in Settings.", its
+usage line naming `payer: theirs` and a fingerprint and no key. An earlier
+try, `40bfa2b842`, shipped knowledge entries the corpus rules refused, which
+turned the product KB off; it was rolled back to `f1409c846d` within a
+minute, and both stay in `releases/` for rollback (move the symlink back and
+restart).
