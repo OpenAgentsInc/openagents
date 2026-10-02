@@ -417,7 +417,27 @@ pub fn from_answers(
         Some((answer.to_owned(), p))
     };
     let intent = read("intent");
-    let Some((intent, p)) = intent.filter(|(_, p)| COMPILE.yes(*p)) else {
+    // An unsure intent is settled by the other readings when they agree:
+    // a sure new action over a sure "no listed rule" is a new rule, and a
+    // sure change of a sure listed rule is an edit. Otherwise, one question.
+    let sure = |question: &str| {
+        top(answers, question)
+            .filter(|(_, p)| COMPILE.yes(*p))
+            .map(|(answer, _)| answer.to_owned())
+    };
+    let settled = match intent.filter(|(_, p)| COMPILE.yes(*p)) {
+        Some((intent, _)) => Some(intent),
+        None => match (sure("rule").as_deref(), sure("what"), sure("change")) {
+            (Some("new"), Some(what), _) if what != "unsupported" => Some("define".to_owned()),
+            (Some(rule), _, Some(change))
+                if rule != "new" && change != "other" && rules.iter().any(|r| r.id == rule) =>
+            {
+                Some("edit".to_owned())
+            }
+            _ => None,
+        },
+    };
+    let Some(intent) = settled else {
         return Compiled::Question {
             text: "Should this keep happening on its own as a background rule, or be done once \
                    now?"
@@ -425,7 +445,6 @@ pub fn from_answers(
             readings,
         };
     };
-    let _ = p;
     if intent == "none" {
         return Compiled::Question {
             text: "That reads as something to do once, not a background rule. What should keep \
@@ -1004,6 +1023,13 @@ fn edit(
                         target.name
                     ));
                 }
+            }
+            // Asking for a rule to work some way is asking for it to run:
+            // an edit turns an off rule on, which the card shows. A pause
+            // stays a pause.
+            if !rule.enabled {
+                rule.enabled = true;
+                rule.paused_until = None;
             }
             Kind::Edit
         }

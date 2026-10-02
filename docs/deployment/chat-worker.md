@@ -1608,3 +1608,28 @@ chats answered "How do I connect a phone" from `openagents.connect-computer@2`
 and "What happens to my messages?" from `openagents.chat-privacy@5`, and a
 turn with a fake OpenRouter key was refused with "Your OpenRouter key was
 refused. Update it in Settings."
+
+Release `16063d5024` (2026-10-02 UTC) adds the `standing.rule` route
+([#10157](https://github.com/OpenAgentsInc/openagents/issues/10157)):
+something to keep happening on the user's computer, or a change to such a
+background rule, is served `standing.rule` in a terminal (whose computer
+then compiles the rule and offers to save it) and `standing.elsewhere` on
+other surfaces; the set is `chat-router-v5@226865d8437b` (bank
+`chat-answers-v1@0a0f10e9df69`). With CoderOS and the Mac out of disk, it was
+built with `cargo build --locked --release --target
+x86_64-unknown-linux-musl` (`musl-tools`) on a Boat sandbox from a clean
+clone at that commit (a static-pie binary, sha256 `61159a04c224…`),
+downloaded through the sandbox's artifacts API, installed as
+`/opt/coder-worker/releases/16063d5024` with `knowledge/` and
+`codebase-kb.gz` copied from `bf30328c27`, checked with `--check` ("the
+configuration is safe to deploy"), and put live by moving the `chat`
+symlink from `bf30328c27` and restarting `coder-worker-chat`; the
+environment file and unit did not change, `coder-worker.service` and
+`/opt/coder-worker/current` were not touched, and `bf30328c27` stays in
+`releases/` for rollback. The log names `router chat-router-v5@226865d8437b
+(Live)` and the product KB at 106 entries. Scratch `openagents chat send`
+runs routed "keep my disk above 50 GB free", "only keep 2 agent target
+dirs", "tell me whenever a coder run fails", "every morning pull main in
+~/work/openagents", and "pause disk cleanup until tomorrow" to
+`standing.rule`, and "clean up my disk right now" to `work.dispatch`
+([the measurement](../coder/measurements/2026-10-02-standing-rule-route.md#live-end-to-end)).

@@ -588,6 +588,11 @@ design above, and why:
   `origin: conversation { thread, message }`, and only uses the host's
   built-in actions; deleting stays inside the host's own roots, as for a
   plugin. Removing the built-in rule or a plugin's turns it off instead.
+  Changing how a rule works ("keep 200 GB free") turns an off rule on, and
+  the card's diff shows it; a pause stays a pause. When the intent reading
+  is unsure, it is settled only by readings that agree and are sure on their
+  own: a sure action over a sure "no listed rule" is a new rule, a sure
+  change of a sure listed rule is an edit.
 - **Surfaces.** The chat client runs `openagents background draft --id
   THREAD -- WORDS` on the computer when the worker served `standing.rule`
   (read-only, so it runs at once), then offers `background apply THREAD`

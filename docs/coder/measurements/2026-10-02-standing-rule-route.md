@@ -101,3 +101,40 @@ Below `background.compile` (0.6), the compiler asks one question instead
 of guessing; the stand-in-Jev tests in `crates/background`
 (`phase2_tests`) hold the golden rules for the spec's examples and that
 behavior.
+
+## Live, end to end
+
+Release `16063d5024` of the chat worker (below) and `openagents chat send
+--scratch --no-run` built from the same tree with the follow-up fix, in a
+scratch home on a Boat sandbox (Linux; builds were moved off the Mac), with
+a checkout at `~/work/openagents`. Each standing ask was routed
+`standing.rule` (tier `canned`, "Drafting a background rule for this
+computer. Nothing is saved until you confirm it."), the computer ran
+`openagents background draft` at once, and `chat run-command` saved it:
+
+- "keep my disk above 50 GB free; clear old build caches first": a change
+  to Disk cleanup, start below 50 GB, stop at 60 GB, and `- Status: off.` /
+  `+ Status: on.`; dry run "Nothing to clean now: 32 GB free, above 50 GB."
+  Confirmed: "Saved Disk cleanup version 2."
+- "only keep 2 agent target dirs": `+ Keeps: the 2 most recently used
+  agent build folders.` Confirmed: version 3.
+- "tell me whenever a coder run fails": a new rule `notify-run-failed`
+  (when a Coder run ends, if the run failed, tell you); dry run "Nothing to
+  try now: it acts when a Coder run ends." Confirmed.
+- "every morning pull main in ~/work/openagents": a new rule
+  `update-openagents`, every day at 09:00, fetch and fast-forward only when
+  clean; dry run "~/work/openagents is clean; would fetch and fast-forward
+  to origin/main".
+- "pause disk cleanup until tomorrow": `- Status: on.` / `+ Status: paused
+  until 2026-10-03.`
+- "clean up my disk right now" took `work.dispatch` (a Coder offer), not a
+  rule.
+
+`openagents background list` then showed `disk · on` and
+`notify-run-failed · on`. The first pass, on `16063d5024` itself, found
+two faults that the follow-up commit fixes: an edit left the off built-in
+rule off (an edit from words now turns an off rule on, shown in the diff),
+and "tell me whenever a coder run fails" asked a question because the
+intent reading alone was unsure (an unsure intent is now settled when a
+sure action and a sure "no listed rule" agree, or a sure change and a sure
+listed rule).
