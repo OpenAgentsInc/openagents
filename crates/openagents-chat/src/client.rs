@@ -2504,8 +2504,17 @@ impl Client {
                         break;
                     }
                 }
+                // The reply already ended with the done line; say what ran.
                 if ok {
-                    lines.push(crate::plugin_flow::Step::Done.line().to_owned());
+                    if flow.publish && !lines.iter().any(|line| line.contains("can't publish")) {
+                        lines.push("It's published.".to_owned());
+                    }
+                    if flow.enable {
+                        lines.push("It's on on this computer.".to_owned());
+                    }
+                    if lines.is_empty() {
+                        lines.push("Nothing else to do.".to_owned());
+                    }
                 }
                 sink(Event::Plugin {
                     thread: id.to_owned(),

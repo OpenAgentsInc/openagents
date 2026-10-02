@@ -1917,7 +1917,7 @@ async fn a_plugin_is_drafted_tested_and_turned_on_through_typed_steps() {
         text.contains("can't publish a plugin to the registry yet"),
         "{text}"
     );
-    assert!(text.ends_with(Step::Done.line()), "{text}");
+    assert!(text.ends_with("It's on on this computer."), "{text}");
     let ran = coder.ran.lock().unwrap().clone();
     assert_eq!(
         ran[1..],
