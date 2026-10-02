@@ -54,13 +54,27 @@ pub struct Invite {
     pub expires_at: u64,
 }
 
-/// What `/settings` shows.
+/// What `/settings` shows, and changes in place.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     /// The settings file (`~/.openagents/settings.json`).
     pub path: PathBuf,
-    /// A few lines saying what it holds now.
-    pub lines: Vec<String>,
+    /// Why the file cannot be changed here, when it cannot.
+    pub problem: Option<String>,
+    /// What the list turns on or off: when Coder starts, then each coding
+    /// agent Coder may use.
+    pub choices: Vec<Choice>,
+}
+
+/// One setting the list turns on or off.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Choice {
+    /// What [`Extras::change`] is told; the screen never reads it.
+    pub key: String,
+    pub label: String,
+    pub on: bool,
+    /// Why it cannot be turned on here, when it cannot.
+    pub blocked: Option<String>,
 }
 
 /// What the screen needs from this computer beyond the chat client. Every
@@ -91,6 +105,12 @@ pub trait Extras: Send + Sync {
     fn plugins(&self) -> Result<Vec<(String, String)>, String>;
     /// The Coder settings on this computer.
     fn settings(&self) -> Settings;
+    /// Turn the choice `key` on or off, and the settings after.
+    ///
+    /// # Errors
+    /// The change is not allowed (the last agent turned off, say) or the
+    /// file cannot be written, in words for the person.
+    fn change(&self, key: &str, on: bool) -> Result<Settings, String>;
 }
 
 /// Nothing beyond the chat: every extra says it is not available here.
@@ -112,6 +132,9 @@ impl Extras for NoExtras {
     }
     fn settings(&self) -> Settings {
         Settings::default()
+    }
+    fn change(&self, _: &str, _: bool) -> Result<Settings, String> {
+        Err("The settings cannot be changed here.".into())
     }
 }
 

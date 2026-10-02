@@ -99,6 +99,12 @@ one line in the transcript, "Grok Build is working.", and why only when
 another engine runs than the one you asked for; `/export` keeps the task and
 its worktree.
 
+When OpenAgents cannot be reached (no network, the relay down, or this
+computer's host restarting), the screen says so once and the top line reads
+`offline · trying again in 4s · Esc stops`. It asks again after a pause that
+doubles up to 30 seconds, until the reply comes or Esc stops it; what had
+streamed stays, and the reply streams on once it is back.
+
 Replies render as Markdown. Code in Rust, Python, JSON, shell, JavaScript,
 TypeScript, Go, C, C++, HTML, or CSS is highlighted in the same whites:
 comments dimmer and italic, keywords bold, strings and numbers a step down.
@@ -136,7 +142,7 @@ including text that only starts with a slash, goes to OpenAgents.
 | `/threads` | List threads to open, start, or archive (also Ctrl+T). |
 | `/stop` | Stop the reply or the Coder run (also Esc). |
 | `/export` | Save this thread as an ATIF trajectory under the chat home's `exports/`. |
-| `/settings` | Show the Coder settings and where the file is. |
+| `/settings` | Turn on or off when Coder starts at once and which coding agents it may use; Enter or Space changes the selected one and saves it. |
 | `/connect` | Pair a phone with this computer by QR code. |
 | `/plugins` | List published plugins. |
 | `/expand` | Expand or condense the tool calls (also Ctrl+O). |

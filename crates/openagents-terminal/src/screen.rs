@@ -44,7 +44,7 @@ enum Done {
     Paired(Result<Option<String>, String>),
     Sync(Result<String, String>),
     Plugins(Result<Vec<(String, String)>, String>),
-    Settings(crate::Settings),
+    Settings(Result<crate::Settings, String>),
 }
 
 /// The screen with its client and the work it has started.
@@ -284,7 +284,13 @@ impl Screen {
             Action::Settings => {
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
-                    let _ = done.send(Done::Settings(extras.settings()));
+                    let _ = done.send(Done::Settings(Ok(extras.settings())));
+                });
+            }
+            Action::Change { key, on } => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Settings(extras.change(&key, on)));
                 });
             }
             // Everything below needs the client.
@@ -573,20 +579,14 @@ impl Screen {
                 self.app.overlay = Some(Overlay::Plugins { rows, selected: 0 });
             }
             Done::Plugins(Err(why)) => self.app.loud(why),
-            Done::Settings(settings) => {
-                let rows = vec![("File".to_owned(), settings.path.display().to_string())];
-                self.app.push(Row::Card(Card {
-                    title: "Coder settings".into(),
-                    rows,
-                    body: if settings.lines.is_empty() {
-                        vec!["No settings file yet; the defaults apply.".into()]
-                    } else {
-                        settings.lines
-                    },
-                    art: Vec::new(),
-                    keys: Vec::new(),
-                }));
+            Done::Settings(Ok(settings)) => {
+                if !matches!(self.app.overlay, Some(Overlay::Settings { .. })) {
+                    self.app
+                        .note(format!("Settings file: {}", settings.path.display()));
+                }
+                self.app.settings(settings);
             }
+            Done::Settings(Err(why)) => self.app.loud(why),
         }
     }
 

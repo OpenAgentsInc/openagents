@@ -50,6 +50,11 @@ pub enum Overlay {
         rows: Vec<(String, String)>,
         selected: usize,
     },
+    /// The Coder settings, each turned on or off in place.
+    Settings {
+        settings: crate::Settings,
+        selected: usize,
+    },
 }
 
 /// What the input loop does next.
@@ -79,6 +84,8 @@ pub enum Action {
     Plugins,
     /// Show the Coder settings.
     Settings,
+    /// Turn the setting `key` on or off.
+    Change { key: String, on: bool },
     /// Install the host as a service, so chats sync with the phone.
     Sync,
     /// Put this text on the terminal's clipboard.
@@ -143,6 +150,9 @@ pub struct App {
     /// What the last Ctrl+Y copied: 0 the reply, n its nth code block from
     /// the end. The next Ctrl+Y copies the one before.
     copied: Option<usize>,
+    /// The chat cannot be reached: the reply is asked for again in this
+    /// many seconds.
+    pub offline: Option<u64>,
 }
 
 impl App {
@@ -174,6 +184,7 @@ impl App {
             copied: None,
             tick: 0,
             expanded: false,
+            offline: None,
         }
     }
 
@@ -348,7 +359,47 @@ impl App {
                 }
                 Vec::new()
             }
+            Overlay::Settings { settings, selected } => {
+                match key.code {
+                    KeyCode::Up => *selected = selected.saturating_sub(1),
+                    KeyCode::Down => {
+                        *selected = (*selected + 1).min(settings.choices.len().saturating_sub(1));
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => return self.flip(),
+                    _ => {}
+                }
+                Vec::new()
+            }
         }
+    }
+
+    /// Turn the selected setting on or off.
+    fn flip(&mut self) -> Vec<Action> {
+        let Some(Overlay::Settings { settings, selected }) = &self.overlay else {
+            return Vec::new();
+        };
+        let Some(choice) = settings.choices.get(*selected).cloned() else {
+            return Vec::new();
+        };
+        if let (false, Some(why)) = (choice.on, &choice.blocked) {
+            self.note(why.clone());
+            return Vec::new();
+        }
+        vec![Action::Change {
+            key: choice.key,
+            on: !choice.on,
+        }]
+    }
+
+    /// The settings after a change, or as first read: the list shows them,
+    /// keeping its place.
+    pub fn settings(&mut self, settings: crate::Settings) {
+        let selected = match &self.overlay {
+            Some(Overlay::Settings { selected, .. }) => *selected,
+            _ => 0,
+        }
+        .min(settings.choices.len().saturating_sub(1));
+        self.overlay = Some(Overlay::Settings { settings, selected });
     }
 
     /// Esc and `/stop`: stop what streams now, the most recent first.
@@ -507,6 +558,7 @@ impl App {
     /// The operation ended.
     pub fn ended(&mut self, failed: Option<String>) {
         self.phase = Phase::Idle;
+        self.offline = None;
         self.starting = None;
         self.partial.clear();
         if !self.running {
@@ -625,6 +677,19 @@ impl App {
                 "Stopping: Coder ends the issue flow at its next step and says so on the issue.{}",
                 why.map(|why| format!(" ({why})")).unwrap_or_default()
             )),
+            Event::Offline { retry_in, .. } => {
+                if self.offline.is_none() {
+                    self.loud(
+                        "OpenAgents cannot be reached. Trying again until it can; Esc stops.",
+                    );
+                }
+                self.offline = Some(retry_in);
+            }
+            Event::Online { .. } => {
+                if self.offline.take().is_some() {
+                    self.note("Connected again.");
+                }
+            }
             Event::Detached { .. } => {
                 if !std::mem::take(&mut self.quiet_detach) {
                     self.note(
@@ -749,7 +814,10 @@ impl App {
     pub fn status(&self) -> String {
         match self.phase {
             _ if self.overlay.is_some() => "Esc closes the list".into(),
-            Phase::Replying => "replying · Esc stops".into(),
+            Phase::Replying => match self.offline {
+                Some(seconds) => format!("offline · trying again in {seconds}s · Esc stops"),
+                None => "replying · Esc stops".into(),
+            },
             Phase::Working => "working".into(),
             _ if self.asked => "Coder asks · type your answer".into(),
             _ if self.starting.is_some() => self.starting.clone().unwrap_or_default(),

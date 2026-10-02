@@ -124,6 +124,23 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                 "Ask about one in the chat · Esc close",
                 "No plugins are published yet.",
             ),
+            Overlay::Settings { settings, selected } => (
+                "Settings".to_owned(),
+                settings
+                    .choices
+                    .iter()
+                    .map(|choice| Item {
+                        label: choice.label.clone(),
+                        detail: if choice.on { "on" } else { "off" }.to_owned(),
+                    })
+                    .collect(),
+                *selected,
+                "Enter turns it on or off · Esc close",
+                settings
+                    .problem
+                    .as_deref()
+                    .unwrap_or("There are no settings to change here."),
+            ),
         };
         ListOverlay {
             title: &title,

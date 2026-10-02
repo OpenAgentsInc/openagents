@@ -59,7 +59,7 @@ impl Slash {
             Slash::Threads => "list threads to open, start, or archive (Ctrl+T)",
             Slash::Stop => "stop the reply or the Coder run (Esc)",
             Slash::Export => "save this thread as an ATIF trajectory file",
-            Slash::Settings => "show the Coder settings and where the file is",
+            Slash::Settings => "change when Coder starts and which coding agents it may use",
             Slash::Connect => "pair a phone with this computer by QR code",
             Slash::Plugins => "list published plugins",
             Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",

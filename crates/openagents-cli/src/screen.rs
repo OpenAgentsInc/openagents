@@ -418,23 +418,83 @@ impl Extras for ProgramExtras {
     }
 
     fn settings(&self) -> Settings {
-        let path = coder::task::settings::path();
-        let lines = match coder::task::settings::Settings::load(&path) {
-            Ok(loaded) => {
-                let mut lines: Vec<String> = loaded
-                    .values()
-                    .iter()
-                    .map(|(key, value)| format!("{key:<30} {}", crate::settings::render(value)))
-                    .collect();
-                if !path.exists() {
-                    lines.push("No settings file yet; these are the defaults.".into());
-                }
-                lines
-            }
-            Err(message) => vec![format!("The settings file is not valid: {message}")],
-        };
-        Settings { path, lines }
+        coder_settings(&coder::task::settings::path())
     }
+
+    fn change(&self, key: &str, on: bool) -> Result<Settings, String> {
+        let path = coder::task::settings::path();
+        change_setting(&path, key, on)?;
+        Ok(coder_settings(&path))
+    }
+}
+
+/// The key of the choice "Start Coder at once".
+const START_KEY: &str = "start";
+/// The prefix of each coding agent's choice key; the provider's word follows.
+const AGENT_KEY: &str = "agent:";
+
+/// What the settings list shows from `file`: when Coder starts, then each
+/// coding agent, the allowed ones first in the order Coder tries them, as
+/// the desktop app's settings page shows them.
+fn coder_settings(file: &std::path::Path) -> Settings {
+    use coder::task::settings::{self, Choice as Route, PROVIDERS, Start};
+    let loaded = match settings::Settings::load(file) {
+        Ok(loaded) => loaded,
+        Err(why) => {
+            return Settings {
+                path: file.to_path_buf(),
+                problem: Some(format!(
+                    "The settings file cannot be read, so nothing changes here: {why}"
+                )),
+                choices: Vec::new(),
+            };
+        }
+    };
+    let allowed = loaded.coder.provider_list();
+    let rest = PROVIDERS.into_iter().filter(|p| !allowed.contains(p));
+    let mut choices = vec![openagents_terminal::Choice {
+        key: START_KEY.into(),
+        label: "Start Coder at once".into(),
+        on: loaded.coder.start == Start::AtOnce,
+        blocked: None,
+    }];
+    choices.extend(allowed.iter().copied().chain(rest).map(|provider| {
+        let name = settings::provider_name(provider);
+        openagents_terminal::Choice {
+            key: format!("{AGENT_KEY}{}", provider.as_str()),
+            label: name.to_owned(),
+            on: allowed.contains(&provider),
+            blocked: Route::new(provider).route().err().map(|_| {
+                format!("{name} needs a model named in the settings file; set it with `openagents settings set coder.providers`.")
+            }),
+        }
+    }));
+    Settings {
+        path: file.to_path_buf(),
+        problem: None,
+        choices,
+    }
+}
+
+/// Turn the choice `key` on or off in `file`, through Coder's own loader,
+/// which refuses a change that leaves no agent.
+fn change_setting(file: &std::path::Path, key: &str, on: bool) -> Result<(), String> {
+    use coder::task::capacity::Provider;
+    use coder::task::settings::{PROVIDERS, Settings as File, Start};
+    let mut settings = File::load(file)?;
+    if key == START_KEY {
+        settings.coder.start = if on { Start::AtOnce } else { Start::AskFirst };
+    } else {
+        let provider = key
+            .strip_prefix(AGENT_KEY)
+            .and_then(Provider::from_config)
+            .filter(|provider| PROVIDERS.contains(provider))
+            .ok_or_else(|| format!("`{key}` is not a setting here"))?;
+        settings
+            .allow(provider, on)
+            .map_err(|why| format!("That cannot change: {why}"))?;
+    }
+    settings.save(file)
 }
 
 const ALREADY_RUNS: &str = "This computer's host already runs; chats sync with your phone.";
@@ -672,6 +732,46 @@ mod tests {
                 .contains("no relay")
         );
         assert!(plugin_rows("not json").is_err());
+    }
+
+    /// The list turns when Coder starts and each agent on or off through
+    /// Coder's own loader, which keeps at least one agent.
+    #[test]
+    fn settings_change_through_the_loader() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let shown = coder_settings(&file);
+        let keys: Vec<(&str, bool)> = shown
+            .choices
+            .iter()
+            .map(|choice| (choice.key.as_str(), choice.on))
+            .collect();
+        assert_eq!(
+            keys[..4],
+            [
+                ("start", true),
+                ("agent:codex", true),
+                ("agent:claude", true),
+                ("agent:grok", true)
+            ]
+        );
+        change_setting(&file, "start", false).unwrap();
+        change_setting(&file, "agent:claude", false).unwrap();
+        change_setting(&file, "agent:grok", false).unwrap();
+        let shown = coder_settings(&file);
+        assert!(!shown.choices[0].on);
+        let on: Vec<&str> = shown
+            .choices
+            .iter()
+            .filter(|choice| choice.on)
+            .map(|choice| choice.key.as_str())
+            .collect();
+        assert_eq!(on, ["agent:codex"]);
+        // The last agent stays on.
+        assert!(change_setting(&file, "agent:codex", false).is_err());
+        assert!(change_setting(&file, "agent:nobody", true).is_err());
+        let loaded = coder::task::settings::Settings::load(&file).unwrap();
+        assert_eq!(loaded.coder.start, coder::task::settings::Start::AskFirst);
     }
 
     #[test]

@@ -730,3 +730,86 @@ fn a_results_changes_expand_with_ctrl_o() {
     app.key(&ctrl('o'), 80);
     assert_eq!(shown(&mut app), collapsed);
 }
+
+/// When the chat cannot be reached, the screen says so once, the rail
+/// counts to the next try, and the screen says when it is back (#10151).
+#[test]
+fn offline_is_said_once_and_the_rail_shows_the_next_try() {
+    let mut app = app();
+    let actions = typed(&mut app, "hello");
+    let [Action::Run(op)] = actions.as_slice() else {
+        panic!("{actions:?}");
+    };
+    app.began(op);
+    let thread = "a".repeat(32);
+    for retry_in in [2, 4] {
+        app.event(Event::Offline {
+            thread: thread.clone(),
+            retry_in,
+        });
+    }
+    assert_eq!(app.status(), "offline · trying again in 4s · Esc stops");
+    assert_eq!(shown(&mut app).matches("cannot be reached").count(), 1);
+    app.event(Event::Online { thread });
+    assert_eq!(app.status(), "replying · Esc stops");
+    assert!(shown(&mut app).ends_with("Connected again."));
+    // Esc still stops the reply while it waits.
+    assert_eq!(app.key(&key(KeyCode::Esc), 80), vec![Action::Interrupt]);
+}
+
+fn choice(key: &str, on: bool, blocked: Option<&str>) -> crate::Choice {
+    crate::Choice {
+        key: key.into(),
+        label: key.into(),
+        on,
+        blocked: blocked.map(str::to_owned),
+    }
+}
+
+/// `/settings` lists the choices; Enter or Space turns the selected one on
+/// or off, and the list keeps its place when the change comes back.
+#[test]
+fn settings_turn_on_and_off_in_place() {
+    let mut app = app();
+    assert_eq!(typed(&mut app, "/settings"), vec![Action::Settings]);
+    let settings = crate::Settings {
+        path: "/s.json".into(),
+        problem: None,
+        choices: vec![
+            choice("start", true, None),
+            choice("agent:codex", true, None),
+            choice("agent:opencode", false, Some("OpenCode needs a model.")),
+        ],
+    };
+    app.settings(settings.clone());
+    assert_eq!(
+        app.key(&key(KeyCode::Enter), 80),
+        vec![Action::Change {
+            key: "start".into(),
+            on: false
+        }]
+    );
+    app.key(&key(KeyCode::Down), 80);
+    assert_eq!(
+        app.key(&key(KeyCode::Char(' ')), 80),
+        vec![Action::Change {
+            key: "agent:codex".into(),
+            on: false
+        }]
+    );
+    // A blocked choice says why instead of changing.
+    app.key(&key(KeyCode::Down), 80);
+    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
+    assert!(shown(&mut app).ends_with("OpenCode needs a model."));
+    // The change comes back: the list shows it, still on the same row.
+    let mut changed = settings;
+    changed.choices[2].on = true;
+    app.settings(changed);
+    let Some(Overlay::Settings { settings, selected }) = &app.overlay else {
+        panic!("the list closed");
+    };
+    assert_eq!(*selected, 2);
+    assert!(settings.choices[2].on);
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(app.overlay.is_none());
+}
