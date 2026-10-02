@@ -26,36 +26,45 @@ it. Each issue runs on a Boat sandbox of its own.
    with the template's own host setup (`scripts/cloud/coder-host-setup.sh
    --warm`), stops it, forks it once per issue, and deletes it at the end.
    The seed takes tens of minutes; a template start takes seconds.
-3. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
+3. **Reachable.** A sandbox from a template reports `ready` before Boat can
+   start commands on it: commands are refused with `400
+   sandbox_direct_failed` (seen 2026-10-02). The command waits until a
+   detached `true` starts (up to three minutes); a sandbox that never gets
+   there is deleted and replaced once, and its cost is added to the run's.
+   The run's own command is sent once, retried only on those refusals,
+   which run nothing.
+4. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
    sandbox's command sources and deletes that file before anything else
    runs. See below.
-4. **Build.** The sandbox fetches `origin/main` and builds `openagents` and
-   `microcoder` on the template's warm target (a delta build), copies them
+5. **Build.** The sandbox fetches `origin/main` and builds `openagents` and
+   `microcoder` on the template's warm target (a delta build; not
+   `--locked`, so a `Cargo.lock` that lags a push does not stop the run),
+   copies them
    out of the target slot, and points `OPENAGENTS_CODER_CONTROLLER` at that
    `microcoder`.
-5. **The issue flow** runs there: `openagents chat work --local --json
+6. **The issue flow** runs there: `openagents chat work --local --json
    --issues N --parallel 1` — the same flow as on a Mac: claim comment,
    worktree of `origin/main`, engine turn, checks, the multi-machine landing
    of #10226 (fetch, rebase, plain push, jittered retry), evidence comment,
    close.
-6. **Streaming.** The flow's NDJSON events stream back through
+7. **Streaming.** The flow's NDJSON events stream back through
    `follow_command` and print here exactly as a local `chat work` prints
    them, marked with the issue. Under `--json` every line carries `issue`;
    the extra events are `boat_sandbox`, `boat_seed`, and `route_record`, and
    the final `issue` event adds `sandbox`, `wall_seconds`,
    `machine_seconds`, and `cost_usd`.
-7. **Cost.** After the sandbox stops, `GET /sandboxes/{id}/usage` gives its
-   machine time and list-price dollars. They go into a comment on the issue
-   and into a route record appended to `~/.openagents/boat/runs.jsonl`:
-   placement computer `boat`, grant source `operator` (the person typed
-   `--on boat`), and a `route_contract::record::RunOutcome` with
-   `cost_microusd` and `wall_ms`.
-8. **Teardown.** The sandbox always stops (stopped is free; Boat's TTL is
-   counted from start, not idleness, so it is only a 12-hour backstop). It
-   is deleted when the issue landed, was skipped, or was closed. A failed
-   run's sandbox stays stopped for inspection; `openagents boat delete ID`
-   removes it. Ctrl-C kills every running flow on its sandbox and stops the
-   sandboxes.
+8. **Cost.** When the flow ends, `GET /sandboxes/{id}/usage` gives the
+   sandbox's machine time and list-price dollars. They go into a comment on
+   the issue and into a route record appended to
+   `~/.openagents/boat/runs.jsonl`: placement computer `boat`, grant source
+   `operator` (the person typed `--on boat`), and a
+   `route_contract::record::RunOutcome` with `cost_microusd` and `wall_ms`.
+9. **Teardown.** No run leaves its sandbox running (stopped is free; Boat's
+   TTL counts from start, not idleness, so it is only a 12-hour backstop).
+   The sandbox is deleted when the issue landed, was skipped, or was
+   closed; otherwise it is stopped and kept for inspection, and
+   `openagents boat delete ID` removes it. Ctrl-C kills every running flow
+   on its sandbox and stops the sandboxes.
 
 ## Credentials
 

@@ -325,7 +325,7 @@ git fetch -q origin main && git checkout -q --detach origin/main || exit 2
 slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json 2>/dev/null)
 [ -n "$slot" ] && [ "$slot" != null ] || slot=$HOME/openagents/target
 echo "boat: building origin/main $(git rev-parse --short HEAD) on the warm target" >&2
-CARGO_TARGET_DIR="$slot" cargo build -q --locked -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
+CARGO_TARGET_DIR="$slot" cargo build -q -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
   || {{ tail -n 40 /tmp/oa-build.log >&2; exit 3; }}
 mkdir -p ~/.oa-run/bin && cp "$slot/debug/openagents" "$slot/debug/microcoder" ~/.oa-run/bin/
 export OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-run/bin/microcoder
@@ -576,26 +576,36 @@ fn not_reachable_yet(error: &boat::Error) -> bool {
         if matches!(api.code(), Some("sandbox_direct_failed" | "sandbox_starting")))
 }
 
-/// Waits until `id` runs a command: `true`, once a second, up to five
-/// minutes. Only then does the run's own command go, which is never resent.
+/// Waits until `id` is ready and starts commands.
+async fn ready(client: &boat::Client, id: &str) -> Result<(), String> {
+    client
+        .wait_until_ready(id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
+        .await
+        .map_err(|e| format!("{id} did not become ready: {}", why(&e)))?;
+    reachable(client, id).await
+}
+
+/// Waits until `id` starts a detached command, the way the run's own
+/// command starts: a detached `true`, once every two seconds, up to three
+/// minutes. A sandbox from a template ran a plain command while it still
+/// refused detached ones (2026-10-02), so the probe is detached too. Only
+/// then does the run's own command go, which is never resent.
 async fn reachable(client: &boat::Client, id: &str) -> Result<(), String> {
-    let deadline = Instant::now() + Duration::from_secs(300);
+    let deadline = Instant::now() + Duration::from_secs(180);
     loop {
         let tried = client
-            .command(&CommandParams {
-                sandbox_id: id.into(),
-                body: CommandRequest {
+            .exec_detached(
+                id,
+                CommandRequest {
                     command: "true".into(),
-                    timeout_seconds: Some(30),
                     ..Default::default()
                 },
-                ..Default::default()
-            })
+            )
             .await;
         match tried {
             Ok(_) => return Ok(()),
             Err(e) if not_reachable_yet(&e) && Instant::now() < deadline => {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
             }
             Err(e) => return Err(format!("{id} does not run commands: {}", why(&e))),
         }
@@ -891,17 +901,54 @@ async fn run_issue(
             json!({}),
         );
     }
-    starts.take().await;
     let began = Instant::now();
-    let id = match start(&client, &source, issue, request.logins).await {
-        Ok(id) => id,
-        Err(message) => return done("not_started", message, json!({})),
+    // A sandbox that never runs commands is replaced once; what it cost is
+    // added to the run's.
+    let mut discarded = (0_i64, 0.0_f64);
+    let mut attempt = 0;
+    let id = loop {
+        attempt += 1;
+        starts.take().await;
+        let id = match start(&client, &source, issue, request.logins).await {
+            Ok(id) => id,
+            Err(message) => return done("not_started", message, json!({})),
+        };
+        say(
+            output,
+            json!({"event": "boat_sandbox", "issue": issue, "sandbox": id, "source": source.name()}),
+            &format!("#{issue}: Boat sandbox {id} from {}", source.name()),
+        );
+        match ready(&client, &id).await {
+            Ok(()) => break id,
+            Err(message) => {
+                if let Ok(usage) = client
+                    .usage(&UsageParams {
+                        sandbox_id: id.clone(),
+                        ..Default::default()
+                    })
+                    .await
+                {
+                    discarded.0 += usage.seconds;
+                    discarded.1 += usage.dollars;
+                }
+                let state = end_run(&client, &id, true).await;
+                if attempt >= 2 || *stopping.borrow() {
+                    return done(
+                        "not_started",
+                        message,
+                        json!({"sandbox": id, "sandbox_state": state,
+                            "cost_usd": discarded.1, "machine_seconds": discarded.0}),
+                    );
+                }
+                say(
+                    output,
+                    json!({"event": "boat_sandbox", "issue": issue, "sandbox": id,
+                        "replaced": true, "reason": message}),
+                    &format!("#{issue}: {message}; sandbox {id} {state}, starting another"),
+                );
+            }
+        }
     };
-    say(
-        output,
-        json!({"event": "boat_sandbox", "issue": issue, "sandbox": id, "source": source.name()}),
-        &format!("#{issue}: Boat sandbox {id} from {}", source.name()),
-    );
 
     let followed = follow(
         &client,
@@ -939,8 +986,8 @@ async fn run_issue(
     let state = end_run(&client, &id, landed).await;
     let cost = Cost {
         wall,
-        machine_seconds: usage.as_ref().map(|u| u.seconds),
-        dollars: usage.as_ref().map(|u| u.dollars),
+        machine_seconds: usage.as_ref().map(|u| u.seconds + discarded.0),
+        dollars: usage.as_ref().map(|u| u.dollars + discarded.1),
     };
     let record = route_record(
         &request.repository,
@@ -983,11 +1030,6 @@ async fn follow(
     issue: u64,
     stopping: &mut watch::Receiver<bool>,
 ) -> Result<(String, String, Vec<String>, String, String), String> {
-    client
-        .wait_until_ready(id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
-        .await
-        .map_err(|e| format!("{id} did not become ready: {}", why(&e)))?;
-    reachable(client, id).await?;
     let written = client
         .write_text(id, ENV_FILE, &credentials.file())
         .await
@@ -995,16 +1037,31 @@ async fn follow(
     if written.type_ != "file.written" {
         return Err("the run's credentials could not be written".into());
     }
-    let process = client
-        .exec_detached(
-            id,
-            CommandRequest {
-                command: run_script(issue, request.land),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("the flow did not start on {id}: {}", why(&e)))?;
+    // A refusal that means "not reachable yet" ran nothing (it is a 400 or
+    // 409, never the 502 that may have started the command), so it alone is
+    // retried, a few times.
+    let mut attempt = 0;
+    let process = loop {
+        attempt += 1;
+        match client
+            .exec_detached(
+                id,
+                CommandRequest {
+                    command: run_script(issue, request.land),
+                    ..Default::default()
+                },
+            )
+            .await
+        {
+            Ok(process) => break process,
+            Err(e) if not_reachable_yet(&e) && attempt < 5 => {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+            }
+            Err(e) => {
+                return Err(format!("the flow did not start on {id}: {}", why(&e)));
+            }
+        }
+    };
     let mut follower = client
         .follow_command(
             id,
