@@ -639,7 +639,7 @@ pub const WEB_NOTE: &str = "This chat is on the openagents.com website, which on
 questions about OpenAgents. The visitor asked for something the website cannot do (work on \
 code or a computer, a command, a screen, the wallet, an account, or the Gym). Say in one or two \
 sentences that the OpenAgents app does that, and that they can download it at \
-openagents.com/install; answer any question in the message about OpenAgents itself.";
+openagents.com/download; answer any question in the message about OpenAgents itself.";
 
 /// The tier for `routing`. See the module documentation for the rules.
 /// On the website ([`Surface::Web`]) it is then held to [`for_web`].
@@ -984,6 +984,8 @@ mod tests {
     #[test]
     fn the_website_answers_and_never_offers() {
         assert_eq!(web().surface(), Surface::Web);
+        assert!(WEB_NOTE.contains("openagents.com/download;"));
+        assert!(!WEB_NOTE.contains("/install"));
         let work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
         assert!(matches!(
             router(&work),

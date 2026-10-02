@@ -1,5 +1,5 @@
-// The homepage terminal (#10106). `help`, `install`, `docs`, and `clear`
-// are its commands, matched whole; any other line is a question posted to
+// The homepage terminal (#10106). `help`, `download` (`install` is its
+// alias), `docs`, and `clear` are its commands, matched whole; any other line is a question posted to
 // /ask, whose answer streams back as newline-delimited JSON: {"html"} as it
 // grows (drawn by the server, raw HTML shown as text), then {"done","text"}
 // or {"error"}. The conversation lives in this page only.
@@ -41,13 +41,13 @@
   var commands = {
     help: function () {
       row("term-out", "help     what you can type here");
-      row("term-out", "install  get OpenAgents for Mac and iPhone");
+      row("term-out", "download get OpenAgents for Mac and iPhone");
       row("term-out", "docs     guides to the apps and plugins");
       row("term-out", "clear    empty the screen");
       row("term-out", "Anything else is a question for OpenAgents.");
     },
-    install: function () {
-      linked("OpenAgents for Mac, and for iPhone beside it: ", "/install", "openagents.com/install");
+    download: function () {
+      linked("OpenAgents for Mac, and for iPhone beside it: ", "/download", "openagents.com/download");
     },
     docs: function () {
       linked("Guides to the apps and plugins: ", "/docs", "openagents.com/docs");
@@ -56,6 +56,7 @@
       screen.textContent = "";
     }
   };
+  commands.install = commands.download;
 
   function finish() {
     busy = false;

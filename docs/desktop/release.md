@@ -72,7 +72,7 @@ gcloud storage cp target/desktop-release/OpenAgents-$v.dmg \
 kept outside the repository, uploads the zip to `desktop/macos/<version>/`,
 and then `desktop/macos/manifest.json`. The download link is
 `https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/<version>/OpenAgents-<version>.dmg`;
-the website's `MAC_VERSION` and `MAC_DMG` (`crates/openagents-web/src/pages/install.rs`)
+the website's `MAC_VERSION` and `MAC_DMG` (`crates/openagents-web/src/pages/download.rs`)
 point at it.
 
 What it does, in order:
@@ -309,7 +309,7 @@ Two steps, on two computers:
 The downloads are
 `https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/<version>/OpenAgents-<version>-x86_64.AppImage`
 and `.../openagents_<version>_amd64.deb`; the website's `LINUX_APPIMAGE`
-and `LINUX_DEB` (`crates/openagents-web/src/pages/install.rs`) point at
+and `LINUX_DEB` (`crates/openagents-web/src/pages/download.rs`) point at
 them. To check one by hand, beside `SHA256SUMS`, `SHA256SUMS.sig`, and
 the public key:
 

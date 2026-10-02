@@ -2,7 +2,7 @@
 
 This Rust server is the OpenAgents website: the public pages that
 openagents.com serves, the terms of service and the privacy policy, the one
-install page, and the landing page for the pairing QR code. It also serves a
+download page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
 The site is drawn in four intensities of white on
@@ -41,18 +41,18 @@ everything it serves is compiled in or read from this repository.
 
 | Route | Source | Development server |
 | --- | --- | --- |
-| `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, and the **Ask OpenAgents** terminal | Renders. |
-| `/install` | Everything OpenAgents is launching, in order: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by QR code, and signing in to Codex or Claude Code on the Mac so the phone can run Coder | Renders. |
-| `/desktop` | Permanent redirect to `/install` | Redirects. |
+| `/` | What OpenAgents is, one `[ Download OpenAgents ]` link, and the **Ask OpenAgents** terminal | Renders. |
+| `/download` | `src/pages/download.rs`: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, OpenAgents Terminal's install commands, and one link to build everything else from source | Renders. |
+| `/install`, `/desktop` | Permanent redirect (`308`) to `/download`, so older links keep working | Redirects. |
 | `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
-| `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, install, connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
+| `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, download (`/docs/install` redirects to `/docs/download`), connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
 | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
 | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
 
-The header links Install and Docs; the footer links the terms and the
+The header links Download and Docs; the footer links the terms and the
 privacy policy.
 
 The Forum, Gym, Traces, Earn, Weights, and QA sections of the old site are
@@ -88,10 +88,10 @@ cargo test -p openagents-web
 
 The tests check that every public page answers `200` on a development
 server with the header, the footer's links to the terms and the policy, and
-no script except the homepage terminal's; the homepage's single install
+no script except the homepage terminal's; the homepage's single download
 link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
 bounds, and one-at-a-time rule, against an in-process door;
-the install page and the `/desktop` redirect; that the legal pages carry the
+the download page and the `/install`, `/desktop`, and `/docs/install` redirects; that the legal pages carry the
 published text; that every color in the stylesheet is a gray and that the
 text steps meet WCAG AA; the `/connect` page's policy and the association
 files; that the removed sections, the release proxy, the Terminal install

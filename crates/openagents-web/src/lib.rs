@@ -1,6 +1,6 @@
 //! The OpenAgents website.
 //!
-//! One axum router serves the public pages (the homepage, the install
+//! One axum router serves the public pages (the homepage, the download
 //! page, the terms and the privacy policy, the pairing link's landing page,
 //! and profiles) and the local, read-only task browser at `/app`.
 //!

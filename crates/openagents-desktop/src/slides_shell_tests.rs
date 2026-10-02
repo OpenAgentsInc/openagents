@@ -576,13 +576,13 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
 }
 
 /// The Episode 289 deck's fifth slide shows two essays as GitHub link
-/// cards and its sixth shows openagents.com/install in a browser window.
+/// cards and its sixth shows openagents.com/download in a browser window.
 /// They come in on the frame clock; the pointer over a card brightens it,
 /// and a click on one asks for its link instead of changing slides. With
 /// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
 #[test]
-fn episode_289_shows_the_essays_and_the_install_page_as_link_cards() {
-    use openagents_desktop::slide_embeds::{ESSAYS, INSTALL, INSTALL_URL, cards};
+fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
+    use openagents_desktop::slide_embeds::{DOWNLOAD, DOWNLOAD_URL, ESSAYS, cards};
     use openagents_desktop::slides::Layout;
     let (mut app, start) = shell();
     app.open_presentation("episode-289", start)
@@ -640,8 +640,8 @@ fn episode_289_shows_the_essays_and_the_install_page_as_link_cards() {
     assert_eq!(app.presentation().unwrap().counter(), "6 / 6");
     app.tick(open + Duration::from_secs(4));
     app.tick(open + Duration::from_secs(6));
-    write(&mut app, "episode-289-install");
-    let window = cards(INSTALL, slide)[0];
+    write(&mut app, "episode-289-download");
+    let window = cards(DOWNLOAD, slide)[0];
     let slides = app.slides.as_mut().unwrap();
     slides.input(
         SurfaceInput::Down {
@@ -651,6 +651,6 @@ fn episode_289_shows_the_essays_and_the_install_page_as_link_cards() {
         },
         open + Duration::from_secs(6),
     );
-    assert_eq!(slides.take_link().as_deref(), Some(INSTALL_URL));
+    assert_eq!(slides.take_link().as_deref(), Some(DOWNLOAD_URL));
     assert_eq!(slides.take_link(), None, "taken once");
 }

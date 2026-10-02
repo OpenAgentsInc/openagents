@@ -43,8 +43,8 @@ source: docs/essays/2026-10-01-the-return-of-the-general-agent.md and docs/essay
 ---
 
 layout: statement
-id: install
-scene: install
-source: openagents.com/install (crates/openagents-web/src/pages/install.rs), shown in a browser window; a click opens it
+id: download
+scene: download
+source: openagents.com/download (crates/openagents-web/src/pages/download.rs), shown in a browser window; a click opens it
 
 —

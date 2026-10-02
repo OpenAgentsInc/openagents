@@ -107,7 +107,7 @@ Install the OpenAgents app, then scan the code on your computer again.</p>\
 <p>Android: the OpenAgents app is in testing and not yet public.</p>\
 <p>Already have the app? Open it, choose Connect a computer, and point it at the code.</p>\
 </article>\
-<p class=\"hint\">On a computer? <a href=\"/install\">Get OpenAgents for Mac</a>, \
+<p class=\"hint\">On a computer? <a href=\"/download\">Get OpenAgents for Mac</a>, \
 and it shows the code to scan.</p>"
     );
     let mut response = (

@@ -15,7 +15,7 @@ pub const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 pub const X: &str = "https://x.com/OpenAgentsInc";
 
 /// The sections the header links to, in order.
-pub const SECTIONS: [(&str, &str); 2] = [("Install", "/install"), ("Docs", "/docs")];
+pub const SECTIONS: [(&str, &str); 2] = [("Download", "/download"), ("Docs", "/docs")];
 
 /// Escapes text for HTML content and attribute values.
 #[must_use]
@@ -110,21 +110,21 @@ mod tests {
 
     #[test]
     fn every_page_links_to_the_terms_and_the_privacy_policy_once() {
-        let html = document("Install OpenAgents", Some("/install"), "<p>x</p>");
+        let html = document("Download OpenAgents", Some("/download"), "<p>x</p>");
         assert_eq!(html.matches("href=\"/terms\"").count(), 1);
         assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
         assert!(html.contains(
             "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
         ));
         assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
-        assert!(html.contains("<a href=\"/install\" aria-current=\"page\">Install</a>"));
+        assert!(html.contains("<a href=\"/download\" aria-current=\"page\">Download</a>"));
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
     }
 
     #[test]
     fn only_the_region_under_the_header_scrolls() {
-        let html = document("Install OpenAgents", Some("/install"), "<p>x</p>");
+        let html = document("Download OpenAgents", Some("/download"), "<p>x</p>");
         let header = html.find("</header>").unwrap();
         let scroller = html.find("<div class=\"scroller\">").unwrap();
         assert!(header < scroller, "the header sits outside the scroller");

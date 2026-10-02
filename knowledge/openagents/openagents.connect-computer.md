@@ -30,7 +30,7 @@ provenance:
     - docs/coder/guides/link-devices.md
     - docs/coder/design/2026-09-29-auto-pairing.md
     - crates/openagents-desktop/README.md
-    - crates/openagents-web/src/pages/install.rs
+    - crates/openagents-web/src/pages/download.rs
     - nips/openagents/NIP-HOST.md
     - INVARIANTS.md
 evidence:
@@ -56,6 +56,6 @@ Open OpenAgents for Mac and it shows a QR code. Scan it with your iPhone Camera,
 - `docs/coder/guides/link-devices.md`
 - `docs/coder/design/2026-09-29-auto-pairing.md`
 - `crates/openagents-desktop/README.md`
-- `crates/openagents-web/src/pages/install.rs`
+- `crates/openagents-web/src/pages/download.rs`
 - `nips/openagents/NIP-HOST.md`
 - `INVARIANTS.md`

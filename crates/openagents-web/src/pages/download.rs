@@ -1,11 +1,12 @@
-//! `/install`: the one download page. It links only the release
+//! `/download`: the one download page. It links only the release
 //! candidates published on 2026-10-01 (#10126): OpenAgents for Mac
 //! 1.0.0-rc.2, the notarized `.dmg` under `desktop/macos/rc/` in the public
 //! bucket `openagentsgemini-oa-updates` (`docs/desktop/release.md`), and
 //! OpenAgents Terminal 1.0.0-rc.2, installed by the scripts in
 //! `openagentsgemini-cli-releases/openagents/` (`docs/release/terminal.md`).
 //! Every other app and platform is built from source, and the page says so
-//! with one link to the repository. `/desktop` redirects here.
+//! with one link to the repository. `/install` and `/desktop`, its older
+//! addresses, redirect here permanently (`308`).
 
 use axum::Router;
 use axum::response::{Redirect, Response};
@@ -34,10 +35,16 @@ pub(crate) const TERMINAL_PS1: &str =
 pub(crate) const SOURCE: &str = "https://github.com/OpenAgentsInc/openagents";
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route("/install", get(install)).route(
-        "/desktop",
-        get(|| async { Redirect::permanent("/install") }),
-    )
+    Router::new()
+        .route("/download", get(download))
+        .route(
+            "/install",
+            get(|| async { Redirect::permanent("/download") }),
+        )
+        .route(
+            "/desktop",
+            get(|| async { Redirect::permanent("/download") }),
+        )
 }
 
 /// A numbered section: `[1] Title`, a line under it, and its body.
@@ -48,7 +55,7 @@ fn section(number: u8, title: &str, lead: &str, body: &str) -> String {
     )
 }
 
-async fn install() -> Response {
+async fn download() -> Response {
     let mac = format!(
         "<ul class=\"dl-list\"><li class=\"dl-row\"><span class=\"dl-name\"><strong>macOS</strong> \
 <span class=\"dim\">(Apple silicon and Intel)</span></span>\
@@ -80,5 +87,5 @@ async fn install() -> Response {
         ),
         section(3, "Everything else", "", &other),
     );
-    page("Download OpenAgents", Some("/install"), &body)
+    page("Download OpenAgents", Some("/download"), &body)
 }

@@ -1,17 +1,17 @@
 //! Link cards a slide shows in place of a web view: `scene: essays` lays
 //! two of our essays side by side as GitHub file previews, and
-//! `scene: install` shows openagents.com/install in a browser window.
+//! `scene: download` shows openagents.com/download in a browser window.
 //!
 //! There is no browser engine here, so each card is drawn from the source
 //! the page is made from, read at build time: the essays' Markdown from
-//! `docs/essays/`, and the install page's versions and commands from the
-//! web crate's `pages/install.rs`. A card matches the repository it was
+//! `docs/essays/`, and the download page's versions and commands from the
+//! web crate's `pages/download.rs`. A card matches the repository it was
 //! built from.
 //!
 //! An essay card has a header row (the GitHub mark, the repository, and
 //! the file's path), the essay's title and date, its opening rendered
 //! from the Markdown and fading out at the bottom, and the short URL at
-//! the foot. The install card is a browser window with an address bar and
+//! the foot. The download card is a browser window with an address bar and
 //! the page under it in the site's own monospace, white-on-near-black
 //! look. A click on a card opens its URL in the browser; hovering
 //! brightens it. The cards rise and fade in when the slide shows, one
@@ -26,10 +26,10 @@ use std::time::Instant;
 
 /// The scene that shows the essays as link cards.
 pub const ESSAYS: &str = "essays";
-/// The scene that shows openagents.com/install in a browser window.
-pub const INSTALL: &str = "install";
-/// The install page's address.
-pub const INSTALL_URL: &str = "https://openagents.com/install";
+/// The scene that shows openagents.com/download in a browser window.
+pub const DOWNLOAD: &str = "download";
+/// The download page's address.
+pub const DOWNLOAD_URL: &str = "https://openagents.com/download";
 
 /// The repository the essays live in.
 const REPO: &str = "OpenAgentsInc/openagents";
@@ -48,8 +48,8 @@ const ESSAY_SOURCES: [(&str, &str); 2] = [
     ),
 ];
 
-/// The install page's source, for its versions and commands.
-const INSTALL_SOURCE: &str = include_str!("../../openagents-web/src/pages/install.rs");
+/// The download page's source, for its versions and commands.
+const DOWNLOAD_SOURCE: &str = include_str!("../../openagents-web/src/pages/download.rs");
 
 /// The slide height the card sizes are given in; everything scales with
 /// the slide.
@@ -148,9 +148,9 @@ fn date(iso: &str) -> String {
     }
 }
 
-/// What the install page offers, read from its source.
+/// What the download page offers, read from its source.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Install {
+pub struct Download {
     pub mac_version: String,
     pub terminal_version: String,
     /// The Terminal install command for macOS and Linux.
@@ -159,11 +159,11 @@ pub struct Install {
     pub ps1: String,
 }
 
-/// The install page's versions and commands, from the web crate's
-/// `pages/install.rs` constants.
-pub fn install() -> Install {
-    let constant = |name: &str| constant(INSTALL_SOURCE, name).unwrap_or_default();
-    Install {
+/// The download page's versions and commands, from the web crate's
+/// `pages/download.rs` constants.
+pub fn download() -> Download {
+    let constant = |name: &str| constant(DOWNLOAD_SOURCE, name).unwrap_or_default();
+    Download {
         mac_version: constant("MAC_VERSION"),
         terminal_version: constant("TERMINAL_VERSION"),
         sh: constant("TERMINAL_SH"),
@@ -196,7 +196,7 @@ pub fn cards(scene: &str, slide: PxRect) -> Vec<PxRect> {
                 })
                 .collect()
         }
-        INSTALL => {
+        DOWNLOAD => {
             let (pad, top) = (56.0 * k, 36.0 * k);
             vec![PxRect {
                 x: slide.x + pad,
@@ -213,7 +213,7 @@ pub fn cards(scene: &str, slide: PxRect) -> Vec<PxRect> {
 pub fn url(scene: &str, index: usize) -> Option<String> {
     match scene {
         ESSAYS => essays().get(index).map(Essay::url),
-        INSTALL if index == 0 => Some(INSTALL_URL.to_string()),
+        DOWNLOAD if index == 0 => Some(DOWNLOAD_URL.to_string()),
         _ => None,
     }
 }
@@ -243,7 +243,7 @@ pub struct Embeds {
     hover: Option<usize>,
     fonts: Fonts,
     essays: Vec<Essay>,
-    install: Install,
+    download: Download,
     /// Each essay's opening laid out, with the width it was laid out at.
     openings: Vec<Option<(u32, Rich)>>,
     version: u64,
@@ -261,7 +261,7 @@ impl Embeds {
             fonts: Fonts::new(),
             openings: essays.iter().map(|_| None).collect(),
             essays,
-            install: install(),
+            download: download(),
             version: 0,
         }
     }
@@ -369,7 +369,7 @@ impl Embeds {
             let hover = self.hover == Some(index);
             match scene {
                 ESSAYS => self.essay_card(frame, card, k, index, hover),
-                _ => self.install_card(frame, card, k, hover),
+                _ => self.download_card(frame, card, k, hover),
             }
             if shown < 1.0 {
                 // Fade in: the slide's background over the card, lifting.
@@ -653,7 +653,7 @@ impl Embeds {
         frame.stroke(card, radius, k.max(1.0), rule);
     }
 
-    fn install_card(&mut self, frame: &mut Frame, card: PxRect, k: f32, hover: bool) {
+    fn download_card(&mut self, frame: &mut Frame, card: PxRect, k: f32, hover: bool) {
         let radius = 12.0 * k;
         let page_color = gray(10);
         let rule = gray(if hover { 96 } else { 58 });
@@ -694,7 +694,7 @@ impl Embeds {
             h: bar - 18.0 * k,
         };
         frame.fill(address, address.h / 2.0, gray(14));
-        let (host, path) = ("openagents.com", "/install");
+        let (host, path) = ("openagents.com", "/download");
         let size = 14.0 * k;
         let host_w = self.fonts.advance(host, font(size, Weight::Medium, false));
         let path_w = self.fonts.advance(path, font(size, Weight::Regular, false));
@@ -751,7 +751,7 @@ impl Embeds {
         frame.stroke(card, radius, k.max(1.0), rule);
     }
 
-    /// The install page in `area`, at `s` pixels a CSS pixel, after the
+    /// The download page in `area`, at `s` pixels a CSS pixel, after the
     /// site's stylesheet: a 14px monospace base, 1.5 line height, and
     /// four intensities of white. Without a frame it only measures.
     /// Returns its height in pixels.
@@ -760,13 +760,17 @@ impl Embeds {
         const W50: u8 = 0x8a;
         const W75: u8 = 0xc8;
         const W100: u8 = 0xff;
-        let install = self.install.clone();
+        let download = self.download.clone();
         let base = 14.0 * s;
         let line = 21.0 * s;
         let ch = self.fonts.advance("0", font(base, Weight::Regular, true));
         // The page's column is 96ch; it widens to keep the longest
         // install command on its line when the window has room.
-        let longest = install.sh.chars().count().max(install.ps1.chars().count()) as f32;
+        let longest = download
+            .sh
+            .chars()
+            .count()
+            .max(download.ps1.chars().count()) as f32;
         let column = (96.0 * ch)
             .max((longest + 2.0) * ch + 2.0 * s)
             .min(area.w - 32.0 * s);
@@ -832,17 +836,17 @@ impl Embeds {
         let docs = self
             .fonts
             .advance("Docs", font(base, Weight::Regular, true));
-        let install_w = self
+        let download_w = self
             .fonts
-            .advance("Install", font(base, Weight::Regular, true));
+            .advance("Download", font(base, Weight::Regular, true));
         runs(
             &mut frame,
             &mut self.fonts,
-            x0 + column - docs - 2.0 * ch - install_w,
+            x0 + column - docs - 2.0 * ch - download_w,
             y + 10.5 * s,
             base,
             &[
-                ("Install", Weight::Regular, W100, true),
+                ("Download", Weight::Regular, W100, true),
                 ("  ", Weight::Regular, W75, false),
                 ("Docs", Weight::Regular, W75, false),
             ],
@@ -906,7 +910,7 @@ impl Embeds {
             *y += 14.0 * s;
         };
         // [1] OpenAgents for Mac
-        let lead = format!("Version {}.", install.mac_version);
+        let lead = format!("Version {}.", download.mac_version);
         heading(
             &mut frame,
             &mut self.fonts,
@@ -969,7 +973,7 @@ impl Embeds {
         );
         y += line + 14.0 * s + 35.0 * s - 14.0 * s;
         // [2] OpenAgents Terminal
-        let lead = format!("Version {}.", install.terminal_version);
+        let lead = format!("Version {}.", download.terminal_version);
         heading(
             &mut frame,
             &mut self.fonts,
@@ -979,8 +983,8 @@ impl Embeds {
             &lead,
         );
         for (hint, command) in [
-            ("macOS and Linux:", install.sh.as_str()),
-            ("Windows, in PowerShell:", install.ps1.as_str()),
+            ("macOS and Linux:", download.sh.as_str()),
+            ("Windows, in PowerShell:", download.ps1.as_str()),
         ] {
             runs(
                 &mut frame,
@@ -1137,19 +1141,19 @@ mod tests {
                 "https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-09-29-test-time-capabilities.md"
             )
         );
-        assert_eq!(url(INSTALL, 0).as_deref(), Some(INSTALL_URL));
-        assert_eq!(url(INSTALL, 1), None);
+        assert_eq!(url(DOWNLOAD, 0).as_deref(), Some(DOWNLOAD_URL));
+        assert_eq!(url(DOWNLOAD, 1), None);
     }
 
-    /// The install card shows the page's own versions and commands, and
+    /// The download card shows the page's own versions and commands, and
     /// every fixed phrase it draws is still in the page's source.
     #[test]
-    fn the_install_card_matches_the_page() {
-        let install = install();
-        assert!(install.mac_version.starts_with("1.0.0"));
-        assert!(install.terminal_version.starts_with("1.0.0"));
-        assert!(install.sh.starts_with("curl -fsSL https://") && install.sh.ends_with("| sh"));
-        assert!(install.ps1.starts_with("irm https://") && install.ps1.ends_with("| iex"));
+    fn the_download_card_matches_the_page() {
+        let download = download();
+        assert!(download.mac_version.starts_with("1.0.0"));
+        assert!(download.terminal_version.starts_with("1.0.0"));
+        assert!(download.sh.starts_with("curl -fsSL https://") && download.sh.ends_with("| sh"));
+        assert!(download.ps1.starts_with("irm https://") && download.ps1.ends_with("| iex"));
         for phrase in [
             "Download OpenAgents",
             "OpenAgents for Mac",
@@ -1163,12 +1167,12 @@ mod tests {
             "iPhone, Android, and OpenAgents for Linux and Windows:",
             "build from source",
         ] {
-            assert!(INSTALL_SOURCE.contains(phrase), "{phrase}");
+            assert!(DOWNLOAD_SOURCE.contains(phrase), "{phrase}");
         }
     }
 
     /// Two cards side by side fill the essays slide; one window fills the
-    /// install slide.
+    /// download slide.
     #[test]
     fn the_cards_fill_the_slide() {
         let slide = PxRect {
@@ -1181,7 +1185,7 @@ mod tests {
         assert_eq!(two.len(), 2);
         assert!(two[0].x + two[0].w < two[1].x);
         assert!(two[0].w + two[1].w > 0.8 * slide.w);
-        let one = cards(INSTALL, slide);
+        let one = cards(DOWNLOAD, slide);
         assert_eq!(one.len(), 1);
         assert!(one[0].w > 0.85 * slide.w);
         assert!(cards("grid", slide).is_empty());
@@ -1202,7 +1206,7 @@ mod tests {
         assert!(!embeds.entering());
         assert_eq!((embeds.reveal(0), embeds.reveal(1)), (1.0, 1.0));
         let mut still = Embeds::new(true);
-        still.show(INSTALL, start);
+        still.show(DOWNLOAD, start);
         assert!(!still.entering());
         assert_eq!(still.reveal(0), 1.0);
     }

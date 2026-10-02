@@ -29,9 +29,9 @@
 //! request no plugin serves, the plugin made with the Gym's interview, its
 //! XP, and others using it ([`RoutePlugin`]). `scene: routes-future` shows
 //! the same view fed a growing model instead ([`RouteFuture`]), on the
-//! frame clock. `scene: essays` and `scene: install` show link cards in
+//! frame clock. `scene: essays` and `scene: download` show link cards in
 //! the slide's place ([`Embeds`]): two essays as GitHub file previews, and
-//! openagents.com/install in a browser window. A click on a card opens its
+//! openagents.com/download in a browser window. A click on a card opens its
 //! link in the browser ([`Slides::take_link`]); a click elsewhere on the
 //! slide goes on as usual.
 
@@ -127,7 +127,7 @@ pub struct Slides {
     chat: Option<RouteChat>,
     /// The plugin story on the live route map, once shown.
     plugin: Option<RoutePlugin>,
-    /// The link cards a `scene: essays` or `scene: install` slide shows.
+    /// The link cards a `scene: essays` or `scene: download` slide shows.
     embeds: Option<Embeds>,
     /// A card's link a click asked to open, until the host takes it.
     link: Option<String>,
@@ -259,7 +259,7 @@ impl Slides {
     fn embed_scene(&self) -> Option<&'static str> {
         match self.viewer.scene() {
             Some(crate::slide_embeds::ESSAYS) => Some(crate::slide_embeds::ESSAYS),
-            Some(crate::slide_embeds::INSTALL) => Some(crate::slide_embeds::INSTALL),
+            Some(crate::slide_embeds::DOWNLOAD) => Some(crate::slide_embeds::DOWNLOAD),
             _ => None,
         }
     }

@@ -459,7 +459,7 @@ Done 2026-10-01 in
   `scripts/test-install-coder.sh`. **M**
 - Mac app menu item **Install `openagents` command**; `.deb` puts it on
   `PATH`. **S**
-- Website install page row for the terminal (`crates/openagents-web/src/pages/install.rs`). **S**
+- Website download page row for the terminal (`crates/openagents-web/src/pages/download.rs`). **S**
 
 **Phase 3: after v1 (not scoped further)**
 

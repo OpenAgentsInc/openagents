@@ -21,7 +21,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/openagents-web/src/pages/install.rs
+    - crates/openagents-web/src/pages/download.rs
     - docs/coder/guides/link-devices.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
     - INVARIANTS.md
@@ -42,7 +42,7 @@ To run Coder you need your own computer: a Mac with OpenAgents for Mac installed
 
 ## Sources
 
-- `crates/openagents-web/src/pages/install.rs`
+- `crates/openagents-web/src/pages/download.rs`
 - `docs/coder/guides/link-devices.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
 - `INVARIANTS.md`

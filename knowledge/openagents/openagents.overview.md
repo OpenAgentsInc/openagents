@@ -27,7 +27,7 @@ provenance:
     - bins/openagents-android/README.md
     - crates/openagents-mobile/src/account.rs
     - docs/roadmap/2026-09-29-launch-roadmap.md
-    - crates/openagents-web/src/pages/install.rs
+    - crates/openagents-web/src/pages/download.rs
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: updated for QR pairing with OpenAgents for Mac, which replaced the Tailscale setup (#9978), and checked against the cited documents (#9995); the answer text awaits the owner's copy review."
@@ -49,4 +49,4 @@ OpenAgents is an app for your phone, on iPhone and Android. In the Chat tab you 
 - `bins/openagents-android/README.md`
 - `crates/openagents-mobile/src/account.rs`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
-- `crates/openagents-web/src/pages/install.rs`
+- `crates/openagents-web/src/pages/download.rs`

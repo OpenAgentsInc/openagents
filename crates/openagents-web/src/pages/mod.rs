@@ -2,8 +2,8 @@
 
 mod connect;
 mod content;
+mod download;
 mod home;
-mod install;
 mod profile;
 
 use axum::Router;
@@ -15,13 +15,13 @@ pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
 pub(crate) use content::DOCS;
 #[cfg(test)]
-pub(crate) use install::{MAC_DMG, SOURCE, TERMINAL_PS1, TERMINAL_SH};
+pub(crate) use download::{MAC_DMG, SOURCE, TERMINAL_PS1, TERMINAL_SH};
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
         .merge(content::routes())
-        .merge(install::routes())
+        .merge(download::routes())
         .merge(connect::routes())
         .merge(profile::routes())
 }

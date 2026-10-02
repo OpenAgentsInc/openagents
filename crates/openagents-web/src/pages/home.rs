@@ -1,13 +1,14 @@
-//! The homepage: what OpenAgents is, one link to `/install`, and a terminal
+//! The homepage: what OpenAgents is, one link to `/download`, and a terminal
 //! to ask OpenAgents about itself. The Grid's screenshot is on
 //! `/docs/the-grid`.
 //!
 //! The terminal (#10106) is the one script on the site, `static/ask.js`.
-//! `help`, `install`, `docs`, and `clear` are its commands, matched whole;
+//! `help`, `download` (or `install`), `docs`, and `clear` are its commands,
+//! matched whole;
 //! any other line is a question for [`crate::ask`], which answers it from
 //! the same OpenAgents chat the apps use, as the website: about OpenAgents
 //! only, never Coder or a computer. Without the script the box says to
-//! turn scripts on and the install link still works.
+//! turn scripts on and the download link still works.
 
 use axum::Router;
 use axum::extract::State;
@@ -46,7 +47,7 @@ your own machines, and Coder is the one that writes code.</p>",
         ));
     }
     out.push_str(
-        "<p><a class=\"button\" href=\"/install\">[ Install OpenAgents ]</a></p></section>",
+        "<p><a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a></p></section>",
     );
     out
 }
@@ -67,8 +68,8 @@ fn terminal() -> &'static str {
 pricing, or privacy. Coder works on your own computer through the OpenAgents app for Mac. \
 Type <code>help</code> for commands.</p>\
 <noscript><p class=\"dim\">Turn on JavaScript to ask a question here, or \
-<a href=\"/install\">install OpenAgents</a>.</p></noscript></div>\
-<form class=\"term-line\" id=\"term-form\" action=\"/install\" method=\"get\">\
+<a href=\"/download\">download OpenAgents</a>.</p></noscript></div>\
+<form class=\"term-line\" id=\"term-form\" action=\"/download\" method=\"get\">\
 <label class=\"term-prompt\" for=\"term-input\">&gt;</label>\
 <input id=\"term-input\" name=\"q\" type=\"text\" autocomplete=\"off\" \
 spellcheck=\"false\" maxlength=\"4000\" placeholder=\"Ask about OpenAgents\" \

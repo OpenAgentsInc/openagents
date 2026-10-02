@@ -33,8 +33,9 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 17] = [
+const OWNED_EXACT: [&str; 18] = [
     "/",
+    "/download",
     "/install",
     "/desktop",
     "/docs",

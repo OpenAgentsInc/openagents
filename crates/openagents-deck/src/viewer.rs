@@ -587,7 +587,7 @@ mod tests {
         viewer.key("ArrowRight", false);
         assert_eq!(viewer.scene(), Some("essays"));
         viewer.key("ArrowRight", false);
-        assert_eq!(viewer.scene(), Some("install"));
+        assert_eq!(viewer.scene(), Some("download"));
     }
 
     /// The deck list comes from the shipped scripts, the default first,

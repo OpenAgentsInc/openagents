@@ -67,13 +67,13 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// Every public HTML page a development server serves.
 const PAGES: [&str; 18] = [
     "/",
-    "/install",
+    "/download",
     "/terms",
     "/privacy",
     "/connect",
     "/docs",
     "/docs/what-is-openagents",
-    "/docs/install",
+    "/docs/download",
     "/docs/connect-a-computer",
     "/docs/chat",
     "/docs/coder",
@@ -159,13 +159,14 @@ async fn the_legal_pages_carry_the_published_text() {
 }
 
 #[tokio::test]
-async fn the_homepage_links_one_install_page_and_leads_with_the_terminal() {
+async fn the_homepage_links_one_download_page_and_leads_with_the_terminal() {
     let root = tempfile::tempdir().unwrap();
     let (_, home) = get(router(config(root.path().into())), "/").await;
-    assert!(home.contains("<a class=\"button\" href=\"/install\">[ Install OpenAgents ]</a>"));
+    assert!(home.contains("<a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a>"));
+    assert!(!home.contains("/install"), "every link says /download");
     assert!(
         !home.contains(pages::MAC_DMG),
-        "the download lives on /install"
+        "the download lives on /download"
     );
     assert!(!home.contains("curl ") && !home.contains("irm "));
     // The terminal (#10106): its box, its line, and its one script.
@@ -193,6 +194,11 @@ async fn the_homepage_links_one_install_page_and_leads_with_the_terminal() {
         "text/javascript; charset=utf-8"
     );
     assert!(script.contains("fetch(\"/ask\""));
+    // `download` is the command; `install` is its alias.
+    assert!(script.contains("download: function ()"));
+    assert!(script.contains("\"/download\", \"openagents.com/download\""));
+    assert!(script.contains("commands.install = commands.download;"));
+    assert!(!script.contains("\"/install\""));
     assert!(
         !script.contains("innerHTML = message.text"),
         "only server-drawn HTML"
@@ -200,9 +206,9 @@ async fn the_homepage_links_one_install_page_and_leads_with_the_terminal() {
 }
 
 #[tokio::test]
-async fn the_install_page_links_only_the_release_candidates_and_the_source() {
+async fn the_download_page_links_only_the_release_candidates_and_the_source() {
     let root = tempfile::tempdir().unwrap();
-    let (status, body) = get(router(config(root.path().into())), "/install").await;
+    let (status, body) = get(router(config(root.path().into())), "/download").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         pages::MAC_DMG,
@@ -236,11 +242,19 @@ async fn the_install_page_links_only_the_release_candidates_and_the_source() {
     ] {
         assert!(body.contains(heading), "{heading}");
     }
-    assert!(body.contains("<a href=\"/install\" aria-current=\"page\">Install</a>"));
-    let (status, headers, _) =
-        get_with(router(config(root.path().into())), "/desktop", LOCAL).await;
-    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(headers[header::LOCATION], "/install");
+    assert!(body.contains("<title>Download OpenAgents \u{b7} OpenAgents</title>"));
+    assert!(body.contains("<h1>Download OpenAgents</h1>"));
+    assert!(body.contains("<a href=\"/download\" aria-current=\"page\">Download</a>"));
+    // Its older addresses, and the guide's old name, redirect for good.
+    for (old, new) in [
+        ("/install", "/download"),
+        ("/desktop", "/download"),
+        ("/docs/install", "/docs/download"),
+    ] {
+        let (status, headers, _) = get_with(router(config(root.path().into())), old, LOCAL).await;
+        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
+        assert_eq!(headers[header::LOCATION], new, "{old}");
+    }
 }
 
 #[tokio::test]
@@ -690,9 +704,11 @@ fn proxying(root: &std::path::Path, upstream: &str) -> Config {
 fn the_site_owns_its_pages_and_the_removed_sections() {
     for path in [
         "/",
+        "/download",
         "/install",
         "/desktop",
         "/docs",
+        "/docs/download",
         "/docs/install",
         "/docs/nope",
         "/terms",
@@ -838,8 +854,10 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
             "{uri}"
         );
     }
-    let (status, _, _) = get_with(site.clone(), "/desktop", "openagents.com").await;
-    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
+    for uri in ["/install", "/desktop", "/docs/install"] {
+        let (status, _, _) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{uri}");
+    }
     for uri in [
         "/forum",
         "/gym",

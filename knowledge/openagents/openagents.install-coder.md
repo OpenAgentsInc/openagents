@@ -24,7 +24,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/openagents-web/src/pages/install.rs
+    - crates/openagents-web/src/pages/download.rs
     - crates/openagents-desktop/README.md
     - docs/coder/guides/link-devices.md
 evidence:
@@ -45,6 +45,6 @@ Coder comes with OpenAgents for Mac, so there's nothing else to install. Open th
 
 ## Sources
 
-- `crates/openagents-web/src/pages/install.rs`
+- `crates/openagents-web/src/pages/download.rs`
 - `crates/openagents-desktop/README.md`
 - `docs/coder/guides/link-devices.md`

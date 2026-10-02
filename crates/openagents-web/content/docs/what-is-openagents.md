@@ -18,4 +18,4 @@ sends Coder to do the work on one of yours.
 Chatting needs no computer. Coder only runs on a computer you connected,
 and only when you ask for it. Your code stays on your computer.
 
-Next: [Install](/docs/install).
+Next: [Download](/docs/download).

@@ -75,7 +75,7 @@ the website. OpenAgents runs in the OpenAgents app for Mac, with OpenAgents for 
 it, and Coder, our coding agent, works on the visitor's own computer through that app. When a \
 visitor asks for work on code, files, or a machine, or for anything this website chat cannot \
 do, say in one or two sentences that the OpenAgents app does that and that they can download \
-it at openagents.com/install. When a question is not about OpenAgents, answer briefly, then \
+it at openagents.com/download. When a question is not about OpenAgents, answer briefly, then \
 say this chat is here for questions about OpenAgents. Never name or describe buttons or screens.";
 
 /// The instructions a turn sends for its context.

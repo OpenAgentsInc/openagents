@@ -10,7 +10,7 @@
 use axum::Router;
 use axum::extract::Path;
 use axum::http::StatusCode;
-use axum::response::Response;
+use axum::response::{Redirect, Response};
 use axum::routing::get;
 
 use crate::App;
@@ -29,7 +29,7 @@ pub(crate) const DOCS: [(&str, &str); 13] = [
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
     ),
-    ("install", include_str!("../../content/docs/install.md")),
+    ("download", include_str!("../../content/docs/download.md")),
     (
         "connect-a-computer",
         include_str!("../../content/docs/connect-a-computer.md"),
@@ -69,6 +69,11 @@ pub(crate) fn routes() -> Router<App> {
         .route("/privacy", get(privacy))
         .route("/docs", get(docs_index))
         .route("/docs/{slug}", get(doc))
+        // The download guide's old name.
+        .route(
+            "/docs/install",
+            get(|| async { Redirect::permanent("/docs/download") }),
+        )
 }
 
 /// `/docs`: every guide, in reading order.

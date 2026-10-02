@@ -36,25 +36,26 @@ white on near-black instead of four intensities of amber.
 
 These pages need nothing more than this repository and the public buckets:
 
-- `/`, the homepage: what OpenAgents is, one `[ Install OpenAgents ]` link
-  to `/install`, and the **Ask OpenAgents** terminal. The Grid's
+- `/`, the homepage: what OpenAgents is, one `[ Download OpenAgents ]` link
+  to `/download`, and the **Ask OpenAgents** terminal. The Grid's
   screenshot moved to its own guide, `/docs/the-grid`, on 2026-10-01 so the
   homepage leads with the terminal. The old terminal and its `/ask` box were removed on 2026-09-29 and
   brought back on 2026-10-01 at the owner's direction
   ([#10106](https://github.com/OpenAgentsInc/openagents/issues/10106)), now
   on the white theme and tied to the same OpenAgents chat worker the apps
   use, as the `web` surface: answers and knowledge about OpenAgents only,
-  pointing to `/install` for anything the apps do; never Coder or a
-  computer. `help`, `install`, `docs`, and `clear` are its commands. A
+  pointing to `/download` for anything the apps do; never Coder or a
+  computer. `help`, `download` (`install` is its alias), `docs`, and
+  `clear` are its commands. A
   deployment with several instances sets `OPENAGENTS_WEB_ASK_SALT` (64 hex
   characters, a secret) so a visitor keeps one signing key; it needs no
   model key, since the chat worker holds its own.
-- `/install`: new. The one install page for everything being launched, in
-  order: the notarized OpenAgents for Mac `.dmg` in
-  `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by
-  the Mac's QR code, and signing in to Codex or Claude Code on the Mac so
-  the phone can run Coder. Android, Linux, and Windows are named as not yet
-  available. `/desktop` redirects here permanently.
+- `/download`: the one download page (`src/pages/download.rs`): the
+  notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`,
+  OpenAgents Terminal's install commands, and one link to build everything
+  else from source. It was `/install` until 2026-10-01; `/install` and
+  `/desktop` redirect here permanently (`308`), and the guide
+  `/docs/install` to `/docs/download`.
 - `/terms` and `/privacy`: the published text, last updated 2026-09-03,
   unchanged and compiled in.
 - `/connect`, `/.well-known/apple-app-site-association`, and
@@ -129,7 +130,7 @@ These need accounts, sessions, or payments, or are internal:
    and the PowerShell form) stop working, and old docs and blog links
    answer `404`. That is an owner decision: accept the break, or restore a
    redirect to the bucket before cutover.
-6. Update `/install` for each desktop release; it links version 1.0.0.
+6. Update `/download` for each desktop release (`MAC_VERSION` and `MAC_DMG`).
 7. When this server serves openagents.com, update the `INVARIANTS.md` row
    for the connect link, which names `coder-serve` as the server of
    `/connect`.
