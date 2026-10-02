@@ -3,5 +3,14 @@
   "claim_hours": 6,
   "fix_rounds": 3,
   "fmt": true,
-  "clippy": false
+  "clippy": false,
+  "project": {
+    "field": "Status",
+    "in_progress": "In progress",
+    "ready": [
+      "Todo"
+    ],
+    "done": "Done",
+    "number": 19
+  }
 }
