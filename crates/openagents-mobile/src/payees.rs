@@ -24,10 +24,7 @@ use secp256k1::SecretKey;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-/// NIP-A3 payment targets.
-pub const PAYMENT_TARGETS_KIND: u16 = 10_133;
-/// The `payto` type the phone publishes and prefers.
-pub const SPARK_TYPE: &str = "spark";
+pub use nostr::payto::{PAYMENT_TARGETS_KIND, SPARK_TYPE, lightning_address, spark_address};
 
 /// Relays read for profiles and written for payment targets. OpenAgents'
 /// relay requires NIP-42 authentication; the others serve public reads.
@@ -109,36 +106,6 @@ fn person(text: &str) -> Option<(String, String)> {
     Some((hex(&key), nostr::nip19::encode_npub(&key)))
 }
 
-/// `name@domain`, lower case, when it has that shape.
-pub fn lightning_address(text: &str) -> Option<String> {
-    let text = text.trim().to_ascii_lowercase();
-    let (name, domain) = text.split_once('@')?;
-    let name_ok = !name.is_empty()
-        && name.len() <= 64
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'));
-    let domain_ok = domain.contains('.')
-        && domain.len() <= 253
-        && !domain.starts_with(['.', '-'])
-        && !domain.ends_with(['.', '-'])
-        && domain
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'));
-    (name_ok && domain_ok).then_some(text)
-}
-
-/// A mainnet Spark address, when it has that shape.
-pub fn spark_address(text: &str) -> Option<String> {
-    let text = text.trim();
-    let lower = text.to_ascii_lowercase();
-    (lower.starts_with("spark1")
-        && (40..=200).contains(&lower.len())
-        && lower.chars().all(|c| c.is_ascii_alphanumeric())
-        && (text == lower || text == text.to_ascii_uppercase()))
-    .then_some(lower)
-}
-
 /// What an npub's owner published about being paid.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Profile {
@@ -217,39 +184,21 @@ pub fn resolve(npub: &str, profile: &Profile) -> Result<Resolved, String> {
 /// another key, with a bad ID or signature, or of other kinds are ignored;
 /// the newest valid event of each kind is used.
 pub fn profile_from(pubkey: &str, events: &[Event]) -> Profile {
-    let newest = |kind: u16| {
-        events
-            .iter()
-            .filter(|event| {
-                event.kind == kind && event.pubkey == pubkey && event.validate_crypto().is_ok()
-            })
-            .max_by_key(|event| (event.created_at, event.id.clone()))
-    };
-    let mut profile = Profile::default();
-    if let Some(metadata) = newest(0)
-        && let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(&metadata.content)
-    {
+    let published = nostr::payto::published(pubkey, events);
+    let name = published.metadata.as_ref().and_then(|fields| {
         let text = |key: &str| {
             fields
                 .get(key)
                 .and_then(Value::as_str)
                 .and_then(|value| crate::wallet::plain_text(value, 60))
         };
-        profile.name = text("display_name").or_else(|| text("name"));
-        profile.lightning_address = fields
-            .get("lud16")
-            .and_then(Value::as_str)
-            .and_then(lightning_address);
+        text("display_name").or_else(|| text("name"))
+    });
+    Profile {
+        name,
+        spark: published.spark,
+        lightning_address: published.lightning_address,
     }
-    if let Some(targets) = newest(PAYMENT_TARGETS_KIND)
-        && let Ok(targets) = nostr::domain::open_payment_targets(targets)
-    {
-        profile.spark = targets
-            .iter()
-            .filter(|target| target.payment_type == SPARK_TYPE)
-            .find_map(|target| spark_address(&target.address));
-    }
-    profile
 }
 
 /// The tags of a new kind-10133 event: the targets already published, with

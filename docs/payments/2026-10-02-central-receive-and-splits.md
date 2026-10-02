@@ -281,6 +281,14 @@ raises an alert line on the pay host's log and appears on `/stats` as
 
 Only signed, verified events count, as on the phone.
 
+Implemented (#10189) as `pay_ledger::payee::resolve` and
+`Ledger::resolve_payee` (`crates/pay-ledger/src/payee.rs`). The shape rules
+and the newest-signed-event reading are shared with the phone in
+`crates/nostr/src/payto.rs`. A result is cached in `payee` with `source`
+(`release`, `nip-a3`, `profile`, `account`), `destination_kind` (`spark`,
+`lud16`, `node`), and `verified_at`; a party is re-resolved at most hourly,
+and a cached destination stays until a newer resolution replaces it.
+
 ### How payouts go out
 
 - **Batched per payee.** Shares accrue; a payout goes out when a payee's

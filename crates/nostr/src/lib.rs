@@ -35,6 +35,7 @@ pub mod nip04;
 pub mod nip17;
 pub mod nip19;
 pub mod nip44;
+pub mod payto;
 pub mod prg;
 pub mod private_artifact;
 pub mod profile;

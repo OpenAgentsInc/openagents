@@ -12,6 +12,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
+pub mod payee;
+
 pub const V1: &str = include_str!("../rules/v1.toml");
 pub const OPENAGENTS: &str = "openagents";
 pub type Result<T> = std::result::Result<T, Error>;
