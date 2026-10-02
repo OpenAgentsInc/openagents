@@ -1500,3 +1500,19 @@ to deploy"), and put live by moving the `chat` symlink from `abdebf0ba6`
 and restarting `coder-worker-chat`; the environment file and unit did not
 change, `coder-worker.service` and `/opt/coder-worker/current` were not
 touched, and `abdebf0ba6` stays in `releases/` for rollback.
+
+Release `fa12c8313d` (2026-10-02 UTC) makes "Help me make a plugin …" in a
+terminal the plugin-creation flow
+([#10177](https://github.com/OpenAgentsInc/openagents/issues/10177)): the
+route question's `eval.author` and `work.dispatch` rubrics moved the set to
+`chat-router-v4@60fb0f55d6ab`, and on a terminal turn from the computer
+Coder runs on, `eval.author` serves the flow's typed steps as the result's
+`plugin` field. It was built with `cargo zigbuild` on `coderos-4080` from a
+clean worktree of that commit, installed as
+`/opt/coder-worker/releases/fa12c8313d` with `knowledge/` and
+`codebase-kb.gz` copied from `155bf09d01`, checked with `--check` ("the
+configuration is safe to deploy"), and put live by moving the `chat`
+symlink and restarting `coder-worker-chat` (after `928c40bd5b` the same
+day); the environment file and unit did not change, `coder-worker.service`
+and `/opt/coder-worker/current` were not touched, and `155bf09d01` stays in
+`releases/` for rollback.
