@@ -21,8 +21,9 @@ or a labor marketplace as part of starting the relay.
 Use the pinned compiler from [rust-toolchain.toml](../../rust-toolchain.toml).
 The relay's database client currently uses `NoTls`; use the documented local
 or protected socket topology. Direct managed-Postgres TLS needs a separate
-adapter. Media bytes require persistent storage, so the Cloud Run procedure
-leaves media disabled.
+adapter. Media bytes require persistent storage; on Cloud Run they live in the
+`openagentsgemini-relay-media` bucket, mounted with Cloud Storage FUSE (see the
+Cloud Run runbook).
 
 ## Other services
 

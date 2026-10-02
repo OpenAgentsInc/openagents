@@ -77,8 +77,16 @@ and includes the same generation key in the private filename.
 
 The committed single-box deployment uses the filesystem adapter. A container
 must bind-mount a persistent writable media directory or leave media disabled.
-The Cloud Run path leaves M7 disabled because its ordinary writable filesystem
-is ephemeral.
+The Cloud Run path uses the mounted-cloud adapter: the public-read bucket
+`openagentsgemini-relay-media` is mounted with Cloud Storage FUSE at
+`NOSTR_RELAY_MEDIA_ROOT`, and `NOSTR_RELAY_MEDIA_CLOUD_BASE_URL` is
+`https://storage.googleapis.com/openagentsgemini-relay-media`. A FUSE rename
+on a flat bucket is a server-side copy then a delete, not an atomic rename,
+but the copy's object appears whole or not at all, and a blob is served only
+after its `ready` row commits, so a reader never sees a partial blob. The
+service runs one instance, so no two writers race on one temporary name. The
+`.tmp/` and `.deleted/` prefixes are public-readable objects in that bucket;
+they hold only bytes that were uploaded to be public.
 
 ## Deletion retention and backups
 

@@ -53,8 +53,12 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
 - **Suite files.** A released suite's files live in the public-read
   bucket `gs://openagentsgemini-eval-blobs`, read like a Blossom server at
   `https://storage.googleapis.com/openagentsgemini-eval-blobs/<sha256>`.
-  `relay.openagents.com` runs on Cloud Run with Blossom media off (media
-  needs persistent storage), so there's no relay-hosted store yet. The
+  This bucket predates the relay's own media: the relay's Cloud Run
+  service is configured to serve Blossom uploads (`PUT /upload` with a
+  NIP-98 authorization signed by the publisher's key) into
+  `gs://openagentsgemini-relay-media`, so a publisher needs no cloud
+  credentials (#10181); the Cloud Run runbook records when that revision
+  serves. The
   runner writes the bucket with `gcloud storage cp` as the service account
   `oa-eval-runner`, which may only create and read objects in that bucket;
   its key and gcloud configuration stay on the runner host. To check a

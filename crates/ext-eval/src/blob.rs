@@ -146,6 +146,15 @@ impl Blossom {
                 wait = (wait * 2).min(Duration::from_secs(30));
                 continue;
             }
+            if status == reqwest::StatusCode::METHOD_NOT_ALLOWED
+                || status == reqwest::StatusCode::NOT_FOUND
+            {
+                return Err(format!(
+                    "{} takes no uploads ({status}): it serves no Blossom media; \
+                     pass --blossom URL naming a Blossom server that does",
+                    self.base
+                ));
+            }
             let text = response.text().unwrap_or_default();
             return Err(format!(
                 "{} refused the upload ({status}): {}",
