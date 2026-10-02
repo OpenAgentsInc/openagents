@@ -11,7 +11,6 @@ use coder_terminal::components::run::RunRow;
 use coder_terminal::components::turn::Who;
 use coder_terminal::{ComposerAction, Editor, Intensity, Ladder, Scrollback, handle_key};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use openagents_chat::basic_chats::Summary;
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::client::{Event, Kind, Op, Start};
 use openagents_chat::coder_events::{self, CoderEvent, Line as CoderLine};
@@ -19,6 +18,7 @@ use openagents_chat::router::{Context, EngineState, Meta, Offer};
 use openagents_chat::tool_groups::Stretch;
 use ratatui::text::Line;
 
+use crate::picker::{Picked, Picker};
 use crate::rows::{self, Row};
 use crate::slash::{self, Draft, Slash};
 use crate::view::{FileView, RunView, Selection, Shown};
@@ -39,13 +39,8 @@ pub enum Phase {
 /// A list over the transcript.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Overlay {
-    /// The thread list, in the shared chat-list order. Typing narrows it
-    /// to the rows `query` finds; `selected` indexes the rows shown.
-    Threads {
-        rows: Vec<Summary>,
-        selected: usize,
-        query: String,
-    },
+    /// The thread picker (`/resume`, Ctrl+T).
+    Threads(Picker),
     /// The published plugins.
     Plugins {
         rows: Vec<crate::Plugin>,
@@ -76,8 +71,11 @@ pub enum Action {
     Open(String),
     /// Start a new thread.
     New,
-    /// Show the thread list.
+    /// Show the thread picker.
     Threads,
+    /// Open the thread `/resume ARG` names (an ID, an ID prefix, or a
+    /// title), else the picker narrowed to it.
+    Resume(String),
     /// Archive a thread, then show the list again.
     Archive(String),
     /// Save the thread as an ATIF trajectory.
@@ -455,49 +453,37 @@ impl App {
     }
 
     fn overlay_key(&mut self, key: &KeyEvent) -> Vec<Action> {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let Some(overlay) = &mut self.overlay else {
             return Vec::new();
         };
+        if let Overlay::Threads(picker) = overlay {
+            return match picker.key(key) {
+                Picked::Nothing => Vec::new(),
+                Picked::Close => {
+                    self.overlay = None;
+                    Vec::new()
+                }
+                Picked::Open(id) => {
+                    self.overlay = None;
+                    vec![Action::Open(id)]
+                }
+                Picked::New => {
+                    self.overlay = None;
+                    vec![Action::New]
+                }
+                Picked::Archive(id) => vec![Action::Archive(id)],
+                Picked::Copy(id) => {
+                    self.note("Copied the thread ID.");
+                    vec![Action::Copy(id)]
+                }
+            };
+        }
         if key.code == KeyCode::Esc {
             self.overlay = None;
             return Vec::new();
         }
         match overlay {
-            Overlay::Threads {
-                rows,
-                selected,
-                query,
-            } => {
-                let shown = shown_threads(rows, query);
-                let picked = shown.get(*selected).map(|row| row.id.clone());
-                let len = shown.len();
-                match (key.code, ctrl) {
-                    (KeyCode::Up, _) => *selected = selected.saturating_sub(1),
-                    (KeyCode::Down, _) => *selected = (*selected + 1).min(len.saturating_sub(1)),
-                    (KeyCode::Enter, _) => {
-                        self.overlay = None;
-                        return picked.map(Action::Open).into_iter().collect();
-                    }
-                    (KeyCode::Char('n'), true) => {
-                        self.overlay = None;
-                        return vec![Action::New];
-                    }
-                    (KeyCode::Char('a'), true) => {
-                        return picked.map(Action::Archive).into_iter().collect();
-                    }
-                    (KeyCode::Backspace, _) => {
-                        query.pop();
-                        *selected = 0;
-                    }
-                    (KeyCode::Char(c), false) => {
-                        query.push(c);
-                        *selected = 0;
-                    }
-                    _ => {}
-                }
-                Vec::new()
-            }
+            Overlay::Threads(_) => Vec::new(),
             Overlay::Plugins { rows, selected } => {
                 match key.code {
                     KeyCode::Up => *selected = selected.saturating_sub(1),
@@ -695,7 +681,8 @@ impl App {
             }
             Draft::Empty => Vec::new(),
             Draft::Unknown(word) => {
-                self.note(format!("{word} is not a command; /help lists them."));
+                self.note(format!("{word} is not a command."));
+                self.push(Row::Card(commands(&word)));
                 Vec::new()
             }
             Draft::Command(slash) => self.command(slash),
@@ -703,6 +690,8 @@ impl App {
                 self.open_delegation(number);
                 Vec::new()
             }
+            Draft::With(Slash::Resume, arg) => vec![Action::Resume(arg)],
+            Draft::With(slash, _) => self.command(slash),
             Draft::Message(text) => self.send(text),
         }
     }
@@ -710,7 +699,7 @@ impl App {
     fn command(&mut self, slash: Slash) -> Vec<Action> {
         match slash {
             Slash::New => vec![Action::New],
-            Slash::Threads => vec![Action::Threads],
+            Slash::Threads | Slash::Resume => vec![Action::Threads],
             Slash::Stop => {
                 let actions = self.stop();
                 if actions.is_empty() {
@@ -1444,16 +1433,43 @@ pub fn welcome(_backend: Kind, context: &Context, _resumed: Option<&str>) -> Car
     }
 }
 
-/// The `/help` card.
-/// The thread list's rows `query` finds, in list order.
-pub fn shown_threads<'a>(rows: &'a [Summary], query: &str) -> Vec<&'a Summary> {
-    openagents_chat_app::chat_list::search(rows, query)
+/// What an unknown `/word` shows: the commands that start as it does, or
+/// all of them when none do.
+pub fn commands(word: &str) -> Card {
+    let typed = word.trim_start_matches('/');
+    let mut matching: Vec<Slash> = Vec::new();
+    for end in (1..=typed.len()).rev() {
+        let Some(prefix) = typed.get(..end) else {
+            continue;
+        };
+        matching = Slash::ALL
+            .into_iter()
+            .filter(|slash| slash.word().starts_with(prefix))
+            .collect();
+        if !matching.is_empty() {
+            break;
+        }
+    }
+    if matching.is_empty() {
+        matching = Slash::ALL.to_vec();
+    }
+    Card {
+        title: "Commands".into(),
+        rows: matching
+            .into_iter()
+            .map(|slash| (slash.usage(), slash.about().to_owned()))
+            .collect(),
+        body: Vec::new(),
+        art: Vec::new(),
+        keys: Vec::new(),
+    }
 }
 
+/// The `/help` card.
 pub fn help() -> Card {
     let mut rows: Vec<(String, String)> = Slash::ALL
         .iter()
-        .map(|slash| (format!("/{}", slash.word()), slash.about().to_owned()))
+        .map(|slash| (slash.usage(), slash.about().to_owned()))
         .collect();
     rows.extend([
         (
@@ -1464,7 +1480,7 @@ pub fn help() -> Card {
             "Esc".to_owned(),
             "stop the reply, or stop the Coder run".to_owned(),
         ),
-        ("Ctrl+T".to_owned(), "threads".to_owned()),
+        ("Ctrl+T".to_owned(), "resume a thread".to_owned()),
         (
             "Ctrl+R".to_owned(),
             "the Coder run full screen; what you type there goes to the run".to_owned(),

@@ -189,11 +189,17 @@ fn slash_commands_are_a_closed_list_and_other_text_is_a_message() {
     assert_eq!(typed(&mut app, "/connect"), vec![Action::Connect]);
     assert_eq!(typed(&mut app, "/quit"), vec![Action::Quit]);
     assert!(typed(&mut app, "/frobnicate").is_empty());
-    assert!(shown(&mut app).contains("/frobnicate is not a command"));
+    let unknown = shown(&mut app);
+    assert!(
+        unknown.contains("/frobnicate is not a command"),
+        "{unknown}"
+    );
+    // Nothing starts as it does: every command shows.
+    assert!(unknown.contains("/threads"), "{unknown}");
     assert!(typed(&mut app, "/help").is_empty());
     let help = shown(&mut app);
     for slash in Slash::ALL {
-        assert!(help.contains(&format!("/{}", slash.word())), "{help}");
+        assert!(help.contains(&slash.usage()), "{help}");
     }
     let actions = typed(&mut app, "stop the build from failing");
     assert!(
@@ -319,51 +325,9 @@ fn a_send_while_a_reply_streams_waits_and_keeps_the_draft() {
     assert!(shown(&mut app).contains("Wait for this reply"));
 }
 
-#[test]
-fn the_thread_list_opens_starts_and_archives() {
-    let mut app = app();
-    let row = |id: &str, title: &str| Summary {
-        id: id.into(),
-        title: title.into(),
-        started: 1,
-        updated: 2,
-        coder: None,
-        archived: false,
-        pinned: false,
-        named: false,
-    };
-    app.overlay = Some(Overlay::Threads {
-        rows: vec![row("1", "one"), row("2", "two")],
-        selected: 0,
-        query: String::new(),
-    });
-    assert!(app.key(&key(KeyCode::Down), 80).is_empty());
-    assert_eq!(app.key(&ctrl('a'), 80), vec![Action::Archive("2".into())]);
-    assert_eq!(
-        app.key(&key(KeyCode::Enter), 80),
-        vec![Action::Open("2".into())]
-    );
-    assert!(app.overlay.is_none());
-    app.overlay = Some(Overlay::Threads {
-        rows: vec![row("1", "one")],
-        selected: 0,
-        query: String::new(),
-    });
-    assert_eq!(app.key(&ctrl('n'), 80), vec![Action::New]);
-    app.overlay = Some(Overlay::Threads {
-        rows: Vec::new(),
-        selected: 0,
-        query: String::new(),
-    });
-    assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
-    assert!(app.overlay.is_none());
-}
-
-#[test]
-fn typing_in_the_thread_list_searches_it() {
-    let mut app = app();
-    let row = |id: &str, title: &str, updated: u64| Summary {
-        id: id.into(),
+fn summary(id: &str, title: &str, updated: u64) -> openagents_chat::basic_chats::Summary {
+    openagents_chat::basic_chats::Summary {
+        id: id.repeat(32),
         title: title.into(),
         started: 1,
         updated,
@@ -371,39 +335,109 @@ fn typing_in_the_thread_list_searches_it() {
         archived: false,
         pinned: false,
         named: false,
-    };
-    app.overlay = Some(Overlay::Threads {
-        rows: vec![
-            row("1", "Fix the parser", 3),
-            row("2", "Lunch plans", 2),
-            row("3", "Parser docs", 1),
+    }
+}
+
+#[test]
+fn the_thread_picker_opens_starts_archives_and_copies() {
+    let mut app = app();
+    app.overlay = Some(Overlay::Threads(Picker::new(
+        vec![summary("1", "one", 3), summary("2", "two", 2)],
+        "demo",
+    )));
+    assert!(app.key(&key(KeyCode::Down), 80).is_empty());
+    assert_eq!(
+        app.key(&ctrl('a'), 80),
+        vec![Action::Archive("2".repeat(32))]
+    );
+    assert_eq!(
+        app.key(&key(KeyCode::Char('y')), 80),
+        vec![Action::Copy("2".repeat(32))]
+    );
+    assert_eq!(
+        app.key(&key(KeyCode::Enter), 80),
+        vec![Action::Open("2".repeat(32))]
+    );
+    assert!(app.overlay.is_none());
+    app.overlay = Some(Overlay::Threads(Picker::new(
+        vec![summary("1", "one", 1)],
+        "demo",
+    )));
+    assert_eq!(app.key(&ctrl('n'), 80), vec![Action::New]);
+    app.overlay = Some(Overlay::Threads(Picker::new(Vec::new(), "demo")));
+    assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
+    assert!(app.overlay.is_none());
+}
+
+#[test]
+fn typing_in_the_thread_picker_searches_it() {
+    let mut app = app();
+    app.overlay = Some(Overlay::Threads(Picker::new(
+        vec![
+            summary("1", "Fix the parser", 3),
+            summary("2", "Lunch plans", 2),
+            summary("3", "Parser docs", 1),
         ],
-        selected: 0,
-        query: String::new(),
-    });
+        "demo",
+    )));
     for c in "PARSE".chars() {
         assert!(app.key(&key(KeyCode::Char(c)), 80).is_empty());
     }
-    let Some(Overlay::Threads { rows, query, .. }) = &app.overlay else {
-        panic!("the list closed");
+    let Some(Overlay::Threads(picker)) = &app.overlay else {
+        panic!("the picker closed");
     };
-    assert_eq!(query, "PARSE");
-    let ids: Vec<&str> = shown_threads(rows, query)
+    assert_eq!(picker.query, "PARSE");
+    let titles: Vec<String> = picker
+        .entries()
         .iter()
-        .map(|row| row.id.as_str())
+        .filter_map(|entry| match entry {
+            crate::picker::Entry::Row(row) => Some(row.title.clone()),
+            crate::picker::Entry::Header(_) => None,
+        })
         .collect();
-    assert_eq!(ids, ["1", "3"]);
+    assert_eq!(titles, ["Fix the parser", "Parser docs"]);
+    // Down leaves the query for the list; Down again reaches the second.
     assert!(app.key(&key(KeyCode::Down), 80).is_empty());
     assert!(app.key(&key(KeyCode::Down), 80).is_empty());
-    assert_eq!(app.key(&ctrl('a'), 80), vec![Action::Archive("3".into())]);
-    for _ in 0..5 {
-        app.key(&key(KeyCode::Backspace), 80);
+    assert_eq!(
+        app.key(&ctrl('a'), 80),
+        vec![Action::Archive("3".repeat(32))]
+    );
+    // Esc clears the query, then closes.
+    assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
+    assert!(app.overlay.is_some());
+    for c in "lunch".chars() {
+        app.key(&key(KeyCode::Char(c)), 80);
     }
-    app.key(&key(KeyCode::Char('l')), 80);
     assert_eq!(
         app.key(&key(KeyCode::Enter), 80),
-        vec![Action::Open("2".into())]
+        vec![Action::Open("2".repeat(32))]
     );
+}
+
+#[test]
+fn resume_opens_the_picker_or_the_thread_it_names() {
+    let mut app = app();
+    assert_eq!(typed(&mut app, "/resume"), vec![Action::Threads]);
+    assert_eq!(app.key(&ctrl('t'), 80), vec![Action::Threads]);
+    assert_eq!(
+        typed(&mut app, "/resume Fix the parser"),
+        vec![Action::Resume("Fix the parser".into())]
+    );
+    assert_eq!(
+        typed(&mut app, "/resume 0a1b"),
+        vec![Action::Resume("0a1b".into())]
+    );
+}
+
+#[test]
+fn an_unknown_command_says_so_and_lists_the_ones_like_it() {
+    let mut app = app();
+    assert!(typed(&mut app, "/resum").is_empty());
+    let text = shown(&mut app);
+    assert!(text.contains("/resum is not a command."), "{text}");
+    assert!(text.contains("/resume [ID or title]"), "{text}");
+    assert!(!text.contains("/threads"), "{text}");
 }
 
 #[test]

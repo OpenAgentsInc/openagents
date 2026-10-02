@@ -47,6 +47,7 @@ fn terminal_help_names_its_options() {
     assert!(stdout.starts_with("usage: openagents terminal"), "{stdout}");
     assert!(stdout.contains("--thread"), "{stdout}");
     assert!(stdout.contains("--scratch"), "{stdout}");
+    assert!(stdout.contains("--resume [ID|TITLE]"), "{stdout}");
 }
 
 #[test]
@@ -70,6 +71,22 @@ fn a_bad_thread_is_a_usage_error() {
     assert_eq!(output.status.code(), Some(64));
     let output = openagents(home.path(), &["terminal", "--colour"]);
     assert_eq!(output.status.code(), Some(64));
+    // `--resume` goes alone; only it takes words after it.
+    for args in [
+        &["terminal", "--resume", "--continue"][..],
+        &[
+            "terminal",
+            "--resume",
+            "x",
+            "--thread",
+            "0123456789abcdef0123456789abcdef",
+        ],
+        &["terminal", "--resume", "--scratch"],
+        &["terminal", "stray"],
+    ] {
+        let output = openagents(home.path(), args);
+        assert_eq!(output.status.code(), Some(64), "{args:?}");
+    }
 }
 
 /// OpenAgents Terminal in a real pseudo-terminal, from a stand-in home

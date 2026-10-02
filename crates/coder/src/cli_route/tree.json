@@ -3501,6 +3501,14 @@
                 "open": true,
                 "optional": true,
                 "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "resume",
+                "value": "ID|TITLE",
+                "open": true,
+                "optional": true,
+                "repeated": true
               }
             ]
           }
@@ -3514,6 +3522,14 @@
           "kind": "option",
           "name": "computer",
           "value": "HOST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "resume",
+          "value": "ID|TITLE",
           "open": true,
           "optional": true,
           "repeated": true

@@ -157,36 +157,11 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     }
 
     if let Some(overlay) = &app.overlay {
-        let (title, items, selected, hint, empty) = match overlay {
-            Overlay::Threads {
-                rows,
-                selected,
-                query,
-            } => (
-                if query.is_empty() {
-                    "Threads".to_owned()
-                } else {
-                    format!("Threads · {query}")
-                },
-                crate::app::shown_threads(rows, query)
-                    .into_iter()
-                    .map(|row| Item {
-                        label: if row.title.trim().is_empty() {
-                            "New thread".to_owned()
-                        } else {
-                            row.title.clone()
-                        },
-                        detail: detail(row, &app.thread),
-                    })
-                    .collect::<Vec<_>>(),
-                *selected,
-                "Type to search · Enter open · Ctrl+N new · Ctrl+A archive · Esc close",
-                if query.is_empty() {
-                    "No threads yet. Press Ctrl+N for a new one."
-                } else {
-                    "No threads match."
-                },
-            ),
+        let (title, items, selected, hint, empty): (String, Vec<Item>, _, _, _) = match overlay {
+            Overlay::Threads(picker) => {
+                picker.render(area, buf, ladder, &app.thread, now());
+                return caret;
+            }
             Overlay::Plugins { rows, selected } => (
                 "Plugins".to_owned(),
                 rows.iter()
@@ -288,55 +263,8 @@ fn draw_file(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     (area.x, area.y)
 }
 
-/// A thread row's detail: open now, Coder, archived, and when.
-fn detail(row: &openagents_chat::basic_chats::Summary, open: &str) -> String {
-    let mut parts = Vec::new();
-    if row.id == open {
-        parts.push("open".to_owned());
-    }
-    if row.pinned {
-        parts.push("pinned".to_owned());
-    }
-    if let Some(coder) = &row.coder {
-        parts.push(match &coder.project {
-            Some(project) => format!("Coder in {project}"),
-            None => "Coder".to_owned(),
-        });
-    }
-    if row.archived {
-        parts.push("archived".to_owned());
-    }
-    parts.push(ago(row.updated, now()));
-    parts.join(" · ")
-}
-
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs())
-}
-
-/// "just now", "5m ago", "3h ago", "2d ago".
-pub fn ago(then: u64, now: u64) -> String {
-    let seconds = now.saturating_sub(then);
-    match seconds {
-        0..60 => "just now".into(),
-        60..3_600 => format!("{}m ago", seconds / 60),
-        3_600..86_400 => format!("{}h ago", seconds / 3_600),
-        _ => format!("{}d ago", seconds / 86_400),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ages_read_plainly() {
-        assert_eq!(ago(100, 130), "just now");
-        assert_eq!(ago(0, 300), "5m ago");
-        assert_eq!(ago(0, 3 * 3_600), "3h ago");
-        assert_eq!(ago(0, 2 * 86_400 + 5), "2d ago");
-        assert_eq!(ago(500, 100), "just now");
-    }
 }

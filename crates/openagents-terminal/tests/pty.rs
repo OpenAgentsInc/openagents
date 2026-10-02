@@ -807,11 +807,43 @@ fn the_screen_end_to_end() {
         &["You asked: is it still raining", "ready"],
     );
 
-    // The thread list resumes the first thread: its turns and its run.
+    // An unknown command says so and lists the ones like it.
+    session.typed("/resum");
+    session.wait(
+        "the unknown command",
+        &["/resum is not a command.", "/resume [ID or title]"],
+    );
+
+    // Ctrl+T opens the same picker /resume does; Esc closes it.
     session.send(b"\x14");
-    let list = session.wait("the thread list", &["Threads", "Coder in", "Enter open"]);
+    let list = session.wait(
+        "the thread picker",
+        &[
+            "Resume thread",
+            "/ to search",
+            " demo ─",
+            " Chats ─",
+            "Enter select",
+        ],
+    );
     assert!(list.contains("open"), "{list}");
-    session.send(b"\x1b[B");
+    session.send(b"\x1b");
+
+    // `/resume` with words nothing matches opens the picker narrowed to
+    // them; Esc clears them, and Esc again closes it.
+    session.typed("/resume zzzz");
+    session.wait(
+        "the picker narrowed",
+        &["search: zzzz", "No threads match."],
+    );
+    session.send(b"\x1b");
+    session.wait("the query cleared", &["/ to search", " demo ─"]);
+    session.send(b"\x1b");
+
+    // `/resume` resumes the first thread, the first row under this
+    // folder's project: its turns and its run.
+    session.typed("/resume");
+    session.wait("the picker", &["Resume thread", " demo ─"]);
     session.send(b"\r");
     let resumed = session.wait(
         "the first thread again",

@@ -30,11 +30,12 @@ use crate::{Args, Output, runtime};
 
 pub(crate) const USAGE: &str =
     "usage: openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
-                          [--computer HOST]
+                          [--computer HOST] [--resume [ID|TITLE]]
 OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
 Type a message and press Enter. It opens on a new thread; --continue opens
 the last thread you had open in this folder, --thread ID opens that thread,
-and Ctrl+T lists them all. When
+--resume ID|TITLE opens the thread an ID, ID prefix, or title names (bare
+--resume is --continue), and /resume or Ctrl+T lists them all. When
 this computer's host runs, the threads are the desktop app's threads;
 --socket names another control socket and --local skips the host. --scratch
 uses a throwaway identity and thread store; reopen that thread with
@@ -50,9 +51,10 @@ command opens this screen when it runs on a terminal.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::LongRunning)];
 
-const OPTIONS: &[&str] = &["thread", "socket", "computer"];
+const OPTIONS: &[&str] = &["thread", "socket", "computer", "resume"];
 // `--new` is the default now and still accepted.
-const SWITCHES: &[&str] = &["scratch", "local", "new", "continue"];
+// `--resume` takes an optional value: the words after it.
+const SWITCHES: &[&str] = &["scratch", "local", "new", "continue", "resume"];
 
 /// How a Coder question is answered in the screen.
 const ANSWER_HINT: &str = "Type your answer and press Enter.";
@@ -79,7 +81,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     {
         return output.usage("terminal", &format!("unknown option `--{name}`"), USAGE);
     }
-    if let Some(word) = args.positional().first() {
+    let find = match args.option("resume") {
+        Some(value) => Some(value.to_owned()),
+        None => args.switch("resume").then(|| args.positional().join(" ")),
+    };
+    if !args.switch("resume")
+        && let Some(word) = args.positional().first()
+    {
         return output.usage("terminal", &format!("unexpected argument `{word}`"), USAGE);
     }
     let thread = args.option("thread").map(str::to_owned);
@@ -102,6 +110,18 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     if args.switch("new") && args.switch("continue") {
         return output.usage("terminal", "--new and --continue do not go together", USAGE);
     }
+    if find.is_some()
+        && (thread.is_some()
+            || args.switch("new")
+            || args.switch("continue")
+            || args.switch("scratch"))
+    {
+        return output.usage(
+            "terminal",
+            "--resume goes without --thread, --new, --continue, or --scratch",
+            USAGE,
+        );
+    }
     let computer = args.option("computer").map(str::to_owned);
     if computer.is_some()
         && (args.switch("scratch") || args.switch("local") || args.option("socket").is_some())
@@ -122,7 +142,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         (true, Some(id)) => (Some(id.clone()), false, Resume::Thread(id)),
         (false, Some(id)) => (Some(id.clone()), false, Resume::Thread(id)),
         (false, None) if args.switch("continue") => (None, false, Resume::LastForFolder),
-        (false, None) => (None, false, Resume::New(None)),
+        (false, None) => match find {
+            Some(arg) if arg.trim().is_empty() => (None, false, Resume::LastForFolder),
+            Some(arg) => (None, false, Resume::Find(arg)),
+            None => (None, false, Resume::New(None)),
+        },
     };
     let place = if scratch {
         Place::Scratch

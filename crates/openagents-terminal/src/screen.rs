@@ -27,6 +27,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::app::{Action, App, Overlay, Phase};
+use crate::picker::Picker;
 use crate::rows::Row;
 use crate::{Exit, Extras, Interrupter, Invite, Launch, Resume, last, prompts};
 
@@ -39,6 +40,8 @@ const PAIR_POLL: Duration = Duration::from_secs(1);
 const TICK: Duration = coder_terminal::grok_spinner::TICK;
 /// How often the screen looks for a background rule's notification.
 const NOTICE_POLL: Duration = Duration::from_secs(30);
+/// The most threads the picker lists.
+const THREADS_MAX: usize = 200;
 
 /// What a piece of work off the loop sends back.
 enum Done {
@@ -105,6 +108,7 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
         notices,
         version,
     } = launch;
+    let mut find = None;
     let (thread, fresh) = match resume {
         Resume::Thread(id) => (id, false),
         Resume::New(Some(id)) => (id, true),
@@ -118,6 +122,13 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
                 _ => (client::new_id(), true),
             }
         }
+        Resume::Find(arg) => match found(&mut client, &arg).await {
+            Some(id) => (id, false),
+            None => {
+                find = Some(arg);
+                (client::new_id(), true)
+            }
+        },
     };
     let store = client.store(&thread);
     let context = {
@@ -169,9 +180,11 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
     };
     if !fresh {
         screen.open(thread, false).await;
+    } else if let Some(arg) = find {
+        screen.threads(None, &arg).await;
     } else if screen.app.computer.is_some() {
         // Another computer's threads start there: open one of them.
-        screen.threads(None, String::new()).await;
+        screen.threads(None, "").await;
     }
     (screen, receiver)
 }
@@ -445,19 +458,26 @@ impl Screen {
                 self.app.switch(id, true);
                 self.app.note("New thread. Type a message to start it.");
             }
-            Action::Threads => self.threads(None, String::new()).await,
+            Action::Threads => self.threads(None, "").await,
+            Action::Resume(arg) => {
+                let Some(client) = self.client.as_mut() else {
+                    return;
+                };
+                match found(client, &arg).await {
+                    Some(id) => self.open(id, true).await,
+                    None => self.threads(None, &arg).await,
+                }
+            }
             Action::Archive(id) => {
                 let result = self.apply(Command::Archive { chat: id }).await;
-                let (selected, query) = match &self.app.overlay {
-                    Some(Overlay::Threads {
-                        selected, query, ..
-                    }) => (*selected, query.clone()),
-                    _ => (0, String::new()),
+                let before = match self.app.overlay.take() {
+                    Some(Overlay::Threads(picker)) => Some(picker),
+                    _ => None,
                 };
                 if let Err(message) = result {
                     self.app.loud(message);
                 }
-                self.threads(Some(selected), query).await;
+                self.threads(before, "").await;
             }
             Action::Export => self.export().await,
             _ => {}
@@ -553,32 +573,31 @@ impl Screen {
         }
     }
 
-    /// Show the thread list, newest first in the shared order, narrowed
-    /// to `query`.
-    async fn threads(&mut self, selected: Option<usize>, query: String) {
+    /// Show the thread picker narrowed to `query`, or as `before` was
+    /// (its query, its place, its open rows) over the threads read again.
+    async fn threads(&mut self, before: Option<Picker>, query: &str) {
         let Some(client) = self.client.as_mut() else {
             return;
         };
-        match client.threads(true, 200).await {
+        match client.threads(true, THREADS_MAX).await {
             Ok((rows, _)) => {
-                let ordered: Vec<_> = openagents_chat_app::chat_list::search(&rows, "")
-                    .into_iter()
-                    .cloned()
-                    .collect();
-                let shown = crate::app::shown_threads(&ordered, &query);
-                let selected = selected
-                    .unwrap_or_else(|| {
-                        shown
-                            .iter()
-                            .position(|row| row.id == self.app.thread)
-                            .unwrap_or(0)
-                    })
-                    .min(shown.len().saturating_sub(1));
-                self.app.overlay = Some(Overlay::Threads {
-                    rows: ordered,
-                    selected,
-                    query,
-                });
+                let fresh = Picker::new(rows, &self.app.folder);
+                let picker = match before {
+                    Some(before) => {
+                        let len = fresh.entries().len();
+                        Picker {
+                            selected: before.selected.min(len.saturating_sub(1)),
+                            query: before.query,
+                            search: before.search,
+                            hidden: before.hidden,
+                            expanded: before.expanded,
+                            ..fresh
+                        }
+                    }
+                    None if query.is_empty() => fresh,
+                    None => fresh.with_query(query),
+                };
+                self.app.overlay = Some(Overlay::Threads(picker));
             }
             Err(error) => self.app.loud(error.message().to_owned()),
         }
@@ -769,6 +788,17 @@ impl Screen {
             let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
         }
     }
+}
+
+/// The thread `arg` names (`/resume ARG`, `--resume ARG`): a whole ID
+/// that opens, else one the picker's rules find among the threads.
+async fn found(client: &mut Client, arg: &str) -> Option<String> {
+    let arg = arg.trim();
+    if client::thread_id(arg) && client.collect(arg).await.is_ok() {
+        return Some(arg.to_owned());
+    }
+    let (rows, _) = client.threads(true, THREADS_MAX).await.ok()?;
+    crate::picker::resolve(&rows, arg).map(|row| row.id.clone())
 }
 
 fn now() -> u64 {

@@ -2,15 +2,16 @@
 //! of what the person types.
 //!
 //! A draft is a command only when it is exactly `/word`, a slash and
-//! lowercase letters with nothing after them, or `/open` and a number.
-//! Everything else, including
-//! text that merely starts with a slash (`/usr/bin is missing`), goes to the
-//! chat router. Nothing here reads the words of a message.
+//! lowercase letters with nothing after them, `/open` and a number, or
+//! `/resume` and what follows it. Everything else, including text that
+//! merely starts with a slash (`/usr/bin is missing`), goes to the chat
+//! router. Nothing here reads the words of a message.
 
 /// One slash command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slash {
     New,
+    Resume,
     Threads,
     Stop,
     Export,
@@ -28,8 +29,9 @@ pub enum Slash {
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 14] = [
+    pub const ALL: [Slash; 15] = [
         Slash::New,
+        Slash::Resume,
         Slash::Threads,
         Slash::Stop,
         Slash::Export,
@@ -49,6 +51,7 @@ impl Slash {
     pub const fn word(self) -> &'static str {
         match self {
             Slash::New => "new",
+            Slash::Resume => "resume",
             Slash::Threads => "threads",
             Slash::Stop => "stop",
             Slash::Export => "export",
@@ -65,10 +68,27 @@ impl Slash {
         }
     }
 
+    /// The argument it takes after its word, if any.
+    pub const fn argument(self) -> Option<&'static str> {
+        match self {
+            Slash::Resume => Some("[ID or title]"),
+            _ => None,
+        }
+    }
+
+    /// How `/help` writes it: `/word`, and its argument.
+    pub fn usage(self) -> String {
+        match self.argument() {
+            Some(argument) => format!("/{} {argument}", self.word()),
+            None => format!("/{}", self.word()),
+        }
+    }
+
     /// What it does, for `/help`.
     pub const fn about(self) -> &'static str {
         match self {
             Slash::New => "start a new thread",
+            Slash::Resume => "pick a thread to open; /resume ID or title opens that one",
             Slash::Threads => "list threads to open, start, or archive (Ctrl+T)",
             Slash::Stop => "stop the reply or the Coder run (Esc)",
             Slash::Export => "save this thread as an ATIF trajectory file",
@@ -99,6 +119,8 @@ pub enum Draft {
     Command(Slash),
     /// `/open` and a run's number.
     Open(usize),
+    /// A slash command with its argument (`/resume ID`).
+    With(Slash, String),
     /// `/word` that names no command.
     Unknown(String),
     /// Nothing to send.
@@ -111,11 +133,19 @@ pub fn parse(draft: &str) -> Draft {
     if text.is_empty() {
         return Draft::Empty;
     }
-    // The one command that takes an argument: `/open` and a number.
+    // `/open` takes a number.
     if let Some(number) = text.strip_prefix("/open ")
         && let Ok(number) = number.trim().parse::<usize>()
     {
         return Draft::Open(number);
+    }
+    if let Some(rest) = text.strip_prefix('/')
+        && let Some((word, argument)) = rest.split_once(char::is_whitespace)
+        && let Some(slash) = Slash::ALL
+            .into_iter()
+            .find(|slash| slash.argument().is_some() && slash.word() == word)
+    {
+        return Draft::With(slash, argument.trim().to_owned());
     }
     if let Some(word) = text.strip_prefix('/')
         && !word.is_empty()
@@ -146,6 +176,7 @@ mod tests {
         assert_eq!(parse("/open 2"), Draft::Open(2));
         assert_eq!(parse(" /open  12 "), Draft::Open(12));
         assert_eq!(parse("/open two"), Draft::Message("/open two".into()));
+        assert_eq!(parse("/resum"), Draft::Unknown("/resum".into()));
         assert_eq!(parse(""), Draft::Empty);
         assert_eq!(parse("   "), Draft::Empty);
     }
@@ -163,6 +194,20 @@ mod tests {
         ] {
             assert_eq!(parse(text), Draft::Message(text.into()), "{text}");
         }
+    }
+
+    #[test]
+    fn resume_takes_an_id_or_a_title() {
+        assert_eq!(parse("/resume"), Draft::Command(Slash::Resume));
+        assert_eq!(
+            parse(" /resume  Fix the parser "),
+            Draft::With(Slash::Resume, "Fix the parser".into())
+        );
+        assert_eq!(
+            parse("/resume 0a1b"),
+            Draft::With(Slash::Resume, "0a1b".into())
+        );
+        assert_eq!(Slash::Resume.usage(), "/resume [ID or title]");
     }
 
     #[test]

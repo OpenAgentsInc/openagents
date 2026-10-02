@@ -66,13 +66,17 @@ How a release is built and published: [docs/release/terminal.md](../release/term
 openagents terminal          # or bare `openagents` on a terminal
 openagents terminal --thread ID
 openagents terminal --continue
+openagents terminal --resume [ID|TITLE]
 openagents terminal --scratch
 ```
 
 - Bare `openagents` opens the screen when it runs on a terminal. Piped, or
   with `--json`, it prints the usage as before.
 - It opens on a new thread. `--continue` opens the last thread you had open
-  in this folder, `--thread ID` opens that thread, and Ctrl+T lists them.
+  in this folder, `--thread ID` opens that thread, `--resume ID|TITLE` opens
+  the thread an ID, ID prefix, or title names (bare `--resume` is
+  `--continue`; with no single match the picker opens on what you asked),
+  and `/resume` or Ctrl+T lists them.
 - `--scratch` uses a throwaway identity and thread store in the system
   temporary directory, for trying it out and for tests. Reopen that thread
   with `--scratch --thread ID`.
@@ -142,7 +146,7 @@ it.
 | Enter | Send. On an empty line, start the Coder run OpenAgents offered. |
 | Option+Enter (Alt+Enter on Linux), Ctrl+J | A new line in the message. |
 | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
-| Ctrl+T | The thread list. |
+| Ctrl+T | The thread picker, as `/resume`. |
 | Ctrl+R | The thread's Coder run full screen (below). Esc or Ctrl+R goes back. |
 | Ctrl+Y | Copy the last reply. Press again for each code block in it, last first. It copies through the terminal (OSC 52), so it works over SSH; in tmux, `set-clipboard on`. |
 | Ctrl+O | Expand every Coder run's tool calls to each call and its output, and each run result's changed files to their diffs, or condense them again. |
@@ -159,13 +163,16 @@ Ctrl+K, Ctrl+U, and Alt+B and Alt+F.
 
 ## Slash commands
 
-A message that is exactly one of these words is a command. Anything else,
-including text that only starts with a slash, goes to OpenAgents.
+A message that is exactly one of these words is a command, and `/resume`
+also takes what follows it. Anything else, including text that only starts
+with a slash, goes to OpenAgents. An unknown `/word` says so and lists the
+commands that start as it does.
 
 | Command | Does |
 | --- | --- |
 | `/new` | Start a new thread. |
-| `/threads` | List threads to open, start, or archive (also Ctrl+T). |
+| `/resume [ID or title]` | Pick a thread to open: its turns, then its Coder run. With an ID, ID prefix, or title, open that thread; with no single match, the picker opens narrowed to it. |
+| `/threads` | The same picker (also Ctrl+T). |
 | `/stop` | Stop the reply or the Coder run (also Esc). |
 | `/export` | Save this thread as an ATIF trajectory under the chat home's `exports/`. |
 | `/settings` | Turn on or off when Coder starts at once and which coding agents it may use; Enter or Space changes the selected one and saves it. |
@@ -235,12 +242,20 @@ Esc closes it. A click on anything that is not a file here does nothing.
 
 ## Threads
 
-Ctrl+T or `/threads` lists threads in the same order as the desktop sidebar
-and the phone: pinned first, then newest first, then archived. Typing
-narrows it to threads whose title or project matches, Backspace widens it.
-Enter opens one, Ctrl+N starts a new one, Ctrl+A archives the selected one,
-and Esc closes the list. Opening a thread while a run streams stops following it; the run keeps
-going.
+`/resume`, Ctrl+T, and `/threads` open one picker, ported from Grok Build's
+`/resume` session picker. Threads sit under a header per Coder project, this
+folder's first, then chats with no project, then the rest alphabetically;
+within each, the desktop sidebar's order: pinned, newest first, archived.
+Each row is the title, what it is (open, pinned, Coder, archived), and how
+long ago it changed. Typing (or `/` first) searches titles, projects, and ID
+prefixes and expands every row it finds to its ID, project, Coder task,
+host, and times; Up from the first row also reaches the search. Up, Down, j,
+k move; Enter opens the thread with its turns and its Coder run; `e` or
+Right expands a row, `E` or Left folds it; `y` copies its ID; Ctrl+N starts
+a new thread; Ctrl+A archives the selected one. Esc leaves the search, then
+clears it, then closes. A whole ID typed with no row found opens that
+thread. Opening a thread while a run streams stops following it; the run
+keeps going.
 
 ## Sync with your phone, and pairing
 

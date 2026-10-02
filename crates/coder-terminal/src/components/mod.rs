@@ -50,7 +50,7 @@ pub(crate) fn indent_at(width: usize) -> usize {
 }
 
 /// The display width of `text` in cells.
-pub(crate) fn cells(text: &str) -> usize {
+pub fn cells(text: &str) -> usize {
     text.width()
 }
 
@@ -114,7 +114,7 @@ pub(crate) fn cut(text: &str, width: usize) -> String {
 
 /// `text` clipped to `width` cells, its last visible cell an ellipsis when
 /// anything was cut.
-pub(crate) fn clip(text: &str, width: usize) -> String {
+pub fn clip(text: &str, width: usize) -> String {
     if cells(text) <= width {
         return text.to_owned();
     }
@@ -128,7 +128,7 @@ pub(crate) fn clip(text: &str, width: usize) -> String {
 
 /// Tabs become spaces and other control characters drop, so a row's width
 /// is the width the terminal will draw.
-pub(crate) fn sanitize(text: &str) -> String {
+pub fn sanitize(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {

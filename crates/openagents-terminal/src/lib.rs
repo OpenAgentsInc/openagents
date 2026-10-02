@@ -35,6 +35,7 @@ pub mod app;
 pub mod copy;
 pub mod draw;
 pub mod last;
+pub mod picker;
 pub mod prompts;
 pub mod rail;
 pub mod rows;
@@ -258,6 +259,9 @@ pub enum Resume {
     Thread(String),
     /// The last thread the screen had open in this folder, else a new one.
     LastForFolder,
+    /// The thread an ID, ID prefix, or title names (`--resume ARG`), else
+    /// a new one with the picker open on what was asked.
+    Find(String),
     /// A new thread; `Some` fixes its ID (a scratch store's own thread).
     New(Option<String>),
 }
