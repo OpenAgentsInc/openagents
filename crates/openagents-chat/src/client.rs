@@ -337,10 +337,29 @@ pub trait Coder: Send + Sync {
     /// # Errors
     /// Why it did not continue.
     fn answer(&self, store: &Path, task: &str, text: &str) -> Result<usize, String>;
+    /// Send `text` to the task while it works (steering): the running turn
+    /// reads it at its next step, or, when the turn has ended or its engine
+    /// reads instructions only as a turn starts, the next turn starts with
+    /// it.
+    ///
+    /// # Errors
+    /// Why it could not be sent.
+    fn steer(&self, _store: &Path, _task: &str, _text: &str) -> Result<Steering, String> {
+        Err("Coder cannot take a message while it works here.".into())
+    }
     /// What the task's last turn did, once it ended (#10094).
     fn result(&self, store: &Path, task: &str) -> Option<CoderRun>;
     /// Every turn's ATIF trajectory the store holds, for an export.
     fn trajectories(&self, store: &Path, task: &str) -> Vec<Value>;
+}
+
+/// Where a message sent to a working run went ([`Coder::steer`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Steering {
+    /// The running turn reads it at its next step.
+    NextStep,
+    /// It starts this turn.
+    NextTurn(usize),
 }
 
 /// No Coder on this computer: nothing starts, and the router is told so.
@@ -514,8 +533,8 @@ pub enum Start {
     Now,
 }
 
-/// Stops one thread's Coder task from outside the operation following it
-/// ([`Client::stopper`]).
+/// Stops one thread's Coder task, or sends it a message, from outside the
+/// operation following it ([`Client::stopper`]).
 #[derive(Clone)]
 pub struct Stopper {
     coder: Arc<dyn Coder>,
@@ -531,6 +550,14 @@ impl Stopper {
         self.coder
             .stop(&self.store, task)
             .map(|()| format!("Asked Coder to stop task {task}. Its turn ends as stopped."))
+    }
+
+    /// Send `text` to `task` while it works ([`Coder::steer`]). Blocking.
+    ///
+    /// # Errors
+    /// Why it could not be sent.
+    pub fn steer(&self, task: &str, text: &str) -> Result<Steering, String> {
+        self.coder.steer(&self.store, task, text)
     }
 }
 
@@ -1751,7 +1778,8 @@ fn asked_of(turns: &[Turn]) -> (String, String) {
     (turns[last].text.clone(), earlier)
 }
 
-fn turn_of(event: &CoderEvent) -> usize {
+/// The turn an event belongs to.
+pub fn turn_of(event: &CoderEvent) -> usize {
     match event {
         CoderEvent::CoderStarted(e) => e.turn,
         CoderEvent::Step(e) => e.turn,

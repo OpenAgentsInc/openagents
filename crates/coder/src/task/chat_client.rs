@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use openagents_chat::client::{
     BoxFuture, Coder, Dial, Follow, Host, Issue, IssueStarted, Migration, Progress, Started,
+    Steering,
 };
 use openagents_chat::coder_events::{Line, Runner};
 use openagents_chat::router::{Caller, CoderRun, Context};
@@ -146,6 +147,15 @@ impl Coder for Here {
     fn answer(&self, store: &Path, task: &str, text: &str) -> Result<usize, String> {
         let record = Self::runner(store).answer(task, text)?;
         Ok(record.turns.last().map_or(1, |start| start.turn))
+    }
+
+    fn steer(&self, store: &Path, task: &str, text: &str) -> Result<Steering, String> {
+        Ok(match Self::runner(store).steer(task, text)? {
+            local::Steered::NextStep => Steering::NextStep,
+            local::Steered::NextTurn(record) => {
+                Steering::NextTurn(record.turns.last().map_or(1, |start| start.turn))
+            }
+        })
     }
 
     fn result(&self, store: &Path, task: &str) -> Option<CoderRun> {
