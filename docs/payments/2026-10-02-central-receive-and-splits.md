@@ -1,6 +1,7 @@
 # Central receive, splits, payouts, and the live flow view
 
-Design, 2026-10-02. Nothing here is implemented yet. Umbrella issue and the
+Design, 2026-10-02. Nothing here is implemented yet. Umbrella issue
+[#10200](https://github.com/OpenAgentsInc/openagents/issues/10200); the
 per-piece issues are listed in [section 11](#11-issues).
 
 ## The owner's direction (verbatim, 2026-10-02)
@@ -466,25 +467,25 @@ steps 4 and 6 are owner taps; everything else is agent work.
 
 ## 11. Issues
 
-Created in dependency order; numbers are on the umbrella issue.
+Created in dependency order. Umbrella: [#10200](https://github.com/OpenAgentsInc/openagents/issues/10200). Coder-sized issues carry the `coder-sized` label (`openagents chat work --issues coder-sized`).
 
-| Id | Piece | Coder-sized |
-| --- | --- | --- |
-| R1 | Central receiver: pay host, `crates/wallet --lsp mdk` on mainnet, seed in Secret Manager, systemd unit, backups, LSPS4 first-receive check | No (operations) |
-| R2 | Multi-route x402 front `openagents pay serve`: one wallet, one replay store, route table, settlement hook | No |
-| R3 | `crates/pay-ledger`: settlements, shares, versioned rules, invariants | Yes |
-| R4 | NIP-EXT G9: `fee_msat` and `payout` (Spark address, Lightning address, node key) in releases | Yes |
-| R5 | Payout destination resolver | Yes |
-| R6 | Payout worker: batching, Lightning-address and Spark rails, restart-safe states | No |
-| R7 | Reconciliation job and report | Yes |
-| R8 | Launch bonus (rule `v1` bonus section) | Yes |
-| R9 | Paid plugin invocation `POST /v1/plugins/{id}/invoke` | No |
-| R10 | Author-hosted resources through the central receiver | No |
-| R11 | Flow event stream and stats JSON | Yes |
-| R12 | `openagents.com/stats` page | Yes |
-| R13 | `openagents.com/live` canvas view | No |
-| R14 | Desktop deck scene `routes-live` | No |
-| R15 | End-to-end demo with real money | No (owner taps) |
+| Id | Issue | Piece | Coder-sized |
+| --- | --- | --- | --- |
+| R1 | [#10185](https://github.com/OpenAgentsInc/openagents/issues/10185) | Central receiver: pay host, `crates/wallet --lsp mdk` on mainnet, seed in Secret Manager, systemd unit, backups, LSPS4 first-receive check | No (operations) |
+| R2 | [#10186](https://github.com/OpenAgentsInc/openagents/issues/10186) | Multi-route x402 front `openagents pay serve`: one wallet, one replay store, route table, settlement hook | No |
+| R3 | [#10187](https://github.com/OpenAgentsInc/openagents/issues/10187) | `crates/pay-ledger`: settlements, shares, versioned rules, invariants | Yes |
+| R4 | [#10188](https://github.com/OpenAgentsInc/openagents/issues/10188) | NIP-EXT G9: `fee_msat` and `payout` (Spark address, Lightning address, node key) in releases | Yes |
+| R5 | [#10189](https://github.com/OpenAgentsInc/openagents/issues/10189) | Payout destination resolver | Yes |
+| R6 | [#10190](https://github.com/OpenAgentsInc/openagents/issues/10190) | Payout worker: batching, Lightning-address and Spark rails, restart-safe states | No |
+| R7 | [#10191](https://github.com/OpenAgentsInc/openagents/issues/10191) | Reconciliation job and report | Yes |
+| R8 | [#10192](https://github.com/OpenAgentsInc/openagents/issues/10192) | Launch bonus (rule `v1` bonus section) | Yes |
+| R9 | [#10193](https://github.com/OpenAgentsInc/openagents/issues/10193) | Paid plugin invocation `POST /v1/plugins/{id}/invoke` | No |
+| R10 | [#10194](https://github.com/OpenAgentsInc/openagents/issues/10194) | Author-hosted resources through the central receiver | No |
+| R11 | [#10195](https://github.com/OpenAgentsInc/openagents/issues/10195) | Flow event stream and stats JSON | Yes |
+| R12 | [#10196](https://github.com/OpenAgentsInc/openagents/issues/10196) | `openagents.com/stats` page | Yes |
+| R13 | [#10197](https://github.com/OpenAgentsInc/openagents/issues/10197) | `openagents.com/live` canvas view | No |
+| R14 | [#10198](https://github.com/OpenAgentsInc/openagents/issues/10198) | Desktop deck scene `routes-live` | No |
+| R15 | [#10199](https://github.com/OpenAgentsInc/openagents/issues/10199) | End-to-end demo with real money | No (owner taps) |
 
 ## Related
 
