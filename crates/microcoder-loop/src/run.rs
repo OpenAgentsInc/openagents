@@ -183,6 +183,13 @@ pub struct Limits {
     /// leave it off by default, and Coder's runs for a person turn it on
     /// with [`STUCK_STEPS`].
     pub stuck_steps: Option<usize>,
+    /// Checks the host froze before the run (the delegate recipe, #10208),
+    /// in a run without model-written acceptance: `state.tests` holds them
+    /// with `state.frozen_at` set. After each step that ran a command the
+    /// host runs them, and once they pass for this many steps in a row the
+    /// run ends ([`Ending::ChecksPassed`]): an early stop on success, not a
+    /// budget. `None` runs no host checks.
+    pub checks_stop: Option<usize>,
 }
 
 impl Limits {
@@ -240,6 +247,7 @@ impl Default for Limits {
             ask: false,
             first_judgment_beside: false,
             stuck_steps: None,
+            checks_stop: None,
         }
     }
 }
@@ -262,6 +270,10 @@ pub enum Ending {
     /// Jev judged the last step made no progress, and the model still didn't
     /// finish; or the tests held three times that long.
     TestsHeld,
+    /// Every check the host froze before the run passed for
+    /// [`Limits::checks_stop`] steps in a row: the run ends on success
+    /// before the model said it finished.
+    ChecksPassed,
     /// Every admitted provider refused for a usage or rate limit; the
     /// earliest one resets at `resets_at`, in Unix seconds, when known.
     NoCapacity {
@@ -1545,6 +1557,33 @@ or set finished to true if the task is complete."
         };
         state.files = read_view(env, &paths).await;
         if !limits.acceptance {
+            // The host's frozen checks (the delegate recipe): run after a
+            // step that ran something; the run ends once they pass.
+            if let Some(stop) = limits.checks_stop
+                && state.frozen_at.is_some()
+                && !state.tests.is_empty()
+                && state.actions.last().is_some_and(|a| !a.results.is_empty())
+            {
+                state.test_results =
+                    run_tests(env, &state.tests, Duration::from_secs(limits.test_seconds)).await;
+                observer.event(
+                    started.elapsed().as_secs_f64(),
+                    &Event::Tested {
+                        step,
+                        froze: false,
+                        results: state.test_results.clone(),
+                    },
+                );
+                let pass = state.test_results.iter().all(CommandResult::ok);
+                green = if pass { green + 1 } else { 0 };
+                if pass && green >= stop.max(1) && !(action.finished && !failed) {
+                    // A message the person sent meanwhile is answered first.
+                    if steered(env, &mut state) {
+                        continue;
+                    }
+                    break Ending::ChecksPassed;
+                }
+            }
             if action.finished && !failed && !steered(env, &mut state) {
                 break Ending::Finished;
             }

@@ -695,6 +695,15 @@ study (#10162) runs each task class through raw Claude Code, raw Codex, and
 the shipped route, so cost per checked outcome against raw delegation is a
 number the router reports, not a slogan.
 
+Done for the settings in #10208: the delegate recipe
+(`route_contract::recipe`, version `delegate-recipe-v1`) is one table of what
+each engine gets (the Jev briefing, Jev-chosen knowledge, effort matched to
+the task's class, the lean tools, system prompt and five-minute cache where
+the engine allows them, and frozen checks with an early stop once they
+pass), applied at dispatch to every task route, and a Coder route's adapter
+is the digest of its runs' engines' rows. The per-engine table is the cost
+audit's section 5a; the raw-delegation measurement is #10209.
+
 ### 13.11 What the caller hears
 
 Acknowledgements start with the verb and name what happens: "Looking through

@@ -291,6 +291,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     client: Result<jev::Client, String>,
     session: &str,
     images: &[crate::images::InputImage],
+    recipe: Option<&super::recipe::Recipe>,
 ) -> Result<(State, crate::run::Outcome), task::Error> {
     let replies = Replies::new(host);
     let replies = &replies;
@@ -307,14 +308,25 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
                         refusal: RefCell::new(None),
                     },
                     model: route.model.clone(),
-                    effort: route.effort.clone(),
+                    // The delegate recipe's effort for the task's class
+                    // (#10208): Codex keeps its admitted medium unless the
+                    // task is hard.
+                    effort: match recipe {
+                        Some(recipe) => recipe.effort("codex", route.effort.as_deref()),
+                        None => route.effort.clone(),
+                    },
                     cache_key: session.to_owned(),
                     images: images.to_vec(),
                 }),
-                Client::Claude(generator) => Native::Claude(Claude {
+                Client::Claude(mut generator) => Native::Claude(Claude {
                     host,
                     replies,
-                    inner: generator.with_images(images.to_vec()),
+                    inner: {
+                        if let Some(recipe) = recipe {
+                            generator.effort = recipe.effort("claude", generator.effort.as_deref());
+                        }
+                        generator.with_images(images.to_vec())
+                    },
                     refusal: RefCell::new(None),
                 }),
             };
@@ -329,7 +341,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
         client,
         off: RefCell::new(None),
     };
-    run_loop(host, &generator, &judge, replies).await
+    run_loop(host, &generator, &judge, replies, recipe).await
 }
 
 #[cfg(all(test, unix))]

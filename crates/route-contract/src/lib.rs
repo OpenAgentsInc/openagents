@@ -22,6 +22,9 @@
 //! - [`record`]: what one message's route became (phase 1, #10207): the
 //!   route result, the snapshot that admitted it, the router's own moves,
 //!   each task's projected lifecycle, and per-run cost and wall time.
+//! - [`recipe`]: the delegate recipe (#10208): what each engine gets of
+//!   the briefing, knowledge, effort, tools, cache, and frozen checks, and
+//!   the adapter digest a route records for it.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -33,6 +36,7 @@ pub mod digest;
 pub mod eval;
 pub mod lifecycle;
 pub mod offer;
+pub mod recipe;
 pub mod record;
 pub mod route;
 pub mod snapshot;

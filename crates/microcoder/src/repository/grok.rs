@@ -227,7 +227,12 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// Run one turn on `route` with the Grok Build binary `program`.
-pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
+pub(crate) async fn turn(
+    host: &Host,
+    route: &GrantRoute,
+    program: PathBuf,
+    mut recipe: Option<&mut super::recipe::Recipe>,
+) -> Turn {
     let mut ended = Ended {
         engine: ENGINE,
         agent: "Grok Build",
@@ -239,7 +244,13 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     }
     let access = host.configuration().access;
     let approve = access == Access::Full;
-    let arguments = acp_client::grok::arguments(&route.model, approve);
+    // The delegate recipe's effort for the task's class (#10208); without
+    // a recipe, Grok Build's own.
+    let effort = recipe
+        .as_deref()
+        .and_then(|recipe| recipe.effort("grok", route.effort.as_deref()));
+    let arguments =
+        acp_client::grok::arguments_with_effort(&route.model, approve, effort.as_deref());
     let earlier = host.earlier_note(SESSION_NOTE).and_then(|note| {
         note.get("session")
             .and_then(Value::as_str)
@@ -336,11 +347,8 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         return Turn::Ended(ended);
     }
     // A reattached session remembers the conversation; a new one is told it.
-    let prompt = if session.resumed {
-        host.prompt().to_owned()
-    } else {
-        host.engine_prompt()
-    };
+    // With the delegate recipe, the briefing comes first (#10208).
+    let prompt = super::recipe::agent_prompt(recipe.as_deref(), host, session.resumed);
     let prompted = match host.effect(
         "grok_prompt",
         json!({"session": session.id(), "prompt": prompt, "model": route.model}),
@@ -367,9 +375,17 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         });
     }
     let silence = SILENCE;
-    let result = session
-        .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
-        .await;
+    let (result, checks_passed) = super::recipe::prompt_watched(
+        &mut session,
+        &prompt,
+        host,
+        recipe.as_deref_mut(),
+        silence,
+        CANCEL_GRACE,
+        &mut recorder,
+    )
+    .await;
+    ended.checks_passed = checks_passed;
     recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
     ended.refused = recorder.refused.take();

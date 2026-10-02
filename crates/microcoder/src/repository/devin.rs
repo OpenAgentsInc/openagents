@@ -87,6 +87,9 @@ pub(crate) struct Ended {
     pub tool_calls: usize,
     /// The turn's cost in US dollars, when the agent reported one.
     pub cost_usd: Option<f64>,
+    /// The host ended the turn because the delegate recipe's frozen checks
+    /// passed while the agent worked (#10208): done, not stopped.
+    pub checks_passed: bool,
 }
 
 impl Ended {
@@ -96,10 +99,13 @@ impl Ended {
     /// cancelled, reached its time limit, or the host refused the turn. An
     /// agent that ended the turn itself after the host refused a tool it
     /// asked for is `engine_stopped_after_refusal`; one that reported
-    /// `cancelled` with no stop from the host is `engine_cancelled`.
+    /// `cancelled` with no stop from the host is `engine_cancelled`. A turn
+    /// the host ended because the delegate recipe's frozen checks passed
+    /// is `checks_passed`, and completed (#10208).
     pub fn ending(&self, cancelled: bool) -> (&'static str, bool) {
         match self.stop {
             _ if cancelled => ("cancelled_or_host_refusal", false),
+            _ if self.checks_passed => ("checks_passed", true),
             Some(StopReason::EndTurn) => ("model_finished", true),
             _ if self.refused.is_some() && self.error.is_none() => {
                 ("engine_stopped_after_refusal", false)
@@ -593,7 +599,12 @@ pub(crate) fn binary() -> Result<PathBuf, String> {
 }
 
 /// Run one turn on `route` with the Devin binary `program`.
-pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
+pub(crate) async fn turn(
+    host: &Host,
+    route: &GrantRoute,
+    program: PathBuf,
+    mut recipe: Option<&mut super::recipe::Recipe>,
+) -> Turn {
     let access = host.configuration().access;
     let mut arguments = acp_client::devin::arguments(&route.model);
     if access != Access::Full {
@@ -679,11 +690,8 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         return Turn::Ended(ended);
     }
     // A reattached session remembers the conversation; a new one is told it.
-    let prompt = if session.resumed {
-        host.prompt().to_owned()
-    } else {
-        host.engine_prompt()
-    };
+    // With the delegate recipe, the briefing comes first (#10208).
+    let prompt = super::recipe::agent_prompt(recipe.as_deref(), host, session.resumed);
     let model = reported.unwrap_or_else(|| route.model.clone());
     let prompted = match host.effect(
         "devin_prompt",
@@ -698,9 +706,17 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     };
     let mut recorder = Recorder::new(host, "Devin", "devin", model, access);
     let silence = SILENCE;
-    let result = session
-        .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
-        .await;
+    let (result, checks_passed) = super::recipe::prompt_watched(
+        &mut session,
+        &prompt,
+        host,
+        recipe.as_deref_mut(),
+        silence,
+        CANCEL_GRACE,
+        &mut recorder,
+    )
+    .await;
+    ended.checks_passed = checks_passed;
     recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
     ended.refused = recorder.refused.take();

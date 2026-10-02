@@ -625,6 +625,43 @@ async fn answer_wrapped<X, E: Engine<X>>(
             })
             .await;
     }
+    // The delegate recipe's knowledge (#10208): Jev keeps the knowledge
+    // base's entries the request's outputs depend on and flags the
+    // requirements easy to miss, as in front of Fable 5.1 low.
+    let knowledge = match &request.jev {
+        Some(client) if !question => {
+            let requirements: Vec<String> = judge
+                .requirements
+                .requirements
+                .iter()
+                .take(crate::briefing_jev::MAX_REQUIREMENTS)
+                .map(|r| r.text.split_whitespace().collect::<Vec<_>>().join(" "))
+                .collect();
+            let (knowledge, record) = crate::recipe::select_knowledge(
+                &crate::component::jev::JevMode::Live(client.clone()),
+                &recorder,
+                &words,
+                &requirements,
+                &crate::recipe::knowledge_dirs(&request.workdir),
+            )
+            .await;
+            recorder.push(
+                Step::said(
+                    Source::System,
+                    &format!(
+                        "Delegate recipe {}: {} knowledge entries kept.",
+                        crate::recipe::RECIPE_VERSION,
+                        knowledge.entries.len()
+                    ),
+                )
+                .noting("delegate_recipe", json!({"version": crate::recipe::RECIPE_VERSION,
+                    "engine": if request.agent == Agent::Codex { "codex-cli" } else { "claude-code-cli" },
+                    "knowledge": record})),
+            );
+            knowledge
+        }
+        _ => crate::briefing_knowledge::Knowledge::NONE,
+    };
     let mut cli = policy.executor(ExecutorHost {
         binary: request.binary.clone(),
         credential: request.credential,
@@ -678,7 +715,7 @@ async fn answer_wrapped<X, E: Engine<X>>(
     let mut resume = request.resume.clone();
     let (report, briefing) = loop {
         let head = if resume.is_some() { RESUMED_HEAD } else { HEAD };
-        let briefing = Briefing::build_under(head, &inputs, policy.brief.cap);
+        let briefing = Briefing::build_under_knowing(head, &inputs, &knowledge, policy.brief.cap);
         recorder.push(crate::delegate::with_briefing(
             Step::said(
                 Source::System,

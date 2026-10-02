@@ -376,38 +376,85 @@ task set it was tried on. The rest extend them.
 
 ## 5. Where the current harness stands
 
-The default path today is Microcoder, not the Jev-briefed Claude Code or
-Codex CLI. With `CODER_DELEGATE=auto`, the delegate door picks Microcoder
-whenever a connected provider has capacity (Codex first, then Claude
-through the `claude` binary, then the OpenAgents cloud), and falls back to
-the Claude Code or Codex CLI only when no Microcoder provider is usable or
-`CODER_DELEGATE_AGENT` names one
-(`crates/coder/src/delegate_door.rs`, `choose`;
-`crates/coder/src/delegate_door/microcoder.rs`). Grok Build, Devin, and
-OpenCode are reachable only as task routes. Fable is never a default; it
+Updated 2026-10-02 for #10163 (`de370db741`) and #10208, the delegate
+recipe. The table as first written described the harness before either
+landed; its rows for principles 1 to 4 are rewritten below, and the
+earlier wording is in this file's history.
+
+The default path today is the router (#10207): the terminal and
+`openagents chat` route each message, and a Coder route is a task on this
+computer whose engine is Codex or Claude through Microcoder's step loop, or
+Grok Build, Devin, or OpenCode as a whole agent over ACP
+(`crates/microcoder/src/repository.rs`, `execute`). The delegate door
+(`crates/coder/src/delegate_door.rs`) still picks Microcoder first and the
+Claude Code or Codex CLI as its fallback. Fable is never a default; it
 exists as bench arms and as the bar.
+
+Since #10208 every task route applies one recipe before its engine starts
+(`crates/microcoder/src/repository/recipe.rs`, groundwork in
+`crates/coder-delegate/src/recipe.rs`), and each route records the recipe's
+rows for its engines as its adapter digest
+(`route_contract::recipe::adapter_digest`, version `delegate-recipe-v1`,
+named in the snapshot's `defaults_applied`). `OPENAGENTS_DELEGATE_RECIPE=off`
+runs an engine raw, for a with/without measurement.
 
 | Principle | Default delegation today | Where |
 | --- | --- | --- |
-| 1. Lean the delegate | **Applied on the Claude Code CLI fallback**: Opus 5.5, `effort: low`, six tools, `prompt_cache_ttl: 5m`, 12k-character briefing cap, claude.ai connectors off. **Partly on Codex CLI**: effort only; tools, TTL, and system prompt are cleared. **Microcoder on Claude**: no tools, one turn, own system prompt and JSON schema, but no effort setting and no five-minute TTL. | `crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json`; `crates/coder-delegate/src/terminal.rs` (policy load, Codex clearing, connector note); `crates/coder-delegate/src/delegate.rs` (sets `CLAUDE_CODE_PROMPT_CACHE_TTL`); `crates/microcoder-loop/src/claude.rs` |
-| 2. Brief instead of explore | **Applied on the CLI fallback** (probe, survey, brief, delegate; request-only without a TypeSafe key). **Not on the Microcoder door**: no probe battery or briefing; Jev judges state at each step instead. **Absent** on Grok Build, Devin, OpenCode routes (raw prompt). | `crates/coder-delegate/src/terminal.rs`; `crates/coder/src/delegate_door/microcoder.rs`; `crates/microcoder/src/repository/grok.rs` |
-| 3. Jev chooses what the model is told (knowledge, flagged requirements) | **Bench only.** `CODER_ONE_BRIEFING_KNOWLEDGE` and `CODER_ONE_BRIEFING_JEV=v1\|v2` exist; the door passes `knowledge: None` and task grants set `knowledge: "off"`. The Nostr knowledge relay is a `microcoder kb` tool, not wired into Coder runs. | `crates/coder-delegate/src/briefing_jev.rs`, `briefing_knowledge.rs`; `bench/terminal-bench/tbench/coder_one.py`; `crates/coder/src/task/autostart.rs`; `crates/microcoder/src/kbnet.rs` |
-| 4. "Done" is a program state | **Off by default.** Microcoder acceptance, `green_nudge`, `green_stop` exist but door and repository runs set `acceptance: false`, task grants reject `acceptance: true`, and autostart sets `requirements: None`. **Applied only in the GitHub issue flow** (host gate plus fix sessions). | `crates/microcoder-loop/src/run.rs`; `crates/microcoder/src/repository.rs`; `crates/coder/src/task/{adapter,checks,autostart}.rs`; `crates/coder-delegate/src/issue.rs` |
-| 5. Route per task to the cheapest likely-to-pass config | **Absent.** `crates/coder/src/router.rs` is the chat-tier router (T0–T4), not model selection. Task capabilities report `"routing":"unsupported"`; autostart picks by capacity and preference, not task. Default model is `gpt-6.1-sol` medium (the door's doc comment still says "GPT-6 Luna"); escalation is `Route::Never`. `Route::Auto` (Jev `hard` sends test-writing to a stronger model) is opt-in on the `microcoder` binary only. | `crates/coder/src/task/adapter.rs`, `autostart.rs`; `crates/microcoder-loop/src/run.rs`; `crates/coder-one/src/effort.rs`, `policies/tunable-*.json` (bench) |
-| Cost visible per run | **Partly.** The CLI fallback's `Answer.usage` counts Jev and executor together (Jev at $0.042 per million input tokens); Microcoder records `jev_usd`. But task run records hard-code `cost_status: "unknown"` and `cost_usd: None`, the cost line is printed only in headless mode, and `coder-worker usage` has no separate Jev cost. | `crates/coder-delegate/src/usage.rs`; `crates/coder/src/headless.rs`; `crates/coder/src/task/{owner,adapter,view}.rs`; `crates/coder/src/relay/usage.rs` |
-| Raw-vs-OpenAgents measurement | **Bench only.** Arms for `claude-code`, `claude-code-opus-matched`, `codex-gpt-6-*` against `coder-one-*`, `microluna-*`, and the Fable delegate; the Gym's beats-winner rule and the #9746 board. Nothing measures a user's real tasks. | `bench/terminal-bench/profiles/agents.json`; `crates/gym/src/runs_beats_winner.rs`; `crates/gym-leaderboard/src/tb4_delegate_dev.rs`; `bench/terminal-bench/tools/tb4_scoreboard.py` |
+| 1. Lean the delegate | **Applied where the engine allows it.** Microcoder on Claude: no tools, one turn per step, the loop's own system prompt, `--effort` low, five-minute cache (`de370db741`). Microcoder on Codex: no tool list (one JSON action per step), the loop's system prompt, Codex's own per-session prompt cache. CLI fallback: the lean Opus policy for Claude Code; Codex keeps the policy's effort and system prompt. Grok Build, Devin, OpenCode: their own tools, system prompt, and cache, since ACP sets none. | `crates/microcoder-loop/src/claude.rs`; `crates/coder-delegate/src/terminal.rs`; `crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json` |
+| 2. Brief instead of explore | **Applied on every task route** (#10208): the read-only probe battery and Jev's 40-file survey, packed into a briefing capped at 12,000 characters; it is the loop's Task section on Codex and Claude, and the head of the prompt on Grok Build, Devin, and OpenCode. Still on the CLI fallback as before. Without Jev the briefing holds the request alone. | `crates/coder-delegate/src/recipe.rs` (`prepare`); `crates/microcoder/src/repository/recipe.rs`; `crates/coder-delegate/src/terminal.rs` |
+| 3. Jev chooses what the model is told | **Applied on every task route and the CLI fallback** (#10208): the knowledge base (`knowledge/`, and a workspace's own `knowledge/`) is searched with the request and Jev keeps entries with question set v2 and flags easy-to-miss requirements; the record names every candidate and probability. The Nostr relay's entries are still a `microcoder kb` tool only. | `crates/coder-delegate/src/recipe.rs` (`select_knowledge`); `crates/coder-delegate/src/briefing_jev.rs` |
+| 4. "Done" is a program state | **Applied when Jev finds a checkable outcome** (#10208): Jev judges candidate commands (those the request names, and the runner of each test file the survey kept); the host freezes up to two that fail before the change, runs them after each loop step that ran a command, or while an agent works whenever the workspace changed and then held still, and ends the run once they pass (`checks_passed`). It is an early stop on success, not a budget. Absent on the CLI fallback, which has no host hook mid-session. The GitHub issue flow keeps its own host gate. | `crates/microcoder-loop/src/run.rs` (`Limits::checks_stop`, `Ending::ChecksPassed`); `crates/microcoder/src/repository/recipe.rs` (`Recipe::watch`) |
+| Effort matched to the task | **Applied** (#10208): Jev's class (question, change, hard) sets the effort per engine: Codex stays at medium unless hard (high); Claude low, medium when hard; Grok Build low for a question, high when hard. Devin and OpenCode have no effort setting. | `crates/route-contract/src/recipe.rs` (`effort`) |
+| 5. Route per task to the cheapest likely-to-pass config | **Absent.** The router picks the family and engine by capacity and preference, not by a measured cost per pass. `Route::Auto` (Jev `hard` sends test-writing to a stronger model) is opt-in on the `microcoder` binary only. | `crates/openagents-chat/src/route.rs`; `crates/coder/src/task/autostart.rs` |
+| Cost visible per run | **Partly.** The recipe's Jev cost joins each task's cost; route records keep cost and wall time per run (#10207); a whole agent's own cost is what it reports. | `crates/microcoder/src/repository.rs` (`run_stages_with`); `crates/route-contract/src/record.rs` |
+| Raw-vs-OpenAgents measurement | **Bench only, and not yet for the recipe.** The Harbor arms remain; #10208's before/after is planned below and runs in #10209. | `bench/terminal-bench/profiles/agents.json`; `crates/gym/src/runs_beats_winner.rs` |
+
+### 5a. The delegate recipe, per engine
+
+What each engine gets (`route_contract::recipe::ENGINES`, version
+`delegate-recipe-v1`). "Own" means the engine decides and the host has no
+lever.
+
+| Engine | Runs as | Briefing | Knowledge | Effort (question / change / hard) | Tools | System prompt | Prompt cache | Frozen checks |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Codex (`gpt-6.1-sol`) | Microcoder loop | Task section | Jev-chosen | admitted (medium) / medium / high | none (JSON action) | loop's own | Codex's own, per session | after each step; ends the run when they pass |
+| Claude Code | Microcoder loop | Task section | Jev-chosen | low / low / medium | none (`--tools ""`) | replaced | five minutes | after each step; ends the run when they pass |
+| Grok Build | ACP agent | head of the prompt | Jev-chosen | low / own / high (`--reasoning-effort`) | own | own | own | while it works, on a settled change; ends the turn when they pass |
+| Devin | ACP agent | head of the prompt | Jev-chosen | own | own | own | own | as Grok Build |
+| OpenCode | ACP agent | head of the prompt | Jev-chosen | own | own | own | own | as Grok Build |
+| Claude Code CLI (fallback) | CLI session | briefing | Jev-chosen | low (policy) | six | trimmed | five minutes | absent |
+| Codex CLI (fallback) | CLI session | briefing | Jev-chosen | low (policy) | own | policy's | own | absent |
+
+### 5b. Measuring the recipe
+
+Not measured yet. Boat sandboxes have no engine logins (NEEDS_OWNER "Boat:
+choose how coding agents log in"), and the Coder box's binaries predate
+#10208, so the after arm needs a build of main there. The plan, carried by
+#10209: on coderos-4080, the four-task development panel (`fix-git`,
+`build-cython-ext`, `headless-terminal`, `fix-code-vulnerability`) and three
+ordinary repository tasks, three trials each, through raw Claude Code on its
+defaults and through a routed task with the recipe on and with
+`OPENAGENTS_DELEGATE_RECIPE=off`, recording pass, list-price cost (engine
+plus Jev), wall time, input tokens, and whether the frozen checks ended the
+run. The bar is section 2c's: 12 of 12 at 63% lower cost and 32% less time
+for the lean, Jev-briefed Opus arm.
 
 Owner rules hold on the default path: Microcoder door runs use
 `Limits::unbounded()` (only an 8-step stuck guard), task grants use
 `wall_seconds: 0` and reject dollar limits, and the terminal turn's 30-day
 wall is effectively none. Dollar caps survive only on bench tools
 (`microcoder --max-usd` default 1.00, `coder-one fire --max-usd` 0.50,
-`kbstudy`), which is fine for studies.
+`kbstudy`), which is fine for studies. The recipe's early stop adds no
+limit: a run ends when its frozen checks pass, and a run with none frozen
+ends as before.
 
-Summary: the measured wins were mostly built as bench arms and the
-Claude Code CLI fallback. The path most users hit (Microcoder door, task
-grants) has lean prompts but none of the briefing, knowledge, acceptance,
-or routing pieces, and its run records can't say what a run cost.
+Summary: as first written, the measured wins lived in bench arms and the
+Claude Code CLI fallback, and the path most users hit had lean prompts but
+none of the briefing, knowledge, or checks. Since #10208 every task route
+gets the briefing, Jev-chosen knowledge, matched effort, and frozen checks
+where its engine allows them (suggestions 3 to 6 below). Per-task routing
+to the cheapest likely-to-pass configuration (suggestion 7) is still
+absent, and the recipe's own before/after is not measured yet (5b).
 
 ## 6. Suggestions, in order
 

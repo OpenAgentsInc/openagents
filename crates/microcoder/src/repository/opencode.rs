@@ -99,7 +99,12 @@ fn engine_database(variables: &[(String, String)]) -> Option<PathBuf> {
 }
 
 /// Run one turn on `route` with the OpenCode binary `program`.
-pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
+pub(crate) async fn turn(
+    host: &Host,
+    route: &GrantRoute,
+    program: PathBuf,
+    mut recipe: Option<&mut super::recipe::Recipe>,
+) -> Turn {
     let mut ended = Ended {
         engine: ENGINE,
         agent: "OpenCode",
@@ -190,11 +195,8 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         return Turn::Ended(ended);
     }
     // A reattached session remembers the conversation; a new one is told it.
-    let prompt = if session.resumed {
-        host.prompt().to_owned()
-    } else {
-        host.engine_prompt()
-    };
+    // With the delegate recipe, the briefing comes first (#10208).
+    let prompt = super::recipe::agent_prompt(recipe.as_deref(), host, session.resumed);
     let prompted = match host.effect(
         "opencode_prompt",
         json!({"session": session.id(), "prompt": prompt, "model": route.model}),
@@ -208,9 +210,17 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     };
     let mut recorder = Recorder::new(host, "OpenCode", "opencode", route.model.clone(), access);
     let silence = SILENCE;
-    let result = session
-        .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
-        .await;
+    let (result, checks_passed) = super::recipe::prompt_watched(
+        &mut session,
+        &prompt,
+        host,
+        recipe.as_deref_mut(),
+        silence,
+        CANCEL_GRACE,
+        &mut recorder,
+    )
+    .await;
+    ended.checks_passed = checks_passed;
     recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
     ended.refused = recorder.refused.take();

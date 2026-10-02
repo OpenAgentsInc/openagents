@@ -32,6 +32,7 @@ pub mod ops;
 pub mod pack;
 pub mod policy;
 pub mod probes;
+pub mod recipe;
 pub mod record;
 pub mod requirements;
 pub mod say;

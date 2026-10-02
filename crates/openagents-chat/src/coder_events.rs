@@ -1179,7 +1179,7 @@ impl Mapper {
     ) -> CoderEvent {
         let turn = self.turn;
         match ending {
-            "model_finished" => {
+            "model_finished" | "checks_passed" => {
                 let insertions = changes.iter().filter_map(|c| c.added).sum();
                 let deletions = changes.iter().filter_map(|c| c.removed).sum();
                 CoderEvent::Result(Finished {
@@ -2067,6 +2067,9 @@ mod tests {
         assert_eq!(end("asked_question").name(), "question");
         assert_eq!(end("asked_approval").name(), "approval");
         assert_eq!(end("cancelled_or_host_refusal").name(), "stopped");
+        // The delegate recipe's frozen checks passed and ended the turn:
+        // a result, like a finish (#10208).
+        assert_eq!(end("checks_passed").name(), end("model_finished").name());
         let CoderEvent::Failure(failure) = end("no_capacity") else {
             panic!()
         };

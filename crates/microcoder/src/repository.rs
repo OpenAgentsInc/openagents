@@ -421,7 +421,7 @@ pub async fn run_routes<L: Lane, J: Judge>(
         let generator = failover(&host, &journal, book, lanes, now);
         generator.record_start();
         let replies = Replies::new(&host);
-        run_loop(&host, &generator, judge, &replies).await?
+        run_loop(&host, &generator, judge, &replies, None).await?
     };
     finish(host, state, outcome, task::owner::Cost::ZERO)
 }
@@ -431,9 +431,13 @@ pub async fn run_routes<L: Lane, J: Judge>(
 /// when the person stops the task, or when the loop's stuck guard finds it
 /// repeating a failed approach without progress. A grant's legacy
 /// `max_steps` and `wall_seconds` are read and ignored.
-fn limits() -> Limits {
+fn limits(recipe: Option<&recipe::Recipe>) -> Limits {
     Limits {
         command_seconds: 300,
+        // The delegate recipe's frozen checks (#10208): run after each
+        // step that ran a command, ending the run once they pass.
+        checks_stop: recipe.and_then(recipe::Recipe::checks_stop),
+        test_seconds: recipe::CHECK_SECONDS,
         acceptance: false,
         route: Route::Never,
         gates: crate::gate::Gates::default(),
@@ -451,16 +455,38 @@ async fn run_loop<G: Generate, J: Judge>(
     generator: &G,
     judge: &J,
     replies: &Replies<'_>,
+    recipe: Option<&recipe::Recipe>,
 ) -> Result<(State, crate::run::Outcome), task::Error> {
     let configuration = host.configuration().clone();
     let judge = RecordedJudge { host, inner: judge };
     let env = Repository { host };
     let mut observer = RecordedEvents { host, replies };
-    let limits = limits();
+    let limits = limits(recipe);
     // A later turn carries the conversation's earlier turns.
     let prompt = host.engine_prompt();
+    // With the delegate recipe (#10208), the Task section is the briefing,
+    // in front of the instruction; the frozen checks are the state's tests.
+    let (task, tests, results) = match recipe {
+        Some(recipe) => (
+            recipe.text(false),
+            recipe.frozen.clone(),
+            recipe.results.clone(),
+        ),
+        None => (prompt.clone(), Vec::new(), Vec::new()),
+    };
+    let frozen_at = (!tests.is_empty()).then_some(0);
+    // The briefing already carries the conversation, so the Instruction
+    // section is this turn's message alone.
+    let prompt = if recipe.is_some() {
+        host.prompt().to_owned()
+    } else {
+        prompt
+    };
     let state = State {
-        task: prompt.clone(),
+        task,
+        tests,
+        frozen_at,
+        test_results: results,
         environment: format!(
             "Repository: {}.{} {} {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
             host.execution_workspace().display(),
@@ -540,11 +566,15 @@ fn finish(
         Ending::Asked { .. } => Some(task::interaction::Kind::Question),
         _ => None,
     };
-    let completed = outcome.ending == Ending::Finished || asked.is_some();
+    // The delegate recipe's frozen checks passing ends a run done (#10208).
+    let checked = outcome.ending == Ending::ChecksPassed;
+    let completed = outcome.ending == Ending::Finished || checked || asked.is_some();
     let ending = if host.cancelled() {
         "cancelled_or_host_refusal"
     } else if let Some(kind) = asked {
         kind.ending()
+    } else if checked {
+        "checks_passed"
     } else if completed {
         "model_finished"
     } else if matches!(outcome.ending, Ending::NoCapacity { .. }) {
@@ -671,11 +701,17 @@ impl AgentEngine {
         }
     }
 
-    async fn turn(self, host: &Host, route: &GrantRoute, program: PathBuf) -> devin::Turn {
+    async fn turn(
+        self,
+        host: &Host,
+        route: &GrantRoute,
+        program: PathBuf,
+        recipe: Option<&mut recipe::Recipe>,
+    ) -> devin::Turn {
         match self {
-            AgentEngine::Devin => devin::turn(host, route, program).await,
-            AgentEngine::OpenCode => opencode::turn(host, route, program).await,
-            AgentEngine::Grok => grok::turn(host, route, program).await,
+            AgentEngine::Devin => devin::turn(host, route, program, recipe).await,
+            AgentEngine::OpenCode => opencode::turn(host, route, program, recipe).await,
+            AgentEngine::Grok => grok::turn(host, route, program, recipe).await,
         }
     }
 }
@@ -871,13 +907,27 @@ pub async fn execute(
         }
     }
     let book = host.store().to_path_buf();
-    run_stages(
+    // The delegate recipe (#10208): Jev's briefing, knowledge, class, and
+    // frozen checks, before any engine starts. [`recipe::OFF_VAR`] set to
+    // `off` runs the engines raw, for a with/without measurement.
+    let recipe = if recipe::enabled(&|name| std::env::var(name).ok()) {
+        let client = judge.as_ref().ok().map(|judge| judge.client.clone());
+        Some(recipe::Recipe::prepare(&host, client).await)
+    } else {
+        let _ = host.append(&Step::said(
+            Source::System,
+            "The delegate recipe is off for this run: the engine starts from the request alone.",
+        ));
+        None
+    };
+    run_stages_with(
         host,
         book,
         stages,
         judge.map(|judge| judge.client),
         &session,
         &images,
+        recipe,
     )
     .await
     .map_err(|error| Failure::run(error.to_string()))
@@ -960,6 +1010,8 @@ impl std::fmt::Display for Failure {
     }
 }
 
+/// [`run_stages_with`] without a recipe, as the stage tests run them.
+#[cfg(test)]
 async fn run_stages<T: codex_transport::Transport>(
     host: Host,
     book: PathBuf,
@@ -968,10 +1020,28 @@ async fn run_stages<T: codex_transport::Transport>(
     session: &str,
     images: &[crate::images::InputImage],
 ) -> Result<task::Task, task::Error> {
+    run_stages_with(host, book, stages, client, session, images, None).await
+}
+
+/// [`run_stages`] with the turn's delegate recipe (#10208), when it has
+/// one: every stage starts from its briefing, at its class's effort, with
+/// its frozen checks.
+async fn run_stages_with<T: codex_transport::Transport>(
+    host: Host,
+    book: PathBuf,
+    stages: Vec<Stage<T>>,
+    client: Result<jev::Client, String>,
+    session: &str,
+    images: &[crate::images::InputImage],
+    mut recipe: Option<recipe::Recipe>,
+) -> Result<task::Task, task::Error> {
     let count = stages.len();
     let mut refusals: Vec<Refusal> = Vec::new();
-    // What stages passed over for capacity already cost: zero to start.
-    let mut spent = task::owner::Cost::ZERO;
+    // What stages passed over for capacity already cost: the recipe's Jev
+    // groundwork, or zero.
+    let mut spent = recipe
+        .as_ref()
+        .map_or(task::owner::Cost::ZERO, recipe::Recipe::cost);
     for (index, stage) in stages.into_iter().enumerate() {
         let last = index + 1 == count;
         match stage {
@@ -983,6 +1053,7 @@ async fn run_stages<T: codex_transport::Transport>(
                     client.clone(),
                     session,
                     images,
+                    recipe.as_ref(),
                 )
                 .await?;
                 if matches!(outcome.ending, Ending::NoCapacity { .. }) && !last && !host.cancelled()
@@ -1011,9 +1082,18 @@ async fn run_stages<T: codex_transport::Transport>(
                     }
                     continue;
                 }
-                match engine.turn(&host, &route, program).await {
+                match engine.turn(&host, &route, program, recipe.as_mut()).await {
                     devin::Turn::Ended(ended) => {
                         let cancelled = host.cancelled();
+                        // Frozen checks that didn't pass while the agent
+                        // worked run once after its turn, for the record.
+                        let checks = match recipe.as_mut() {
+                            Some(recipe) if !recipe.frozen.is_empty() => Some(
+                                ended.checks_passed
+                                    || (!cancelled && recipe.check(&host, "after the turn").await),
+                            ),
+                            _ => None,
+                        };
                         let (ending, completed) = ended.ending(cancelled);
                         if let Some(error) = &ended.error {
                             let _ = host.append(
@@ -1031,6 +1111,8 @@ async fn run_stages<T: codex_transport::Transport>(
                         }
                         let summary = json!({"configuration":host.configuration(),"route":route,
                             note:agent,"independent_checks":"not_run",
+                            "recipe_checks":checks.map(|pass| json!({"pass":pass,
+                                "ended_turn":ended.checks_passed})),
                             "billing":"unknown","automatic_crash_resume":false});
                         return host.finish(ending, completed, summary);
                     }
@@ -1095,6 +1177,7 @@ mod grok;
 pub mod launch;
 mod native;
 mod opencode;
+pub(crate) mod recipe;
 // The repository tests run shell programs under the Unix write boundary.
 #[cfg(all(test, unix))]
 mod tests;

@@ -445,6 +445,9 @@ impl Observer for Terminal {
                     Ending::TestsHeld => {
                         "every acceptance test passing for several steps in a row".to_string()
                     }
+                    Ending::ChecksPassed => {
+                        "every check the host froze passing (an early stop on success)".to_string()
+                    }
                     Ending::Stopped => {
                         "a stop from outside (cancelled, or the host's deadline)".to_string()
                     }

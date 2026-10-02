@@ -63,11 +63,13 @@ pub use route_contract::RouteFamily;
 /// This policy's version, named in every snapshot.
 pub const POLICY: &str = "route-policy-v1";
 
-/// The delegate settings every Coder route applies by default (13.10),
-/// whose digest is the route's adapter: Claude lanes at low effort with the
-/// five-minute prompt cache (`de370db741`), every signed-in agent unless
-/// turned off (#10184).
-pub const DELEGATE_SETTINGS: &str = r#"{"schema":"openagents.route.delegate-settings.v1","claude_effort":"low","prompt_cache":"5m","engines":"signed_in_opt_out"}"#;
+/// The delegate recipe every Coder route applies by default (13.10,
+/// #10208): the Jev briefing, Jev-chosen knowledge, effort matched to the
+/// task class, the lean tools, system prompt and five-minute cache where the
+/// engine allows them, and frozen checks with an early stop
+/// ([`route_contract::recipe`]). The route's adapter is the digest of the
+/// rows its runs' engines use.
+pub use route_contract::recipe::RECIPE_VERSION;
 
 /// What this computer is called in a placement.
 pub const THIS_COMPUTER: &str = "this-computer";
@@ -487,7 +489,7 @@ pub fn admit(
             }
             defaults.push(DefaultApplied {
                 default: DefaultKind::DelegateSettings,
-                value: "delegate-settings-v1".to_owned(),
+                value: RECIPE_VERSION.to_owned(),
             });
             let effects = Effects {
                 reads: vec![ReadScope::Workspace, ReadScope::Toolchains],
@@ -715,7 +717,10 @@ pub fn admit(
             result: result.digest(),
             explicit: runs.iter().any(|run| run.chosen == Chosen::Named),
             capability,
-            adapter: (!runs.is_empty()).then(|| Digest::of_bytes(DELEGATE_SETTINGS.as_bytes())),
+            adapter: (!runs.is_empty()).then(|| {
+                let engines: Vec<&str> = runs.iter().map(|run| run.engine.as_str()).collect();
+                route_contract::recipe::adapter_digest(&engines)
+            }),
             executor_revision: None,
             model: None,
             policy: POLICY.to_owned(),

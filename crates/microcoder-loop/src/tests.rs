@@ -1876,3 +1876,72 @@ async fn a_message_sent_while_the_turn_runs_is_read_at_its_next_step() {
         ]
     );
 }
+
+/// A run whose state carries checks the host froze before it (the
+/// delegate recipe, #10208), with `check b` failing until `fix b` ran.
+async fn go_checked(script: &Script, limits: &Limits) -> (State, crate::run::Outcome, Vec<String>) {
+    let env = Fake {
+        ran: RefCell::new(Vec::new()),
+    };
+    let mut log = Log::default();
+    let (set, route, jev) = (question_set(), route_set(), jev(0.1));
+    let models = Models {
+        generator: script,
+        judge: &jev,
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let mut start = state();
+    start.tests = vec![crate::state::Test {
+        name: "check b".to_string(),
+        script: "check b".to_string(),
+        passed_at_freeze: Some(false),
+    }];
+    start.frozen_at = Some(0);
+    let (state, outcome) = run(start, "Solve this task.", &env, &models, limits, &mut log).await;
+    (state, outcome, env.ran.into_inner())
+}
+
+#[tokio::test]
+async fn host_frozen_checks_end_the_run_once_they_pass() {
+    let script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("fix", &["fix b"], false)),
+        Ok(act("review", &["ls"], false)),
+    ]);
+    let limits = Limits {
+        checks_stop: Some(1),
+        ..plain()
+    };
+    let (state, outcome, ran) = go_checked(&script, &limits).await;
+    assert_eq!(outcome.ending, Ending::ChecksPassed);
+    assert_eq!(outcome.steps, 2);
+    assert!(state.test_results.iter().all(CommandResult::ok));
+    // After step 1 (failing) and step 2 (passing), and never again.
+    assert_eq!(ran.iter().filter(|c| *c == "check b").count(), 2);
+}
+
+#[tokio::test]
+async fn a_finish_on_the_step_that_makes_the_checks_pass_is_a_finish() {
+    let script = Script::new(vec![Ok(act("fix", &["fix b"], true))]);
+    let limits = Limits {
+        checks_stop: Some(1),
+        ..plain()
+    };
+    let (_, outcome, ran) = go_checked(&script, &limits).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(ran, vec!["fix b".to_string(), "check b".to_string()]);
+}
+
+#[tokio::test]
+async fn without_checks_stop_frozen_checks_never_run_in_a_plain_loop() {
+    let script = Script::new(vec![
+        Ok(act("fix", &["fix b"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let (_, outcome, ran) = go_checked(&script, &plain()).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert!(!ran.iter().any(|c| c == "check b"));
+}

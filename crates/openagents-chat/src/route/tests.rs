@@ -343,17 +343,17 @@ fn every_admission_names_its_policy_and_records_cost_unshown() {
         assert!(!snapshot.money.shown);
         assert_eq!(snapshot.effects.os_deny, OsDenySet::macos());
         assert_eq!(snapshot.identity.surface, Surface::Terminal);
-        if result.family() == RouteFamily::Coder {
+        if let RouteResult::Coder { plan } = &result {
+            // The adapter is the delegate recipe's rows for the runs'
+            // engines, and the defaults name its version (#10208).
+            let engines: Vec<&str> = plan.runs.iter().map(|run| run.engine.as_str()).collect();
             assert_eq!(
                 snapshot.route.adapter,
-                Some(Digest::of_bytes(DELEGATE_SETTINGS.as_bytes()))
+                Some(route_contract::recipe::adapter_digest(&engines))
             );
-            assert!(
-                snapshot
-                    .defaults_applied
-                    .iter()
-                    .any(|applied| applied.default == DefaultKind::DelegateSettings)
-            );
+            assert!(snapshot.defaults_applied.iter().any(|applied| {
+                applied.default == DefaultKind::DelegateSettings && applied.value == RECIPE_VERSION
+            }));
         }
         // The record binds it.
         RouteRecord::received("req-1", Some("thread-1".into()), result, snapshot, 0).unwrap();

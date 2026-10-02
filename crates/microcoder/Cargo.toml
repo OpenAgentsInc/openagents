@@ -20,6 +20,9 @@ atif = { path = "../atif" }
 coder = { path = "../coder" }
 # The plain spelling of a Windows path, for the detached owner it starts.
 coder-boundary = { path = "../coder-boundary" }
+# The delegate recipe's groundwork and table (#10208).
+coder-delegate = { path = "../coder-delegate" }
+route-contract = { path = "../route-contract" }
 futures-util = "0.3"
 jev = { path = "../jev" }
 jev-hosted = { path = "../jev-hosted" }

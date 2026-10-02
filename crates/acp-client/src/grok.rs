@@ -92,9 +92,21 @@ pub fn parse_model(model: &str) -> Result<(), String> {
 /// leaves it off so the agent asks, and the host answers each ask.
 #[must_use]
 pub fn arguments(model: &str, approve: bool) -> Vec<String> {
+    arguments_with_effort(model, approve, None)
+}
+
+/// [`arguments`] with `--reasoning-effort`, when `effort` names one (the
+/// delegate recipe's effort for the task's class, #10208); `None` leaves
+/// Grok Build's own.
+#[must_use]
+pub fn arguments_with_effort(model: &str, approve: bool, effort: Option<&str>) -> Vec<String> {
     let mut arguments = vec!["agent".to_string()];
     if approve {
         arguments.push("--always-approve".into());
+    }
+    if let Some(effort) = effort {
+        arguments.push("--reasoning-effort".into());
+        arguments.push(effort.into());
     }
     if model != DEFAULT_MODEL {
         arguments.push("--model".into());
@@ -187,6 +199,19 @@ fn unix_seconds(text: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_named_effort_is_passed_and_none_leaves_grok_builds_own() {
+        assert!(
+            !arguments("default", false)
+                .iter()
+                .any(|a| a == "--reasoning-effort")
+        );
+        let args = arguments_with_effort("default", true, Some("high"));
+        let at = args.iter().position(|a| a == "--reasoning-effort").unwrap();
+        assert_eq!(args[at + 1], "high");
+        assert_eq!(args.last().map(String::as_str), Some("stdio"));
+    }
 
     #[test]
     #[cfg(unix)]
