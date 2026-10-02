@@ -107,6 +107,10 @@ impl Env for Repository<'_> {
     fn stopped(&self) -> bool {
         self.host.cancelled()
     }
+
+    fn steering(&self) -> Vec<String> {
+        self.host.steering()
+    }
 }
 
 /// What an interrupted or unsent call says: the task stopped, not the

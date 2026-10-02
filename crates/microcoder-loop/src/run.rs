@@ -623,6 +623,15 @@ pub fn prompt(
         state.render_files(),
         state.render_actions()
     );
+    if !state.steering.is_empty() {
+        out.push_str(
+            "\n\n# Messages from the user while you worked\n\nThey come after the task; where \
+             they differ from it, they are what the user wants now.\n\n",
+        );
+        for (step, text) in &state.steering {
+            out.push_str(&format!("- Before step {step}: {text}\n"));
+        }
+    }
     if !state.notes.is_empty() {
         out.push_str("\n\n# Notes from the host\n\n");
         for note in &state.notes {
@@ -1111,6 +1120,18 @@ async fn run_tests<E: Env>(env: &E, tests: &[Test], deadline: Duration) -> Vec<C
     results
 }
 
+/// What the person said to the running turn (steering, [`Env::steering`])
+/// joins the state, so every later step's prompt reads it. Whether there
+/// was any.
+fn steered<E: Env>(env: &E, state: &mut State) -> bool {
+    let messages = env.steering();
+    let before = state.actions.last().map_or(1, |action| action.step + 1);
+    for text in &messages {
+        state.steering.push((before, text.trim().to_owned()));
+    }
+    !messages.is_empty()
+}
+
 /// Runs the loop until the model finishes or a limit stops it.
 pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     mut state: State,
@@ -1212,6 +1233,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         if env.stopped() {
             break Ending::Stopped;
         }
+        steered(env, &mut state);
         if limits.max_steps.is_some_and(|max| step >= max) {
             break Ending::StepLimit;
         }
@@ -1445,6 +1467,11 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                 results: Vec::new(),
                 skipped: Vec::new(),
             });
+            // A message the person sent meanwhile is read before the turn
+            // ends: the next step answers it.
+            if steered(env, &mut state) {
+                continue;
+            }
             break Ending::Finished;
         }
         // A reply that runs nothing and asks for no new file wastes a step.
@@ -1518,7 +1545,7 @@ or set finished to true if the task is complete."
         };
         state.files = read_view(env, &paths).await;
         if !limits.acceptance {
-            if action.finished && !failed {
+            if action.finished && !failed && !steered(env, &mut state) {
                 break Ending::Finished;
             }
             continue;

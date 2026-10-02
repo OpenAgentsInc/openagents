@@ -53,6 +53,10 @@ pub struct State {
     pub actions: Vec<Action>,
     /// Notes from the host, such as a reply that didn't match the format.
     pub notes: Vec<String>,
+    /// What the person sent the running turn, in order, each with the
+    /// step it arrived before ([`crate::env::Env::steering`]). Every later
+    /// prompt carries them.
+    pub steering: Vec<(usize, String)>,
     /// The files the model keeps in view, read after its last action:
     /// each path and its contents, or `None` when there's no such file.
     pub files: Vec<(String, Option<String>)>,

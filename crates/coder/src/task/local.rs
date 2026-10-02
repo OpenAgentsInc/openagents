@@ -332,6 +332,15 @@ fn save(store: &Path, record: &Record) -> Result<(), String> {
     autostart::write_private(&record_path(store, &record.task), &bytes)
 }
 
+/// Where a message sent to a run went ([`Local::steer`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Steered {
+    /// The running turn reads it at its next step.
+    NextStep,
+    /// It starts the next turn, which this record names.
+    NextTurn(Record),
+}
+
 /// Starts, answers, and stops Coder runs on this computer.
 pub struct Local {
     store: PathBuf,
@@ -1122,6 +1131,98 @@ impl Local {
             .map_err(|e| e.to_string())?;
         self.launch(&policy, &order, runner, &next, &mut record)?;
         Ok(record)
+    }
+
+    /// Send `text` to `task` while it works: steering ([`super::steer`]).
+    /// Microcoder's loop reads it at its next step. A turn that already
+    /// ended continues with it, as [`Local::answer`] does, and so does one
+    /// the message missed by ending first. A whole coding agent (Grok
+    /// Build, OpenCode, Devin) reads its instructions only when a turn
+    /// starts, so its running turn is stopped and the next starts with the
+    /// message.
+    ///
+    /// # Errors
+    /// The task is not a local run, the message is empty, or the next turn
+    /// cannot start.
+    pub fn steer(&self, task: &str, text: &str) -> Result<Steered, String> {
+        let record = record(&self.store, task)
+            .ok_or("This task was not started on this computer from a chat.")?;
+        let flow = super::issue_run::load(&self.store, task).filter(|flow| !flow.finished);
+        let status = |local: &Self| {
+            Store::open(&local.store)
+                .and_then(|store| store.show(task))
+                .map(|task| task.status)
+                .map_err(|e| e.to_string())
+        };
+        let working = |status: Status| {
+            matches!(
+                status,
+                Status::Queued | Status::Running | Status::CancelRequested
+            )
+        };
+        if !working(status(self)?) {
+            if flow.is_some() {
+                return Err(
+                    "Coder is checking and landing this issue; write again when it ends.".into(),
+                );
+            }
+            return self.answer(task, text).map(Steered::NextTurn);
+        }
+        let reads = record.turns.last().is_none_or(|turn| {
+            !matches!(
+                Provider::from_config(&turn.provider),
+                Some(Provider::Grok | Provider::OpenCode | Provider::Devin)
+            )
+        });
+        if reads {
+            super::steer::add(&self.store, task, text)?;
+            // A turn that ended meanwhile never read it: the next starts
+            // with it, unless an issue flow decides what comes next.
+            if !working(status(self)?) && flow.is_none() {
+                let left = super::steer::take(&self.store, task);
+                if !left.is_empty() {
+                    return self.answer(task, &left.join("\n\n")).map(Steered::NextTurn);
+                }
+            }
+            return Ok(Steered::NextStep);
+        }
+        if flow.is_some() {
+            return Err(
+                "This issue's coding agent reads messages only when a turn starts; stop the \
+                 issue flow first, or write when it asks."
+                    .into(),
+            );
+        }
+        self.cancel(task, "Stopped to start again with the person's message.")?;
+        loop {
+            if let Ok(mut store) = Store::open(&self.store) {
+                let _ = store.settle(task);
+            }
+            if !working(status(self)?) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        self.answer(task, text).map(Steered::NextTurn)
+    }
+
+    fn cancel(&self, task: &str, reason: &str) -> Result<(), String> {
+        let current = Store::open(&self.store)
+            .and_then(|store| store.show(task))
+            .map_err(|e| e.to_string())?;
+        if !matches!(current.status, Status::Queued | Status::Running) {
+            return Ok(());
+        }
+        let command = Command {
+            schema: COMMAND_SCHEMA.into(),
+            command_id: identity(&format!("cancel:{task}:{}", current.revision)),
+            task_id: task.into(),
+            expected_revision: Some(current.revision),
+            action: Action::Cancel {
+                reason: reason.into(),
+            },
+        };
+        self.apply(&command)
     }
 
     /// Ask `task`'s running turn to stop. The engine stops its command and
@@ -2410,6 +2511,41 @@ mod tests {
             "{:?}",
             after.status
         );
+    }
+
+    /// Steering (#10150): Microcoder's running turn reads a message at its
+    /// next step; an ended turn, or a whole coding agent's, continues with
+    /// it as the next turn.
+    #[test]
+    fn a_message_reaches_the_running_turn_or_starts_the_next() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let run = local(dir.path(), both).with_launcher(Box::new(Held));
+        let record = run.start(&top, "Fix it", "Fix it.", None).unwrap();
+        assert_eq!(
+            run.steer(&record.task, "Use tabs.").unwrap(),
+            Steered::NextStep
+        );
+        assert_eq!(
+            super::super::steer::take(run.store(), &record.task),
+            ["Use tabs."]
+        );
+        run.stop(&record.task).unwrap();
+        let Steered::NextTurn(next) = run.steer(&record.task, "Now the README.").unwrap() else {
+            panic!("an ended turn continues")
+        };
+        assert_eq!(next.turns.len(), 2);
+
+        // Grok Build reads instructions only as a turn starts: its turn
+        // stops and the next one starts with the message.
+        let mut grok = run.start(&top, "Fix more", "Fix more.", None).unwrap();
+        grok.turns.last_mut().unwrap().provider = "grok".into();
+        save(run.store(), &grok).unwrap();
+        let Steered::NextTurn(next) = run.steer(&grok.task, "Use spaces.").unwrap() else {
+            panic!("a whole agent starts again")
+        };
+        assert_eq!(next.turns.len(), 2);
+        assert!(super::super::steer::take(run.store(), &grok.task).is_empty());
     }
 
     #[test]

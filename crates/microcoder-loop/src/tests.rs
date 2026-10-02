@@ -1793,3 +1793,86 @@ async fn a_stop_before_the_first_step_makes_no_model_call() {
     assert!(judge.asked.borrow().is_empty());
     assert_eq!(outcome.steps, 0);
 }
+
+/// [`Fake`], with messages from the person: each is sent after the
+/// command that names it runs.
+struct Steered {
+    fake: Fake,
+    after: Vec<(&'static str, &'static str)>,
+    waiting: RefCell<Vec<String>>,
+}
+
+impl Env for Steered {
+    async fn read(&self, path: &str) -> Option<String> {
+        self.fake.read(path).await
+    }
+
+    async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
+        for (after, text) in &self.after {
+            if *after == command {
+                self.waiting.borrow_mut().push((*text).to_owned());
+            }
+        }
+        self.fake.run(command, deadline).await
+    }
+
+    fn steering(&self) -> Vec<String> {
+        std::mem::take(&mut *self.waiting.borrow_mut())
+    }
+}
+
+#[tokio::test]
+async fn a_message_sent_while_the_turn_runs_is_read_at_its_next_step() {
+    // The person writes while the last command runs; the model had already
+    // said it was finished, so the turn goes on to answer them.
+    let script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("wrap up", &["make"], true)),
+        Ok(act("use tabs", &["fix tabs"], true)),
+    ]);
+    let env = Steered {
+        fake: Fake {
+            ran: RefCell::new(Vec::new()),
+        },
+        after: vec![
+            ("ls", "Use tabs, not spaces."),
+            ("make", "And keep the README."),
+        ],
+        waiting: RefCell::new(Vec::new()),
+    };
+    let set = question_set();
+    let route = route_set();
+    let models = Models {
+        generator: &script,
+        judge: &jev(0.1),
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let mut log = Log::default();
+    let (state, outcome) = run(
+        state(),
+        "Solve this task.",
+        &env,
+        &models,
+        &plain(),
+        &mut log,
+    )
+    .await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(env.fake.ran.into_inner(), ["ls", "make", "fix tabs"]);
+    let prompts = script.prompts.borrow().clone();
+    assert!(!prompts[0].contains("Messages from the user"));
+    assert!(prompts[1].contains("- Before step 2: Use tabs, not spaces."));
+    // Every later step still reads it, with the next one.
+    assert!(prompts[2].contains("- Before step 2: Use tabs, not spaces."));
+    assert!(prompts[2].contains("- Before step 3: And keep the README."));
+    assert_eq!(
+        state.steering,
+        [
+            (2, "Use tabs, not spaces.".to_owned()),
+            (3, "And keep the README.".to_owned())
+        ]
+    );
+}

@@ -1040,6 +1040,18 @@ impl Host {
         }
     }
 
+    /// The messages the person sent this running turn since the last
+    /// call ([`super::steer`]), each recorded in the trace as theirs.
+    /// A message the trace cannot keep is still returned: the run reads it.
+    pub fn steering(&self) -> Vec<String> {
+        let messages = super::steer::take(&self.owner.dir, &self.task.task_id);
+        for text in &messages {
+            let _ =
+                self.append(&Step::said(Source::User, text).noting("steer", json!({"read": true})));
+        }
+        messages
+    }
+
     pub fn append(&self, step: &Step) -> Result<(), Error> {
         let bytes = serde_json::to_vec(step)
             .map_err(|_| Error::UnsupportedSchema)?

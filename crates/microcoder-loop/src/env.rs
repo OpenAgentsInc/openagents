@@ -39,6 +39,13 @@ pub trait Env {
     fn stopped(&self) -> bool {
         false
     }
+
+    /// Messages the person sent the running turn since the last call, in
+    /// order: the loop reads them at the start of each step, and before it
+    /// lets a step finish. Taking them consumes them.
+    fn steering(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// A local working directory.
