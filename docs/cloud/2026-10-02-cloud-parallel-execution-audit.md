@@ -1,7 +1,9 @@
 # Cloud parallel execution audit: what we had, what runs, what to build
 
 - Date: 2026-10-02
-- Status: audit and proposal. Nothing here is implemented on `main`.
+- Status: audit and proposal. Built since: the daily `oa-coder-host` image
+  (§6, [#10224](https://github.com/OpenAgentsInc/openagents/issues/10224)).
+  The rest is not implemented on `main`.
 - Question from the owner: today about 16 agents and Coder (`openagents chat
   work --issues`, Codex) run in parallel on two machines (the owner's Mac and
   `coderos-4080`), and they keep filling the Mac's disk. How do we fan work out
@@ -417,8 +419,8 @@ Hourly prices are approximate on-demand list prices.
 Other resources:
 
 - **Images.** 14 `oa-managed-sandbox-guest-v1` images, `one-stg-managed-computer`
-  images, and one `openagents-computer-host` image. There is no image of this
-  repository.
+  images, and one `openagents-computer-host` image. There was no image of
+  this repository; the `oa-coder-host` family (§6) now is one.
 - **Buckets.**
   - `openagentsgemini-autopilot-rust-sccache` already exists, so an sccache
     bucket is in place.
@@ -548,7 +550,7 @@ owner's Mac / phone ── openagents chat work --issues --parallel N --on cloud
    - Pool identity from Secret Manager, and host self-drain.
    - `--on cloud` for `chat work` and `computer task`, with a slot-aware limit.
    - Cross-host landing retry, checkpoint branches, and artifacts to GCS.
-3. **The daily image.**
+3. **The daily image.** Built 2026-10-02; see §6.
    - Cloud Build job, `.agents/setup` and `.agents/resume`, warm targets in
      the image.
    - Optional sccache bucket. Image digest recorded per run.
@@ -594,7 +596,7 @@ Boat itself instead, see §1.6), or the per-session `e2-small` VMs
 ## 5. Issues to open
 
 1. **Cloud: decide and stop orphaned GCE hosts (`coder-pool`, `coder-box-pool`, `oa-codex-control-1`, sandbox control VMs, `agent-computer-gce-1`)**: list each host's owner and last use, then stop or delete with the owner's sign-off; record what was kept.
-2. **Cloud: bake an `oa-coder-host` GCE image with the repository, toolchains, engines and a warm target**: a Cloud Build job, an image family, a boot smoke and the digest in a manifest; no secrets in the image.
+2. **Done ([#10224](https://github.com/OpenAgentsInc/openagents/issues/10224), §6). Cloud: bake an `oa-coder-host` GCE image with the repository, toolchains, engines and a warm target**: a Cloud Build job, an image family, a boot smoke and the digest in a manifest; no secrets in the image.
 3. **Cloud: one spot cloud computer paired over SSH runs a Coder issue end to end**: phase 1, with measured boot, delta build, run time, disk and cost recorded in `docs/cloud/`.
 4. **Coder: `--on <computer>` placement for `chat work` and `computer task`**: names a granted computer; the parallel limit is its free slots; never substitutes another host.
 5. **Coder: a pool computer identity (one grant, K hosts)**: hosts read the pool credential from Secret Manager and report slots; the router and `/computers` see one computer.
@@ -603,7 +605,7 @@ Boat itself instead, see §1.6), or the per-session `e2-small` VMs
 8. **Coder: cloud run artifacts to GCS, linked from the issue comment**: logs, evidence and diff stats under `gs://openagentsgemini-oa-artifacts/coder/<run>/`. Shipped (#10227): with `OA_ARTIFACT_BUCKET=openagentsgemini-coder-artifacts` (90-day delete lifecycle, public access prevented) every issue flow uploads `turn-N.atif.jsonl`, `change.diff`, `checks.txt` and `route.json` under `coder/<owner>-<repo>/<issue>/<task>-<outcome>/` and links them from its landing, pull request or failure comment (`crates/coder/src/task/run_artifacts.rs`). Links are authenticated console links; `OA_ARTIFACT_LINKS=signed` with `OA_ARTIFACT_SIGN_KEY` or `OA_ARTIFACT_SIGN_AS` signs them for seven days.
 9. **Cloud: engine logins on cloud hosts**: one `CODEX_HOME` per account per persistent host by device login, API keys from Secret Manager for burst hosts, never a copied `auth.json`; document the Claude path.
 10. **Repo: `.agents/setup` and `.agents/resume` hooks**: idempotent setup used by the image bake and by host wake, with a 10-second wake limit.
-11. **Cloud: measure sccache on `openagentsgemini-autopilot-rust-sccache` against a baked warm target**: keep it only if it cuts the delta build.
+11. **Cloud: measure sccache on `openagentsgemini-autopilot-rust-sccache` against a baked warm target**: keep it only if it cuts the delta build. Measured with issue 2 (§6): it does not help the warm-slot build, and cuts a cold one from 250 s to 165 s; it stays on.
 12. **Chat: place #10183 fan-out runs on a chosen computer**: dispatch plans name the computer per run; the host keeps control of fan-out.
 13. **Cloud (later): Firecracker per-run isolation for partner work**: revive `cloud_vm.rs` and `oa-workroomd` from `8f84d05896` behind the router's public task class.
 
@@ -611,6 +613,67 @@ The Boat issues, B1 to B9 (the Rust SDK, fixtures and live test, key hygiene,
 the daily template, `--on boat`, engine logins, measurements, and retiring
 the Box names), are listed in the [Boat SDK plan](2026-10-02-boat-sdk-plan.md)
 §6.
+
+## 6. Built: the daily `oa-coder-host` image (2026-10-02)
+
+Issue [#10224](https://github.com/OpenAgentsInc/openagents/issues/10224).
+Runbook: [`docs/deployment/coder-host-image.md`](../deployment/coder-host-image.md).
+
+- **One setup script for both backends.**
+  [`scripts/cloud/coder-host-setup.sh`](../../scripts/cloud/coder-host-setup.sh)
+  installs the build tools, git, gh, Rust 1.97.1 through rustup, sccache,
+  Node 24 and the Codex, Claude Code and Grok Build CLIs (none logged in; it
+  refuses to finish if a login file exists), clones the repository, and with
+  `--warm` builds `openagents-cli`, `microcoder` and `coder` and their test
+  targets into the first Coder target slot. Boat's daily template (#10219,
+  B5) runs the same script. `cargo-zigbuild` was not needed: the hosts build
+  natively for x86_64 Linux.
+- **The bake.**
+  [`scripts/cloud/build-coder-host-image.sh`](../../scripts/cloud/build-coder-host-image.sh)
+  boots a spot `c3-standard-22` builder (no external address, service
+  account `oa-coder-host` with access to the sccache bucket only), follows
+  its serial console, images its disk as `oa-coder-host-YYYYMMDD` in family
+  `oa-coder-host`, boot-smokes the image, deletes every VM it made and keeps
+  the newest 3 images.
+- **The schedule.** Cloud Scheduler job `oa-coder-host-image-daily` posts an
+  inline Cloud Build build at 07:00 UTC
+  ([`scripts/cloud/coder-host-image-schedule.sh`](../../scripts/cloud/coder-host-image-schedule.sh)).
+  It was chosen over a Cloud Run job because the build only waits on the
+  builder and Cloud Build's free minutes cover that wait. The build and the
+  job run as the automation account; it cannot grant project roles, so a
+  narrower bake account would need the owner and is not required.
+- **The first image** is `oa-coder-host-20261002`: commit `bf30328c27`,
+  9.5 GB archived, 35 GB used, a 23 GiB warm target.
+
+Measured on a fresh spot `c3-standard-8` from the image:
+
+| | Seconds |
+| --- | --- |
+| Bake, builder created to image smoke-tested | 1,343 |
+| Boot to ready (create call to the ready marker, fetch included) | 53 (65 to 107 on `e2-standard-4`) |
+| `cargo build -p openagents-cli` in a fresh worktree, warm slot | 94 |
+| The same after one edit | 15 |
+| The same into an empty target, sccache warm / off | 165 / 250 |
+
+What changed in the design while building it:
+
+- Cargo rebuilds every workspace crate in a new worktree, because the path
+  differs, so only dependency artifacts carry over. The bake therefore prunes
+  the workspace's own test executables, binaries and incremental caches
+  (57 of 77 GiB) with no loss: 94 s against 98 s on the unpruned image. The
+  94 s left is the workspace's own crates; trimming it is a Cargo-level
+  question (for example `CARGO_INCREMENTAL=0` so that sccache can cache
+  workspace crates too, as `scripts/boat-run.sh` already sets), not an image
+  question.
+- Warm one package per Cargo invocation. A combined build unified features
+  across packages and missed both the target and sccache on a single-package
+  build.
+- Spot `c3-standard-8` ran out in us-central1-a twice in one afternoon, so the
+  pool (phase 2) must try several zones, as the bake now does.
+- `coder`'s `interop_processes` test does not compile on `main` (it names a
+  `coder-worker` binary no package defines). The bake builds around it and
+  records it in the image manifest.
+- Monthly cost of the daily image: about $8.
 
 ## Sources not repeated above
 

@@ -30,7 +30,10 @@
 set -euo pipefail
 
 PROJECT="${OA_PROJECT:-openagentsgemini}"
-ZONE="${OA_ZONE:-us-central1-a}"
+# Zones to try, in order, when one is out of spot (or on-demand) capacity.
+# The image is global; only the builder and smoke VMs are zonal.
+ZONES="${OA_ZONES:-us-central1-a us-central1-b us-central1-c us-central1-f}"
+ZONE="${ZONES%% *}"
 FAMILY="oa-coder-host"
 KEEP="${OA_KEEP_IMAGES:-3}"
 BUILDER_MACHINE="${OA_BUILDER_MACHINE:-c3-standard-22}"
@@ -71,7 +74,7 @@ smoke="oa-coder-host-smoke-${stamp}"
 if [[ "$apply" != "true" ]]; then
   cat <<PLAN
 oa-coder-host bake (dry run)
-  project:   $PROJECT  zone: $ZONE
+  project:   $PROJECT  zones: $ZONES
   image:     $image_name  family: $FAMILY  keep: $KEEP
   revision:  $rev
   builder:   $builder ($BUILDER_MACHINE spot, ${DISK_GB} GB pd-balanced, sa $HOST_SA)
@@ -90,9 +93,11 @@ image_created="false"
 image_admitted="false"
 cleanup() {
   local vm
+  local vm zone
   for vm in "$builder" "$smoke"; do
-    if g compute instances describe "$vm" --zone "$ZONE" --format='value(name)' >/dev/null 2>&1; then
-      g compute instances delete "$vm" --zone "$ZONE" >/dev/null 2>&1 || say "could not delete $vm"
+    zone="$(g compute instances list --filter="name=$vm" --format='value(zone.basename())' 2>/dev/null || true)"
+    if [[ -n "$zone" ]]; then
+      g compute instances delete "$vm" --zone "$zone" >/dev/null 2>&1 || say "could not delete $vm"
     fi
   done
   if [[ "$image_created" == "true" && "$image_admitted" != "true" ]]; then
@@ -133,19 +138,41 @@ follow_serial() {
   return 1
 }
 
+# Create an instance in the first zone with capacity: spot in every zone,
+# then (for the builder) on demand in every zone. Sets ZONE.
+#   create_vm NAME MACHINE MODEL [extra gcloud args...]
+create_vm() {
+  local name="$1" machine="$2" models="$3" model zone err
+  shift 3
+  for model in $models; do
+    for zone in $ZONES; do
+      local extra=()
+      if [[ "$model" == "SPOT" ]]; then
+        extra=(--provisioning-model=SPOT "--instance-termination-action=$SPOT_ACTION")
+      fi
+      if err="$(g compute instances create "$name" --zone "$zone" --machine-type "$machine" \
+          "${extra[@]}" "$@" 2>&1 >/dev/null)"; then
+        ZONE="$zone"
+        say "created $name in $zone ($machine, $model)"
+        return 0
+      fi
+      case "$err" in
+        *ZONE_RESOURCE_POOL_EXHAUSTED*|*stockout*|*does\ not\ have\ enough\ resources*|*QUOTA*)
+          say "no $model capacity for $machine in $zone; trying the next zone" ;;
+        *) say "creating $name failed: $err"; return 1 ;;
+      esac
+    done
+  done
+  say "no zone in [$ZONES] had capacity for $machine"
+  return 1
+}
+
 create_builder() {
-  local provisioning="$1"
-  local extra=() files="startup-script=$guest_script"
+  local models="$1" files="startup-script=$guest_script"
   if [[ "$local_setup" == "true" ]]; then
     files="$files,oa-setup-script=$here/coder-host-setup.sh"
   fi
-  if [[ "$provisioning" == "SPOT" ]]; then
-    extra=(--provisioning-model=SPOT --instance-termination-action=STOP)
-  fi
-  g compute instances create "$builder" \
-    --zone "$ZONE" \
-    --machine-type "$BUILDER_MACHINE" \
-    "${extra[@]}" \
+  SPOT_ACTION=STOP create_vm "$builder" "$BUILDER_MACHINE" "$models" \
     --image-family debian-12 --image-project debian-cloud \
     --boot-disk-size "${DISK_GB}GB" --boot-disk-type pd-balanced \
     --no-address \
@@ -153,12 +180,12 @@ create_builder() {
     --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring \
     --labels "openagents-managed=coder-host-builder" \
     --metadata "oa-rev=$rev,oa-repo-url=$REPO_URL,oa-sccache-bucket=$SCCACHE_BUCKET,serial-port-enable=TRUE,block-project-ssh-keys=TRUE" \
-    --metadata-from-file "$files" >/dev/null
+    --metadata-from-file "$files"
 }
 
 t0="$(now)"
 say "baking $image_name from $rev on $builder ($BUILDER_MACHINE spot)"
-create_builder SPOT
+create_builder "SPOT STANDARD"
 set +e
 result="$(follow_serial "$builder" OA_CODER_HOST_BAKE_OK OA_CODER_HOST_BAKE_FAILED "$BAKE_TIMEOUT_S")"
 rc=$?
@@ -191,16 +218,14 @@ say "image $image_name created in $(( t_imaged - t_baked ))s"
 
 # Boot smoke: a VM from the image must reach OA_CODER_HOST_READY.
 t_smoke="$(now)"
-g compute instances create "$smoke" \
-  --zone "$ZONE" --machine-type "$SMOKE_MACHINE" \
-  --provisioning-model=SPOT --instance-termination-action=DELETE \
+SPOT_ACTION=DELETE create_vm "$smoke" "$SMOKE_MACHINE" "SPOT STANDARD" \
   --image "$image_name" --image-project "$PROJECT" \
   --boot-disk-type pd-balanced \
   --no-address \
   --service-account "$HOST_SA" --scopes cloud-platform \
   --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring \
   --labels "openagents-managed=coder-host-smoke" \
-  --metadata "serial-port-enable=TRUE,block-project-ssh-keys=TRUE" >/dev/null
+  --metadata "serial-port-enable=TRUE,block-project-ssh-keys=TRUE"
 set +e
 ready="$(follow_serial "$smoke" OA_CODER_HOST_READY OA_CODER_HOST_NEVER "$SMOKE_TIMEOUT_S")"
 rc=$?
