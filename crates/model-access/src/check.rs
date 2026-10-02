@@ -47,6 +47,47 @@ pub fn request(provider: Provider) -> Request {
     }
 }
 
+/// One minimal Jev decision on `provider`'s own door, which answers the
+/// open question whether any key there may call Jev (OpenRouter serves Jev
+/// at its Decisions API as `typesafe/jev-1.13`; the gateway as
+/// `typesafe-ai/jev`). `None` for TypeSafe, whose key check is already a
+/// decision.
+#[must_use]
+pub fn jev_request(provider: Provider) -> Option<Request> {
+    let (url, model) = match provider {
+        Provider::OpenRouter => (jev::doors::OPENROUTER_URL, "typesafe/jev-1.13"),
+        Provider::Vercel => (jev::doors::GATEWAY_URL, jev::doors::GATEWAY_MODEL),
+        Provider::TypeSafe => return None,
+    };
+    Some(Request {
+        method: "POST",
+        url,
+        body: Some(json!({
+            "model": model,
+            "state": "A key check.",
+            "questions": {"ok": {"type": "noul", "instructions": "Is this a key check?"}}
+        })),
+    })
+}
+
+/// Whether `key` can call Jev on `provider`'s door: `Some(true)` when a
+/// decision came back, `Some(false)` when the door refused it, `None` when
+/// the test could not finish or does not apply.
+#[must_use]
+pub fn jev(sender: &dyn Send, provider: Provider, key: &ApiKey) -> Option<bool> {
+    let request = jev_request(provider)?;
+    let (status, body) = sender.send(&request, key);
+    match status? {
+        200..=299 => Some(
+            serde_json::from_slice::<Value>(&body)
+                .ok()
+                .is_some_and(|value| value.get("answers").is_some()),
+        ),
+        400..=499 => Some(false),
+        _ => None,
+    }
+}
+
 /// What a test found.
 #[derive(Clone, Debug, PartialEq)]
 pub enum State {
@@ -214,6 +255,26 @@ mod tests {
         fn send(&self, _: &Request, _: &ApiKey) -> (Option<u16>, Vec<u8>) {
             (self.0, self.1.as_bytes().to_vec())
         }
+    }
+
+    #[test]
+    fn jev_is_asked_at_each_providers_own_door() {
+        let key = ApiKey::new("k");
+        let answered = Fake(
+            Some(200),
+            r#"{"answers":{"ok":{"type":"noul","noul":0.9}}}"#,
+        );
+        assert_eq!(jev(&answered, Provider::OpenRouter, &key), Some(true));
+        assert_eq!(
+            jev(&Fake(Some(403), "{}"), Provider::Vercel, &key),
+            Some(false)
+        );
+        assert_eq!(jev(&Fake(None, ""), Provider::OpenRouter, &key), None);
+        assert_eq!(jev(&answered, Provider::TypeSafe, &key), None);
+        assert_eq!(
+            jev_request(Provider::OpenRouter).unwrap().url,
+            "https://openrouter.ai/api/alpha/decisions"
+        );
     }
 
     #[test]

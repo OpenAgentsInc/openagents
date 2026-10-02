@@ -522,7 +522,9 @@ impl Keys {
     /// A sentence that never carries a key: a value that is not
     /// `<provider> <key>`, an unknown provider, an oversized key, or a
     /// provider named twice.
-    pub fn from_header_values<'a>(values: impl IntoIterator<Item = &'a str>) -> Result<Keys, String> {
+    pub fn from_header_values<'a>(
+        values: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Keys, String> {
         let mut keys = Keys::none();
         for value in values {
             let (word, key) = value
@@ -536,11 +538,20 @@ impl Keys {
                     format!("{PROVIDER_KEY_HEADER} names openrouter, vercel, or typesafe")
                 })?;
             let key = ApiKey::new(key);
-            if key.is_empty() || key.expose().len() > MAX_KEY_BYTES || key.expose().contains(char::is_whitespace) {
-                return Err(format!("{PROVIDER_KEY_HEADER}: the {} key is not a key", provider.word()));
+            if key.is_empty()
+                || key.expose().len() > MAX_KEY_BYTES
+                || key.expose().contains(char::is_whitespace)
+            {
+                return Err(format!(
+                    "{PROVIDER_KEY_HEADER}: the {} key is not a key",
+                    provider.word()
+                ));
             }
             if keys.get(provider).is_some() {
-                return Err(format!("{PROVIDER_KEY_HEADER} names {} twice", provider.word()));
+                return Err(format!(
+                    "{PROVIDER_KEY_HEADER} names {} twice",
+                    provider.word()
+                ));
             }
             keys.insert(provider, key);
         }

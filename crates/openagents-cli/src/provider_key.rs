@@ -24,7 +24,8 @@ pub(crate) const USAGE: &str =
                           and keep it; --use also runs everything on your keys.
   show [PROVIDER]         Each key you added: the last four characters, the
                           label, what it has spent, and whether it works.
-  test [PROVIDER]         Test your keys now.
+  test [PROVIDER]         Test your keys now, and whether each OpenRouter or
+                          Vercel key may call Jev (one small decision).
   clear PROVIDER          Remove a key; removing your last OpenRouter or Vercel
                           key returns model calls to OpenAgents.
 PROVIDER is openrouter, vercel, or typesafe. Keys live in the login keychain, or
@@ -157,6 +158,11 @@ fn render_row(row: &Value) -> String {
     if let Some(left) = row["remaining_usd"].as_f64() {
         line.push_str(&format!("  left ${left:.2}"));
     }
+    match row["jev"].as_bool() {
+        Some(true) => line.push_str("  Jev works"),
+        Some(false) => line.push_str("  Jev refused"),
+        None => {}
+    }
     line
 }
 
@@ -170,7 +176,10 @@ fn tester() -> Box<dyn check::Send> {
         }
     }
     match std::env::var("OPENAGENTS_PROVIDER_CHECK").as_deref() {
-        Ok("works") => Box::new(Fixture(Some(200), r#"{"data":{"label":"fixture"}}"#)),
+        Ok("works") => Box::new(Fixture(
+            Some(200),
+            r#"{"data":{"label":"fixture"},"answers":{"ok":{"type":"noul","noul":0.9}}}"#,
+        )),
         Ok("refused") => Box::new(Fixture(Some(401), "{}")),
         Ok("no-credits") => Box::new(Fixture(Some(402), "{}")),
         _ => Box::new(check::Http),
@@ -305,7 +314,14 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
                 // so only `test` makes it.
                 let state = (testing || p != Provider::TypeSafe)
                     .then(|| check::test(tester().as_ref(), p, key));
-                rows.push(row(p, key, state.as_ref(), &place));
+                let mut shown = row(p, key, state.as_ref(), &place);
+                // `test` also asks whether this key may call Jev at its own
+                // provider's door, so a person knows whether decisions run
+                // on it under mine.
+                if testing && let Some(jev) = check::jev(tester().as_ref(), p, key) {
+                    shown["jev"] = json!(jev);
+                }
+                rows.push(shown);
             }
             let (_, loaded) = match load_settings(output) {
                 Ok(pair) => pair,

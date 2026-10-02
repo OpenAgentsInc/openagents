@@ -16,12 +16,11 @@ applies_when: >-
 answer: >-
   Chatting with us is free: there's no plan, subscription, paid tier, or
   account, no message cap, usage cap, quota, rate limit, or throttle, and no
-  API key needed. If you'd rather pay your own provider, you can add your
-  own OpenRouter, Vercel AI Gateway, or TypeSafe key on your computer and
-  turn on Use my keys for everything; then chat replies, Jev, and the rest
-  run on your keys and nothing runs on ours. We haven't published pricing
-  for anything else, and we'll answer this when we do. Coder runs on your
-  own computer through the coding agents you've signed in to there, such as
+  API key needed, though on a computer you can add your own OpenRouter,
+  Vercel AI Gateway, or TypeSafe key and turn on **Use my keys for
+  everything** to run on them, never ours. We haven't published pricing for
+  anything else, and we'll answer this when we do. Coder runs on your own
+  computer through the coding agents you've signed in to there, such as
   Codex or Claude Code, under your own accounts with their providers; we
   bill nothing for it.
 status: admitted
@@ -40,14 +39,14 @@ evidence:
 
 ## Answer
 
-Chatting with us is free: there's no plan, subscription, paid tier, or account, no message cap, usage cap, quota, rate limit, or throttle, and no API key needed. If you'd rather pay your own provider, you can add your own OpenRouter, Vercel AI Gateway, or TypeSafe key on your computer and turn on Use my keys for everything; then chat replies, Jev, and the rest run on your keys and nothing runs on ours. We haven't published pricing for anything else, and we'll answer this when we do. Coder runs on your own computer through the coding agents you've signed in to there, such as Codex or Claude Code, under your own accounts with their providers; we bill nothing for it.
+Chatting with us is free: there's no plan, subscription, paid tier, or account, no message cap, usage cap, quota, rate limit, or throttle, and no API key needed, though on a computer you can add your own OpenRouter, Vercel AI Gateway, or TypeSafe key and turn on **Use my keys for everything** to run on them, never ours. We haven't published pricing for anything else, and we'll answer this when we do. Coder runs on your own computer through the coding agents you've signed in to there, such as Codex or Claude Code, under your own accounts with their providers; we bill nothing for it.
 
 ## Details
 
 - No price is documented in the repository as of 2026-09-28.
 - Wallet payments carry network and routing fees, shown on the confirm screen before you send.
 - The chat needs no API key: the chat worker holds its own model keys, and the app holds none.
-- Your own keys are optional (#10176): add them in the desktop app's Settings (Model providers), OpenAgents Terminal's `/settings`, or with `openagents settings provider-key set openrouter` (or `vercel`, `typesafe`). Use my keys for everything needs an OpenRouter or Vercel AI Gateway key; with it on, a call your keys can't make fails with one plain line and never falls back to ours. The phone doesn't take keys yet.
+- Your own keys are optional (#10176): add them in the desktop app's Settings (Model providers), OpenAgents Terminal's `/settings`, or with `openagents settings provider-key set openrouter` (or `vercel`, `typesafe`). **Use my keys for everything** needs an OpenRouter or Vercel AI Gateway key; with it on, a call your keys can't make fails with one plain line and never falls back to ours. The phone doesn't take keys yet.
 - There is no OpenAgents account, so there is no plan or settings page with a price, cap, or rate limit to look up.
 
 ## Sources

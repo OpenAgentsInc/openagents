@@ -99,6 +99,16 @@ fn a_key_is_kept_privately_never_printed_and_never_switches_the_mode() {
         assert!(!text(&shown).contains(KEY), "{}", text(&shown));
     }
 
+    // `test` also says whether the key may call Jev at its own door.
+    let tested = run(
+        home,
+        &["settings", "provider-key", "test", "openrouter"],
+        None,
+        "works",
+    );
+    assert!(text(&tested).contains("Jev works"), "{}", text(&tested));
+    assert!(!text(&tested).contains(KEY));
+
     // A key on the command line is refused, not read.
     let argv = run(
         home,

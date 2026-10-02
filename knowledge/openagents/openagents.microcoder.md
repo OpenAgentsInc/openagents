@@ -35,7 +35,7 @@ Microcoder is our experimental coding loop: it combines Jev's typed judgments, a
 ## Details
 
 - Its XP commands (`microcoder xp`) publish reproductions and link computer keys.
-- When no coding agent signed in on your computer has room, its steps run on the OpenAgents cloud; with your own keys on (Use my keys for everything), they run on `openai/gpt-6.1-sol` through your OpenRouter key, then your Vercel AI Gateway key, never on ours (#10176).
+- When no coding agent signed in on your computer has room, its steps run on the OpenAgents cloud; with your own keys on (**Use my keys for everything**), they run on `openai/gpt-6.1-sol` through your OpenRouter key, then your Vercel AI Gateway key, never on ours (#10176).
 
 ## Sources
 
