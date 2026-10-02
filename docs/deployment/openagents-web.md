@@ -9,9 +9,10 @@ repository (`bins/coder-serve`) into this repository's
 
 openagents.com serves this site since 2026-10-02 02:20 UTC (#10128): Cloud
 Run service `coder` (us-central1, openagentsgemini), revision
-`coder-web-dcc80c9096` since 03:30 UTC (the move to `/download`; the one
-before it, `coder-web-a0c19b1829-b`, is the rollback), two containers. `web` is this crate's image
-(`openagents/openagents-web:dcc80c9096`, built by `crates/openagents-web/cloudbuild.yaml`)
+`coder-web-79692f5e9a` since 2026-10-02 06:55 UTC (the complete user guide
+at `/docs`; the one before it, `coder-web-dcc80c9096`, the move to
+`/download`, is the rollback), two containers. `web` is this crate's image
+(`openagents/openagents-web:79692f5e9a`, built by `crates/openagents-web/cloudbuild.yaml`)
 on port 8080 with `--public-host openagents.com`; it serves its own pages
 and passes every other path (APIs, `/v1`, `/mcp`, `/auth`, `/computers/seen`,
 `/releases`, …) to `coder-serve`, the previous production image and config
@@ -35,7 +36,11 @@ sections stay 404. `OPENAGENTS_WEB_ASK_SALT` is the secret
   automation account was refused `iam.serviceAccounts.actAs` on the
   runtime account `157437760789-compute@developer.gserviceaccount.com`,
   though that account's policy lists it as `roles/iam.serviceAccountUser`,
-  so the revision was applied as `chris@openagents.com`.
+  so the revision was applied as `chris@openagents.com`. The same held for
+  `coder-web-79692f5e9a`: Cloud Build ran as the automation account
+  (`gcloud builds submit https://github.com/OpenAgentsInc/openagents
+  --git-source-revision=SHA --service-account=…oa-mvp-automation…`), and
+  `replace` was refused `actAs` again and applied as `chris@`.
 - Roll back to the old site: `gcloud run services update-traffic coder
   --region us-central1 --project openagentsgemini --to-revisions coder-00168-smb=100`.
 
@@ -73,11 +78,14 @@ These pages need nothing more than this repository and the public buckets:
 - `/connect`, `/.well-known/apple-app-site-association`, and
   `/.well-known/assetlinks.json`: the pairing link's landing page and the
   app-association files, as the `coder` repository serves them.
-- `/docs` and `/docs/{slug}`: new on 2026-09-29, short guides to the apps
-  we launch (`crates/openagents-web/content/docs/`), and on 2026-10-01
-  four guides to plugins: Plugins, Write a plugin, Test a plugin, and
-  Publish and share ([#10088](https://github.com/OpenAgentsInc/openagents/issues/10088)).
-  Committed, not deployed.
+- `/docs` and `/docs/{slug}`: the user guide
+  (`crates/openagents-web/content/docs/`), thirty short pages in nine
+  sections (`SECTIONS` in `src/pages/content.rs`): getting started, the
+  apps, chat, Coder, computers, the four plugin guides
+  ([#10088](https://github.com/OpenAgentsInc/openagents/issues/10088)),
+  the Gym, Verse, wallet, and decks, reference, and the FAQ and glossary.
+  Expanded on 2026-10-02 at the owner's direction; `/docs/help` redirects
+  to `/docs/troubleshooting`.
 - `/app`: the local task browser, loopback only.
 
 ## Ported, waiting on a production backend
