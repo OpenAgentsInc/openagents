@@ -1109,6 +1109,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "boat-template"
+version = "0.1.0"
+dependencies = [
+ "boat",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "bstr"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

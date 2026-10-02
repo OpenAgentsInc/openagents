@@ -1,0 +1,19 @@
+[package]
+name = "boat-template"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+description = "Builds the daily oa-coder-main-<date> Boat named snapshot that Coder runs fork."
+publish = false
+
+[[bin]]
+name = "boat-template"
+path = "src/main.rs"
+
+[dependencies]
+boat = { path = "../boat" }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+
+[lints]
+workspace = true
