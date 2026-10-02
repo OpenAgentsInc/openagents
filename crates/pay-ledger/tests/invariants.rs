@@ -83,10 +83,10 @@ proptest! {
         prop_assert_eq!(r.shares.iter().map(|s| s.amount_msat as i128).sum::<i128>(), received as i128);
         prop_assert!(r.shares.iter().all(|s| s.amount_msat >= 0));
         prop_assert_eq!(role(&r,"provider"), 0);
-        prop_assert_eq!(role(&r,"bonus"), 0);
         prop_assert_eq!(role(&r,"lsp_fee"), 0);
         if hosted {
             let owner = (received as i128 * 9000 / 10_000) as i64;
+            prop_assert_eq!(role(&r,"bonus"), 0);
             prop_assert_eq!(role(&r,"resource"), owner);
             prop_assert_eq!(role(&r,"openagents"), received - owner);
         } else {
@@ -165,16 +165,17 @@ fn persistence_queries_and_balance_keys() {
     let mut i = input("debit:123", 200, 100);
     i.rail = Rail::Balance;
     let second = ledger.record_settlement(i).unwrap();
-    assert_eq!(ledger.accrued("alice").unwrap(), 180);
+    assert_eq!(ledger.accrued("alice").unwrap(), 301);
     assert_eq!(ledger.accrued("missing").unwrap(), 0);
-    assert_eq!(ledger.accrued(OPENAGENTS).unwrap(), 121);
+    assert_eq!(ledger.accrued(OPENAGENTS).unwrap(), 0);
     assert_eq!(
         ledger.per_plugin().unwrap()["demo"],
         PluginTotals {
             settlements: 2,
             received_msat: 301,
             author_msat: 180,
-            openagents_msat: 121
+            openagents_msat: 0,
+            bonus_msat: 121
         }
     );
     assert_eq!(ledger.since(first.seq).unwrap(), vec![second.clone()]);

@@ -3,8 +3,10 @@
 //! LSP fees are receiver costs, not payable claims: the fee is stored on the
 //! settlement and its `lsp_fee` share is zero. Splits use net receipts, so
 //! OpenAgents absorbs that cost rather than reducing the author's declared fee.
+//! First-call bonus funding never rewrites settlement shares. Payout callers
+//! use `Ledger::available_shares` to read claims after those transfers.
 
-use chrono::DateTime;
+use chrono::{DateTime, Datelike};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -121,6 +123,14 @@ pub struct Share {
     pub amount_msat: i64,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bonus {
+    pub kind: String,
+    pub party: String,
+    pub requested_msat: i64,
+    pub amount_msat: i64,
+    pub outcome: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recorded {
     pub seq: i64,
     pub key: String,
@@ -135,6 +145,9 @@ pub struct Recorded {
     pub rule_version: i64,
     pub short: bool,
     pub shares: Vec<Share>,
+    /// Launch matches are also in `shares`. First-call awards are separate
+    /// claims funded by a journal over unpaid OpenAgents shares.
+    pub bonuses: Vec<Bonus>,
 }
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Totals {
@@ -152,6 +165,7 @@ pub struct PluginTotals {
     pub received_msat: i64,
     pub author_msat: i64,
     pub openagents_msat: i64,
+    pub bonus_msat: i64,
 }
 #[derive(Debug, Clone)]
 pub struct Payee {
@@ -253,8 +267,12 @@ impl Ledger {
         let mut short = false;
         let allocated = match &input.split {
             Split::Plugin { author, fee_msat } => {
-                if author.is_empty() || *fee_msat < 0 || *fee_msat > input.price_msat {
-                    return Err(Error::Invalid("author or declared fee"));
+                if author.is_empty()
+                    || input.plugin_id.as_deref().is_none_or(str::is_empty)
+                    || *fee_msat < 0
+                    || *fee_msat > input.price_msat
+                {
+                    return Err(Error::Invalid("plugin id, author, or declared fee"));
                 }
                 short = input.received_msat < *fee_msat;
                 let amount = input.received_msat.min(*fee_msat);
@@ -273,10 +291,34 @@ impl Ledger {
             }
             Split::OpenAgents => 0,
         };
+        let mut openagents = input.received_msat - allocated;
+        let mut launch_match = None;
+        if let Split::Plugin { author, fee_msat } = &input.split
+            && input.received_msat > 0
+        {
+            let month = month(input.settled_at)?;
+            let until = DateTime::parse_from_rfc3339(&rule.bonus.launch_match_until)
+                .map_err(|_| Error::Invalid("bonus window"))?
+                .timestamp();
+            if input.settled_at < until {
+                let requested =
+                    (*fee_msat as i128 * rule.bonus.launch_match_bps as i128 / 10_000) as i64;
+                let mut stmt = tx.prepare("SELECT amount_msat FROM bonus WHERE party=? AND month=? AND kind='launch_match'")?;
+                let spent = stmt
+                    .query_map(params![author, month], |r| r.get::<_, i64>(0))?
+                    .try_fold(0i64, |sum, amount| amount.map(|n| sum.saturating_add(n)))?;
+                let remaining = (rule.bonus.launch_match_cap_msat_per_month as i64)
+                    .saturating_sub(spent)
+                    .max(0);
+                let amount = requested.min(openagents).min(remaining);
+                openagents -= amount;
+                shares.push((author.as_str(), "bonus", amount));
+                launch_match = Some((month, requested, amount));
+            }
+        }
         shares.extend([
-            (OPENAGENTS, "openagents", input.received_msat - allocated),
+            (OPENAGENTS, "openagents", openagents),
             (OPENAGENTS, "lsp_fee", 0),
-            (OPENAGENTS, "bonus", 0),
             (OPENAGENTS, "provider", 0),
         ]);
         tx.execute("INSERT INTO settlement(payment_hash,resource,plugin_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -287,6 +329,17 @@ impl Ledger {
                 params![input.key, party, role, amount],
             )?;
         }
+        if let Split::Plugin { author, .. } = &input.split
+            && input.received_msat > 0
+        {
+            if let Some((month, requested, amount)) = launch_match {
+                tx.execute(
+                    "INSERT INTO bonus VALUES(?,?,'launch_match',?,?,?,?,'awarded')",
+                    params![input.key, author, input.plugin_id, month, requested, amount],
+                )?;
+            }
+            first_call_bonus(&tx, &input, author, rule.bonus.first_paid_call_msat as i64)?;
+        }
         let recorded = read_record(&tx, &input.key)?.ok_or(Error::Invalid("missing settlement"))?;
         tx.commit()?;
         Ok(recorded)
@@ -295,16 +348,24 @@ impl Ledger {
     pub fn accrued(&self, party: &str) -> Result<i64> {
         Ok(self.connection.query_row(
             &format!(
-                "SELECT COALESCE(SUM(s.amount_msat),0) FROM share s WHERE s.party=? AND {AVAILABLE}"
+                "SELECT COALESCE(SUM(s.amount_msat),0) FROM payable_share s WHERE s.party=? AND {AVAILABLE}"
             ),
             [party],
             |r| r.get(0),
         )?)
     }
+    /// Return whole payable claims at the current ledger state. Funding a
+    /// first-call bonus can reduce an OpenAgents claim, so reserve these values
+    /// rather than the immutable shares in a recorded settlement.
+    pub fn available_shares(&self, party: &str) -> Result<Vec<Share>> {
+        available_shares(&self.connection, party)
+    }
     pub fn totals(&self) -> Result<Totals> {
         let mut total = self.connection.query_row("SELECT COUNT(*),COALESCE(SUM(received_msat),0),COALESCE(SUM(lsp_fee_msat),0) FROM settlement", [], |r| Ok(Totals { settlements:r.get(0)?, received_msat:r.get(1)?, lsp_fee_msat:r.get(2)?, ..Totals::default() }))?;
         total.accrued_msat = self.connection.query_row(
-            &format!("SELECT COALESCE(SUM(s.amount_msat),0) FROM share s WHERE {AVAILABLE}"),
+            &format!(
+                "SELECT COALESCE(SUM(s.amount_msat),0) FROM payable_share s WHERE {AVAILABLE}"
+            ),
             [],
             |r| r.get(0),
         )?;
@@ -321,7 +382,7 @@ impl Ledger {
         Ok(total)
     }
     pub fn per_plugin(&self) -> Result<BTreeMap<String, PluginTotals>> {
-        let mut stmt = self.connection.prepare("SELECT plugin_id,COUNT(*),SUM(received_msat),COALESCE(SUM((SELECT SUM(amount_msat) FROM share WHERE settlement=payment_hash AND role='author')),0),COALESCE(SUM((SELECT SUM(amount_msat) FROM share WHERE settlement=payment_hash AND role='openagents')),0) FROM settlement WHERE plugin_id IS NOT NULL GROUP BY plugin_id ORDER BY plugin_id")?;
+        let mut stmt = self.connection.prepare("SELECT plugin_id,COUNT(*),SUM(received_msat),COALESCE(SUM((SELECT SUM(amount_msat) FROM share WHERE settlement=payment_hash AND role='author')),0),COALESCE(SUM((SELECT SUM(amount_msat) FROM payable_share WHERE settlement=payment_hash AND role='openagents')),0),COALESCE(SUM((SELECT SUM(amount_msat) FROM bonus WHERE settlement=payment_hash)),0) FROM settlement WHERE plugin_id IS NOT NULL GROUP BY plugin_id ORDER BY plugin_id")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get(0)?,
@@ -330,6 +391,7 @@ impl Ledger {
                     received_msat: r.get(2)?,
                     author_msat: r.get(3)?,
                     openagents_msat: r.get(4)?,
+                    bonus_msat: r.get(5)?,
                 },
             ))
         })?;
@@ -385,7 +447,7 @@ impl Ledger {
             if item.party != party {
                 return Err(Error::Invalid("payout party mismatch"));
             }
-            let value: Option<i64> = tx.query_row(&format!("SELECT s.amount_msat FROM share s WHERE s.settlement=? AND s.party=? AND s.role=? AND {AVAILABLE}"), params![item.settlement,party,item.role], |r| r.get(0)).optional()?;
+            let value: Option<i64> = tx.query_row(&format!("SELECT s.amount_msat FROM payable_share s WHERE s.settlement=? AND s.party=? AND s.role=? AND {AVAILABLE}"), params![item.settlement,party,item.role], |r| r.get(0)).optional()?;
             let value = value.ok_or(Error::Invalid("share already reserved or absent"))?;
             if value <= 0 || item.amount_msat != value {
                 return Err(Error::Invalid("payout must drain whole positive shares"));
@@ -399,8 +461,13 @@ impl Ledger {
             params![id, party, amount, destination, "lightning", at, at],
         )?;
         for item in items {
+            let table = if item.role == "first_paid_call" {
+                "bonus_payout_item"
+            } else {
+                "payout_item"
+            };
             tx.execute(
-                "INSERT INTO payout_item VALUES(?,?,?,?)",
+                &format!("INSERT INTO {table} VALUES(?,?,?,?)"),
                 params![id, item.settlement, party, item.role],
             )?;
         }
@@ -424,13 +491,82 @@ impl Ledger {
         Ok(())
     }
 }
-const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> {
+    let mut stmt = connection.prepare(&format!("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement WHERE s.party=? AND s.amount_msat>0 AND {AVAILABLE} ORDER BY t.seq,s.role"))?;
+    let rows = stmt.query_map([party], |r| {
+        Ok(Share {
+            settlement: r.get(0)?,
+            party: r.get(1)?,
+            role: r.get(2)?,
+            amount_msat: r.get(3)?,
+        })
+    })?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+fn month(at: i64) -> Result<String> {
+    let at = DateTime::from_timestamp(at, 0).ok_or(Error::Invalid("settlement time"))?;
+    Ok(format!("{:04}-{:02}", at.year(), at.month()))
+}
+fn first_call_bonus(
+    connection: &Connection,
+    input: &SettlementInput,
+    author: &str,
+    requested: i64,
+) -> Result<()> {
+    let plugin = input
+        .plugin_id
+        .as_deref()
+        .ok_or(Error::Invalid("plugin id"))?;
+    // Existing ledgers can contain paid calls recorded before bonus support.
+    // Do not give an established plugin a second first-call opportunity.
+    let seen: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM bonus WHERE plugin_id=? AND kind='first_paid_call') OR EXISTS(SELECT 1 FROM settlement t JOIN share s ON s.settlement=t.payment_hash WHERE t.plugin_id=? AND t.payment_hash!=? AND t.received_msat>0 AND s.role='author')",
+        params![plugin,plugin,input.key], |r| r.get(0))?;
+    if seen {
+        return Ok(());
+    }
+    let mut remaining = requested;
+    let mut funding = vec![];
+    for source in available_shares(connection, OPENAGENTS)? {
+        if remaining == 0 {
+            break;
+        }
+        if source.role != "openagents" {
+            continue;
+        }
+        let amount = source.amount_msat.min(remaining);
+        remaining -= amount;
+        funding.push((source.settlement, amount));
+    }
+    let funded = remaining == 0;
+    connection.execute(
+        "INSERT INTO bonus VALUES(?,?,'first_paid_call',?,?,?,?,?)",
+        params![
+            input.key,
+            author,
+            plugin,
+            month(input.settled_at)?,
+            requested,
+            if funded { requested } else { 0 },
+            if funded { "awarded" } else { "bonus_unfunded" }
+        ],
+    )?;
+    if funded {
+        for (source, amount) in funding {
+            connection.execute("INSERT INTO bonus_funding VALUES(?,?,'first_paid_call',?,'openagents','openagents',?)",
+                params![input.key,author,source,amount])?;
+        }
+    }
+    Ok(())
+}
 fn read_record(connection: &Connection, key: &str) -> Result<Option<Recorded>> {
     let mut record = connection.query_row("SELECT seq,payment_hash,resource,plugin_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short FROM settlement WHERE payment_hash=?", [key], |r| Ok(Recorded {
-        seq:r.get(0)?,key:r.get(1)?,resource:r.get(2)?,plugin_id:r.get(3)?,price_msat:r.get(4)?,received_msat:r.get(5)?,lsp_fee_msat:r.get(6)?,rail:if r.get::<_,String>(7)? == "balance" { Rail::Balance } else { Rail::Lightning },payer_alias:r.get(8)?,settled_at:r.get(9)?,rule_version:r.get(10)?,short:r.get(11)?,shares:vec![]
+        seq:r.get(0)?,key:r.get(1)?,resource:r.get(2)?,plugin_id:r.get(3)?,price_msat:r.get(4)?,received_msat:r.get(5)?,lsp_fee_msat:r.get(6)?,rail:if r.get::<_,String>(7)? == "balance" { Rail::Balance } else { Rail::Lightning },payer_alias:r.get(8)?,settled_at:r.get(9)?,rule_version:r.get(10)?,short:r.get(11)?,shares:vec![],bonuses:vec![]
     })).optional()?;
     if let Some(record) = &mut record {
         record.shares = connection.prepare("SELECT settlement,party,role,amount_msat FROM share WHERE settlement=? ORDER BY party,role")?.query_map([key], |r| Ok(Share { settlement:r.get(0)?,party:r.get(1)?,role:r.get(2)?,amount_msat:r.get(3)? }))?.collect::<std::result::Result<_,_>>()?;
+        record.bonuses = connection.prepare("SELECT kind,party,requested_msat,amount_msat,outcome FROM bonus WHERE settlement=? ORDER BY kind,party")?.query_map([key], |r| Ok(Bonus { kind:r.get(0)?,party:r.get(1)?,requested_msat:r.get(2)?,amount_msat:r.get(3)?,outcome:r.get(4)? }))?.collect::<std::result::Result<_,_>>()?;
     }
     Ok(record)
 }
