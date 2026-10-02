@@ -1559,3 +1559,32 @@ try, `40bfa2b842`, shipped knowledge entries the corpus rules refused, which
 turned the product KB off; it was rolled back to `f1409c846d` within a
 minute, and both stay in `releases/` for rollback (move the symlink back and
 restart).
+
+Release `315de9957c` (2026-10-02 UTC) answers a wallet request in plain
+words ([#10202](https://github.com/OpenAgentsInc/openagents/issues/10202)):
+the wallet overview a terminal runs when the descent picks no command is
+`wallet balance` (one sentence), and `WALLET_NOTE` names `wallet balance` and
+`wallet address` and tells the model never to mention nodes, networks,
+servers, channels, or liquidity; the x402 Lightning node's commands moved to
+`openagents x402 node`. It was built with `cargo zigbuild`, installed with
+`knowledge/` and `codebase-kb.gz` copied from `cdcc111e85`, checked with
+`--check`, and put live by moving the `chat` symlink; the live wallet eval
+(`live_hosted_chat`) passed 11 of 11 terminal rows, each balance row with
+`wallet balance` and the address row with `wallet address`.
+
+Release `d4310fc4fa` (2026-10-02 UTC) carries the Spark wallet on computers
+(#10202): the command tree's `wallet` group is the person's Spark wallet
+(`balance`, `address`, `receive`, `send`, `history`, `link`, `restore`), and
+the product entries `openagents.wallet` (v2), `openagents.wallet-trust` (v2),
+and `openagents.cli` (v3) say the wallet is the same on linked computers. The
+binary was built on a Boat sandbox (`cargo build --release --target
+x86_64-unknown-linux-musl`, static), installed with `knowledge/` from the
+repository at that commit and `codebase-kb.gz` from `e1a1e394e2`, checked
+with `--check`, and put live by moving the `chat` symlink from `e1a1e394e2`,
+which stays for rollback. A `knowledge/` archive made with macOS `tar`
+carries `._*` AppleDouble files that the corpus refuses (the first start
+logged `product kb off`); they were deleted and the worker restarted, and it
+logged `product kb openagents-product@be62fe0e41ba (106 entries)`. Make such
+an archive with `COPYFILE_DISABLE=1 tar`. Scratch chats then proposed
+`wallet balance` for "check my wallet balance" and "my sats", `wallet
+address` for "whats my wallet address", and no command for a send.
