@@ -42,11 +42,12 @@ pub mod triage;
 
 /// The OpenAgents triage key, in hex, that reports are sealed to.
 ///
-/// `None` until the owner creates the key and publishes its public half
-/// (the workspace's `NEEDS_OWNER.md` has the steps). Until then the app
-/// keeps each report on the phone as waiting and sends it once a build
-/// carries the key; nothing is sent to any other key.
-pub const TRIAGE_KEY: Option<&str> = None;
+/// The owner's key, made on 2026-10-01 with `openagents playtest keygen`;
+/// its secret stays in `~/.openagents/playtest/triage.key` on the owner's
+/// Mac, which `openagents playtest inbox` reads. Reports and feedback are
+/// sealed to it and to nothing else.
+pub const TRIAGE_KEY: Option<&str> =
+    Some("7bbbd6a7e46353d5e24683adae322e7be66880e1c13156e895c9c2d844749607");
 
 /// The environment variable that points a desktop build at another triage
 /// key: the hex or `npub` public key an operator reads with `openagents
