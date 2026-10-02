@@ -45,6 +45,7 @@ pub mod issue_run;
 pub mod landing;
 pub mod lifecycle;
 pub mod local;
+pub mod local_checks;
 pub mod media;
 pub mod owner;
 pub mod publish;

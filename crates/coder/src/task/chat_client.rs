@@ -356,6 +356,10 @@ impl Coder for Here {
         super::lifecycle::observe(store, task)
     }
 
+    fn checking(&self, store: &Path, task: &str) -> bool {
+        super::local_checks::pending(store, task)
+    }
+
     /// `openagents ARGV` as a child of this program, as `openagents mcp
     /// serve` runs a tool call: no input, stopped after
     /// [`COMMAND_TIMEOUT`], what it printed kept to [`COMMAND_OUTPUT`].

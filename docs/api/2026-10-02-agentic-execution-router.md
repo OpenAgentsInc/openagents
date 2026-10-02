@@ -516,9 +516,15 @@ router contract.
   every family, plans, continuation without widening, command effects, issue
   work, and the journal; `route-contract` tests the record's moves.
 
-What phase 1 does not do yet: local runs carry no frozen check suites
-(autostart's grant has none), so a live terminal run is labeled `unchecked`,
-never `verified`, until they do; the issue flow is refined to `issue_work`
+Local runs' checks (#10232): every writing run's grant now carries one
+host-written suite, frozen and pinned by digest before the candidate exists
+(`coder::task::local_checks`). When the run ends its owner lists the
+recipe's frozen checks and `cargo test -p` for each Cargo package the run
+touched, records the check's intent, and runs the suite through the task
+owner's independent check on the exact candidate, read-only; the client
+waits for the verdict before it keeps the route record. A live terminal run
+so ends `verified` or `check_failed`, and stays `unchecked` only when there
+was nothing to run. What phase 1 does not do yet: the issue flow is refined to `issue_work`
 after admission and still starts at once rather than as an offer; standing
 rules have no reading on the wire (#10157), though their route result admits
 and journals like any other.

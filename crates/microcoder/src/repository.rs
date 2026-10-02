@@ -920,7 +920,7 @@ pub async fn execute(
         ));
         None
     };
-    run_stages_with(
+    let task = run_stages_with(
         host,
         book,
         stages,
@@ -930,7 +930,16 @@ pub async fn execute(
         recipe,
     )
     .await
-    .map_err(|error| Failure::run(error.to_string()))
+    .map_err(|error| Failure::run(error.to_string()))?;
+    // A local run's independent check, when the run's end listed one
+    // (#10232): the recipe's frozen checks and the touched packages' tests
+    // on the exact candidate, so the route ends verified or check_failed.
+    if task.checks == task::Checks::Running {
+        return task::local_checks::complete(directory, &task.task_id)
+            .await
+            .map_err(|error| Failure::run(error.to_string()));
+    }
+    Ok(task)
 }
 
 /// The stages that can take images, in order: the model loops (Codex and

@@ -98,6 +98,14 @@ impl Recipe {
             frozen,
             results,
         };
+        // The run's independent check runs them again when it ends (#10232).
+        host.freeze_checks(
+            &recipe
+                .frozen
+                .iter()
+                .map(|test| test.script.clone())
+                .collect::<Vec<_>>(),
+        );
         let _ = host.append(&Step::said(Source::System, &recipe.summary()).noting(
             "delegate_recipe",
             json!({"run": recipe.prepared.record, "freezing": freezing,

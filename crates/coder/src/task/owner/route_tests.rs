@@ -360,3 +360,128 @@ async fn an_executor_crash_never_duplicates_effects() {
     assert!(counted(&recovered.intent.workspace.path) <= 1);
     tokio::time::sleep(Duration::from_millis(300)).await;
 }
+
+/// The task's owner lock, as the run's owner holds it. A child process
+/// another test forks while holding its own lock can keep one busy for a
+/// moment, so this waits.
+fn hold(dir: &Path, id: &str) -> Owner {
+    let store = Store::open_for_owner(dir).unwrap();
+    let started = Instant::now();
+    loop {
+        match Owner::acquire(&store, id) {
+            Ok(owner) => return owner,
+            Err(Error::Busy) if started.elapsed() < Duration::from_secs(30) => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => panic!("{error:?}"),
+        }
+    }
+}
+
+/// A local run (#10232): its grant carries the host's own suite, the run's
+/// end lists the recipe's frozen checks, and the independent check on the
+/// candidate ends the route verified when they pass, check_failed when
+/// one fails, and unchecked when nothing was listed.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_local_runs_listed_checks_end_its_route_verified_or_check_failed() {
+    use crate::task::local_checks;
+    for (frozen, expected, label) in [
+        (
+            Some(r#"test "$(cat result.txt)" = output"#),
+            Checks::Passed,
+            CheckLabel::Verified,
+        ),
+        (
+            Some(r#"test "$(cat result.txt)" = other"#),
+            Checks::Failed,
+            CheckLabel::CheckFailed,
+        ),
+        (None, Checks::NotRun, CheckLabel::Unchecked),
+    ] {
+        let (root, _workspace, mut grant) = fixture();
+        let dir = root.path().join("store");
+        grant.arguments[1] = "printf output > result.txt".into();
+        grant.requirements = local_checks::requirements(
+            &root.path().join("grants"),
+            &grant.task_id,
+            grant.expected_revision,
+        )
+        .unwrap();
+        let journal = admitted(&dir, "req-local");
+        let Dispatch::Executed(Ok(task)) = dispatch(&dir, &journal, "req-local", &grant, 0).await
+        else {
+            panic!("not executed");
+        };
+        assert_eq!(task.execution, Execution::Finished);
+        let run = task.run.as_ref().unwrap();
+        let listed = local_checks::list(
+            grant.requirements.as_ref().unwrap(),
+            &run.admission.workspace,
+            &run.admission.source_revision,
+            &frozen.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+            &[],
+        );
+        assert_eq!(listed.is_some(), frozen.is_some());
+        if listed.is_some() {
+            // The run's owner records the intent as the run ends, then
+            // runs the check.
+            {
+                let owner = hold(&dir, &grant.task_id);
+                std::thread::scope(|scope| {
+                    scope.spawn(|| assert!(local_checks::pending(&dir, &grant.task_id)));
+                });
+                owner.record(Event::CheckIntent).unwrap();
+            }
+            let checked = local_checks::complete(&dir, &grant.task_id).await.unwrap();
+            assert_eq!(checked.checks, expected);
+        }
+        assert!(!local_checks::pending(&dir, &grant.task_id));
+        let record = observed(&dir, &journal, "req-local");
+        assert_eq!(record.runs[0].projection.check, label);
+    }
+}
+
+/// A local check whose owner is gone is not waited on: it ends
+/// unavailable (#10232).
+#[cfg(unix)]
+#[tokio::test]
+async fn a_local_check_whose_owner_is_gone_is_not_waited_on() {
+    use crate::task::local_checks;
+    let (root, _workspace, mut grant) = fixture();
+    let dir = root.path().join("store");
+    grant.arguments[1] = "printf output > result.txt".into();
+    grant.requirements = local_checks::requirements(
+        &root.path().join("grants"),
+        &grant.task_id,
+        grant.expected_revision,
+    )
+    .unwrap();
+    let task = execute(&dir, &serde_json::to_vec(&grant).unwrap())
+        .await
+        .unwrap();
+    let run = task.run.as_ref().unwrap();
+    local_checks::list(
+        grant.requirements.as_ref().unwrap(),
+        &run.admission.workspace,
+        &run.admission.source_revision,
+        &["true".into()],
+        &[],
+    )
+    .unwrap();
+    {
+        let owner = hold(&dir, &grant.task_id);
+        // While the owner holds the task, its check is to come.
+        std::thread::scope(|scope| {
+            scope.spawn(|| assert!(local_checks::pending(&dir, &grant.task_id)));
+        });
+        owner.record(Event::CheckIntent).unwrap();
+    }
+    // A child another test forks may hold the lock for a moment.
+    let started = Instant::now();
+    while local_checks::pending(&dir, &grant.task_id) {
+        assert!(started.elapsed() < Duration::from_secs(30));
+    }
+    let task = Store::open(&dir).unwrap().show(&grant.task_id).unwrap();
+    assert_eq!(task.checks, Checks::Unavailable);
+}

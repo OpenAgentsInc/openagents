@@ -581,6 +581,10 @@ pub struct Host {
     fault: RefCell<Option<String>>,
     /// What the run cost, as the engine reported it ([`Host::cost`]).
     cost: Cell<owner::Cost>,
+    /// The checks the delegate recipe froze for this turn
+    /// ([`Host::freeze_checks`]), which the run's independent check runs
+    /// again ([`super::local_checks`]).
+    frozen_checks: RefCell<Vec<String>>,
 }
 
 impl Host {
@@ -887,7 +891,66 @@ impl Host {
             output_incomplete: Cell::new(false),
             fault: RefCell::new(None),
             cost: Cell::new(owner::Cost::default()),
+            frozen_checks: RefCell::new(Vec::new()),
         })
+    }
+
+    /// Name the checks the delegate recipe froze for this turn (#10208):
+    /// when the run ends, its independent check runs them again on the
+    /// exact candidate, with the touched packages' tests (#10232).
+    pub fn freeze_checks(&self, commands: &[String]) {
+        *self.frozen_checks.borrow_mut() = commands.to_vec();
+    }
+
+    /// The variables a local check's commands get (#10232): this run's
+    /// own tool `PATH` and toolchain variables, so `cargo` resolves as it
+    /// did for the engine while the check's `HOME` is scratch.
+    fn check_environment(&self) -> Vec<(String, std::ffi::OsString)> {
+        let mut variables: Vec<(String, std::ffi::OsString)> = Vec::new();
+        if let Some(toolchains) = &self.toolchains {
+            let entries = toolchains
+                .path
+                .iter()
+                .cloned()
+                .chain(std::env::split_paths(owner::SYSTEM_PATH));
+            variables.push((
+                "PATH".into(),
+                std::env::join_paths(entries).unwrap_or_default(),
+            ));
+            variables.extend(
+                toolchains
+                    .environment
+                    .iter()
+                    .map(|(name, value)| (name.clone(), value.clone().into_os_string())),
+            );
+        } else if let Some(Some(login)) = self.login.get() {
+            for (name, value) in &login.variables {
+                if let Some(name) = name.to_str()
+                    && matches!(name, "PATH" | "RUSTUP_HOME" | "CARGO_HOME")
+                {
+                    variables.push((name.to_owned(), value.clone()));
+                }
+            }
+        }
+        if !variables.iter().any(|(name, _)| name == "PATH")
+            && let Some(path) = std::env::var_os("PATH")
+        {
+            variables.push(("PATH".into(), path));
+        }
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        for (name, default) in [("RUSTUP_HOME", ".rustup"), ("CARGO_HOME", ".cargo")] {
+            if variables.iter().any(|(held, _)| held == name) {
+                continue;
+            }
+            let value = std::env::var_os(name)
+                .map(PathBuf::from)
+                .or_else(|| home.as_ref().map(|home| home.join(default)))
+                .filter(|path| path.is_dir());
+            if let Some(value) = value {
+                variables.push((name.to_owned(), value.into_os_string()));
+            }
+        }
+        variables
     }
 
     /// The private scratch directory of the command boundary.
@@ -1440,7 +1503,35 @@ impl Host {
         };
         result.priced(self.cost.get());
         result.paid_by(&model_access::current());
-        self.owner.record(owner::Event::Result { result })
+        // A local run's independent check (#10232): list what it runs
+        // before the result is recorded, so a reader that sees the result
+        // while this owner still holds the task knows a check follows.
+        let listed = if completed && self.fault.borrow().is_none() && !stopped {
+            self.admission
+                .grant
+                .requirements
+                .as_ref()
+                .and_then(|requirements| {
+                    super::local_checks::list(
+                        requirements,
+                        &self.admission.workspace,
+                        &self.admission.source_revision,
+                        &self.frozen_checks.borrow(),
+                        &self.check_environment(),
+                    )
+                })
+        } else {
+            None
+        };
+        let task = self.owner.record(owner::Event::Result { result })?;
+        if listed.is_some()
+            && task.status == Status::Finished
+            && task.execution == Execution::Finished
+            && !task.context_superseded()
+        {
+            return self.owner.record(owner::Event::CheckIntent);
+        }
+        Ok(task)
     }
 }
 

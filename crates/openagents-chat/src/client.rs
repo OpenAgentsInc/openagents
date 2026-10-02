@@ -436,6 +436,11 @@ pub trait Coder: Send + Sync {
     fn observe(&self, _store: &Path, _task: &str) -> Option<route_contract::record::Observation> {
         None
     }
+    /// Whether `task`'s independent check is still to come or under way
+    /// (#10232), so the route record waits for its verdict. Blocking.
+    fn checking(&self, _store: &Path, _task: &str) -> bool {
+        false
+    }
     /// Run the `openagents` command `argv` on this computer. Blocking.
     ///
     /// # Errors
@@ -1794,6 +1799,20 @@ impl Client {
             .map(|run| run.task.clone())
             .collect();
         if !tasks.is_empty() {
+            // A run's independent check follows its end (#10232): the
+            // record keeps its verdict, not the moment before it.
+            loop {
+                let (coder, store, waiting) = (self.coder.clone(), self.store(id), tasks.clone());
+                let checking = tokio::task::spawn_blocking(move || {
+                    waiting.iter().any(|task| coder.checking(&store, task))
+                })
+                .await
+                .unwrap_or(false);
+                if !checking {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
             let (coder, store) = (self.coder.clone(), self.store(id));
             let seen = tokio::task::spawn_blocking(move || {
                 tasks

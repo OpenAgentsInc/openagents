@@ -412,6 +412,13 @@ impl Policy {
             return Err("no route to start on".into());
         }
         let program = shell()?;
+        // A run that writes gets its independent check (#10232): the
+        // recipe's frozen checks and the touched packages' tests.
+        let requirements = if self.engine.write_workspace {
+            super::local_checks::requirements(grants, task, revision)?
+        } else {
+            None
+        };
         let grant = owner::Grant {
             schema: owner::GRANT_SCHEMA.into(),
             task_id: task.into(),
@@ -425,7 +432,7 @@ impl Policy {
             wall_seconds: 0,
             stream_bytes: 64 * 1024,
             memory_bytes: self.engine.memory_bytes,
-            requirements: None,
+            requirements,
             adapter_configuration: Some(self.configuration(order)),
         };
         let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;
