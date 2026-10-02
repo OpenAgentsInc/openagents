@@ -28,6 +28,8 @@ openagents-connect = { path = "../openagents-connect" }
 openagents-chat = { path = "../openagents-chat" }
 # `openagents terminal`: OpenAgents Terminal, the full-screen chat.
 openagents-terminal = { path = "../openagents-terminal" }
+# `openagents terminal --computer`: another computer's threads over NIP-HOST.
+openagents-chat-app = { path = "../openagents-chat-app" }
 atif = { path = "../atif" }
 coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }

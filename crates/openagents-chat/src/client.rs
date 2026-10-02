@@ -111,6 +111,8 @@ pub enum Kind {
     InProcess,
     /// The service in this process, in a throwaway store.
     Scratch,
+    /// Another computer's host, over NIP-HOST.
+    Computer,
 }
 
 impl Kind {
@@ -120,6 +122,7 @@ impl Kind {
             Self::Host => "host",
             Self::Scratch => "scratch",
             Self::InProcess => "in_process",
+            Self::Computer => "computer",
         }
     }
 }
@@ -571,6 +574,9 @@ enum Backend {
         scratch: bool,
         home: PathBuf,
     },
+    /// Another computer's host, over NIP-HOST `thread.*` as a paired phone
+    /// reads it ([`Client::over_computer`]). Its Coder runs there.
+    Computer { link: Box<dyn Host>, label: String },
 }
 
 /// A chat client over one backend.
@@ -710,6 +716,26 @@ impl Client {
         .warmed()
     }
 
+    /// A client over another computer's threads: `link` carries the
+    /// service commands as NIP-HOST `thread.*` operations
+    /// (`openagents_chat_app::host_threads::Remote`), and `label` names the
+    /// computer. Its Coder runs there; this computer starts none.
+    pub fn over_computer(
+        link: Box<dyn Host>,
+        label: String,
+        options: Options,
+        coder: Arc<dyn Coder>,
+    ) -> Self {
+        Self {
+            backend: Backend::Computer { link, label },
+            coder,
+            caller: options.caller,
+            dir: options.dir,
+            interrupt: options.interrupt,
+            hint: options.hint,
+        }
+    }
+
     /// This client, once it asked Coder to make its project's first start
     /// quick ([`Coder::warm`]). A scratch thread's store is its own, and
     /// is left alone.
@@ -728,6 +754,7 @@ impl Client {
             Backend::Host { .. } => Kind::Host,
             Backend::Local { scratch: true, .. } => Kind::Scratch,
             Backend::Local { .. } => Kind::InProcess,
+            Backend::Computer { .. } => Kind::Computer,
         }
     }
 
@@ -736,6 +763,7 @@ impl Client {
         match &self.backend {
             Backend::Host { socket, .. } => socket.display().to_string(),
             Backend::Local { home, .. } => home.display().to_string(),
+            Backend::Computer { label, .. } => label.clone(),
         }
     }
 
@@ -775,7 +803,9 @@ impl Client {
     /// The service's or the host's refusal, in its words.
     pub async fn apply(&mut self, command: Command) -> Result<Snapshot, String> {
         match &mut self.backend {
-            Backend::Host { link, .. } => link.apply(command, self.caller).await,
+            Backend::Host { link, .. } | Backend::Computer { link, .. } => {
+                link.apply(command, self.caller).await
+            }
             Backend::Local { chats, .. } => service::apply(chats, command, now()),
         }
     }
@@ -859,6 +889,11 @@ impl Client {
                 self.send(&thread, new, &text, run, timeout, sink).await
             }
             Op::RunCoder { thread } => Ok(self.run_coder(&thread, sink).await),
+            Op::Follow { thread } | Op::Stop { thread } | Op::Answer { thread, .. }
+                if matches!(self.backend, Backend::Computer { .. }) =>
+            {
+                Ok(self.elsewhere(&thread, sink).await)
+            }
             Op::Follow { thread } => Ok(match self.bound(&thread, sink).await {
                 Some(task) => self.follow_from(&thread, &task, 1, false, sink).await,
                 None => Ended::Failed,
@@ -891,7 +926,7 @@ impl Client {
     /// work continues it. The host does this for its own threads; in this
     /// process the context says it.
     async fn carry_run(&mut self, id: &str) {
-        if matches!(self.backend, Backend::Host { .. }) {
+        if !matches!(self.backend, Backend::Local { .. }) {
             return;
         }
         let bound = self
@@ -995,7 +1030,7 @@ impl Client {
                     Ok(read) => read,
                     // The host stopped answering while the reply streams:
                     // it keeps answering, so read again once it is back.
-                    Err(_) if matches!(self.backend, Backend::Host { .. }) => {
+                    Err(_) if !matches!(self.backend, Backend::Local { .. }) => {
                         down += 1;
                         if !self.pause(id, down, &mut interrupt, sink).await {
                             stopped = true;
@@ -1097,6 +1132,27 @@ impl Client {
         }
     }
 
+    /// Another computer's thread: its Coder run is there, so this client
+    /// says where instead of following, stopping, or answering it.
+    async fn elsewhere(&mut self, id: &str, sink: &mut Sink<'_>) -> Ended {
+        let label = self.place();
+        let snapshot = self
+            .apply(Command::Read {
+                chat: id.to_owned(),
+                before: None,
+            })
+            .await;
+        let message = match snapshot.ok().and_then(|snapshot| snapshot.coder) {
+            Some(coder) => format!(
+                "Coder works on this thread's task {} on {label}. Follow or stop it there, or in the OpenAgents app.",
+                coder.task
+            ),
+            None => "This thread has not started Coder.".to_owned(),
+        };
+        coder_report(sink, id, true, &message, None);
+        Ended::Done
+    }
+
     /// Say the chat cannot be reached, and wait before try `attempt`.
     /// `false` when the person stopped waiting.
     async fn pause(
@@ -1134,6 +1190,9 @@ impl Client {
                 return Ended::Failed;
             }
         };
+        if snapshot.coder.is_some() && matches!(self.backend, Backend::Computer { .. }) {
+            return self.elsewhere(id, sink).await;
+        }
         if let Some(coder) = &snapshot.coder {
             coder_report(
                 sink,
@@ -1166,11 +1225,15 @@ impl Client {
         }
         // The project is the checkout this client runs in: Coder runs here,
         // with or without a host.
-        let checkout = self
-            .dir
-            .as_deref()
-            .map(|dir| self.coder.checkout(dir))
-            .unwrap_or_else(|| Err(NO_DIR.into()));
+        // Another computer's thread runs Coder there.
+        let checkout = match &self.backend {
+            Backend::Computer { label, .. } => Err(format!("Coder runs on {label}.")),
+            _ => self
+                .dir
+                .as_deref()
+                .map(|dir| self.coder.checkout(dir))
+                .unwrap_or_else(|| Err(NO_DIR.into())),
+        };
         let why = match checkout {
             Ok(()) => return self.start(id, sink).await,
             Err(why) => why,

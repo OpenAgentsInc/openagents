@@ -115,6 +115,8 @@ pub struct App {
     pub backend: Kind,
     /// The folder the screen runs in, as the status line names it.
     pub folder: String,
+    /// Another computer's name, when the threads are that computer's.
+    pub computer: Option<String>,
     pub transcript: Scrollback<Row, Line<'static>, Wrap>,
     pub editor: Editor,
     pub phase: Phase,
@@ -173,6 +175,7 @@ impl App {
             fresh,
             backend,
             folder,
+            computer: None,
             transcript: transcript(ladder),
             editor: Editor::new(),
             phase: Phase::Idle,
@@ -248,7 +251,16 @@ impl App {
     /// The welcome card: where the threads live, the project, the coding
     /// agents, and the offer to keep chats in sync with the phone.
     pub fn welcome(&mut self, context: &Context, resumed: Option<&str>) {
-        self.push(Row::Card(welcome(self.backend, context, resumed)));
+        let mut card = welcome(self.backend, context, resumed);
+        if let Some(computer) = &self.computer {
+            // Its Coder runs there, so this computer's project and agents
+            // say nothing about it.
+            card.rows = vec![
+                ("Computer".into(), computer.clone()),
+                ("Chats".into(), "that computer's · Ctrl+T lists them".into()),
+            ];
+        }
+        self.push(Row::Card(card));
     }
 
     /// Whether an operation runs on the client now.
@@ -938,6 +950,7 @@ pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card
         Kind::Host => "synced",
         Kind::InProcess => "this computer · Ctrl+S to sync",
         Kind::Scratch => "scratch",
+        Kind::Computer => "another computer's",
     };
     Card {
         title: format!("OpenAgents v{}", env!("CARGO_PKG_VERSION")),

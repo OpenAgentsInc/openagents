@@ -30,6 +30,7 @@ use crate::{Args, Output, runtime};
 
 pub(crate) const USAGE: &str =
     "usage: openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
+                          [--computer HOST]
 OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
 Type a message and press Enter. It opens on a new thread; --continue opens
 the last thread you had open in this folder, --thread ID opens that thread,
@@ -37,8 +38,11 @@ and Ctrl+T lists them all. When
 this computer's host runs, the threads are the desktop app's threads;
 --socket names another control socket and --local skips the host. --scratch
 uses a throwaway identity and thread store; reopen that thread with
---scratch --thread ID. Bare `openagents` with no command opens this screen
-when it runs on a terminal.";
+--scratch --thread ID. --computer HOST opens another computer's threads
+instead, as a paired phone does (HOST is a name, key, or key prefix from
+`openagents computer list`; pair first with `openagents computer link`):
+continue them there, and its Coder runs there. Bare `openagents` with no
+command opens this screen when it runs on a terminal.";
 
 /// What the command does and where the phone runs it, for the chat
 /// router's command tree (`coder::cli_route::tree`). It holds the
@@ -46,7 +50,7 @@ when it runs on a terminal.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::LongRunning)];
 
-const OPTIONS: &[&str] = &["thread", "socket"];
+const OPTIONS: &[&str] = &["thread", "socket", "computer"];
 // `--new` is the default now and still accepted.
 const SWITCHES: &[&str] = &["scratch", "local", "new", "continue"];
 
@@ -98,6 +102,16 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     if args.switch("new") && args.switch("continue") {
         return output.usage("terminal", "--new and --continue do not go together", USAGE);
     }
+    let computer = args.option("computer").map(str::to_owned);
+    if computer.is_some()
+        && (args.switch("scratch") || args.switch("local") || args.option("socket").is_some())
+    {
+        return output.usage(
+            "terminal",
+            "--computer goes without --scratch, --local, or --socket",
+            USAGE,
+        );
+    }
     let scratch = args.switch("scratch");
     // A scratch store holds one thread: a fresh one, or the one named.
     let (store_thread, new, resume) = match (scratch, thread) {
@@ -132,22 +146,41 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         .option("socket")
         .map(PathBuf::from)
         .or_else(control::socket_path);
-    let result = runtime().block_on(async move {
+    let runtime = runtime();
+    // Another computer's threads: this device's grant for it, its link up.
+    // The live service stays open while the screen runs.
+    let (remote, _live) = match &computer {
+        Some(name) => match open_computer(&args, &runtime, name) {
+            Ok((remote, label, live)) => (Some((remote, label)), Some(live)),
+            Err(message) => return output.fail("terminal", &message),
+        },
+        None => (None, None),
+    };
+    let flag = match &computer {
+        Some(name) => format!(" --computer {name}"),
+        None => String::new(),
+    };
+    let result = runtime.block_on(async move {
         let mut notices = Vec::new();
-        let client = Client::open(
-            options,
-            &Control,
-            Arc::new(Here),
-            store_thread.as_deref(),
-            new,
-            &mut |event| {
-                if let Some(notice) = notice(event) {
-                    notices.push(notice);
-                }
-            },
-        )
-        .await
-        .map_err(Failure::Client)?;
+        let client = match remote {
+            Some((remote, label)) => {
+                Client::over_computer(Box::new(remote), label, options, Arc::new(Here))
+            }
+            None => Client::open(
+                options,
+                &Control,
+                Arc::new(Here),
+                store_thread.as_deref(),
+                new,
+                &mut |event| {
+                    if let Some(notice) = notice(event) {
+                        notices.push(notice);
+                    }
+                },
+            )
+            .await
+            .map_err(Failure::Client)?,
+        };
         let kind = client.kind();
         let launch = Launch {
             client,
@@ -169,7 +202,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok((kind, exit)) => {
             // The screen has given the terminal back by now.
             if let Some(id) = exit.thread {
-                for line in closing(kind, &id, exit.running) {
+                let flag = if flag.is_empty() {
+                    self::flag(kind).to_owned()
+                } else {
+                    flag
+                };
+                for line in closing(&flag, &id, exit.running) {
                     eprintln!("{line}");
                 }
             }
@@ -214,18 +252,50 @@ fn flag(kind: Kind) -> &'static str {
     match kind {
         Kind::Scratch => " --scratch",
         Kind::InProcess => " --local",
-        Kind::Host => "",
+        Kind::Host | Kind::Computer => "",
     }
 }
 
-/// What the program prints once the screen closes.
-fn closing(kind: Kind, thread: &str, running: bool) -> Vec<String> {
+/// Another computer's threads: this device's live service for its paired
+/// computers, the computer `name` names, its link up, and its label.
+fn open_computer(
+    args: &Args,
+    runtime: &tokio::runtime::Runtime,
+    name: &str,
+) -> Result<
+    (
+        openagents_chat_app::computer_chats::Remote,
+        String,
+        coder_computers::live::Live,
+    ),
+    String,
+> {
+    use coder_computers::ComputersService as _;
+    let mut live = crate::computer::open(args, runtime)?;
+    let host = crate::computer::host_arg_text(&mut live, args, name)?;
+    crate::computer::connected(&mut live, &host, args)?;
+    let label = live
+        .snapshot()
+        .ok()
+        .and_then(|snapshot| snapshot.host(&host).map(|record| record.label.clone()))
+        .unwrap_or_else(|| name.to_owned());
+    let link = Arc::new(openagents_chat_app::host_threads::Live::new(
+        live.terminals(),
+        runtime.handle().clone(),
+    ));
+    Ok((
+        openagents_chat_app::computer_chats::Remote::new(link, host),
+        label,
+        live,
+    ))
+}
+
+/// What the program prints once the screen closes. `flag` reaches the
+/// thread's store again.
+fn closing(flag: &str, thread: &str, running: bool) -> Vec<String> {
     let mut lines = vec![
         format!("thread {thread}"),
-        format!(
-            "Resume with: openagents terminal --thread {thread}{}",
-            flag(kind)
-        ),
+        format!("Resume with: openagents terminal --thread {thread}{flag}"),
     ];
     if running {
         lines
@@ -968,13 +1038,13 @@ mod tests {
     fn closing_says_how_to_resume() {
         let id = "0123456789abcdef0123456789abcdef";
         assert_eq!(
-            closing(Kind::Scratch, id, false),
+            closing(flag(Kind::Scratch), id, false),
             vec![
                 format!("thread {id}"),
                 format!("Resume with: openagents terminal --thread {id} --scratch"),
             ]
         );
-        let lines = closing(Kind::Host, id, true);
+        let lines = closing(flag(Kind::Host), id, true);
         assert_eq!(
             lines[1],
             format!("Resume with: openagents terminal --thread {id}")

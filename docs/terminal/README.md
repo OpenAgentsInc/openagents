@@ -68,6 +68,14 @@ openagents terminal --scratch
 - `--scratch` uses a throwaway identity and thread store in the system
   temporary directory, for trying it out and for tests. Reopen that thread
   with `--scratch --thread ID`.
+- `--computer HOST` opens another computer's threads, as a paired phone
+  does: the terminal on a laptop follows the desktop's host over NIP-HOST
+  (`thread.list`, `thread.read`, `thread.send`, `thread.stop`,
+  `thread.run`). Pair this computer with it first (`openagents computer
+  link`, with an invitation from that computer); HOST is a name, key, or key
+  prefix from `openagents computer list`. It opens on that computer's thread
+  list. Messages continue its threads and its Coder runs there; new threads,
+  archiving, and following a run happen on that computer or in the app.
 - `--local` keeps the threads in this command's own store even when a host
   runs, and `--socket PATH` names another host control socket, as for
   [`openagents chat`](../cli/chat.md).

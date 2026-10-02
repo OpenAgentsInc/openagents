@@ -131,6 +131,9 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
         })
     };
     let mut app = App::new(ladder, thread.clone(), fresh, client.kind(), label);
+    if client.kind() == client::Kind::Computer {
+        app.computer = Some(client.place());
+    }
     app.editor.set_history(prompts::read(&home));
     app.welcome(&context, resumed.as_deref());
     for notice in notices {
@@ -156,6 +159,9 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
     };
     if !fresh {
         screen.open(thread, false).await;
+    } else if screen.app.computer.is_some() {
+        // Another computer's threads start there: open one of them.
+        screen.threads(None, String::new()).await;
     }
     (screen, receiver)
 }
@@ -262,6 +268,11 @@ impl Screen {
                 }
             }
             Action::Sync => {
+                if self.app.backend == client::Kind::Computer {
+                    self.app
+                        .note("These are another computer's threads; they sync through its host.");
+                    return;
+                }
                 if self.app.backend == client::Kind::Host {
                     self.app.note(
                         "This computer's host already holds these threads; they sync with \

@@ -7402,6 +7402,7 @@ dependencies = [
  "nostr",
  "nostr-relay",
  "openagents-chat",
+ "openagents-chat-app",
  "openagents-connect",
  "openagents-terminal",
  "openagents-wallet",

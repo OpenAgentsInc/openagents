@@ -320,7 +320,7 @@ fn host_arg(live: &mut Live, args: &Args, index: usize) -> Result<String, String
     host_arg_text(live, args, positional(args, index, "HOST")?)
 }
 
-fn host_arg_text(live: &mut Live, args: &Args, text: &str) -> Result<String, String> {
+pub(crate) fn host_arg_text(live: &mut Live, args: &Args, text: &str) -> Result<String, String> {
     let known: Vec<String> = live
         .snapshot()
         .map_err(|e| e.to_string())?
@@ -350,7 +350,7 @@ fn settle(live: &mut Live, seconds: u64) -> Result<Snapshot, String> {
 
 /// Wait until the supervisor reports the host's link connected, so a call
 /// over it is not refused while the first attempt is still in flight.
-fn connected(live: &mut Live, host: &str, args: &Args) -> Result<(), String> {
+pub(crate) fn connected(live: &mut Live, host: &str, args: &Args) -> Result<(), String> {
     let seconds: u64 = args.number("wait", 15)?;
     let deadline = std::time::Instant::now() + Duration::from_secs(seconds);
     let mut last = String::from("no link");

@@ -32,7 +32,7 @@ pub(super) fn flag(kind: Kind) -> &'static str {
     match kind {
         Kind::Scratch => " --scratch",
         Kind::InProcess => " --local",
-        Kind::Host => "",
+        Kind::Host | Kind::Computer => "",
     }
 }
 

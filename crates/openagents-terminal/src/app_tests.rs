@@ -862,3 +862,22 @@ fn a_plugin_picked_from_the_list_runs_with_the_next_message() {
         [Action::Run(Op::Send { .. })]
     ));
 }
+
+/// Another computer's threads: the welcome card names the computer, not
+/// this one's project and agents.
+#[test]
+fn another_computers_welcome_names_it() {
+    let mut app = App::new(
+        Ladder::new(Colors::None),
+        "a".repeat(32),
+        true,
+        Kind::Computer,
+        "demo".into(),
+    );
+    app.computer = Some("Desk".into());
+    app.welcome(&Context::default(), None);
+    let text = shown(&mut app);
+    assert!(text.contains("Computer") && text.contains("Desk"), "{text}");
+    assert!(text.contains("that computer's"), "{text}");
+    assert!(!text.contains("│ Agents"), "{text}");
+}
