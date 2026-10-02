@@ -2559,25 +2559,29 @@ mod tests {
             .show(&record.task)
             .unwrap();
 
-        // Another holder keeps the store well past the open's wait.
+        // Another process writes the task for well past the open's wait.
+        // Reads take no lock (#10231), so the follower never waits on it.
         let store = run.store().to_path_buf();
+        let task = record.task.clone();
         let (held_tx, held_rx) = std::sync::mpsc::channel();
         let holder = std::thread::spawn(move || {
-            let held = Store::open(&store).unwrap();
+            let held = Store::open(&store).unwrap().lock_task(&task).unwrap();
             held_tx.send(()).unwrap();
             std::thread::sleep(Duration::from_millis(600));
             drop(held);
         });
         held_rx.recv().unwrap();
         let started = Instant::now();
-        let mut waited = 0;
+        let mut polled = 0;
         while started.elapsed() < Duration::from_millis(400) {
-            let (lines, state) = follow.poll().expect("a busy store is waited out");
+            let began = Instant::now();
+            let (lines, state) = follow.poll().expect("a writer never stops a reader");
+            assert!(began.elapsed() < Duration::from_millis(200));
             assert_eq!(state, State::Running);
             assert!(lines.is_empty());
-            waited += 1;
+            polled += 1;
         }
-        assert!(waited > 0);
+        assert!(polled > 0);
         holder.join().unwrap();
 
         // Released: the follower reads again, and the task is untouched.
@@ -2589,25 +2593,6 @@ mod tests {
             .unwrap();
         assert_eq!(after.revision, before.revision);
         assert_eq!(after.status, before.status);
-
-        // A store busy past the reader's limit is a read failure, and says so.
-        let mut impatient = run.follow(&record.task, None, None);
-        impatient.reading =
-            super::super::Reading::within(Duration::from_millis(20), Duration::from_millis(150));
-        let held = Store::open(run.store()).unwrap();
-        let started = Instant::now();
-        let why = loop {
-            match impatient.poll() {
-                Ok((_, State::Running)) => std::thread::sleep(Duration::from_millis(20)),
-                Ok(other) => panic!("a held store ended the follow as {other:?}"),
-                Err(why) => break why,
-            }
-        };
-        assert!(started.elapsed() >= Duration::from_millis(150));
-        assert!(why.contains("holds the task store lock"), "{why}");
-        drop(held);
-        let (_, state) = impatient.poll().unwrap();
-        assert_eq!(state, State::Running);
     }
 
     /// A host serving this store names a chat's local run as its own task

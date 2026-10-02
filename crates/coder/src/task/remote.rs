@@ -53,7 +53,7 @@ impl Inbox {
     #[must_use]
     pub fn new(store: impl Into<PathBuf>, workspaces: BTreeMap<String, PathBuf>) -> Self {
         let store = store.into();
-        if store.join(super::STORE_FILE).exists() {
+        if super::present(&store) {
             let _ = super::targets::cleanup(&store);
         }
         Self {
@@ -454,12 +454,14 @@ impl Tasks for Inbox {
             .unwrap_or_default()
     }
 
-    /// The length and modification time of the store's task, command, and
-    /// archive files: every change a summary reports writes one of them.
+    /// The length and modification time of the store's task directory
+    /// (every task write renames a file into it), identity log, command,
+    /// and archive files: every change a summary reports writes one of them.
     fn stamp(&self) -> Option<Vec<u8>> {
         let mut stamp = Vec::new();
         for name in [
-            super::STORE_FILE,
+            super::TASK_DIR,
+            super::IDENTITY_FILE,
             super::commands::FILE,
             super::archive::FILE,
         ] {

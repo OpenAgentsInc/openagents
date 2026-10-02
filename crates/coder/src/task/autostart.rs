@@ -2747,12 +2747,14 @@ mod tests {
         );
     }
 
-    /// Hold the task store's lock on another thread for `hold`.
-    fn hold_store(store: &Path, hold: Duration) -> std::thread::JoinHandle<()> {
+    /// Hold `task`'s write lock on another thread for `hold`, as another
+    /// process's slow write would.
+    fn hold_task(store: &Path, task: &str, hold: Duration) -> std::thread::JoinHandle<()> {
         let store = store.to_path_buf();
+        let task = task.to_owned();
         let (held, taken) = std::sync::mpsc::channel();
         let holder = std::thread::spawn(move || {
-            let _held = Store::open(&store).unwrap();
+            let _held = Store::open(&store).unwrap().lock_task(&task).unwrap();
             held.send(()).unwrap();
             std::thread::sleep(hold);
         });
@@ -2760,8 +2762,10 @@ mod tests {
         holder
     }
 
+    /// A sweep only reads the store, and reads take no lock (#10231): a
+    /// task another process is writing still starts, at once.
     #[test]
-    fn a_sweep_waits_out_a_busy_store_and_its_tasks_stay_eligible() {
+    fn a_sweep_is_not_held_up_by_another_writer_and_starts_the_task() {
         let s = setup();
         policy(1).save(&s.root).unwrap();
         let (first, second) = ("b".repeat(64), "c".repeat(64));
@@ -2771,32 +2775,29 @@ mod tests {
             .unwrap();
         assert_eq!(s.launched.lock().unwrap().len(), 1);
         advance(PENDING_GRACE + 1);
-        let sweeper = |wait: Duration| {
-            Autostart::new(
-                s.root.clone(),
-                s.store.clone(),
-                s.autostart.workspaces.clone(),
-                Box::new(Fake(s.launched.clone())),
-                clock,
-            )
-            .with_probe(|_| Connection::Connected)
-            .with_usage_fetch(offline)
-            .with_store_wait(wait)
-            .foreground()
-        };
-        // A store busy past the sweep's wait leaves the task eligible.
-        let holder = hold_store(&s.store, Duration::from_millis(1500));
-        let gave_up = sweeper(Duration::from_millis(200)).sweep();
-        holder.join().unwrap();
-        assert!(gave_up.iter().all(|e| e.event != "started"), "{gave_up:?}");
-        assert_eq!(s.launched.lock().unwrap().len(), 1);
-        assert!(
-            !events(&s.root).contains(&("skipped".into(), Some(second.clone()))),
-            "a busy store decides nothing"
-        );
-        // A sweep that waits longer than the holder starts it.
-        let holder = hold_store(&s.store, Duration::from_millis(1500));
-        let started = sweeper(Duration::from_secs(30)).sweep();
+        let sweeper = Autostart::new(
+            s.root.clone(),
+            s.store.clone(),
+            s.autostart.workspaces.clone(),
+            Box::new(Fake(s.launched.clone())),
+            clock,
+        )
+        .with_probe(|_| Connection::Connected)
+        .with_usage_fetch(offline)
+        .with_store_wait(Duration::from_millis(200))
+        .foreground();
+        let task = Store::open(&s.store)
+            .unwrap()
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|task| task.status == Status::Queued && task.run.is_none())
+            .map(|task| task.task_id)
+            .unwrap();
+        let holder = hold_task(&s.store, &task, Duration::from_millis(1500));
+        let begun = std::time::Instant::now();
+        let started = sweeper.sweep();
+        assert!(begun.elapsed() < Duration::from_millis(1500));
         holder.join().unwrap();
         assert!(
             started

@@ -43,8 +43,8 @@ remote attestation nor a multi-host lease service.
 ## Owner lifecycle
 
 Each task has a stable `owner-TASK_ID.lock`. The execution owner holds its OS
-lock until it stops. The inbox's shorter lock serializes command and host-event
-journal mutations. A new client can read or request cancellation without taking
+lock until it stops. Each task's short write lock serializes its command and
+host-event journal mutations. A new client can read or request cancellation without taking
 the execution lock. A second owner cannot execute the same task. Within one
 store, an unresolved admitted task also blocks admission of another task on the
 same canonical workspace or an overlapping subtree, until it is resolved or
@@ -101,13 +101,24 @@ refuses with `workspace_busy`, which a device reads as
 
 ## Durable journal and compatibility
 
-The task store v2 retains accepted command bytes and owner events in one ordered
-journal. Reopening replays both and compares every materialized task and receipt.
-An old v1 inbox reads without rewriting; the next accepted mutation writes v2.
-Older binaries refuse v2 instead of dropping its execution history. Private
-files, atomic replacement, fsync, bounded storage, and refusal after ambiguous
-writes retain the inbox's guarantees. Do not delete a stable lock or recreate a
-missing initialized document.
+The task store v3 ([#10231](https://github.com/OpenAgentsInc/openagents/issues/10231),
+design in [2026-10-02-task-store-v2.md](2026-10-02-task-store-v2.md)) keeps each
+task in its own file, `task/<id>.json`: the task, its accepted command bytes and
+receipts, and its owner events, in one ordered journal. Reading a task replays
+that journal and compares the task and every receipt. A write takes only its
+task's lock (`task/<id>.lock`) and replaces the file atomically; it holds the
+stable `tasks.lock` only for the moment it reserves a command identity in the
+append-only `identities.log`. An admission or check intent also holds
+`workspaces.lock` while it checks every other task. Readers take no lock.
+Receipt and event sequences count per task.
+
+A v2 (or v1) single-document store migrates once, on the first open of a
+binary that knows v3, under the stable lock: the document is validated as
+before, each task's file is written, then `store.json` marks the store as v3
+and `tasks.json` is kept as `tasks.v2.json`. Older binaries then refuse the
+store instead of starting an empty one. Private files, atomic replacement,
+fsync, bounded storage, and refusal after ambiguous writes retain the inbox's
+guarantees. Do not delete a stable lock or recreate a missing `store.json`.
 
 The local filesystem and OS lock are the enforcement domain. Separate stores,
 network filesystems, distributed ownership, hostile same-user rewriting, and

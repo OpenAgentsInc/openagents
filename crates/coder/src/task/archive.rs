@@ -246,7 +246,7 @@ mod tests {
             cancel(&mut store, "ended");
         }
         std::fs::write(dir.join("ended.1.atif.jsonl"), "{}\n").unwrap();
-        let before = std::fs::read(dir.join("tasks.json")).unwrap();
+        let before = std::fs::read(dir.join("task/ended.json")).unwrap();
         // A task that has not ended stays listed.
         assert!(matches!(
             archive(&dir, "queued", "Test chat", By::Owner, 5),
@@ -278,7 +278,7 @@ mod tests {
         );
         assert_eq!(archived(&dir), BTreeSet::from(["ended".to_owned()]));
         // The task document and the transcript are untouched.
-        assert_eq!(std::fs::read(dir.join("tasks.json")).unwrap(), before);
+        assert_eq!(std::fs::read(dir.join("task/ended.json")).unwrap(), before);
         assert!(dir.join("ended.1.atif.jsonl").exists());
         assert_eq!(Store::open(&dir).unwrap().list().unwrap().len(), 2);
         // Restoring shows it again.

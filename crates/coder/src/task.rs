@@ -17,8 +17,14 @@ use serde::{Deserialize, Serialize};
 pub const COMMAND_SCHEMA: &str = "openagents.coder.task-command.v1";
 /// The local receipt format this implementation returns.
 pub const RECEIPT_SCHEMA: &str = "openagents.coder.task-receipt.v1";
-/// The persisted inbox format.
-pub const STORE_SCHEMA: &str = "openagents.coder.task-store.v2";
+/// The persisted inbox format: one file per task beside a marker, an
+/// identity log, and the stable lock (#10231).
+pub const STORE_SCHEMA: &str = "openagents.coder.task-store.v3";
+/// The single-document format a v3 store migrates from.
+pub const LEGACY_STORE_SCHEMA: &str = "openagents.coder.task-store.v2";
+const LEGACY_V1_SCHEMA: &str = "openagents.coder.task-store.v1";
+/// One task's file: its state and its own command and owner journal.
+pub const TASK_FILE_SCHEMA: &str = "openagents.coder.task-file.v1";
 
 pub mod adapter;
 pub mod archive;
@@ -57,16 +63,33 @@ pub use coder_delegate::steering;
 pub const MAX_TURNS: usize = 64;
 /// The largest command, including JSON whitespace, in bytes.
 pub const MAX_COMMAND_BYTES: usize = 64 * 1024;
-/// The largest persisted inbox document, in bytes.
+/// The largest task file (and the largest legacy document), in bytes.
 pub const MAX_STORE_BYTES: usize = 16 * 1024 * 1024;
 /// The largest number of retained tasks. No task is silently pruned.
 pub const MAX_TASKS: usize = 1024;
 /// The largest number of accepted commands. Retry identities are not pruned.
 pub const MAX_COMMANDS: usize = 2048;
-/// The inbox document's filename within its private directory.
-pub const STORE_FILE: &str = "tasks.json";
-/// The stable sibling lock. Removing it while a process runs is unsafe.
+/// The store's marker within its private directory. Its presence means the
+/// store is initialized; it is never recreated once missing.
+pub const STORE_FILE: &str = "store.json";
+/// The single document a store before #10231 kept everything in. A v3
+/// store migrates it once and keeps it as [`LEGACY_BACKUP_FILE`].
+pub const LEGACY_STORE_FILE: &str = "tasks.json";
+/// Where a migrated [`LEGACY_STORE_FILE`] is kept, untouched.
+pub const LEGACY_BACKUP_FILE: &str = "tasks.v2.json";
+/// The stable sibling lock. Removing it while a process runs is unsafe. It
+/// is held only for moments: to initialize or migrate the store and to
+/// reserve a command identity.
 pub const LOCK_FILE: &str = "tasks.lock";
+/// The private directory of task files (`<id>.json`) and their write locks
+/// (`<id>.lock`).
+pub const TASK_DIR: &str = "task";
+/// The append-only log of accepted command identities, one JSON line each.
+pub const IDENTITY_FILE: &str = "identities.log";
+/// Held while an owner event that reserves a workspace checks every task.
+const WORKSPACE_LOCK_FILE: &str = "workspaces.lock";
+/// The largest identity log, in bytes.
+const MAX_IDENTITY_BYTES: u64 = 4 * 1024 * 1024;
 const PENDING_FILE: &str = ".tasks.pending";
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 /// How long a task's own owner process, which no device waits on, waits out
@@ -614,14 +637,59 @@ fn validate_intent(intent: &TaskIntent) -> Result<(), Error> {
     Ok(())
 }
 
-/// An exclusively locked inbox. Dropping it releases the OS lock.
+/// One task's file: its materialized state and the commands and owner
+/// events that produced it, in order. Reading it replays that journal.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct TaskFile {
+    schema: String,
+    task: Task,
+    commands: Vec<Accepted>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    host_events: Vec<owner::Record>,
+}
+
+impl TaskFile {
+    /// The sequence the next command or event of this task takes.
+    fn next_sequence(&self) -> u64 {
+        let commands = self.commands.last().map_or(0, |item| item.receipt.sequence);
+        let events = self.host_events.last().map_or(0, |item| item.sequence);
+        commands.max(events) + 1
+    }
+}
+
+/// The store's marker.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Marker {
+    schema: String,
+    /// The legacy document this store was migrated from, when it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    migrated_from: Option<String>,
+}
+
+/// One accepted command identity: which task it belongs to.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Identity {
+    command_id: String,
+    task_id: String,
+    submit: bool,
+}
+
+/// A handle on the inbox directory. It holds no lock between calls.
 ///
-/// The lock file stays in place. Commands commit an atomic document replacement
-/// before returning a receipt. No host, model, relay, or executor is called.
+/// Each task lives in its own file, replaced atomically; a write takes only
+/// that task's lock, plus the stable lock for the moment it reserves a
+/// command identity. Reads take no lock and see the latest committed state.
+/// Commands commit before returning a receipt. No host, model, relay, or
+/// executor is called.
 pub struct Store {
     dir: PathBuf,
-    document: Document,
+    /// The stable lock's handle, which proves the directory is the one opened.
     lock: File,
+    /// How long a write waits for another writer of the same task.
+    wait: Duration,
     healthy: bool,
     #[cfg(test)]
     fault: std::cell::Cell<Option<Fault>>,
@@ -629,33 +697,37 @@ pub struct Store {
 
 impl Store {
     /// Open or initialize a dedicated private directory outside any checkout.
-    /// Waits up to five seconds for another holder of the store lock.
+    /// A write waits up to five seconds for another writer of its task.
     pub fn open(dir: &Path) -> Result<Self, Error> {
         Self::open_waiting(dir, LOCK_WAIT)
     }
 
     /// [`Store::open`] for a task's own owner process (its launcher, its
     /// admission, and every record it makes while it runs), waiting up to
-    /// [`OWNER_LOCK_WAIT`] for a busy store instead of failing the task.
+    /// [`OWNER_LOCK_WAIT`] for a busy task instead of failing it.
     pub fn open_for_owner(dir: &Path) -> Result<Self, Error> {
         Self::open_waiting(dir, OWNER_LOCK_WAIT)
     }
 
-    /// [`Store::open`], waiting up to `wait` for another holder of the store
-    /// lock before it refuses with [`Error::Busy`]. A background caller with
-    /// no one waiting on it, such as an auto-start sweep, can wait out a
-    /// holder whose disk sync is slow.
+    /// [`Store::open`], waiting up to `wait` for another holder of a lock
+    /// this handle needs before it refuses with [`Error::Busy`]. Opening
+    /// takes the stable lock only to initialize or migrate the store.
     pub fn open_waiting(dir: &Path, wait: Duration) -> Result<Self, Error> {
         if !cfg!(any(unix, windows)) {
             return Err(Error::UnsupportedPlatform);
         }
         prepare_directory(dir)?;
         let dir = dir.canonicalize()?;
-        let path = dir.join(STORE_FILE);
+        let marker = dir.join(STORE_FILE);
+        let legacy = dir.join(LEGACY_STORE_FILE);
         let lock_path = dir.join(LOCK_FILE);
-        if !regular_or_absent(&lock_path)?
-            && (regular_or_absent(&path)? || regular_or_absent(&dir.join(PENDING_FILE))?)
-            && !regular_or_absent(&lock_path)?
+        let started_any = |dir: &Path| -> Result<bool, Error> {
+            Ok(regular_or_absent(&marker)?
+                || regular_or_absent(&legacy)?
+                || regular_or_absent(&dir.join(PENDING_FILE))?
+                || std::fs::symlink_metadata(dir.join(TASK_DIR)).is_ok())
+        };
+        if !regular_or_absent(&lock_path)? && started_any(&dir)? && !regular_or_absent(&lock_path)?
         {
             return Err(Error::Corrupt(
                 "an existing or incomplete task store has no stable lock file",
@@ -672,139 +744,160 @@ impl Store {
             None => private_open(&lock_path, false, true)?,
         };
         let started = Instant::now();
-        let (document, initialize) = loop {
-            loop {
-                match lock.try_lock() {
-                    Ok(()) => break,
-                    Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < wait => {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(std::fs::TryLockError::WouldBlock) => return Err(Error::Busy),
-                    Err(std::fs::TryLockError::Error(error)) => return Err(Error::Io(error)),
-                }
-            }
+        let mut created = false;
+        loop {
+            take_lock(&lock, wait)?;
             verify_same_file(&lock_path, &lock)?;
-            match read_document(&path) {
-                Ok(document) => {
-                    if fresh {
-                        return Err(Error::Corrupt(
-                            "an existing task document has no stable lock file",
-                        ));
-                    }
-                    break (document, false);
+            let outcome = if regular_or_absent(&marker)? {
+                if fresh {
+                    Err(Error::Corrupt(
+                        "an existing task store has no stable lock file",
+                    ))
+                } else {
+                    open_initialized(&dir)
                 }
-                Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-                    if !fresh && started.elapsed() < LOCK_WAIT {
-                        // The lock creator may not have acquired its own lock
-                        // yet. Give it a chance to initialize, but never make
-                        // absence permission to initialize another process's store.
-                        lock.unlock()?;
-                        std::thread::sleep(Duration::from_millis(10));
-                        continue;
-                    }
-                    if !fresh || dir.join(PENDING_FILE).try_exists()? {
-                        return Err(Error::Corrupt(
-                            "the task document is missing from an initialized or incomplete store",
-                        ));
-                    }
-                    break (
-                        Document {
-                            schema: STORE_SCHEMA.into(),
-                            sequence: 0,
-                            tasks: BTreeMap::new(),
-                            commands: Vec::new(),
-                            host_events: Vec::new(),
-                        },
-                        true,
-                    );
+            } else if regular_or_absent(&legacy)? {
+                if fresh {
+                    Err(Error::Corrupt(
+                        "an existing task document has no stable lock file",
+                    ))
+                } else {
+                    created = true;
+                    migrate(&dir)
                 }
-                Err(error) => return Err(error),
-            }
-        };
-        let store = Self {
+            } else if !fresh && started.elapsed() < LOCK_WAIT {
+                // The lock creator may not have acquired its own lock yet.
+                // Give it a chance to initialize, but never make absence
+                // permission to initialize another process's store.
+                lock.unlock()?;
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            } else if !fresh
+                || dir.join(PENDING_FILE).try_exists()?
+                || std::fs::symlink_metadata(dir.join(TASK_DIR)).is_ok()
+            {
+                Err(Error::Corrupt(
+                    "the task store marker is missing from an initialized or incomplete store",
+                ))
+            } else {
+                created = true;
+                initialize(&dir)
+            };
+            lock.unlock()?;
+            outcome?;
+            break;
+        }
+        if created {
+            // A new store's files and every directory entry above it are
+            // durable before the first command trusts them. An existing
+            // store's writes made their own files durable.
+            lock.sync_all()?;
+            sync_directory_ancestry(&dir)?;
+        }
+        Ok(Self {
             dir,
-            document,
             lock,
+            wait,
             healthy: true,
             #[cfg(test)]
             fault: std::cell::Cell::new(None),
-        };
-        if initialize {
-            store.commit(&store.document)?;
-        } else {
-            // A pending file is an uncommitted candidate, never an instruction
-            // to replay. A complete validated document remains authoritative.
-            store.discard_pending()?;
-        }
-        // A previous writer may have renamed successfully and failed its
-        // durability barrier. Visibility alone cannot authorize a retry receipt.
-        #[cfg(test)]
-        if OPEN_SYNC_FAIL.with(|fault| fault.replace(false)) {
-            return Err(Error::Io(std::io::Error::other(
-                "injected reopen sync failure",
-            )));
-        }
-        // Windows flushes only a handle opened for writing; the open never
-        // truncates or creates.
-        private_open(&store.dir.join(STORE_FILE), false, cfg!(windows))?.sync_all()?;
-        store.lock.sync_all()?;
-        sync_directory_ancestry(&store.dir)?;
-        Ok(store)
+        })
     }
 
     /// Apply a command, or return its original receipt for an exact-byte retry.
     pub fn apply(&mut self, bytes: &[u8]) -> Result<Receipt, Error> {
         self.check_healthy()?;
         let command = parse_command(bytes)?;
-        if let Some(accepted) = self
-            .document
-            .commands
+        // A reserved identity of another task refuses before any lock.
+        if self
+            .identities()?
             .iter()
-            .find(|accepted| accepted.receipt.command_id == command.command_id)
+            .any(|item| item.command_id == command.command_id && item.task_id != command.task_id)
         {
-            return if accepted.request.as_bytes() == bytes {
-                Ok(accepted.receipt.clone())
-            } else {
-                Err(Error::Conflict)
-            };
+            return Err(Error::Conflict);
         }
-        if self.document.commands.len() >= MAX_COMMANDS {
-            return Err(Error::LimitExceeded);
+        let _task = self.lock_task(&command.task_id)?;
+        let current = self.read_task(&command.task_id)?;
+        if let Some(accepted) = current.as_ref().and_then(|file| {
+            file.commands
+                .iter()
+                .find(|accepted| accepted.receipt.command_id == command.command_id)
+        }) {
+            if accepted.request.as_bytes() != bytes {
+                return Err(Error::Conflict);
+            }
+            // A previous writer may have renamed and failed its durability
+            // barrier. Visibility alone cannot authorize a retry receipt.
+            self.barrier(&command.task_id)?;
+            return Ok(accepted.receipt.clone());
         }
-        let mut next = self.document.clone();
-        next.schema = STORE_SCHEMA.into();
-        next.sequence += 1;
-        let receipt = transition(
-            &command,
-            &digest_bytes(bytes),
-            next.sequence,
-            &mut next.tasks,
-        )?;
+        let sequence = current.as_ref().map_or(1, TaskFile::next_sequence);
+        let mut tasks = BTreeMap::new();
+        if let Some(file) = &current {
+            tasks.insert(command.task_id.clone(), file.task.clone());
+        }
+        let receipt = transition(&command, &digest_bytes(bytes), sequence, &mut tasks)?;
         let request = std::str::from_utf8(bytes)
             .map_err(|_| Error::InvalidCommand("the command is not UTF-8"))?
             .to_owned();
-        next.commands.push(Accepted {
+        self.reserve(&command)?;
+        let task = tasks
+            .remove(&command.task_id)
+            .ok_or(Error::Corrupt("a transition lost its task"))?;
+        let mut file = current.unwrap_or_else(|| TaskFile {
+            schema: TASK_FILE_SCHEMA.into(),
+            task: task.clone(),
+            commands: Vec::new(),
+            host_events: Vec::new(),
+        });
+        file.task = task;
+        file.commands.push(Accepted {
             request,
             receipt: receipt.clone(),
         });
-        if let Err(error) = self.commit(&next) {
+        if let Err(error) = self.write_task(&file) {
             self.healthy = false;
             return Err(error);
         }
-        self.document = next;
         Ok(receipt)
     }
 
     /// List tasks in task-identity order, including cancelled tasks.
     pub fn list(&self) -> Result<Vec<Task>, Error> {
         self.check_healthy()?;
-        Ok(self.document.tasks.values().cloned().collect())
+        let directory = self.dir.join(TASK_DIR);
+        let mut ids = Vec::new();
+        for entry in std::fs::read_dir(&directory)? {
+            let name = entry?.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            // Temporary files start with a dot and are never read.
+            if let Some(id) = name.strip_suffix(".json")
+                && identifier(id, false)
+            {
+                ids.push(id.to_owned());
+            }
+        }
+        ids.sort();
+        let mut tasks = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(file) = self.read_task(&id)? {
+                tasks.push(file.task);
+            }
+        }
+        Ok(tasks)
     }
 
     /// Read one task's latest state.
     pub fn show(&self, id: &str) -> Result<Task, Error> {
         self.check_healthy()?;
-        self.document.tasks.get(id).cloned().ok_or(Error::NotFound)
+        if !identifier(id, false) {
+            return Err(Error::NotFound);
+        }
+        self.read_task(id)?
+            .map(|file| file.task)
+            .ok_or(Error::NotFound)
     }
 
     fn check_healthy(&self) -> Result<(), Error> {
@@ -812,34 +905,133 @@ impl Store {
             return Err(Error::ReopenRequired);
         }
         verify_directory(&self.dir)?;
+        verify_directory(&self.dir.join(TASK_DIR))?;
         verify_same_file(&self.dir.join(LOCK_FILE), &self.lock)
     }
 
-    fn commit(&self, document: &Document) -> Result<(), Error> {
+    fn task_path(&self, id: &str) -> PathBuf {
+        self.dir.join(TASK_DIR).join(format!("{id}.json"))
+    }
+
+    /// `id`'s validated file, or `None` when the task does not exist.
+    fn read_task(&self, id: &str) -> Result<Option<TaskFile>, Error> {
+        read_task_file(&self.task_path(id), id)
+    }
+
+    /// Take `id`'s write lock, waiting up to this handle's wait.
+    fn lock_task(&self, id: &str) -> Result<File, Error> {
+        let path = self.dir.join(TASK_DIR).join(format!("{id}.lock"));
+        let lock = open_lock(&path)?;
+        take_lock(&lock, self.wait)?;
+        verify_same_file(&path, &lock)?;
+        Ok(lock)
+    }
+
+    /// Take the lock an owner event reserving a workspace holds while it
+    /// checks every other task.
+    fn lock_workspaces(&self) -> Result<File, Error> {
+        let path = self.dir.join(WORKSPACE_LOCK_FILE);
+        let lock = open_lock(&path)?;
+        take_lock(&lock, self.wait)?;
+        verify_same_file(&path, &lock)?;
+        Ok(lock)
+    }
+
+    /// Every reserved command identity, read without a lock. A final line
+    /// without its newline is an append a crash interrupted and is ignored.
+    fn identities(&self) -> Result<Vec<Identity>, Error> {
+        Ok(read_identities(&self.dir)?.0)
+    }
+
+    /// Reserve `command`'s identity for its task under the stable lock,
+    /// refusing an identity another task holds and new work past the
+    /// retained capacity.
+    fn reserve(&self, command: &Command) -> Result<(), Error> {
+        take_lock(&self.lock, self.wait)?;
+        let result = (|| {
+            verify_same_file(&self.dir.join(LOCK_FILE), &self.lock)?;
+            let (identities, length) = read_identities(&self.dir)?;
+            if let Some(item) = identities
+                .iter()
+                .find(|item| item.command_id == command.command_id)
+            {
+                return if item.task_id == command.task_id {
+                    // An earlier attempt reserved it and never committed.
+                    Ok(())
+                } else {
+                    Err(Error::Conflict)
+                };
+            }
+            if identities.len() >= MAX_COMMANDS {
+                return Err(Error::LimitExceeded);
+            }
+            let submit = matches!(command.action, Action::Submit { .. });
+            if submit {
+                let tasks: BTreeSet<&str> = identities
+                    .iter()
+                    .filter(|item| item.submit)
+                    .map(|item| item.task_id.as_str())
+                    .collect();
+                if !tasks.contains(command.task_id.as_str()) && tasks.len() >= MAX_TASKS {
+                    return Err(Error::LimitExceeded);
+                }
+            }
+            let mut line = serde_json::to_vec(&Identity {
+                command_id: command.command_id.clone(),
+                task_id: command.task_id.clone(),
+                submit,
+            })
+            .map_err(|_| Error::Corrupt("a command identity could not be encoded"))?;
+            line.push(b'\n');
+            let mut file = private_open(&self.dir.join(IDENTITY_FILE), false, true)?;
+            // Drop an append a crash interrupted before adding this one.
+            file.set_len(length)?;
+            std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(length))?;
+            file.write_all(&line)?;
+            file.sync_all()?;
+            Ok(())
+        })();
+        self.lock.unlock()?;
+        result
+    }
+
+    /// Make `id`'s file and its directory entry durable.
+    fn barrier(&self, id: &str) -> Result<(), Error> {
+        #[cfg(test)]
+        if BARRIER_SYNC_FAIL.with(|fault| fault.replace(false)) {
+            return Err(Error::Io(std::io::Error::other(
+                "injected retry barrier failure",
+            )));
+        }
+        private_open(&self.task_path(id), false, cfg!(windows))?.sync_all()?;
+        sync_directory(&self.dir.join(TASK_DIR))
+    }
+
+    fn write_task(&self, file: &TaskFile) -> Result<(), Error> {
         self.check_healthy()?;
-        let bytes = serde_json::to_vec(document)
-            .map_err(|_| Error::Corrupt("the task document could not be encoded"))?;
+        let bytes = serde_json::to_vec(file)
+            .map_err(|_| Error::Corrupt("the task file could not be encoded"))?;
         if bytes.len() > MAX_STORE_BYTES {
             return Err(Error::LimitExceeded);
         }
-        let pending = self.dir.join(PENDING_FILE);
+        let directory = self.dir.join(TASK_DIR);
+        let name = format!("{}.json", file.task.task_id);
+        let temporary = directory.join(format!(".{name}.tmp"));
         let result = (|| {
-            let mut file = private_open(&pending, true, true)?;
-            file.write_all(&bytes)?;
-            file.sync_all()?;
+            write_new(&temporary, &bytes)?;
             #[cfg(test)]
             self.inject_fault(Fault::BeforeRename)?;
-            regular_or_absent(&self.dir.join(STORE_FILE))?;
-            std::fs::rename(&pending, self.dir.join(STORE_FILE))?;
+            regular_or_absent(&directory.join(&name))?;
+            std::fs::rename(&temporary, directory.join(&name))?;
             #[cfg(test)]
             self.inject_fault(Fault::AfterRename)?;
-            sync_directory(&self.dir)?;
-            Ok(())
+            sync_directory(&directory)
         })();
-        // A failure after rename is ambiguous to the caller. The next opener
-        // revalidates disk and can return the original receipt on exact retry.
-        if result.is_err() {
-            let _ = self.discard_pending();
+        // A failure after rename is ambiguous to the caller. The next
+        // retry revalidates disk and returns the original receipt only
+        // after a durability barrier.
+        if result.is_err() && regular_or_absent(&temporary).unwrap_or(false) {
+            let _ = std::fs::remove_file(&temporary);
         }
         result
     }
@@ -854,15 +1046,347 @@ impl Store {
         }
         Ok(())
     }
+}
 
-    fn discard_pending(&self) -> Result<(), Error> {
-        let path = self.dir.join(PENDING_FILE);
-        if regular_or_absent(&path)? {
-            std::fs::remove_file(path)?;
-            sync_directory(&self.dir)?;
+/// Whether `dir` holds a task store, current or not yet migrated.
+#[must_use]
+pub fn present(dir: &Path) -> bool {
+    dir.join(STORE_FILE).is_file() || dir.join(LEGACY_STORE_FILE).is_file()
+}
+
+/// Wait up to `wait` for `lock`'s exclusive OS lock.
+fn take_lock(lock: &File, wait: Duration) -> Result<(), Error> {
+    let started = Instant::now();
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < wait => {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => return Err(Error::Busy),
+            Err(std::fs::TryLockError::Error(error)) => return Err(Error::Io(error)),
         }
-        Ok(())
     }
+}
+
+/// Open a stable private lock file, creating it when absent.
+fn open_lock(path: &Path) -> Result<File, Error> {
+    match private_open(path, true, true) {
+        Ok(file) => Ok(file),
+        Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            private_open(path, false, true)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Write `bytes` to a new private file at `path` and make them durable,
+/// replacing a leftover temporary file first.
+fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+    if regular_or_absent(path)? {
+        std::fs::remove_file(path)?;
+    }
+    let mut file = private_open(path, true, true)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+/// Replace `dir/name` with `bytes` atomically: a durable temporary file,
+/// a rename, and a directory sync.
+fn replace_file(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), Error> {
+    let temporary = dir.join(format!(".{name}.tmp"));
+    write_new(&temporary, bytes)?;
+    regular_or_absent(&dir.join(name))?;
+    std::fs::rename(&temporary, dir.join(name))?;
+    sync_directory(dir)
+}
+
+/// Create the private task directory, or check the one there.
+fn task_directory(dir: &Path) -> Result<PathBuf, Error> {
+    let path = dir.join(TASK_DIR);
+    match std::fs::symlink_metadata(&path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            make_private_directory(&path)?;
+            sync_directory(dir)?;
+        }
+        Err(error) => return Err(Error::Io(error)),
+    }
+    verify_directory(&path)?;
+    Ok(path)
+}
+
+/// Start an empty store: its task directory, an empty identity log, and
+/// last its marker. Called under the stable lock.
+fn initialize(dir: &Path) -> Result<(), Error> {
+    task_directory(dir)?;
+    replace_file(dir, IDENTITY_FILE, b"")?;
+    write_marker(dir, None)
+}
+
+fn write_marker(dir: &Path, migrated_from: Option<&str>) -> Result<(), Error> {
+    let bytes = serde_json::to_vec(&Marker {
+        schema: STORE_SCHEMA.into(),
+        migrated_from: migrated_from.map(Into::into),
+    })
+    .map_err(|_| Error::Corrupt("the task store marker could not be encoded"))?;
+    replace_file(dir, STORE_FILE, &bytes)
+}
+
+/// Check an initialized store under the stable lock: its marker, task
+/// directory, and identity log; a legacy document a crash left behind
+/// after its migration becomes the backup; a stale legacy pending file
+/// is discarded.
+fn open_initialized(dir: &Path) -> Result<(), Error> {
+    let file = private_open(&dir.join(STORE_FILE), false, false)?;
+    let mut bytes = Vec::new();
+    file.take(64 * 1024).read_to_end(&mut bytes)?;
+    let value = parse_strict_bounded(&bytes, 64 * 1024)
+        .map_err(|_| Error::Corrupt("the task store marker is not strict JSON"))?;
+    let marker: Marker = serde_json::from_value(value)
+        .map_err(|_| Error::Corrupt("the task store marker does not match its schema"))?;
+    if marker.schema != STORE_SCHEMA {
+        return Err(Error::UnsupportedSchema);
+    }
+    if std::fs::symlink_metadata(dir.join(TASK_DIR)).is_err() {
+        return Err(Error::Corrupt(
+            "the task directory is missing from an initialized store",
+        ));
+    }
+    verify_directory(&dir.join(TASK_DIR))?;
+    if !regular_or_absent(&dir.join(IDENTITY_FILE))? {
+        return Err(Error::Corrupt(
+            "the command identity log is missing from an initialized store",
+        ));
+    }
+    if regular_or_absent(&dir.join(LEGACY_STORE_FILE))? {
+        keep_legacy(dir)?;
+    }
+    discard_pending(dir)
+}
+
+/// Move the migrated legacy document aside, never over an earlier backup.
+fn keep_legacy(dir: &Path) -> Result<(), Error> {
+    let mut backup = dir.join(LEGACY_BACKUP_FILE);
+    let mut index = 1;
+    while std::fs::symlink_metadata(&backup).is_ok() {
+        backup = dir.join(format!("tasks.v2.{index}.json"));
+        index += 1;
+    }
+    std::fs::rename(dir.join(LEGACY_STORE_FILE), backup)?;
+    sync_directory(dir)
+}
+
+fn discard_pending(dir: &Path) -> Result<(), Error> {
+    let path = dir.join(PENDING_FILE);
+    if regular_or_absent(&path)? {
+        std::fs::remove_file(path)?;
+        sync_directory(dir)?;
+    }
+    Ok(())
+}
+
+/// Migrate the legacy single document under the stable lock (#10231).
+///
+/// The document is validated exactly as before. Each task's file is
+/// written from its own commands and events, every legacy command identity
+/// goes into the identity log, and only then is the marker written and the
+/// document moved to [`LEGACY_BACKUP_FILE`]. A crash before the marker
+/// leaves the document untouched, and the next open migrates again.
+fn migrate(dir: &Path) -> Result<(), Error> {
+    discard_pending(dir)?;
+    let document = read_document(&dir.join(LEGACY_STORE_FILE))?;
+    let directory = task_directory(dir)?;
+    let mut files: BTreeMap<String, TaskFile> = document
+        .tasks
+        .iter()
+        .map(|(id, task)| {
+            (
+                id.clone(),
+                TaskFile {
+                    schema: TASK_FILE_SCHEMA.into(),
+                    task: task.clone(),
+                    commands: Vec::new(),
+                    host_events: Vec::new(),
+                },
+            )
+        })
+        .collect();
+    let mut identities = Vec::with_capacity(document.commands.len() * 96);
+    for accepted in &document.commands {
+        let command = parse_command(accepted.request.as_bytes())
+            .map_err(|_| Error::Corrupt("the retained task command is invalid"))?;
+        files
+            .get_mut(&command.task_id)
+            .ok_or(Error::Corrupt("a retained command names no task"))?
+            .commands
+            .push(accepted.clone());
+        let mut line = serde_json::to_vec(&Identity {
+            submit: matches!(command.action, Action::Submit { .. }),
+            command_id: command.command_id,
+            task_id: command.task_id,
+        })
+        .map_err(|_| Error::Corrupt("a command identity could not be encoded"))?;
+        line.push(b'\n');
+        identities.extend_from_slice(&line);
+    }
+    for record in &document.host_events {
+        files
+            .get_mut(record.task_id.as_str())
+            .ok_or(Error::Corrupt("a retained owner event names no task"))?
+            .host_events
+            .push(record.clone());
+    }
+    // Write every task's temporary file and make it durable, then rename
+    // them all and sync the directory once.
+    let mut renames = Vec::with_capacity(files.len());
+    for (id, file) in &files {
+        let bytes = serde_json::to_vec(file)
+            .map_err(|_| Error::Corrupt("the task file could not be encoded"))?;
+        if bytes.len() > MAX_STORE_BYTES {
+            return Err(Error::LimitExceeded);
+        }
+        let name = format!("{id}.json");
+        let temporary = directory.join(format!(".{name}.tmp"));
+        write_new(&temporary, &bytes)?;
+        renames.push((temporary, directory.join(name)));
+    }
+    for (temporary, path) in renames {
+        regular_or_absent(&path)?;
+        std::fs::rename(temporary, path)?;
+    }
+    sync_directory(&directory)?;
+    // Every written file must read back as the task the document held.
+    for (id, file) in &files {
+        let read = read_task_file(&directory.join(format!("{id}.json")), id)?
+            .ok_or(Error::Corrupt("a migrated task file is missing"))?;
+        if read.task != file.task {
+            return Err(Error::Corrupt(
+                "a migrated task file differs from its document",
+            ));
+        }
+    }
+    replace_file(dir, IDENTITY_FILE, &identities)?;
+    write_marker(dir, Some(LEGACY_BACKUP_FILE))?;
+    keep_legacy(dir)
+}
+
+/// The identity log's complete lines and their length in bytes.
+fn read_identities(dir: &Path) -> Result<(Vec<Identity>, u64), Error> {
+    let file = private_open(&dir.join(IDENTITY_FILE), false, false)?;
+    if file.metadata()?.len() > MAX_IDENTITY_BYTES {
+        return Err(Error::LimitExceeded);
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_IDENTITY_BYTES + 1).read_to_end(&mut bytes)?;
+    let complete = bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |at| at + 1);
+    let mut identities = Vec::new();
+    for line in bytes[..complete].split(|byte| *byte == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let identity: Identity = serde_json::from_slice(line)
+            .map_err(|_| Error::Corrupt("the command identity log has an invalid line"))?;
+        if !identifier(&identity.command_id, false) || !identifier(&identity.task_id, false) {
+            return Err(Error::Corrupt(
+                "the command identity log has an invalid line",
+            ));
+        }
+        identities.push(identity);
+    }
+    Ok((identities, complete as u64))
+}
+
+/// Read and validate the task file at `path` for task `id`: replay its
+/// commands and owner events in sequence order and compare the task and
+/// every receipt. `None` when the file does not exist.
+fn read_task_file(path: &Path, id: &str) -> Result<Option<TaskFile>, Error> {
+    let file = match private_open(path, false, false) {
+        Ok(file) => file,
+        Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if file.metadata()?.len() > MAX_STORE_BYTES as u64 {
+        return Err(Error::LimitExceeded);
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_STORE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_STORE_BYTES {
+        return Err(Error::LimitExceeded);
+    }
+    let value = parse_strict_bounded(&bytes, MAX_STORE_BYTES)
+        .map_err(|_| Error::Corrupt("the task file is not strict JSON"))?;
+    let file: TaskFile = serde_json::from_value(value)
+        .map_err(|_| Error::Corrupt("the task file does not match the closed store schema"))?;
+    if file.schema != TASK_FILE_SCHEMA {
+        return Err(Error::UnsupportedSchema);
+    }
+    if file.task.task_id != id {
+        return Err(Error::Corrupt("the task file names another task"));
+    }
+    if file.commands.len() > MAX_COMMANDS || file.host_events.len() > owner::MAX_HOST_EVENTS {
+        return Err(Error::LimitExceeded);
+    }
+    let mut tasks = BTreeMap::new();
+    let mut identities = BTreeSet::new();
+    let mut commands = file.commands.iter().peekable();
+    let mut events = file.host_events.iter().peekable();
+    let mut last = 0;
+    loop {
+        let command_next = commands.peek().map(|item| item.receipt.sequence);
+        let event_next = events.peek().map(|item| item.sequence);
+        let sequence = match (command_next, event_next) {
+            (None, None) => break,
+            (Some(command), Some(event)) => command.min(event),
+            (Some(sequence), None) | (None, Some(sequence)) => sequence,
+        };
+        if sequence <= last || command_next == event_next {
+            return Err(Error::Corrupt("the task journal is out of order"));
+        }
+        last = sequence;
+        if event_next == Some(sequence) {
+            let record = events.next().expect("peeked record");
+            if record.task_id != id {
+                return Err(Error::Corrupt("the task journal names another task"));
+            }
+            owner::transition(record, &mut tasks).map_err(|_| {
+                Error::Corrupt("the task event history contains an invalid transition")
+            })?;
+            continue;
+        }
+        let accepted = commands.next().expect("peeked command");
+        let command = parse_command(accepted.request.as_bytes())
+            .map_err(|_| Error::Corrupt("the retained task command is invalid"))?;
+        if command.task_id != id {
+            return Err(Error::Corrupt("the task journal names another task"));
+        }
+        if !identities.insert(command.command_id.clone()) {
+            return Err(Error::Corrupt("the task file repeats a command identity"));
+        }
+        let expected = transition(
+            &command,
+            &digest_bytes(accepted.request.as_bytes()),
+            sequence,
+            &mut tasks,
+        )
+        .map_err(|_| Error::Corrupt("the task command history contains an invalid transition"))?;
+        if expected != accepted.receipt {
+            return Err(Error::Corrupt(
+                "the task receipt does not match its command and transition",
+            ));
+        }
+    }
+    if tasks.len() != 1 || tasks.get(id) != Some(&file.task) {
+        return Err(Error::Corrupt(
+            "the task state does not match its command history",
+        ));
+    }
+    Ok(Some(file))
 }
 
 fn transition(
@@ -993,16 +1517,16 @@ fn read_document(path: &Path) -> Result<Document, Error> {
         .map_err(|_| Error::Corrupt("the task document is not strict JSON"))?;
     let document: Document = serde_json::from_value(value)
         .map_err(|_| Error::Corrupt("the task document does not match the closed store schema"))?;
-    if document.schema != STORE_SCHEMA && document.schema != "openagents.coder.task-store.v1" {
+    if document.schema != LEGACY_STORE_SCHEMA && document.schema != LEGACY_V1_SCHEMA {
         return Err(Error::UnsupportedSchema);
     }
     if document.tasks.len() > MAX_TASKS
         || document.commands.len() > MAX_COMMANDS
-        || document.host_events.len() > 8192
+        || document.host_events.len() > owner::MAX_HOST_EVENTS
     {
         return Err(Error::LimitExceeded);
     }
-    if document.schema == "openagents.coder.task-store.v1" && !document.host_events.is_empty() {
+    if document.schema == LEGACY_V1_SCHEMA && !document.host_events.is_empty() {
         return Err(Error::Corrupt(
             "a legacy inbox cannot contain execution events",
         ));
@@ -1154,6 +1678,24 @@ fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
 }
 
 #[cfg(unix)]
+fn make_private_directory(path: &Path) -> Result<(), Error> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(path)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn make_private_directory(path: &Path) -> Result<(), Error> {
+    private_fs::create_dir_all(path)?;
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn make_private_directory(_: &Path) -> Result<(), Error> {
+    Err(Error::UnsupportedPlatform)
+}
+
+#[cfg(unix)]
 fn prepare_directory(path: &Path) -> Result<(), Error> {
     use std::os::unix::fs::DirBuilderExt;
     match std::fs::symlink_metadata(path) {
@@ -1267,7 +1809,7 @@ fn private_open(_: &Path, _: bool, _: bool) -> Result<File, Error> {
 
 #[cfg(test)]
 std::thread_local! {
-    static OPEN_SYNC_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static BARRIER_SYNC_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(test)]

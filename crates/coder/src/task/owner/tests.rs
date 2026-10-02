@@ -279,8 +279,60 @@ async fn a_live_owner_refuses_competitors_and_recovery_never_reexecutes() {
     let task = settled(&dir, "task-one").await;
     assert_eq!(task.execution, Execution::Failed);
     assert!(execute(&dir, &bytes).await.is_err());
-    assert_eq!(recover(&dir, "task-one").unwrap(), task);
+    assert_eq!(recovered(&dir, "task-one"), task);
     tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
+/// Wait out a moment's holder of a lock: a process another test forks
+/// shares every lock this process has open until it execs, so a lock just
+/// released can still read as held for a moment (#10230).
+fn waiting<T>(mut attempt: impl FnMut() -> Result<T, Error>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match attempt() {
+            Ok(value) => return value,
+            Err(Error::Busy) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(error) => panic!("{error:?}"),
+        }
+    }
+}
+
+/// [`Owner::acquire`] once no other owner holds `id`.
+fn acquired(store: &Store, id: &str) -> Owner {
+    waiting(|| Owner::acquire(store, id))
+}
+
+/// [`recover`] once no other owner holds `id`.
+fn recovered(dir: &Path, id: &str) -> Task {
+    waiting(|| recover(dir, id))
+}
+
+/// [`execute`] once no other owner holds the grant's task.
+async fn executed(dir: &Path, bytes: &[u8]) -> Task {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match execute(dir, bytes).await {
+            Err(Error::Busy) if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            result => return result.unwrap_or_else(|error| panic!("{error:?}")),
+        }
+    }
+}
+
+/// [`check`] task-one once no other owner holds it.
+async fn run_checks(dir: &Path) -> Task {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match check(dir, "task-one", &crate::capability::Trust::everything()).await {
+            Err(Error::Busy) if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            result => return result.unwrap_or_else(|error| panic!("{error:?}")),
+        }
+    }
 }
 
 /// Recover `id` until its run is ended, as a host's sweeps would, and check
@@ -288,7 +340,16 @@ async fn a_live_owner_refuses_competitors_and_recovery_never_reexecutes() {
 pub(super) async fn settled(dir: &Path, id: &str) -> Task {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let task = recover(dir, id).unwrap_or_else(|error| panic!("{error:?}"));
+        let task = match recover(dir, id) {
+            Ok(task) => task,
+            // A process another test forked holds every open lock until it
+            // execs (#10230): wait on the condition, not on luck.
+            Err(Error::Busy) if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                continue;
+            }
+            Err(error) => panic!("{error:?}"),
+        };
         if task.status == Status::Finished {
             let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
             assert_eq!(result.ending, OWNER_ENDED);
@@ -345,7 +406,7 @@ async fn a_run_whose_owner_died_is_ended_and_the_next_task_in_its_project_runs()
             stuck.run.as_ref().unwrap().process_id.is_some(),
             point == "before_result"
         );
-        let events_before = Store::open(&dir).unwrap().document.host_events.len();
+        let events_before = events(&dir, "task-one");
         // The next task in the same project starts and finishes.
         let next = second_task(&dir, &grant);
         let task = execute(&dir, &serde_json::to_vec(&next).unwrap())
@@ -365,7 +426,7 @@ async fn a_run_whose_owner_died_is_ended_and_the_next_task_in_its_project_runs()
             dir.join(&run.admission.trace_file).exists(),
             point == "before_result"
         );
-        assert!(store.document.host_events.len() > events_before);
+        assert!(events(&dir, "task-one") > events_before);
         // A reopened store replays the same history.
         drop(store);
         assert_eq!(Store::open(&dir).unwrap().show("task-one").unwrap(), ended);
@@ -426,7 +487,7 @@ async fn a_dead_owners_live_process_still_holds_its_project_and_is_never_killed(
     };
     {
         let mut store = Store::open(&dir).unwrap();
-        let owner = Owner::acquire(&store, "task-one").unwrap();
+        let owner = acquired(&store, "task-one");
         store
             .record(
                 &owner,
@@ -445,7 +506,7 @@ async fn a_dead_owners_live_process_still_holds_its_project_and_is_never_killed(
     ));
     assert_eq!(Store::open(&dir).unwrap().settle("task-one").unwrap(), None);
     // Recovery leaves it unknown while the process runs, and kills nothing.
-    assert_eq!(recover(&dir, "task-one").unwrap().status, Status::Unknown);
+    assert_eq!(recovered(&dir, "task-one").status, Status::Unknown);
     assert!(
         child.try_wait().unwrap().is_none(),
         "the process was killed"
@@ -453,7 +514,7 @@ async fn a_dead_owners_live_process_still_holds_its_project_and_is_never_killed(
     // Once it has ended, the next start ends the unknown run and runs.
     child.kill().unwrap();
     child.wait().unwrap();
-    let task = execute(&dir, &next_bytes).await.unwrap();
+    let task = executed(&dir, &next_bytes).await;
     assert_eq!(task.execution, Execution::Finished);
     let ended = Store::open(&dir).unwrap().show("task-one").unwrap();
     assert_eq!(ended.status, Status::Finished);
@@ -482,7 +543,7 @@ async fn a_stuck_task_stops_from_any_device_and_says_why() {
     // Left unknown, as `coder task recover` used to leave it.
     {
         let mut store = Store::open(&dir).unwrap();
-        let owner = Owner::acquire(&store, "task-one").unwrap();
+        let owner = acquired(&store, "task-one");
         store.record(&owner, Event::OwnerLost, 2).unwrap();
     }
     let stuck = Store::open(&dir).unwrap().show("task-one").unwrap();
@@ -578,7 +639,7 @@ async fn failure_at_every_effect_barrier_never_replays_uncertain_work() {
         // Recovery reruns nothing; an owner that died before its result
         // leaves a run that is ended once nothing of it is left (#10124).
         let recovered = if point == "after_result" {
-            recover(&dir, "task-one").unwrap()
+            recovered(&dir, "task-one")
         } else {
             settled(&dir, "task-one").await
         };
@@ -615,19 +676,47 @@ async fn changed_grant_and_source_are_refused_before_admission() {
     );
 }
 
+/// How many owner events `id`'s file in the store at `dir` holds.
+fn events(dir: &Path, id: &str) -> usize {
+    read_task_file(&dir.join(TASK_DIR).join(format!("{id}.json")), id)
+        .unwrap()
+        .unwrap()
+        .host_events
+        .len()
+}
+
+/// Plant, in a new store directory `to`, the single legacy document a
+/// store before #10231 would hold for `from`'s only task, `task-one`.
+fn plant_legacy(from: &Path, to: &Path, schema: &str) -> Vec<u8> {
+    let file = read_task_file(&from.join(TASK_DIR).join("task-one.json"), "task-one")
+        .unwrap()
+        .unwrap();
+    let mut host_events = file.host_events;
+    if schema != LEGACY_STORE_SCHEMA {
+        host_events.clear();
+    }
+    let document = Document {
+        schema: schema.into(),
+        sequence: (file.commands.len() + host_events.len()) as u64,
+        tasks: BTreeMap::from([("task-one".to_owned(), file.task)]),
+        commands: file.commands,
+        host_events,
+    };
+    make_private_directory(to).unwrap();
+    drop(private_open(&to.join(LOCK_FILE), true, true).unwrap());
+    let bytes = serde_json::to_vec(&document).unwrap();
+    let mut legacy = private_open(&to.join(LEGACY_STORE_FILE), true, true).unwrap();
+    legacy.write_all(&bytes).unwrap();
+    bytes
+}
+
 #[test]
-fn legacy_inbox_reads_without_rewrite_and_migrates_on_first_mutation() {
+fn a_v1_inbox_migrates_and_takes_the_next_command() {
     let (root, _workspace, _) = fixture();
-    let dir = root.path().join("store");
-    let path = dir.join(STORE_FILE);
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    value["schema"] = json!("openagents.coder.task-store.v1");
-    value.as_object_mut().unwrap().remove("host_events");
-    let bytes = serde_json::to_vec(&value).unwrap();
-    std::fs::write(&path, &bytes).unwrap();
+    let dir = root.path().join("legacy");
+    let bytes = plant_legacy(&root.path().join("store"), &dir, LEGACY_V1_SCHEMA);
     let mut store = Store::open(&dir).unwrap();
-    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert_eq!(std::fs::read(dir.join(LEGACY_BACKUP_FILE)).unwrap(), bytes);
     let command = Command {
         schema: COMMAND_SCHEMA.into(),
         command_id: "cancel-legacy".into(),
@@ -643,10 +732,22 @@ fn legacy_inbox_reads_without_rewrite_and_migrates_on_first_mutation() {
         Store::open(&dir).unwrap().show("task-one").unwrap().status,
         Status::Cancelled
     );
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap()).unwrap()["schema"],
-        STORE_SCHEMA
-    );
+}
+
+#[tokio::test]
+async fn a_v2_store_with_a_finished_run_migrates_with_its_owner_events() {
+    let (root, _workspace, grant) = fixture();
+    let store = root.path().join("store");
+    let ran = execute(&store, &serde_json::to_vec(&grant).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(ran.execution, Execution::Finished);
+    let dir = root.path().join("legacy");
+    plant_legacy(&store, &dir, LEGACY_STORE_SCHEMA);
+    let migrated = Store::open(&dir).unwrap();
+    assert_eq!(migrated.show("task-one").unwrap(), ran);
+    assert_eq!(events(&dir, "task-one"), events(&store, "task-one"));
+    assert!(events(&dir, "task-one") > 0);
 }
 
 pub(super) fn requirements(host: &Path, command: &str) -> checks::Requirements {
@@ -711,7 +812,7 @@ async fn independent_checks_reject_false_green_missing_and_stale_evidence() {
             .unwrap();
         assert_eq!(task.execution, Execution::Finished);
         assert_eq!(task.checks, Checks::NotRun);
-        let checked = check(&dir, "task-one", &Trust::everything()).await.unwrap();
+        let checked = run_checks(&dir).await;
         assert_eq!(checked.execution, Execution::Finished);
         assert_eq!(checked.checks, expected);
         assert_eq!(
@@ -795,9 +896,7 @@ async fn changed_candidate_or_missing_checker_is_retained_as_unavailable() {
         } else {
             std::fs::remove_file(root.path().join("check.json")).unwrap();
         }
-        let checked = check(&dir, "task-one", &crate::capability::Trust::everything())
-            .await
-            .unwrap();
+        let checked = run_checks(&dir).await;
         assert_eq!(checked.checks, Checks::Unavailable);
         assert!(checked.run.unwrap().check_report.unwrap().reason.is_some());
     }
@@ -893,7 +992,7 @@ async fn cancellation_before_result_commit_cannot_be_reduced_as_finished() {
     };
     let mut store = Store::open(&dir).unwrap();
     store.apply(&serde_json::to_vec(&cancel).unwrap()).unwrap();
-    let owner = Owner::acquire(&store, "task-one").unwrap();
+    let owner = acquired(&store, "task-one");
     let task = store
         .record(
             &owner,
@@ -909,12 +1008,13 @@ async fn cancellation_before_result_commit_cannot_be_reduced_as_finished() {
     assert_eq!(Store::open(&dir).unwrap().show("task-one").unwrap(), task);
 }
 
-/// Hold the task store's lock on another thread for `hold`.
+/// Hold task-one's write lock on another thread for `hold`, as another
+/// process's slow write would.
 fn hold_store(store: &Path, hold: Duration) -> std::thread::JoinHandle<()> {
     let store = store.to_path_buf();
     let (held, taken) = std::sync::mpsc::channel();
     let holder = std::thread::spawn(move || {
-        let _held = Store::open(&store).unwrap();
+        let _held = Store::open(&store).unwrap().lock_task("task-one").unwrap();
         held.send(()).unwrap();
         std::thread::sleep(hold);
     });
@@ -930,8 +1030,19 @@ async fn the_owner_process_waits_out_a_store_busy_past_the_lock_wait() {
     // Another process's slow disk sync holds the store past the five
     // seconds a device-facing open waits.
     let holder = hold_store(&dir, LOCK_WAIT + Duration::from_secs(2));
+    let cancel = Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: "cancel-busy".into(),
+        task_id: "task-one".into(),
+        expected_revision: Some(1),
+        action: Action::Cancel {
+            reason: "Stop.".into(),
+        },
+    };
     assert!(matches!(
-        Store::open_waiting(&dir, Duration::from_millis(100)),
+        Store::open_waiting(&dir, Duration::from_millis(100))
+            .unwrap()
+            .apply(&serde_json::to_vec(&cancel).unwrap()),
         Err(Error::Busy)
     ));
     // The task's own process waits it out and runs the task, where it

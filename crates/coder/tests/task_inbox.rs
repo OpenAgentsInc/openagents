@@ -48,7 +48,9 @@ fn a_request_and_cancel_survive_restart_and_retries_keep_the_original_receipts()
     let root = tempfile::tempdir().unwrap();
     let receipt = success(apply(root.path(), "submit", SUBMIT));
     assert_eq!(receipt["revision"], 1);
-    let state = root.path().join(".openagents/tasks/tasks.json");
+    let state = root
+        .path()
+        .join(".openagents/tasks/task/example-task-1.json");
     let original_bytes = std::fs::read(&state).unwrap();
     assert_eq!(success(apply(root.path(), "submit", SUBMIT)), receipt);
     assert_eq!(std::fs::read(&state).unwrap(), original_bytes);
@@ -113,7 +115,9 @@ fn simultaneous_processes_return_one_submission_receipt() {
 fn conflicting_retries_and_stale_cancels_do_not_change_state() {
     let root = tempfile::tempdir().unwrap();
     success(apply(root.path(), "submit", SUBMIT));
-    let state = root.path().join(".openagents/tasks/tasks.json");
+    let state = root
+        .path()
+        .join(".openagents/tasks/task/example-task-1.json");
     let before = std::fs::read(&state).unwrap();
     let mut changed: Value = serde_json::from_slice(SUBMIT).unwrap();
     changed["action"]["intent"]["prompt"] = json!("Different request");
@@ -224,7 +228,9 @@ fn malformed_and_misdirected_input_never_initializes_a_store() {
 fn corruption_is_preserved_and_never_replaced_by_an_empty_store() {
     let root = tempfile::tempdir().unwrap();
     success(apply(root.path(), "submit", SUBMIT));
-    let state = root.path().join(".openagents/tasks/tasks.json");
+    let state = root
+        .path()
+        .join(".openagents/tasks/task/example-task-1.json");
     std::fs::write(&state, b"{truncated").unwrap();
     assert_eq!(read(root.path(), &["list"]).status.code(), Some(1));
     assert_eq!(apply(root.path(), "submit", SUBMIT).status.code(), Some(1));
@@ -242,7 +248,20 @@ fn persisted_files_are_private() {
         std::fs::metadata(&store).unwrap().permissions().mode() & 0o777,
         0o700
     );
-    for name in ["tasks.json", "tasks.lock"] {
+    assert_eq!(
+        std::fs::metadata(store.join("task"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    for name in [
+        "store.json",
+        "tasks.lock",
+        "identities.log",
+        "task/example-task-1.json",
+    ] {
         assert_eq!(
             std::fs::metadata(store.join(name))
                 .unwrap()

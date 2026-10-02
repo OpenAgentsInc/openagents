@@ -32,7 +32,8 @@ pub const OWNER_ENDED_TEXT: &str = "Coder's process ended unexpectedly";
 /// written by a newer program, with a field the engine does not know or
 /// without one it still requires (#10113).
 pub const GRANT_SHAPE: &str = "the execution grant has an invalid shape";
-const MAX_HOST_EVENTS: usize = 8192;
+/// The most owner events one task retains. No event is silently pruned.
+pub(super) const MAX_HOST_EVENTS: usize = 8192;
 
 /// The fixed, root-owned paths `git` is taken from, in order: where
 /// distributions install it, then NixOS's system profile. Like the
@@ -370,7 +371,7 @@ pub(super) enum Event {
 #[serde(deny_unknown_fields)]
 pub(super) struct Record {
     pub sequence: u64,
-    task_id: String,
+    pub(super) task_id: String,
     epoch: u64,
     event: Event,
 }
@@ -637,6 +638,10 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
 }
 
 impl Store {
+    /// Record `event` on the owner's task under that task's lock. An event
+    /// that reserves a workspace (admission, check intent) also holds the
+    /// workspace lock and checks every other task, so two unresolved runs
+    /// never share a tree across processes.
     fn record(&mut self, owner: &Owner, event: Event, epoch: u64) -> Result<Task, Error> {
         self.check_healthy()?;
         owner.verify(&self.dir)?;
@@ -646,26 +651,42 @@ impl Store {
             let workspace = admission.workspace.clone();
             self.settle_all(Some(&workspace), Some(&owner.task_id));
         }
-        if self.document.host_events.len() >= MAX_HOST_EVENTS {
+        let reserving = matches!(event, Event::Admitted { .. } | Event::CheckIntent);
+        let _task = self.lock_task(&owner.task_id)?;
+        let _workspaces = if reserving {
+            Some(self.lock_workspaces()?)
+        } else {
+            None
+        };
+        let mut file = self.read_task(&owner.task_id)?.ok_or(Error::NotFound)?;
+        if file.host_events.len() >= MAX_HOST_EVENTS {
             return Err(Error::LimitExceeded);
         }
-        let mut next = self.document.clone();
-        next.schema = STORE_SCHEMA.into();
-        next.sequence += 1;
+        let mut tasks = BTreeMap::new();
+        if reserving {
+            for task in self.list()? {
+                if task.task_id != owner.task_id {
+                    tasks.insert(task.task_id.clone(), task);
+                }
+            }
+        }
+        tasks.insert(owner.task_id.clone(), file.task.clone());
         let record = Record {
-            sequence: next.sequence,
+            sequence: file.next_sequence(),
             task_id: owner.task_id.clone(),
             epoch,
             event,
         };
-        transition(&record, &mut next.tasks)?;
-        next.host_events.push(record);
-        if let Err(error) = self.commit(&next) {
+        transition(&record, &mut tasks)?;
+        file.task = tasks
+            .remove(&owner.task_id)
+            .ok_or(Error::Corrupt("a transition lost its task"))?;
+        file.host_events.push(record);
+        if let Err(error) = self.write_task(&file) {
             self.healthy = false;
             return Err(error);
         }
-        self.document = next;
-        self.show(&owner.task_id)
+        Ok(file.task)
     }
 }
 
@@ -734,9 +755,9 @@ impl Store {
     /// it ended; one it cannot end is left as it is.
     pub fn settle_all(&mut self, workspace: Option<&Path>, except: Option<&str>) -> Vec<Task> {
         let ids: Vec<String> = self
-            .document
-            .tasks
-            .values()
+            .list()
+            .unwrap_or_default()
+            .iter()
             .filter(|task| Some(task.task_id.as_str()) != except && settleable(task))
             .filter(|task| {
                 workspace.is_none_or(|workspace| {

@@ -54,11 +54,7 @@ fn store_present(directory: &FilePath) -> Result<bool, task::Error> {
     if !directory.try_exists().map_err(task::Error::Io)? {
         return Ok(false);
     }
-    if !directory
-        .join(task::STORE_FILE)
-        .try_exists()
-        .map_err(task::Error::Io)?
-    {
+    if !task::present(directory) {
         return Err(task::Error::Corrupt("the task document is missing"));
     }
     Ok(true)

@@ -127,7 +127,7 @@ fn ended(task: &super::Task) -> bool {
 /// # Errors
 /// The store cannot be read.
 pub fn facts(store: &Path) -> Result<Vec<background::TaskFact>, String> {
-    if !store.join(super::STORE_FILE).is_file() {
+    if !super::present(store) {
         return Ok(Vec::new());
     }
     let tasks = Store::open_waiting(store, std::time::Duration::from_secs(30))
