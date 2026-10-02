@@ -36,6 +36,38 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "45",
+        title: "Your wallet on your computers",
+        what_to_test: "Open Account, then Changelog, and check build 45 is first. On a computer connected to this phone, run openagents wallet link: the phone should ask \"Use your wallet on ...?\" with the same six-digit code the computer shows. Check the codes match, tap Approve, and confirm with Face ID; the computer should then say your wallet is on it, with the same balance as the phone. Open Account, then Computers: an online computer that runs background watchers lists them under its status. Open Account, then Your keys, add a key, and tap Test. Long-press text in a chat and try Give feedback.",
+        items: &[
+            Item {
+                title: "Your wallet on your computers",
+                detail: "Run openagents wallet link on a computer, check the six-digit code matches, and tap Approve. The computer then uses the same wallet and balance as this phone.",
+            },
+            Item {
+                title: "Your own keys",
+                detail: "Account, then Your keys: add your own OpenRouter, Vercel AI Gateway, or TypeSafe key, test it, and turn on Use my keys for everything to run chat on your keys.",
+            },
+            Item {
+                title: "Background watchers on Computers",
+                detail: "Each online computer in Computers lists the background watchers it runs.",
+            },
+            Item {
+                title: "Feedback on any text",
+                detail: "Select text in a chat and tap Give feedback to tell us what's wrong or what should change.",
+            },
+            Item {
+                title: "Coder that stopped unexpectedly",
+                detail: "When a Coder run's process ends unexpectedly, the phone says so, and the next run in that project starts normally.",
+            },
+            Item {
+                title: "Suggestions in every new chat",
+                detail: "A new chat always shows four suggestions, even after you've used them all.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "44",
         title: "Shipped from the phone",
         what_to_test: "Open Account, then Changelog, and check build 44 is first. Start a Coder run from the phone: its card should show how long Coder has worked and, when it finishes, how the run ended. With a computer connected, ask which coding agents are connected: the reply should name your computer's agents. Use chat and run a plugin test without usage limits.",
