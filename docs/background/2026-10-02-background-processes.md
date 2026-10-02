@@ -481,6 +481,17 @@ Where the implementation differs from the design above, and why:
   a `TaskEnded` check when a task newly ended (the store's own `Task::ended`
   test, shared with `targets::cleanup`). That poll is the task-ended signal;
   no new event channel was needed.
+- **Triggers gate checks.** The runner checks only on the triggers the
+  rule names: `HostStart` at host start, `TaskEnded` when a task ends, and
+  `Interval { every_secs }` on its own period. Without an `Interval` trigger
+  no interval checks are scheduled (there is no default period), so
+  `Threshold` alone does nothing: it is checked on the interval, and an
+  interval check that runs is recorded as `threshold` when the rule names it
+  and `interval` otherwise. A rule with no triggers never runs by itself.
+  The rule is re-read after every wake, so an edit to its triggers takes
+  effect without restarting the host. A run someone asks for
+  (`openagents background run`, `/background`, `background.run`) ignores
+  triggers and always runs.
 - **Runs in other processes.** `openagents background run` and `/background`
   run in their own process and hold `~/.openagents/background/run.lock` while
   deleting; the host's runner takes the same lock, so two runs never
