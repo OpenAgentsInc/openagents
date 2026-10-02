@@ -23,7 +23,7 @@ default providers are Codex, then Claude Code, then Grok Build.
     "start": "at_once",
     "usage_threshold_percent": 90,
     "projects": [],
-    "access": "toolchains"
+    "access": "full"
   }
 }
 ```
@@ -34,7 +34,7 @@ default providers are Codex, then Claude Code, then Grok Build.
 | `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers it: `openagents chat run-coder --thread ID` (or `send --run-coder`) or **Run Coder** in the app starts it. A host on this computer also tells its paired phones (presence capability `coder-start-at-once`, while its auto-start policy is on), so a coding reply on the phone starts Coder here at once too, or offers **Run Coder** under `ask_first` (#10101). |
 | `coder.usage_threshold_percent` | 1 to 100, or `null` (`off`) | 90 | The fresh usage reading at which a provider is passed over for a later one below it. Off: only a recorded refusal passes one over. A reading is only honored when the task store already holds one (a host's usage probe); the local run asks no provider. |
 | `coder.projects` | absolute folders | none: any Git checkout | Which checkouts count as projects: a checkout inside one of these folders. Outside them nothing runs and the command says why. The desktop also tries these folders when a chat names no project. |
-| `coder.access` | `toolchains`, `full`, `boundary` | `toolchains` | What a run's commands may reach: the filesystem boundary with this computer's developer tools (#10045), the person's full access (no sandbox, their login-shell environment and real `HOME`, credential variables still left out), or the plain boundary. |
+| `coder.access` | `toolchains`, `full`, `boundary` | `full` | What a run's commands may reach: the filesystem boundary with this computer's developer tools (#10045), the person's full access (no sandbox, their login-shell environment and real `HOME`, credential variables still left out), or the plain boundary. |
 
 OpenCode and Devin are never on by default. OpenCode has no default model: it
 runs only as `opencode:PROVIDER/MODEL`, which the person names. Devin bills a
@@ -72,7 +72,8 @@ openagents settings set coder.start ask_first
 openagents settings set coder.usage_threshold_percent off
 openagents settings set coder.projects ~/code,~/work
 openagents settings set coder.access full
-openagents settings unset coder.access            # back to toolchains
+# Unsetting coder.access restores the default value, full.
+openagents settings unset coder.access
 ```
 
 Lists are comma-separated; a relative project folder resolves against the
