@@ -99,7 +99,9 @@ pub fn plan_prompt(
         "The person asked for this work to go to several coding engines. OpenAgents has \
          already started {} runs of it, one each on {}, and this run is the one on {}; the \
          others run beside it and report to the person themselves, and OpenAgents puts their \
-         results together. ",
+         results together. They are the other delegations the person asked for, so do this \
+         run's share yourself, in one pass: never split it into subagents or delegations of \
+         your own. ",
         plan.runs.len(),
         names.join(", "),
         engine.name()

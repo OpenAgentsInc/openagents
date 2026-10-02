@@ -1482,3 +1482,21 @@ change, `coder-worker.service` and `/opt/coder-worker/current` were not
 touched, and `315de9957c` stays in `releases/` for rollback. The log names
 `router chat-router-v4@9d17e4d3e2d7 (Live)` and the product KB at 106
 entries.
+
+Release `155bf09d01` (2026-10-02 UTC) fans one request out to several
+Coder runs ([#10183](https://github.com/OpenAgentsInc/openagents/issues/10183)):
+the router asks three more typed questions (`fanout`, `read_only`,
+`summarize`), a terminal's sure fan-out is answered with
+`dispatch.fan_out` ("Starting 3 read-only runs: Codex, Claude Code, Grok
+Build.") and a `run_coder` offer carrying the plan, and a request with
+`context.runs` gets the model's combined summary with no routing (bank
+`chat-answers-v1@179e56482e87`, route set unchanged at
+`chat-router-v4@9d17e4d3e2d7`). It was built with `cargo zigbuild` on
+`coderos-4080` from a clean worktree of that commit, installed as
+`/opt/coder-worker/releases/155bf09d01` with `knowledge/` and
+`codebase-kb.gz` copied from `abdebf0ba6` (the knowledge directory did not
+change between them), checked with `--check` ("the configuration is safe
+to deploy"), and put live by moving the `chat` symlink from `abdebf0ba6`
+and restarting `coder-worker-chat`; the environment file and unit did not
+change, `coder-worker.service` and `/opt/coder-worker/current` were not
+touched, and `abdebf0ba6` stays in `releases/` for rollback.
