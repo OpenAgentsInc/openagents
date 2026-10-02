@@ -2,7 +2,8 @@
 //! of what the person types.
 //!
 //! A draft is a command only when it is exactly `/word`, a slash and
-//! lowercase letters with nothing after them. Everything else, including
+//! lowercase letters with nothing after them, or `/open` and a number.
+//! Everything else, including
 //! text that merely starts with a slash (`/usr/bin is missing`), goes to the
 //! chat router. Nothing here reads the words of a message.
 
@@ -20,13 +21,14 @@ pub enum Slash {
     Import,
     Expand,
     Run,
+    Open,
     Help,
     Quit,
 }
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 13] = [
+    pub const ALL: [Slash; 14] = [
         Slash::New,
         Slash::Threads,
         Slash::Stop,
@@ -38,6 +40,7 @@ impl Slash {
         Slash::Import,
         Slash::Expand,
         Slash::Run,
+        Slash::Open,
         Slash::Help,
         Slash::Quit,
     ];
@@ -56,6 +59,7 @@ impl Slash {
             Slash::Import => "import",
             Slash::Expand => "expand",
             Slash::Run => "run",
+            Slash::Open => "open",
             Slash::Help => "help",
             Slash::Quit => "quit",
         }
@@ -79,6 +83,7 @@ impl Slash {
             Slash::Run => {
                 "open the Coder run full screen, to watch it and send it messages (Ctrl+R)"
             }
+            Slash::Open => "open a Coder run from the rail full screen: /open 2 (Alt+2)",
             Slash::Help => "show these commands and keys",
             Slash::Quit => "close the screen; a Coder run keeps going",
         }
@@ -92,6 +97,8 @@ pub enum Draft {
     Message(String),
     /// A slash command.
     Command(Slash),
+    /// `/open` and a run's number.
+    Open(usize),
     /// `/word` that names no command.
     Unknown(String),
     /// Nothing to send.
@@ -103,6 +110,12 @@ pub fn parse(draft: &str) -> Draft {
     let text = draft.trim();
     if text.is_empty() {
         return Draft::Empty;
+    }
+    // The one command that takes an argument: `/open` and a number.
+    if let Some(number) = text.strip_prefix("/open ")
+        && let Ok(number) = number.trim().parse::<usize>()
+    {
+        return Draft::Open(number);
     }
     if let Some(word) = text.strip_prefix('/')
         && !word.is_empty()
@@ -130,6 +143,9 @@ mod tests {
             );
         }
         assert_eq!(parse("/nope"), Draft::Unknown("/nope".into()));
+        assert_eq!(parse("/open 2"), Draft::Open(2));
+        assert_eq!(parse(" /open  12 "), Draft::Open(12));
+        assert_eq!(parse("/open two"), Draft::Message("/open two".into()));
         assert_eq!(parse(""), Draft::Empty);
         assert_eq!(parse("   "), Draft::Empty);
     }

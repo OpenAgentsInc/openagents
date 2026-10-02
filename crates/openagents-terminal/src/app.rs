@@ -120,7 +120,7 @@ pub enum Action {
     Quit,
 }
 
-type Wrap = Box<dyn Fn(&Row, usize) -> Vec<Line<'static>> + Send>;
+pub(crate) type Wrap = Box<dyn Fn(&Row, usize) -> Vec<Line<'static>> + Send>;
 
 /// The screen's state.
 pub struct App {
@@ -211,6 +211,11 @@ pub struct App {
     next_turn: Option<usize>,
     /// The run's worktree, where the paths it names are.
     pub worktree: Option<String>,
+    /// Each Coder run this thread started, for the rail under the
+    /// composer; a run's number is its place here, from one.
+    pub delegations: Vec<crate::rail::Delegation>,
+    /// The rail row the keyboard is on, by its number.
+    pub rail: Option<usize>,
 }
 
 impl App {
@@ -258,6 +263,8 @@ impl App {
             steering: 0,
             next_turn: None,
             worktree: None,
+            delegations: Vec::new(),
+            rail: None,
         }
     }
 
@@ -296,10 +303,13 @@ impl App {
         self.steering = 0;
         self.next_turn = None;
         self.worktree = None;
+        self.delegations.clear();
+        self.rail = None;
     }
 
     /// Add a row to the run view's log, and show its bottom.
     fn push_run(&mut self, row: Row) {
+        self.track_row(&row);
         self.run_log.push(row);
         if let Some(view) = &mut self.run_view {
             view.scroll = 0;
@@ -351,7 +361,7 @@ impl App {
     /// runs, and the live line's.
     #[must_use]
     pub fn animating(&self) -> bool {
-        self.busy() || self.live_status().is_some()
+        self.busy() || self.live_status().is_some() || self.rail_animating()
     }
 
     /// Whether the run should be followed again once the client is free:
@@ -373,6 +383,9 @@ impl App {
         if self.file.is_some() {
             self.file_key(key);
             return Vec::new();
+        }
+        if let Some(actions) = self.rail_key(key) {
+            return actions;
         }
         match (key.code, ctrl, alt) {
             (KeyCode::Char('r'), true, _) => {
@@ -686,6 +699,10 @@ impl App {
                 Vec::new()
             }
             Draft::Command(slash) => self.command(slash),
+            Draft::Open(number) => {
+                self.open_delegation(number);
+                Vec::new()
+            }
             Draft::Message(text) => self.send(text),
         }
     }
@@ -719,6 +736,13 @@ impl App {
                 self.toggle_run();
                 Vec::new()
             }
+            Slash::Open => {
+                match self.rail_numbers().as_slice() {
+                    [only] => self.open_delegation(*only),
+                    _ => self.open_delegation(0),
+                }
+                Vec::new()
+            }
             Slash::Quit => vec![Action::Quit],
         }
     }
@@ -727,6 +751,18 @@ impl App {
     fn send(&mut self, text: String) -> Vec<Action> {
         // The run view's composer talks to the run: an answer when it asks,
         // else a message it reads at its next step.
+        // A run opened from the rail that is not the thread's current
+        // one takes the message the same way, in its own log.
+        if let Some(held) = self.viewed()
+            && self.task.as_deref() != Some(held.task.as_str())
+        {
+            let task = held.task.clone();
+            let number = self.run_view.and_then(|view| view.number).unwrap_or(1);
+            self.delegations[number - 1]
+                .log
+                .push(Row::Turn(Who::You, text.clone()));
+            return vec![Action::Steer { task, text }];
+        }
         if self.run_view.is_some()
             && !self.asked
             && let Some(task) = self.task.clone()
@@ -902,6 +938,7 @@ impl App {
                     {
                         self.task = Some(id.to_owned());
                         self.running = true;
+                        self.delegated(id);
                     }
                 } else {
                     self.starting = None;
@@ -988,10 +1025,14 @@ impl App {
             // still comes from them: a replay of a turn that ended must
             // not leave the screen working with nothing coming.
             self.replayed(&line.event);
+            let ended = self.finished(&line.event);
+            self.track(&line, false, ended);
             return;
         }
         *seen = line.seq.max(*seen);
         self.task = Some(line.task.clone());
+        let ended = self.finished(&line.event);
+        self.track(&line, true, ended);
         match &line.event {
             CoderEvent::Status(status) => {
                 self.running = true;
@@ -1068,6 +1109,16 @@ impl App {
         {
             view.scroll = 0;
         }
+    }
+
+    /// Whether `event` ends its run's turn for good: not a turn a message
+    /// replaced, and not a question that waits for an answer.
+    fn finished(&self, event: &CoderEvent) -> bool {
+        event.ends_turn()
+            && !matches!(event, CoderEvent::Question(_) | CoderEvent::Approval(_))
+            && !self
+                .next_turn
+                .is_some_and(|next| openagents_chat::client::turn_of(event) < next)
     }
 
     /// Open the run view, or close it.
@@ -1263,6 +1314,18 @@ impl App {
         match self.phase {
             _ if self.overlay.is_some() => "Esc closes the list".into(),
             _ if self.file.is_some() => "Esc closes the file".into(),
+            _ if self.viewed().is_some() && !self.asked => {
+                let number = self.run_view.and_then(|view| view.number).unwrap_or(1);
+                let held = &self.delegations[number - 1];
+                let state = if held.running { "working" } else { "ended" };
+                format!(
+                    "Coder run {number} · {} · {state} · Enter sends it your message · Esc back",
+                    held.agent
+                )
+            }
+            _ if self.rail.is_some() => {
+                "Enter opens the run full screen · Up and Down move · Esc back".into()
+            }
             _ if self.run_view.is_some() && !self.asked => {
                 let state = if self.running { "working" } else { "ended" };
                 format!("Coder run · {state} · Enter sends it your message · Esc back")
@@ -1315,7 +1378,11 @@ impl App {
 
 /// Adds a run event to `log`: it joins the open stretch of tool calls,
 /// starts one, or draws its own row. Whether `log` changed.
-fn grow(log: &mut Scrollback<Row, Line<'static>, Wrap>, line: &CoderLine, expanded: bool) -> bool {
+pub(crate) fn grow(
+    log: &mut Scrollback<Row, Line<'static>, Wrap>,
+    line: &CoderLine,
+    expanded: bool,
+) -> bool {
     if let Some(Row::Tools { stretch, .. }) = log.last_mut()
         && stretch.push(line.seq, &line.event)
     {
@@ -1336,7 +1403,7 @@ fn grow(log: &mut Scrollback<Row, Line<'static>, Wrap>, line: &CoderLine, expand
     true
 }
 
-fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
+pub(crate) fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
     let wrap: Wrap = Box::new(move |row: &Row, width: usize| {
         rows::lines(row, u16::try_from(width).unwrap_or(u16::MAX), ladder)
     });
@@ -1401,6 +1468,14 @@ pub fn help() -> Card {
         (
             "Ctrl+R".to_owned(),
             "the Coder run full screen; what you type there goes to the run".to_owned(),
+        ),
+        (
+            "Up".to_owned(),
+            "on an empty line, into the rail of Coder runs; Down back, Enter opens one".to_owned(),
+        ),
+        (
+            "Alt+1…9".to_owned(),
+            "open that Coder run full screen".to_owned(),
         ),
         (
             "Mouse".to_owned(),

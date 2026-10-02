@@ -30,6 +30,9 @@ pub const FILE_MAX: u64 = 2 * 1024 * 1024;
 pub struct RunView {
     /// Rows scrolled back from the bottom.
     pub scroll: usize,
+    /// The rail's run it shows, by its number; `None` for the thread's
+    /// current run (Ctrl+R).
+    pub number: Option<usize>,
 }
 
 /// A file, read only.

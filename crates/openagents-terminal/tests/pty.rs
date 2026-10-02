@@ -716,6 +716,33 @@ fn the_screen_end_to_end() {
         "the run works in a worktree of the scratch repository"
     );
 
+    // The rail under the composer lists the run: its number, its agent,
+    // and what it is doing (#10169). Up moves into it, Enter opens it
+    // full screen, Esc comes back.
+    let rail = session.wait("the rail", &["1 Codex · cargo test"]);
+    eprintln!("==== rail ====\n{rail}\n");
+    session.send(b"\x1b[A");
+    session.wait(
+        "the rail selected",
+        &["› ", "Enter opens the run full screen"],
+    );
+    session.send(b"\r");
+    let opened = session.wait(
+        "the run opened from the rail",
+        &["Coder run 1 · Codex · working", "test adds ... FAILED"],
+    );
+    assert!(!opened.contains("1 Codex · cargo test"), "{opened}");
+    session.send(b"\x1b");
+    session.wait("the chat again", &["1 Codex · cargo test"]);
+    // Alt+1 opens it directly.
+    session.send(b"\x1b1");
+    session.wait(
+        "the run opened with Alt+1",
+        &["Coder run 1 · Codex · working"],
+    );
+    session.send(b"\x1b");
+    session.wait("the chat again", &["1 Codex · cargo test"]);
+
     // Ctrl+R: the run full screen, each command with its output, without
     // the chat's reply; its composer sends the run a message.
     session.send(b"\x12");

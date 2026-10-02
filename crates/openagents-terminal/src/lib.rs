@@ -36,6 +36,7 @@ pub mod copy;
 pub mod draw;
 pub mod last;
 pub mod prompts;
+pub mod rail;
 pub mod rows;
 pub mod screen;
 pub mod slash;

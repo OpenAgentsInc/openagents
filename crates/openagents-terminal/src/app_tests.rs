@@ -1387,3 +1387,181 @@ fn a_computer_lane_reply_without_an_offer_shows_no_enter_to_run_coder() {
     // What the screen offers is what `run-coder` accepts.
     assert!(openagents_chat::delegation::offered(Some(&meta), true));
 }
+
+fn of(task: &str, seq: u64, event: CoderEvent) -> Event {
+    Event::Line(Box::new(CoderLine {
+        seq,
+        task: task.into(),
+        thread: Some("a".repeat(32)),
+        event,
+    }))
+}
+
+fn started_on(provider: &str) -> CoderEvent {
+    let CoderEvent::CoderStarted(mut started) = started() else {
+        unreachable!()
+    };
+    started.provider = provider.into();
+    CoderEvent::CoderStarted(started)
+}
+
+fn status(text: &str) -> CoderEvent {
+    CoderEvent::Status(openagents_chat::coder_events::Status {
+        turn: 1,
+        step_id: 1,
+        text: text.into(),
+    })
+}
+
+/// Three runs the thread started, each with what it is doing.
+fn three_runs() -> App {
+    let mut app = app();
+    app.event(of("t1", 1, started_on("codex")));
+    app.event(of("t1", 2, status("Run cargo test")));
+    app.event(of("t2", 1, started_on("claude")));
+    app.event(of("t2", 2, status("Thinking…")));
+    app.event(of("t3", 1, started_on("grok")));
+    app.event(of("t3", 2, output(2, "ls", "a\nb").as_line_event()));
+    app
+}
+
+trait LineEvent {
+    fn as_line_event(self) -> CoderEvent;
+}
+
+impl LineEvent for Event {
+    fn as_line_event(self) -> CoderEvent {
+        match self {
+            Event::Line(line) => line.event,
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// The whole frame as text, row by row.
+fn frame(app: &mut App, width: u16, height: u16) -> String {
+    let area = ratatui::layout::Rect::new(0, 0, width, height);
+    let mut buf = ratatui::buffer::Buffer::empty(area);
+    crate::draw::draw(app, area, &mut buf);
+    (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn running_runs_show_in_the_rail_under_the_composer() {
+    let mut app = three_runs();
+    assert_eq!(app.rail_numbers(), vec![1, 2, 3]);
+    let rows = app.rail_rows();
+    assert_eq!(rows[0].agent, "Codex");
+    assert_eq!(rows[0].doing, "Run cargo test");
+    assert_eq!(rows[1].doing, "Thinking…");
+    assert!(rows.iter().all(|row| row.elapsed.is_some()));
+    let shown = frame(&mut app, 60, 14);
+    eprintln!("{shown}");
+    let lines: Vec<&str> = shown.lines().collect();
+    // The rail is the last three rows, under the composer's frame.
+    assert!(lines[11].contains("1 Codex · Run cargo test"), "{shown}");
+    assert!(lines[12].contains("2 Claude Code · Thinking…"), "{shown}");
+    assert!(lines[13].contains("3 Grok"), "{shown}");
+    // Text starts two cells in, and two cells stay free at the right.
+    assert!(lines[11].starts_with("   "), "{shown}");
+    assert!(
+        lines[11..].iter().all(|line| line.chars().count() <= 58),
+        "{shown}"
+    );
+    // A run that finished keeps its row for a while, then leaves.
+    app.event(of(
+        "t2",
+        3,
+        CoderEvent::Stopped(Stopped {
+            turn: 1,
+            message: "Stopped.".into(),
+        }),
+    ));
+    assert_eq!(app.rail_rows()[1].elapsed, None);
+    app.tick += crate::rail::KEPT_AFTER_DONE + 1;
+    assert_eq!(app.rail_numbers(), vec![1, 3]);
+}
+
+#[test]
+fn up_moves_into_the_rail_down_returns_and_enter_opens_full_screen() {
+    let mut app = three_runs();
+    // A draft keeps Up for the composer.
+    app.editor.insert_str("draft");
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(app.rail, None);
+    app.editor.take();
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(app.rail, Some(1));
+    assert!(app.status().starts_with("Enter opens the run full screen"));
+    app.key(&key(KeyCode::Up), 80);
+    app.key(&key(KeyCode::Up), 80);
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(app.rail, Some(3));
+    app.key(&key(KeyCode::Down), 80);
+    assert_eq!(app.rail, Some(2));
+    app.key(&key(KeyCode::Down), 80);
+    app.key(&key(KeyCode::Down), 80);
+    assert_eq!(app.rail, None);
+    // Enter on a row opens that run, not the thread's current one.
+    app.key(&key(KeyCode::Up), 80);
+    app.key(&key(KeyCode::Up), 80);
+    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
+    assert_eq!(app.run_view.and_then(|view| view.number), Some(2));
+    assert_eq!(app.rail, None);
+    assert!(
+        app.status()
+            .starts_with("Coder run 2 · Claude Code · working"),
+        "{}",
+        app.status()
+    );
+    // Its full screen is its log alone; what is typed steers it.
+    assert_eq!(
+        typed(&mut app, "use spaces"),
+        vec![Action::Steer {
+            task: "t2".into(),
+            text: "use spaces".into()
+        }]
+    );
+    let view = frame(&mut app, 60, 14);
+    assert!(view.contains("use spaces"), "{view}");
+    assert!(!view.contains("Run cargo test"), "{view}");
+    // Esc goes back; Esc in the rail returns to the composer.
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(app.run_view.is_none());
+    app.key(&key(KeyCode::Up), 80);
+    app.key(&key(KeyCode::Esc), 80);
+    assert_eq!(app.rail, None);
+    assert!(app.running, "Esc in the rail stops nothing");
+    // A typed key leaves the rail and goes to the composer.
+    app.key(&key(KeyCode::Up), 80);
+    app.key(&key(KeyCode::Char('x')), 80);
+    assert_eq!(app.rail, None);
+    assert_eq!(app.editor.text(), "x");
+}
+
+#[test]
+fn alt_and_a_number_or_open_and_a_number_opens_one() {
+    let mut app = three_runs();
+    let alt = KeyEvent {
+        modifiers: KeyModifiers::ALT,
+        ..key(KeyCode::Char('3'))
+    };
+    app.key(&alt, 80);
+    assert_eq!(app.run_view.and_then(|view| view.number), Some(3));
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(typed(&mut app, "/open 1").is_empty());
+    assert_eq!(app.run_view.and_then(|view| view.number), Some(1));
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(typed(&mut app, "/open 7").is_empty());
+    assert!(app.run_view.is_none());
+    assert!(shown(&mut app).contains("There are 3 Coder runs: /open 1 to /open 3."));
+}

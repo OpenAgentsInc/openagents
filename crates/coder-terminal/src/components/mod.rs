@@ -13,6 +13,7 @@
 //! - [`run`] draws one row of a Coder run. The caller maps its run events
 //!   into [`run::RunRow`]s; the module knows no protocol.
 //! - [`overlay`] draws a centered framed list over the screen.
+//! - [`rail`] draws the delegations under the composer, one row each.
 //!
 //! Transcript components return `Vec<Line<'static>>` whose rows are never
 //! wider than the width they were given; the overlay draws into a
@@ -21,11 +22,13 @@
 pub mod card;
 pub mod diff;
 pub mod overlay;
+pub mod rail;
 pub mod run;
 pub mod turn;
 
 pub use card::Card;
 pub use overlay::{Item, ListOverlay};
+pub use rail::RailRow;
 pub use run::{FileRow, RunRow, ToolRow};
 pub use turn::Who;
 

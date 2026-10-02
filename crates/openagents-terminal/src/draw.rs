@@ -3,7 +3,7 @@
 //! from the white ladder on near-black.
 
 use coder_terminal::components::overlay::{Item, ListOverlay};
-use coder_terminal::components::{run, turn};
+use coder_terminal::components::{rail, run, turn};
 use coder_terminal::{Composer, PROMPT, grok_spinner};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -60,16 +60,34 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     let tail = app.tail();
     let busy = app.busy();
     let prompt = if busy { spinner_char(app.tick) } else { PROMPT };
+    // The rail of Coder runs under the composer (#10169), leaving the
+    // transcript at least one row. The same cells as the transcript: two
+    // in from the left, two free at the right.
+    let rail_width = area.width.saturating_sub(3);
+    let rail_rows = if app.rail_shown() {
+        rail::lines(&app.rail_rows(), usize::from(rail_width), app.tick, ladder)
+    } else {
+        Vec::new()
+    };
+    // A run from the rail that is not the thread's current one: its own
+    // log, without the current run's live rows.
+    let other = app
+        .viewed()
+        .filter(|held| app.task.as_deref() != Some(held.task.as_str()))
+        .and(app.run_view.and_then(|view| view.number));
     let mut composer = Composer::new(&mut app.editor, ladder)
         .prompt(prompt)
         .status(&status)
         .tokens(&tail);
     let box_height = composer.height(area.width).min(area.height);
+    let rail_height = u16::try_from(rail_rows.len())
+        .unwrap_or(u16::MAX)
+        .min(area.height.saturating_sub(box_height + 1));
     let log = Rect::new(
         area.x,
         area.y,
         area.width,
-        area.height.saturating_sub(box_height),
+        area.height.saturating_sub(box_height + rail_height),
     );
     let composer_area = Rect::new(area.x, area.y + log.height, area.width, box_height);
 
@@ -91,15 +109,21 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     if !app.partial.is_empty() && !viewing {
         live.extend(turn::streaming(&app.partial, width, ladder));
     }
-    if let Some(progress) = &app.progress {
-        live.extend(run::lines(progress, width, ladder));
+    if other.is_none() {
+        if let Some(progress) = &app.progress {
+            live.extend(run::lines(progress, width, ladder));
+        }
+        live.extend(working_line);
     }
-    live.extend(working_line);
     let scroll = match app.run_view {
         Some(view) => view.scroll,
         None => app.scroll,
     };
-    let rows = if viewing {
+    let rows = if let Some(number) = other {
+        app.delegations[number - 1]
+            .log
+            .rows(usize::from(width), |_: &Row| true)
+    } else if viewing {
         app.run_log.rows(usize::from(width), |_: &Row| true)
     } else {
         app.transcript.rows(usize::from(width), |_: &Row| true)
@@ -123,6 +147,14 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     }
 
     let caret = composer.render(composer_area, buf);
+    for (offset, line) in rail_rows.iter().take(usize::from(rail_height)).enumerate() {
+        buf.set_line(
+            area.x + 1,
+            composer_area.bottom() + offset as u16,
+            line,
+            rail_width,
+        );
+    }
 
     if let Some(overlay) = &app.overlay {
         let (title, items, selected, hint, empty) = match overlay {

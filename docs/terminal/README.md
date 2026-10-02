@@ -148,7 +148,8 @@ it.
 | Ctrl+O | Expand every Coder run's tool calls to each call and its output, and each run result's changed files to their diffs, or condense them again. |
 | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
 | PageUp, PageDown | Scroll the transcript. |
-| Up, Down | Move in the message, then through your earlier messages, kept across restarts. |
+| Up, Down | Move in the message, then through your earlier messages, kept across restarts. With Coder runs in the rail under the composer, Up on an empty line moves into the rail and through it, Down moves back to the composer, and Enter opens the selected run full screen. |
+| Alt+1 … Alt+9 | Open that Coder run from the rail full screen. |
 | Ctrl+C | Clear the message; on an empty line, press it twice to quit. |
 | Ctrl+D | Quit, on an empty line. |
 | Mouse | Drag to select text; letting go copies it (OSC 52, as Ctrl+Y). Click a file's path in a reply or a run to read the file. The wheel scrolls. Most terminals still select their own way with Shift (Option in iTerm2) held. |
@@ -174,6 +175,7 @@ including text that only starts with a slash, goes to OpenAgents.
 | `/import` | Copy this computer's Claude Code and Codex sessions (`~/.claude`, `~/.codex`) into the host's threads, each once: the messages and text replies, without tool calls. The host only reads those folders. Needs the host. |
 | `/expand` | Expand or condense the tool calls (also Ctrl+O). |
 | `/run` | Open the Coder run full screen (also Ctrl+R). |
+| `/open N` | Open Coder run N from the rail full screen (also Alt+N). |
 | `/help` | Show these commands and keys. |
 | `/quit` | Close the screen; a Coder run keeps going. |
 
@@ -210,6 +212,10 @@ of how much is complete. Runs have no step or time budget.
   it. Grok Build, OpenCode, and Devin read instructions only when a turn
   starts, so their turn stops and the next starts with your message. Esc goes
   back to the chat; `/stop` stops the run.
+- **The rail.** Under the composer, one row per Coder run this thread
+  started: its number, its agent, and what it is doing now, with the
+  spinner and its timer while it runs. A finished run keeps its row for 30
+  seconds; `/open` still opens it by number after that.
 - **A follow-up after a run** goes to the router with what the run did, so
   more work continues the same run.
 - **An issue** ("work on #10034") runs the issue flow in a process of its
