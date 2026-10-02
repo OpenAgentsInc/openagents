@@ -501,7 +501,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     // A chat plays in a column beside it, lighting each message's way.
     let (column, slide) =
         openagents_desktop::route_chat::split(Layout::of(WIDTH, HEIGHT, false, 1.0).slide);
-    assert!(column.w > 0.2 * (column.w + slide.w) && column.w < 0.3 * (column.w + slide.w));
+    assert!(column.w > 0.25 * (column.w + slide.w) && column.w < 0.35 * (column.w + slide.w));
     let (w, h) = page.size();
     let front = page.camera().to_screen(
         openagents_chat_app::route_map::layout::Point::default(),

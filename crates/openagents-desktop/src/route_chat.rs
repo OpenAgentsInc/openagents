@@ -25,7 +25,9 @@ use rust_native_desktop::{Frame, PxRect};
 use crate::route_map::RouteLight;
 
 /// The column's share of the slide's width.
-pub const COLUMN: f32 = 0.25;
+pub const COLUMN: f32 = 0.30;
+/// How much larger than the app's the chat column's text and bubbles are.
+pub const TEXT_SCALE: f32 = 1.45;
 /// One exchange, in seconds.
 pub const EXCHANGE: f32 = 4.6;
 /// How long the finished conversation holds before it replays, in seconds.
@@ -328,6 +330,9 @@ const AVATARS: [Color; 5] = [
 /// bottom, older ones rising and dropping off the top.
 pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f32, lines: &[Line]) {
     use rust_native::layout::display::Weight;
+    // The chat reads from across a room: its text and bubbles are drawn
+    // larger than the app's.
+    let unit = unit * TEXT_SCALE;
     frame.fill(rect, 0.0, visual::SIDEBAR);
     frame.fill(
         PxRect {
