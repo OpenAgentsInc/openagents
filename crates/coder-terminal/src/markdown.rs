@@ -156,6 +156,28 @@ pub fn render(source: &str) -> Vec<Rendered> {
     lines
 }
 
+/// The source of each code block in `source`, in order: what a copy of
+/// one puts on the clipboard.
+pub fn code_blocks(source: &str) -> Vec<String> {
+    fn collect(blocks: &[Block], out: &mut Vec<String>) {
+        for block in blocks {
+            match block {
+                Block::Code { source, .. } => out.push(source.clone()),
+                Block::Quote(blocks) => collect(blocks, out),
+                Block::List { items, .. } => {
+                    for item in items {
+                        collect(&item.blocks, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    collect(&parse(source), &mut out);
+    out
+}
+
 /// Renders physical rows, preserving inline marks and hanging list indentation.
 /// Code and wide table rows wrap so a scrollable transcript keeps all their text.
 pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
@@ -933,6 +955,14 @@ mod tests {
                 .all(|(_, marks)| marks.syntax.is_none())
         );
         assert!(render("```rust\n```").is_empty());
+    }
+
+    #[test]
+    fn code_blocks_come_out_in_order_with_their_source() {
+        let source =
+            "one\n\n```sh\nls -la\n```\n\n- item\n\n  ```\n  a\n  b\n  ```\n> ```\n> quoted\n> ```";
+        assert_eq!(code_blocks(source), ["ls -la", "a\nb", "quoted"]);
+        assert!(code_blocks("no code `here`").is_empty());
     }
 
     #[test]

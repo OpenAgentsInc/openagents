@@ -223,6 +223,11 @@ impl Screen {
         match action {
             Action::Quit => self.quit().await,
             Action::Interrupt => self.interrupter.fire(),
+            Action::Copy(text) => {
+                if crate::copy::to_clipboard(&text).is_err() {
+                    self.app.loud("Could not copy.");
+                }
+            }
             Action::StopRun { task } => {
                 let Some(stopper) = self.stopper.clone() else {
                     return;

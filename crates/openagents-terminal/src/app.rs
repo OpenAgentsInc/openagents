@@ -81,6 +81,8 @@ pub enum Action {
     Settings,
     /// Install the host as a service, so chats sync with the phone.
     Sync,
+    /// Put this text on the terminal's clipboard.
+    Copy(String),
     /// Close the screen.
     Quit,
 }
@@ -138,6 +140,9 @@ pub struct App {
     pub expanded: bool,
     /// The prompt just sent, for the screen to save.
     sent: Option<String>,
+    /// What the last Ctrl+Y copied: 0 the reply, n its nth code block from
+    /// the end. The next Ctrl+Y copies the one before.
+    copied: Option<usize>,
 }
 
 impl App {
@@ -166,6 +171,7 @@ impl App {
             quiet_detach: false,
             seen: HashMap::new(),
             sent: None,
+            copied: None,
             tick: 0,
             expanded: false,
         }
@@ -239,6 +245,7 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let armed = std::mem::take(&mut self.armed);
+        let copied = std::mem::take(&mut self.copied);
         if self.overlay.is_some() {
             return self.overlay_key(key);
         }
@@ -262,6 +269,7 @@ impl App {
             (KeyCode::Char('d'), true, _) if self.editor.is_empty() => vec![Action::Quit],
             (KeyCode::Esc, _, _) => self.stop(),
             (KeyCode::Char('t'), true, _) => vec![Action::Threads],
+            (KeyCode::Char('y'), true, _) => self.copy(copied),
             (KeyCode::Char('o'), true, _) => {
                 self.toggle_tools();
                 Vec::new()
@@ -364,6 +372,37 @@ impl App {
 
     /// A submitted draft: a slash command, an answer to Coder, an accepted
     /// offer, or a message for the chat.
+    /// Ctrl+Y: copy the last reply; pressed again, its code blocks from the
+    /// last up, then the reply again.
+    fn copy(&mut self, copied: Option<usize>) -> Vec<Action> {
+        let reply = self
+            .transcript
+            .lines()
+            .filter_map(|row| match row {
+                Row::Turn(Who::OpenAgents, text) => Some(text.clone()),
+                _ => None,
+            })
+            .last();
+        let Some(reply) = reply else {
+            self.note("No reply to copy yet.");
+            return Vec::new();
+        };
+        let blocks = coder_terminal::markdown::code_blocks(&reply);
+        let step = copied.map_or(0, |step| (step + 1) % (blocks.len() + 1));
+        self.copied = Some(step);
+        if step == 0 {
+            self.note("Copied the reply.");
+            return vec![Action::Copy(reply)];
+        }
+        let index = blocks.len() - step;
+        self.note(format!(
+            "Copied code block {} of {}.",
+            index + 1,
+            blocks.len()
+        ));
+        vec![Action::Copy(blocks[index].clone())]
+    }
+
     /// The prompt the last key sent, once: the screen saves it.
     pub fn take_sent(&mut self) -> Option<String> {
         self.sent.take()
@@ -806,6 +845,10 @@ pub fn help() -> Card {
             "stop the reply, or stop the Coder run".to_owned(),
         ),
         ("Ctrl+T".to_owned(), "threads".to_owned()),
+        (
+            "Ctrl+Y".to_owned(),
+            "copy the last reply; again, each code block in it".to_owned(),
+        ),
         (
             "Ctrl+O".to_owned(),
             "expand or condense tool calls".to_owned(),

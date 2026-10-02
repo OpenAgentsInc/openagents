@@ -666,3 +666,24 @@ fn a_sent_prompt_is_handed_to_the_screen_once_and_up_reaches_saved_ones() {
     app.key(&key(KeyCode::Up), 80);
     assert_eq!(app.editor.text(), "saved earlier");
 }
+
+#[test]
+fn ctrl_y_copies_the_last_reply_then_its_code_blocks() {
+    let mut app = app();
+    assert!(app.key(&ctrl('y'), 80).is_empty());
+    assert!(shown(&mut app).contains("No reply to copy yet."));
+    app.push(Row::Turn(Who::OpenAgents, "older".into()));
+    let reply = "Run:\n\n```sh\nls\n```\n\nthen\n\n```rust\nfn main() {}\n```";
+    app.push(Row::Turn(Who::OpenAgents, reply.into()));
+    app.push(Row::Turn(Who::You, "thanks".into()));
+    let copy = |app: &mut App| app.key(&ctrl('y'), 80);
+    assert_eq!(copy(&mut app), vec![Action::Copy(reply.into())]);
+    assert_eq!(copy(&mut app), vec![Action::Copy("fn main() {}".into())]);
+    assert_eq!(copy(&mut app), vec![Action::Copy("ls".into())]);
+    assert_eq!(copy(&mut app), vec![Action::Copy(reply.into())]);
+    assert!(shown(&mut app).contains("Copied code block 2 of 2."));
+    // Another key in between starts over at the reply.
+    copy(&mut app);
+    app.key(&key(KeyCode::Char('x')), 80);
+    assert_eq!(copy(&mut app), vec![Action::Copy(reply.into())]);
+}

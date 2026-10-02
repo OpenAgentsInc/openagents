@@ -7509,6 +7509,7 @@ name = "openagents-terminal"
 version = "1.0.0-rc.2"
 dependencies = [
  "atif",
+ "base64 0.22.1",
  "coder-terminal",
  "coder-vt",
  "crossterm",

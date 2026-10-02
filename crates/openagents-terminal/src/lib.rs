@@ -32,6 +32,7 @@ use openagents_chat::client::{self, Client, Coder};
 use tokio::sync::watch;
 
 pub mod app;
+pub mod copy;
 pub mod draw;
 pub mod last;
 pub mod prompts;
