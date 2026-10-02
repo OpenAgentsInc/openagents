@@ -43,7 +43,8 @@ enum Done {
     Invite(Result<Invite, String>),
     Paired(Result<Option<String>, String>),
     Sync(Result<String, String>),
-    Plugins(Result<Vec<(String, String)>, String>),
+    Plugins(Result<Vec<crate::Plugin>, String>),
+    Plugin(String, Result<String, String>),
     Settings(Result<crate::Settings, String>),
 }
 
@@ -275,10 +276,19 @@ impl Screen {
                 });
             }
             Action::Plugins => {
-                self.app.note("Reading the published plugins…");
+                self.app.note("Reading the plugins…");
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
                     let _ = done.send(Done::Plugins(extras.plugins()));
+                });
+            }
+            Action::RunPlugin { key, name, request } => {
+                self.app.note(format!("Running {name}…"));
+                let (extras, done, folder) =
+                    (self.extras.clone(), self.done.clone(), self.folder.clone());
+                tokio::task::spawn_blocking(move || {
+                    let ran = extras.run_plugin(&key, &request, folder.as_deref());
+                    let _ = done.send(Done::Plugin(name, ran));
                 });
             }
             Action::Settings => {
@@ -579,6 +589,18 @@ impl Screen {
                 self.app.overlay = Some(Overlay::Plugins { rows, selected: 0 });
             }
             Done::Plugins(Err(why)) => self.app.loud(why),
+            Done::Plugin(name, Ok(reply)) => self.app.push(Row::Card(Card {
+                title: format!("Plugin {name}"),
+                rows: Vec::new(),
+                body: if reply.trim().is_empty() {
+                    vec!["It finished with nothing to say.".into()]
+                } else {
+                    reply.lines().map(str::to_owned).collect()
+                },
+                art: Vec::new(),
+                keys: Vec::new(),
+            })),
+            Done::Plugin(name, Err(why)) => self.app.loud(format!("{name} did not run: {why}")),
             Done::Settings(Ok(settings)) => {
                 if !matches!(self.app.overlay, Some(Overlay::Settings { .. })) {
                     self.app

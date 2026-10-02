@@ -23,7 +23,7 @@ use coder::task::chat_client::{Control, Here};
 use openagents_chat::client::{self, Client, Event, Kind, Place};
 use openagents_chat::router::Caller;
 use openagents_connect::control::{self, Op, Reply, Request};
-use openagents_terminal::{Extras, Interrupter, Invite, Launch, Resume, Settings};
+use openagents_terminal::{Extras, Interrupter, Invite, Launch, Plugin, Resume, Settings};
 use serde_json::Value;
 
 use crate::{Args, Output, runtime};
@@ -406,15 +406,58 @@ impl Extras for ProgramExtras {
         }
     }
 
-    fn plugins(&self) -> Result<Vec<(String, String)>, String> {
+    fn plugins(&self) -> Result<Vec<Plugin>, String> {
+        let mut rows = installed_plugins(&crate::ext_eval::openagents_home().join("extensions"));
+        let published = std::env::current_exe()
+            .map_err(|_| "Cannot find this openagents program to list plugins.".to_owned())
+            .and_then(|program| {
+                captured(
+                    Command::new(program).args(["--json", "plugin", "list", "--limit", "30"]),
+                    PLUGINS_WAIT,
+                )
+                .map_err(|why| format!("The plugin catalog could not be read: {why}"))
+            })
+            .and_then(|text| plugin_rows(&text));
+        match published {
+            Ok(published) => {
+                let installed: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
+                rows.extend(
+                    published
+                        .into_iter()
+                        .filter(|(name, _)| !installed.contains(name))
+                        .map(|(name, about)| Plugin {
+                            name,
+                            about,
+                            key: None,
+                        }),
+                );
+            }
+            // The ones installed here still run without the catalog.
+            Err(why) if rows.is_empty() => return Err(why),
+            Err(_) => {}
+        }
+        Ok(rows)
+    }
+
+    fn run_plugin(
+        &self,
+        key: &str,
+        request: &str,
+        folder: Option<&std::path::Path>,
+    ) -> Result<String, String> {
         let program = std::env::current_exe()
-            .map_err(|_| "Cannot find this openagents program to list plugins.".to_owned())?;
-        let text = captured(
-            Command::new(program).args(["--json", "plugin", "list", "--limit", "30"]),
-            PLUGINS_WAIT,
-        )
-        .map_err(|why| format!("The plugin catalog could not be read: {why}"))?;
-        plugin_rows(&text)
+            .map_err(|_| "Cannot find this openagents program to run the plugin.".to_owned())?;
+        let mut command = Command::new(program);
+        command.args(["--json", "plugin", "run", key, "--request", request]);
+        if let Some(folder) = folder {
+            command.arg("--in").arg(folder);
+        }
+        let output = command
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|error| format!("it could not start: {error}."))?;
+        plugin_reply(&String::from_utf8_lossy(&output.stdout))
     }
 
     fn settings(&self) -> Settings {
@@ -610,6 +653,66 @@ fn captured(command: &mut Command, wait: Duration) -> Result<String, String> {
     reader.join().map_err(|_| "no output.".to_owned())
 }
 
+/// The plugins installed under `extensions`
+/// (`<key>/<slug>/<version>/package.json`), the newest version of each,
+/// keyed by their folder, which `openagents plugin run` takes.
+fn installed_plugins(extensions: &std::path::Path) -> Vec<Plugin> {
+    let sorted = |dir: &std::path::Path| {
+        let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+            .map(|read| {
+                read.filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .collect()
+            })
+            .unwrap_or_default();
+        paths.sort();
+        paths
+    };
+    let mut rows = Vec::new();
+    for key in sorted(extensions) {
+        for slug in sorted(&key) {
+            let Some(version) = sorted(&slug)
+                .into_iter()
+                .filter(|version| version.join("package.json").is_file())
+                .next_back()
+            else {
+                continue;
+            };
+            let Ok(package) = coder::package::Package::load(&version.join("package.json")) else {
+                continue;
+            };
+            rows.push(Plugin {
+                name: if package.name.trim().is_empty() {
+                    package.slug.clone()
+                } else {
+                    package.name.clone()
+                },
+                about: package.summary.clone(),
+                key: Some(version.display().to_string()),
+            });
+        }
+    }
+    rows
+}
+
+/// The reply in what `openagents --json plugin run` printed, or why it
+/// did not run or finish.
+fn plugin_reply(text: &str) -> Result<String, String> {
+    let value: Value =
+        serde_json::from_str(text.trim()).map_err(|_| "it answered something else.".to_owned())?;
+    if let Some(error) = value["error"].as_str() {
+        return Err(error.to_owned());
+    }
+    let reply = value["reply"].as_str().unwrap_or_default().to_owned();
+    if value["finished"].as_bool() == Some(true) {
+        Ok(reply)
+    } else {
+        Err(value["stopped"]
+            .as_str()
+            .map_or_else(|| "it did not finish.".to_owned(), str::to_owned))
+    }
+}
+
 /// The `(name, what it does)` rows of `openagents --json plugin list`.
 fn plugin_rows(text: &str) -> Result<Vec<(String, String)>, String> {
     let value: Value = serde_json::from_str(text.trim()).map_err(|_| {
@@ -772,6 +875,46 @@ mod tests {
         assert!(change_setting(&file, "agent:nobody", true).is_err());
         let loaded = coder::task::settings::Settings::load(&file).unwrap();
         assert_eq!(loaded.coder.start, coder::task::settings::Start::AskFirst);
+    }
+
+    #[test]
+    fn installed_plugins_are_found_and_their_reply_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let older = dir.path().join("ab/explain-error/1.0.0");
+        let newer = dir.path().join("ab/explain-error/1.1.0");
+        for version in [&older, &newer] {
+            std::fs::create_dir_all(version).unwrap();
+        }
+        std::fs::write(newer.join("package.json"), "not a package").unwrap();
+        assert!(installed_plugins(dir.path()).is_empty());
+        std::fs::write(
+            newer.join("package.json"),
+            r#"{"v":1,"slug":"explain-error","name":"Explain this error","summary":"Says why",
+                "program":{"name":"explain-error","digest":"c5d0ebed0178ee44d1d0db580583c397789c6c83ba409baf6163636234fab877"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            installed_plugins(dir.path()),
+            vec![Plugin {
+                name: "Explain this error".into(),
+                about: "Says why".into(),
+                key: Some(newer.display().to_string()),
+            }]
+        );
+        assert!(installed_plugins(&dir.path().join("missing")).is_empty());
+        assert_eq!(
+            plugin_reply(r#"{"finished":true,"reply":"It is a typo."}"#).unwrap(),
+            "It is a typo."
+        );
+        assert_eq!(
+            plugin_reply(r#"{"finished":false,"stopped":"needs writes"}"#).unwrap_err(),
+            "needs writes"
+        );
+        assert_eq!(
+            plugin_reply(r#"{"error":"no package.json"}"#).unwrap_err(),
+            "no package.json"
+        );
+        assert!(plugin_reply("").is_err());
     }
 
     #[test]

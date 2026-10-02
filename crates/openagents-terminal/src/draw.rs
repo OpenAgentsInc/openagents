@@ -115,14 +115,18 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
             Overlay::Plugins { rows, selected } => (
                 "Plugins".to_owned(),
                 rows.iter()
-                    .map(|(name, about)| Item {
-                        label: name.clone(),
-                        detail: about.clone(),
+                    .map(|plugin| Item {
+                        label: plugin.name.clone(),
+                        detail: if plugin.key.is_some() {
+                            format!("installed · {}", plugin.about)
+                        } else {
+                            plugin.about.clone()
+                        },
                     })
                     .collect(),
                 *selected,
-                "Ask about one in the chat · Esc close",
-                "No plugins are published yet.",
+                "Enter runs an installed one · Esc close",
+                "No plugins are installed or published yet.",
             ),
             Overlay::Settings { settings, selected } => (
                 "Settings".to_owned(),

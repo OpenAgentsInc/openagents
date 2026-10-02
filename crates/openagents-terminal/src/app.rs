@@ -47,7 +47,7 @@ pub enum Overlay {
     },
     /// The published plugins.
     Plugins {
-        rows: Vec<(String, String)>,
+        rows: Vec<crate::Plugin>,
         selected: usize,
     },
     /// The Coder settings, each turned on or off in place.
@@ -82,6 +82,12 @@ pub enum Action {
     CancelInvite,
     /// Show the published plugins.
     Plugins,
+    /// Run the installed plugin `key` with `request`.
+    RunPlugin {
+        key: String,
+        name: String,
+        request: String,
+    },
     /// Show the Coder settings.
     Settings,
     /// Turn the setting `key` on or off.
@@ -153,6 +159,8 @@ pub struct App {
     /// The chat cannot be reached: the reply is asked for again in this
     /// many seconds.
     pub offline: Option<u64>,
+    /// A plugin picked from the list: the next message is its request.
+    pub plugin: Option<crate::Plugin>,
 }
 
 impl App {
@@ -185,6 +193,7 @@ impl App {
             tick: 0,
             expanded: false,
             offline: None,
+            plugin: None,
         }
     }
 
@@ -278,6 +287,11 @@ impl App {
                 Vec::new()
             }
             (KeyCode::Char('d'), true, _) if self.editor.is_empty() => vec![Action::Quit],
+            (KeyCode::Esc, _, _) if self.plugin.is_some() => {
+                self.plugin = None;
+                self.note("No plugin runs.");
+                Vec::new()
+            }
             (KeyCode::Esc, _, _) => self.stop(),
             (KeyCode::Char('t'), true, _) => vec![Action::Threads],
             (KeyCode::Char('y'), true, _) => self.copy(copied),
@@ -354,7 +368,13 @@ impl App {
                 match key.code {
                     KeyCode::Up => *selected = selected.saturating_sub(1),
                     KeyCode::Down => *selected = (*selected + 1).min(rows.len().saturating_sub(1)),
-                    KeyCode::Enter => self.overlay = None,
+                    KeyCode::Enter => {
+                        let picked = rows.get(*selected).cloned();
+                        self.overlay = None;
+                        if let Some(plugin) = picked {
+                            self.pick(plugin);
+                        }
+                    }
                     _ => {}
                 }
                 Vec::new()
@@ -371,6 +391,23 @@ impl App {
                 Vec::new()
             }
         }
+    }
+
+    /// A plugin picked from the list: one installed here waits for its
+    /// request; one only published says so.
+    fn pick(&mut self, plugin: crate::Plugin) {
+        if plugin.key.is_none() {
+            self.note(format!(
+                "{} is published but not installed on this computer, so it cannot run here.",
+                plugin.name
+            ));
+            return;
+        }
+        self.note(format!(
+            "Type what to ask {} and press Enter; it runs on this folder and reads files only. Esc cancels.",
+            plugin.name
+        ));
+        self.plugin = Some(plugin);
     }
 
     /// Turn the selected setting on or off.
@@ -460,6 +497,24 @@ impl App {
     }
 
     pub fn submit(&mut self, draft: &str) -> Vec<Action> {
+        // A picked plugin takes the next message, or an empty line, as its
+        // request.
+        if let Some(plugin) = self.plugin.take() {
+            match slash::parse(draft) {
+                Draft::Message(_) | Draft::Empty => {
+                    let request = draft.trim().to_owned();
+                    if !request.is_empty() {
+                        self.push(Row::Turn(Who::You, request.clone()));
+                    }
+                    return vec![Action::RunPlugin {
+                        key: plugin.key.unwrap_or_default(),
+                        name: plugin.name,
+                        request,
+                    }];
+                }
+                _ => self.note(format!("{} was not run.", plugin.name)),
+            }
+        }
         match slash::parse(draft) {
             Draft::Empty if self.offer && !self.busy() => {
                 self.offer = false;
@@ -814,6 +869,12 @@ impl App {
     pub fn status(&self) -> String {
         match self.phase {
             _ if self.overlay.is_some() => "Esc closes the list".into(),
+            _ if self.plugin.is_some() => format!(
+                "plugin {} · type what to ask · Esc cancels",
+                self.plugin
+                    .as_ref()
+                    .map_or("", |plugin| plugin.name.as_str())
+            ),
             Phase::Replying => match self.offline {
                 Some(seconds) => format!("offline · trying again in {seconds}s · Esc stops"),
                 None => "replying · Esc stops".into(),

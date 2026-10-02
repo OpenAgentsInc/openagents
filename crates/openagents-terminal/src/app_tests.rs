@@ -813,3 +813,52 @@ fn settings_turn_on_and_off_in_place() {
     app.key(&key(KeyCode::Esc), 80);
     assert!(app.overlay.is_none());
 }
+
+fn plugin(name: &str, installed: bool) -> crate::Plugin {
+    crate::Plugin {
+        name: name.into(),
+        about: "does a thing".into(),
+        key: installed.then(|| format!("/plugins/{name}")),
+    }
+}
+
+/// `/plugins` lists them; Enter on an installed one takes the next message
+/// as its request and runs it; one only published says it cannot run here.
+#[test]
+fn a_plugin_picked_from_the_list_runs_with_the_next_message() {
+    let mut app = app();
+    assert_eq!(typed(&mut app, "/plugins"), vec![Action::Plugins]);
+    app.overlay = Some(Overlay::Plugins {
+        rows: vec![plugin("explain-error", true), plugin("elsewhere", false)],
+        selected: 1,
+    });
+    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
+    assert!(shown(&mut app).contains("not installed on this computer"));
+    assert!(app.plugin.is_none());
+    app.overlay = Some(Overlay::Plugins {
+        rows: vec![plugin("explain-error", true)],
+        selected: 0,
+    });
+    app.key(&key(KeyCode::Enter), 80);
+    assert_eq!(
+        app.status(),
+        "plugin explain-error · type what to ask · Esc cancels"
+    );
+    assert_eq!(
+        typed(&mut app, "why does cargo fail"),
+        vec![Action::RunPlugin {
+            key: "/plugins/explain-error".into(),
+            name: "explain-error".into(),
+            request: "why does cargo fail".into(),
+        }]
+    );
+    assert!(app.plugin.is_none());
+    // Esc cancels a picked plugin; the next message goes to the chat.
+    app.plugin = Some(plugin("explain-error", true));
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(app.plugin.is_none());
+    assert!(matches!(
+        typed(&mut app, "hello").as_slice(),
+        [Action::Run(Op::Send { .. })]
+    ));
+}

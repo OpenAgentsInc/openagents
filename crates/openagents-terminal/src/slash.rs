@@ -61,7 +61,7 @@ impl Slash {
             Slash::Export => "save this thread as an ATIF trajectory file",
             Slash::Settings => "change when Coder starts and which coding agents it may use",
             Slash::Connect => "pair a phone with this computer by QR code",
-            Slash::Plugins => "list published plugins",
+            Slash::Plugins => "list plugins and run one installed here",
             Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",
             Slash::Help => "show these commands and keys",
             Slash::Quit => "close the screen; a Coder run keeps going",

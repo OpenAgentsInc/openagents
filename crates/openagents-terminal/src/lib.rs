@@ -25,7 +25,7 @@
 //! settings) comes in through [`Extras`], so this crate links no host or
 //! Coder code and its tests drive it with fakes.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use openagents_chat::client::{self, Client, Coder};
@@ -52,6 +52,17 @@ pub struct Invite {
     pub qr: Vec<String>,
     /// Unix seconds when the code stops working.
     pub expires_at: u64,
+}
+
+/// One row of the plugin list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Plugin {
+    pub name: String,
+    /// What it does.
+    pub about: String,
+    /// What [`Extras::run_plugin`] is told, when it is installed here and
+    /// runs from the screen; `None` for one only published.
+    pub key: Option<String>,
 }
 
 /// What `/settings` shows, and changes in place.
@@ -98,11 +109,19 @@ pub trait Extras: Send + Sync {
     /// # Errors
     /// Why it could not, and what to do instead.
     fn sync(&self) -> Result<String, String>;
-    /// The published plugins, one `(name, what it does)` row each.
+    /// The plugins installed on this computer, which run from the screen,
+    /// then the published ones.
     ///
     /// # Errors
-    /// The catalog could not be read.
-    fn plugins(&self) -> Result<Vec<(String, String)>, String>;
+    /// Neither could be read.
+    fn plugins(&self) -> Result<Vec<Plugin>, String>;
+    /// Run the installed plugin `key` once on `folder` with `request`, what
+    /// the person asked it; its reply.
+    ///
+    /// # Errors
+    /// It did not run or did not finish, in words for the person.
+    fn run_plugin(&self, key: &str, request: &str, folder: Option<&Path>)
+    -> Result<String, String>;
     /// The Coder settings on this computer.
     fn settings(&self) -> Settings;
     /// Turn the choice `key` on or off, and the settings after.
@@ -127,8 +146,11 @@ impl Extras for NoExtras {
     fn sync(&self) -> Result<String, String> {
         Err("This screen cannot install the host service.".into())
     }
-    fn plugins(&self) -> Result<Vec<(String, String)>, String> {
+    fn plugins(&self) -> Result<Vec<Plugin>, String> {
         Ok(Vec::new())
+    }
+    fn run_plugin(&self, _: &str, _: &str, _: Option<&Path>) -> Result<String, String> {
+        Err("Plugins do not run here.".into())
     }
     fn settings(&self) -> Settings {
         Settings::default()

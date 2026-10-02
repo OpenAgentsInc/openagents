@@ -144,7 +144,7 @@ including text that only starts with a slash, goes to OpenAgents.
 | `/export` | Save this thread as an ATIF trajectory under the chat home's `exports/`. |
 | `/settings` | Turn on or off when Coder starts at once and which coding agents it may use; Enter or Space changes the selected one and saves it. |
 | `/connect` | Pair a phone with this computer by QR code. |
-| `/plugins` | List published plugins. |
+| `/plugins` | List the plugins installed on this computer, then the published ones. Enter on an installed one, then type what to ask it: it runs once on this folder, reading files only, and its reply shows as a card. Esc cancels. |
 | `/expand` | Expand or condense the tool calls (also Ctrl+O). |
 | `/help` | Show these commands and keys. |
 | `/quit` | Close the screen; a Coder run keeps going. |
