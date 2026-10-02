@@ -7457,6 +7457,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "toml",
  "verse",
  "verse-lagrange",
 ]

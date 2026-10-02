@@ -9,14 +9,19 @@
 //! `PaymentPayload`, and `SettlementResponse` shapes and the base64 header
 //! codecs pinned to x402 commit `4fcf836cc393174130e1358577ce5d37356da1c3`.
 //! `server` binds one paid resource: challenge, reconstruct, settle, execute,
-//! over the smallest HTTP/1.1 loop; `mcp` is the same toll on one MCP
+//! over the smallest HTTP/1.1 loop; `front` is the multi-route version, one
+//! receiver and one replay store behind many priced routes, with a settlement
+//! hook before execution and the HTTP `Payment` scheme (`payment_scheme`)
+//! beside x402 on the same invoice; `mcp` is the same toll on one MCP
 //! server's `tools/call`, over the upstream MCP transport's `_meta` names.
 //! `policy` is the buyer's standing ceilings, allowlist, and daily cap, and
 //! the ledger of what it paid. Nothing here pays.
 
 pub mod facilitator;
+pub mod front;
 pub mod mcp;
 pub mod native;
+pub mod payment_scheme;
 pub mod policy;
 pub mod replay;
 pub mod server;

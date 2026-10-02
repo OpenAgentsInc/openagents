@@ -311,8 +311,13 @@ Only signed, verified events count, as on the phone.
 
 - **API endpoints** (API phase 1): the pay front serves the priced `/v1`
   routes. One route table maps a path to a price, an executor, and a split
-  role. `crates/x402::server::serve` today serves one resource; the front
-  needs a multi-route version with one wallet and one replay store.
+  role. This is `openagents pay serve --routes FILE` (`crates/x402::front`,
+  #10186): one wallet, one replay store, x402 and the HTTP `Payment` scheme
+  on one invoice, and a `SettlementSink` hook called with each
+  `Settlement` (payment hash, request hash, route, resource, role, plugin,
+  price, received msat, scheme, time) before the route runs. Until
+  `crates/pay-ledger` implements the sink, settlements go to an NDJSON log
+  the ledger can import.
 - **Plugin invocations** (API phase 2): `POST /v1/plugins/{id}/invoke`
   prices `endpoint + fee_msat` from the pinned release, runs the plugin's
   packet through `crates/plugin` (`invoke_with_receipt`), and writes the

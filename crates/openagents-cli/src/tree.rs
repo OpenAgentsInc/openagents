@@ -174,6 +174,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("key", Some(crate::key::USAGE), crate::key::EFFECTS),
         group("wallet", Some(crate::wallet::USAGE), crate::wallet::EFFECTS),
         group("x402", Some(x402_usage()), x402_effects()),
+        group("pay", Some(crate::pay::USAGE), crate::pay::EFFECTS),
         group("kb", Some(crate::kb::USAGE), crate::kb::EFFECTS),
         group("relay", Some(crate::relay::USAGE), crate::relay::EFFECTS),
         group(

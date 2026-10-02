@@ -35,6 +35,10 @@ pub trait ReplayStore {
     /// whichever process got there first.
     fn insert(&self, entry: &ReplayEntry) -> Result<(), ReplayError>;
     fn get(&self, key: &str) -> Result<Option<ReplayEntry>, ReplayError>;
+    /// Give a consumed key back, so the same proof can be settled again.
+    /// Only for a settlement whose purchase never ran: the multi-route front
+    /// calls it when its settlement hook refused before execution.
+    fn release(&self, key: &str) -> Result<(), ReplayError>;
     /// Remove entries whose `retain_until` has passed. Returns how many.
     fn sweep(&self, now: u64) -> Result<usize, ReplayError>;
 }
@@ -87,6 +91,14 @@ impl ReplayStore for FileReplayStore {
         match fs::read(self.path(key)) {
             Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn release(&self, key: &str) -> Result<(), ReplayError> {
+        match fs::remove_file(self.path(key)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
     }
@@ -150,8 +162,11 @@ mod tests {
             store.insert(&first),
             Err(ReplayError::Duplicate(key)) if key == "lnbtc:aa:bb"
         ));
-        assert_eq!(store.get("lnbtc:aa:bb").unwrap(), Some(first));
+        assert_eq!(store.get("lnbtc:aa:bb").unwrap(), Some(first.clone()));
         assert_eq!(store.get("lnbtc:aa:cc").unwrap(), None);
+        store.release("lnbtc:aa:bb").unwrap();
+        assert_eq!(store.get("lnbtc:aa:bb").unwrap(), None);
+        store.insert(&first).unwrap();
         fs::remove_dir_all(dir).unwrap();
     }
 

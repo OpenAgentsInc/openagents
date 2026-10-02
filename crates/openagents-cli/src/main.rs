@@ -14,7 +14,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
-// `connect`, `labor`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
+// `connect`, `labor`, `pay`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
 mod argv;
 #[cfg(unix)]
@@ -38,6 +38,8 @@ mod key;
 mod labor;
 mod mcp;
 mod out;
+#[cfg(unix)]
+mod pay;
 mod playtest;
 #[cfg(unix)]
 mod plugin_local;
@@ -119,6 +121,7 @@ Keys, relays, and money:
   wallet       Your OpenAgents wallet: your balance and an address to get paid at.
   x402         Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1),
                through this computer's Lightning node (`x402 node`).
+  pay          Sell many priced routes from one wallet: x402 and the HTTP Payment scheme.
   kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
@@ -228,6 +231,8 @@ fn main() -> ExitCode {
         "wallet" => wallet::run(&output, &rest),
         #[cfg(unix)]
         "x402" => x402::run(&output, &rest),
+        #[cfg(unix)]
+        "pay" => pay::run(&output, &rest),
         "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "playtest" => playtest::run(&output, &rest),
@@ -250,7 +255,7 @@ fn main() -> ExitCode {
         // service manager, the resident wallet, Unix file modes, and the
         // system ssh's process groups.
         #[cfg(not(unix))]
-        "background" | "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" => {
+        "background" | "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" | "pay" => {
             eprintln!("openagents {command}: not available on Windows; run it from macOS or Linux");
             EXIT_FAILURE
         }

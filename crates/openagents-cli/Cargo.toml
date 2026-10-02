@@ -62,6 +62,8 @@ serde_json = "1"
 sha2 = "0.11.0"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+# `openagents pay serve --routes FILE`.
+toml = "0.9"
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 verse-lagrange = { path = "../verse-lagrange" }
 

@@ -30,6 +30,13 @@ pub trait Receiver: Send + Sync {
         request_hash: [u8; 32],
         expiry_secs: u32,
     ) -> Result<String, String>;
+    /// What the node actually received for `payment_hash` (an LSP's
+    /// just-in-time fee makes it less than the invoice), when the wallet has
+    /// the inbound payment as succeeded; `None` when it cannot tell.
+    fn received_msat(&self, payment_hash: [u8; 32]) -> Result<Option<u64>, String> {
+        let _ = payment_hash;
+        Ok(None)
+    }
 }
 
 /// Runs the purchased operation. `Ok` bytes become the 200 body.
@@ -67,7 +74,7 @@ pub struct Response {
 }
 
 impl Response {
-    fn json(status: u16, value: &Value) -> Self {
+    pub fn json(status: u16, value: &Value) -> Self {
         Self {
             status,
             headers: vec![("content-type".into(), "application/json".into())],
@@ -356,6 +363,7 @@ fn write_response(stream: &mut TcpStream, response: &Response) {
         400 => "Bad Request",
         402 => "Payment Required",
         404 => "Not Found",
+        405 => "Method Not Allowed",
         500 => "Internal Server Error",
         503 => "Service Unavailable",
         _ => "",
@@ -382,22 +390,31 @@ pub fn serve<S: ReplayStore + Send + Sync + 'static>(
     stop: Arc<AtomicBool>,
     log: impl Fn(&Event) + Send + Sync + 'static,
 ) -> std::io::Result<()> {
+    serve_with(listener, stop, move |request| {
+        let (response, event) = resource.handle(request, crate::unix_now());
+        log(&event);
+        response
+    })
+}
+
+/// The HTTP/1.1 loop under [`serve`] and the multi-route front: one thread
+/// per connection, one request per connection, `handle` answers it.
+pub fn serve_with(
+    listener: TcpListener,
+    stop: Arc<AtomicBool>,
+    handle: impl Fn(&Request) -> Response + Send + Sync + 'static,
+) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
-    let log = Arc::new(log);
+    let handle = Arc::new(handle);
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((mut stream, _)) => {
-                let resource = resource.clone();
-                let log = log.clone();
+                let handle = handle.clone();
                 std::thread::spawn(move || {
                     let _ = stream.set_nonblocking(false);
                     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
                     match read_request(&mut stream) {
-                        Ok(request) => {
-                            let (response, event) = resource.handle(&request, crate::unix_now());
-                            log(&event);
-                            write_response(&mut stream, &response);
-                        }
+                        Ok(request) => write_response(&mut stream, &handle(&request)),
                         Err(message) => write_response(
                             &mut stream,
                             &Response::json(400, &json!({"error": message})),

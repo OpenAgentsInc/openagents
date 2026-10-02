@@ -729,6 +729,55 @@ only a requirement whose invoice validates for that binding, refuses above
 preimage only with `--show-proof`. Neither log line nor `--json` event on
 the seller side carries an invoice or preimage.
 
+### Many routes on one wallet (`openagents pay serve`)
+
+`openagents pay serve --routes FILE` is the multi-route front the central
+receiver runs ([central receive and splits](../payments/2026-10-02-central-receive-and-splits.md)):
+one wallet, one replay store, one settlement log, and every route in a TOML
+file. `openagents pay --help` prints the file format.
+
+```toml
+public_url = "https://api.openagents.com"
+
+[[route]]
+id = "messages"
+path = "/v1/messages"
+price_sats = 21
+role = "endpoint"
+command = ["openagents-answer"]          # body on stdin, stdout is the answer
+
+[[route]]
+id = "explain-error"
+path = "/v1/plugins/explain-error/invoke"
+price_sats = 31
+role = "plugin_call"
+plugin = "explain-error"
+plugin_dir = "plugins/explain-error"     # the workflow runs with the body as the request
+
+[[route]]
+id = "weather"
+method = "GET"
+path = "/x/weather/{city}"
+price_sats = 5
+role = "hosted_resource"
+upstream = "http://10.0.0.7:9000/weather/{city}"
+```
+
+Every `402` carries one invoice two ways: the x402 terms above, and an HTTP
+`Payment` challenge (`WWW-Authenticate: Payment ... method="lightning",
+intent="charge"`, with the body's `digest` and the method and URL in its
+HMAC-bound `opaque`), so `lnget` pays it as it is. A route priced in msat
+that is not whole sats is sold over x402 only. A proof by either scheme is
+consumed once across every route; a successful `Payment` answer also carries
+`Payment-Receipt`. Before the route runs, the settlement (payment hash,
+request hash, route, resource, role, plugin, price, what the wallet received,
+scheme, time) is appended to `~/.openagents/x402/settlements.ndjson` and
+synced; if that fails the call gets a 503, nothing runs, and the same proof
+stays good for a retry. The challenge HMAC key is
+`~/.openagents/x402/payment-challenge.key`, made on first use; every process
+that settles for this wallet shares it, the replay store, and the log. A
+signet or regtest wallet is refused, as for `x402 serve`.
+
 ### Discovery (`x402 advertise`, `fetch --cap`)
 
 `openagents x402 advertise` publishes the kind `30180` NIP-CAP head that

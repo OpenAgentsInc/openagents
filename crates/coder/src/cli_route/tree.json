@@ -10250,6 +10250,84 @@
       ]
     },
     {
+      "name": "pay",
+      "summary": "Sell many priced routes from one wallet: x402 and the HTTP Payment scheme.",
+      "children": [
+        {
+          "name": "serve",
+          "leaf": {
+            "path": [
+              "pay",
+              "serve"
+            ],
+            "usage": [
+              "serve --routes FILE [--listen HOST:PORT] [--seconds N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "serve"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "routes",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "listen",
+                    "value": "HOST:PORT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "seconds",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Sell every route in FILE (TOML) from this computer's wallet: one listener, one replay store, one settlement log. A request without a proof gets a 402 carrying one invoice two ways: x402 v2 (PAYMENT-REQUIRED) and the HTTP Payment scheme (WWW-Authenticate: Payment, lightning/charge, the body's digest bound). A valid proof, by either scheme, is consumed once across every route, the settlement is appended to the log, and only then does the route run: a command (body on stdin), a plugin's workflow (body as the request), or an upstream HTTP service (body forwarded). If the log cannot be written the call gets a 503, nothing runs, and the same proof stays good for a retry.",
+            "effect": "long_running",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "routes",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "listen",
+          "value": "HOST:PORT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "seconds",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "kb",
       "summary": "Search, publish, and sync knowledge entries (NIP-KB).",
       "children": [
