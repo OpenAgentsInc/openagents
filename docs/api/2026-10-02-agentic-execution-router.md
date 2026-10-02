@@ -47,6 +47,9 @@ permission to publish it.
 - Arbitrary paid workers, bidding, escrow, dispute resolution, or paid labor.
 - Execution on OpenAgents' computers or the owner's computers by default.
 - Recursive agent spawning, unbounded parallel work, or model-selected delegation.
+  A fan-out the caller asks for in so many words ("one per agent", "ask all
+  three") is not model-selected: it is a bounded, typed dispatch plan (section
+  13.2) and belongs in the local slice.
 - A new coding loop or a second permission system.
 - Claims of confidential computing or remote attestation from signed receipts.
 - New limits on the users of OpenAgents' own apps. Follow API decision D16;
@@ -430,6 +433,123 @@ These questions do not block writing the plan or the local slice:
    policy state or internal judgments?
 6. What measured routing error and latency levels justify each task class's
    promotion beyond the opt-in cohort?
+
+## 13. Additions from dogfooding the apps (2026-10-02)
+
+The owner used OpenAgents Terminal, the phone, and the CLI all day on
+2026-10-02; each item below is a failure seen in a real chat and the rule the
+router must keep. They refine sections 4 to 9 rather than replace them.
+
+### 13.1 Defaults before questions
+
+A clarifying question is a cost the caller pays in time. Before asking, the
+router resolves ambiguity with product defaults, recorded in the admission
+snapshot as defaults applied: the built-in wallet (Spark on every device,
+never "which wallet?"), this computer, the current project, the current
+thread's running or last session, every coding agent that is signed in and not
+disabled (opt-out, not opt-in). Ask only when no default applies or a default
+would cross an authority line. Each default gets a regression eval that fails
+if the question comes back: the wallet set
+([`wallet-v1.json`](../../crates/coder/fixtures/chat-router/wallet-v1.json),
+#10170) is the model.
+
+### 13.2 Dispatch plans, not one run per message
+
+"Do 3 read-only delegations, one per agent" became one Codex run that
+refused because it could not start other engines. The route result is a typed
+**dispatch plan**: the number of runs, which executors (resolved from the
+signed-in, enabled set), the mode (read-only enforced by the executor's
+policy, not the prompt), and each run's input. The host starts the runs; an
+engine never starts other engines or calls the host's control socket itself.
+A requested summary is composed from the runs' results, not by a further run.
+This is the first, flat case of section 11's graph.
+
+### 13.3 Continue the session, steer the run
+
+A follow-up to a run is routed (Jev, against what the run did) to: more work
+in the same task and engine session, a question the chat answers, or a new
+task. Continuing resumes the engine's own session in the same worktree; a
+message to a running run is delivered to it at its next step (#10171). The
+admission snapshot of a continuation inherits the original grant and
+disclosure; anything wider is a new offer.
+
+### 13.4 Direct commands are a route family
+
+Read-only questions about this computer ("what's my balance") are answered by
+running a command from the computer's own command tree, checked against that
+tree rather than the proposer's claim: read-only runs at once, a state change
+shows the exact command and needs Enter, money movement and secrets never run
+from chat (#10170). Add **Local command** to section 5's route families,
+between "Plugin or program" and "Coder". Its answer reports the result in plain
+words, never the tool's internals (node ids, networks, channels).
+
+### 13.5 Work an issue
+
+"Pick an open issue nobody is working on and do it" is a task class with an
+existing executor: the issue flow (claim, worktree of `origin/main`, checks,
+land, close), started through the host, never by an engine poking the host.
+Claims are one record every path writes and reads: the comment marker, an
+assignee, and the GitHub Project status when the issue is on one (#10203).
+The flow's gate blocks only on real failures: a failing test is retried, then
+compared with the base, so flaky or pre-existing failures do not block
+(#10145); style findings are advice for review. This is a strong candidate for
+the first public task class, since its checks and landing already exist.
+
+### 13.6 Who pays is part of the admission
+
+A caller may send their own provider key ([BYOK](../byok/2026-10-02-byok-openrouter.md),
+`OpenAgents-Provider-Key`). The snapshot records the payer per resource. A
+fallback can never switch the payer to OpenAgents when the caller chose their
+own keys; it fails plainly instead. Costs are recorded for every run on every
+path (#10161) and shown to API callers; OpenAgents' own apps record them
+without showing them.
+
+### 13.7 Host upgrades are a failure mode
+
+The host restarted for upgrades several times mid-conversation and clients saw
+"cannot be reached" and "write failed" (#10168). Add a row to section 6: the host
+drains before restarting (finishes in-flight requests, takes no new ones), a
+client reconnects without notice for a short gap, and a send that failed on a
+dead connection is retried with its idempotency key so it is never stored twice.
+
+### 13.8 Enforcement on macOS
+
+A Coder run once made macOS ask for access to the Music library. Effects in
+the admission snapshot include an operating-system deny set: on macOS,
+executors run in a sandbox that refuses the privacy-protected locations (Music,
+Photos, Documents, Desktop, Mail, Messages, iCloud Drive) and control of other
+apps, so the operating system is never asked. A route that needs one of them
+is a new, explicit grant, not a dialog.
+
+### 13.9 Standing instructions
+
+"Keep my disk from filling up" is not a run; it is a background rule
+([background processes](../background/2026-10-02-background-processes.md)).
+Add **Standing rule** as a route family: the router compiles the request into
+a typed rule (trigger, condition, host-enforced actions), offers it, and the
+host runs it with no model in the loop; a plugin can carry such rules, off
+until the person turns them on.
+
+### 13.10 The cost thesis is a measured claim
+
+The reason to route rather than delegate raw is measured, not asserted: four
+delegate settings (matched effort, six tools with a short system prompt, a
+five-minute prompt cache, a Jev briefing) made the same model 61% cheaper and
+37% faster than Claude Code alone at equal passes, and 45% cheaper on 26
+Terminal-Bench tasks
+([cost audit](../cost/2026-10-02-system-one-cost-efficiency-audit.md)). Make
+those settings part of each Coder route's adapter digest, and make section 5's
+"measured route evidence" include a raw-delegation baseline: the standing Gym
+study (#10162) runs each task class through raw Claude Code, raw Codex, and
+the shipped route, so cost per checked outcome against raw delegation is a
+number the router reports, not a slogan.
+
+### 13.11 What the caller hears
+
+Acknowledgements start with the verb and name what happens: "Looking through
+the latest commits.", "Exploring the repo with Codex, Claude Code, and Grok
+Build.", "Picking up #10178." They never narrate an internal component ("We'll
+have Coder…") or misread the request as its topic.
 
 **First implementation milestone:** a message creates exactly one authorized
 repository task on a scratch computer, produces a retained patch with an
