@@ -1406,3 +1406,24 @@ environment file and unit did not change, `coder-worker.service` and
 "The OpenAgents app can inspect and fix your repository on your computer,
 with Coder handling the coding work. Download it at
 openagents.com/download."
+
+Release `74875544bd` (2026-10-02 UTC) grounds questions about us that leave
+the prepared answers ([#10135](https://github.com/OpenAgentsInc/openagents/issues/10135),
+[#10136](https://github.com/OpenAgentsInc/openagents/issues/10136),
+[#10137](https://github.com/OpenAgentsInc/openagents/issues/10137)): `meta`
+turns no prepared answer fits, and `product.kb` turns below the grounded bar
+or in a close call, read the product knowledge base instead of going to the
+model alone, and the `openagents.chat-privacy`, `openagents.pricing`, and
+`openagents.chat-limits` entries (version 3) name Jev's gateway route and
+say there is no plan, account, quota, throttle, or API key to bring. It was
+built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/74875544bd` with `knowledge/openagents/` from the
+repository (107 files, no `._*` files) and `codebase-kb.gz` copied from
+`dcc80c9096`, checked with `--check` as root with the chat environment
+sourced ("the configuration is safe to deploy"), and put live by moving the
+`chat` symlink from `cf299747f7` and restarting `coder-worker-chat`; the
+environment file and unit did not change, and `cf299747f7` stays in
+`releases/` for rollback. Scratch `openagents chat send` runs: "is there an
+iphone app?" twice served the `openagents.get-the-app` entry (`kb:product`)
+both times, and a five-turn limits and privacy thread answered every
+follow-up on the `grounded` tier with no plan, cap, account, or key invented.
