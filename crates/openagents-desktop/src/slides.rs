@@ -29,12 +29,17 @@
 //! request no plugin serves, the plugin made with the Gym's interview, its
 //! XP, and others using it ([`RoutePlugin`]). `scene: routes-future` shows
 //! the same view fed a growing model instead ([`RouteFuture`]), on the
-//! frame clock.
+//! frame clock. `scene: essays` and `scene: install` show link cards in
+//! the slide's place ([`Embeds`]): two essays as GitHub file previews, and
+//! openagents.com/install in a browser window. A click on a card opens its
+//! link in the browser ([`Slides::take_link`]); a click elsewhere on the
+//! slide goes on as usual.
 
 use crate::route_chat::RouteChat;
 use crate::route_future::RouteFuture;
 use crate::route_map::MapPage;
 use crate::route_plugin::RoutePlugin;
+use crate::slide_embeds::Embeds;
 use openagents_deck::{Outcome, UnknownDeck, Viewer};
 use rust_native::style::{Color, Style, TextAlign};
 use rust_native::{Element, Node};
@@ -122,6 +127,10 @@ pub struct Slides {
     chat: Option<RouteChat>,
     /// The plugin story on the live route map, once shown.
     plugin: Option<RoutePlugin>,
+    /// The link cards a `scene: essays` or `scene: install` slide shows.
+    embeds: Option<Embeds>,
+    /// A card's link a click asked to open, until the host takes it.
+    link: Option<String>,
 }
 
 /// Ease-out: fast at first, settling at the end.
@@ -159,6 +168,8 @@ impl Slides {
             future: None,
             chat: None,
             plugin: None,
+            embeds: None,
+            link: None,
         })
     }
 
@@ -244,6 +255,26 @@ impl Slides {
         })
     }
 
+    /// The link-card scene the showing slide asks for, if any.
+    fn embed_scene(&self) -> Option<&'static str> {
+        match self.viewer.scene() {
+            Some(crate::slide_embeds::ESSAYS) => Some(crate::slide_embeds::ESSAYS),
+            Some(crate::slide_embeds::INSTALL) => Some(crate::slide_embeds::INSTALL),
+            _ => None,
+        }
+    }
+
+    /// The link cards, once a slide with them has shown.
+    pub fn embeds(&self) -> Option<&Embeds> {
+        self.embeds.as_ref()
+    }
+
+    /// The link a click on a card asked to open, once: the host opens it
+    /// in the browser.
+    pub fn take_link(&mut self) -> Option<String> {
+        self.link.take()
+    }
+
     /// The overlay's node: one surface over the whole window.
     pub fn node<I>(&self) -> Node<I> {
         Node {
@@ -299,6 +330,14 @@ impl Slides {
         }
         if self.phase != Phase::Open {
             return None;
+        }
+        if let Some(scene) = self.embed_scene()
+            && self
+                .embeds
+                .as_ref()
+                .is_none_or(|embeds| embeds.pending(scene))
+        {
+            return Some(now + FRAME);
         }
         if (self.on_future() || self.wants_routes() || self.on_plugin()) && !self.reduce_motion {
             return Some(now + FUTURE_FRAME);
@@ -358,11 +397,13 @@ impl Slides {
         let routes = self.routes().map_or(0, MapPage::version);
         let future = self.future.as_ref().map_or(0, RouteFuture::version);
         let plugin = self.plugin.as_ref().map_or(0, RoutePlugin::version);
+        let embeds = self.embeds.as_ref().map_or(0, Embeds::version);
         self.version
             .wrapping_add(self.viewer.version())
             .wrapping_add(routes)
             .wrapping_add(future)
             .wrapping_add(plugin)
+            .wrapping_add(embeds)
     }
 
     fn changed(&mut self) {
@@ -389,6 +430,19 @@ impl Slides {
         } else if let Some(story) = &mut self.plugin {
             // Off its slide: the next visit plays the story from the start.
             story.reset();
+        }
+        match self.embed_scene() {
+            Some(scene) if self.phase != Phase::Closed => {
+                let reduce = self.reduce_motion;
+                let embeds = self.embeds.get_or_insert_with(|| Embeds::new(reduce));
+                moved |= embeds.show(scene, now);
+            }
+            _ => {
+                if let Some(embeds) = &mut self.embeds {
+                    // Off its slide: the next visit comes in again.
+                    embeds.reset();
+                }
+            }
         }
         if self.wants_routes() && self.phase != Phase::Closed {
             let reduce = self.reduce_motion;
@@ -560,6 +614,10 @@ impl Slides {
             self.changed();
             return true;
         }
+        if self.embed_input(event) {
+            self.changed();
+            return true;
+        }
         if let SurfaceInput::Down { x, y, .. } = event
             && !matches!(self.phase, Phase::Closing)
         {
@@ -625,6 +683,44 @@ impl Slides {
         };
         page.input(local, now);
         true
+    }
+
+    /// Pointer input on a link-card slide: the pointer over a card
+    /// brightens it, and a press on one asks the host to open its link.
+    /// Anything else goes on as on any slide.
+    fn embed_input(&mut self, event: SurfaceInput) -> bool {
+        let Some(scene) = self.embed_scene() else {
+            return false;
+        };
+        if self.phase != Phase::Open {
+            return false;
+        }
+        let (width, height) = self.size;
+        let slide = Layout::of(width, height, self.fullscreen, 1.0).slide;
+        let (x, y) = match event {
+            SurfaceInput::Down { x, y, .. }
+            | SurfaceInput::Move { x, y }
+            | SurfaceInput::Up { x, y }
+            | SurfaceInput::Wheel { x, y, .. }
+            | SurfaceInput::Zoom { x, y, .. } => (x, y),
+        };
+        let over = crate::slide_embeds::cards(scene, slide)
+            .iter()
+            .position(|card| contains(*card, x, y));
+        let Some(embeds) = self.embeds.as_mut() else {
+            return false;
+        };
+        match event {
+            SurfaceInput::Move { .. } => embeds.set_hover(over),
+            SurfaceInput::Down { .. } => match over {
+                Some(index) => {
+                    self.link = crate::slide_embeds::url(scene, index);
+                    true
+                }
+                None => false,
+            },
+            _ => false,
+        }
     }
 
     /// A click at `x`, `y` relative to the `width` by `height` surface, in
@@ -729,6 +825,11 @@ impl Slides {
         } else if self.on_plugin() {
             let (column, map) = crate::route_chat::split(px(layout.slide));
             self.plugin_story().paint(frame, column, map, unit);
+        } else if let Some(scene) = self.embed_scene() {
+            let reduce = self.reduce_motion;
+            self.embeds
+                .get_or_insert_with(|| Embeds::new(reduce))
+                .paint(frame, px(layout.slide), scene);
         } else if self.on_future() {
             let reduce = self.reduce_motion;
             self.future

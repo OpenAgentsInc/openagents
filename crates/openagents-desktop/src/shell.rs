@@ -1647,6 +1647,12 @@ impl App for DesktopApp {
                 .slides
                 .as_mut()
                 .is_some_and(|slides| slides.input(event, now));
+            // A link card's click opens its link in the browser.
+            if let Some(url) = self.slides.as_mut().and_then(|slides| slides.take_link())
+                && self.live
+            {
+                openagents_desktop::chat::open_link(&url);
+            }
             self.deck_scene();
             self.present();
             return handled;

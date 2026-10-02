@@ -34,7 +34,17 @@ source: docs/transcripts/200.md, the agent network growing
 ---
 
 layout: statement
-id: four
-source: owner
+id: essays
+scene: essays
+source: docs/essays/2026-10-01-the-return-of-the-general-agent.md and docs/essays/2026-09-29-test-time-capabilities.md, read at build time and shown as GitHub link cards; a click opens each on GitHub
+
+—
+
+---
+
+layout: statement
+id: install
+scene: install
+source: openagents.com/install (crates/openagents-web/src/pages/install.rs), shown in a browser window; a click opens it
 
 —

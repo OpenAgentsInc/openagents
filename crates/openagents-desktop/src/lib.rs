@@ -81,6 +81,8 @@ pub mod route_plugin;
 pub mod screens;
 pub mod settings;
 #[cfg(feature = "app")]
+pub mod slide_embeds;
+#[cfg(feature = "app")]
 pub mod slides;
 #[cfg(feature = "app")]
 pub mod update;

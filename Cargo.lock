@@ -7464,6 +7464,7 @@ dependencies = [
  "pollster",
  "qrcodegen",
  "reqwest 0.12.28",
+ "resvg",
  "rfd",
  "ring",
  "rqrr",

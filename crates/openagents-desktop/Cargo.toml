@@ -38,6 +38,7 @@ app = [
     "dep:security-framework",
     "dep:rfd",
     "dep:coder",
+    "dep:resvg",
 ]
 
 [dependencies]
@@ -83,6 +84,9 @@ semver = { version = "1", optional = true }
 # folder chooser (the common item dialog, `IFileOpenDialog` with
 # `FOS_PICKFOLDERS`). `rust-native-desktop` already uses it for images.
 rfd = { version = "0.17.2", optional = true }
+# The GitHub mark and padlock on the slide link cards (`slide_embeds`);
+# already in the graph through `rust-native-desktop`.
+resvg = { version = "0.48.1", default-features = false, optional = true }
 
 # Linux: the desktop portal's folder chooser over the session bus
 # (`src/platform/linux.rs`). The same zbus release and features the host's

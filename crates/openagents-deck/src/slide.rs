@@ -158,13 +158,22 @@ pub struct Slide {
     /// [`SCENES`]: `grid`, the Verse's Grid behind the slide; `routes`, the
     /// live route map; `routes-plugin`, the live route map as a person
     /// makes a plugin and others use it; `routes-future`, the route map
-    /// growing over the years. A host with no scene, and every capture,
+    /// growing over the years; `essays`, two essays as GitHub link cards;
+    /// `install`, openagents.com/install in a browser window. A host with
+    /// no scene, and every capture,
     /// paints the plain background instead.
     pub scene: Option<String>,
 }
 
 /// The live scenes a slide may name (`scene: grid`).
-pub const SCENES: [&str; 4] = ["grid", "routes", "routes-plugin", "routes-future"];
+pub const SCENES: [&str; 6] = [
+    "grid",
+    "routes",
+    "routes-plugin",
+    "routes-future",
+    "essays",
+    "install",
+];
 
 /// An image a slide shows: `![alt](path)` in the script, on a line by
 /// itself. The path names a file under `decks/`, compiled in through

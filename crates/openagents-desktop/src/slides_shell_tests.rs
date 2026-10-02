@@ -471,7 +471,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         Some("front"),
         "a click selects, and the slide stays"
     );
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 5");
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 6");
     // Tab steps to the next node; its details show on the slide.
     assert!(key(&mut app, "Tab", false, open));
     let selected = write(&mut app, "episode-289-routes-selected");
@@ -494,7 +494,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         },
     );
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 5");
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 6");
     input(
         &mut app,
         SurfaceInput::Up {
@@ -509,7 +509,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     // Once let go, the arrow changes slides: the chat goes on as a
     // person makes a plugin on the same map.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "3 / 5");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 6");
     let wake = app.tick(open).expect("the story asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let story = |app: &DesktopApp| {
@@ -548,7 +548,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert_ne!(made.pixels, used.pixels);
     // The future plays next.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "4 / 5");
+    assert_eq!(app.presentation().unwrap().counter(), "4 / 6");
     let wake = app.tick(open).expect("the future asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().label();
@@ -573,4 +573,84 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert_ne!(early.pixels, mid.pixels);
     assert_ne!(mid.pixels, late.pixels);
     assert_ne!(early.pixels, late.pixels);
+}
+
+/// The Episode 289 deck's fifth slide shows two essays as GitHub link
+/// cards and its sixth shows openagents.com/install in a browser window.
+/// They come in on the frame clock; the pointer over a card brightens it,
+/// and a click on one asks for its link instead of changing slides. With
+/// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
+#[test]
+fn episode_289_shows_the_essays_and_the_install_page_as_link_cards() {
+    use openagents_desktop::slide_embeds::{ESSAYS, INSTALL, INSTALL_URL, cards};
+    use openagents_desktop::slides::Layout;
+    let (mut app, start) = shell();
+    app.open_presentation("episode-289", start)
+        .expect("the deck opens");
+    let open = start + OPEN;
+    app.tick(open);
+    let directory = std::env::var_os("OPENAGENTS_SLIDES_CAPTURE").map(std::path::PathBuf::from);
+    let write = |app: &mut DesktopApp, name: &str| {
+        let (frame, scene) = rust_native_desktop::capture(app, WIDTH, HEIGHT, 2.0);
+        assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+        if let Some(directory) = &directory {
+            std::fs::create_dir_all(directory).unwrap();
+            std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap()).unwrap();
+        }
+        frame
+    };
+    for _ in 0..4 {
+        assert!(key(&mut app, "ArrowRight", false, open));
+    }
+    assert_eq!(app.presentation().unwrap().counter(), "5 / 6");
+    let wake = app.tick(open).expect("the cards ask for frames");
+    assert!(wake <= open + Duration::from_millis(20));
+    let entering = write(&mut app, "episode-289-essays-entering");
+    app.tick(open + Duration::from_secs(2));
+    assert!(!app.presentation().unwrap().embeds().unwrap().entering());
+    let input = |app: &mut DesktopApp, event: SurfaceInput| {
+        App::surface_input(app, RESOURCE, event, open + Duration::from_secs(2));
+    };
+    let slide = Layout::of(WIDTH, HEIGHT, false, 1.0).slide;
+    let second = cards(ESSAYS, slide)[1];
+    let (x, y) = (second.x + second.w / 2.0, second.y + second.h / 2.0);
+    let shown = write(&mut app, "episode-289-essays");
+    input(&mut app, SurfaceInput::Move { x, y });
+    assert_eq!(
+        app.presentation().unwrap().embeds().unwrap().hovered(),
+        Some(1)
+    );
+    let hovered = write(&mut app, "episode-289-essays-hover");
+    assert_ne!(entering.pixels, shown.pixels);
+    assert_ne!(shown.pixels, hovered.pixels);
+    // A click on a card opens it, and the slide stays.
+    input(&mut app, SurfaceInput::Down { x, y, shift: false });
+    input(&mut app, SurfaceInput::Up { x, y });
+    assert_eq!(app.presentation().unwrap().counter(), "5 / 6");
+    // A click beside the cards goes on.
+    let (gap_x, gap_y) = (slide.x + 4.0, slide.y + 4.0);
+    input(
+        &mut app,
+        SurfaceInput::Down {
+            x: gap_x,
+            y: gap_y,
+            shift: false,
+        },
+    );
+    assert_eq!(app.presentation().unwrap().counter(), "6 / 6");
+    app.tick(open + Duration::from_secs(4));
+    app.tick(open + Duration::from_secs(6));
+    write(&mut app, "episode-289-install");
+    let window = cards(INSTALL, slide)[0];
+    let slides = app.slides.as_mut().unwrap();
+    slides.input(
+        SurfaceInput::Down {
+            x: window.x + 40.0,
+            y: window.y + 200.0,
+            shift: false,
+        },
+        open + Duration::from_secs(6),
+    );
+    assert_eq!(slides.take_link().as_deref(), Some(INSTALL_URL));
+    assert_eq!(slides.take_link(), None, "taken once");
 }
