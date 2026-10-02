@@ -303,7 +303,9 @@ no keyword decides. The shared code is
 the desktop's chat runs the same flow.
 
 1. **Claim.** It reads the issue, its comments, and up to three issues it
-   links, and posts a claim comment (`Claimed: Coder is working on this…`).
+   links, and claims it ([below](#claims)): a claim comment (`Claimed:
+   Coder is working on this…`), the signed-in GitHub user as assignee, and
+   "In progress" on each project the issue is on.
 2. **Work.** It fetches the default branch and starts a local run, as
    above, in Coder's own worktree of `origin/main` (not the checkout's
    `HEAD`), with the issue as the prompt. A turn has no step or time limit
@@ -326,7 +328,8 @@ the desktop's chat runs the same flow.
    `coder/issue-N-…` branch and open a pull request that closes the issue.
    Flows in one process land one at a time.
 5. **Close.** It comments the commit, the files, the checks that ran, and
-   the run (task, turns, provider and model) on the issue, and closes it.
+   the run (task, turns, provider and model) on the issue, closes it, and
+   moves it to "Done" on each project it is on.
 
 It never pushes a red change. When the checks still fail after the fix
 turns, a rebase conflicts, the run fails (such as the stuck guard ending
@@ -375,15 +378,63 @@ runs in the process that started it, as before.
 **A queue.** `openagents chat work --issues 10052,10053` (or `--issues
 LABEL`, a label's open issues) works several issues, one at a time or
 `--parallel N` (up to 4) at once, each in its own worktree and its own
-thread titled with the issue. It skips a closed issue and one with a claim
-comment (a comment starting "Claimed", or Coder's claim marker) from the
-last `claim_hours` hours that no later Coder comment released. Each flow's
+thread titled with the issue. It skips a closed issue and a claimed one
+([below](#claims)). A label's issues come in the repository's project order
+when it has one (Ready or Todo, not blocked), else oldest first. Each flow's
 events stream with an `issue` field (text mode prefixes `#N`); each issue
 ends with an `issue` line (`outcome`: `landed`, `pull_request`, `failed`,
 `stopped`, `unchanged`, `skipped`, `closed`, or `not_started`, and
 `message`, `thread`, `task`, `commits`), and the queue with `queue_done`.
 It exits 0 when every issue landed or was skipped. `--land main|pr`
 overrides the policy.
+
+### Claims
+
+One claim record, which every path writes and reads
+([#10203](https://github.com/OpenAgentsInc/openagents/issues/10203);
+[`coder::claim`](../../crates/coder/src/claim.rs)): the chat issue flow
+and its queues, `coder-project`'s supervisor, and other agents through
+`openagents issue claim|release N`.
+
+- **Claim**: a comment carrying `<!-- openagents-coder-claim … -->`, the
+  signed-in GitHub user as assignee, and, on each open GitHub Project the
+  issue is on, its Status set to "In progress".
+- **Release**: a comment carrying `<!-- openagents-coder-release -->`, that
+  assignee removed, and Status back to "Ready" (or "Todo", whichever the
+  project has). **Landed**: Status "Done"; the assignee stays.
+- **Claimed** means a claim comment (one with the marker, or starting
+  "Claimed") from the last `claim_hours` hours that no later release
+  answered, or Status "In progress" set within `claim_hours` and after the
+  latest release. A queue and `coder-project` leave a claimed issue alone;
+  a person naming one issue is told and Coder works it anyway.
+- **Without Projects** the claim is the comment and the assignee; nothing
+  else changes. A step that fails (no project access, say) is said in the
+  flow's notes and the rest still happen.
+
+Field and value names match without case and are set under `project` in
+`.openagents/coder-issues.json` (defaults shown):
+
+```json
+{ "project": { "field": "Status", "in_progress": "In progress",
+               "ready": ["Ready", "Todo"], "done": "Done", "number": null } }
+```
+
+**Pickup** (`openagents issue pickup`, a queue's label): with a project —
+`number`, or the one open project linked to the repository — its item order,
+a `ready` Status, and no open `blockedBy`; without one, the `coder-sized`
+label (or the label given), oldest first.
+
+```text
+openagents issue claim 10203 [--note TEXT]   # comment + assignee + In progress
+openagents issue release 10203               # release comment, unassign, Ready
+openagents issue status 10203                # claimed? and each project's Status
+openagents issue pickup [--label L]          # what to pick up next, in order
+```
+
+`coder-project` claims an admitted task's issue when its attempt starts
+(marker `project=ATTEMPT`), skips an issue another claim holds, releases
+it when the attempt ran nothing (no capacity) or failed, and keeps it while
+a finished attempt waits for review.
 
 ### Coder events
 

@@ -65,6 +65,11 @@ checks for the affected code and its relevant consumers. A bare
 use `--crates` or `--phases` to choose the needed coverage. Direct focused
 Cargo commands are also valid. Record what ran and any remaining limitations.
 
+Claim an issue before working it and release it if you stop: `openagents issue
+claim N` / `release N` (comment marker, you as assignee, project Status), the
+same record Coder's flows and `coder-project` write and honour; leave an issue
+another claim holds (`openagents issue status N`) alone.
+
 Close an issue as soon as its work is code-complete: merged to `main`, with its
 own checks passing and any host deploy it needs done. Never hold an issue open
 waiting on the owner — a real-money payment, a device run, a key only the owner

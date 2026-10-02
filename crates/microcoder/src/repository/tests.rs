@@ -2251,6 +2251,19 @@ mod local_run {
             closed: Mutex<Vec<u64>>,
         }
 
+        impl coder::claim::Hub for FakeGitHub {
+            fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
+                self.comments.lock().unwrap().push(body.into());
+                Ok(())
+            }
+            fn comments(&self, _: &str, _: u64) -> Result<Vec<Comment>, String> {
+                Ok(Vec::new())
+            }
+            fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
+                Ok(vec![])
+            }
+        }
+
         impl Tracker for FakeGitHub {
             fn repository(&self, _: &Path) -> Result<String, String> {
                 Ok("acme/slugs".into())
@@ -2268,16 +2281,9 @@ mod local_run {
                     }],
                 })
             }
-            fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
-                self.comments.lock().unwrap().push(body.into());
-                Ok(())
-            }
             fn close(&self, _: &str, number: u64) -> Result<(), String> {
                 self.closed.lock().unwrap().push(number);
                 Ok(())
-            }
-            fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
-                Ok(vec![])
             }
             fn pull_request(
                 &self,

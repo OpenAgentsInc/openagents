@@ -50,6 +50,7 @@ pub mod agent;
 pub mod argv;
 pub mod capability;
 pub mod child;
+pub mod claim;
 pub mod classify;
 pub mod cli_route;
 pub mod cloud;

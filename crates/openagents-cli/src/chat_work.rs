@@ -79,9 +79,12 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
         std::env::current_dir().map_err(|_| failed("This command has no working directory."))?;
     let checkout = local::checkout(&here).map_err(failed)?;
     let repository = issue_run::Gh.repository(&checkout.top).map_err(failed)?;
+    let project = issue_run::Policy::load(&checkout.top)
+        .map_err(failed)?
+        .project;
     let numbers = tokio::task::spawn_blocking({
         let (repository, spec) = (repository.clone(), spec.clone());
-        move || issue_run::select(&issue_run::Gh, &repository, &spec)
+        move || issue_run::select_in(&issue_run::Gh, &repository, &spec, &project)
     })
     .await
     .map_err(|_| failed("the issues could not be listed"))?

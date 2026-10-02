@@ -62,11 +62,8 @@ use super::local::{self, Local, Record};
 pub const FLOW_SCHEMA: &str = "openagents.coder.issue-run.v1";
 /// The repository's issue-flow policy, relative to its top level.
 pub const POLICY_FILE: &str = ".openagents/coder-issues.json";
-/// Marks a claim comment a flow posts.
-pub const CLAIM_MARK: &str = "<!-- openagents-coder-claim";
-/// Marks a comment that releases a flow's claim: the flow ended without
-/// landing, so another may take the issue.
-pub const RELEASE_MARK: &str = "<!-- openagents-coder-release -->";
+/// The claim marks every path writes and reads ([`crate::claim`]).
+pub use crate::claim::{CLAIM_MARK, Comment, Gh, RELEASE_MARK};
 /// How often a flow reads its task while a turn runs.
 const POLL: Duration = Duration::from_millis(1000);
 /// The most bytes of the issue's comments the prompt carries.
@@ -278,6 +275,9 @@ pub struct Policy {
     /// A line appended to each commit message, such as a trailer.
     #[serde(default)]
     pub trailer: Option<String>,
+    /// The GitHub Project names a claim moves ([`crate::claim::Project`]).
+    #[serde(default)]
+    pub project: crate::claim::Project,
 }
 
 impl Default for Policy {
@@ -292,6 +292,7 @@ impl Default for Policy {
             max_steps: None,
             continue_turns: None,
             trailer: None,
+            project: crate::claim::Project::default(),
         }
     }
 }
@@ -325,14 +326,6 @@ impl Policy {
 // ---------------------------------------------------------------------------
 // GitHub.
 
-/// One comment on an issue.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Comment {
-    pub body: String,
-    /// Unix seconds.
-    pub at: u64,
-}
-
 /// An issue as the flow reads it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Issue {
@@ -344,8 +337,8 @@ pub struct Issue {
     pub comments: Vec<Comment>,
 }
 
-/// What the flow asks of GitHub.
-pub trait Tracker: Send + Sync {
+/// What the flow asks of GitHub, beyond the claim record ([`crate::claim::Hub`]).
+pub trait Tracker: crate::claim::Hub {
     /// `owner/name` of the GitHub repository the checkout at `dir` is.
     ///
     /// # Errors
@@ -355,16 +348,8 @@ pub trait Tracker: Send + Sync {
     /// Why the issue cannot be read.
     fn issue(&self, repository: &str, number: u64) -> Result<Issue, String>;
     /// # Errors
-    /// Why the comment was not posted.
-    fn comment(&self, repository: &str, number: u64, body: &str) -> Result<(), String>;
-    /// # Errors
     /// Why the issue was not closed.
     fn close(&self, repository: &str, number: u64) -> Result<(), String>;
-    /// The open issues with `label`, oldest first.
-    ///
-    /// # Errors
-    /// Why they cannot be listed.
-    fn labeled(&self, repository: &str, label: &str) -> Result<Vec<u64>, String>;
     /// Opens a pull request from `branch` onto `base`; returns its URL.
     ///
     /// # Errors
@@ -380,33 +365,7 @@ pub trait Tracker: Send + Sync {
     ) -> Result<String, String>;
 }
 
-/// GitHub through the `gh` CLI the person is signed in to.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Gh;
-
-fn gh(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
-    let mut command = std::process::Command::new("gh");
-    command
-        .args(args)
-        .env("GH_PROMPT_DISABLED", "1")
-        .env("NO_COLOR", "1")
-        .stdin(std::process::Stdio::null());
-    if let Some(dir) = dir {
-        command.current_dir(dir);
-    }
-    let output = command.output().map_err(|_| {
-        "cannot run gh; install the GitHub CLI and sign in with `gh auth login`".to_owned()
-    })?;
-    if !output.status.success() {
-        let why = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "gh {}: {}",
-            args[..2.min(args.len())].join(" "),
-            clip(why.trim(), 400)
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
+use crate::claim::gh;
 
 impl Tracker for Gh {
     fn repository(&self, dir: &Path) -> Result<String, String> {
@@ -445,35 +404,8 @@ impl Tracker for Gh {
             body: value["body"].as_str().unwrap_or_default().to_owned(),
             url: value["url"].as_str().unwrap_or_default().to_owned(),
             open: value["state"].as_str() != Some("CLOSED"),
-            comments: value["comments"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|comment| Comment {
-                    body: comment["body"].as_str().unwrap_or_default().to_owned(),
-                    at: comment["createdAt"]
-                        .as_str()
-                        .and_then(iso_seconds)
-                        .unwrap_or(0),
-                })
-                .collect(),
+            comments: crate::claim::comments_of(&value),
         })
-    }
-
-    fn comment(&self, repository: &str, number: u64, body: &str) -> Result<(), String> {
-        gh(
-            None,
-            &[
-                "issue",
-                "comment",
-                &number.to_string(),
-                "-R",
-                repository,
-                "--body",
-                body,
-            ],
-        )
-        .map(|_| ())
     }
 
     fn close(&self, repository: &str, number: u64) -> Result<(), String> {
@@ -490,26 +422,6 @@ impl Tracker for Gh {
             ],
         )
         .map(|_| ())
-    }
-
-    fn labeled(&self, repository: &str, label: &str) -> Result<Vec<u64>, String> {
-        let text = gh(
-            None,
-            &[
-                "issue", "list", "-R", repository, "--state", "open", "--label", label, "--limit",
-                "100", "--json", "number",
-            ],
-        )?;
-        let value: Value = serde_json::from_str(&text)
-            .map_err(|error| format!("unexpected gh output: {error}"))?;
-        let mut numbers: Vec<u64> = value
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|issue| issue["number"].as_u64())
-            .collect();
-        numbers.sort_unstable();
-        Ok(numbers)
     }
 
     fn pull_request(
@@ -532,55 +444,28 @@ impl Tracker for Gh {
     }
 }
 
-/// Unix seconds of an ISO time such as `2026-09-30T12:00:00Z`.
-fn iso_seconds(text: &str) -> Option<u64> {
-    let number = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
-    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
-    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (month + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146_097 + doe - 719_468;
-    u64::try_from(days * 86_400 + hour * 3_600 + minute * 60 + second).ok()
-}
-
 /// Why a queue leaves `issue` alone: a claim comment within `hours` that
 /// no later release comment answered. A claim is a comment that starts
 /// with "Claimed", the workspace's convention for agents, or carries
 /// [`CLAIM_MARK`].
+///
+/// The comments alone; [`crate::claim::held`] also reads the issue's
+/// project status, as [`Runner::begin`] does.
 #[must_use]
 pub fn claimed(issue: &Issue, now: u64, hours: u64) -> Option<String> {
-    let claim = active_claim(issue)?;
-    let age = now.saturating_sub(claim.at);
-    (age < hours * 3_600).then(|| {
-        format!(
-            "#{} was claimed {} ago: \"{}\"",
-            issue.number,
-            ago(age),
-            clip(claim.body.lines().next().unwrap_or("").trim(), 120)
-        )
-    })
+    crate::claim::held(
+        issue.number,
+        &issue.comments,
+        &[],
+        now,
+        hours,
+        &crate::claim::Project::default(),
+    )
 }
 
 /// The latest claim that has not been released.
 fn active_claim(issue: &Issue) -> Option<&Comment> {
-    let mut claim = None;
-    for comment in &issue.comments {
-        let body = comment.body.trim_start();
-        if body.contains(CLAIM_MARK)
-            || body
-                .get(..7)
-                .is_some_and(|head| head.eq_ignore_ascii_case("claimed"))
-        {
-            claim = Some(comment);
-        } else if body.contains(RELEASE_MARK) {
-            claim = None;
-        }
-    }
-    claim
+    crate::claim::active(&issue.comments)
 }
 
 /// Only a marker backed by this store's local task can be this computer's claim.
@@ -610,20 +495,26 @@ fn inactive_own_claim(store: &Path, repository: &str, issue: &Issue) -> Option<S
     ))
 }
 
-fn ago(seconds: u64) -> String {
-    match seconds {
-        0..=119 => format!("{seconds} seconds"),
-        120..=7_199 => format!("{} minutes", seconds / 60),
-        _ => format!("{} hours", seconds / 3_600),
-    }
-}
-
 /// The issues `spec` names: numbers (`10050,10051`, `#10050 #10051`) or,
 /// when it names none, a label.
 ///
 /// # Errors
 /// The label cannot be listed.
 pub fn select(tracker: &dyn Tracker, repository: &str, spec: &str) -> Result<Vec<u64>, String> {
+    select_in(tracker, repository, spec, &crate::claim::Project::default())
+}
+
+/// [`select`] with the repository's project names: a label is ordered by
+/// the repository's project when it has one ([`crate::claim::pickup`]).
+///
+/// # Errors
+/// The label cannot be listed.
+pub fn select_in(
+    tracker: &dyn Tracker,
+    repository: &str,
+    spec: &str,
+    project: &crate::claim::Project,
+) -> Result<Vec<u64>, String> {
     let words: Vec<&str> = spec
         .split(|c: char| c == ',' || c.is_whitespace())
         .map(|word| word.trim().trim_start_matches('#'))
@@ -646,7 +537,7 @@ pub fn select(tracker: &dyn Tracker, repository: &str, spec: &str) -> Result<Vec
         return Ok(numbers);
     }
     let label = spec.trim().strip_prefix("label:").unwrap_or(spec.trim());
-    tracker.labeled(repository, label)
+    crate::claim::pickup(tracker, repository, project, Some(label)).map(|(numbers, _)| numbers)
 }
 
 // ---------------------------------------------------------------------------
@@ -980,7 +871,30 @@ impl Runner {
             &mut notes,
             format!("Issue #{number}: {} ({})", issue.title, issue.url),
         );
-        if let Some(why) = claimed(&issue, (self.now)(), policy.claim_hours) {
+        // The claim record: the comments, and the issue's project status.
+        let items = match self
+            .tracker
+            .items(&repository, number, &policy.project.field)
+        {
+            Ok(items) => items,
+            Err(why) => {
+                note(
+                    &mut notes,
+                    format!(
+                        "Coder could not read #{number}'s projects ({why}); it reads the comments only."
+                    ),
+                );
+                Vec::new()
+            }
+        };
+        if let Some(why) = crate::claim::held(
+            number,
+            &issue.comments,
+            &items,
+            (self.now)(),
+            policy.claim_hours,
+            &policy.project,
+        ) {
             if let Some(recovery) = inactive_own_claim(self.local.store(), &repository, &issue) {
                 note(&mut notes, recovery);
             } else if self.skip_claimed {
@@ -1036,17 +950,13 @@ impl Runner {
             closing: String::new(),
             files: None,
         };
-        match self.tracker.comment(&repository, number, &claim) {
-            Ok(()) => flow.notes.push(Note {
+        for said in
+            crate::claim::claim(&*self.tracker, &repository, number, &claim, &policy.project)
+        {
+            flow.notes.push(Note {
                 after_turn: 0,
-                text: format!("Claimed #{number} with a comment on the issue."),
-            }),
-            Err(why) => flow.notes.push(Note {
-                after_turn: 0,
-                text: format!(
-                    "Coder could not post its claim comment ({why}); it works the issue anyway."
-                ),
-            }),
+                text: said,
+            });
         }
         flow.notes.push(Note {
             after_turn: 0,
@@ -1673,6 +1583,14 @@ impl Run<'_> {
                             .comment(self.repository, self.issue.number, &comment);
                     let closed = self.work.tracker.close(self.repository, self.issue.number);
                     self.flow.link.closed = closed.is_ok();
+                    for said in crate::claim::done(
+                        &*self.work.tracker,
+                        self.repository,
+                        self.issue.number,
+                        &self.work.policy.project,
+                    ) {
+                        self.note(said);
+                    }
                     let mut closing = format!("Landed {} on {branch}", &commit[..10]);
                     match (&commented, &closed) {
                         (Ok(()), Ok(())) => closing.push_str(&format!(
@@ -1935,12 +1853,16 @@ impl Run<'_> {
     fn end(&mut self, closing: String) {
         if !matches!(self.flow.link.outcome.as_str(), "landed" | "pull_request") {
             let release = format!("Coder released its claim; nothing landed. {RELEASE_MARK}");
-            if let Err(why) =
-                self.work
-                    .tracker
-                    .comment(self.repository, self.issue.number, &release)
-            {
-                self.note(format!("Coder could not release its claim: {why}"));
+            for said in crate::claim::release(
+                &*self.work.tracker,
+                self.repository,
+                self.issue.number,
+                Some(&release),
+                &self.work.policy.project,
+            ) {
+                if !said.starts_with("Released ") {
+                    self.note(said);
+                }
             }
         }
         self.note(closing.clone());

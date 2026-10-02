@@ -11,6 +11,7 @@ use serde_json::json;
 use supervise::{Job, Limits};
 
 pub mod artifact;
+pub mod claims;
 pub mod controller;
 pub mod discovery;
 pub mod github;

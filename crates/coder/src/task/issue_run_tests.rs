@@ -52,18 +52,12 @@ fn a_recent_claim_holds_until_it_is_released_or_old() {
 
 struct Labels;
 
-impl Tracker for Labels {
-    fn repository(&self, _: &Path) -> Result<String, String> {
-        Ok("acme/app".into())
-    }
-    fn issue(&self, _: &str, _: u64) -> Result<Issue, String> {
-        Err("unused".into())
-    }
+impl crate::claim::Hub for Labels {
     fn comment(&self, _: &str, _: u64, _: &str) -> Result<(), String> {
         Ok(())
     }
-    fn close(&self, _: &str, _: u64) -> Result<(), String> {
-        Ok(())
+    fn comments(&self, _: &str, _: u64) -> Result<Vec<Comment>, String> {
+        Ok(Vec::new())
     }
     fn labeled(&self, _: &str, label: &str) -> Result<Vec<u64>, String> {
         Ok(if label == "coder-ok" {
@@ -71,6 +65,18 @@ impl Tracker for Labels {
         } else {
             vec![]
         })
+    }
+}
+
+impl Tracker for Labels {
+    fn repository(&self, _: &Path) -> Result<String, String> {
+        Ok("acme/app".into())
+    }
+    fn issue(&self, _: &str, _: u64) -> Result<Issue, String> {
+        Err("unused".into())
+    }
+    fn close(&self, _: &str, _: u64) -> Result<(), String> {
+        Ok(())
     }
     fn pull_request(
         &self,
@@ -248,9 +254,12 @@ fn the_prompt_carries_the_issue_its_comments_and_what_it_links() {
 
 #[test]
 fn iso_times_read_as_unix_seconds() {
-    assert_eq!(iso_seconds("1970-01-01T00:00:00Z"), Some(0));
-    assert_eq!(iso_seconds("2026-09-30T12:00:00Z"), Some(1_790_769_600));
-    assert_eq!(iso_seconds("nope"), None);
+    assert_eq!(crate::claim::iso_seconds("1970-01-01T00:00:00Z"), Some(0));
+    assert_eq!(
+        crate::claim::iso_seconds("2026-09-30T12:00:00Z"),
+        Some(1_790_769_600)
+    );
+    assert_eq!(crate::claim::iso_seconds("nope"), None);
 }
 
 fn local_record() -> Record {
@@ -366,6 +375,19 @@ fn an_inactive_own_claim_is_recovered_but_live_and_foreign_claims_are_not() {
 
 #[derive(Default)]
 struct Comments(Mutex<Vec<String>>);
+impl crate::claim::Hub for Comments {
+    fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
+        self.0.lock().unwrap().push(body.into());
+        Ok(())
+    }
+    fn comments(&self, _: &str, _: u64) -> Result<Vec<Comment>, String> {
+        Ok(Vec::new())
+    }
+    fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
+        Ok(vec![])
+    }
+}
+
 impl Tracker for Comments {
     fn repository(&self, _: &Path) -> Result<String, String> {
         Ok("acme/app".into())
@@ -373,15 +395,8 @@ impl Tracker for Comments {
     fn issue(&self, _: &str, _: u64) -> Result<Issue, String> {
         Ok(issue(&[]))
     }
-    fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
-        self.0.lock().unwrap().push(body.into());
-        Ok(())
-    }
     fn close(&self, _: &str, _: u64) -> Result<(), String> {
         panic!("must not close")
-    }
-    fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
-        Ok(vec![])
     }
     fn pull_request(
         &self,
@@ -576,4 +591,120 @@ fn a_driver_that_cannot_take_the_flow_leaves_it_here() {
             Some(std::process::id())
         );
     }
+}
+
+use crate::claim::Hub as _;
+
+/// GitHub with a project board, for the chat flow (#10203).
+struct Board(crate::claim::fake::Fake);
+
+impl crate::claim::Hub for Board {
+    fn comment(&self, repository: &str, number: u64, body: &str) -> Result<(), String> {
+        self.0.comment(repository, number, body)
+    }
+    fn comments(&self, repository: &str, number: u64) -> Result<Vec<Comment>, String> {
+        self.0.comments(repository, number)
+    }
+    fn labeled(&self, repository: &str, label: &str) -> Result<Vec<u64>, String> {
+        self.0.labeled(repository, label)
+    }
+    fn viewer(&self) -> Result<String, String> {
+        self.0.viewer()
+    }
+    fn items(
+        &self,
+        repository: &str,
+        number: u64,
+        field: &str,
+    ) -> Result<Vec<crate::claim::Item>, String> {
+        self.0.items(repository, number, field)
+    }
+}
+
+impl Tracker for Board {
+    fn repository(&self, _: &Path) -> Result<String, String> {
+        Ok("acme/app".into())
+    }
+    fn issue(&self, repository: &str, number: u64) -> Result<Issue, String> {
+        Ok(Issue {
+            comments: self.0.comments(repository, number)?,
+            ..issue(&[])
+        })
+    }
+    fn close(&self, _: &str, _: u64) -> Result<(), String> {
+        panic!("must not close")
+    }
+    fn pull_request(
+        &self,
+        _: &Path,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<String, String> {
+        panic!("must not land")
+    }
+}
+
+/// #10203: the chat flow honours project Status: an issue another agent
+/// moved to "In progress", with no claim comment, is claimed, and a
+/// queue leaves it alone.
+#[test]
+fn a_queue_leaves_an_issue_in_progress_on_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let top = dir.path().join("app");
+    std::fs::create_dir_all(&top).unwrap();
+    for args in [
+        &["init", "-q"][..],
+        &[
+            "-c",
+            "user.name=F",
+            "-c",
+            "user.email=f@example.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "first",
+        ][..],
+    ] {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&top)
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+    let github = crate::claim::fake::Fake::with_project("octo", &["Todo", "In Progress", "Done"]);
+    github.issue(42, Some("In Progress"), &[], &[]);
+    let now = github.now;
+    github
+        .issues
+        .lock()
+        .unwrap()
+        .get_mut(&42)
+        .unwrap()
+        .status_at = now - 60;
+    let runner = Runner {
+        local: Arc::new(Local::new(dir.path().join("tasks"))),
+        tracker: Arc::new(Board(github)),
+        checks: Arc::new(NoChecks),
+        land: None,
+        skip_claimed: true,
+        now: || 1_000,
+    };
+    let reference = Reference {
+        repository: None,
+        number: 42,
+    };
+    let why = match runner.begin(&top, &reference, None) {
+        Err(Refused::Claimed(why)) => why,
+        Err(other) => panic!("refused otherwise: {other:?}"),
+        Ok(_) => panic!("started an issue in progress on the board"),
+    };
+    assert!(
+        why.contains("is \"In Progress\" on the project \"Board\""),
+        "{why}"
+    );
 }

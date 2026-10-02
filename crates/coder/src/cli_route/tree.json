@@ -4158,6 +4158,235 @@
       ]
     },
     {
+      "name": "issue",
+      "summary": "Claim, release, and pick up GitHub issues: the claim record every agent and Coder share.",
+      "children": [
+        {
+          "name": "claim",
+          "leaf": {
+            "path": [
+              "issue",
+              "claim"
+            ],
+            "usage": [
+              "claim N [--repo OWNER/NAME] [--note TEXT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "claim"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "note",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Claim issue N: a claim comment, you as assignee, and \"In progress\" on each project it is on.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "release",
+          "leaf": {
+            "path": [
+              "issue",
+              "release"
+            ],
+            "usage": [
+              "release N [--repo OWNER/NAME] [--note TEXT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "release"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "note",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Release a claim: a release comment, you off the assignees, and \"Ready\" (or \"Todo\") on each project it is on.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "done",
+          "leaf": {
+            "path": [
+              "issue",
+              "done"
+            ],
+            "usage": [
+              "done N [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "done"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Move a landed issue to \"Done\" on each project it is on.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "issue",
+              "status"
+            ],
+            "usage": [
+              "status N [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Whether issue N is claimed: a claim comment or \"In progress\".",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "pickup",
+          "leaf": {
+            "path": [
+              "issue",
+              "pickup"
+            ],
+            "usage": [
+              "pickup [--repo OWNER/NAME] [--label LABEL]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pickup"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "label",
+                    "value": "LABEL",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The open issues to pick up next, in order: the repository's project order, Ready status, and blockedBy when it has a project; else the label (coder-sized), oldest first.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "repo",
+          "value": "OWNER/NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "note",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "label",
+          "value": "LABEL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "settings",
       "summary": "What Coder may use on this computer: providers, ask first, and more.",
       "children": [

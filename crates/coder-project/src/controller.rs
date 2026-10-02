@@ -5,6 +5,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use coder::Survey;
@@ -499,6 +500,9 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
             .map_err(|e| e.to_string())?;
     }
     let mut ledger = Ledger::open(state).map_err(|e| e.to_string())?;
+    // The claim record every path shares (#10203).
+    let hub: Arc<dyn coder::claim::Hub> = Arc::new(coder::claim::Gh);
+    let github_repository = initial.project.repository_name();
     let owner = format!(
         "project-supervisor-{}-{}",
         std::process::id(),
@@ -578,6 +582,20 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
                 .iter()
                 .find(|p| p.scheduling.id == admission.task)
                 .ok_or("planner admitted an unprepared task")?;
+            let issue = prepared.scheduling.issue;
+            let policy = coder::task::issue_run::Policy::load(&configuration.repository)?;
+            let held = blocking({
+                let (hub, repository, policy) =
+                    (Arc::clone(&hub), github_repository.clone(), policy.clone());
+                move || {
+                    crate::claims::held(&*hub, &repository, issue, &policy, atif::now_ms() / 1000)
+                }
+            })
+            .await;
+            if let Some(why) = held {
+                eprintln!("task {}: not started; {why}", admission.task);
+                continue;
+            }
             let attempt = ledger
                 .claim(&admission.task, &owner, &prepared.scheduling.digest())
                 .map_err(|e| e.to_string())?;
@@ -593,6 +611,15 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
             let id = admission.task;
             let owned = owner.clone();
             eprintln!("started task {id}, attempt {attempt}");
+            let said = blocking({
+                let (hub, repository, attempt) =
+                    (Arc::clone(&hub), github_repository.clone(), attempt.clone());
+                move || crate::claims::take(&*hub, &repository, issue, &attempt, &policy)
+            })
+            .await;
+            for line in said {
+                eprintln!("task {id}: {line}");
+            }
             jobs.push(async move {
                 let result = dispatch(
                     &repository,
@@ -615,6 +642,23 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
                     write_new(&directory.join("result.json"), &value)?;
                     let result_digest = atif::digest(&value);
                     let capacity = result.as_ref().ok().and_then(capacity_cause);
+                    let released = match (&capacity, &result) {
+                        (Some(cause), _) => Some(format!("the executor had no capacity ({cause}); it tries again later.")),
+                        (None, Err(error)) => Some(format!("the attempt failed ({error}).")),
+                        (None, Ok(_)) => None,
+                    };
+                    if let (Some(why), Some(prepared)) = (released, configuration.tasks.iter().find(|p| p.scheduling.id == id)) {
+                        let issue = prepared.scheduling.issue;
+                        let policy = coder::task::issue_run::Policy::load(&configuration.repository)?;
+                        let said = blocking({
+                            let (hub, repository) = (Arc::clone(&hub), github_repository.clone());
+                            move || crate::claims::give_back(&*hub, &repository, issue, &why, &policy)
+                        })
+                        .await;
+                        for line in said {
+                            eprintln!("task {id}: {line}");
+                        }
+                    }
                     if let Some(cause) = capacity {
                         // The executor refused for capacity — the attempt
                         // ran nothing, so it requeues under the stated
@@ -634,6 +678,13 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
         }
     }
     Ok(())
+}
+
+/// Runs a blocking GitHub call off the async workers.
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    tokio::task::spawn_blocking(work)
+        .await
+        .expect("a claim call does not panic")
 }
 
 /// The adversarial exercise matrix: the controller's dispatch hazards

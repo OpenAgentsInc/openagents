@@ -143,6 +143,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::screen::EFFECTS,
         ),
         group("task", Some(coder::task::cli::USAGE), TASK),
+        group("issue", Some(crate::issue::USAGE), crate::issue::EFFECTS),
         group(
             "settings",
             Some(crate::settings::USAGE),

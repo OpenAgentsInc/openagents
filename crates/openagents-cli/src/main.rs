@@ -32,6 +32,7 @@ mod ext_eval_init;
 mod ext_run;
 mod gym;
 mod hosts;
+mod issue;
 mod kb;
 mod key;
 #[cfg(unix)]
@@ -96,6 +97,8 @@ Chat:
 
 Coder:
   task         Durable local task requests and explicit execution.
+  issue        Claim, release, and pick up GitHub issues: the claim record
+               every agent and Coder share.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
@@ -198,6 +201,7 @@ fn main() -> ExitCode {
         "host" => runtime().block_on(host(&rest)),
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run(&rest)),
+        "issue" => issue::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),
