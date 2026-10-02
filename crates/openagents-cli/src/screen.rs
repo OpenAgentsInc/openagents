@@ -699,6 +699,7 @@ fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Set
         on: loaded.coder.start == Start::AtOnce,
         blocked: None,
         secret: false,
+        waiting: None,
     }];
     choices.extend(loaded.coder.listing().into_iter().map(|(provider, on)| {
         openagents_terminal::Choice {
@@ -707,6 +708,7 @@ fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Set
             on,
             blocked: None,
             secret: false,
+            waiting: None,
         }
     }));
     // BYOK (#10176): the mode, then one masked field per provider.
@@ -722,6 +724,7 @@ fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Set
             }
         }),
         secret: false,
+        waiting: None,
     });
     for provider in model_access::PROVIDERS {
         let key = keys.get(provider);
@@ -734,7 +737,23 @@ fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Set
             on: key.is_some(),
             blocked: None,
             secret: true,
+            waiting: None,
         });
+        // The easiest add: sign in to OpenRouter in the browser, nothing
+        // to paste (OAuth PKCE, `model_access::connect`).
+        if provider == model_access::Provider::OpenRouter && key.is_none() {
+            choices.push(openagents_terminal::Choice {
+                key: CONNECT_KEY.into(),
+                label: "Connect OpenRouter (sign in in your browser)".into(),
+                on: false,
+                blocked: None,
+                secret: false,
+                waiting: Some(
+                    "Sign in to OpenRouter in your browser and approve a key for OpenAgents…"
+                        .into(),
+                ),
+            });
+        }
     }
     Settings {
         path: file.to_path_buf(),
@@ -748,6 +767,8 @@ fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Set
 const PAYER_KEY: &str = "models.payer";
 /// The prefix of each provider key's choice; the provider's word follows.
 const PROVIDER_KEY: &str = "provider-key:";
+/// The key of the choice "Connect OpenRouter".
+const CONNECT_KEY: &str = "provider-connect:openrouter";
 
 /// Keep a pasted provider key, after the provider's own check: a refused
 /// key is not kept.
@@ -775,6 +796,14 @@ fn change_setting(file: &std::path::Path, key: &str, on: bool) -> Result<(), Str
         settings.set_payer(mode, &crate::provider_key::stored())?;
         settings.save(file)?;
         model_access::install(coder::task::settings::access());
+        return Ok(());
+    }
+    if key == CONNECT_KEY {
+        if !on {
+            return Ok(());
+        }
+        let connected = crate::provider_key::connect(&|_| false)?;
+        crate::provider_key::keep(model_access::Provider::OpenRouter, &connected)?;
         return Ok(());
     }
     if let Some(word) = key.strip_prefix(PROVIDER_KEY) {
@@ -1126,7 +1155,8 @@ mod tests {
             .map(|choice| (choice.key.as_str(), choice.on))
             .collect();
         // BYOK rows follow: the mode, off and blocked with no key, then a
-        // masked field per provider.
+        // masked field per provider, with Connect OpenRouter after
+        // OpenRouter's while no OpenRouter key is added.
         let byok: Vec<(&str, bool, bool)> = shown.choices[6..]
             .iter()
             .map(|choice| (choice.key.as_str(), choice.on, choice.secret))
@@ -1136,11 +1166,14 @@ mod tests {
             [
                 ("models.payer", false, false),
                 ("provider-key:openrouter", false, true),
+                ("provider-connect:openrouter", false, false),
                 ("provider-key:vercel", false, true),
                 ("provider-key:typesafe", false, true)
             ]
         );
         assert!(shown.choices[6].blocked.is_some());
+        assert!(shown.choices[8].waiting.is_some());
+        assert!(change_setting(&file, "provider-connect:openrouter", false).is_ok());
         assert_eq!(shown.status.as_deref(), Some("Running on OpenAgents."));
         // Opt-out (#10184): every agent is on with no file, Devin and
         // OpenCode too, and none is blocked.

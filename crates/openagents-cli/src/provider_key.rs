@@ -26,6 +26,9 @@ pub(crate) const USAGE: &str =
                           label, what it has spent, and whether it works.
   test [PROVIDER]         Test your keys now, and whether each OpenRouter or
                           Vercel key may call Jev (one small decision).
+  connect [openrouter] [--use]
+                          Sign in to OpenRouter in your browser and approve a
+                          key for OpenAgents; nothing to copy or paste.
   clear PROVIDER          Remove a key; removing your last OpenRouter or Vercel
                           key returns model calls to OpenAgents.
 PROVIDER is openrouter, vercel, or typesafe. Keys live in the login keychain, or
@@ -243,57 +246,37 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
                 Ok(key) => key,
                 Err(message) => return output.fail("settings provider-key", &message),
             };
-            let state = if flags.iter().any(|f| *f == "--skip-test") {
-                None
-            } else {
-                Some(check::test(tester().as_ref(), provider, &key))
+            let skip_test = flags.iter().any(|f| *f == "--skip-test");
+            let wants_use = flags.iter().any(|f| *f == "--use");
+            keep_and_report(output, provider, &key, skip_test, wants_use, "Kept")
+        }
+        "connect" => {
+            if provider.is_some_and(|p| p != Provider::OpenRouter) {
+                return output.usage(
+                    "settings provider-key",
+                    "only OpenRouter connects by signing in; add a Vercel AI Gateway or TypeSafe key with `set`",
+                    USAGE,
+                );
+            }
+            let key = match connect(&|url| {
+                eprintln!(
+                    "Sign in to OpenRouter in your browser and approve a key for OpenAgents.\nIf no browser opens, visit:\n{url}"
+                );
+                true
+            }) {
+                Ok(key) => key,
+                Err(message) => return output.fail("settings provider-key", &message),
             };
-            if let Some(state) = &state
-                && !state.storable()
-            {
-                return output.fail("settings provider-key", &state.line(provider));
-            }
-            let target = store::preferred(&dir);
-            if let Err(message) = target.save(provider, &key) {
-                return output.fail("settings provider-key", &message);
-            }
-            let place = target.describe(provider);
-            let mut value = row(provider, &key, state.as_ref(), &place);
-            // Adding a key never switches the mode by itself; `--use`, or a
-            // yes to the one question, does.
-            let (file, mut loaded) = match load_settings(output) {
-                Ok(pair) => pair,
-                Err(code) => return code,
-            };
-            let ask = !output.json()
-                && std::io::stdin().is_terminal()
-                && provider.chat_capable()
-                && loaded.models.payer == Mode::Ours;
-            let wants = flags.iter().any(|f| *f == "--use") || (ask && confirm());
-            if wants {
-                if let Err(message) = loaded.set_payer(Mode::Mine, &stored()) {
-                    return output.fail("settings provider-key", &message);
-                }
-                if let Err(message) = loaded.save(&file) {
-                    return output.fail("settings", &message);
-                }
-            }
-            value["payer"] = json!(loaded.models.payer.as_str());
-            output.emit(&value, |value| {
-                let mut text = format!("Kept your {} key.\n{}", provider.name(), render_row(value));
-                if let Some(line) = value["line"].as_str() {
-                    text.push('\n');
-                    text.push_str(line);
-                }
-                text.push('\n');
-                text.push_str(&model_access::status_line(
-                    loaded.models.payer,
-                    &stored(),
-                    None,
-                ));
-                text
-            });
-            0
+            let skip_test = flags.iter().any(|f| *f == "--skip-test");
+            let wants_use = flags.iter().any(|f| *f == "--use");
+            keep_and_report(
+                output,
+                Provider::OpenRouter,
+                &key,
+                skip_test,
+                wants_use,
+                "Connected",
+            )
         }
         "show" | "test" => {
             let keys = stored();
@@ -378,6 +361,96 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
             USAGE,
         ),
     }
+}
+
+/// Test `key`, keep it, and ask the one question (or take `--use`): the
+/// tail of `set` and `connect`. `verb` starts the line ("Kept",
+/// "Connected").
+fn keep_and_report(
+    output: &Output,
+    provider: Provider,
+    key: &ApiKey,
+    skip_test: bool,
+    wants_use: bool,
+    verb: &str,
+) -> u8 {
+    let dir = dir();
+    let state = (!skip_test).then(|| check::test(tester().as_ref(), provider, key));
+    if let Some(state) = &state
+        && !state.storable()
+    {
+        return output.fail("settings provider-key", &state.line(provider));
+    }
+    let target = store::preferred(&dir);
+    if let Err(message) = target.save(provider, key) {
+        return output.fail("settings provider-key", &message);
+    }
+    let place = target.describe(provider);
+    let mut value = row(provider, key, state.as_ref(), &place);
+    // Adding a key never switches the mode by itself; `--use`, or a yes to
+    // the one question, does.
+    let (file, mut loaded) = match load_settings(output) {
+        Ok(pair) => pair,
+        Err(code) => return code,
+    };
+    let ask = !output.json()
+        && std::io::stdin().is_terminal()
+        && provider.chat_capable()
+        && loaded.models.payer == Mode::Ours;
+    if wants_use || (ask && confirm()) {
+        if let Err(message) = loaded.set_payer(Mode::Mine, &stored()) {
+            return output.fail("settings provider-key", &message);
+        }
+        if let Err(message) = loaded.save(&file) {
+            return output.fail("settings", &message);
+        }
+    }
+    value["payer"] = json!(loaded.models.payer.as_str());
+    output.emit(&value, |value| {
+        let mut text = format!(
+            "{verb} your {} key.\n{}",
+            provider.name(),
+            render_row(value)
+        );
+        if let Some(line) = value["line"].as_str() {
+            text.push('\n');
+            text.push_str(line);
+        }
+        text.push('\n');
+        text.push_str(&model_access::status_line(
+            loaded.models.payer,
+            &stored(),
+            None,
+        ));
+        text
+    });
+    0
+}
+
+/// Connect OpenRouter: sign in in the browser and get a key back
+/// (`model_access::connect`). `announce` gets the sign-in page's link,
+/// which carries no secret, and says whether the person can see it; when
+/// they can't and no browser opens, the sign-in stops at once. A test sets
+/// `OPENAGENTS_PROVIDER_CONNECT_FIXTURE` to the key the sign-in returns,
+/// and no browser opens.
+///
+/// # Errors
+/// The sign-in failed, was declined, or took too long: one line.
+pub(crate) fn connect(announce: &dyn Fn(&str) -> bool) -> Result<ApiKey, String> {
+    if let Ok(key) = std::env::var("OPENAGENTS_PROVIDER_CONNECT_FIXTURE") {
+        return Ok(ApiKey::new(key));
+    }
+    model_access::connect::connect(
+        &|url| {
+            let shown = announce(url);
+            if model_access::connect::open_browser(url) || shown {
+                Ok(())
+            } else {
+                Err("Couldn't open a browser here. Run `openagents settings provider-key connect` to get the sign-in link.".into())
+            }
+        },
+        &|| false,
+    )
 }
 
 /// Test `key` for `provider` and keep it (a settings screen's paste): a

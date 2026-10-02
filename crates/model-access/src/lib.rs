@@ -24,6 +24,7 @@
 
 pub mod access;
 pub mod check;
+pub mod connect;
 pub mod store;
 
 use std::fmt;

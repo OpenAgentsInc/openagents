@@ -136,6 +136,9 @@ pub enum Action {
     ProviderTest {
         provider: String,
     },
+    /// Sign in to OpenRouter in the browser and keep the key it returns
+    /// (OAuth PKCE, `model_access::connect`); nothing to paste.
+    ProviderConnect,
     /// Remove the provider's key.
     ProviderRemove {
         provider: String,
@@ -159,6 +162,7 @@ impl Action {
             | Action::CoderAgent { .. }
             | Action::ProviderPaste { .. }
             | Action::ProviderTest { .. }
+            | Action::ProviderConnect
             | Action::ProviderRemove { .. }
             | Action::ProvidersMine { .. } => None,
         }
@@ -229,6 +233,10 @@ pub struct Providers {
     pub mine_blocked: Option<String>,
     /// "Running on OpenAgents." or "Running on your keys."
     pub status: String,
+    /// The provider whose key is being tested or connected off the window's
+    /// thread, and what the page says meanwhile ("Testing your OpenRouter
+    /// key…"); its buttons wait until the answer comes back.
+    pub busy: Option<(String, String)>,
 }
 
 /// Settings' presentation state and the preferences it shows.
@@ -606,7 +614,10 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
 /// Remove; the switch; and the status line. A key is never drawn.
 fn providers(settings: &Settings) -> Vec<Node<Intent>> {
     let providers = &settings.providers;
-    let mut rows = vec![title("settings-providers-title", "Your own model providers")];
+    let mut rows = vec![title(
+        "settings-providers-title",
+        "Your own model providers",
+    )];
     if providers.rows.is_empty() {
         rows.push(text(
             "settings-providers-unknown",
@@ -620,6 +631,8 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
         "Add an OpenRouter, Vercel AI Gateway, or TypeSafe API key to run chat replies, Jev, Microcoder, and embeddings on your own account. Copy the key, then choose Add from clipboard.",
         TextRole::Status,
     ));
+    // One test or sign-in at a time: every key button waits for it.
+    let free = providers.busy.is_none();
     for row in &providers.rows {
         let id = &row.provider;
         let state = match &row.last_four {
@@ -627,7 +640,19 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
             None => format!("{}: not added", row.name),
         };
         rows.push(title(&format!("settings-provider-{id}"), &state));
-        let mut actions = vec![chip(button(
+        let mut actions = Vec::new();
+        // The easiest add: sign in to OpenRouter, nothing to paste.
+        if id == "openrouter" && row.last_four.is_none() {
+            actions.push(chip(button(
+                "settings-provider-openrouter-connect",
+                "Connect OpenRouter",
+                Action::ProviderConnect,
+                Some(Glyph::Key),
+                false,
+                free,
+            )));
+        }
+        actions.push(chip(button(
             &format!("settings-provider-{id}-paste"),
             if row.last_four.is_some() {
                 "Replace from clipboard"
@@ -639,8 +664,8 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
             },
             Some(Glyph::Edit),
             false,
-            true,
-        ))];
+            free,
+        )));
         if row.last_four.is_some() {
             actions.push(chip(button(
                 &format!("settings-provider-{id}-test"),
@@ -650,7 +675,7 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
                 },
                 None,
                 false,
-                true,
+                free,
             )));
             actions.push(chip(button(
                 &format!("settings-provider-{id}-remove"),
@@ -660,7 +685,7 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
                 },
                 None,
                 false,
-                true,
+                free,
             )));
         }
         rows.push(stack(
@@ -669,7 +694,12 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
             Space::Sm,
             actions,
         ));
-        if let Some(line) = &row.line {
+        let busy = providers
+            .busy
+            .as_ref()
+            .filter(|(provider, _)| provider == id)
+            .map(|(_, line)| line);
+        if let Some(line) = busy.or(row.line.as_ref()) {
             rows.push(text(
                 &format!("settings-provider-{id}-line"),
                 line.clone(),
@@ -695,7 +725,11 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
     }
     rows.push(switch);
     if let Some(why) = providers.mine_blocked.as_ref().filter(|_| !providers.mine) {
-        rows.push(text("settings-providers-blocked", why.clone(), TextRole::Status));
+        rows.push(text(
+            "settings-providers-blocked",
+            why.clone(),
+            TextRole::Status,
+        ));
     }
     rows.push(text(
         "settings-providers-status",
@@ -884,7 +918,9 @@ mod tests {
                 // else there is jargon.
                 let banned: Vec<String> = crate::words::banned_in(&value)
                     .into_iter()
-                    .filter(|word| !(pane == Pane::Providers && word.to_lowercase().starts_with("key")))
+                    .filter(|word| {
+                        !(pane == Pane::Providers && word.to_lowercase().starts_with("key"))
+                    })
                     .collect();
                 assert!(banned.is_empty(), "{value}");
             }
@@ -919,6 +955,7 @@ mod tests {
             mine: false,
             mine_blocked: None,
             status: "Running on OpenAgents.".into(),
+            busy: None,
         };
         let rendered = view(&settings, true, None, &model, 0);
         let words = crate::screens::words(&rendered).join(" ");
@@ -937,7 +974,8 @@ mod tests {
                 action: Action::ProvidersMine { on: true }
             }
         );
-        settings.providers.mine_blocked = Some("Add an OpenRouter or Vercel AI Gateway key first.".into());
+        settings.providers.mine_blocked =
+            Some("Add an OpenRouter or Vercel AI Gateway key first.".into());
         let rendered = view(&settings, true, None, &model, 0);
         let Some(Node {
             element: Element::Button { enabled, .. },
@@ -947,6 +985,52 @@ mod tests {
             panic!("no switch")
         };
         assert!(!enabled);
+    }
+
+    /// While a key is tested or OpenRouter connects off the window's
+    /// thread, the row says so and every key button waits; Connect
+    /// OpenRouter shows only while no OpenRouter key is added.
+    #[test]
+    fn a_key_test_in_flight_holds_the_buttons() {
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut settings = Settings {
+            pane: Pane::Providers,
+            ..Settings::default()
+        };
+        settings.providers = Providers {
+            rows: vec![ProviderRow {
+                provider: "openrouter".into(),
+                name: "OpenRouter".into(),
+                last_four: None,
+                line: None,
+                page: "https://openrouter.ai/settings/keys".into(),
+            }],
+            mine: false,
+            mine_blocked: None,
+            status: "Running on OpenAgents.".into(),
+            busy: None,
+        };
+        let enabled = |view: &Node<Intent>, id: &str| match find(view, id) {
+            Some(Node {
+                element: Element::Button { enabled, .. },
+                ..
+            }) => *enabled,
+            _ => panic!("no {id}"),
+        };
+        let rendered = view(&settings, true, None, &model, 0);
+        assert!(enabled(&rendered, "settings-provider-openrouter-connect"));
+        assert!(enabled(&rendered, "settings-provider-openrouter-paste"));
+        settings.providers.busy =
+            Some(("openrouter".into(), "Testing your OpenRouter key…".into()));
+        let rendered = view(&settings, true, None, &model, 0);
+        assert!(!enabled(&rendered, "settings-provider-openrouter-connect"));
+        assert!(!enabled(&rendered, "settings-provider-openrouter-paste"));
+        let words = crate::screens::words(&rendered).join(" ");
+        assert!(words.contains("Testing your OpenRouter key…"), "{words}");
+        settings.providers.busy = None;
+        settings.providers.rows[0].last_four = Some("abcd".into());
+        let rendered = view(&settings, true, None, &model, 0);
+        assert!(find(&rendered, "settings-provider-openrouter-connect").is_none());
     }
 
     #[test]

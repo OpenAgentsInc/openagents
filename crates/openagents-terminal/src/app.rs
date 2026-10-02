@@ -660,6 +660,9 @@ impl App {
             self.secret = Some((choice.key, choice.label, Editor::new()));
             return Vec::new();
         }
+        if let (false, Some(waiting)) = (choice.on, &choice.waiting) {
+            self.note(waiting.clone());
+        }
         vec![Action::Change {
             key: choice.key,
             on: !choice.on,

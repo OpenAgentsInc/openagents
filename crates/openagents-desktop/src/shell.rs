@@ -71,6 +71,11 @@ pub struct DesktopApp {
     /// it takes the window out again (#10116).
     #[cfg(not(windows))]
     verse_entered: bool,
+    /// A provider key test or OpenRouter sign-in running off the window's
+    /// thread (BYOK, #10176); its answer is read on the next tick.
+    providers_job: Option<settings_shell::ProviderJob>,
+    /// Wakes the window when such an answer comes back.
+    waker: Option<Waker>,
 }
 
 pub fn unix_now() -> u64 {
@@ -248,6 +253,8 @@ impl DesktopApp {
             window_fullscreen: false,
             #[cfg(not(windows))]
             verse_entered: false,
+            providers_job: None,
+            waker: None,
         };
         app.present();
         app
@@ -969,6 +976,7 @@ impl App for DesktopApp {
     }
 
     fn start(&mut self, waker: Waker) {
+        self.waker = Some(waker.clone());
         if let Some(chat) = &mut self.chat {
             chat.start(waker.clone());
         }
@@ -988,6 +996,7 @@ impl App for DesktopApp {
     }
 
     fn tick(&mut self, now: Instant) -> Option<Instant> {
+        self.poll_providers();
         let slides = self.tick_slides(now);
         let slides = match self.map.as_mut() {
             Some(page) => {
@@ -1106,6 +1115,13 @@ impl App for DesktopApp {
             .is_some_and(|grid| grid.borrow().needs_tick())
         {
             wake.min(now + openagents_desktop::grid::FRAME)
+        } else {
+            wake
+        };
+        // A key test in flight is looked at again soon, even without a
+        // waker (a capture).
+        let wake = if self.providers_job.is_some() {
+            wake.min(now + std::time::Duration::from_millis(250))
         } else {
             wake
         };

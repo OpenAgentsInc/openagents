@@ -822,6 +822,7 @@ fn choice(key: &str, on: bool, blocked: Option<&str>) -> crate::Choice {
         on,
         blocked: blocked.map(str::to_owned),
         secret: false,
+        waiting: None,
     }
 }
 

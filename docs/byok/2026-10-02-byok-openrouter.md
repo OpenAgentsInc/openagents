@@ -12,8 +12,10 @@ the person's keys; the hosted chat's `payer.keys` envelope (NIP-CJ,
 "Caller-paid model calls"); `payer` fields in the chat worker's usage log;
 the terminal's `/settings` key fields and switch; the desktop's Model
 providers page; and `OpenAgents-Provider-Key` on model-cost routes of the
-x402 pay front. Not yet: the phone's Account section, Connect OpenRouter
-(OAuth PKCE), and grounded product and codebase answers for a chat on the
+x402 pay front; Connect OpenRouter (OAuth PKCE, `model_access::connect`)
+in `openagents settings provider-key connect`, the terminal's `/settings`,
+and the desktop, whose key tests and sign-in run off the window's thread.
+Not yet: the phone's Account section and grounded product and codebase answers for a chat on the
 person's keys (those seams are off for such a chat).
 
 The design started with OpenRouter. The owner's answers the same day (section 9)
@@ -168,6 +170,17 @@ chat turn can ask for or carry a key.
   flow, which returns a key the person controls. They then never copy or paste
   a key. The desktop opens the browser to a loopback callback, and the phone
   uses its URL scheme. Vercel and TypeSafe keys are pasted.
+  Shipped for computers in `crates/model-access/src/connect.rs`: an S256
+  verifier and challenge plus a `state`, a listener on a free
+  `127.0.0.1` port (`callback_url=http://localhost:PORT/callback`;
+  OpenRouter takes localhost on any port), the browser opened at
+  `https://openrouter.ai/auth`, and the code traded at `POST
+  https://openrouter.ai/api/v1/auth/keys` for a key that is then tested and
+  kept exactly as a pasted one. `openagents settings provider-key connect
+  [--use]` prints the link too and asks the one question; the terminal's
+  `/settings` has a "Connect OpenRouter" row; the desktop's Model providers
+  page a Connect OpenRouter button. The desktop runs every key test and the
+  sign-in on its own thread, with "Testing your … key…" on the row.
 
 ### Validation
 

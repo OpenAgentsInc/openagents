@@ -87,6 +87,7 @@ pub fn providers(
             }
         }),
         status: model_access::status_line(mode, keys, None),
+        busy: None,
     }
 }
 
@@ -102,7 +103,9 @@ fn shown_lines(shown: &Providers) -> std::collections::BTreeMap<String, String> 
 /// Where the keys live: beside the settings file (`~/.openagents`), in
 /// the keychain too outside a test, which never reads the real one.
 fn key_stores(file: &Path) -> Vec<Box<dyn model_access::store::Store>> {
-    let dir = file.parent().map_or_else(|| PathBuf::from(".openagents"), Path::to_path_buf);
+    let dir = file
+        .parent()
+        .map_or_else(|| PathBuf::from(".openagents"), Path::to_path_buf);
     if cfg!(test) {
         vec![Box::new(model_access::store::Files::new(dir))]
     } else {
@@ -115,42 +118,115 @@ fn stored_keys(file: &Path) -> model_access::Keys {
     model_access::store::load_all(&key_stores(file))
 }
 
-/// Runs a change on the Model providers page; the line to show for the
-/// provider, or why it could not. Never the key.
-fn change_providers(file: &Path, action: &Action) -> Result<Option<(String, String)>, String> {
-    use model_access::{ApiKey, Mode, Provider, check, store};
-    // A test never reads the clipboard or a provider.
+/// What a change on the Model providers page does: done now (the line to
+/// show for a provider, if any), or work that calls a provider and so runs
+/// off the window's thread ([`ProviderJob`]).
+enum Step {
+    Done(Option<(String, String)>),
+    Run {
+        provider: String,
+        /// What the row says meanwhile.
+        line: String,
+        work: Box<dyn FnOnce() -> Result<(String, String), String> + Send>,
+    },
+}
+
+/// A provider key test or OpenRouter sign-in in flight: which provider,
+/// what its row says meanwhile, and where the answer arrives.
+pub struct ProviderJob {
+    provider: String,
+    line: String,
+    answer: std::sync::mpsc::Receiver<Result<(String, String), String>>,
+}
+
+/// Test `key` for `provider` and, when `keep`, keep it unless the provider
+/// refused it; the line to show. Runs off the window's thread.
+fn test_and_keep(
+    file: &Path,
+    provider: model_access::Provider,
+    key: &model_access::ApiKey,
+    keep: bool,
+) -> Result<(String, String), String> {
+    use model_access::check;
+    let state = check::test(&check::Http, provider, key);
+    if keep {
+        if !state.storable() {
+            return Err(state.line(provider));
+        }
+        match key_stores(file).into_iter().next() {
+            Some(target) => target.save(provider, key)?,
+            None => return Err("There is nowhere to keep the key.".into()),
+        }
+    }
+    Ok((provider.word().to_owned(), state.line(provider)))
+}
+
+/// Runs a change on the Model providers page. Reading the clipboard,
+/// removing a key, and the switch happen now; a key test and the OpenRouter
+/// sign-in call a provider, so they come back as work for another thread.
+/// Never the key in a line.
+fn change_providers(file: &Path, action: &Action) -> Result<Step, String> {
+    use model_access::{ApiKey, Mode, Provider, store};
+    // A test never reads the clipboard, a browser, or a provider.
     #[cfg(test)]
-    if matches!(action, Action::ProviderPaste { .. } | Action::ProviderTest { .. }) {
+    if matches!(
+        action,
+        Action::ProviderPaste { .. } | Action::ProviderTest { .. } | Action::ProviderConnect
+    ) {
         return Err("Not in a test.".into());
     }
     let provider = |word: &str| Provider::parse(word);
+    let owned = file.to_path_buf();
     match action {
         Action::ProviderPaste { provider: word } => {
             let provider = provider(word)?;
             let pasted = rust_native_desktop::input::paste()
                 .map(ApiKey::new)
                 .filter(|key| !key.is_empty())
-                .ok_or_else(|| format!("Copy your {} key first, then choose Add from clipboard.", provider.name()))?;
-            let state = check::test(&check::Http, provider, &pasted);
-            if !state.storable() {
-                return Err(state.line(provider));
-            }
-            match key_stores(file).into_iter().next() {
-                Some(target) => target.save(provider, &pasted)?,
-                None => return Err("There is nowhere to keep the key.".into()),
-            }
-            Ok(Some((word.clone(), state.line(provider))))
+                .ok_or_else(|| {
+                    format!(
+                        "Copy your {} key first, then choose Add from clipboard.",
+                        provider.name()
+                    )
+                })?;
+            Ok(Step::Run {
+                provider: word.clone(),
+                line: format!("Testing your {} key…", provider.name()),
+                work: Box::new(move || test_and_keep(&owned, provider, &pasted, true)),
+            })
         }
         Action::ProviderTest { provider: word } => {
             let provider = provider(word)?;
-            let keys = stored_keys(file);
-            let key = keys
-                .get(provider)
-                .ok_or_else(|| format!("No {} key is added.", provider.name()))?;
-            let state = check::test(&check::Http, provider, key);
-            Ok(Some((word.clone(), state.line(provider))))
+            Ok(Step::Run {
+                provider: word.clone(),
+                line: format!("Testing your {} key…", provider.name()),
+                work: Box::new(move || {
+                    let keys = stored_keys(&owned);
+                    let key = keys
+                        .get(provider)
+                        .ok_or_else(|| format!("No {} key is added.", provider.name()))?;
+                    test_and_keep(&owned, provider, key, false)
+                }),
+            })
         }
+        Action::ProviderConnect => Ok(Step::Run {
+            provider: Provider::OpenRouter.word().to_owned(),
+            line: "Sign in to OpenRouter in your browser and approve a key for OpenAgents…".into(),
+            work: Box::new(move || {
+                let key = model_access::connect::connect(
+                    &|url| {
+                        if model_access::connect::open_browser(url) {
+                            Ok(())
+                        } else {
+                            Err("Couldn't open your browser to sign in to OpenRouter.".into())
+                        }
+                    },
+                    &|| false,
+                )?;
+                let (word, line) = test_and_keep(&owned, Provider::OpenRouter, &key, true)?;
+                Ok((word, format!("Connected. {line}")))
+            }),
+        }),
         Action::ProviderRemove { provider: word } => {
             let provider = provider(word)?;
             store::delete_everywhere(&key_stores(file), provider)?;
@@ -158,15 +234,21 @@ fn change_providers(file: &Path, action: &Action) -> Result<Option<(String, Stri
             if settings.settle_payer(&stored_keys(file)) {
                 settings.save(file)?;
             }
-            Ok(Some((word.clone(), format!("Removed your {} key.", provider.name()))))
+            Ok(Step::Done(Some((
+                word.clone(),
+                format!("Removed your {} key.", provider.name()),
+            ))))
         }
         Action::ProvidersMine { on } => {
             let mut settings = coder::task::settings::Settings::load(file)?;
-            settings.set_payer(if *on { Mode::Mine } else { Mode::Ours }, &stored_keys(file))?;
+            settings.set_payer(
+                if *on { Mode::Mine } else { Mode::Ours },
+                &stored_keys(file),
+            )?;
             settings.save(file)?;
-            Ok(None)
+            Ok(Step::Done(None))
         }
-        _ => Ok(None),
+        _ => Ok(Step::Done(None)),
     }
 }
 
@@ -226,6 +308,106 @@ impl DesktopApp {
         }
     }
 
+    /// Runs a change on the Model providers page. A key test or the
+    /// OpenRouter sign-in runs on its own thread, and the row says so until
+    /// [`DesktopApp::poll_providers`] reads the answer; the window never
+    /// waits on a provider.
+    fn provider_action(&mut self, action: &Action) {
+        let Some(file) = self
+            .navigation
+            .as_ref()
+            .and_then(|state| state.settings.file.clone())
+        else {
+            return;
+        };
+        if self.providers_job.is_some() {
+            if let Some(state) = &mut self.navigation {
+                state.settings.notice = Some("Wait for the key test to finish.".into());
+            }
+            return;
+        }
+        let step = change_providers(&file, action);
+        let Some(state) = &mut self.navigation else {
+            return;
+        };
+        let mut lines = shown_lines(&state.settings.providers);
+        match step {
+            Ok(Step::Run {
+                provider,
+                line,
+                work,
+            }) => {
+                let (send, answer) = std::sync::mpsc::channel();
+                let waker = self.waker.clone();
+                std::thread::spawn(move || {
+                    let _ = send.send(work());
+                    if let Some(waker) = waker {
+                        waker.wake();
+                    }
+                });
+                state.settings.notice = None;
+                state.settings.providers = providers(&file, &stored_keys(&file), &lines);
+                state.settings.providers.busy = Some((provider.clone(), line.clone()));
+                self.providers_job = Some(ProviderJob {
+                    provider,
+                    line,
+                    answer,
+                });
+                return;
+            }
+            Ok(Step::Done(Some((provider, line)))) => {
+                lines.insert(provider, line);
+                state.settings.notice = None;
+            }
+            Ok(Step::Done(None)) => state.settings.notice = None,
+            Err(why) => state.settings.notice = Some(why),
+        }
+        state.settings.providers = providers(&file, &stored_keys(&file), &lines);
+        // Every model call this window makes asks again who pays (never
+        // from a test, which must not read the real home).
+        if !cfg!(test) {
+            model_access::install(coder::task::settings::access());
+        }
+    }
+
+    /// Reads a key test's or sign-in's answer when it has come back: the
+    /// row's line, the keys as stored now, and who pays.
+    pub(super) fn poll_providers(&mut self) {
+        let Some(job) = &self.providers_job else {
+            return;
+        };
+        let answer = match job.answer.try_recv() {
+            Ok(answer) => answer,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Err("The key test stopped; try again.".into())
+            }
+        };
+        let Some(job) = self.providers_job.take() else {
+            return;
+        };
+        if let Some(state) = &mut self.navigation
+            && let Some(file) = state.settings.file.clone()
+        {
+            let mut lines = shown_lines(&state.settings.providers);
+            match answer {
+                Ok((provider, line)) => {
+                    lines.insert(provider, line);
+                    state.settings.notice = None;
+                }
+                Err(why) => {
+                    lines.remove(&job.provider);
+                    state.settings.notice = Some(why);
+                }
+            }
+            state.settings.providers = providers(&file, &stored_keys(&file), &lines);
+            if !cfg!(test) {
+                model_access::install(coder::task::settings::access());
+            }
+        }
+        self.present();
+    }
+
     /// Runs a choice on Settings.
     pub(super) fn settings_action(&mut self, action: Action, now: Instant) {
         let Some(state) = &mut self.navigation else {
@@ -246,28 +428,9 @@ impl DesktopApp {
         match action {
             Action::ProviderPaste { .. }
             | Action::ProviderTest { .. }
+            | Action::ProviderConnect
             | Action::ProviderRemove { .. }
-            | Action::ProvidersMine { .. } => {
-                if let Some(state) = &mut self.navigation
-                    && let Some(file) = state.settings.file.clone()
-                {
-                    let mut lines = shown_lines(&state.settings.providers);
-                    match change_providers(&file, &action) {
-                        Ok(Some((provider, line))) => {
-                            lines.insert(provider, line);
-                            state.settings.notice = None;
-                        }
-                        Ok(None) => state.settings.notice = None,
-                        Err(why) => state.settings.notice = Some(why),
-                    }
-                    state.settings.providers = providers(&file, &stored_keys(&file), &lines);
-                    // Every model call this window makes asks again who pays
-                    // (never from a test, which must not read the real home).
-                    if !cfg!(test) {
-                        model_access::install(coder::task::settings::access());
-                    }
-                }
-            }
+            | Action::ProvidersMine { .. } => self.provider_action(&action),
             Action::CoderStart { .. } | Action::CoderAgent { .. } => {
                 if let Some(state) = &mut self.navigation
                     && let Some(file) = state.settings.file.clone()
@@ -298,6 +461,11 @@ impl DesktopApp {
                 {
                     let lines = shown_lines(&state.settings.providers);
                     state.settings.providers = providers(&file, &stored_keys(&file), &lines);
+                    // A key test in flight still holds its row.
+                    state.settings.providers.busy = self
+                        .providers_job
+                        .as_ref()
+                        .map(|job| (job.provider.clone(), job.line.clone()));
                 }
                 // Leaving Phones and computers cancels a shown code.
                 if !state.shows_computers() && self.model.screen == Screen::Connect {

@@ -24,6 +24,7 @@ fn run(home: &Path, args: &[&str], stdin: Option<&str>, check: &str) -> Output {
         .env_remove("OPENAGENTS_OPENROUTER_KEY")
         .env_remove("OPENAGENTS_VERCEL_KEY")
         .env_remove("OPENAGENTS_TYPESAFE_KEY")
+        .env_remove("OPENAGENTS_PROVIDER_CONNECT_FIXTURE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -154,4 +155,48 @@ fn a_key_is_kept_privately_never_printed_and_never_switches_the_mode() {
     assert_eq!(refused.status.code(), Some(1));
     assert!(text(&refused).contains("A TypeSafe key covers decisions only."));
     assert_eq!(payer(home), "ours");
+}
+
+/// Connect OpenRouter keeps the key the sign-in returns exactly as a pasted
+/// one: tested first (a refused one is not kept), never printed, and
+/// `--use` turns on mine. Only OpenRouter connects.
+#[test]
+fn connect_keeps_the_signed_in_key_like_a_pasted_one() {
+    let home = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let connect = |args: &[&str], check: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
+        command
+            .args(args)
+            .env("HOME", home)
+            .env("TMPDIR", home)
+            .env("OPENAGENTS_SETTINGS", home.join("settings.json"))
+            .env("OPENAGENTS_KEY_STORE", "file")
+            .env("OPENAGENTS_PROVIDER_CHECK", check)
+            .env("OPENAGENTS_PROVIDER_CONNECT_FIXTURE", KEY)
+            .stdin(Stdio::null());
+        command.output().unwrap()
+    };
+    let refused = connect(&["settings", "provider-key", "connect"], "refused");
+    assert_eq!(refused.status.code(), Some(1), "{}", text(&refused));
+    assert!(text(&refused).contains("OpenRouter didn't accept that key."));
+    assert!(!home.join(".openagents/openrouter.json").exists());
+
+    let vercel = connect(&["settings", "provider-key", "connect", "vercel"], "works");
+    assert_eq!(vercel.status.code(), Some(64), "{}", text(&vercel));
+
+    let kept = connect(
+        &["settings", "provider-key", "connect", "openrouter", "--use"],
+        "works",
+    );
+    assert_eq!(kept.status.code(), Some(0), "{}", text(&kept));
+    assert!(
+        text(&kept).contains("Connected your OpenRouter key."),
+        "{}",
+        text(&kept)
+    );
+    assert!(text(&kept).contains("abcd"));
+    assert!(!text(&kept).contains(KEY), "{}", text(&kept));
+    assert!(home.join(".openagents/openrouter.json").exists());
+    assert_eq!(payer(home), "mine");
 }

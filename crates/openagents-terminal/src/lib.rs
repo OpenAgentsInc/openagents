@@ -103,6 +103,9 @@ pub struct Choice {
     /// [`Extras::set_secret`], never to the transcript, the prompt
     /// history, or the screen.
     pub secret: bool,
+    /// The line to show while turning it on runs, when that takes a while
+    /// (Connect OpenRouter waits for a sign-in in the browser).
+    pub waiting: Option<String>,
 }
 
 /// What the screen needs from this computer beyond the chat client. Every
