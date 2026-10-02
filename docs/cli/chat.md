@@ -323,10 +323,17 @@ the desktop's chat runs the same flow.
    [#10103](https://github.com/OpenAgentsInc/openagents/issues/10103).)
 4. **Land.** It commits (the issue's title, Coder's summary, and the issue
    link) and lands as the repository's policy says. `main`: fetch, rebase
-   onto the newer `main` when it moved and run the checks again, then push;
-   a refused push retries on the newer `main`. `pull_request`: push a
-   `coder/issue-N-…` branch and open a pull request that closes the issue.
-   Flows in one process land one at a time.
+   onto the newer `main` when it moved, run the checks again only when the
+   newly landed commits can affect the change (a workspace build file, or a
+   package the change's packages depend on or that depends on them; docs and
+   unrelated packages do not), then push plainly, never forced. Git refuses
+   a push when `main` moved, so a refused push waits a random, growing delay
+   (2 s doubling to 60 s) and retries on the newer `main`, up to 12 tries,
+   giving up sooner when two pushes are refused while `main` did not move.
+   This makes landing from several machines at once safe (#10226); flows on
+   one machine still land one at a time. Each try is listed in the issue
+   comment. `pull_request`: push a `coder/issue-N-…` branch and open a pull
+   request that closes the issue.
 5. **Close.** It comments the commit, the files, the checks that ran, and
    the run (task, turns, provider and model) on the issue, closes it, and
    moves it to "Done" on each project it is on.

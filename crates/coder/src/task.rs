@@ -35,6 +35,7 @@ pub mod cli;
 pub mod commands;
 pub mod interaction;
 pub mod issue_run;
+pub mod landing;
 pub mod local;
 pub mod media;
 pub mod owner;

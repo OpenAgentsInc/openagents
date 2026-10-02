@@ -56,6 +56,7 @@ use serde_json::Value;
 pub use coder_delegate::issue::Reference;
 
 use super::Status;
+use super::landing;
 use super::local::{self, Local, Record};
 
 /// The version of the flow file a follower reads.
@@ -1514,141 +1515,107 @@ impl Run<'_> {
         let _landing = LANDING.lock().unwrap_or_else(|poison| poison.into_inner());
         let _shared = landing_lock(&self.work.store);
         let branch = self.work.branch.clone();
-        let mut base = self.record.base.clone();
-        for attempt in 0..3 {
-            if self.stopping() {
-                return self.stopped("Stopped by the person who started it, before landing.");
-            }
-            if let Err(why) = local::git_out(self.worktree, &["fetch", "-q", "origin", &branch]) {
-                return self.failed(&format!("Git could not fetch origin/{branch}: {why}"), None);
-            }
-            let upstream =
-                local::git_out(self.worktree, &["rev-parse", &format!("origin/{branch}")])
-                    .unwrap_or_default()
-                    .trim()
-                    .to_owned();
-            if upstream.is_empty() {
-                return self.failed(&format!("origin/{branch} names no commit."), None);
-            }
-            if upstream != base {
-                self.note(format!(
-                    "{branch} moved to {}; Coder rebases the change onto it and runs the checks again.",
-                    &upstream[..10.min(upstream.len())]
-                ));
-                if let Err(why) = self.rebase(&upstream) {
-                    return self.failed(&why, None);
-                }
-                base = upstream.clone();
-                self.checked = self.work.checks.check(self.worktree, &self.work.policy);
-                if !self.checked.problems.is_empty() {
-                    let problems = self.checked.problems.clone();
-                    return self.failed(
+        if self.stopping() {
+            return self.stopped("Stopped by the person who started it, before landing.");
+        }
+        if let Err(why) = self.commit() {
+            return self.failed(&why, None);
+        }
+        let worktree = self.worktree;
+        let plan = landing::Plan {
+            worktree,
+            branch: &branch,
+            attempts: landing::Plan::ATTEMPTS,
+            backoff: landing::Backoff::LANDING,
+        };
+        let outcome = landing::land(&plan, self);
+        let attempts = match &outcome {
+            Ok(landed) => &landed.attempts,
+            Err(not) => &not.attempts,
+        };
+        let tries = landing::summary(attempts, &branch);
+        // Whether the change that landed skipped the checks after its last
+        // rebase.
+        let attempts_skipped = attempts
+            .iter()
+            .rev()
+            .find(|attempt| attempt.recheck != landing::Recheck::NotMoved)
+            .is_some_and(|attempt| matches!(attempt.recheck, landing::Recheck::Skipped(_)));
+        let landed = match outcome {
+            Ok(landed) => landed,
+            Err(not) => {
+                // The change goes back to staged on its latest base, as
+                // the flow leaves every change it did not land.
+                let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+                let tried = format!("\n\n**Landing**: {tries}");
+                return match not.failure {
+                    landing::Failure::Stopped => {
+                        self.stopped("Stopped by the person who started it, before landing.")
+                    }
+                    landing::Failure::Red(problems) => self.failed(
                         &format!(
                             "After the rebase onto {branch}, the repository's checks fail, so \
-                             Coder pushed nothing."
+                             Coder pushed nothing.{tried}"
                         ),
                         Some(&problems),
-                    );
-                }
-                self.note("The checks pass on the rebased change.");
+                    ),
+                    landing::Failure::Conflict(why)
+                    | landing::Failure::Unreadable(why)
+                    | landing::Failure::GaveUp(why) => self.failed(&format!("{why}{tried}"), None),
+                };
             }
-            let commit = match self.commit() {
-                Ok(commit) => commit,
-                Err(why) => return self.failed(&why, None),
-            };
-            self.note(format!(
-                "Pushing {} to {branch}.",
-                &commit[..10.min(commit.len())]
-            ));
-            match local::git_out(
-                self.worktree,
-                &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
-            ) {
-                Ok(_) => {
-                    let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
-                    self.flow.files = Some(files.clone());
-                    self.flow.link.commits = vec![commit.clone()];
-                    self.flow.link.outcome = "landed".into();
-                    let url = format!("https://github.com/{}/commit/{commit}", self.repository);
-                    let comment = self.evidence(
-                        &format!(
-                            "Coder landed this on `{branch}` in [{}]({url}) and closed the issue.",
-                            &commit[..10]
-                        ),
-                        &files,
-                    );
-                    let commented =
-                        self.work
-                            .tracker
-                            .comment(self.repository, self.issue.number, &comment);
-                    let closed = self.work.tracker.close(self.repository, self.issue.number);
-                    self.flow.link.closed = closed.is_ok();
-                    for said in crate::claim::done(
-                        &*self.work.tracker,
-                        self.repository,
-                        self.issue.number,
-                        &self.work.policy.project,
-                    ) {
-                        self.note(said);
-                    }
-                    let mut closing = format!("Landed {} on {branch}", &commit[..10]);
-                    match (&commented, &closed) {
-                        (Ok(()), Ok(())) => closing.push_str(&format!(
-                            ", commented the evidence, and closed #{}.",
-                            self.issue.number
-                        )),
-                        _ => closing.push_str(&format!(
-                            "; {}.",
-                            [commented.err(), closed.err()]
-                                .into_iter()
-                                .flatten()
-                                .collect::<Vec<_>>()
-                                .join("; ")
-                        )),
-                    }
-                    return self.end(closing);
-                }
-                Err(why) if attempt < 2 => {
-                    self.note(format!(
-                        "The push was refused ({}); Coder tries again on the new {branch}.",
-                        clip(&why, 200)
-                    ));
-                    let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
-                }
-                Err(why) => {
-                    let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
-                    return self.failed(&format!("Git could not push to {branch}: {why}"), None);
-                }
-            }
+        };
+        let commit = landed.commit;
+        let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
+        self.flow.files = Some(files.clone());
+        self.flow.link.commits = vec![commit.clone()];
+        self.flow.link.outcome = "landed".into();
+        let url = format!("https://github.com/{}/commit/{commit}", self.repository);
+        let mut comment = self.evidence(
+            &format!(
+                "Coder landed this on `{branch}` in [{}]({url}) and closed the issue.",
+                &commit[..10]
+            ),
+            &files,
+        );
+        if attempts_skipped {
+            comment = comment.replace(
+                "- The checks passed on the exact change that landed.\n",
+                "- The checks passed on the change before its last rebase; the commits it was \
+                 rebased over cannot affect what it touches (see Landing).\n",
+            );
         }
-    }
-
-    /// Moves the staged change onto `upstream`.
-    fn rebase(&mut self, upstream: &str) -> Result<(), String> {
-        let _ = local::git_out(self.worktree, &["add", "-A"]);
-        local::git_out(
-            self.worktree,
-            &[
-                "commit",
-                "-q",
-                "--no-verify",
-                "-m",
-                "coder: change before rebase",
-            ],
-        )
-        .map_err(|why| format!("Git could not hold the change for the rebase: {why}"))?;
-        if let Err(why) = local::git_out(self.worktree, &["rebase", "-q", upstream]) {
-            let _ = local::git_out(self.worktree, &["rebase", "--abort"]);
-            let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
-            return Err(format!(
-                "The change conflicts with the newer {}, so Coder pushed nothing: {}",
-                self.work.branch,
-                clip(&why, 400)
-            ));
+        comment.push_str(&format!("\n\n**Landing**: {tries}"));
+        let commented = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        let closed = self.work.tracker.close(self.repository, self.issue.number);
+        self.flow.link.closed = closed.is_ok();
+        for said in crate::claim::done(
+            &*self.work.tracker,
+            self.repository,
+            self.issue.number,
+            &self.work.policy.project,
+        ) {
+            self.note(said);
         }
-        local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"])
-            .map(|_| ())
-            .map_err(|why| format!("Git could not stage the rebased change: {why}"))
+        let mut closing = format!("Landed {} on {branch}", &commit[..10]);
+        match (&commented, &closed) {
+            (Ok(()), Ok(())) => closing.push_str(&format!(
+                ", commented the evidence, and closed #{}.",
+                self.issue.number
+            )),
+            _ => closing.push_str(&format!(
+                "; {}.",
+                [commented.err(), closed.err()]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )),
+        }
+        self.end(closing)
     }
 
     fn land_pull_request(&mut self) {
@@ -1870,6 +1837,38 @@ impl Run<'_> {
         self.flow.finished = true;
         let _ = save(&self.work.store, self.flow);
         let _ = std::fs::remove_file(stop_path(&self.work.store, &self.record.task));
+    }
+}
+
+/// The landing's checks are the flow's own: the rebased change goes back
+/// to staged (the checks read the staged diff), the checks run, and the
+/// change is committed again with its message.
+impl landing::Hooks for Run<'_> {
+    fn check(&mut self) -> Vec<String> {
+        let held = local::git_out(self.worktree, &["rev-parse", "HEAD"])
+            .map(|head| head.trim().to_owned())
+            .unwrap_or_default();
+        if let Err(why) = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]) {
+            return vec![format!("Git could not stage the rebased change: {why}")];
+        }
+        self.checked = self.work.checks.check(self.worktree, &self.work.policy);
+        let _ = local::git_out(self.worktree, &["add", "-A"]);
+        if let Err(why) =
+            local::git_out(self.worktree, &["commit", "-q", "--no-verify", "-C", &held])
+        {
+            return vec![format!(
+                "Git could not commit the rebased change again: {why}"
+            )];
+        }
+        self.checked.problems.clone()
+    }
+
+    fn note(&mut self, text: &str) {
+        Run::note(self, text);
+    }
+
+    fn stopping(&self) -> bool {
+        Run::stopping(self)
     }
 }
 
