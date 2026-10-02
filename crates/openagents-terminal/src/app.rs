@@ -131,6 +131,8 @@ pub struct App {
     /// Tool calls show expanded: each call with its output (Ctrl+O,
     /// `/expand`). Condensed by default.
     pub expanded: bool,
+    /// The prompt just sent, for the screen to save.
+    sent: Option<String>,
 }
 
 impl App {
@@ -158,6 +160,7 @@ impl App {
             armed: false,
             quiet_detach: false,
             seen: HashMap::new(),
+            sent: None,
             tick: 0,
             expanded: false,
         }
@@ -268,7 +271,12 @@ impl App {
                 Vec::new()
             }
             _ => match handle_key(&mut self.editor, usize::from(width), key) {
-                ComposerAction::Submitted(draft) => self.submit(&draft),
+                ComposerAction::Submitted(draft) => {
+                    if !draft.trim().is_empty() {
+                        self.sent = Some(draft.clone());
+                    }
+                    self.submit(&draft)
+                }
                 _ => Vec::new(),
             },
         }
@@ -343,6 +351,11 @@ impl App {
 
     /// A submitted draft: a slash command, an answer to Coder, an accepted
     /// offer, or a message for the chat.
+    /// The prompt the last key sent, once: the screen saves it.
+    pub fn take_sent(&mut self) -> Option<String> {
+        self.sent.take()
+    }
+
     pub fn submit(&mut self, draft: &str) -> Vec<Action> {
         match slash::parse(draft) {
             Draft::Empty if self.offer && !self.busy() => {

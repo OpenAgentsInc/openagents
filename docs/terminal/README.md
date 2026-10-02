@@ -117,7 +117,7 @@ it.
 | Ctrl+O | Expand every Coder run's tool calls to each call and its output, or condense them again. |
 | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
 | PageUp, PageDown | Scroll the transcript. |
-| Up, Down | Move in the message, then through your earlier messages. |
+| Up, Down | Move in the message, then through your earlier messages, kept across restarts. |
 | Ctrl+C | Clear the message; on an empty line, press it twice to quit. |
 | Ctrl+D | Quit, on an empty line. |
 
@@ -204,6 +204,8 @@ Esc, and when the screen closes.
   overrides it), as for `openagents chat`.
 - `terminal.json` in that chat home: the last thread per folder (folder paths
   and thread IDs, no message text).
+- `prompts.json` in that chat home: the last 500 messages you sent, for Up
+  and Down (your text only, no replies). A scratch screen keeps its own.
 - `exports/` in that chat home: what `/export` writes.
 - Coder tasks: `~/.openagents/tasks` (`OPENAGENTS_TASKS` overrides it).
 

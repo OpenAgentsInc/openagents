@@ -34,6 +34,7 @@ use tokio::sync::watch;
 pub mod app;
 pub mod draw;
 pub mod last;
+pub mod prompts;
 pub mod rows;
 pub mod screen;
 pub mod slash;

@@ -297,6 +297,18 @@ impl Editor {
         }
     }
 
+    /// The prompts `Up` walks, oldest first.
+    pub fn history(&self) -> &[String] {
+        &self.history
+    }
+
+    /// Replaces the prompts `Up` walks (saved ones, at start), oldest
+    /// first. A walk in progress ends.
+    pub fn set_history(&mut self, history: Vec<String>) {
+        self.history = history;
+        self.history_index = None;
+    }
+
     fn load_history(&mut self, index: usize) {
         self.history_index = Some(index);
         self.text = self.history[index].clone();

@@ -604,3 +604,18 @@ fn help_says_what_esc_does_and_never_names_a_limit() {
         assert!(!text.contains(word), "help names a {word}: {text}");
     }
 }
+
+#[test]
+fn a_sent_prompt_is_handed_to_the_screen_once_and_up_reaches_saved_ones() {
+    let mut app = app();
+    app.editor.set_history(vec!["saved earlier".into()]);
+    typed(&mut app, "hello");
+    assert_eq!(app.take_sent().as_deref(), Some("hello"));
+    assert_eq!(app.take_sent(), None);
+    app.key(&key(KeyCode::Enter), 80);
+    assert_eq!(app.take_sent(), None);
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(app.editor.text(), "hello");
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(app.editor.text(), "saved earlier");
+}

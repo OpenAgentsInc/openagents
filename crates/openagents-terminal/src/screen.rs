@@ -28,7 +28,7 @@ use tokio::task::JoinHandle;
 
 use crate::app::{Action, App, Overlay, Phase};
 use crate::rows::Row;
-use crate::{Exit, Extras, Interrupter, Invite, Launch, Resume, last};
+use crate::{Exit, Extras, Interrupter, Invite, Launch, Resume, last, prompts};
 
 /// How long the welcome card waits for this computer's Coder readiness.
 const CONTEXT_WAIT: Duration = Duration::from_secs(5);
@@ -129,6 +129,7 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
         })
     };
     let mut app = App::new(ladder, thread.clone(), fresh, client.kind(), label);
+    app.editor.set_history(prompts::read(&home));
     app.welcome(&context, resumed.as_deref());
     for notice in notices {
         app.note(notice);
@@ -179,6 +180,9 @@ async fn drive(
                 Some(Ok(TermEvent::Key(key))) if key.kind == KeyEventKind::Press => {
                     let width = terminal.size()?.width;
                     let actions = screen.app.key(&key, width);
+                    if let Some(prompt) = screen.app.take_sent() {
+                        prompts::remember(&screen.home, &prompt);
+                    }
                     for action in actions {
                         screen.act(action).await;
                     }
