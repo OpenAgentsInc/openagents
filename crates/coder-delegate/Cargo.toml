@@ -24,8 +24,6 @@ regex = "1"
 sha2 = "0.10"
 supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["macros", "rt", "time"] }
-
-[dev-dependencies]
 tempfile = "3"
 
 [lints]

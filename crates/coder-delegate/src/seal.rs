@@ -256,11 +256,13 @@ mod tests {
             Some(Some("credential.helper".into()))
         );
         assert_eq!(get("GIT_CONFIG_VALUE_0"), Some(Some(String::new())));
+        assert_eq!(get("GH_PROMPT_DISABLED"), Some(Some("1".into())));
         assert_eq!(get("CARGO_NET_OFFLINE"), Some(Some("true".into())));
         assert_eq!(get("SSH_AUTH_SOCK"), Some(None));
-        // Every GitHub variable this process holds is removed.
+        // Inherited GitHub variables are removed except for the seal settings.
         for (name, _) in std::env::vars() {
-            if is_github(&name) && name != "GH_CONFIG_DIR" {
+            if is_github(&name) && !["GH_CONFIG_DIR", "GH_PROMPT_DISABLED"].contains(&name.as_str())
+            {
                 assert_eq!(get(&name), Some(None), "{name}");
             }
         }

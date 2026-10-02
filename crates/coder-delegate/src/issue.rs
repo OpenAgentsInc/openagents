@@ -316,6 +316,8 @@ pub async fn work<X: Clone, W: Worker<X>>(
         branch,
         issue,
     } = prepared;
+    let gate_base = command(&workdir, "git", &["rev-parse", "origin/main"]).ok();
+    let mut gate_notes = Vec::new();
     let mut answer = worker.answer(&inner, on.clone()).await;
     let mut before = recorder.steps();
     before.append(&mut answer.steps);
@@ -358,17 +360,26 @@ pub async fn work<X: Clone, W: Worker<X>>(
             absorb(&mut answer, reviewed);
             say!("issue ▸ running the tests and checks on the change");
             let checked = Recorder::default();
-            let (problems, ran) = gate(
+            let (problems, mut ran) = gate_with_base(
                 &workdir,
                 inner.jev.as_ref(),
                 &checked,
                 worker.seal(&inner).as_ref(),
+                gate_base.as_deref(),
             )
             .await;
             remaining = problems;
             answer.steps.extend(checked.steps());
             // A fix round can't give the host a boundary it lacks.
             let incomplete = ran.as_ref().is_some_and(Confinement::incomplete);
+            if let Some(record) = &mut ran {
+                for note in &record.notes {
+                    if !gate_notes.contains(note) {
+                        gate_notes.push(note.clone());
+                    }
+                }
+                record.notes = gate_notes.clone();
+            }
             tested = ran;
             if incomplete {
                 break;
@@ -387,6 +398,7 @@ pub async fn work<X: Clone, W: Worker<X>>(
                 break;
             }
             request = fix_request(&workdir, reference.number, &remaining);
+            request.push_str(&ignored_test_notes(&gate_notes));
         }
     }
 
@@ -622,6 +634,7 @@ pub fn checked(remaining: &[String], tested: Option<&Confinement>) -> String {
     }
     if let Some(tested) = tested {
         text.push_str(&tested.describe());
+        text.push_str(&ignored_test_notes(&tested.notes));
         text.push_str("\n\n");
     }
     text
@@ -1113,12 +1126,23 @@ pub async fn gate(
     recorder: &Recorder,
     seal: Option<&crate::seal::Seal>,
 ) -> (Vec<String>, Option<Confinement>) {
+    let base = command(workdir, "git", &["rev-parse", "origin/main"]).ok();
+    gate_with_base(workdir, jev, recorder, seal, base.as_deref()).await
+}
+
+async fn gate_with_base(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+    seal: Option<&crate::seal::Seal>,
+    base: Option<&str>,
+) -> (Vec<String>, Option<Confinement>) {
     let _ = command(workdir, "git", &["add", "-A"]);
     let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
     let packages = changed_packages(workdir, &diff);
     let (mut problems, tested) = match confined::Setup::for_run(workdir, seal) {
         Ok(setup) => {
-            let (problems, tested) = confined::run(&setup, &packages).await;
+            let (problems, tested) = confined::run_with_base(&setup, &packages, base).await;
             (problems, Some(tested))
         }
         Err(why) => (vec![format!("the tests could not run: {why}")], None),
@@ -1761,6 +1785,20 @@ pub fn command(dir: &Path, program: &str, args: &[&str]) -> Result<String, Strin
             String::from_utf8_lossy(&output.stderr).trim()
         ))
     }
+}
+
+fn ignored_test_notes(notes: &[String]) -> String {
+    if notes.is_empty() {
+        return String::new();
+    }
+    format!(
+        "\n\n## Nonblocking test failures\n\nDo not edit these flaky or pre-existing tests to fix the gate:\n\n{}\n",
+        notes
+            .iter()
+            .map(|note| format!("- {note}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
 }
 
 #[cfg(test)]

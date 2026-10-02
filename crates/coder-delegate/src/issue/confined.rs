@@ -78,6 +78,10 @@ pub struct Confinement {
     pub packages: Vec<String>,
     /// Why the tests ran without a boundary, or didn't run.
     pub reason: Option<String>,
+    /// Nonblocking flaky or pre-existing test failures.
+    pub notes: Vec<String>,
+    #[serde(skip)]
+    pub failed_tests: Vec<(String, String)>,
 }
 
 impl Confinement {
@@ -264,7 +268,8 @@ impl Suite {
 /// Runs each package's tests as the module docs say, and returns the
 /// failing ones with the end of their output, and how they ran.
 pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinement) {
-    run_suite(setup, packages, Suite::Tests).await
+    let base = super::command(&setup.workdir, "git", &["rev-parse", "origin/main"]).ok();
+    run_with_base(setup, packages, base.as_deref()).await
 }
 
 /// Runs `suite` on each package as the module docs say, and returns the
@@ -273,6 +278,15 @@ pub async fn run_suite(
     setup: &Setup,
     packages: &[String],
     suite: Suite,
+) -> (Vec<String>, Confinement) {
+    run_commands(setup, packages, suite, None).await
+}
+
+async fn run_commands(
+    setup: &Setup,
+    packages: &[String],
+    suite: Suite,
+    selected: Option<&str>,
 ) -> (Vec<String>, Confinement) {
     let network_off = setup.seal.offline();
     let mut record = Confinement {
@@ -288,6 +302,8 @@ pub async fn run_suite(
         prefetch: "skipped".to_string(),
         packages: packages.to_vec(),
         reason: None,
+        notes: Vec::new(),
+        failed_tests: Vec::new(),
     };
     if packages.is_empty() {
         return (Vec::new(), record);
@@ -371,7 +387,10 @@ pub async fn run_suite(
     let mut failures = Vec::new();
     for package in packages {
         say!("issue ▸ running the {package} {}", suite.noun());
-        let args = suite.args(package);
+        let mut args = suite.args(package);
+        if let Some(test) = selected {
+            args.extend([test.to_string(), "--".to_string(), "--exact".to_string()]);
+        }
         let command = match &confined {
             Some(boundary) => match boundary.command(&cargo, &args) {
                 Ok(mut command) => {
@@ -405,9 +424,22 @@ pub async fn run_suite(
             .bounded(supervise::Limits::within(DEADLINE).keeping(OUTPUT_KEPT))
             .run()
             .await;
+        if suite == Suite::Tests {
+            record.failed_tests.extend(
+                failing_names(&ended)
+                    .into_iter()
+                    .map(|test| (package.clone(), test)),
+            );
+        }
         let failed = match suite {
             Suite::Tests => failure(package, &ended),
             Suite::Clippy => lint_failure(package, &ended),
+        };
+        // A missing or ignored test is not evidence that it passes.
+        let failed = if selected.is_some() && failed.is_none() && !ran_test(&ended) {
+            Some(format!("the {package} selected test did not run"))
+        } else {
+            failed
         };
         if let Some(failure) = failed {
             failures.push(failure);
@@ -492,6 +524,307 @@ pub fn failure(package: &str, ended: &supervise::Ended) -> Option<String> {
                 "the {package} tests fail (`cargo test -p {package} --all-features`): {}",
                 crate::judge::clip(&lines.join("\n"), TEST_OUTPUT_KEPT)
             ))
+        }
+    }
+}
+
+/// Names reported by libtest, before the diagnostic output is clipped.
+fn failing_names(ended: &supervise::Ended) -> Vec<String> {
+    if !matches!(ended.ending, supervise::Ending::Exited(_)) || ended.ending.success() {
+        return Vec::new();
+    }
+    let mut names = Vec::new();
+    for line in ended.stdout.text.lines().chain(ended.stderr.text.lines()) {
+        if let Some(name) = line
+            .trim()
+            .strip_prefix("test ")
+            .and_then(|line| line.strip_suffix(" ... FAILED"))
+            .or_else(|| line.trim().strip_suffix(" --- FAILED"))
+            && !names.iter().any(|existing| existing == name)
+        {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+fn ran_test(ended: &supervise::Ended) -> bool {
+    ended.stdout.text.lines().any(|line| {
+        line.strip_prefix("test result: ok. ")
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|count| count.parse::<usize>().ok())
+            .is_some_and(|count| count > 0)
+    })
+}
+
+/// Retries named failures once, then compares persistent failures with the
+/// immutable main commit captured before the worker starts.
+pub async fn run_with_base(
+    setup: &Setup,
+    packages: &[String],
+    base: Option<&str>,
+) -> (Vec<String>, Confinement) {
+    let (initial, mut record) = run_suite(setup, packages, Suite::Tests).await;
+    if initial.is_empty() || record.failed_tests.is_empty() {
+        return (initial, record);
+    }
+    let mut problems = Vec::new();
+    // Keep build errors, timeouts, and failures whose names could not be read.
+    for problem in initial {
+        if !record
+            .failed_tests
+            .iter()
+            .any(|(package, _)| problem.starts_with(&format!("the {package} tests fail (")))
+        {
+            problems.push(problem);
+        }
+    }
+    let mut persistent = Vec::new();
+    for (package, test) in &record.failed_tests {
+        let (retry, _) = run_commands(
+            setup,
+            std::slice::from_ref(package),
+            Suite::Tests,
+            Some(test),
+        )
+        .await;
+        if retry.is_empty() {
+            record
+                .notes
+                .push(format!("flaky: {test} (passed on retry)"));
+        } else {
+            persistent.push((package.clone(), test.clone(), retry));
+        }
+    }
+    if persistent.is_empty() {
+        return (problems, record);
+    }
+    let worktree = base.and_then(|base| BaseWorktree::create(&setup.workdir, base).ok());
+    for (package, test, retry) in persistent {
+        let mut already_failing = false;
+        if let Some(tree) = &worktree {
+            let baseline = Setup {
+                workdir: tree.path.clone(),
+                target: setup.target.clone(),
+                seal: setup.seal.clone(),
+                evaluation: setup.evaluation,
+                env: setup.env.clone(),
+                build: setup.build,
+            };
+            let (failures, ran) = run_commands(
+                &baseline,
+                std::slice::from_ref(&package),
+                Suite::Tests,
+                Some(&test),
+            )
+            .await;
+            // Only an actual named failure, not a build or infrastructure error,
+            // establishes that the test was already failing.
+            already_failing =
+                !failures.is_empty() && ran.failed_tests.contains(&(package.clone(), test.clone()));
+        }
+        if already_failing {
+            record
+                .notes
+                .push(format!("already failing on main: {test}"));
+        } else {
+            problems.extend(retry);
+        }
+    }
+    (problems, record)
+}
+
+struct BaseWorktree {
+    source: PathBuf,
+    path: PathBuf,
+    _scratch: tempfile::TempDir,
+}
+
+impl BaseWorktree {
+    fn create(source: &Path, base: &str) -> Result<Self, String> {
+        let scratch = tempfile::tempdir().map_err(|error| error.to_string())?;
+        let path = scratch.path().join("base");
+        super::command(
+            source,
+            "git",
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                &path.to_string_lossy(),
+                base.trim(),
+            ],
+        )?;
+        Ok(Self {
+            source: source.to_path_buf(),
+            path,
+            _scratch: scratch,
+        })
+    }
+}
+
+impl Drop for BaseWorktree {
+    fn drop(&mut self) {
+        let _ = super::command(
+            &self.source,
+            "git",
+            &[
+                "worktree",
+                "remove",
+                "--force",
+                &self.path.to_string_lossy(),
+            ],
+        );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn unavailable(
+        _: coder_boundary::Spec,
+    ) -> Result<coder_boundary::Boundary, coder_boundary::Error> {
+        Err(coder_boundary::Error::Unsupported("test stand-in"))
+    }
+
+    async fn scenario(kind: &str) -> (Vec<String>, Confinement, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("change");
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        for args in [
+            vec!["init", "-q"],
+            vec!["config", "user.email", "test@example.com"],
+            vec!["config", "user.name", "Test"],
+            vec!["commit", "--allow-empty", "-qm", "base"],
+        ] {
+            super::super::command(&repo, "git", &args).unwrap();
+        }
+        let base = super::super::command(&repo, "git", &["rev-parse", "HEAD"]).unwrap();
+        std::fs::write(repo.join("changed"), "change").unwrap();
+        let log = dir.path().join("runs");
+        let cargo = bin.join("cargo");
+        std::fs::write(&cargo, r#"#!/bin/sh
+printf '%s|%s|%s\n' "$PWD" "$*" "$CARGO_TARGET_DIR" >> "$RUN_LOG"
+fail() { echo 'tests::timing --- FAILED'; echo 'test result: FAILED. 0 passed; 1 failed;'; exit 101; }
+pass() { echo 'test result: ok. 1 passed; 0 failed;'; exit 0; }
+case "$*" in
+  *tests::regression*)
+    case "$PWD" in */base) pass ;; *) echo "test tests::regression ... FAILED"; exit 101 ;; esac ;;
+  *tests::timing*)
+    case "$PWD" in
+      */base)
+        case "$SCENARIO" in
+          existing) fail ;;
+          infra) echo 'error: build failed' >&2; exit 101 ;;
+          missing) echo 'test result: ok. 0 passed; 0 failed;'; exit 0 ;;
+          *) pass ;;
+        esac ;;
+      *) { [ "$SCENARIO" = flaky ] || [ "$SCENARIO" = mixed ]; } && pass; fail ;;
+    esac ;;
+  *) [ "$SCENARIO" = mixed ] && echo "test tests::regression ... FAILED"; fail ;;
+esac
+"#).unwrap();
+        std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        let setup = Setup {
+            workdir: repo.clone(),
+            target: target.clone(),
+            seal: crate::seal::Seal::create(&dir.path().join("seal"), true).unwrap(),
+            // No fetch, and force the normal unconfined fallback with the stand-in.
+            evaluation: false,
+            env: vec![
+                ("PATH".into(), bin.into_os_string()),
+                ("SCENARIO".into(), kind.into()),
+                ("RUN_LOG".into(), log.clone().into_os_string()),
+            ],
+            build: unavailable,
+        };
+        let (problems, record) = run_with_base(&setup, &["example".into()], Some(&base)).await;
+        let runs = std::fs::read_to_string(log).unwrap();
+        let lines: Vec<_> = runs.lines().collect();
+        assert_eq!(
+            lines.len(),
+            if kind == "flaky" {
+                2
+            } else if kind == "mixed" {
+                4
+            } else {
+                3
+            }
+        );
+        assert!(lines[0].contains("test -q -p example --all-features|"));
+        for line in &lines[1..] {
+            assert!(line.contains("test -q -p example --all-features tests::"));
+            assert!(line.contains(" -- --exact|"));
+            assert!(line.ends_with(&target.display().to_string()));
+        }
+        if kind != "flaky" {
+            assert!(lines.last().unwrap().contains("/base|"));
+        }
+        let worktrees =
+            super::super::command(&repo, "git", &["worktree", "list", "--porcelain"]).unwrap();
+        assert_eq!(
+            worktrees.matches("worktree ").count(),
+            1,
+            "temporary worktree removed"
+        );
+        (problems, record, runs)
+    }
+
+    #[tokio::test]
+    async fn flaky_failure_retries_only_the_named_test_and_does_not_block() {
+        let (problems, record, _) = scenario("flaky").await;
+        assert!(problems.is_empty());
+        assert_eq!(record.notes, ["flaky: tests::timing (passed on retry)"]);
+        assert!(super::super::checked(&problems, Some(&record)).contains(&record.notes[0]));
+        let prompt = super::super::ignored_test_notes(&record.notes);
+        assert!(prompt.contains("Do not edit"));
+        assert!(prompt.contains(&record.notes[0]));
+    }
+
+    #[tokio::test]
+    async fn pre_existing_failure_does_not_block_and_is_reported() {
+        let (problems, record, _) = scenario("existing").await;
+        assert!(problems.is_empty());
+        assert_eq!(record.notes, ["already failing on main: tests::timing"]);
+        assert!(super::super::checked(&problems, Some(&record)).contains(&record.notes[0]));
+        assert!(super::super::ignored_test_notes(&record.notes).contains(&record.notes[0]));
+    }
+
+    #[tokio::test]
+    async fn mixed_failures_ignore_flakes_but_keep_regressions() {
+        let (problems, record, _) = scenario("mixed").await;
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].contains("tests::regression"));
+        assert_eq!(record.notes, ["flaky: tests::timing (passed on retry)"]);
+        let prompt = format!(
+            "{}{}",
+            super::super::fix_request(Path::new("."), 10145, &problems),
+            super::super::ignored_test_notes(&record.notes)
+        );
+        assert!(prompt.contains("tests::regression"));
+        assert!(prompt.contains("Do not edit"));
+        assert!(prompt.contains(&record.notes[0]));
+    }
+
+    #[tokio::test]
+    async fn regression_passing_on_base_blocks() {
+        let (problems, record, _) = scenario("regression").await;
+        assert_eq!(problems.len(), 1);
+        assert!(record.notes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn base_build_error_or_missing_test_is_not_pre_existing() {
+        for kind in ["infra", "missing"] {
+            let (problems, record, _) = scenario(kind).await;
+            assert!(!problems.is_empty());
+            assert!(record.notes.is_empty());
         }
     }
 }

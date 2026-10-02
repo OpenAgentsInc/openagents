@@ -492,6 +492,22 @@ pub async fn answer_in<X, E: Engine<X>>(
     engine: Option<&E>,
     recorder: Recorder,
 ) -> Answer {
+    let bound = boundary(request.read_only, &request.workdir, &request.artifacts);
+    answer_wrapped(request, on, engine, recorder, |command| match &bound {
+        Ok(boundary) => bounded(boundary, &command),
+        Err(why) => Err(why.clone()),
+    })
+    .await
+}
+
+// Stand-in tests inject a command wrapper without requiring an OS sandbox.
+async fn answer_wrapped<X, E: Engine<X>>(
+    request: &Request<X>,
+    on: Rc<dyn Fn(Progress)>,
+    engine: Option<&E>,
+    recorder: Recorder,
+    wrap: impl Fn(std::process::Command) -> Result<std::process::Command, String>,
+) -> Answer {
     let heard = on.clone();
     // While an engine's session runs, its own lines repeat the events it
     // streams, so they are left out, as are the lines it writes itself.
@@ -654,11 +670,6 @@ pub async fn answer_in<X, E: Engine<X>>(
         "read-only"
     } else {
         "workspace-writable"
-    };
-    let bound = boundary(request.read_only, &request.workdir, &request.artifacts);
-    let wrap = |command: std::process::Command| match &bound {
-        Ok(boundary) => bounded(boundary, &command),
-        Err(why) => Err(why.clone()),
     };
 
     let mut resume = request.resume.clone();
@@ -872,17 +883,12 @@ mod tests {
         assert!(both.ends_with("Assistant: a plane."));
     }
 
-    /// A request for a stand-in `agent` in a fresh workspace, or `None`
-    /// on a host that cannot enforce a boundary.
+    /// A request for a stand-in `agent` in a fresh workspace.
     fn stand_in(dir: &Path, agent: Agent, script: &str, resume: Option<&str>) -> Option<Request> {
         let workdir = dir.join("work");
         std::fs::create_dir_all(&workdir).unwrap();
         let artifacts = dir.join("artifacts");
         std::fs::create_dir_all(&artifacts).unwrap();
-        if let Err(why) = boundary(true, &workdir, &artifacts) {
-            eprintln!("skipped: {why}");
-            return None;
-        }
         let binary = crate::adapter::standin::install(&dir.join("bin"), agent.program(), script);
         Some(Request {
             workdir,
@@ -911,9 +917,12 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let answer = runtime.block_on(answer(
+        let answer = runtime.block_on(answer_wrapped(
             request,
             Rc::new(move |progress| into.borrow_mut().push(progress)),
+            None::<&NoEngine>,
+            Recorder::default(),
+            Ok,
         ));
         let heard = heard.borrow().clone();
         (answer, heard)
