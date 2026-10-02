@@ -413,6 +413,8 @@ With `--json`, `send` prints NDJSON, one event per line, in this order:
 | --- | --- |
 | `accepted` | `thread`, `request` (the send ID), `new`, `backend` (`host`, `in_process`, `scratch`), `at` (socket or store) |
 | `partial` | `thread`, `text` (the reply so far), `delta` (what was added, or null when the preview was rewritten) |
+| `offline` | `thread`, `retry_in` (seconds): the relay, or this computer's host, cannot be reached; the reply is asked for again then, with a pause that doubles up to 30 s, until it goes through or Ctrl-C stops it |
+| `online` | `thread`: reached again; the reply streams on |
 | `route` | `thread`, `tier`, `route`, `bank`, `served_answer` (a knowledge entry `id@version`, when the reply is one), `judgment` (the router's typed judgment as it arrived), `computer` (the judgment placed it on a computer), `followups`, `cards` |
 | `offer` | `thread`, `offer` (the typed offer, such as `{"offer": "run_coder"}`), `accept` (the command that accepts it, when there is one) |
 | `result` | `thread`, `text`, `model` (the model the worker named), `served_answer` |

@@ -582,6 +582,23 @@ impl<'a> Printer<'a> {
                  issue.{}",
                 why.map(|why| format!(" ({why})")).unwrap_or_default()
             ),
+            Event::Offline { thread, retry_in } => {
+                event(
+                    output,
+                    json!({"event": "offline", "thread": thread, "retry_in": retry_in}),
+                );
+                if !output.json() {
+                    eprintln!(
+                        "OpenAgents cannot be reached; trying again in {retry_in}s. Ctrl-C stops."
+                    );
+                }
+            }
+            Event::Online { thread } => {
+                event(output, json!({"event": "online", "thread": thread}));
+                if !output.json() {
+                    eprintln!("Connected again.");
+                }
+            }
             Event::Detached { thread } => {
                 let flag = coder_run::flag(self.kind);
                 eprintln!(

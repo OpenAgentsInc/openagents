@@ -589,3 +589,181 @@ fn a_device_key_is_created_once_private_and_never_printed() {
         assert_eq!(mode & 0o777, 0o600);
     }
 }
+
+/// A worker the relay cannot reach for its first `misses` asks, then one
+/// that answers.
+struct Unreachable {
+    misses: Mutex<u32>,
+}
+
+impl Door for Unreachable {
+    fn ask(
+        &self,
+        turns: Vec<Turn>,
+        _: Context,
+        reply: Arc<std::sync::Mutex<Reply>>,
+    ) -> BoxFuture<'static, ()> {
+        let miss = {
+            let mut misses = self.misses.lock().unwrap();
+            let miss = *misses > 0;
+            *misses = misses.saturating_sub(1);
+            miss
+        };
+        Box::pin(async move {
+            let mut reply = lock(&reply);
+            if miss {
+                reply.failure = Some(basic_coder::Failure::Transport(
+                    "the relay could not be reached".into(),
+                ));
+            } else {
+                reply.text = format!("You said: {}", turns.last().unwrap().text);
+                reply.done = true;
+            }
+        })
+    }
+}
+
+/// When the relay cannot be reached, the send says so, waits a pause that
+/// doubles, asks again, and the reply streams in once it can (#10151).
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn an_unreachable_relay_is_said_and_retried_until_the_reply_comes() {
+    let dir = tempfile::tempdir().unwrap();
+    let door = Arc::new(Unreachable {
+        misses: Mutex::new(2),
+    });
+    let client = in_process(door, options(dir.path()), Arc::new(NoCoder));
+    let thread = new_id();
+    let (events, _, ended) = drain(client.stream(send(&thread, "hello", Start::Settings))).await;
+    assert_eq!(ended, Ok(Ended::Done));
+    let names: Vec<String> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Offline { retry_in, .. } => Some(format!("offline {retry_in}")),
+            Event::Online { .. } => Some("online".into()),
+            Event::Reply { reply, .. } => Some(reply.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        names,
+        ["offline 2", "offline 4", "online", "You said: hello"],
+        "{events:?}"
+    );
+}
+
+/// Esc while it waits stops waiting: the send ends as stopped.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stopping_while_offline_ends_the_send() {
+    let dir = tempfile::tempdir().unwrap();
+    let door = Arc::new(Unreachable {
+        misses: Mutex::new(u32::MAX),
+    });
+    let fired = Arc::new(tokio::sync::Notify::new());
+    let mut options = options(dir.path());
+    let waiter = fired.clone();
+    options.interrupt = Arc::new(move || {
+        let waiter = waiter.clone();
+        Box::pin(async move { waiter.notified().await })
+    });
+    let client = in_process(door, options, Arc::new(NoCoder));
+    let thread = new_id();
+    let Stream { mut events, done } = client.stream(send(&thread, "hello", Start::Settings));
+    let mut seen = Vec::new();
+    while let Some(event) = events.recv().await {
+        let offline = matches!(event, Event::Offline { .. });
+        seen.push(event);
+        if offline {
+            fired.notify_waiters();
+        }
+    }
+    let (_, ended) = done.await.unwrap();
+    assert_eq!(ended, Ok(Ended::Failed));
+    assert!(
+        matches!(seen.last(), Some(Event::ReplyFailed { stopped: true, .. })),
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn the_pause_doubles_to_half_a_minute() {
+    let pauses: Vec<u64> = (1..=6).map(|attempt| backoff(attempt).as_secs()).collect();
+    assert_eq!(pauses, [2, 4, 8, 16, 30, 30]);
+    assert_eq!(backoff(u32::MAX).as_secs(), 30);
+}
+
+/// A host that answers from a script of reads: `None` is a read it did not
+/// answer, as while it restarts.
+struct Flaky {
+    reads: std::collections::VecDeque<Option<Snapshot>>,
+}
+
+impl Host for Flaky {
+    fn apply(&mut self, command: Command, _: Caller) -> BoxFuture<'_, Result<Snapshot, String>> {
+        let answer = match command {
+            Command::Read { .. } => self
+                .reads
+                .pop_front()
+                .flatten()
+                .ok_or_else(|| "the host did not answer".to_owned()),
+            _ => Ok(Snapshot {
+                busy: true,
+                ..Snapshot::default()
+            }),
+        };
+        Box::pin(async move { answer })
+    }
+
+    fn migrate(&mut self, _: &Path) -> BoxFuture<'_, Migration> {
+        Box::pin(async { Migration::Quiet })
+    }
+}
+
+/// The host stops answering while a reply streams: the client says so,
+/// reads again once it is back, and the reply streams on from there.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn a_host_that_stops_answering_mid_reply_is_read_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let streaming = |partial: &str| {
+        Some(Snapshot {
+            busy: true,
+            partial: partial.into(),
+            ..Snapshot::default()
+        })
+    };
+    let reads = vec![
+        streaming("Wor"),
+        None,
+        None,
+        streaming("Working on it"),
+        Some(Snapshot::default()),
+    ];
+    let host = Flaky {
+        reads: reads.into(),
+    };
+    let client = Client::over_host(
+        Box::new(host),
+        PathBuf::from("/nowhere/control.sock"),
+        options(dir.path()),
+        Arc::new(NoCoder),
+    );
+    let thread = new_id();
+    let mut op = send(&thread, "hello", Start::Settings);
+    if let Op::Send { new, .. } = &mut op {
+        *new = false;
+    }
+    let (events, _, _) = drain(client.stream(op)).await;
+    let names: Vec<String> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Offline { retry_in, .. } => Some(format!("offline {retry_in}")),
+            Event::Online { .. } => Some("online".into()),
+            Event::Partial { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        names,
+        ["Wor", "offline 2", "offline 4", "online", "Working on it"],
+        "{events:?}"
+    );
+}

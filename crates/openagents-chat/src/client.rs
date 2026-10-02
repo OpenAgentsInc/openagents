@@ -74,6 +74,10 @@ const CODER_POLL: Duration = Duration::from_millis(300);
 /// [`STARTING_FOR`] passes, so the first step is not a poll late (#10115).
 const STARTING_POLL: Duration = Duration::from_millis(100);
 const STARTING_FOR: Duration = Duration::from_secs(10);
+/// The first pause before asking again when the chat cannot be reached.
+const OFFLINE_FIRST: Duration = Duration::from_secs(2);
+/// The longest pause between tries.
+const OFFLINE_MOST: Duration = Duration::from_secs(30);
 /// The message the apps show when a person stops a reply.
 pub const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
 
@@ -474,6 +478,12 @@ pub enum Event {
     Stopping { why: Option<String> },
     /// Following stopped; Coder keeps working.
     Detached { thread: String },
+    /// The chat cannot be reached (the relay, or this computer's host):
+    /// the reply is asked for again in `retry_in` seconds. Esc stops
+    /// waiting.
+    Offline { thread: String, retry_in: u64 },
+    /// It can be reached again, and the reply streams on.
+    Online { thread: String },
 }
 
 /// How an operation ended.
@@ -946,46 +956,90 @@ impl Client {
             backend: self.kind(),
             at: self.place(),
         });
-        let deadline = tokio::time::Instant::now() + timeout;
         let mut shown = String::new();
         let mut snapshot = sent;
         let mut stopped = false;
-        let interrupt = (self.interrupt)();
-        tokio::pin!(interrupt);
-        while snapshot.busy {
-            tokio::select! {
-                () = tokio::time::sleep_until(deadline) => { stopped = true; }
-                () = &mut interrupt => { stopped = true; }
-                () = tokio::time::sleep(POLL) => {}
-            }
-            if stopped {
-                snapshot = self
-                    .apply(Command::Stop {
+        let mut interrupt = (self.interrupt)();
+        // Each try waits `timeout` for its reply; a try the relay never
+        // took, or a read the host did not answer, is tried again after a
+        // pause that doubles up to `OFFLINE_MOST`, until it goes through or
+        // the person stops it. What streamed before stays on the screen.
+        let mut offline = 0u32;
+        let mut down = 0u32;
+        'tries: loop {
+            let deadline = tokio::time::Instant::now() + timeout;
+            while snapshot.busy {
+                tokio::select! {
+                    () = tokio::time::sleep_until(deadline) => { stopped = true; }
+                    () = &mut interrupt => { stopped = true; }
+                    () = tokio::time::sleep(POLL) => {}
+                }
+                if stopped {
+                    snapshot = self
+                        .apply(Command::Stop {
+                            chat: id.to_owned(),
+                        })
+                        .await
+                        .map_err(failed)?;
+                    break 'tries;
+                }
+                let read = self
+                    .apply(Command::Read {
                         chat: id.to_owned(),
+                        before: None,
                     })
-                    .await
-                    .map_err(failed)?;
+                    .await;
+                snapshot = match read {
+                    Ok(read) => read,
+                    // The host stopped answering while the reply streams:
+                    // it keeps answering, so read again once it is back.
+                    Err(_) if matches!(self.backend, Backend::Host { .. }) => {
+                        down += 1;
+                        if !self.pause(id, down, &mut interrupt, sink).await {
+                            stopped = true;
+                            break 'tries;
+                        }
+                        continue;
+                    }
+                    Err(message) => return Err(failed(message)),
+                };
+                // Reached again: the host answered, and the relay took the
+                // job (a partial came, or the reply ended another way).
+                let took = !snapshot.partial.is_empty() || (!snapshot.busy && !snapshot.offline);
+                if std::mem::take(&mut down) > 0 && (offline == 0 || took) || offline > 0 && took {
+                    offline = 0;
+                    sink(Event::Online {
+                        thread: id.to_owned(),
+                    });
+                }
+                if snapshot.busy && snapshot.partial != shown {
+                    let delta = snapshot
+                        .partial
+                        .strip_prefix(shown.as_str())
+                        .map(str::to_owned);
+                    sink(Event::Partial {
+                        thread: id.to_owned(),
+                        text: snapshot.partial.clone(),
+                        delta,
+                    });
+                    shown.clone_from(&snapshot.partial);
+                }
+            }
+            if !snapshot.offline {
+                break;
+            }
+            // The relay could not be reached: ask again after a pause.
+            offline += 1;
+            if !self.pause(id, offline, &mut interrupt, sink).await {
+                stopped = true;
                 break;
             }
             snapshot = self
-                .apply(Command::Read {
+                .apply(Command::Retry {
                     chat: id.to_owned(),
-                    before: None,
                 })
                 .await
                 .map_err(failed)?;
-            if snapshot.busy && snapshot.partial != shown {
-                let delta = snapshot
-                    .partial
-                    .strip_prefix(shown.as_str())
-                    .map(str::to_owned);
-                sink(Event::Partial {
-                    thread: id.to_owned(),
-                    text: snapshot.partial.clone(),
-                    delta,
-                });
-                shown.clone_from(&snapshot.partial);
-            }
         }
         // The reply to this message: the turn after it, when one came.
         let at = snapshot
@@ -1038,6 +1092,26 @@ impl Client {
                 });
                 Ok(Ended::Failed)
             }
+        }
+    }
+
+    /// Say the chat cannot be reached, and wait before try `attempt`.
+    /// `false` when the person stopped waiting.
+    async fn pause(
+        &self,
+        id: &str,
+        attempt: u32,
+        interrupt: &mut BoxFuture<'static, ()>,
+        sink: &mut Sink<'_>,
+    ) -> bool {
+        let wait = backoff(attempt);
+        sink(Event::Offline {
+            thread: id.to_owned(),
+            retry_in: wait.as_secs(),
+        });
+        tokio::select! {
+            () = tokio::time::sleep(wait) => true,
+            () = interrupt => false,
         }
     }
 
@@ -1623,6 +1697,13 @@ fn turn_of(event: &CoderEvent) -> usize {
         CoderEvent::Failure(e) => e.turn,
         CoderEvent::Stopped(e) => e.turn,
     }
+}
+
+/// The pause before try `attempt` (1 for the first retry): it doubles
+/// from [`OFFLINE_FIRST`] up to [`OFFLINE_MOST`].
+pub fn backoff(attempt: u32) -> Duration {
+    let doubled = OFFLINE_FIRST.saturating_mul(1 << attempt.saturating_sub(1).min(8));
+    doubled.min(OFFLINE_MOST)
 }
 
 /// A thread or send ID: 32 lowercase hex characters, as the service admits.

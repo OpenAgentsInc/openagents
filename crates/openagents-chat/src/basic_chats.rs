@@ -102,6 +102,9 @@ pub struct BasicChats {
     turns: BTreeMap<String, Vec<Turn>>,
     streams: BTreeMap<String, Stream>,
     failures: BTreeMap<String, String>,
+    /// Threads whose last reply failed because the relay could not be
+    /// reached ([`basic_coder::Failure::Transport`]): a retry may succeed.
+    unreached: BTreeSet<String>,
     /// Where the worker's judgment placed each conversation's last reply.
     lanes: BTreeMap<String, Lane>,
     /// The worker's ordering of a new chat's suggestions, for one set of
@@ -229,6 +232,7 @@ impl BasicChats {
             turns: BTreeMap::new(),
             streams: BTreeMap::new(),
             failures: BTreeMap::new(),
+            unreached: BTreeSet::new(),
             lanes: BTreeMap::new(),
             ranking: None,
             rank_allowed: false,
@@ -755,6 +759,7 @@ impl BasicChats {
 
     fn ask(&mut self, id: &str) {
         self.failures.remove(id);
+        self.unreached.remove(id);
         self.lanes.remove(id);
         let reply = Arc::new(Mutex::new(Reply::default()));
         let turns = self.turns.get(id).cloned().unwrap_or_default();
@@ -807,6 +812,9 @@ impl BasicChats {
             match reply.failure {
                 None => self.answer(&id, reply.text, reply.meta, reply.model, now),
                 Some(failure) => {
+                    if matches!(failure, basic_coder::Failure::Transport(_)) {
+                        self.unreached.insert(id.clone());
+                    }
                     self.failures.insert(id, failure.describe());
                 }
             }
@@ -829,6 +837,12 @@ impl BasicChats {
         }
         self.touch(id, now);
         self.save(id);
+    }
+
+    /// Whether the last reply to `id` failed because the relay could not
+    /// be reached, so asking again may succeed once it can.
+    pub fn unreached(&self, id: &str) -> bool {
+        self.unreached.contains(id) && self.failures.contains_key(id)
     }
 
     /// What shows below the conversation's turns.

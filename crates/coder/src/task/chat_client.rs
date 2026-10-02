@@ -243,6 +243,7 @@ impl Dial for Control {
                 next: 1,
                 socket: socket.to_path_buf(),
                 older: false,
+                broken: false,
             }) as Box<dyn Host>)
         })
     }
@@ -257,13 +258,29 @@ struct ControlHost {
     /// refused the field as `malformed`, so turns go without it and the
     /// host hears them as the desktop's.
     older: bool,
+    /// The last call did not get an answer: the host restarted, or the
+    /// connection broke. The next call opens a new connection first, so a
+    /// client reading a streaming reply picks it up again once the host is
+    /// back (#10151).
+    broken: bool,
 }
 
 impl ControlHost {
     async fn call(&mut self, op: Op) -> openagents_connect::Result<Reply> {
+        if self.broken {
+            self.stream = connect(&self.socket).await.map_err(|error| {
+                openagents_connect::Error::new(
+                    openagents_connect::Code::Unavailable,
+                    format!("the host did not answer: {error}"),
+                )
+            })?;
+            self.broken = false;
+        }
         let id = self.next;
         self.next += 1;
-        control::call(&mut self.stream, &Request::new(id, op)).await
+        let result = control::call(&mut self.stream, &Request::new(id, op)).await;
+        self.broken = result.is_err();
+        result
     }
 }
 

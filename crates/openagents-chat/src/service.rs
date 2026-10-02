@@ -100,6 +100,11 @@ pub struct Snapshot {
     pub busy: bool,
     pub partial: String,
     pub failure: Option<String>,
+    /// The failure is that the relay could not be reached: asking again
+    /// ([`Command::Retry`]) may succeed once it can. An older host never
+    /// sets it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub offline: bool,
     pub storage_error: Option<String>,
     /// For [`Command::Routes`]: replies per route word, counted here.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -307,6 +312,7 @@ fn snapshot(
         snapshot.partial = chats.partial(&id);
         if let Tail::Failed(why) = chats.tail(&id) {
             snapshot.failure = Some(why);
+            snapshot.offline = chats.unreached(&id);
         }
         snapshot.chat = Some(id);
         // Leave room for the control envelope; escape expansion is included.
