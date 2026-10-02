@@ -1390,3 +1390,19 @@ The release gate's `phone-agents` passed with debug builds (`--bin-dir`)
 of `0a88285ec4`: the host's presence named Codex, Claude Code, and Grok
 Build ready and OpenCode and Devin not enabled, and the reply named each
 ready one.
+
+Release `dcc80c9096` (2026-10-02 UTC) points the website's `WEB_NOTE` and
+the `openagents.get-the-app` entry (version 3) at openagents.com/download,
+the download page's new address. It was built with `cargo zigbuild` (on
+`coderos-4080`, from the same commit), installed as
+`/opt/coder-worker/releases/dcc80c9096` with `knowledge/` from the
+repository (107 files, no `._*` files) and `codebase-kb.gz` copied from
+`95d447a4b5` on the VM, checked with `--check` as root with the chat
+environment sourced ("the configuration is safe to deploy"), and put live
+by moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, `coder-worker.service` and
+`/opt/coder-worker/current` were not touched, and `95d447a4b5` stays in
+`releases/` for rollback. On openagents.com, "fix my repo" was answered
+"The OpenAgents app can inspect and fix your repository on your computer,
+with Coder handling the coding work. Download it at
+openagents.com/download."

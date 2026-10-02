@@ -9,8 +9,9 @@ repository (`bins/coder-serve`) into this repository's
 
 openagents.com serves this site since 2026-10-02 02:20 UTC (#10128): Cloud
 Run service `coder` (us-central1, openagentsgemini), revision
-`coder-web-a0c19b1829-b`, two containers. `web` is this crate's image
-(`openagents/openagents-web:a0c19b1829`, built by `crates/openagents-web/cloudbuild.yaml`)
+`coder-web-dcc80c9096` since 03:30 UTC (the move to `/download`; the one
+before it, `coder-web-a0c19b1829-b`, is the rollback), two containers. `web` is this crate's image
+(`openagents/openagents-web:dcc80c9096`, built by `crates/openagents-web/cloudbuild.yaml`)
 on port 8080 with `--public-host openagents.com`; it serves its own pages
 and passes every other path (APIs, `/v1`, `/mcp`, `/auth`, `/computers/seen`,
 `/releases`, …) to `coder-serve`, the previous production image and config
@@ -23,7 +24,18 @@ sections stay 404. `OPENAGENTS_WEB_ASK_SALT` is the secret
   the `web` container's image in a copy of the live revision spec
   (`gcloud run services describe coder --format export`) and apply it with
   `gcloud run services replace` under a new revision name with no traffic and
-  a tag, check the tag URL, then move traffic.
+  a tag, check the tag URL, then move traffic. The export writes
+  `CODER_CHAT_SYNC`'s value as a bare `on`, which `replace` refuses as a
+  boolean; quote it (`'on'`). Use the tag `new`: the `web` container
+  already lists `new---coder-ezxz4mgdsq-uc.a.run.app` as a `--public-host`,
+  so that tag URL serves the site, while any other tag's host is proxied
+  whole to `coder-serve`. With the image built from GitHub instead of a
+  local upload, pass the full commit to `--git-source-revision` and
+  `--service-account` (the org policy requires one). On 2026-10-02 the
+  automation account was refused `iam.serviceAccounts.actAs` on the
+  runtime account `157437760789-compute@developer.gserviceaccount.com`,
+  though that account's policy lists it as `roles/iam.serviceAccountUser`,
+  so the revision was applied as `chris@openagents.com`.
 - Roll back to the old site: `gcloud run services update-traffic coder
   --region us-central1 --project openagentsgemini --to-revisions coder-00168-smb=100`.
 
