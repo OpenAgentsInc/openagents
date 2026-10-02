@@ -219,9 +219,21 @@ impl Ledger {
     pub fn in_memory() -> Result<Self> {
         Self::initialize(Connection::open_in_memory()?)
     }
-    fn initialize(connection: Connection) -> Result<Self> {
+    fn initialize(mut connection: Connection) -> Result<Self> {
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch(include_str!("schema.sql"))?;
+        // Existing ledgers predate plugin release attribution. Serialize the
+        // check and alteration so concurrent receiver opens migrate once.
+        let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let has_release: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('settlement') WHERE name='release_id')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_release {
+            tx.execute_batch("ALTER TABLE settlement ADD COLUMN release_id TEXT;")?;
+        }
+        tx.commit()?;
         let mut ledger = Self { connection };
         ledger.load_rule(V1, &digest(V1))?;
         Ok(ledger)
