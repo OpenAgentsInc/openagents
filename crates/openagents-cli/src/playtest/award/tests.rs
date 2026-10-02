@@ -57,6 +57,7 @@ fn filed(home: &Path, tester: &SecretKey, triager: &str) -> Event {
         screenshot: None,
         notes: vec![],
         chat: None,
+        selection: None,
     };
     let triage = key(3);
     let random = Randomness {

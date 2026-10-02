@@ -42,6 +42,7 @@ fn report(tab: Tab, route: Route) -> Report {
         screenshot: None,
         notes: vec![],
         chat: None,
+        selection: None,
     }
 }
 

@@ -63,6 +63,13 @@ openagents playtest log --acceptances --json
 openagents playtest testflight --asc-env ~/work/.secrets/appstoreconnect.env --since 2026-09-29
 ```
 
+A **Give feedback** report (kind `comment`, a comment on selected text,
+[#10127](https://github.com/OpenAgentsInc/openagents/issues/10127)) is
+listed under "Feedback on selected text" as `PT-… on “quote” (turn N,
+model M): comment`, and its draft has a **Selected text** section that
+names where the text came from and quotes it only with permission (the
+dialog asks for none, so a person writes it).
+
 `inbox` reads kind-1059 gift wraps addressed to the triage key from
 `wss://relay.openagents.com`, authenticating with NIP-42 because the relay
 serves a wrap only to the reader its `p` tag names. It opens each with the

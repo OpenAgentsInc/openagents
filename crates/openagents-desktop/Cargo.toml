@@ -55,6 +55,9 @@ coder-history = { path = "../coder-history" }
 # The activity summaries a Coder task reports, read for notifications
 # (`notices`); already in the graph through `openagents-chat-app`.
 nostr = { path = "../nostr" }
+# Give feedback on selected text (`feedback`, #10127): the playtest report
+# and its sealing; already in the graph through `openagents-chat-app`.
+playtest = { path = "../playtest" }
 # Coder on this computer for a chat: the runner `openagents chat` uses
 # (`coder::task::local`), in the window's Coder lane (`src/worker.rs`).
 coder = { path = "../coder", optional = true }

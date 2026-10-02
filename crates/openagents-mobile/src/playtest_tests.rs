@@ -574,3 +574,67 @@ fn a_shared_chat_leaves_only_as_previewed() {
         assert!(!event.content.contains("Gemini") && !event.content.contains("meta.model"));
     }
 }
+
+fn feedback_form() -> FeedbackForm {
+    FeedbackForm {
+        app_version: "1.0.0".into(),
+        build: "45".into(),
+        device: "iPhone17,1".into(),
+        os_version: "26.0".into(),
+        tab: Tab::Coder,
+        route: Route::Chat,
+        text: "Coder runs on your phone.".into(),
+        comment: "It runs on my computer.".into(),
+        row: Some("talk-m1-md".into()),
+    }
+}
+
+fn picked() -> report::Selection {
+    report::Selection {
+        text: "Coder runs on your phone.".into(),
+        thread: Some("c1".into()),
+        turn: Some(1),
+        role: Some(report::ChatRole::Assistant),
+        route: Some("chat".into()),
+        tier: Some("model".into()),
+        answer: None,
+        model: Some("gpt-5.4".into()),
+    }
+}
+
+/// **Give feedback** (#10127): a selection and a comment become a report
+/// sealed to the triage key, listed in My reports, that the triage inbox
+/// opens with the quote and the comment.
+#[test]
+fn feedback_on_a_selection_reaches_the_triage_key_with_the_quote_and_comment() {
+    let relay = Arc::new(Fake::default());
+    let key = triage_hex();
+    let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
+    let packet = playtest.feedback(feedback_form(), picked(), &world(), Platform::Ios);
+    assert!(packet.error.is_none(), "{:?}", packet.error);
+    assert_eq!(packet.feedback, Some(playtest::feedback::SENT));
+    assert_eq!(packet.sent.as_ref().unwrap().kind_label, "Comment");
+    playtest.wait();
+    let sent = relay.sent.lock().unwrap().clone();
+    let wrap = sent.iter().find(|e| e.kind == 1059).expect("sealed");
+    let opened = report::open(wrap, &SecretKey::from_byte_array(TRIAGE).unwrap()).unwrap();
+    assert_eq!(opened.report.kind, Kind::Comment);
+    assert_eq!(opened.report.happened, "It runs on my computer.");
+    assert_eq!(opened.report.selection, Some(picked()));
+    assert!(opened.report.chat.is_none() && opened.report.session.is_none());
+    // A comment is required, and nothing is filed without one.
+    let mut empty = feedback_form();
+    empty.comment = " ".into();
+    let refused = playtest.feedback(empty, picked(), &world(), Platform::Ios);
+    assert!(refused.error.is_some() && refused.feedback.is_none());
+}
+
+#[test]
+fn without_the_triage_key_feedback_is_saved_on_the_phone() {
+    let relay = Arc::new(Fake::default());
+    let (mut playtest, _dir) = setup(relay.clone(), None);
+    let packet = playtest.feedback(feedback_form(), picked(), &world(), Platform::Android);
+    assert_eq!(packet.feedback, Some(playtest::feedback::SAVED));
+    assert_eq!(packet.reports[0].status, Status::Waiting);
+    assert!(relay.sent.lock().unwrap().is_empty());
+}

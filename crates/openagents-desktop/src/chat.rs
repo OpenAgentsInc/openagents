@@ -69,6 +69,13 @@ pub struct Panel {
     rename: Option<(String, Field)>,
     rename_pending: Option<(u64, String, String)>,
     rename_focus: usize,
+    /// The selection the context menu offers **Give feedback** on (#10127):
+    /// its text and the transcript row it starts in.
+    feedback_offer: Option<(String, Option<String>)>,
+    /// The open **Give feedback** dialog. It reuses the rename dialog's
+    /// field, focus, and keys (`rename`), with its own words and Send.
+    feedback: Option<FeedbackDialog>,
+    feedback_sender: crate::feedback::Sender,
     aux_rect: Option<PxRect>,
     session: Session,
     ids: BTreeMap<String, u64>,
@@ -152,6 +159,16 @@ pub struct Panel {
     gym_trainer: Option<crate::chat_gym::Trainer>,
 }
 
+/// **Give feedback**'s dialog: the selection it quotes and how its Send
+/// went.
+struct FeedbackDialog {
+    selection: playtest::report::Selection,
+    /// `Sent`, `Saved…`, or why it wasn't sent.
+    status: Option<String>,
+    sending: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
+    sent: bool,
+}
+
 /// A transcript button's action and target when a press began on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Pressed {
@@ -191,6 +208,13 @@ impl Panel {
             rename: None,
             rename_pending: None,
             rename_focus: 0,
+            feedback_offer: None,
+            feedback: None,
+            feedback_sender: if cfg!(test) {
+                std::sync::Arc::new(|_| Ok(playtest::feedback::SENT.into()))
+            } else {
+                crate::feedback::live()
+            },
             aux_rect: None,
             session: Session::new(now),
             ids: BTreeMap::new(),
@@ -244,6 +268,10 @@ impl Panel {
             #[cfg(not(windows))]
             gym_trainer: None,
         }
+    }
+    /// Where **Give feedback** sends its reports; tests record them.
+    pub fn set_feedback_sender(&mut self, sender: crate::feedback::Sender) {
+        self.feedback_sender = sender;
     }
     /// Whether the composer takes images: the shared
     /// [`openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED`] unless
@@ -659,6 +687,7 @@ impl Panel {
     }
     pub fn tick(&mut self, now: Instant) -> Option<Request> {
         self.transcript.poll_highlights();
+        self.poll_feedback();
         self.poll_gym();
         if self.saved_visible {
             return self
@@ -1220,6 +1249,7 @@ impl Panel {
         self.search.input(TextInput::FocusLost, 0);
         self.rename = None;
         self.rename_pending = None;
+        self.feedback = None;
         if let Some(field) = previous.and_then(|id| self.fields.get_mut(&id)) {
             field.input(TextInput::FocusLost, 0);
         }
@@ -1647,6 +1677,14 @@ impl Panel {
                 self.close_overlay();
                 return None;
             }
+            Action::SaveName if self.feedback.is_some() => {
+                self.send_feedback();
+                return None;
+            }
+            Action::CancelRename if self.feedback.is_some() => {
+                self.close_overlay();
+                return None;
+            }
             Action::Command { key } => {
                 let entries = self.command_entries();
                 if let Some(entry) = entries
@@ -1879,6 +1917,7 @@ impl Panel {
                 field.focused = true;
                 // The initial title mounts with the next semantic view.
                 self.rename_focus = 0;
+                self.feedback = None;
                 self.rename = Some((title, field));
                 None
             }
@@ -1968,7 +2007,13 @@ impl Panel {
         if self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile) {
             return openagents_chat_app::commands::profile_registry();
         }
-        openagents_chat_app::commands::registry(
+        let mut entries = vec![];
+        if self.commands.kind == Some(openagents_chat_app::commands::Kind::Menu)
+            && self.feedback_offer.is_some()
+        {
+            entries.push(openagents_chat_app::commands::feedback_entry());
+        }
+        entries.extend(openagents_chat_app::commands::registry(
             &self.session.summaries,
             if self.saved_visible {
                 None
@@ -1976,7 +2021,8 @@ impl Panel {
                 self.session.selected.as_deref()
             },
             !self.saved_visible && self.busy(),
-        )
+        ));
+        entries
     }
     /// The open overlay's entries. Zeron's palette keeps every action and at
     /// most 30 matching conversations, limited after filtering so each chat
@@ -2091,6 +2137,13 @@ impl Panel {
         if let Some(field) = self.field() {
             field.focused = false;
         }
+        self.feedback_offer = None;
+        if kind == openagents_chat_app::commands::Kind::Menu && !self.saved_visible {
+            let text = self.transcript.selected_text();
+            if !text.trim().is_empty() {
+                self.feedback_offer = Some((text, self.transcript.selected_row_key()));
+            }
+        }
         self.commands.open(kind);
         self.command_token = uuid::Uuid::new_v4().simple().to_string();
         self.command_query = chat_field("Search commands and chats…");
@@ -2116,6 +2169,7 @@ impl Panel {
         self.command_query.focused = false;
         self.rename = None;
         self.rename_pending = None;
+        self.feedback = None;
         if let Some(field) = self.field() {
             field.focused = true;
         }
@@ -2362,6 +2416,10 @@ impl Panel {
                 self.close_overlay();
                 None
             }
+            C::Feedback => {
+                self.open_feedback();
+                None
+            }
             C::Stop => None,
         };
         if let Some(request) = request {
@@ -2500,6 +2558,10 @@ impl Panel {
             } else {
                 field.input(event, at)
             };
+            if result == FieldAction::Send && self.feedback.is_some() {
+                self.send_feedback();
+                return FieldAction::Edited;
+            }
             if result == FieldAction::Send {
                 if let Some(chat) = self.session.selected.clone() {
                     let title = field.text().to_owned();
@@ -3044,7 +3106,7 @@ impl Panel {
             })
         } else if self.rename.is_some() {
             Some(OverlayLayout {
-                width: 360,
+                width: if self.feedback.is_some() { 440 } else { 360 },
                 placement: OverlayPlacement::Center,
                 scrim: Some(Color {
                     alpha: 89,
@@ -3067,6 +3129,9 @@ impl Panel {
     pub fn floating(&mut self) -> Option<Node<Intent>> {
         if self.commands.kind.is_some() {
             return Some(self.command_panel());
+        }
+        if self.feedback.is_some() && self.rename.is_some() {
+            return Some(self.feedback_panel());
         }
         if self.rename.is_some() {
             return Some(self.rename_panel());
@@ -3097,6 +3162,243 @@ impl Panel {
         pill.style.padding_points = Some([0, 2, 0, 0]);
         pill.style.background = Some(Color::rgb(32, 32, 32));
         Some(pill)
+    }
+    /// Opens **Give feedback** on the selection the context menu offered:
+    /// the rename dialog's field, empty, under the quoted text.
+    fn open_feedback(&mut self) {
+        let Some((text, row)) = self.feedback_offer.take() else {
+            return;
+        };
+        let index = row
+            .as_deref()
+            .and_then(|row| openagents_chat_app::feedback::turn_index(row, "turn-"));
+        let thread = self.session.selected.clone();
+        let state = self.session.state();
+        let selection = openagents_chat_app::feedback::selection(
+            &text,
+            thread.as_deref(),
+            state.map_or(&[][..], |state| state.turns.as_slice()),
+            state.map_or(0, |state| state.start),
+            index,
+        );
+        if let Some(field) = self.field() {
+            field.focused = false;
+        }
+        self.search.focused = false;
+        let mut field = chat_field(playtest::feedback::PLACEHOLDER);
+        field.set_unframed(true);
+        field
+            .set_metrics(rust_native_desktop::composer::field::Metrics {
+                font_size: 14.0,
+                line_height: 22.75,
+                padding: [0.0; 4],
+                min_height: 45.5,
+                max_height: 136.5,
+            })
+            .expect("valid feedback field metrics");
+        if let Some(wake) = self.waker.clone() {
+            field.start(wake);
+        }
+        field.focused = true;
+        self.rename_focus = 0;
+        self.rename_pending = None;
+        self.rename = Some((String::new(), field));
+        self.feedback = Some(FeedbackDialog {
+            selection,
+            status: None,
+            sending: None,
+            sent: false,
+        });
+    }
+    /// Files the open dialog's comment on its selection, on a thread.
+    fn send_feedback(&mut self) {
+        let comment = self
+            .rename
+            .as_ref()
+            .map(|(_, field)| field.text().to_owned())
+            .unwrap_or_default();
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let Some(dialog) = &mut self.feedback else {
+            return;
+        };
+        if dialog.sent || dialog.sending.is_some() {
+            return;
+        }
+        let report = match playtest::feedback::report(
+            crate::feedback::context(at),
+            dialog.selection.clone(),
+            &comment,
+        ) {
+            Ok(report) => report,
+            Err(why) => {
+                dialog.status = Some(why);
+                return;
+            }
+        };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sender = self.feedback_sender.clone();
+        let wake = self.waker.clone();
+        dialog.status = None;
+        dialog.sending = Some(rx);
+        let _ = std::thread::Builder::new()
+            .name("feedback".into())
+            .spawn(move || {
+                let _ = tx.send(sender(report));
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            });
+    }
+    /// Shows how a Send went once its thread answers.
+    fn poll_feedback(&mut self) {
+        let Some(dialog) = &mut self.feedback else {
+            return;
+        };
+        let Some(result) = dialog.sending.as_ref().and_then(|rx| rx.try_recv().ok()) else {
+            return;
+        };
+        dialog.sending = None;
+        match result {
+            Ok(said) => {
+                dialog.sent = true;
+                dialog.status = Some(said);
+            }
+            Err(why) => dialog.status = Some(why),
+        }
+        self.rows_dirty = true;
+    }
+    /// Whether the open feedback dialog finished sending; tests wait on it.
+    pub fn feedback_status(&self) -> Option<(bool, Option<&str>)> {
+        self.feedback
+            .as_ref()
+            .map(|dialog| (dialog.sent, dialog.status.as_deref()))
+    }
+    fn feedback_panel(&self) -> Node<Intent> {
+        use openagents_chat_app::visual::{MUTED, TEXT};
+        let (_, field) = self.rename.as_ref().expect("an open feedback dialog");
+        let dialog = self.feedback.as_ref().expect("an open feedback dialog");
+        let input = Node {
+            key: "chat-rename".into(),
+            style: Style::default(),
+            element: Element::Composer {
+                token: "feedback".into(),
+                placeholder: playtest::feedback::PLACEHOLDER.into(),
+                max_bytes: playtest::report::MAX_TEXT_CHARS * 4,
+                enabled: !dialog.sent,
+                busy: false,
+                stop: None,
+                choices: vec![],
+                draft: Some(field.text().into()),
+                focus: field.focused,
+            },
+        };
+        let mut title = text(
+            "chat-rename-title",
+            playtest::feedback::BUTTON,
+            TextRole::Body,
+        );
+        title.style.text_size = Some(15);
+        title.style.line_height = Some(24);
+        title.style.weight = Some(TextWeight::Semibold);
+        let shown: String = dialog.selection.text.chars().take(280).collect();
+        let shown = if shown.len() < dialog.selection.text.len() {
+            format!("“{}…”", shown.trim_end())
+        } else {
+            format!("“{shown}”")
+        };
+        let mut quote = text("chat-feedback-quote", shown, TextRole::Body);
+        quote.style.text_size = Some(13);
+        quote.style.line_height = Some(20);
+        quote.style.foreground = Some(MUTED);
+        let mut quote_frame = stack("chat-feedback-quote-frame", Axis::Vertical, vec![quote]);
+        quote_frame.style.padding_points = Some([4, 0, 4, 12]);
+        quote_frame.style.border = Some(Color {
+            alpha: 20,
+            ..Color::rgb(255, 255, 255)
+        });
+        let mut quote_margin = stack(
+            "chat-feedback-quote-margin",
+            Axis::Vertical,
+            vec![quote_frame],
+        );
+        quote_margin.style.padding_points = Some([10, 0, 0, 0]);
+        let mut field_frame = stack("chat-rename-field", Axis::Vertical, vec![input]);
+        field_frame.style.padding_points = Some([8, 12, 8, 12]);
+        field_frame.style.radius = Some(8);
+        field_frame.style.background = Some(Color {
+            alpha: 10,
+            ..Color::rgb(255, 255, 255)
+        });
+        field_frame.style.border = Some(Color {
+            alpha: 20,
+            ..Color::rgb(255, 255, 255)
+        });
+        let mut field_margin = stack(
+            "chat-rename-field-margin",
+            Axis::Vertical,
+            vec![field_frame],
+        );
+        field_margin.style.padding_points = Some([12, 0, 0, 0]);
+        let mut cancel = button(
+            "chat-cancel-name",
+            if dialog.sent { "Close" } else { "Cancel" },
+            Action::CancelRename,
+            true,
+        );
+        let mut send = button(
+            "chat-save-name",
+            "Send",
+            Action::SaveName,
+            !dialog.sent && dialog.sending.is_none(),
+        );
+        for button in [&mut cancel, &mut send] {
+            button.style.text_size = Some(13);
+            button.style.line_height = Some(21);
+            button.style.min_height = Some(33);
+            button.style.button_padding = Some([12, 6]);
+            button.style.radius = Some(8);
+            button.style.intrinsic_width = Some(true);
+        }
+        cancel.style.background = Some(Color { alpha: 0, ..TEXT });
+        cancel.style.foreground = Some(MUTED);
+        cancel.style.hover_background = Some(Color {
+            alpha: 15,
+            ..Color::rgb(255, 255, 255)
+        });
+        cancel.style.hover_foreground = Some(TEXT);
+        send.style.background = Some(TEXT);
+        send.style.foreground = Some(Color::rgb(14, 14, 14));
+        send.style.weight = Some(TextWeight::Medium);
+        send.style.hover_background = Some(Color::rgb(206, 206, 206));
+        let mut status = text(
+            "chat-rename-space",
+            dialog.status.clone().unwrap_or_default(),
+            TextRole::Status,
+        );
+        status.style.foreground = Some(MUTED);
+        let mut buttons = stack(
+            "chat-rename-buttons",
+            Axis::Horizontal,
+            vec![status, cancel, send],
+        );
+        buttons.style.gap_points = Some(8);
+        buttons.style.padding_points = Some([16, 0, 0, 0]);
+        let mut panel = stack(
+            "chat-rename-controls",
+            Axis::Vertical,
+            vec![title, quote_margin, field_margin, buttons],
+        );
+        panel.style.background = Some(Color::rgb(16, 16, 16));
+        panel.style.border = Some(Color {
+            alpha: 26,
+            ..Color::rgb(255, 255, 255)
+        });
+        panel.style.radius = Some(16);
+        panel.style.padding_points = Some([20; 4]);
+        panel.style.gap = Some(Space::None);
+        panel
     }
     fn rename_panel(&self) -> Node<Intent> {
         use openagents_chat_app::visual::{MUTED, TEXT};
@@ -3385,6 +3687,7 @@ impl Panel {
                             C::Pin => Glyph::Pin,
                             C::Archive => Glyph::Archive,
                             C::Restore => Glyph::Restore,
+                            C::Feedback => Glyph::Flag,
                             C::Switch(_) => Glyph::Ask,
                             _ => Glyph::More,
                         },

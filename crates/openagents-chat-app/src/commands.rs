@@ -21,6 +21,8 @@ pub enum Action {
     Archive,
     Restore,
     Dismiss,
+    /// **Give feedback** on the selected text ([`crate::feedback`]).
+    Feedback,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
@@ -198,6 +200,18 @@ pub fn registry(chats: &[Summary], selected: Option<&str>, busy: bool) -> Vec<En
     entries
 }
 
+/// The context menu's **Give feedback** item, offered first while text is
+/// selected (#10127).
+pub fn feedback_entry() -> Entry {
+    entry(
+        "feedback",
+        playtest::feedback::BUTTON,
+        "Comment on the selected text",
+        Action::Feedback,
+        true,
+    )
+}
+
 /// Local profile actions reuse the desktop's existing navigation authority.
 pub fn profile_registry() -> Vec<Entry> {
     vec![
@@ -261,7 +275,11 @@ impl Overlay {
                 (self.kind != Some(Kind::Menu)
                     || matches!(
                         entry.action,
-                        Action::Rename | Action::Pin | Action::Archive | Action::Restore
+                        Action::Rename
+                            | Action::Pin
+                            | Action::Archive
+                            | Action::Restore
+                            | Action::Feedback
                     ))
                     && (query.is_empty() || entry.label.to_lowercase().contains(&query))
             })

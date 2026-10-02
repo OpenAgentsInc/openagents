@@ -322,6 +322,13 @@ pub enum Request {
         world_secret_hex: String,
         form: Box<crate::playtest::Form>,
     },
+    /// **Give feedback** on selected text (#10127), signed by the Verse
+    /// world key. The direct reply is the reports packet, whose `feedback`
+    /// is what the dialog says.
+    FeedbackSend {
+        world_secret_hex: String,
+        form: Box<crate::playtest::FeedbackForm>,
+    },
     /// My reports and playtest logging's state. With the world key, reports
     /// that wait or failed are sent again.
     Reports {
@@ -1239,6 +1246,28 @@ impl App {
                     .playtest
                     .refuse("Your Verse world key couldn't be read."),
             },
+            Request::FeedbackSend {
+                ref world_secret_hex,
+                ref form,
+            } => match SecretKey::from_str(world_secret_hex) {
+                Ok(world) => {
+                    let form = (**form).clone();
+                    let route = self.place(form.tab, form.route);
+                    let selection = self
+                        .coder
+                        .feedback_selection(&form.text, form.row.as_deref());
+                    let platform = crate::playtest::platform(std::env::consts::OS);
+                    self.playtest.feedback(
+                        crate::playtest::FeedbackForm { route, ..form },
+                        selection,
+                        &world,
+                        platform,
+                    )
+                }
+                Err(_) => self
+                    .playtest
+                    .refuse("Your Verse world key couldn't be read."),
+            },
             Request::Reports {
                 ref world_secret_hex,
             } => {
@@ -1428,6 +1457,7 @@ impl App {
             | Request::TrainerExport { .. }
             | Request::ReportDraft { .. }
             | Request::ReportSend { .. }
+            | Request::FeedbackSend { .. }
             | Request::Reports { .. }
             | Request::PlaytestClear => {}
             Request::PlaytestScreen { tab, route } => {

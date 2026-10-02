@@ -7459,6 +7459,7 @@ dependencies = [
  "openagents-chat-app",
  "openagents-connect",
  "openagents-deck",
+ "playtest",
  "png",
  "pollster",
  "qrcodegen",

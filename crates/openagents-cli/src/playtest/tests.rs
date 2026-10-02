@@ -39,6 +39,7 @@ fn wrap(happened: &str, quote: bool, tester: u8, wrapper: u8) -> Event {
         }),
         notes: vec![],
         chat: None,
+        selection: None,
     };
     report::wrap(
         &report,
@@ -243,4 +244,63 @@ fn the_inbox_drafts_new_reports_once_and_files_only_with_an_issue_or_approval() 
     );
     let text = std::fs::read_to_string(log_path(home)).unwrap();
     assert_eq!(text.lines().count(), 6);
+}
+
+/// Give feedback (#10127): the inbox opens a comment on selected text and
+/// lists the quote and the comment for the operator.
+#[test]
+fn the_inbox_lists_feedback_with_its_quote_and_comment() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let report = playtest::feedback::report(
+        Context {
+            app_version: "1.0.0".into(),
+            build: "0".into(),
+            platform: Platform::Macos,
+            device: "Mac15,3".into(),
+            os_version: "26.4".into(),
+            tab: Tab::Coder,
+            route: Route::Chat,
+            at: 1_790_000_000,
+        },
+        playtest::report::Selection {
+            text: "Coder runs on\nyour phone.".into(),
+            thread: Some("c1".into()),
+            turn: Some(3),
+            role: None,
+            route: Some("chat".into()),
+            tier: None,
+            answer: None,
+            model: Some("gpt-5.4".into()),
+        },
+        "It runs on my computer.",
+    )
+    .unwrap();
+    let triage = key(4);
+    let wrap = report::wrap(
+        &report,
+        &key(3),
+        &triage.x_only_public_key(&Secp256k1::new()).0,
+        &Randomness {
+            wrapper: key(12),
+            seal_nonce: [1; 32],
+            wrap_nonce: [2; 32],
+            seal_earlier: 0,
+            wrap_earlier: 0,
+        },
+    )
+    .unwrap()
+    .wrap;
+    let read = ingest(home, &[wrap], &triage, 100).unwrap();
+    assert_eq!(read.new.len(), 1);
+    assert_eq!(
+        read.feedback,
+        vec![format!(
+            "{} on “Coder runs on your phone.” (turn 3, model gpt-5.4): It runs on my computer.",
+            read.new[0]
+        )]
+    );
+    let saved =
+        std::fs::read_to_string(drafts(home).join(format!("{}.report.json", read.new[0]))).unwrap();
+    assert!(saved.contains("It runs on my computer.") && saved.contains("\"selection\""));
 }

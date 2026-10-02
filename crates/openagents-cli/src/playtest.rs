@@ -312,6 +312,9 @@ fn keygen(args: &Args) -> Result<Value, Failure> {
 pub struct Ingested {
     /// New report codes, in arrival order.
     pub new: Vec<String>,
+    /// Each new **Give feedback** report (#10127), one line: its code, the
+    /// selected text, and the comment, for the operator's terminal only.
+    pub feedback: Vec<String>,
     /// Deliveries the log already held.
     pub repeats: usize,
     /// Wraps that weren't playtest reports for this key.
@@ -343,9 +346,45 @@ pub fn ingest(
     for report in fresh {
         write_draft(&dir, &report)?;
         append(home, &mut log, Entry::received(&report, at))?;
+        if let Some(selection) = &report.report.selection {
+            result.feedback.push(feedback_line(
+                &report.code,
+                selection,
+                &report.report.happened,
+            ));
+        }
         result.new.push(report.code);
     }
     Ok(result)
+}
+
+/// `PT-1A2B3C4D on “the selected text” (turn 3, model gpt-5.4): the comment`.
+fn feedback_line(code: &str, selection: &playtest::report::Selection, comment: &str) -> String {
+    let short = |text: &str, max: usize| {
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if flat.chars().count() > max {
+            format!("{}…", flat.chars().take(max).collect::<String>())
+        } else {
+            flat
+        }
+    };
+    let mut from = vec![];
+    if let Some(turn) = selection.turn {
+        from.push(format!("turn {turn}"));
+    }
+    if let Some(model) = &selection.model {
+        from.push(format!("model {model}"));
+    }
+    let from = if from.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", from.join(", "))
+    };
+    format!(
+        "{code} on “{}”{from}: {}",
+        short(&selection.text, 120),
+        short(comment, 240)
+    )
 }
 
 fn write_draft(dir: &Path, opened: &Opened) -> Result<(), String> {
@@ -406,14 +445,18 @@ fn inbox(home: &Path, args: &Args) -> Result<Value, Failure> {
         "relay": relay,
         "read": events.len(),
         "new": result.new,
+        "feedback": result.feedback,
         "repeats": result.repeats,
         "refused": result.refused,
         "drafts": drafts(home).display().to_string(),
         "text": format!(
-            "{} wraps read from {relay}: {} new, {} already in the log, {} not reports.{}",
+            "{} wraps read from {relay}: {} new, {} already in the log, {} not reports.{}{}",
             events.len(), result.new.len(), result.repeats, result.refused,
             if result.new.is_empty() { String::new() } else {
                 format!("\nEdit the drafts in {} and file each with `openagents playtest file CODE --contribution … --approve`:\n  {}", drafts(home).display(), result.new.join("\n  "))
+            },
+            if result.feedback.is_empty() { String::new() } else {
+                format!("\nFeedback on selected text:\n  {}", result.feedback.join("\n  "))
             }
         ),
     }))

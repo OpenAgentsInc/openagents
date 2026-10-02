@@ -789,6 +789,28 @@ key and sent privately:
   quote. **My reports** in Account lists what was sent and, later, what was
   accepted.
 
+### Give feedback on selected text
+
+Selected text in a chat has a **Give feedback** item
+([#10127](https://github.com/OpenAgentsInc/openagents/issues/10127)): on
+the phone in the long-press menu and in the selection toolbar beside
+**Copy** and **Select All** (iOS and Android), and on the desktop first in
+the right-click menu while text is selected. Its dialog quotes the
+selection and has one field, "What's wrong or what should change?";
+**Send** files a report of kind `comment` and says "Sent". The report
+(`playtest::feedback`) carries the selected text, where it came from (the
+conversation, the message's index, and a reply's route, tier, prepared
+answer, and model), the build, and the device, and no other chat content.
+It is sealed to the triage key like any report; the phone keeps it in **My
+reports**, and until a build knows the triage key it waits there (the
+desktop keeps it in `~/.openagents/desktop/feedback/`). `openagents
+playtest inbox` lists each one with its quote and comment. A desktop build
+seals to the key in `OPENAGENTS_PLAYTEST_TRIAGE_KEY` when that is set, so
+an operator can prove the path with a key of their own before the owner's
+key exists. When the keychain doesn't give the desktop its world key (a dev
+build's keychain prompt was denied), a one-time key signs the comment: it
+still reaches the triage key, without a public record or playtest XP.
+
 ### Playtest logging in a release
 
 Playtest logging is on for every tester in every build, including

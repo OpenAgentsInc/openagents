@@ -879,6 +879,9 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
     var loadEarlier: (() -> Void)?
     /// Called when this row starts a selection, so others clear theirs.
     var selecting: ((NativeRowView) -> Void)?
+    /// Give feedback on selected text (#10127): the text and this row's
+    /// key. Set by an app that files feedback; nil leaves the item out.
+    static var giveFeedback: ((_ text: String, _ row: String) -> Void)?
 
     private var selection: (start: NativeTextPosition, end: NativeTextPosition)?
     /// The selection's highlight, above the painted stripes.
@@ -1124,7 +1127,7 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
                     // Let the menu finish dismissing before the edit menu shows.
                     DispatchQueue.main.async { self?.selectAll(nil) }
                 },
-            ])
+            ] + (self?.feedbackAction(copy).map { [$0] } ?? []))
         }
     }
 
@@ -1251,7 +1254,20 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
                              suggestedActions: [UIMenuElement]) -> UIMenu? {
-        UIMenu(children: suggestedActions)
+        guard let model, let selection,
+              let feedback = feedbackAction(model.text(selection.start, selection.end))
+        else { return UIMenu(children: suggestedActions) }
+        return UIMenu(children: suggestedActions + [feedback])
+    }
+
+    /// Give feedback on `text`, when this app files feedback.
+    private func feedbackAction(_ text: String) -> UIAction? {
+        guard let giveFeedback = Self.giveFeedback,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let row = key
+        return UIAction(title: "Give feedback", image: UIImage(systemName: "flag")) { _ in
+            giveFeedback(text, row)
+        }
     }
 }
 

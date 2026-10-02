@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
         account = AccountScreens(this, bridge)
         playtest = Playtest(this, bridge)
+        SelectionLayer.giveFeedback = { text, row -> playtest.feedback(text, row, playtestTab, playtestRoute) }
         payments = AgentPayments(this, bridge)
         tailnetRenderer = NativeRenderer(this, { view, node -> bridge.activate("tailnet", view, node) })
         terminal = TerminalScreen(this, bridge)

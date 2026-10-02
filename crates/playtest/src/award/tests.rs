@@ -72,6 +72,7 @@ fn accepted(tester: &SecretKey, triage: &SecretKey, triager: &str) -> (Acceptanc
         screenshot: None,
         notes: vec![],
         chat: None,
+        selection: None,
     };
     let random = Randomness {
         wrapper: key(9),

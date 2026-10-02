@@ -52,6 +52,8 @@ struct ReportSession: Identifiable {
 @MainActor
 final class ReportCoordinator: ObservableObject {
     @Published var session: ReportSession?
+    /// Give feedback on selected text, from the selection menu (#10127).
+    @Published var feedback: FeedbackRequest?
 
     func start(bridge: MobileBridge, place: PlaytestPlace) {
         bridge.reportDraft(tab: place.tabName, route: place.routeName) { draft in
@@ -314,6 +316,95 @@ struct ReportSheet: View {
                 if error?.contains("log changed") == true || error?.contains("chat changed") == true {
                     bridge.reportDraft(tab: draft.tab, route: draft.route) { session.draft = $0 }
                 }
+            }
+        }
+    }
+}
+
+/// Text selected in a transcript and the row it starts in, for Give
+/// feedback (#10127).
+struct FeedbackRequest: Identifiable {
+    let id = UUID()
+    let text: String
+    let row: String
+}
+
+/// Give feedback: the selected text, quoted, and a comment. Send files it
+/// as a report Rust seals to the triage key.
+struct FeedbackSheet: View {
+    let request: FeedbackRequest
+    let tab: String
+    let route: String
+    @ObservedObject var bridge: MobileBridge
+    @Environment(\.dismiss) private var dismiss
+    @State private var comment = ""
+    @State private var sending = false
+    @State private var error: String?
+    @State private var done: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(request.text)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(8)
+                }
+                Section {
+                    ZStack(alignment: .topLeading) {
+                        if comment.isEmpty {
+                            Text("What's wrong or what should change?")
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                        }
+                        TextEditor(text: $comment).frame(minHeight: 100)
+                            .accessibilityIdentifier("feedback-comment")
+                            .disabled(done != nil)
+                    }
+                }
+                if let done {
+                    Section { Text(done).accessibilityIdentifier("feedback-sent") }
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(.red) }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Give feedback")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(done == nil ? "Cancel" : "Close") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send") { send() }
+                        .disabled(sending || done != nil
+                                  || comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("feedback-send")
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func send() {
+        let form: [String: Any] = [
+            "app_version": ReportDevice.version, "build": ReportDevice.build,
+            "device": ReportDevice.model, "os_version": ReportDevice.os,
+            "tab": tab, "route": route, "text": request.text, "comment": comment,
+            "row": request.row,
+        ]
+        sending = true
+        error = nil
+        bridge.sendFeedback(form) { packet in
+            sending = false
+            if let said = packet.feedback {
+                done = said
+            } else {
+                error = packet.error ?? "The feedback couldn't be sent."
             }
         }
     }

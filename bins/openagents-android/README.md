@@ -177,7 +177,8 @@ see the transcript layout section of
   Text** selects the painted text in place
   ([`SelectionLayer.kt`](host/app/src/main/java/com/openagents/app/SelectionLayer.kt)):
   a highlight under the text, two handles to drag, and the system's floating
-  toolbar with **Copy** and **Select All**. Carets sit at Rust's run
+  toolbar with **Copy**, **Select All**, and **Give feedback** (a comment
+  on the selection, sent as a playtest report, #10127). Carets sit at Rust's run
   positions, with stops from the bundled font's advances scaled to each run's
   width ([`TextSelection.kt`](host/app/src/main/java/com/openagents/app/TextSelection.kt)),
   so a caret never lands inside a surrogate pair or a ligature. A selection

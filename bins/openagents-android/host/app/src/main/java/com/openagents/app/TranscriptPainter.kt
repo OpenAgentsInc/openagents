@@ -527,8 +527,14 @@ internal class RowView(context: Context) : FrameLayout(context) {
         val menu = PopupMenu(context, this)
         menu.menu.add(0, 0, 0, "Copy")
         if (model.selectable.hasText) menu.menu.add(0, 1, 1, "Select Text")
+        val feedback = SelectionLayer.giveFeedback
+        if (feedback != null && text.isNotBlank()) menu.menu.add(0, 2, 2, "Give feedback")
         menu.setOnMenuItemClickListener { item ->
-            if (item.itemId == 0) clipboard(text) else post { selectAll() }
+            when (item.itemId) {
+                0 -> clipboard(text)
+                2 -> feedback?.invoke(text, model.key)
+                else -> post { selectAll() }
+            }
             true
         }
         menu.show()

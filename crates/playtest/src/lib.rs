@@ -15,6 +15,9 @@
 //! can't record a message, prompt, key, invoice, address, or amount. It
 //! leaves the device only inside a report whose preview showed it in full.
 //!
+//! **Give feedback** ([`feedback`]) is a report about text the tester
+//! selected: the selection, where it came from, and their comment.
+//!
 //! **Triage** ([`triage`]) turns opened reports into GitHub issue drafts,
 //! deduplicating by exact identity only, and keeps the append-only triage
 //! log that records every acceptance with the tester's key.
@@ -31,6 +34,7 @@
 //! carry the events.
 
 pub mod award;
+pub mod feedback;
 pub mod report;
 pub mod session;
 pub mod testflight;
@@ -43,6 +47,28 @@ pub mod triage;
 /// keeps each report on the phone as waiting and sends it once a build
 /// carries the key; nothing is sent to any other key.
 pub const TRIAGE_KEY: Option<&str> = None;
+
+/// The environment variable that points a desktop build at another triage
+/// key: the hex or `npub` public key an operator reads with `openagents
+/// playtest inbox --triage-key`, for proving the path end to end before the
+/// owner's key exists. Unset, [`TRIAGE_KEY`] decides.
+pub const TRIAGE_KEY_ENV: &str = "OPENAGENTS_PLAYTEST_TRIAGE_KEY";
+
+/// The triage key a desktop build seals to: [`TRIAGE_KEY_ENV`] when it is
+/// set to a valid public key, otherwise [`TRIAGE_KEY`].
+#[must_use]
+pub fn triage_key(env: Option<&str>) -> Option<secp256k1::XOnlyPublicKey> {
+    if let Some(value) = env.map(str::trim).filter(|v| !v.is_empty()) {
+        if let Ok(key) = value.parse() {
+            return Some(key);
+        }
+        if let Ok(bytes) = nostr::nip19::decode_npub(value) {
+            return secp256k1::XOnlyPublicKey::from_byte_array(bytes).ok();
+        }
+        return None;
+    }
+    TRIAGE_KEY.and_then(|key| key.parse().ok())
+}
 
 /// The relay reports go to. It serves a gift wrap only to the
 /// authenticated reader its `p` tag names.

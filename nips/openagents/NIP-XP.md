@@ -321,8 +321,9 @@ message sealed with NIP-44); this event only commits to it:
  "platform": "ios", "kind": "bug", "digest": "<64 hex>", "script": null}
 ```
 
-`platform` is `ios` or `android`; `kind` is `bug`, `confusing`, `idea`,
-`felt-good`, `verified`, `session`, or `diary`; `digest` is the lowercase
+`platform` is `ios`, `android`, `macos`, `windows`, or `linux`; `kind` is
+`bug`, `confusing`, `idea`, `felt-good`, `comment` (a comment on selected
+text), `verified`, `session`, or `diary`; `digest` is the lowercase
 hex SHA-256 of the private report's exact bytes (the NIP-17 kind `14`
 rumor's `content`); `script` names a session script or is `null`. The one
 tag is `t` `oa:xp:playtest-report:v1`; the time is `created_at`.
@@ -342,7 +343,7 @@ that shipped the change). A contribution is accepted when all hold:
 
 1. The report is a valid `3197`, its build is in the quest's build list,
    its kind is one the contribution takes (`feedback`: bug, confusing,
-   idea, or felt-good; `bug`: bug; `design`: bug, confusing, or idea;
+   idea, felt-good, or comment; `bug`: bug; `design`: bug, confusing, or idea;
    `verified-fix`: verified; `session`: session; `diary`: diary), and it
    was published inside the season.
 2. The tester awardee signed the report. The tester is neither the

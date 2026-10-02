@@ -37,6 +37,7 @@ fn sample(happened: &str, quote: bool) -> Report {
         }),
         notes: vec![],
         chat: None,
+        selection: None,
     }
 }
 

@@ -188,6 +188,7 @@ fn kind_label(kind: Kind) -> &'static str {
         Kind::Confusing => "Confusing",
         Kind::Idea => "Idea",
         Kind::FeltGood => "Felt good",
+        Kind::Comment => "Comment",
     }
 }
 
@@ -250,6 +251,10 @@ pub struct ReportsPacket {
     /// Why this request's report wasn't filed.
     pub error: Option<String>,
     pub fallback: &'static str,
+    /// What **Give feedback**'s dialog says once it filed: `Sent`, or that
+    /// it is saved until the build can send.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback: Option<&'static str>,
 }
 
 /// What the tester filled in and chose, from the form.
@@ -283,6 +288,25 @@ pub struct Form {
     pub chat_digest: String,
     #[serde(default)]
     pub screenshot: Option<Screenshot>,
+}
+
+/// **Give feedback** on selected text (#10127), from the selection menu:
+/// what the host knows. Rust adds where the text came from.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeedbackForm {
+    pub app_version: String,
+    pub build: String,
+    pub device: String,
+    pub os_version: String,
+    pub tab: Tab,
+    pub route: Route,
+    /// The selected text.
+    pub text: String,
+    pub comment: String,
+    /// The key of the transcript row the selection starts in.
+    #[serde(default)]
+    pub row: Option<String>,
 }
 
 /// Publishes a sealed report and its public record.
@@ -717,8 +741,56 @@ impl Playtest {
             screenshot: form.screenshot,
             notes: vec![],
             chat,
+            selection: None,
         }
         .fit();
+        self.keep(report, world)
+    }
+
+    /// Files **Give feedback**'s comment on `selection` (#10127): kept and
+    /// sent as any report, so it shows in My reports and waits there until
+    /// a build knows the triage key.
+    pub fn feedback(
+        &mut self,
+        form: FeedbackForm,
+        selection: report::Selection,
+        world: &SecretKey,
+        platform: Platform,
+    ) -> ReportsPacket {
+        let context = Context {
+            app_version: form.app_version,
+            build: form.build,
+            platform,
+            device: form.device,
+            os_version: form.os_version,
+            tab: form.tab,
+            route: form.route,
+            at: now(),
+        };
+        let filed = playtest::feedback::report(context, selection, &form.comment)
+            .and_then(|report| self.keep(report, world));
+        match filed {
+            Ok(digest) => {
+                let sent = lock(&self.inner)
+                    .saved
+                    .iter()
+                    .find(|s| s.digest == digest)
+                    .map(row);
+                let mut packet = self.packet(sent, None);
+                packet.feedback = Some(if self.triage.is_some() {
+                    playtest::feedback::SENT
+                } else {
+                    playtest::feedback::SAVED
+                });
+                packet
+            }
+            Err(error) => self.packet(None, Some(error)),
+        }
+    }
+
+    /// Keeps `report` in My reports and sends it when this build knows the
+    /// triage key. Returns its digest.
+    fn keep(&mut self, report: Report, world: &SecretKey) -> Result<String, String> {
         report.check()?;
         let digest = report::digest(&report.content());
         let summary: String = report.happened.chars().take(80).collect();
@@ -877,6 +949,7 @@ impl Playtest {
             sent,
             error,
             fallback: FALLBACK,
+            feedback: None,
         }
     }
 }

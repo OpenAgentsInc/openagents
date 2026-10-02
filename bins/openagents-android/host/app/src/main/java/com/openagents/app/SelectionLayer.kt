@@ -18,6 +18,16 @@ import android.widget.FrameLayout
 import androidx.recyclerview.widget.RecyclerView
 
 internal class SelectionLayer(private val root: FrameLayout, private val list: RecyclerView) {
+    companion object {
+        /** The selection menu's Give feedback item. */
+        const val FEEDBACK = 0x0feed
+        /**
+         * Give feedback on selected text (#10127): the text and its row's key.
+         * Set by the app; null leaves the item out.
+         */
+        var giveFeedback: ((text: String, row: String) -> Unit)? = null
+    }
+
     private val density = root.resources.displayMetrics.density
     private val startHandle = Handle(root.context, true)
     private val endHandle = Handle(root.context, false)
@@ -92,6 +102,7 @@ internal class SelectionLayer(private val root: FrameLayout, private val list: R
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                 menu.add(Menu.NONE, android.R.id.copy, 0, android.R.string.copy)
                 menu.add(Menu.NONE, android.R.id.selectAll, 1, android.R.string.selectAll)
+                if (giveFeedback != null) menu.add(Menu.NONE, FEEDBACK, 2, "Give feedback")
                 return true
             }
             override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
@@ -103,6 +114,12 @@ internal class SelectionLayer(private val root: FrameLayout, private val list: R
                         selected.clearSelection()
                     }
                     android.R.id.selectAll -> selected.selectAll()
+                    FEEDBACK -> {
+                        val text = selected.selectedText()
+                        val key = selected.model?.key ?: ""
+                        selected.clearSelection()
+                        if (text.isNotBlank()) giveFeedback?.invoke(text, key)
+                    }
                     else -> return false
                 }
                 return true

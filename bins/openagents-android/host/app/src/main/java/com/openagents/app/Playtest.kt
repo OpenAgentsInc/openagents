@@ -86,6 +86,78 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
 
     val sending get() = reports?.optJSONArray("reports")?.objects()?.any { it.optString("status") == "sending" } == true
 
+    // Give feedback (#10127)
+
+    /** Give feedback on `text`, selected in the transcript row `row`. */
+    fun feedback(text: String, row: String, tab: String, route: String) = FeedbackSheet(text, row, tab, route).show()
+
+    /** The selected text, quoted, and a comment; Send files it as a report. */
+    private inner class FeedbackSheet(val text: String, val row: String, val tab: String, val route: String) {
+        private val dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        private val content = FrameLayout(activity).apply { setBackgroundColor(Palette.BACKGROUND) }
+        private val comment = EditText(activity).apply {
+            hint = "What's wrong or what should change?"; setHintTextColor(Palette.TERTIARY); setTextColor(Palette.PRIMARY)
+            textSize = 16f; minLines = 4; gravity = Gravity.TOP or Gravity.START; tag = "feedback-comment"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            background = activity.rounded(Palette.SURFACE, 10f)
+            setPadding(activity.dp(12), activity.dp(10), activity.dp(12), activity.dp(10))
+        }
+        private var sending = false
+        private var said: String? = null
+        private var error: String? = null
+
+        fun show() {
+            dialog.setContentView(content)
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            paint()
+            dialog.show()
+        }
+
+        private fun paint() {
+            (comment.parent as? ViewGroup)?.removeView(comment)
+            val screen = activity.column()
+            screen.addView(activity.row().apply {
+                gravity = Gravity.CENTER_VERTICAL; minimumHeight = activity.dp(52)
+                setPadding(activity.dp(8), 0, activity.dp(8), 0)
+                addView(activity.label(if (said == null) "Cancel" else "Close", 17f).apply {
+                    setPadding(activity.dp(8), activity.dp(10), activity.dp(8), activity.dp(10)); setOnClickListener { dialog.dismiss() }
+                }, LinearLayout.LayoutParams(activity.dp(96), -2))
+                addView(activity.label("Give feedback", 17f, bold = true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(activity.label(if (said == null) "Send" else "", 17f, Palette.LINK, key = "feedback-send", bold = true).apply {
+                    gravity = Gravity.END; setPadding(activity.dp(8), activity.dp(10), activity.dp(8), activity.dp(10))
+                    setOnClickListener { send() }
+                }, LinearLayout.LayoutParams(activity.dp(96), -2))
+            })
+            val body = activity.column().apply { setPadding(activity.dp(16), 0, activity.dp(16), activity.dp(32)) }
+            body.add(activity.label(text.take(600), 15f, Palette.SECONDARY, key = "feedback-quote").apply {
+                background = activity.rounded(Palette.SURFACE, 10f)
+                setPadding(activity.dp(12), activity.dp(10), activity.dp(12), activity.dp(10))
+            }, 8)
+            comment.isEnabled = said == null
+            body.add(comment, 16)
+            said?.let { body.add(activity.label(it, 15f, key = "feedback-sent"), 16) }
+            error?.let { body.add(activity.label(it, 14f, Palette.FAILURE, key = "feedback-error"), 16) }
+            screen.addView(ScrollView(activity).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
+            content.removeAllViews()
+            content.addView(screen, FrameLayout.LayoutParams(-1, -1))
+        }
+
+        private fun send() {
+            if (sending || said != null || comment.text.isBlank()) return
+            val form = json("app_version" to ReportDevice.version, "build" to ReportDevice.build,
+                "device" to ReportDevice.model, "os_version" to ReportDevice.os,
+                "tab" to tab, "route" to route, "text" to text, "comment" to comment.text.toString(), "row" to row)
+            sending = true; error = null
+            bridge.sendFeedback(form) { packet ->
+                sending = false
+                reports = packet
+                said = packet.textOrNull("feedback")
+                if (said == null) error = packet.textOrNull("error") ?: "The feedback couldn't be sent."
+                paint()
+            }
+        }
+    }
+
     // Report a problem
 
     /**

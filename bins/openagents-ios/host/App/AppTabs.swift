@@ -104,6 +104,10 @@ struct AppTabs: View {
         .sheet(item: $reporter.session) { session in
             ReportSheet(session: session, bridge: bridge)
         }
+        // Give feedback from a transcript's selection menu (#10127).
+        .sheet(item: $reporter.feedback) { request in
+            FeedbackSheet(request: request, tab: place.tabName, route: place.routeName, bridge: bridge)
+        }
         .onChange(of: tab) { _, tab in
             place.tab = tab
             bridge.playtestScreen(tab: place.tabName, route: place.routeName)
@@ -128,6 +132,9 @@ struct AppTabs: View {
             }
         }
         .onAppear {
+            NativeRowView.giveFeedback = { text, row in
+                reporter.feedback = FeedbackRequest(text: text, row: row)
+            }
             #if targetEnvironment(simulator)
             // `--connect` opens Connect a computer, the scanner.
             if ProcessInfo.processInfo.arguments.contains("--connect") {

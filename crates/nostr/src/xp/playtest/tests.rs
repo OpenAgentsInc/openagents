@@ -505,7 +505,9 @@ fn bad_playtest_quests_and_reports_are_refused() {
     assert!(quest(&roles).is_err());
     // A report's kind, platform, and digest have grammars; it has no text.
     assert!(playtest_report("1.0.0 (15)", "ios", "rant", &digest(), None).is_err());
-    assert!(playtest_report("1.0.0 (15)", "windows", "bug", &digest(), None).is_err());
+    assert!(playtest_report("1.0.0 (15)", "web", "bug", &digest(), None).is_err());
+    // The desktop's platforms and Give feedback's kind (#10127) are in it.
+    assert!(playtest_report("1.0.0 (0)", "macos", "comment", &digest(), None).is_ok());
     assert!(playtest_report("1.0.0 (15)", "ios", "bug", "nothex", None).is_err());
     assert!(valid_issue(ISSUE) && !valid_issue("openagents#1") && !valid_issue("a/b#01"));
 }

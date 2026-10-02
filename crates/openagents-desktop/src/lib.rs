@@ -60,6 +60,8 @@ pub mod chrome;
 pub mod codes;
 pub mod control;
 pub mod fake;
+#[cfg(feature = "app")]
+pub mod feedback;
 pub mod folder;
 #[cfg(all(feature = "app", not(windows)))]
 pub mod grid;

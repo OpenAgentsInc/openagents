@@ -752,6 +752,23 @@ impl CoderTab {
         self.basic.shared(&id)
     }
 
+    /// Where **Give feedback**'s `text` came from (#10127): the open chat
+    /// with OpenAgents and the message whose transcript row is `row`
+    /// (`talk-m3`), or the open Coder task when that is what shows.
+    pub fn feedback_selection(
+        &mut self,
+        text: &str,
+        row: Option<&str>,
+    ) -> playtest::report::Selection {
+        let index = row.and_then(|row| crate::feedback::turn_index(row, "talk-m"));
+        if let Some(id) = self.talk.clone() {
+            let turns = self.basic.turns(&id);
+            return crate::feedback::selection(text, Some(&id), turns, 0, index);
+        }
+        let task = self.open.as_ref().map(|open| open.task.clone());
+        crate::feedback::selection(text, task.as_deref(), &[], 0, None)
+    }
+
     /// What the next basic turn tells the worker: whether a computer is
     /// ready and, when one is, its name (the label the person gave it), so
     /// the chat never asks them to connect one (#10077); the open chat's

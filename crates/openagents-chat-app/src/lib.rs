@@ -9,6 +9,7 @@ pub mod coder_tab;
 pub mod conversation;
 pub mod engine;
 pub mod eval_cards;
+pub mod feedback;
 pub mod first_run;
 pub mod gym;
 pub mod host_threads;

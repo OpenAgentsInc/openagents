@@ -51,18 +51,20 @@ pub const CONTRIBUTIONS: &[&str] = &[
     "session",
     "diary",
 ];
-/// A report's kinds. The first four are what a tester files from the app.
+/// A report's kinds. The first five are what a tester files from the app
+/// (`comment` is **Give feedback** on selected text).
 pub const REPORT_KINDS: &[&str] = &[
     "bug",
     "confusing",
     "idea",
     "felt-good",
+    "comment",
     "verified",
     "session",
     "diary",
 ];
 /// Where the tester ran the build.
-pub const PLATFORMS: &[&str] = &["ios", "android"];
+pub const PLATFORMS: &[&str] = &["ios", "android", "macos", "windows", "linux"];
 /// How a session script was run.
 pub const FORMATS: &[&str] = &["unmoderated", "moderated", "group"];
 /// Triage severities, most severe first.
@@ -116,7 +118,7 @@ impl PlaytestAcceptance {
 #[must_use]
 pub fn report_kinds(contribution: &str) -> &'static [&'static str] {
     match contribution {
-        "feedback" => &["bug", "confusing", "idea", "felt-good"],
+        "feedback" => &["bug", "confusing", "idea", "felt-good", "comment"],
         "bug" => &["bug"],
         "design" => &["bug", "confusing", "idea"],
         "verified-fix" => &["verified"],

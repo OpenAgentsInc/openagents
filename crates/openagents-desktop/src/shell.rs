@@ -6607,3 +6607,8 @@ mod coder_events {
 #[cfg(test)]
 #[path = "gym_card_tests.rs"]
 mod gym_card_tests;
+
+/// Give feedback on selected text (#10127).
+#[cfg(test)]
+#[path = "feedback_shell_tests.rs"]
+mod feedback_shell_tests;

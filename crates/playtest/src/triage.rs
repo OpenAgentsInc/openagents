@@ -653,11 +653,45 @@ pub fn draft(opened: &Opened) -> Draft {
     let platform = match c.platform {
         Platform::Ios => "iOS",
         Platform::Android => "Android",
+        Platform::Macos => "macOS",
+        Platform::Windows => "Windows",
+        Platform::Linux => "Linux",
     };
+    let selection = report
+        .selection
+        .as_ref()
+        .map_or(String::new(), |selection| {
+            let mut from = vec![];
+            if let Some(thread) = &selection.thread {
+                from.push(format!("conversation `{thread}`"));
+            }
+            if let Some(turn) = selection.turn {
+                from.push(format!("message {turn}"));
+            }
+            for (name, value) in [
+                ("route", &selection.route),
+                ("tier", &selection.tier),
+                ("prepared answer", &selection.answer),
+                ("model", &selection.model),
+            ] {
+                if let Some(value) = value {
+                    from.push(format!("{name} `{value}`"));
+                }
+            }
+            format!(
+                "## Selected text\n\n{}\n\n{}",
+                text(&selection.text),
+                if from.is_empty() {
+                    String::new()
+                } else {
+                    format!("From {}.\n\n", from.join(", "))
+                }
+            )
+        });
     let body = format!(
         "Playtest report `{code}` ({kind}), seen on OpenAgents {build} on {platform} {os} ({device}), in {place}.\n\n\
          Severity: P? (P0 loses money, leaks a key, or bricks the app; P1 blocks a scripted task; P2 hurts with a way around; P3 polish).\n\n\
-         ## What happened\n\n{happened}\n\n\
+         {selection}## What happened\n\n{happened}\n\n\
          ## Expected\n\n{expected}\n\n\
          ## Steps\n\n{steps}\n\n\
          {attachments}\

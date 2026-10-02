@@ -319,6 +319,8 @@ struct ReportsPacket: Decodable {
     let sent: ReportRow?
     let error: String?
     let fallback: String
+    /// What Give feedback's dialog says once it filed: Sent, or saved.
+    let feedback: String?
 }
 
 struct TerminalPacket: Decodable {
@@ -677,6 +679,19 @@ final class MobileBridge: ObservableObject {
         guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
         let hex = secret.map { String(format: "%02x", $0) }.joined()
         call(["op": "report_send", "world_secret_hex": hex, "form": form]) { data in
+            guard let packet = try? JSONDecoder().decode(ReportsPacket.self, from: data),
+                  packet.schema == "openagents.reports.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// Give feedback on selected text (#10127), signed by the Verse world
+    /// key. Rust adds where the text came from and seals it to the triage
+    /// key as a report.
+    func sendFeedback(_ form: [String: Any], received: @escaping (ReportsPacket) -> Void) {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        let hex = secret.map { String(format: "%02x", $0) }.joined()
+        call(["op": "feedback_send", "world_secret_hex": hex, "form": form]) { data in
             guard let packet = try? JSONDecoder().decode(ReportsPacket.self, from: data),
                   packet.schema == "openagents.reports.v1" else { return }
             received(packet)

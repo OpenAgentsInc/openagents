@@ -47,6 +47,9 @@ pub enum Kind {
     Confusing,
     Idea,
     FeltGood,
+    /// A comment on text the tester selected in the app (**Give
+    /// feedback**, [`crate::feedback`]).
+    Comment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -54,6 +57,10 @@ pub enum Kind {
 pub enum Platform {
     Ios,
     Android,
+    /// The desktop app on macOS, Windows, or Linux.
+    Macos,
+    Windows,
+    Linux,
 }
 
 /// What the app fills in.
@@ -222,6 +229,78 @@ pub fn chat_digest(chat: &SharedChat) -> String {
     digest(&serde_json::to_string(chat).unwrap_or_default())
 }
 
+/// The text a tester selected and commented on with **Give feedback**
+/// ([`crate::feedback`]), and where it came from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Selection {
+    /// The selected text, as the app showed it.
+    pub text: String,
+    /// The conversation it is in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread: Option<String>,
+    /// The message it is in: its index in the conversation, oldest first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<u32>,
+    /// Who wrote that message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<ChatRole>,
+    /// A reply's route, as the worker named it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<String>,
+    /// What the worker decided to show first (`canned`, `opener`, `model`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    /// The prepared answer that is the reply's text, as `id@version`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    /// The model the worker named for the reply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+fn label_like(value: &Option<String>, max: usize) -> bool {
+    value.as_ref().is_none_or(|v| {
+        !v.is_empty()
+            && v.len() <= max
+            && v.chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || "_.:@/+-".contains(ch))
+    })
+}
+
+impl Selection {
+    /// Checks the bounds, and refuses a selection with a secret key in it.
+    ///
+    /// # Errors
+    ///
+    /// A sentence for the tester naming the first problem.
+    pub fn check(&self) -> Result<(), String> {
+        if self.text.trim().is_empty() {
+            return Err("Select some text to give feedback on.".into());
+        }
+        if self.text.chars().count() > MAX_TEXT_CHARS {
+            return Err(format!(
+                "Select less text: under {MAX_TEXT_CHARS} characters."
+            ));
+        }
+        if self.text.contains("nsec1") {
+            return Err(
+                "The selected text has a secret key in it, so it can't be sent. Describe it in words."
+                    .into(),
+            );
+        }
+        if !label_like(&self.thread, 96)
+            || !label_like(&self.route, 64)
+            || !label_like(&self.tier, 16)
+            || !label_like(&self.answer, 96)
+            || !label_like(&self.model, 96)
+        {
+            return Err("Where the text came from couldn't be read.".into());
+        }
+        Ok(())
+    }
+}
+
 /// One report.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -252,6 +331,10 @@ pub struct Report {
     /// A chat the tester chose to send, from the Chat tab only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat: Option<SharedChat>,
+    /// The text a **Give feedback** comment is about; `happened` is the
+    /// comment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
 }
 
 fn version_like(value: &str) -> bool {
@@ -325,6 +408,9 @@ impl Report {
             && session.len() > session::MAX_EVENTS
         {
             return Err("The session log is too long.".into());
+        }
+        if let Some(selection) = &self.selection {
+            selection.check()?;
         }
         if let Some(chat) = &self.chat {
             if c.tab != Tab::Coder {

@@ -654,6 +654,15 @@ impl Transcript {
         self.selection.copy(&self.frame)
     }
 
+    /// The key of the row a non-empty selection starts in.
+    pub fn selected_row_key(&self) -> Option<String> {
+        if self.selection.collapsed(&self.frame) {
+            return None;
+        }
+        let (start, _) = self.selection.ordered(&self.frame)?;
+        self.frame.key(start.row).map(str::to_owned)
+    }
+
     /// Paint only rows in the viewport, with clipping for wide code and tables.
     pub fn paint(&self, frame: &mut Frame, rect: PxRect, scale: f32, fonts: &mut Fonts) {
         let previous = frame.clip_to(rect);

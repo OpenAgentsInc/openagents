@@ -260,6 +260,16 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         call(json("op" to "report_send", "world_secret_hex" to secret, "form" to form)) { reply(it, "openagents.reports.v1")?.let(received) }
     }
 
+    /**
+     * Give feedback on selected text (#10127), signed by the Verse world key.
+     * Rust adds where the text came from and seals it to the triage key; the
+     * answer's `feedback` is what the dialog says.
+     */
+    fun sendFeedback(form: JSONObject, received: (JSONObject) -> Unit) {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
+        call(json("op" to "feedback_send", "world_secret_hex" to secret, "form" to form)) { reply(it, "openagents.reports.v1")?.let(received) }
+    }
+
     /** My reports; with the world key, reports that wait or failed are sent again. */
     fun reports(received: (JSONObject) -> Unit) {
         val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { "" }
