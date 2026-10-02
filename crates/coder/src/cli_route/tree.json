@@ -5694,6 +5694,98 @@
       ]
     },
     {
+      "name": "boat",
+      "summary": "Build and test this checkout's change on a Boat sandbox, not here.",
+      "children": [
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "boat",
+              "run"
+            ],
+            "usage": [
+              "run NAME [--size small|default|large] -- CMD [ARGS...]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "size",
+                    "value": "small|default|large",
+                    "choices": [
+                      "small",
+                      "default",
+                      "large"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "rest"
+                  }
+                ]
+              }
+            ],
+            "summary": "Run CMD on the Boat sandbox NAME against this checkout's change: the sandbox's clone is reset to origin/main, this checkout's diff against origin/main is applied, and CMD runs there with CARGO_INCREMENTAL=0. Output prints as it arrives; the exit code is CMD's. Ctrl-C kills CMD on the sandbox.",
+            "effect": "spends",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "stop",
+          "leaf": {
+            "path": [
+              "boat",
+              "stop"
+            ],
+            "usage": [
+              "stop NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "stop"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop the sandbox NAME; a stopped sandbox costs nothing.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "size",
+          "value": "small|default|large",
+          "choices": [
+            "small",
+            "default",
+            "large"
+          ],
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "verse",
       "summary": "See who is around, listen, speak, move, gesture, drive owned entities, and read quests, XP, and the board.",
       "children": [

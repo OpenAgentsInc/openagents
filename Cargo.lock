@@ -7461,6 +7461,7 @@ dependencies = [
  "background",
  "base64 0.22.1",
  "bitcoin-amount",
+ "boat",
  "coder",
  "coder-access",
  "coder-computers",

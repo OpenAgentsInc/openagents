@@ -19,6 +19,7 @@ use std::process::ExitCode;
 mod argv;
 #[cfg(unix)]
 mod background;
+mod boat_run;
 mod catalog;
 mod chat;
 mod computer;
@@ -104,6 +105,7 @@ Coder:
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
   ssh          Start or adopt a host over SSH and tunnel to it.
+  boat         Build and test this checkout's change on a Boat sandbox, not here.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -267,6 +269,7 @@ fn main() -> ExitCode {
         #[cfg(unix)]
         "background" => background::run(&output, &rest),
         "settings" => settings::run(&output, &rest),
+        "boat" => boat_run::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),

@@ -160,6 +160,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::background::EFFECTS,
         ),
         group("ssh", Some(crate::ssh::USAGE), crate::ssh::EFFECTS),
+        group(
+            "boat",
+            Some(crate::boat_run::USAGE),
+            crate::boat_run::EFFECTS,
+        ),
         group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
         GroupHelp {
             name: "xp",

@@ -20,6 +20,8 @@ background = { path = "../background" }
 base64 = "0.22"
 # Human-readable amounts: BIP 177 base units, or legacy BTC.
 bitcoin-amount = { path = "../bitcoin-amount" }
+# `openagents boat run`: this checkout's change, built and tested on Boat.
+boat = { path = "../boat" }
 coder = { path = "../coder" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-computers = { path = "../coder-computers" }
