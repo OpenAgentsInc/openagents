@@ -34,7 +34,8 @@ impl Who {
 ///
 /// The person's text is plain at `Intensity::Full`. A reply is Markdown:
 /// each rendered line draws at the step the Markdown layout gives it (body
-/// text at `ThreeQuarters`), code at `Full`, and bold, italic, strike, and
+/// text at `ThreeQuarters`), code at `Full` with its syntax classes as
+/// steps and modifiers, and bold, italic, strike, and
 /// link marks as modifiers.
 pub fn turn(who: Who, text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
     let mut lines = vec![label(who, None, width, ladder)];
@@ -128,7 +129,10 @@ fn body(who: Who, text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> 
 /// the ladder, the rest as modifiers.
 pub(crate) fn marked_style(base: Style, ladder: Ladder, marks: &Marks) -> Style {
     let mut style = if marks.code {
-        ladder.style(Intensity::Full)
+        let (step, modifier) = marks
+            .syntax
+            .map_or((Intensity::Full, Modifier::empty()), markdown::syntax_look);
+        ladder.style(step).add_modifier(modifier)
     } else {
         base
     };

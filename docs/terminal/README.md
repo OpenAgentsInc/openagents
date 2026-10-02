@@ -99,7 +99,10 @@ one line in the transcript, "Grok Build is working.", and why only when
 another engine runs than the one you asked for; `/export` keeps the task and
 its worktree.
 
-Replies render as Markdown. Suggested follow-ups are not shown here; a card
+Replies render as Markdown. Code in Rust, Python, JSON, shell, JavaScript,
+TypeScript, Go, C, C++, HTML, or CSS is highlighted in the same whites:
+comments dimmer and italic, keywords bold, strings and numbers a step down.
+Suggested follow-ups are not shown here; a card
 that opens in the app (a Gym result, a deck, the wallet) says where to open
 it.
 

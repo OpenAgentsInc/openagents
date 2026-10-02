@@ -4,10 +4,14 @@
 //! headings, fenced code, quotes, lists, tables, rules — each holding
 //! flat inline runs with their marks. [`render`] lays the tree out as
 //! [`Marked`] lines: marked text the draw loop wraps and styles. Raw
-//! HTML in the source is text.
+//! HTML in the source is text. Fenced code in a language `code-highlight`
+//! knows carries its syntax class per run, drawn on the white ladder.
 
+use std::collections::VecDeque;
 use std::ops::Range;
+use std::sync::{LazyLock, Mutex};
 
+use code_highlight::{Class, Kind};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};
 
@@ -25,13 +29,44 @@ pub struct Marks {
     pub link: Option<String>,
     /// The source of an image. The run's text is the image's alt text.
     pub image: Option<String>,
+    /// In fenced code, what the grammar says this run is.
+    pub syntax: Option<Kind>,
+}
+
+/// How a syntax class draws: a step of the ladder and a modifier. No class
+/// adds a color; comments recede, keywords are bold, literals sit a step
+/// below the code around them.
+pub fn syntax_look(kind: Kind) -> (Intensity, Modifier) {
+    match kind {
+        Kind::Comment => (Intensity::Half, Modifier::ITALIC),
+        Kind::Keyword | Kind::Tag | Kind::MarkupHeading | Kind::MarkupStrong => {
+            (Intensity::Full, Modifier::BOLD)
+        }
+        Kind::String
+        | Kind::StringSpecial
+        | Kind::Escape
+        | Kind::Number
+        | Kind::Boolean
+        | Kind::Constant
+        | Kind::Attribute
+        | Kind::MarkupRaw => (Intensity::ThreeQuarters, Modifier::empty()),
+        Kind::MarkupEmphasis => (Intensity::Full, Modifier::ITALIC),
+        Kind::MarkupLink | Kind::MarkupReference => (Intensity::Full, Modifier::UNDERLINED),
+        _ => (Intensity::Full, Modifier::empty()),
+    }
 }
 
 impl Marks {
     /// Applies the terminal's Markdown marks without emitting terminal escapes.
     pub fn style(&self, base: Style, ladder: Ladder) -> Style {
         let mut style = if self.code {
-            ladder.style(Intensity::Full).bg(ladder.background())
+            let (step, modifier) = self
+                .syntax
+                .map_or((Intensity::Full, Modifier::empty()), syntax_look);
+            ladder
+                .style(step)
+                .bg(ladder.background())
+                .add_modifier(modifier)
         } else {
             base
         };
@@ -185,15 +220,19 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
             };
             out.push(marked_line(&inlines, prefix, hang, intensity));
         }
-        Block::Code { source, .. } => {
-            let code = Marks {
-                code: true,
-                ..Marks::default()
-            };
-            for line in source.lines() {
+        Block::Code { language, source } => {
+            let classes = language
+                .as_deref()
+                .map(|language| highlighted(language, source))
+                .unwrap_or_default();
+            let mut at = 0;
+            for line in source.split('\n').filter(|_| !source.is_empty()) {
+                let start = at;
+                at += line.len() + 1;
+                let line = line.strip_suffix('\r').unwrap_or(line);
                 let mut marked = Marked::default();
                 marked.push(prefix, &Marks::default());
-                marked.push(line, &code);
+                code_runs(&mut marked, source, start..start + line.len(), &classes);
                 out.push(Rendered {
                     marked,
                     intensity: Intensity::ThreeQuarters,
@@ -233,6 +272,57 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
             hang,
         }),
     }
+}
+
+/// Pushes the code in `line` (a byte range of `source`) as code runs,
+/// each carrying the syntax class covering it.
+fn code_runs(marked: &mut Marked, source: &str, line: Range<usize>, classes: &[Class]) {
+    let plain = Marks {
+        code: true,
+        ..Marks::default()
+    };
+    let mut at = line.start;
+    for class in classes {
+        let start = class.start.max(at);
+        let end = class.end.min(line.end);
+        if start >= end {
+            continue;
+        }
+        if start > at {
+            marked.push(&source[at..start], &plain);
+        }
+        let marks = Marks {
+            syntax: class.kind,
+            ..plain.clone()
+        };
+        marked.push(&source[start..end], &marks);
+        at = end;
+    }
+    if at < line.end {
+        marked.push(&source[at..line.end], &plain);
+    }
+}
+
+/// The syntax classes of a code block. The draw loop lays a streaming
+/// reply out every frame, so recent blocks are kept.
+fn highlighted(language: &str, source: &str) -> Vec<Class> {
+    type Recent = VecDeque<(String, String, Vec<Class>)>;
+    static RECENT: LazyLock<Mutex<Recent>> = LazyLock::new(Default::default);
+    if let Ok(recent) = RECENT.lock()
+        && let Some((_, _, classes)) = recent
+            .iter()
+            .find(|(held, text, _)| held == language && text == source)
+    {
+        return classes.clone();
+    }
+    let classes = code_highlight::classes(language, source);
+    if let Ok(mut recent) = RECENT.lock() {
+        if recent.len() >= 16 {
+            recent.pop_front();
+        }
+        recent.push_back((language.to_owned(), source.to_owned(), classes.clone()));
+    }
+    classes
 }
 
 fn table_cells(cells: &[Vec<Inline>]) -> Vec<Inline> {
@@ -790,6 +880,59 @@ mod tests {
         let lines = render("```rust\nfn main() {}\n```");
         assert_eq!(texts(&lines), ["fn main() {}"]);
         assert!(lines[0].marked.runs[0].1.code);
+    }
+
+    #[test]
+    fn known_code_carries_syntax_classes_on_the_ladder() {
+        let lines = render("```rust\n// note\nlet s = \"hi\";\n```");
+        assert_eq!(texts(&lines), ["// note", "let s = \"hi\";"]);
+        let kind_of = |line: usize, text: &str| {
+            let marked = &lines[line].marked;
+            marked
+                .runs
+                .iter()
+                .find(|(range, _)| &marked.text[range.clone()] == text)
+                .and_then(|(_, marks)| marks.syntax)
+        };
+        assert_eq!(kind_of(0, "// note"), Some(Kind::Comment));
+        assert_eq!(kind_of(1, "let"), Some(Kind::Keyword));
+        assert_eq!(kind_of(1, "\"hi\""), Some(Kind::String));
+        assert!(
+            lines
+                .iter()
+                .all(|line| line.marked.runs.iter().all(|(_, marks)| marks.code))
+        );
+        let ladder = Ladder::default();
+        let base = ladder.style(Intensity::ThreeQuarters);
+        let comment = Marks {
+            code: true,
+            syntax: Some(Kind::Comment),
+            ..Marks::default()
+        };
+        let style = comment.style(base, ladder);
+        assert_eq!(style.fg, ladder.style(Intensity::Half).fg);
+        assert!(style.add_modifier.contains(Modifier::ITALIC));
+        let keyword = Marks {
+            code: true,
+            syntax: Some(Kind::Keyword),
+            ..Marks::default()
+        };
+        assert!(
+            keyword
+                .style(base, ladder)
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
+        // An unknown fence stays plain code.
+        let plain = render("```nope\nlet s = 1;\n```");
+        assert!(
+            plain[0]
+                .marked
+                .runs
+                .iter()
+                .all(|(_, marks)| marks.syntax.is_none())
+        );
+        assert!(render("```rust\n```").is_empty());
     }
 
     #[test]

@@ -1,0 +1,24 @@
+[package]
+name = "code-highlight"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Tree-sitter syntax classes for code blocks, shared by the native renderer and the terminal."
+
+[dependencies]
+tree-sitter-highlight = "0.27.0"
+tree-sitter-rust = "0.24.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-json = "0.24.8"
+tree-sitter-bash = "0.25.1"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-go = "0.25.0"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-c = "0.24.2"
+tree-sitter-html = "0.23.2"
+tree-sitter-css = "0.25.0"
+
+[lints]
+workspace = true

@@ -7,6 +7,8 @@ description = "The Coder terminal: one white ladder, a framed composer, and the 
 publish.workspace = true
 
 [dependencies]
+# Syntax classes for fenced code in replies.
+code-highlight = { path = "../code-highlight" }
 coder-ui = { path = "../coder-ui" }
 crossterm = "0.29"
 pulldown-cmark = { version = "0.13.4", default-features = false }
