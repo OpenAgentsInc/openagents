@@ -46,7 +46,9 @@ repository, last commit 2026-09-29). Commit links are
    - The Coder run pool, September, in the `coder` repository: a GCE managed
      instance group with one warm on-demand host, a spot burst group, a
      scaler, and runs claimed over a websocket with leases.
-   - The Box API, September: a QEMU VM per box, ready in about 27 seconds warm.
+   - Our own server for the Box API, September: a QEMU VM per box, ready in
+     about 27 seconds warm. Box is the hosted sandbox product from Ascii, now
+     renamed **Boat** (boat.dev).
 
    All three are gone from `main` today. Parts of the cloud estate are still
    running and billing.
@@ -65,6 +67,16 @@ repository, last commit 2026-09-29). Commit links are
      work.
 
    The phases and the issues to open are in sections 4 and 5.
+5. **Boat (formerly Ascii Box) as a second backend.**
+   - A `large` Boat sandbox (8 vCPU, 16 GB) costs $0.072 an hour, about the
+     same as one GCE spot slot. It deploys from a named template in seconds,
+     cannot be preempted, and costs nothing when stopped.
+   - We already wrote a Rust SDK for its earlier API, in the `coder`
+     repository.
+   - The plan is in the
+     [Boat SDK plan](2026-10-02-boat-sdk-plan.md): port that SDK as
+     `crates/boat` and add Boat as a placement backend. Use it first for
+     bursty fan-out, and the GCE pool for work that must stay in our project.
 
 ## 1. What existed before the reset
 
@@ -269,8 +281,9 @@ This is the closest thing to what the owner asked for. It lived in
   claim when warm, under 90 seconds when a host must boot. Warm build times on
   a pool host were never measured.
 
-**Box hosts** (`CODER@c8821c docs/box/phase-1-proof.md`, `phase-2-proof.md`,
-`2026-09-05-box-compatible-infrastructure-audit.md`).
+**Box hosts.** These are our own servers for the Box API (Box is now Boat;
+see §1.6). Sources: `CODER@c8821c docs/box/phase-1-proof.md`,
+`phase-2-proof.md`, `2026-09-05-box-compatible-infrastructure-audit.md`.
 
 - **What a box is.** A KVM VM from a qcow2 overlay, one per box.
   `box-guest-0.4.0.qcow2` is 652 MiB on disk. Each `coder-box-pool` host
@@ -288,6 +301,29 @@ This is the closest thing to what the owner asked for. It lived in
 ([`f0f85f0235`](https://github.com/OpenAgentsInc/coder/commit/f0f85f0235))
 proposed a target choice on `delegate`, a `/machines` view, a larger host
 class, and running the agent and the task as separate users.
+
+### 1.6 Box, now Boat
+
+- **The vendor.** Box was Ascii's hosted Linux sandbox for agents. It is now
+  **Boat**:
+  - site `https://boat.dev`, API `https://boat.dev/api/v1`
+  - keys that begin `boat_`
+  - SDKs `@boatdev/sdk` and `boat-sdk`
+- **What we built against it.**
+  - July, in this repository: a teardown, and a default-off Box v1
+    compatibility facade over our GCE sandboxes (SBX-03). Both were deleted
+    in the reset.
+  - September, in the private `coder` repository: a Rust SDK for all 59
+    operations (`crates/coder-box`,
+    [`a45fe45cc1`](https://github.com/OpenAgentsInc/coder/commit/a45fe45cc1)).
+    Gym ran on the vendor's API, forking a named snapshot for each attempt.
+    Then came our own Box-compatible server and the hosts in §1.5. That work
+    is still in the repository; it was paused on 2026-09-06, not deleted.
+- **Today.** The live API has 69 operations, including streaming exec,
+  per-sandbox usage, and scoped, expiring keys.
+
+The full history, the API surface, a comparison with our needs, and the Rust
+SDK plan are in the [Boat SDK plan](2026-10-02-boat-sdk-plan.md).
 
 ## 2. What exists now
 
@@ -522,6 +558,11 @@ owner's Mac / phone ── openagents chat work --issues --parallel N --on cloud
 5. **Isolated runs, later.** Firecracker per run for partner or untrusted
    work, revived from `oa-codex-control` and `oa-workroomd` at `OA@8f84d0`,
    with grant references for engine logins.
+6. **Boat as a second placement backend.** This can run alongside phases 1
+   to 3. Port the Rust SDK and build a daily `oa-coder-main` template from the
+   same `.agents/setup`, then `--on boat`. Both backends are granted
+   computers; the caller picks, and neither silently stands in for the other.
+   See the [Boat SDK plan](2026-10-02-boat-sdk-plan.md) §5.4.
 
 ### 4.3 What to revive and what to build
 
@@ -546,7 +587,8 @@ owner's Mac / phone ── openagents chat work --issues --parallel N --on cloud
 
 Do not revive: the `coder-serve` claim websocket and scaler (that web tier is
 gone), gVisor per run for owner work (it cost 1.6 to 2.4 times the build
-time), the Box API (on hold since 09-06), or the per-session `e2-small` VMs
+time), our own Box-compatible server and hosts (on hold since 09-06; use
+Boat itself instead, see §1.6), or the per-session `e2-small` VMs
 (too small for this workspace).
 
 ## 5. Issues to open
@@ -564,6 +606,11 @@ time), the Box API (on hold since 09-06), or the per-session `e2-small` VMs
 11. **Cloud: measure sccache on `openagentsgemini-autopilot-rust-sccache` against a baked warm target**: keep it only if it cuts the delta build.
 12. **Chat: place #10183 fan-out runs on a chosen computer**: dispatch plans name the computer per run; the host keeps control of fan-out.
 13. **Cloud (later): Firecracker per-run isolation for partner work**: revive `cloud_vm.rs` and `oa-workroomd` from `8f84d05896` behind the router's public task class.
+
+The Boat issues, B1 to B9 (the Rust SDK, fixtures and live test, key hygiene,
+the daily template, `--on boat`, engine logins, measurements, and retiring
+the Box names), are listed in the [Boat SDK plan](2026-10-02-boat-sdk-plan.md)
+§6.
 
 ## Sources not repeated above
 

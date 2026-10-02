@@ -12,3 +12,4 @@ crates and documents (`oa-codex-control`, `oa-node`, `oa-workroomd`, the old
 | Document | What it covers |
 | --- | --- |
 | [Cloud parallel execution audit, 2026-10-02](2026-10-02-cloud-parallel-execution-audit.md) | What existed before the reset (GCE and Firecracker lanes, the Coder run pool, Factory Droid Computers and Amp orbs), what runs in Google Cloud today, the gaps, a recommended design, and the issues to open |
+| [Boat SDK plan, 2026-10-02](2026-10-02-boat-sdk-plan.md) | Boat (formerly Ascii Box): what we built against it, its current API and prices, how it compares with the GCE pool, and a plan for the Rust SDK `crates/boat` as a second placement backend |
