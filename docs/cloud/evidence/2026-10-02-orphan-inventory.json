@@ -1,0 +1,422 @@
+{
+  "project": "openagentsgemini",
+  "source": "read-only gcloud compute instances list using existing automation identity",
+  "instances": [
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/n2-standard-4",
+      "name": "agent-computer-gce-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "issue": "9195",
+        "owner": "openagents",
+        "workload": "buzz"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-medium",
+      "name": "buzz-community-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "component": "git",
+        "goog-terraform-provisioned": "true",
+        "managedby": "terraform",
+        "product": "forge"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "forge-git-nfs",
+      "status": "TERMINATED",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "goog-fleet-project": "openagentsgemini",
+        "goog-gke-cluster-id-base32": "xaaowzjqvbfbdo6ct5lmt6uk5faohwknzaqu7pmhj75zixrkylvq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "oa-livekit-prod",
+        "goog-k8s-node-pool-name": "oa-livekit-prod-app",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu",
+        "program": "ep263-livekit",
+        "service": "livekit"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-8",
+      "name": "gke-oa-livekit-prod-oa-livekit-prod-a-4142df0b-dwco",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "goog-fleet-project": "openagentsgemini",
+        "goog-gke-cluster-id-base32": "xaaowzjqvbfbdo6ct5lmt6uk5faohwknzaqu7pmhj75zixrkylvq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "oa-livekit-prod",
+        "goog-k8s-node-pool-name": "oa-livekit-prod-sfu",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu",
+        "program": "ep263-livekit",
+        "service": "livekit"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/c2-standard-8",
+      "name": "gke-oa-livekit-prod-oa-livekit-prod-s-1c763854-sj8l",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "application": "one",
+        "cost-center": "one-production",
+        "environment": "production",
+        "goog-gke-cluster-id-base32": "rdriapsntzeazatfq2yra2s7whsuxyoedzpufqfn3rmh45rtffia",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "one-prod",
+        "goog-k8s-node-pool-name": "one-prod-runtime",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-8",
+      "name": "gke-one-prod-one-prod-runtime-7790dd15-f3r1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-4",
+      "name": "immortal-public-regtest-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/n2-standard-8",
+      "name": "oa-bitcoind",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "openagents-managed": "coder-host-measure"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/c3-standard-8",
+      "name": "oa-coder-host-measure-20261002210628",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-4",
+      "name": "oa-coder-worker-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "openagents-component": "codex-control",
+        "openagents-managed": "control"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "oa-codex-control-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "issue": "openagents-9968",
+        "service": "iroh-relay"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "oa-iroh-relay-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/n2-standard-16",
+      "name": "oa-issue7-final-p-a",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/n2-standard-16",
+      "name": "oa-issue7-live-e-a",
+      "status": "TERMINATED",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "owner": "openagents",
+        "purpose": "loupe-security-scan"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/n2-standard-8",
+      "name": "oa-loupe-scanner-1",
+      "status": "TERMINATED",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "openagents-component": "codex-control",
+        "openagents-managed": "control"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "oa-managed-sandbox-control-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "openagents-component": "codex-control",
+        "openagents-managed": "control"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "oa-managed-sandbox-control-sbx09-canary-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "openagents-component": "codex-control",
+        "openagents-managed": "control"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "oa-managed-sandbox-control-staging-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "app": "openagents-pay"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-small",
+      "name": "oa-pay-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "labels": {
+        "epic": "8913",
+        "purpose": "desktop-release-worker"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-8",
+      "name": "oa-rel-worker-linux-x64",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/n2-standard-32",
+      "name": "one-eval-cli-builder",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-8",
+      "name": "one-prod-computerd-1",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/machineTypes/e2-standard-4",
+      "name": "one-stg-computerd",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/c3-standard-8",
+      "name": "coder-box-pool-8b1t",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/c3-standard-8",
+      "name": "coder-pool-w2v4",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "goog-fleet-project": "openagentsgemini",
+        "goog-gke-cluster-id-base32": "xaaowzjqvbfbdo6ct5lmt6uk5faohwknzaqu7pmhj75zixrkylvq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "oa-livekit-prod",
+        "goog-k8s-node-pool-name": "oa-livekit-prod-app",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu",
+        "program": "ep263-livekit",
+        "service": "livekit"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/e2-standard-8",
+      "name": "gke-oa-livekit-prod-oa-livekit-prod-a-feb8c036-44d2",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "goog-fleet-project": "openagentsgemini",
+        "goog-gke-cluster-id-base32": "xaaowzjqvbfbdo6ct5lmt6uk5faohwknzaqu7pmhj75zixrkylvq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "oa-livekit-prod",
+        "goog-k8s-node-pool-name": "oa-livekit-prod-sfu",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu",
+        "program": "ep263-livekit",
+        "service": "livekit"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/c2-standard-8",
+      "name": "gke-oa-livekit-prod-oa-livekit-prod-s-b7b48129-uuw6",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "labels": {
+        "application": "one",
+        "cost-center": "one-production",
+        "environment": "production",
+        "goog-gke-cluster-id-base32": "rdriapsntzeazatfq2yra2s7whsuxyoedzpufqfn3rmh45rtffia",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "one-prod",
+        "goog-k8s-node-pool-name": "one-prod-runtime",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/e2-standard-8",
+      "name": "gke-one-prod-one-prod-runtime-eca67e52-08a8",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "labels": {
+        "application": "one",
+        "cost-center": "one-staging",
+        "environment": "staging",
+        "goog-gke-cluster-id-base32": "ewt3glih6zb7xjomfnantbyymujkgwpwzx4e3cnianakanwpq7tq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "one-stg",
+        "goog-k8s-node-pool-name": "one-stg-runtime",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/e2-standard-4",
+      "name": "gke-one-stg-one-stg-runtime-14cef7c6-5zr6",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/n2-standard-16",
+      "name": "oa-issue7-final-p-b",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b/machineTypes/n2-standard-16",
+      "name": "oa-issue7-live-b",
+      "status": "TERMINATED",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-b"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "goog-fleet-project": "openagentsgemini",
+        "goog-gke-cluster-id-base32": "xaaowzjqvbfbdo6ct5lmt6uk5faohwknzaqu7pmhj75zixrkylvq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "oa-livekit-prod",
+        "goog-k8s-node-pool-name": "oa-livekit-prod-app",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu",
+        "program": "ep263-livekit",
+        "service": "livekit"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c/machineTypes/e2-standard-8",
+      "name": "gke-oa-livekit-prod-oa-livekit-prod-a-c620f239-e794",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c"
+    },
+    {
+      "labels": {
+        "environment": "production",
+        "goog-fleet-project": "openagentsgemini",
+        "goog-gke-cluster-id-base32": "xaaowzjqvbfbdo6ct5lmt6uk5faohwknzaqu7pmhj75zixrkylvq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "oa-livekit-prod",
+        "goog-k8s-node-pool-name": "oa-livekit-prod-sfu",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu",
+        "program": "ep263-livekit",
+        "service": "livekit"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c/machineTypes/c2-standard-8",
+      "name": "gke-oa-livekit-prod-oa-livekit-prod-s-57ea39c9-pvs8",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c"
+    },
+    {
+      "labels": {
+        "application": "one",
+        "cost-center": "one-production",
+        "environment": "production",
+        "goog-gke-cluster-id-base32": "rdriapsntzeazatfq2yra2s7whsuxyoedzpufqfn3rmh45rtffia",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "one-prod",
+        "goog-k8s-node-pool-name": "one-prod-runtime",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c/machineTypes/e2-standard-8",
+      "name": "gke-one-prod-one-prod-runtime-9a541134-dzga",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c"
+    },
+    {
+      "labels": {
+        "application": "one",
+        "cost-center": "one-staging",
+        "environment": "staging",
+        "goog-gke-cluster-id-base32": "ewt3glih6zb7xjomfnantbyymujkgwpwzx4e3cnianakanwpq7tq",
+        "goog-gke-cost-management": "",
+        "goog-gke-node": "",
+        "goog-gke-node-pool-provisioning-model": "on-demand",
+        "goog-k8s-cluster-location": "us-central1",
+        "goog-k8s-cluster-name": "one-stg",
+        "goog-k8s-node-pool-name": "one-stg-runtime",
+        "goog-terraform-provisioned": "true",
+        "managed-by": "opentofu"
+      },
+      "machineType": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c/machineTypes/e2-standard-4",
+      "name": "gke-one-stg-one-stg-runtime-f5a1c290-tvie",
+      "status": "RUNNING",
+      "zone": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-c"
+    }
+  ]
+}

@@ -90,3 +90,20 @@ with object-create and URL-signing permissions. Run a non-sensitive Boat or GCE
 command using the artifact publisher described in `scripts/cloud/README.md`.
 Verify that all four signed links open and expire after 24 hours. Mocked tests
 cover upload and comment behavior; a live signing check has not run.
+
+## GCE retirement decision (#10223)
+
+Review `docs/cloud/2026-10-02-orphan-retirement-review.md` and confirm a current
+owner and retain-or-stop decision for each of the nine running candidates.
+No machines were stopped or deleted. The issue explicitly requires this decision;
+its operational work is not complete.
+
+## Raw versus OpenAgents study (#10162)
+
+The standing study still needs implementation and new measured trials for raw
+Claude Code, raw Codex, the shipped default path, and a matched arm, including
+repository tasks and Terminal-Bench tasks. Existing matched Opus evidence is
+not evidence for the current shipped default path. This delegated run cannot
+launch another coding engine as a subprocess, so it did not execute raw-engine
+trials. Do not report a savings percentage or close the issue based on the
+historical pilot alone.
