@@ -164,6 +164,11 @@ pub fn offered(meta: Option<&crate::router::Meta>, computer_lane: bool) -> bool 
     if meta.is_some_and(|meta| meta.offers.contains(&Offer::RunCoder)) {
         return true;
     }
+    // A step of making a plugin (#10177) starts Coder only with its own Run
+    // Coder offer; every other step runs here, whatever the route read.
+    if meta.is_some_and(|meta| meta.plugin.is_some()) {
+        return false;
+    }
     // Opening Computers is the dispatch's own "Connect a computer" offer,
     // part of offering Coder, not another action.
     let other = meta.is_some_and(|meta| {
@@ -421,6 +426,21 @@ mod tests {
             ..Meta::default()
         };
         assert!(offered(Some(&offer), false));
+        // A plugin step on the work route runs here, not in Coder; only
+        // its own Run Coder offer starts Coder (#10177).
+        let running_tests = Meta {
+            plugin: Some(crate::plugin_flow::Flow::at(
+                crate::plugin_flow::Step::Run,
+                Some("hello".into()),
+            )),
+            ..dispatch_route()
+        };
+        assert!(!offered(Some(&running_tests), true));
+        let drafting = Meta {
+            offers: vec![Offer::RunCoder],
+            ..running_tests
+        };
+        assert!(offered(Some(&drafting), true));
     }
 
     /// The owner's gate run on 2026-10-01 (#10084): "do a test delegation
