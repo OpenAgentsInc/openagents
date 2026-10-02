@@ -1427,3 +1427,26 @@ environment file and unit did not change, and `cf299747f7` stays in
 iphone app?" twice served the `openagents.get-the-app` entry (`kb:product`)
 both times, and a five-turn limits and privacy thread answered every
 follow-up on the `grounded` tier with no plan, cap, account, or key invented.
+
+Release `37bd623fec` (2026-10-02 UTC) answers clear short questions and
+drops opener lines from replies
+([#10138](https://github.com/OpenAgentsInc/openagents/issues/10138),
+[#10139](https://github.com/OpenAgentsInc/openagents/issues/10139),
+[#10140](https://github.com/OpenAgentsInc/openagents/issues/10140)): a
+clarify reading loses to a sure prepared answer, a clarify on a later turn
+is the model told to read the earlier messages first, an opener line is
+never written into a reply (the progress line shows only while a slow
+judgment is pending), and `openagents.coder-engines` (version 2) names the
+`coder.providers` setting. It was built with `cargo zigbuild` as above,
+installed as `/opt/coder-worker/releases/37bd623fec` with `knowledge/` and
+`codebase-kb.gz` copied from `7b8cfce37c` (106 entries loaded), checked with
+`--check` ("the configuration is safe to deploy"), and put live by moving
+the `chat` symlink from `7b8cfce37c` (itself live briefly after
+`74875544bd`) and restarting `coder-worker-chat`; the environment file and
+unit did not change, and `74875544bd` stays in `releases/` for rollback.
+"what is this?" on openagents.com and in a scratch chat served `meta.who`
+(`meta.who.here` on a computer); "try that again, I stopped it too soon"
+after a reply was answered by the model twice; no reply started with "We'll
+look that up for you."; and "how do I make coder use claude code instead
+of codex?" answered with `openagents settings set coder.providers
+claude,codex,grok`.
