@@ -24,3 +24,13 @@ python3 scripts/cloud/publish-artifacts.py /path/run-ID \
 
 The publisher never uploads a whole task store or credential directory.
 Run its isolated tests with `python3 scripts/cloud/test_publish_artifacts.py`.
+
+## Coder host scripts
+
+- `coder-host-setup.sh`: Set up a Coder host: the machine a cloud Coder run builds and works on.
+- `build-coder-host-image.sh`: Bake the `oa-coder-host` GCE image: Debian 12, the toolchains, the engine CLIs (not logged in), a clone of OpenAgentsInc/openagents at origin/main and a warm Cargo target for it.
+- `coder-host-image-schedule.sh`: Create or update the daily `oa-coder-host` image bake.
+- `coder-host-bake-guest.sh`: The startup script of the temporary `oa-coder-host` builder VM.
+- `measure-coder-host-image.sh`: Measure an `oa-coder-host` image on a fresh VM, the way a pool host would start from it.
+
+`coder-host-setup.sh` is shared by the GCE image and the Boat template (`crates/boat-template`).
