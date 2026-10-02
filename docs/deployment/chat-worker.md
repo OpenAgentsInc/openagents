@@ -1465,3 +1465,20 @@ above, installed with `knowledge/` and `codebase-kb.gz` copied from
 symlink and restarting `coder-worker-chat`; `37bd623fec` stays for
 rollback. The live wallet eval (`crates/coder/tests/wallet_eval.rs`,
 `live_hosted_chat`) passed 11 of 11 terminal rows.
+
+Release `abdebf0ba6` (2026-10-02 UTC) makes coding agents opt-out
+([#10184](https://github.com/OpenAgentsInc/openagents/issues/10184)): a
+computer's `not_enabled` agent now means one the person turned off, the
+engines note tells the model never to send the user to Coder's settings to
+enable a signed-in agent, and `openagents.coder-engines` (version 3) says
+every signed-in agent is used with nothing to enable. It was built with
+`cargo zigbuild` on `coderos-4080` (from a clean worktree of that commit),
+installed as `/opt/coder-worker/releases/abdebf0ba6` with `knowledge/` from
+the repository (107 files, no `._*` files) and `codebase-kb.gz` copied from
+`315de9957c`, checked with `--check` ("the configuration is safe to
+deploy"), and put live by moving the `chat` symlink from `315de9957c` and
+restarting `coder-worker-chat`; the environment file and unit did not
+change, `coder-worker.service` and `/opt/coder-worker/current` were not
+touched, and `315de9957c` stays in `releases/` for rollback. The log names
+`router chat-router-v4@9d17e4d3e2d7 (Live)` and the product KB at 106
+entries.
