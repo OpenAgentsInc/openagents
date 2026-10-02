@@ -1,0 +1,12 @@
+{"v":1,"seq":1,"at":1791043200000,"type":"call","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","payer":"caller-7f3a"}
+{"v":1,"seq":2,"at":1791043200400,"type":"payment","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","amount_sats":31,"rail":"lightning","split":{"author":10,"openagents":21},"payer":"caller-7f3a"}
+{"v":1,"seq":3,"at":1791043200500,"type":"share","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","amount_sats":10,"split":{"author":10},"author":"author-51c2"}
+{"v":1,"seq":4,"at":1791043201200,"type":"call","resource":"plugin","plugin":"code-search","node":"plugin:code-search","payer":"caller-09be"}
+{"v":1,"seq":5,"at":1791043201900,"type":"run","resource":"coder","node":"coder","payer":"caller-09be"}
+{"v":1,"seq":6,"at":1791043202600,"type":"call","resource":"plugin","plugin":"repo-map","node":"plugin:repo-map","payer":"caller-c41d"}
+{"v":1,"seq":7,"at":1791043203000,"type":"payment","resource":"plugin","plugin":"repo-map","node":"plugin:repo-map","amount_sats":21,"rail":"balance","split":{"author":7,"openagents":14},"payer":"caller-c41d"}
+{"v":1,"seq":8,"at":1791043203100,"type":"share","resource":"plugin","plugin":"repo-map","node":"plugin:repo-map","amount_sats":7,"split":{"author":7},"author":"author-8e10"}
+{"v":1,"seq":9,"at":1791043203200,"type":"bonus","resource":"plugin","plugin":"repo-map","node":"plugin:repo-map","amount_sats":3,"split":{"bonus":3},"author":"author-8e10"}
+{"v":1,"seq":10,"at":1791043204000,"type":"call","resource":"hosted_resource","node":"engine:codex","payer":"caller-7f3a"}
+{"v":1,"seq":11,"at":1791043204400,"type":"payment","resource":"hosted_resource","node":"engine:codex","amount_sats":12,"rail":"lightning","split":{"provider":9,"openagents":3},"payer":"caller-7f3a"}
+{"v":1,"seq":12,"at":1791043205200,"type":"payout","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","amount_sats":40,"rail":"lightning","author":"author-51c2"}

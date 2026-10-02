@@ -43,6 +43,15 @@ source: docs/transcripts/200.md, the agent network growing
 ---
 
 layout: statement
+id: live
+scene: routes-live
+source: the public flow stream (openagents.com/api/flow, #10195): today's real payments, plugin calls, payouts, and runs on the route map, the same picture as openagents.com/live (#10197, #10198)
+
+—
+
+---
+
+layout: statement
 id: essays
 scene: essays
 source: docs/essays/2026-10-01-the-return-of-the-general-agent.md and docs/essays/2026-09-29-test-time-capabilities.md, read at build time and shown as GitHub link cards; a click opens each on GitHub

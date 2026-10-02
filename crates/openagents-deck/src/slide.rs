@@ -159,7 +159,9 @@ pub struct Slide {
     /// live route map alone, full slide, to look around; `routes`, the
     /// live route map with a scripted chat beside it; `routes-plugin`, the live route map as a person
     /// makes a plugin and others use it; `routes-future`, the route map
-    /// growing over the years; `essays`, two essays as GitHub link cards;
+    /// growing over the years; `routes-live`, the route map with today's
+    /// real payments, plugin calls, payouts, and runs from the public flow
+    /// stream; `essays`, two essays as GitHub link cards;
     /// `download`, openagents.com/download in a browser window. A host with
     /// no scene, and every capture,
     /// paints the plain background instead.
@@ -167,12 +169,13 @@ pub struct Slide {
 }
 
 /// The live scenes a slide may name (`scene: grid`).
-pub const SCENES: [&str; 7] = [
+pub const SCENES: [&str; 8] = [
     "grid",
     "map",
     "routes",
     "routes-plugin",
     "routes-future",
+    "routes-live",
     "essays",
     "download",
 ];

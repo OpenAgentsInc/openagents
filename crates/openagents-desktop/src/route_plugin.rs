@@ -458,12 +458,14 @@ impl RoutePlugin {
                     at: along(layout, &path, p / OUT),
                     color: REQUEST,
                     radius: 2.6,
+                    ring: false,
                 });
             } else if p > BACK {
                 out.push(Pulse {
                     at: along(layout, &path, 1.0 - (p - BACK) / (1.0 - BACK)),
                     color: PAYMENT,
                     radius: 2.8,
+                    ring: false,
                 });
             }
         }

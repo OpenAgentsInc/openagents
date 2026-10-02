@@ -304,12 +304,14 @@ impl RouteFuture {
                     at: along(layout, &path, p / 0.5),
                     color: REQUEST,
                     radius: 2.2,
+                    ring: false,
                 });
             } else if paid && p > 0.56 {
                 out.push(Pulse {
                     at: along(layout, &path, 1.0 - (p - 0.56) / 0.44),
                     color: PAYMENT,
                     radius: 2.4,
+                    ring: false,
                 });
             }
         }

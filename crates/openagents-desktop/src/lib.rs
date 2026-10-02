@@ -75,6 +75,8 @@ pub mod route_chat;
 #[cfg(feature = "app")]
 pub mod route_future;
 #[cfg(feature = "app")]
+pub mod route_live;
+#[cfg(feature = "app")]
 pub mod route_map;
 #[cfg(feature = "app")]
 pub mod route_plugin;

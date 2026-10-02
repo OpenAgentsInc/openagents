@@ -5,6 +5,7 @@
 use super::*;
 use openagents_desktop::fake::FakeHost;
 use openagents_desktop::model::{Agent, Screen};
+use openagents_desktop::route_live::FlowSource;
 use openagents_desktop::slides::{Control, NODE, OPEN, Phase, RESOURCE};
 use rust_native_desktop::input::{SurfaceInput, TextInput};
 use rust_native_desktop::layout::Op;
@@ -415,7 +416,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     // no chat, no lit route, and a click where the full-slide map draws
     // the router selects it and shows its details.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 8");
     app.tick(open);
     let _ = rust_native_desktop::capture(&mut app, WIDTH, HEIGHT, 2.0);
     {
@@ -459,14 +460,14 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert!(app.presentation().unwrap().chat().is_none());
     // Esc lets the selection go; the map stays on the slide.
     assert!(key(&mut app, "Escape", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "2 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "2 / 8");
     assert_eq!(
         app.presentation().unwrap().routes().unwrap().selected(),
         None
     );
     app.tick(open + Duration::from_secs(1));
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "3 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 8");
     let wake = app.tick(open).expect("the chat asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     // Mid route: the first message's pulse on its way to its answer, then
@@ -528,7 +529,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         Some("front"),
         "a click selects, and the slide stays"
     );
-    assert_eq!(app.presentation().unwrap().counter(), "3 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 8");
     // Tab steps to the next node; its details show on the slide.
     assert!(key(&mut app, "Tab", false, open));
     let selected = write(&mut app, "episode-289-routes-selected");
@@ -551,7 +552,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         },
     );
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "3 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "3 / 8");
     input(
         &mut app,
         SurfaceInput::Up {
@@ -566,7 +567,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     // Once let go, the arrow changes slides: the chat goes on as a
     // person makes a plugin on the same map.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "4 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "4 / 8");
     let wake = app.tick(open).expect("the story asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let story = |app: &DesktopApp| {
@@ -605,7 +606,7 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert_ne!(made.pixels, used.pixels);
     // The future plays next.
     assert!(key(&mut app, "ArrowRight", false, open));
-    assert_eq!(app.presentation().unwrap().counter(), "5 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "5 / 8");
     let wake = app.tick(open).expect("the future asks for frames");
     assert!(wake <= open + Duration::from_millis(40));
     let future = |app: &DesktopApp| app.presentation().unwrap().future().unwrap().label();
@@ -632,8 +633,95 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
     assert_ne!(early.pixels, late.pixels);
 }
 
-/// The Episode 289 deck's fifth slide shows two essays as GitHub link
-/// cards and its sixth shows openagents.com/download in a browser window.
+/// The Episode 289 deck's sixth slide shows today's real traffic on the
+/// route map from the public flow stream (#10198): replayed from the
+/// fixture, each event's dot runs on the frame clock and the totals count
+/// up; with the stream unreachable it says so and draws no dots. With
+/// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
+#[test]
+fn episode_289_shows_live_traffic_from_the_flow_stream() {
+    use openagents_desktop::route_live::{FIXTURE_PACE, Status, Totals, fixture};
+    let (mut app, start) = shell();
+    app.open_presentation("episode-289", start)
+        .expect("the deck opens");
+    let open = start + OPEN;
+    app.tick(open);
+    let events = fixture(include_str!(
+        "../../../docs/payments/fixtures/flow-stream.jsonl"
+    ));
+    app.presentation_mut()
+        .unwrap()
+        .set_flow_source(FlowSource::Fixture(events));
+    let directory = std::env::var_os("OPENAGENTS_SLIDES_CAPTURE").map(std::path::PathBuf::from);
+    let write = |app: &mut DesktopApp, name: &str| {
+        let (frame, scene) = rust_native_desktop::capture(app, WIDTH, HEIGHT, 2.0);
+        assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+        if let Some(directory) = &directory {
+            std::fs::create_dir_all(directory).unwrap();
+            std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap()).unwrap();
+        }
+        frame
+    };
+    for _ in 0..5 {
+        assert!(key(&mut app, "ArrowRight", false, open));
+    }
+    assert_eq!(app.presentation().unwrap().counter(), "6 / 8");
+    let wake = app.tick(open).expect("the live map asks for frames");
+    assert!(wake <= open + Duration::from_millis(40));
+    let live = |app: &DesktopApp| {
+        let live = app.presentation().unwrap().live().unwrap();
+        (live.status(), live.totals(), live.pulses().len())
+    };
+    // The first call's white dot on its way out.
+    app.tick(open + Duration::from_secs_f32(0.7));
+    let (status, _, dots) = live(&app);
+    assert_eq!(status, Status::Live);
+    assert!(dots >= 1);
+    let first = write(&mut app, "episode-289-live-a");
+    // Mid stream: payments, shares, and a bonus in the air.
+    app.tick(open + Duration::from_secs_f32(9.5));
+    let (_, _, dots) = live(&app);
+    assert!(dots >= 3, "{dots}");
+    let pulses = app.presentation().unwrap().live().unwrap().pulses();
+    assert!(pulses.iter().any(|p| p.ring), "the bonus wears its ring");
+    let mid = write(&mut app, "episode-289-live-b");
+    // The payout, and every total counted.
+    app.tick(open + Duration::from_secs_f32(FIXTURE_PACE * 11.0 + 1.8));
+    let (_, totals, _) = live(&app);
+    assert_eq!(
+        totals,
+        Totals {
+            received_sats: 64,
+            paid_out_sats: 40,
+            calls: 4,
+        }
+    );
+    let late = write(&mut app, "episode-289-live-c");
+    assert_ne!(first.pixels, mid.pixels);
+    assert_ne!(mid.pixels, late.pixels);
+    // A stream that can't be reached says so, and no dot is made up.
+    app.presentation_mut()
+        .unwrap()
+        .set_flow_source(FlowSource::Url("http://127.0.0.1:9/flow".into()));
+    let mut at = open + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        app.tick(at);
+        let (status, _, dots) = live(&app);
+        assert_eq!(dots, 0);
+        if status == Status::Unreachable || std::time::Instant::now() > deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        at += Duration::from_millis(50);
+    }
+    assert_eq!(live(&app).0, Status::Unreachable);
+    let down = write(&mut app, "episode-289-live-unreachable");
+    assert_ne!(down.pixels, late.pixels);
+}
+
+/// The Episode 289 deck's seventh slide shows two essays as GitHub link
+/// cards and its eighth shows openagents.com/download in a browser window.
 /// They come in on the frame clock; the pointer over a card brightens it,
 /// and a click on one asks for its link instead of changing slides. With
 /// `OPENAGENTS_SLIDES_CAPTURE` set, the captures are kept there.
@@ -656,10 +744,14 @@ fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
         }
         frame
     };
-    for _ in 0..5 {
+    // The live slide passes on the way: a fixture, never the network.
+    app.presentation_mut()
+        .unwrap()
+        .set_flow_source(FlowSource::Fixture(Vec::new()));
+    for _ in 0..6 {
         assert!(key(&mut app, "ArrowRight", false, open));
     }
-    assert_eq!(app.presentation().unwrap().counter(), "6 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "7 / 8");
     let wake = app.tick(open).expect("the cards ask for frames");
     assert!(wake <= open + Duration::from_millis(20));
     let entering = write(&mut app, "episode-289-essays-entering");
@@ -683,7 +775,7 @@ fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
     // A click on a card opens it, and the slide stays.
     input(&mut app, SurfaceInput::Down { x, y, shift: false });
     input(&mut app, SurfaceInput::Up { x, y });
-    assert_eq!(app.presentation().unwrap().counter(), "6 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "7 / 8");
     // A click beside the cards goes on.
     let (gap_x, gap_y) = (slide.x + 4.0, slide.y + 4.0);
     input(
@@ -694,7 +786,7 @@ fn episode_289_shows_the_essays_and_the_download_page_as_link_cards() {
             shift: false,
         },
     );
-    assert_eq!(app.presentation().unwrap().counter(), "7 / 7");
+    assert_eq!(app.presentation().unwrap().counter(), "8 / 8");
     app.tick(open + Duration::from_secs(4));
     app.tick(open + Duration::from_secs(6));
     write(&mut app, "episode-289-download");

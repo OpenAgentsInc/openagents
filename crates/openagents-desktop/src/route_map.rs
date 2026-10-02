@@ -174,6 +174,8 @@ pub struct Pulse {
     pub color: Color,
     /// Its radius, in points.
     pub radius: f32,
+    /// A ring around it: a bonus share (`scene: routes-live`).
+    pub ring: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -993,6 +995,20 @@ impl MapPage {
                 r,
                 pulse.color,
             );
+            if pulse.ring {
+                let ring = r * 2.4;
+                frame.stroke(
+                    PxRect {
+                        x: center.0 - ring,
+                        y: center.1 - ring,
+                        w: 2.0 * ring,
+                        h: 2.0 * ring,
+                    },
+                    ring,
+                    (0.9 * unit).max(1.0),
+                    pulse.color,
+                );
+            }
         }
         // Labels, thinned by zoom; a selection's neighbors are always named.
         // Each label sits outside its node, away from the front, so the

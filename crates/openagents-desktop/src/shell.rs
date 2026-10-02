@@ -320,6 +320,12 @@ impl DesktopApp {
         self.slides.as_ref()
     }
 
+    /// The slide viewer, to set it up in a test.
+    #[cfg(test)]
+    pub fn presentation_mut(&mut self) -> Option<&mut openagents_desktop::slides::Slides> {
+        self.slides.as_mut()
+    }
+
     /// Advances the slide viewer's animation to `now`, drops it once it
     /// has closed, and says when it next wants a frame.
     fn tick_slides(&mut self, now: Instant) -> Option<Instant> {

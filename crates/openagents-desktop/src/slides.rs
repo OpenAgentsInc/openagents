@@ -29,7 +29,9 @@
 //! request no plugin serves, the plugin made with the Gym's interview, its
 //! XP, and others using it ([`RoutePlugin`]). `scene: routes-future` shows
 //! the same view fed a growing model instead ([`RouteFuture`]), on the
-//! frame clock. `scene: essays` and `scene: download` show link cards in
+//! frame clock. `scene: routes-live` shows that view fed today's real
+//! payments, plugin calls, payouts, and runs from the public flow stream
+//! ([`RouteLive`]), and says so when the stream can't be reached. `scene: essays` and `scene: download` show link cards in
 //! the slide's place ([`Embeds`]): two essays as GitHub file previews, and
 //! openagents.com/download in a browser window. A click on a card opens its
 //! link in the browser ([`Slides::take_link`]); a click elsewhere on the
@@ -37,6 +39,7 @@
 
 use crate::route_chat::RouteChat;
 use crate::route_future::RouteFuture;
+use crate::route_live::{FlowSource, RouteLive};
 use crate::route_map::MapPage;
 use crate::route_plugin::RoutePlugin;
 use crate::slide_embeds::Embeds;
@@ -71,6 +74,8 @@ pub const ROUTES: &str = "routes";
 pub const ROUTES_PLUGIN: &str = "routes-plugin";
 /// The scene that shows the route map growing into the future.
 pub const ROUTES_FUTURE: &str = "routes-future";
+/// The scene that shows today's real traffic on the route map.
+pub const ROUTES_LIVE: &str = "routes-live";
 
 /// The margin around the viewer's card, in points, when not full screen.
 const MARGIN: f32 = 40.0;
@@ -127,6 +132,10 @@ pub struct Slides {
     routes: Option<(MapPage, String)>,
     /// The growing map a `scene: routes-future` slide shows, once shown.
     future: Option<RouteFuture>,
+    /// Today's traffic a `scene: routes-live` slide shows, once shown.
+    live: Option<RouteLive>,
+    /// Where that traffic comes from; `None` is [`FlowSource::from_env`].
+    flow: Option<FlowSource>,
     /// The scripted chat beside the live route map, once shown.
     chat: Option<RouteChat>,
     /// The plugin story on the live route map, once shown.
@@ -170,6 +179,8 @@ impl Slides {
             slide_at: None,
             routes: None,
             future: None,
+            live: None,
+            flow: None,
             chat: None,
             plugin: None,
             embeds: None,
@@ -241,6 +252,31 @@ impl Slides {
 
     fn on_future(&self) -> bool {
         self.viewer.scene() == Some(ROUTES_FUTURE)
+    }
+
+    /// Today's traffic, once its slide has shown.
+    pub fn live(&self) -> Option<&RouteLive> {
+        self.live.as_ref()
+    }
+
+    fn on_live(&self) -> bool {
+        self.viewer.scene() == Some(ROUTES_LIVE)
+    }
+
+    /// Where the `routes-live` scene's events come from: a fixture for a
+    /// capture or a test, or another stream. Set before its slide shows.
+    pub fn set_flow_source(&mut self, source: FlowSource) {
+        self.flow = Some(source);
+        self.live = None;
+    }
+
+    /// Today's traffic, connected the first time its slide shows.
+    fn live_scene(&mut self) -> &mut RouteLive {
+        let reduce = self.reduce_motion;
+        let flow = &self.flow;
+        self.live.get_or_insert_with(|| {
+            RouteLive::new(flow.clone().unwrap_or_else(FlowSource::from_env), reduce)
+        })
     }
 
     /// The plugin story, once its slide has shown.
@@ -350,8 +386,14 @@ impl Slides {
         {
             return Some(now + FRAME);
         }
-        if (self.on_future() || self.on_chat() || self.on_plugin()) && !self.reduce_motion {
+        if (self.on_future() || self.on_chat() || self.on_plugin() || self.on_live())
+            && !self.reduce_motion
+        {
             return Some(now + FUTURE_FRAME);
+        }
+        if self.on_live() {
+            // Still, but the stream's news still shows.
+            return Some(now + Duration::from_millis(250));
         }
         self.routes().and_then(|page| page.next_wake(now))
     }
@@ -407,12 +449,14 @@ impl Slides {
     pub fn version(&self) -> u64 {
         let routes = self.routes().map_or(0, MapPage::version);
         let future = self.future.as_ref().map_or(0, RouteFuture::version);
+        let live = self.live.as_ref().map_or(0, RouteLive::version);
         let plugin = self.plugin.as_ref().map_or(0, RoutePlugin::version);
         let embeds = self.embeds.as_ref().map_or(0, Embeds::version);
         self.version
             .wrapping_add(self.viewer.version())
             .wrapping_add(routes)
             .wrapping_add(future)
+            .wrapping_add(live)
             .wrapping_add(plugin)
             .wrapping_add(embeds)
     }
@@ -433,6 +477,10 @@ impl Slides {
         } else if let Some(future) = &mut self.future {
             // Off its slide: the next visit plays from today.
             future.reset();
+        }
+        if self.on_live() && self.phase != Phase::Closed {
+            self.live_scene().advance(now);
+            moved = true;
         }
         if self.on_plugin() && self.phase != Phase::Closed {
             let story = self.plugin_story();
@@ -859,6 +907,8 @@ impl Slides {
             self.embeds
                 .get_or_insert_with(|| Embeds::new(reduce))
                 .paint(frame, px(layout.slide), scene);
+        } else if self.on_live() {
+            self.live_scene().paint(frame, px(layout.slide), unit);
         } else if self.on_future() {
             let reduce = self.reduce_motion;
             self.future
