@@ -99,7 +99,9 @@ impl Runner {
             }
         };
         let pid = std::process::id();
-        State::update(&self.layout, "disk", |state| state.runner = Some(pid));
+        for rule in self.rules() {
+            State::update(&self.layout, &rule.id, |state| state.runner = Some(pid));
+        }
         std::thread::sleep(START_DELAY);
         self.check(Cause::HostStart);
         // No interval trigger, no interval checks. The rule is read again
@@ -146,11 +148,21 @@ impl Runner {
         file.try_lock().ok().map(|()| file)
     }
 
-    /// The rule's interval, if it has an `Interval` trigger.
+    /// The rules this computer runs: the built-in one unless it is off,
+    /// and each enabled plugin's. Read afresh on every check, so turning a
+    /// plugin on or off takes effect at the next one.
+    fn rules(&self) -> Vec<Rule> {
+        store::list(&self.layout)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|rule| rule.enabled)
+            .collect()
+    }
+
+    /// The shortest interval of the rules that run, if any has an
+    /// `Interval` trigger.
     fn interval(&self) -> Option<u64> {
-        store::load(&self.layout, "disk")
-            .ok()
-            .and_then(|rule| rule.interval())
+        self.rules().iter().filter_map(Rule::interval).min()
     }
 
     /// Whether a task ended since the last look.
@@ -189,19 +201,19 @@ impl Runner {
             return;
         };
         let result = run::run(&self.env(), &rule, Cause::Manual, false, true);
-        self.finish(&rule.id, result);
+        self.finish(&rule, result);
     }
 
     fn check(&self, cause: Cause) {
-        let Ok(rule) = store::load(&self.layout, "disk") else {
-            return;
-        };
-        if let Some(result) = check(&self.env(), &rule, cause) {
-            self.finish(&rule.id, result);
+        for rule in self.rules() {
+            if let Some(result) = check(&self.env(), &rule, cause) {
+                self.finish(&rule, result);
+            }
         }
     }
 
-    fn finish(&self, id: &str, result: Result<Report, String>) {
+    fn finish(&self, rule: &Rule, result: Result<Report, String>) {
+        let id = rule.id.as_str();
         let report = match result {
             Ok(report) => report,
             Err(why) => {
@@ -210,6 +222,12 @@ impl Runner {
             }
         };
         crate::view::remember(&self.layout, id, &report);
+        // A plugin's rule notifies only when it asked to; its result is
+        // still recorded and listed.
+        if matches!(rule.origin, crate::rule::Origin::Plugin { .. }) && !rule.needs.notify {
+            State::update(&self.layout, id, |state| state.notice = None);
+            return;
+        }
         let notice = report.notice.clone();
         if let Some(line) = notice {
             (self.say)(&line);

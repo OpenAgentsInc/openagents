@@ -37,13 +37,51 @@ pub struct Rule {
     pub classes: Classes,
     pub safety: Safety,
     pub cooldown_secs: u64,
+    /// What a plugin's rule asks the host for. Empty for the built-in
+    /// rule, which the host trusts; a plugin's rule is admitted only
+    /// within what it names ([`crate::plugins::admit`]).
+    #[serde(default, skip_serializing_if = "Needs::is_empty")]
+    pub needs: Needs,
+}
+
+/// What a plugin's background rule needs from the host. The host grants
+/// no more: an action whose class is not in `delete` refuses the rule, and
+/// every safety check stays the host's.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Needs {
+    /// The candidate classes the rule may delete (the `fs.delete`
+    /// capability, limited to the host's classes).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delete: Vec<Class>,
+    /// Read the Coder task store (which tasks ended).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tasks: bool,
+    /// Send notifications.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notify: bool,
+}
+
+impl Needs {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.delete.is_empty() && !self.tasks && !self.notify
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Origin {
     BuiltIn,
-    File { path: String },
+    File {
+        path: String,
+    },
+    /// Contributed by an installed plugin, `KEY:SLUG` at `version`. Set by
+    /// the host when it admits the rule, never by the plugin.
+    Plugin {
+        plugin: String,
+        version: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,6 +327,7 @@ pub fn disk() -> Rule {
             ],
         },
         cooldown_secs: 600,
+        needs: Needs::default(),
     }
 }
 
@@ -339,9 +378,16 @@ impl Rule {
         if self.schema != SCHEMA {
             return Err(format!("schema must be {SCHEMA}"));
         }
-        if built_in(&self.id).is_none() {
+        let plugin = matches!(self.origin, Origin::Plugin { .. });
+        if !plugin && built_in(&self.id).is_none() {
             return Err(format!(
-                "`{}` is not a rule this host runs; phase 1 runs `disk` only",
+                "`{}` is not a rule this host runs: the built-in `disk`, or a rule an enabled plugin brings",
+                self.id
+            ));
+        }
+        if plugin && built_in(&self.id).is_some() {
+            return Err(format!(
+                "a plugin cannot replace the built-in rule `{}`",
                 self.id
             ));
         }

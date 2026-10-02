@@ -155,8 +155,16 @@ pub struct Package {
     /// [`Trust::Untrusted`], never assumed.
     #[serde(default)]
     pub trusted_publishers: Vec<String>,
-    /// The program this package exists to carry, pinned.
-    pub program: Reference,
+    /// The program this package carries, pinned. A plugin that only runs
+    /// in the background (its `background` rules) carries none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<Reference>,
+    /// The background rules the package brings, pinned: rule documents
+    /// under `background/`, which the host runs only while the plugin is
+    /// enabled on that computer and only within what it grants
+    /// (`background::plugins`, docs/background/2026-10-02-disk-cleanup-plugin.md).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub background: Vec<Reference>,
     /// The question sets the program's `decide` steps name, pinned.
     #[serde(default)]
     pub questions: Vec<Reference>,
@@ -222,7 +230,13 @@ impl Package {
         if !is_slug(&self.slug) {
             return Err(format!("slug {:?} is not a package slug", self.slug));
         }
-        check(&self.program, "the program", is_slug)?;
+        match &self.program {
+            Some(program) => check(program, "the program", is_slug)?,
+            None if self.background.is_empty() => {
+                return Err("a package carries a program, background rules, or both".into());
+            }
+            None => {}
+        }
         for (what, references, grammar) in [
             (
                 "questions",
@@ -232,6 +246,7 @@ impl Package {
             ("sources", &self.sources, is_slug),
             ("policies", &self.policies, is_slug),
             ("capabilities", &self.capabilities, is_slug),
+            ("background", &self.background, is_slug),
         ] {
             let mut seen = Vec::new();
             for reference in references {
@@ -395,8 +410,9 @@ pub struct Lock {
     pub slug: String,
     pub publisher: String,
     pub provenance: String,
-    /// The program, pinned.
-    pub program: Pin,
+    /// The program, pinned, when the package carries one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<Pin>,
     /// The named components, pinned, keyed by the name each resolved
     /// under.
     #[serde(default)]
@@ -407,6 +423,9 @@ pub struct Lock {
     pub policies: BTreeMap<String, Pin>,
     #[serde(default)]
     pub capabilities: BTreeMap<String, Pin>,
+    /// The background rules, pinned.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub background: BTreeMap<String, Pin>,
     /// The packages this one needed, each resolved by the same rules.
     #[serde(default)]
     pub dependencies: BTreeMap<String, Locked>,
@@ -428,15 +447,15 @@ impl Lock {
     #[must_use]
     pub fn pins(&self) -> BTreeMap<String, String> {
         let mut pins = BTreeMap::new();
-        pins.insert(
-            format!("programs/{}", self.slug),
-            self.program.digest.clone(),
-        );
+        if let Some(program) = &self.program {
+            pins.insert(format!("programs/{}", self.slug), program.digest.clone());
+        }
         for (dir, list) in [
             ("questions", &self.questions),
             ("sources", &self.sources),
             ("policies", &self.policies),
             ("capabilities", &self.capabilities),
+            ("background", &self.background),
         ] {
             for (name, pin) in list {
                 pins.insert(format!("{dir}/{name}"), pin.digest.clone());
@@ -911,11 +930,16 @@ fn resolve_tree(
     }
     visiting.push(package.slug.clone());
     let attempted = (|| {
-        let program = pin(root, "programs", "slug", &package.program)?;
+        let program = package
+            .program
+            .as_ref()
+            .map(|program| pin(root, "programs", "slug", program))
+            .transpose()?;
         let questions = pins(root, "questions", "id", &package.questions)?;
         let sources = pins(root, "sources", "slug", &package.sources)?;
         let policies = pins(root, "policies", "slug", &package.policies)?;
         let capabilities = pins(root, "capabilities", "slug", &package.capabilities)?;
+        let background = pins(root, "background", "id", &package.background)?;
         let mut dependencies = BTreeMap::new();
         for dep in &package.requires {
             let locked = depend(root, package, dep, visiting, revoked)?;
@@ -931,6 +955,7 @@ fn resolve_tree(
             sources,
             policies,
             capabilities,
+            background,
             dependencies,
         })
     })();
@@ -988,7 +1013,8 @@ mod tests {
             publisher: "openagents".to_string(),
             provenance: "local file".to_string(),
             trusted_publishers: Vec::new(),
-            program: program.clone(),
+            program: Some(program.clone()),
+            background: Vec::new(),
             questions: Vec::new(),
             sources: Vec::new(),
             policies: Vec::new(),
@@ -1064,9 +1090,13 @@ mod tests {
         assert_eq!(lock.slug, "burn-down");
         assert_eq!(lock.publisher, "openagents");
         assert_eq!(lock.provenance, "repository");
-        assert_eq!(lock.program.found, "programs/burn-down.json");
         assert_eq!(
-            lock.program.digest, package.program.digest,
+            lock.program.as_ref().unwrap().found,
+            "programs/burn-down.json"
+        );
+        assert_eq!(
+            lock.program.as_ref().unwrap().digest,
+            package.program.as_ref().unwrap().digest,
             "the pin is the digest the file's bytes verified to"
         );
         assert_eq!(
@@ -1090,7 +1120,7 @@ mod tests {
             "burn-down",
             &reference(&root, "programs/burn-down.json", "burn-down"),
         );
-        package.program.digest = "0".repeat(64);
+        package.program.as_mut().unwrap().digest = "0".repeat(64);
 
         let refusal = Package::resolve(&root, &package).unwrap_err();
         let Refusal::Digest {
@@ -1406,7 +1436,7 @@ mod tests {
             r#"{"v":1,"slug":"main","steps":[{"name":"one","kind":"query","bounds":{"limit":1}}]}"#,
         );
         let mut stale = package("root-pkg", &program);
-        stale.program.digest = resolved.program.digest.clone();
+        stale.program.as_mut().unwrap().digest = resolved.program.as_ref().unwrap().digest.clone();
         let refusal = Package::resolve(dir.path(), &stale).unwrap_err();
         assert!(matches!(refusal, Refusal::Digest { .. }), "{refusal}");
     }

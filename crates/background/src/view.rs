@@ -19,6 +19,9 @@ pub struct Row {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_until: Option<u64>,
     pub state: RuleState,
+    /// The plugin that brings the rule (`KEY:SLUG`), when one does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
     /// Why the rule could not be read, when it could not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -77,6 +80,10 @@ pub fn list(layout: &Layout) -> Vec<Row> {
         .into_iter()
         .map(|rule| match rule {
             Ok(rule) => Row {
+                plugin: match &rule.origin {
+                    crate::rule::Origin::Plugin { plugin, .. } => Some(plugin.clone()),
+                    _ => None,
+                },
                 state: state.rules.get(&rule.id).cloned().unwrap_or_default(),
                 id: rule.id.clone(),
                 name: rule.name.clone(),
@@ -86,15 +93,16 @@ pub fn list(layout: &Layout) -> Vec<Row> {
                 paused_until: rule.paused_until,
                 error: None,
             },
-            Err(error) => Row {
-                id: "disk".into(),
-                name: "Disk cleanup".into(),
+            Err((id, error)) => Row {
+                name: id.clone(),
                 version: 0,
                 digest: String::new(),
                 enabled: false,
                 paused_until: None,
-                state: state.rules.get("disk").cloned().unwrap_or_default(),
+                state: state.rules.get(&id).cloned().unwrap_or_default(),
+                plugin: None,
                 error: Some(error),
+                id,
             },
         })
         .collect()

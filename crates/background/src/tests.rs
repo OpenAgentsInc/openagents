@@ -39,7 +39,13 @@ impl Processes for Idle {
     }
 }
 
+/// One home at a time: a test that spawns a process (git, a child holding
+/// a file) forks while another test's lock file is open, and the forked
+/// child keeps that lock for a moment after the test drops it.
+static SERIAL: Mutex<()> = Mutex::new(());
+
 struct Home {
+    _serial: std::sync::MutexGuard<'static, ()>,
     _dir: tempfile::TempDir,
     layout: Layout,
     tasks: Mutex<Vec<TaskFact>>,
@@ -47,10 +53,14 @@ struct Home {
 
 impl Home {
     fn new() -> Self {
+        let serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let layout = Layout::new(dir.path(), None).unwrap();
         std::fs::create_dir_all(&layout.openagents).unwrap();
         Self {
+            _serial: serial,
             _dir: dir,
             layout,
             tasks: Mutex::new(Vec::new()),
@@ -676,4 +686,200 @@ fn no_triggers_means_no_automatic_runs_but_a_manual_run_still_works() {
     let report = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
     assert!(!ended.exists());
     assert_eq!(report.record.unwrap().trigger, Cause::Manual);
+}
+
+// Plugins' background rules (docs/background/2026-10-02-disk-cleanup-plugin.md).
+
+/// The built-in disk rule as a plugin's rule document asks for it.
+fn plugin_rule(id: &str) -> Rule {
+    let mut rule = disk();
+    rule.id = id.into();
+    rule.name = "Disk cleanup".into();
+    rule.origin = crate::rule::Origin::Plugin {
+        plugin: "whatever the file says".into(),
+        version: "9".into(),
+    };
+    rule.needs = crate::rule::Needs {
+        delete: crate::rule::Class::ALL.to_vec(),
+        tasks: true,
+        notify: true,
+    };
+    rule
+}
+
+/// Install a plugin pinning `rule` under the home's extensions.
+fn install(home: &Home, slug: &str, rule: &Rule) -> PathBuf {
+    let dir = home
+        .layout
+        .extensions()
+        .join(crate::plugins::LOCAL_KEY)
+        .join(slug)
+        .join("0.1.0");
+    std::fs::create_dir_all(dir.join("background")).unwrap();
+    let text = serde_json::to_string_pretty(rule).unwrap();
+    std::fs::write(dir.join(format!("background/{}.json", rule.id)), &text).unwrap();
+    let record = serde_json::json!({
+        "v": 1, "slug": slug, "name": "Disk cleanup", "summary": "Keeps the disk from filling up.",
+        "version": "0.1.0", "publisher": "",
+        "background": [{"name": rule.id, "digest": crate::plugins::digest(&text)}],
+    });
+    std::fs::write(
+        dir.join("package.json"),
+        serde_json::to_string_pretty(&record).unwrap(),
+    )
+    .unwrap();
+    dir
+}
+
+fn ids(home: &Home) -> Vec<String> {
+    crate::store::list(&home.layout)
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|rule| rule.id)
+        .collect()
+}
+
+#[test]
+fn an_installed_plugin_is_off_until_turned_on_and_runs_nothing() {
+    let home = Home::new();
+    install(&home, "disk-cleanup", &plugin_rule("disk-cleanup"));
+    let installed = crate::plugins::installed(&home.layout);
+    assert_eq!(installed.len(), 1);
+    assert!(!installed[0].enabled);
+    assert_eq!(ids(&home), vec!["disk"]);
+    assert!(crate::store::load(&home.layout, "disk-cleanup").is_err());
+}
+
+#[test]
+fn an_enabled_plugin_rule_plans_and_runs_like_the_built_in_and_disabling_stops_it() {
+    let home = Home::new();
+    install(&home, "disk-cleanup", &plugin_rule("disk-cleanup"));
+    let targets = home.layout.targets();
+    let ended = targets.join("openagents-aaaa-1111");
+    let running = targets.join("openagents-bbbb-2222");
+    target(&ended, 4096);
+    target(&running, 4096);
+    for n in 0..2 {
+        let path = home
+            .layout
+            .agent_dir(&format!("openagents-target-agent{n}"));
+        target(&path, 50_000);
+        age(&path, 10);
+    }
+    let worktrees = home.layout.worktrees();
+    home.task("aaaa", &worktrees.join("a"), &ended, true);
+    home.task("bbbb", &worktrees.join("b"), &running, false);
+
+    let on = crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
+    assert!(on.enabled);
+    assert_eq!(ids(&home), vec!["disk", "disk-cleanup"]);
+    let rule = crate::store::load(&home.layout, "disk-cleanup").unwrap();
+    // The host set the origin, not the file.
+    assert_eq!(
+        rule.origin,
+        crate::rule::Origin::Plugin {
+            plugin: format!("{}:disk-cleanup", crate::plugins::LOCAL_KEY),
+            version: "0.1.0".into(),
+        }
+    );
+    let facts = home.facts();
+    let volumes = low();
+    let env = env(&home, &facts, &volumes, &Idle);
+    let built_in = run::run(&env, &disk(), Cause::Manual, true, true).unwrap();
+    let from_plugin = run::run(&env, &rule, Cause::Manual, true, true).unwrap();
+    assert!(!planned(&built_in.plan).is_empty());
+    assert_eq!(planned(&built_in.plan), planned(&from_plugin.plan));
+    let real = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
+    assert_eq!(planned(&real.plan), planned(&from_plugin.plan));
+    assert!(!ended.exists());
+    assert!(running.exists());
+    assert_eq!(real.record.unwrap().rule, "disk-cleanup");
+
+    // Pausing it from the computer keeps it the plugin's rule.
+    crate::view::pause(&home.layout, "disk-cleanup", None, false).unwrap();
+    assert!(
+        !crate::store::load(&home.layout, "disk-cleanup")
+            .unwrap()
+            .enabled
+    );
+    crate::view::pause(&home.layout, "disk-cleanup", None, true).unwrap();
+
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", false).unwrap();
+    assert_eq!(ids(&home), vec!["disk"]);
+    assert!(crate::store::load(&home.layout, "disk-cleanup").is_err());
+}
+
+#[test]
+fn the_host_refuses_a_plugin_rule_that_asks_for_more_than_it_grants() {
+    let refused = |change: &dyn Fn(&mut Rule), why: &str| {
+        let home = Home::new();
+        let mut rule = plugin_rule("disk-cleanup");
+        change(&mut rule);
+        install(&home, "disk-cleanup", &rule);
+        let error = crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap_err();
+        assert!(error.contains(why), "{error}");
+        assert!(crate::plugins::enabled(&home.layout).is_empty());
+        assert_eq!(ids(&home), vec!["disk"]);
+    };
+    refused(
+        &|rule| rule.safety.allow.push("~/Documents".into()),
+        "outside the places the host cleans",
+    );
+    refused(
+        &|rule| rule.safety.allow.push("~/.openagents/../Documents".into()),
+        "`~/.openagents/../Documents`",
+    );
+    refused(
+        &|rule| rule.classes.agent_targets = vec!["~/*".into()],
+        "outside the places the host cleans",
+    );
+    refused(
+        &|rule| rule.needs.delete = vec![crate::rule::Class::Incremental],
+        "without asking for them",
+    );
+    refused(&|rule| rule.needs.tasks = false, "need the task store");
+    refused(
+        &|rule| rule.id = "disk".into(),
+        "cannot replace the built-in",
+    );
+    refused(
+        &|rule| rule.triggers = vec![crate::rule::Trigger::Interval { every_secs: 5 }],
+        "a minute apart",
+    );
+
+    // Bytes that moved after the record pinned them are refused.
+    let home = Home::new();
+    let dir = install(&home, "disk-cleanup", &plugin_rule("disk-cleanup"));
+    let mut widened = plugin_rule("disk-cleanup");
+    widened.safety.allow.push("/".into());
+    std::fs::write(
+        dir.join("background/disk-cleanup.json"),
+        serde_json::to_string_pretty(&widened).unwrap(),
+    )
+    .unwrap();
+    let error = crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap_err();
+    assert!(error.contains("changed since it was pinned"), "{error}");
+}
+
+#[test]
+fn an_edit_on_this_computer_cannot_widen_a_plugin_rule_and_its_files_are_never_candidates() {
+    let home = Home::new();
+    install(&home, "disk-cleanup", &plugin_rule("disk-cleanup"));
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
+    let mut rule = crate::store::load(&home.layout, "disk-cleanup").unwrap();
+    rule.safety.allow.push("~/Documents".into());
+    rule.needs.delete.clear();
+    assert!(crate::store::save(&home.layout, &rule).is_err());
+    // Written by hand, it does not load either.
+    std::fs::create_dir_all(home.layout.rules()).unwrap();
+    std::fs::write(
+        home.layout.rules().join("disk-cleanup.json"),
+        serde_json::to_vec(&rule).unwrap(),
+    )
+    .unwrap();
+    assert!(crate::store::load(&home.layout, "disk-cleanup").is_err());
+    std::fs::remove_file(home.layout.rules().join("disk-cleanup.json")).unwrap();
+    // Installed plugins are on the host's own deny list.
+    let deny = home.layout.deny(&disk());
+    assert!(deny.contains(&home.layout.extensions()));
 }

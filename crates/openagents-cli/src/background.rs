@@ -1,6 +1,7 @@
 //! `openagents background`: the host's background rules
-//! (docs/background/2026-10-02-background-processes.md). Phase 1 has one,
-//! the disk cleanup monitor `disk`. Every command reads and writes
+//! (docs/background/2026-10-02-background-processes.md): the built-in disk
+//! cleanup monitor `disk`, and the rules of plugins turned on here
+//! (docs/background/2026-10-02-disk-cleanup-plugin.md). Every command reads and writes
 //! `~/.openagents/background`; `run` runs in this process under the run
 //! lock, so it works with or without a host.
 
@@ -29,8 +30,10 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
                   The audit log; --stats totals bytes freed by week and class.
   undo RUN        Recreate the worktrees that run removed.
 Every command takes --tasks DIR (the Coder task store, default
-~/.openagents/tasks). The disk rule runs in the host on its own; these
-commands look at it, change it, or run it now.";
+~/.openagents/tasks). Rules run in the host on their own: the built-in
+disk rule, and each rule a plugin brings while the plugin is on here
+(openagents plugin enable). These commands look at them, change them, or
+run one now.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).

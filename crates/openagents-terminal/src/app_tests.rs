@@ -852,7 +852,35 @@ fn plugin(name: &str, installed: bool) -> crate::Plugin {
         name: name.into(),
         about: "does a thing".into(),
         key: installed.then(|| format!("/plugins/{name}")),
+        on: None,
+        id: None,
     }
+}
+
+/// Space on an installed plugin turns it on or off on this computer; on a
+/// published one it does nothing.
+#[test]
+fn space_turns_an_installed_plugin_on_or_off() {
+    let mut app = app();
+    let mut cleanup = plugin("disk-cleanup", true);
+    cleanup.on = Some(false);
+    cleanup.id = Some("00:disk-cleanup".into());
+    app.overlay = Some(Overlay::Plugins {
+        rows: vec![plugin("elsewhere", false), cleanup],
+        selected: 0,
+    });
+    assert!(app.key(&key(KeyCode::Char(' ')), 80).is_empty());
+    assert!(app.overlay.is_some());
+    app.key(&key(KeyCode::Down), 80);
+    assert_eq!(
+        app.key(&key(KeyCode::Char(' ')), 80),
+        vec![Action::TurnPlugin {
+            id: "00:disk-cleanup".into(),
+            name: "disk-cleanup".into(),
+            on: true,
+        }]
+    );
+    assert!(app.overlay.is_none());
 }
 
 /// `/plugins` lists them; Enter on an installed one takes the next message

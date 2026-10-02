@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Background processes: durable rules the host runs without a conversation, starting with the disk cleanup monitor (docs/background)."
 
 [dependencies]
+atif = { path = "../atif" }
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

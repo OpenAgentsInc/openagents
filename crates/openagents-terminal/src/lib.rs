@@ -66,6 +66,11 @@ pub struct Plugin {
     /// What [`Extras::run_plugin`] is told, when it is installed here and
     /// runs from the screen; `None` for one only published.
     pub key: Option<String>,
+    /// Whether it is on on this computer, for one installed here; what
+    /// [`Extras::turn_plugin`] is told is `id`.
+    pub on: Option<bool>,
+    /// The installed plugin's `KEY:SLUG`.
+    pub id: Option<String>,
 }
 
 /// What `/settings` shows, and changes in place.
@@ -125,6 +130,15 @@ pub trait Extras: Send + Sync {
     /// It did not run or did not finish, in words for the person.
     fn run_plugin(&self, key: &str, request: &str, folder: Option<&Path>)
     -> Result<String, String>;
+    /// Turn the installed plugin `id` on or off on this computer; the
+    /// words to show.
+    ///
+    /// # Errors
+    /// It could not (the host refused its background rule, say), in words
+    /// for the person.
+    fn turn_plugin(&self, _id: &str, _on: bool) -> Result<String, String> {
+        Err("Plugins cannot be turned on here.".into())
+    }
     /// Copy this computer's Claude Code and Codex sessions into the host's
     /// threads, each once. The words to show.
     ///

@@ -31,33 +31,68 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// The rule `id`: its file when there is one, else the built-in.
+/// The rule `id`: its file when there is one, else the built-in, else the
+/// rule an enabled plugin brings. A plugin's rule edited here (paused, or
+/// changed with `edit`) is admitted again against the plugin, so an edit
+/// never widens what the host grants it; a disabled plugin's rule is no
+/// rule at all.
 ///
 /// # Errors
-/// No such rule, or its file does not parse or validate.
+/// No such rule, or its file does not parse, validate, or admit.
 pub fn load(layout: &Layout, id: &str) -> Result<Rule, String> {
+    let plugin = if rule::built_in(id).is_some() {
+        None
+    } else {
+        match crate::plugins::rule(layout, id) {
+            Some(Ok((plugin, rule))) => Some((plugin, rule)),
+            Some(Err(why)) => return Err(why),
+            None => return Err(format!("no rule `{id}`")),
+        }
+    };
     let path = layout.rules().join(format!("{id}.json"));
     match std::fs::read(&path) {
         Ok(bytes) => {
             let rule: Rule = serde_json::from_slice(&bytes)
                 .map_err(|error| format!("{}: {error}", path.display()))?;
-            rule.validate()?;
             if rule.id != id {
                 return Err(format!("{} holds rule `{}`", path.display(), rule.id));
             }
-            Ok(rule)
+            match plugin {
+                None => {
+                    rule.validate()?;
+                    Ok(rule)
+                }
+                Some((plugin, from_plugin)) => {
+                    // The plugin's needs, not the edited file's.
+                    let mut edited = rule.clone();
+                    edited.needs = from_plugin.needs;
+                    let mut admitted = crate::plugins::admit(edited, &plugin)?;
+                    admitted.enabled = rule.enabled;
+                    admitted.paused_until = rule.paused_until;
+                    admitted.version = rule.version;
+                    Ok(admitted)
+                }
+            }
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            rule::built_in(id).ok_or_else(|| format!("no rule `{id}`"))
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => match plugin {
+            Some((_, rule)) => Ok(rule),
+            None => rule::built_in(id).ok_or_else(|| format!("no rule `{id}`")),
+        },
         Err(error) => Err(format!("{}: {error}", path.display())),
     }
 }
 
-/// Every rule: phase 1 has the built-in `disk` only.
+/// Every rule: the built-in `disk`, then each enabled plugin's rules.
 #[must_use]
-pub fn list(layout: &Layout) -> Vec<Result<Rule, String>> {
-    vec![load(layout, "disk")]
+pub fn list(layout: &Layout) -> Vec<Result<Rule, (String, String)>> {
+    let mut rules = vec![load(layout, "disk").map_err(|why| ("disk".to_owned(), why))];
+    for admitted in crate::plugins::rules(layout) {
+        rules.push(match admitted {
+            Ok(rule) => load(layout, &rule.id).map_err(|why| (rule.id.clone(), why)),
+            Err(failed) => Err(failed),
+        });
+    }
+    rules
 }
 
 /// Save a validated rule as a new version of its file.
@@ -66,6 +101,18 @@ pub fn list(layout: &Layout) -> Vec<Result<Rule, String>> {
 /// It does not validate, or the write failed.
 pub fn save(layout: &Layout, rule: &Rule) -> Result<Rule, String> {
     rule.validate()?;
+    if rule::built_in(&rule.id).is_none() {
+        // A plugin's rule: it must still admit against its plugin.
+        match crate::plugins::rule(layout, &rule.id) {
+            Some(Ok((plugin, from_plugin))) => {
+                let mut edited = rule.clone();
+                edited.needs = from_plugin.needs;
+                crate::plugins::admit(edited, &plugin)?;
+            }
+            Some(Err(why)) => return Err(why),
+            None => return Err(format!("no rule `{}`", rule.id)),
+        }
+    }
     let mut next = rule.clone();
     if let Ok(current) = load(layout, &rule.id)
         && current != *rule

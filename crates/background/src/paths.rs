@@ -89,6 +89,16 @@ impl Layout {
     pub fn run_lock(&self) -> PathBuf {
         self.background().join("run.lock")
     }
+    /// Plugins installed on this computer.
+    #[must_use]
+    pub fn extensions(&self) -> PathBuf {
+        self.openagents.join("extensions")
+    }
+    /// Which installed plugins are on.
+    #[must_use]
+    pub fn enabled_plugins(&self) -> PathBuf {
+        self.extensions().join("enabled.json")
+    }
     #[must_use]
     pub fn targets(&self) -> PathBuf {
         self.openagents.join("targets")
@@ -137,6 +147,7 @@ impl Layout {
             o.join("bearer"),
             o.join("wallet"),
             o.join("pylon"),
+            o.join("extensions"),
             self.store.clone(),
             self.rules(),
             self.runs(),

@@ -266,9 +266,20 @@ pub(crate) fn resolve(target: &str) -> Result<Target, String> {
     let package = Package::load(&record)?;
     let lock = Package::resolve(&root, &package)
         .map_err(|refusal| format!("the package record doesn't resolve: {refusal}"))?;
-    let program_path = root.join(&lock.program.found);
-    let program = std::fs::read(&program_path)
-        .map_err(|error| format!("{}: {error}", program_path.display()))?;
+    // A plugin that only runs in the background carries no program: its
+    // tests admit its skills alone.
+    let programs = match (&lock.program, &package.program) {
+        (Some(pinned), Some(reference)) => {
+            let path = root.join(&pinned.found);
+            let bytes =
+                std::fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+            vec![Program {
+                slug: reference.name.clone(),
+                bytes,
+            }]
+        }
+        _ => Vec::new(),
+    };
     let skills = arms::skills_in(&root.join(SKILLS_DIR))?;
     // An unpublished extension is named under the local key, whoever runs
     // it, so a check by another trainer names the same subject.
@@ -277,15 +288,16 @@ pub(crate) fn resolve(target: &str) -> Result<Target, String> {
     } else {
         crate::ext_eval_init::LOCAL_KEY.to_string()
     };
-    let definition = arms::definition(&publisher, &package.slug, &package.program.name, &bytes);
+    let name = package
+        .program
+        .as_ref()
+        .map_or(package.slug.as_str(), |program| program.name.as_str());
+    let definition = arms::definition(&publisher, &package.slug, name, &bytes);
     let subject = Subject {
         slug: package.slug.clone(),
         definition,
         package_lock: serde_json::to_value(&lock).unwrap_or(Value::Null),
-        programs: vec![Program {
-            slug: package.program.name.clone(),
-            bytes: program,
-        }],
+        programs,
         skills,
     };
     Ok(Target {

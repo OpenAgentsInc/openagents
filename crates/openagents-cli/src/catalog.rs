@@ -62,6 +62,15 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   run DIR [--in WORKSPACE] [--request TEXT | --request-file FILE]
         Run the plugin's workflow once on WORKSPACE through Coder's
         program runtime, granted reads only, and print its reply.
+  install DIR
+        Install the plugin in DIR on this computer. It starts off.
+  installed
+        The plugins installed on this computer, on or off.
+  enable PLUGIN
+        Turn an installed plugin on on this computer. A plugin that runs
+        in the background runs only while it is on.
+  disable PLUGIN
+        Turn an installed plugin off on this computer.
   test run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH]
@@ -95,6 +104,10 @@ for those commands in full.";
 pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("run", Effect::ReadOnly),
+    Declared::computer("install", Effect::LocalWrite),
+    Declared::computer("installed", Effect::ReadOnly),
+    Declared::computer("enable", Effect::LocalWrite),
+    Declared::computer("disable", Effect::LocalWrite),
     crate::ext_eval::EFFECTS[0],
     crate::ext_eval::EFFECTS[1],
     crate::ext_eval::EFFECTS[2],
@@ -170,6 +183,10 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|word| word == "run") {
         return crate::ext_run::run(output, &words[1..]);
+    }
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_local::run(output, words) {
+        return code;
     }
     run(Group::Ext, output, words)
 }

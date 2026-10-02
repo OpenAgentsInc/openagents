@@ -51,12 +51,15 @@ fn pins(lock: &Lock) -> Vec<(String, &Pin)> {
 }
 
 fn walk<'a>(lock: &'a Lock, prefix: &str, out: &mut Vec<(String, &'a Pin)>) {
-    out.push((format!("{prefix}programs/{}", lock.slug), &lock.program));
+    if let Some(program) = &lock.program {
+        out.push((format!("{prefix}programs/{}", lock.slug), program));
+    }
     for (dir, list) in [
         ("questions", &lock.questions),
         ("sources", &lock.sources),
         ("policies", &lock.policies),
         ("capabilities", &lock.capabilities),
+        ("background", &lock.background),
     ] {
         for (name, pin) in list {
             out.push((format!("{prefix}{dir}/{name}"), pin));
@@ -317,7 +320,8 @@ mod tests {
             slug: "top".to_string(),
             publisher: "suite".to_string(),
             provenance: "local".to_string(),
-            program: pin("programs/top.json", TOP_PROGRAM),
+            program: Some(pin("programs/top.json", TOP_PROGRAM)),
+            background: BTreeMap::new(),
             questions: BTreeMap::from([(
                 "suite.ask.v1".to_string(),
                 pin("questions/ask.json", ASK_SET),
@@ -335,7 +339,8 @@ mod tests {
                         slug: "leaf".to_string(),
                         publisher: "suite".to_string(),
                         provenance: String::new(),
-                        program: pin("programs/leaf.json", LEAF_PROGRAM),
+                        program: Some(pin("programs/leaf.json", LEAF_PROGRAM)),
+                        background: BTreeMap::new(),
                         questions: BTreeMap::new(),
                         sources: BTreeMap::new(),
                         policies: BTreeMap::new(),

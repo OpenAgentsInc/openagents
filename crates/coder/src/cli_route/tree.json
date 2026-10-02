@@ -4672,7 +4672,7 @@
     },
     {
       "name": "background",
-      "summary": "The host's background rules: the disk cleanup monitor.",
+      "summary": "The host's background rules, built in and from plugins turned on here.",
       "children": [
         {
           "name": "list",
@@ -11520,7 +11520,7 @@
     },
     {
       "name": "plugin",
-      "summary": "List published plugins, test a plugin with and without it, add the result to the Gym, check a result, and sync Coder's default plugins.",
+      "summary": "List published plugins, test a plugin with and without it, add the result to the Gym, check a result, sync Coder's default plugins, and install and turn on plugins here.",
       "children": [
         {
           "name": "list",
@@ -11622,6 +11622,118 @@
             ],
             "summary": "Run the plugin's workflow once on WORKSPACE through Coder's program runtime, granted reads only, and print its reply.",
             "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "install",
+          "leaf": {
+            "path": [
+              "plugin",
+              "install"
+            ],
+            "usage": [
+              "install DIR"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "install"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIR"
+                  }
+                ]
+              }
+            ],
+            "summary": "Install the plugin in DIR on this computer. It starts off.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "installed",
+          "leaf": {
+            "path": [
+              "plugin",
+              "installed"
+            ],
+            "usage": [
+              "installed"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "installed"
+                  }
+                ]
+              }
+            ],
+            "summary": "The plugins installed on this computer, on or off.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "enable",
+          "leaf": {
+            "path": [
+              "plugin",
+              "enable"
+            ],
+            "usage": [
+              "enable PLUGIN"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "enable"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLUGIN"
+                  }
+                ]
+              }
+            ],
+            "summary": "Turn an installed plugin on on this computer. A plugin that runs in the background runs only while it is on.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "disable",
+          "leaf": {
+            "path": [
+              "plugin",
+              "disable"
+            ],
+            "usage": [
+              "disable PLUGIN"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "disable"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLUGIN"
+                  }
+                ]
+              }
+            ],
+            "summary": "Turn an installed plugin off on this computer.",
+            "effect": "local_write",
             "runs_on": "connected_computer"
           }
         },

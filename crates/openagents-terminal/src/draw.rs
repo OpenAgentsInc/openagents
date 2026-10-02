@@ -167,15 +167,16 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                 rows.iter()
                     .map(|plugin| Item {
                         label: plugin.name.clone(),
-                        detail: if plugin.key.is_some() {
-                            format!("installed · {}", plugin.about)
-                        } else {
-                            plugin.about.clone()
+                        detail: match (plugin.on, plugin.key.is_some()) {
+                            (Some(true), _) => format!("on · {}", plugin.about),
+                            (Some(false), _) => format!("off · {}", plugin.about),
+                            (None, true) => format!("installed · {}", plugin.about),
+                            (None, false) => plugin.about.clone(),
                         },
                     })
                     .collect(),
                 *selected,
-                "Enter runs an installed one · Esc close",
+                "Enter runs an installed one · Space turns it on or off · Esc close",
                 "No plugins are installed or published yet.",
             ),
             Overlay::Settings { settings, selected } => (

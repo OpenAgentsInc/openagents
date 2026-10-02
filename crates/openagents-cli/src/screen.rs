@@ -502,6 +502,22 @@ impl Extras for ProgramExtras {
 
     fn plugins(&self) -> Result<Vec<Plugin>, String> {
         let mut rows = installed_plugins(&crate::ext_eval::openagents_home().join("extensions"));
+        // Whether each is on here, as the host reads it.
+        #[cfg(unix)]
+        {
+            let here = crate::plugin_local::installed_here();
+            for row in &mut rows {
+                let key = row.key.as_deref().map(|key| {
+                    PathBuf::from(key)
+                        .canonicalize()
+                        .unwrap_or_else(|_| key.into())
+                });
+                if let Some(found) = here.iter().find(|plugin| key.as_ref() == Some(&plugin.dir)) {
+                    row.on = Some(found.enabled);
+                    row.id = Some(found.id.clone());
+                }
+            }
+        }
         let published = std::env::current_exe()
             .map_err(|_| "Cannot find this openagents program to list plugins.".to_owned())
             .and_then(|program| {
@@ -523,6 +539,8 @@ impl Extras for ProgramExtras {
                             name,
                             about,
                             key: None,
+                            on: None,
+                            id: None,
                         }),
                 );
             }
@@ -552,6 +570,11 @@ impl Extras for ProgramExtras {
             .output()
             .map_err(|error| format!("it could not start: {error}."))?;
         plugin_reply(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    #[cfg(unix)]
+    fn turn_plugin(&self, id: &str, on: bool) -> Result<String, String> {
+        crate::plugin_local::turn(id, on)
     }
 
     fn import(&self) -> Result<String, String> {
@@ -842,6 +865,8 @@ fn installed_plugins(extensions: &std::path::Path) -> Vec<Plugin> {
                 },
                 about: package.summary.clone(),
                 key: Some(version.display().to_string()),
+                on: None,
+                id: None,
             });
         }
     }
@@ -1052,6 +1077,8 @@ mod tests {
                 name: "Explain this error".into(),
                 about: "Says why".into(),
                 key: Some(newer.display().to_string()),
+                on: None,
+                id: None,
             }]
         );
         assert!(installed_plugins(&dir.path().join("missing")).is_empty());

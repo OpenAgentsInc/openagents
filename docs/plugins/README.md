@@ -22,6 +22,10 @@ A plugin can contain any of these parts:
 | Wasm | Sandboxed WebAssembly code that performs one bounded operation, such as mapping a repository's files. It is the only executable code a plugin can carry. It runs with no network, under fuel and memory limits, and reads only what the host hands it. A workflow runs it; a model never calls it by name. | A guest crate built against [`crates/plugin-pdk`](../../crates/plugin-pdk/) |
 | Tests | The test set that shows whether the plugin helps: tasks Coder runs with the plugin and without it, and the checks on each run. | `evals/` |
 
+A plugin can also bring **background rules**: a rule the host runs on its
+own, on a timer or when a task ends, only while the plugin is turned on
+on that computer. See [Plugins that run in the background](#plugins-that-run-in-the-background).
+
 Not every plugin has every part. A plugin made in chat is a single skill.
 Project map is a workflow that runs one piece of Wasm, with its tests.
 
@@ -99,6 +103,55 @@ Add the parts your plugin needs:
    limits, and build receipts.
 1. Write knowledge entries under `knowledge/` and check them with
    `openagents kb`.
+
+## Plugins that run in the background
+
+A plugin can bring rules the host runs by itself, such as keeping the disk
+from filling up. Each rule is a JSON document under `background/`, in the
+background rule format (`openagents.background.rule.v1`, see
+[`crates/background/src/rule.rs`](../../crates/background/src/rule.rs) and
+the [background processes spec](../background/2026-10-02-background-processes.md)),
+pinned in `package.json`:
+
+```json
+{
+  "v": 1,
+  "slug": "disk-cleanup",
+  "name": "Disk cleanup",
+  "summary": "Keeps the disk from filling up.",
+  "version": "0.1.0",
+  "background": [{ "name": "disk-cleanup", "digest": "<digest of background/disk-cleanup.json>" }]
+}
+```
+
+A plugin that only runs in the background needs no `program`. The rule's
+`id` is its name, and it says what it needs from the host:
+
+```json
+"needs": { "delete": ["ended_targets", "stale_targets"], "tasks": true, "notify": true }
+```
+
+`delete` lists the kinds of folders the rule may delete, from the host's
+own list (`ended_targets`, `stale_targets`, `worktrees`, `gate_pools`,
+`incremental`, `trash`); `tasks` reads which Coder tasks ended; `notify`
+sends a short notification. The plugin only describes the rule. The host
+checks it against what it allows before it ever runs it, and does every
+deletion itself with every safety check: nothing in use, unsaved, or
+unpushed; no links or other volumes; nothing outside the host's cleanable
+folders; a dry run and a log for every run. A rule that asks for more is
+refused, and the plugin cannot be turned on.
+
+```sh
+openagents plugin install ./disk-cleanup   # installed, off
+openagents plugin enable disk-cleanup      # on for this computer
+openagents background list                 # its rule, with the others
+openagents background run disk-cleanup --dry-run
+openagents plugin disable disk-cleanup     # off again
+```
+
+In the terminal, `/plugins` shows each installed plugin on or off, and
+Space turns it on or off. The [design](../background/2026-10-02-disk-cleanup-plugin.md)
+says what the host enforces and why.
 
 ## Test a plugin
 

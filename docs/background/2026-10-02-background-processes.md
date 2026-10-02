@@ -2,8 +2,10 @@
 
 Status: phase 1 (the disk monitor) implemented, 2026-10-02: `crates/background`,
 `coder host serve`, `openagents background`, the terminal's `/background`,
-and NIP-HOST `background.*`; see "Phase 1 as built" at the end. Phases 2
-and 3 are design. Issues:
+and NIP-HOST `background.*`; see "Phase 1 as built" at the end. Plugins
+can now bring background rules that run only while turned on
+([Disk cleanup as a plugin](2026-10-02-disk-cleanup-plugin.md), #10165).
+Phases 2 and 3 are design. Issues:
 umbrella [#10155](https://github.com/OpenAgentsInc/openagents/issues/10155),
 phase 1 [#10156](https://github.com/OpenAgentsInc/openagents/issues/10156),
 phase 2 [#10157](https://github.com/OpenAgentsInc/openagents/issues/10157),

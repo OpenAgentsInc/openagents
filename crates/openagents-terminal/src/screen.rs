@@ -51,6 +51,7 @@ enum Done {
     Sync(Result<String, String>),
     Plugins(Result<Vec<crate::Plugin>, String>),
     Plugin(String, Result<String, String>),
+    Turned(String, Result<String, String>),
     Imported(Result<String, String>),
     Settings(Result<crate::Settings, String>),
     Background(Result<Vec<crate::BackgroundRow>, String>),
@@ -369,6 +370,12 @@ impl Screen {
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
                     let _ = done.send(Done::Plugins(extras.plugins()));
+                });
+            }
+            Action::TurnPlugin { id, name, on } => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Turned(name, extras.turn_plugin(&id, on)));
                 });
             }
             Action::RunPlugin { key, name, request } => {
@@ -716,6 +723,8 @@ impl Screen {
                 self.app.overlay = Some(Overlay::Plugins { rows, selected: 0 });
             }
             Done::Plugins(Err(why)) => self.app.loud(why),
+            Done::Turned(_, Ok(words)) => self.app.note(words),
+            Done::Turned(name, Err(why)) => self.app.loud(format!("{name}: {why}")),
             Done::Plugin(name, Ok(reply)) => self.app.push(Row::Card(Card {
                 title: format!("Plugin {name}"),
                 rows: Vec::new(),

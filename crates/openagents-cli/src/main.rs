@@ -39,6 +39,8 @@ mod labor;
 mod mcp;
 mod out;
 mod playtest;
+#[cfg(unix)]
+mod plugin_local;
 mod quest;
 mod reach;
 mod relay;
@@ -90,7 +92,7 @@ Coder:
   task         Durable local task requests and explicit execution.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
-  background   The host's background rules: the disk cleanup monitor.
+  background   The host's background rules, built in and from plugins turned on here.
   ssh          Start or adopt a host over SSH and tunnel to it.
 
 Verse (NIP-MV):
@@ -120,8 +122,8 @@ Playtesting:
 
 Plugins (NIP-EXT, NIP-EVAL):
   plugin       List published plugins, test a plugin with and without it,
-               add the result to the Gym, check a result, and sync Coder's
-               default plugins.
+               add the result to the Gym, check a result, sync Coder's
+               default plugins, and install and turn on plugins here.
   ext          Another name for plugin.
 
 Discovery (NIP-CAP, NIP-PRG), read-only:

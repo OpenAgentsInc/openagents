@@ -17,6 +17,7 @@ pub mod git;
 pub mod inuse;
 pub mod paths;
 pub mod plan;
+pub mod plugins;
 pub mod rule;
 pub mod run;
 pub mod runner;

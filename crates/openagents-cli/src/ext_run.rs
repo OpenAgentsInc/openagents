@@ -86,7 +86,18 @@ pub fn execute(dir: &Path, workspace: &Path, request: &str) -> Result<Value, Str
     let package = Package::load(&dir.join("package.json"))?;
     let lock = Package::resolve(dir, &package)
         .map_err(|refusal| format!("{}: the package doesn't resolve: {refusal}", dir.display()))?;
-    let program_path = dir.join(&lock.program.found);
+    let Some(pinned) = &lock.program else {
+        let name = if package.name.is_empty() {
+            &package.slug
+        } else {
+            &package.name
+        };
+        return Err(format!(
+            "{name} has no workflow to run here; it runs in the background when it is on (`openagents plugin enable {}`).",
+            package.slug
+        ));
+    };
+    let program_path = dir.join(&pinned.found);
     let program = Program::load(&program_path)?;
     let programs = Registry::read(program_path.parent().unwrap_or(dir))?;
     let workspace = workspace

@@ -86,6 +86,8 @@ pub enum Action {
     CancelInvite,
     /// Show the published plugins.
     Plugins,
+    /// Turn the installed plugin `id` on or off.
+    TurnPlugin { id: String, name: String, on: bool },
     /// Run the installed plugin `key` with `request`.
     RunPlugin {
         key: String,
@@ -493,6 +495,19 @@ impl App {
                         self.overlay = None;
                         if let Some(plugin) = picked {
                             self.pick(plugin);
+                        }
+                    }
+                    KeyCode::Char(' ') => {
+                        let picked = rows.get(*selected).cloned();
+                        if let Some(crate::Plugin {
+                            id: Some(id),
+                            on: Some(on),
+                            name,
+                            ..
+                        }) = picked
+                        {
+                            self.overlay = None;
+                            return vec![Action::TurnPlugin { id, name, on: !on }];
                         }
                     }
                     _ => {}

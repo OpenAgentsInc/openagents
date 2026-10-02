@@ -95,7 +95,13 @@ pub fn resolve(root: &Path) -> Result<Tool, String> {
     let package = Package::load(&record)?;
     let lock = Package::resolve(root, &package)
         .map_err(|refusal| format!("{}: the package doesn't resolve: {refusal}", root.display()))?;
-    let program_path = root.join(&lock.program.found);
+    let (Some(pinned), Some(reference)) = (&lock.program, &package.program) else {
+        return Err(format!(
+            "{}: a catalog plugin carries a program",
+            root.display()
+        ));
+    };
+    let program_path = root.join(&pinned.found);
     let program = std::fs::read(&program_path)
         .map_err(|error| format!("{}: {error}", program_path.display()))?;
     let skills = arms::skills_in(&root.join(SKILLS_DIR))?;
@@ -104,8 +110,7 @@ pub fn resolve(root: &Path) -> Result<Tool, String> {
     } else {
         LOCAL_KEY.to_string()
     };
-    let definition_value =
-        arms::definition(&publisher, &package.slug, &package.program.name, &bytes);
+    let definition_value = arms::definition(&publisher, &package.slug, &reference.name, &bytes);
     let definition = parse_definition(&definition_value).map_err(|error| error.to_string())?;
     let aliases = guest_targets(&program);
     let subject = Subject {
@@ -113,7 +118,7 @@ pub fn resolve(root: &Path) -> Result<Tool, String> {
         definition: definition_value,
         package_lock: serde_json::to_value(&lock).unwrap_or(Value::Null),
         programs: vec![Program {
-            slug: package.program.name.clone(),
+            slug: reference.name.clone(),
             bytes: program,
         }],
         skills,

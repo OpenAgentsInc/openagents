@@ -182,7 +182,11 @@ pub fn read_extension(root: &Path) -> Result<Tool, String> {
     Package::resolve(root, &package)
         .map_err(|refusal| format!("{} does not resolve: {refusal}", root.display()))?;
     let bytes = std::fs::read(&record).map_err(|e| e.to_string())?;
-    let steps = program_steps(root, &package.program.name);
+    let program = package
+        .program
+        .as_ref()
+        .map_or(package.slug.as_str(), |program| program.name.as_str());
+    let steps = program_steps(root, program);
     let operations: Vec<String> = steps.iter().map(|(name, _)| name.clone()).collect();
     let mut words = String::new();
     if !package.summary.is_empty() {
@@ -198,6 +202,12 @@ pub fn read_extension(root: &Path) -> Result<Tool, String> {
     if !operations.is_empty() {
         words.push_str(&format!("Its steps: {}.\n", operations.join(", ")));
     }
+    for rule in &package.background {
+        words.push_str(&format!(
+            "It runs in the background when turned on on a computer: rule `{}`.\n",
+            rule.name
+        ));
+    }
     for name in ["README.md", "readme.md"] {
         if let Ok(text) = std::fs::read_to_string(root.join(name)) {
             words.push_str(&text);
@@ -206,7 +216,7 @@ pub fn read_extension(root: &Path) -> Result<Tool, String> {
     }
     let words: String = words.chars().take(MAX_WORDS).collect();
     let definition = parse_definition(&json!({
-        "id": format!("{LOCAL_KEY}:{}/{}", package.slug, package.program.name),
+        "id": format!("{LOCAL_KEY}:{}/{program}", package.slug),
         "artifact": {
             "digest": nostr::contracts::digest_bytes(&bytes),
             "size": bytes.len(),
