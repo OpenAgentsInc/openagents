@@ -4,7 +4,13 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Tree-sitter syntax classes for code blocks, shared by the native renderer and the terminal."
+description = "Syntax highlighting for code blocks: tree-sitter classes for the native renderer, and grok-build's syntect highlighting (feature `grok`) for the terminal."
+
+[features]
+# grok-build's highlighting (syntect + two-face, Grok Night / Grok Day),
+# ported for the terminal. The desktop keeps the tree-sitter classes and
+# does not build syntect.
+grok = ["dep:syntect", "dep:two-face", "dep:ratatui", "dep:supports-color"]
 
 [dependencies]
 tree-sitter-highlight = "0.27.0"
@@ -19,6 +25,14 @@ tree-sitter-cpp = "0.23.4"
 tree-sitter-c = "0.24.2"
 tree-sitter-html = "0.23.2"
 tree-sitter-css = "0.25.0"
+# grok-build's workspace pins, verbatim.
+syntect = { version = "5.3", default-features = false, features = ["default-onig"], optional = true }
+ratatui = { version = "0.30", optional = true }
+supports-color = { version = "3.0", optional = true }
+
+[build-dependencies]
+syntect = { version = "5.3", default-features = false, features = ["default-onig"], optional = true }
+two-face = { version = "0.4", default-features = false, features = ["syntect-onig"], optional = true }
 
 [lints]
 workspace = true

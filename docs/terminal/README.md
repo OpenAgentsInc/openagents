@@ -121,9 +121,11 @@ computer's host restarting), the screen says so once and the top line reads
 doubles up to 30 seconds, until the reply comes or Esc stops it; what had
 streamed stays, and the reply streams on once it is back.
 
-Replies render as Markdown. Code in Rust, Python, JSON, shell, JavaScript,
-TypeScript, Go, C, C++, HTML, or CSS is highlighted in the same whites:
-comments dimmer and italic, keywords bold, strings and numbers a step down.
+Replies render as Markdown. Fenced code is highlighted as Grok Build
+highlights it: syntect with two-face's syntaxes and Grok Build's own colors,
+Grok Night by default and Grok Day on a light background. A run result's diffs
+(Ctrl+O) are drawn as Grok Build draws an edit: numbered, highlighted, removed
+and added lines on red and green bands.
 Suggested follow-ups are not shown here; a card
 that opens in the app (a Gym result, a deck, the wallet) says where to open
 it.
@@ -258,6 +260,10 @@ Esc, and when the screen closes.
 White in four intensities on near-black, the desktop app's and the website's
 palette, with a white cursor. With `NO_COLOR` set it uses no color at all, and
 on a 256-color terminal the nearest palette entries.
+Code and diffs are the exception: they take Grok Build's Grok Night theme on
+the near-black field (Grok Day only where the terminal's own light background
+shows, per `OPENAGENTS_APPEARANCE` or `COLORFGBG`), quantized to the 256- or
+16-color palette as Grok Build does (`crates/code-highlight`, feature `grok`).
 
 ## How it is built
 

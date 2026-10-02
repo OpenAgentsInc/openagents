@@ -1,0 +1,37 @@
+code-highlight
+==============
+
+The `grok` feature (src/grok/, build.rs, assets/grok-build/, and
+crates/coder-terminal/src/components/diff.rs) is ported from grok-build:
+
+  grok-build
+  Copyright 2023-2026 SpaceXAI
+  Licensed under the Apache License, Version 2.0
+  (assets/grok-build/LICENSE, a verbatim copy of grok-build's LICENSE).
+
+Copied verbatim:
+  assets/grok-build/grok-night.tmTheme
+    from crates/codegen/xai-grok-pager-render/assets/grok-night.tmTheme
+  assets/grok-build/grok-day.tmTheme
+    from crates/codegen/xai-grok-pager-render/assets/grok-day.tmTheme
+  assets/grok-build/Swift.sublime-syntax
+    from crates/codegen/xai-grok-markdown/assets/Swift.sublime-syntax
+    (itself vendored by grok-build from bat v0.25.0's extra syntaxes,
+    quiqueg/Swift-Sublime-Package, with grok-build's interpolation patch)
+
+Ported, with changes noted at the top of each file:
+  build.rs                  <- xai-grok-markdown/build.rs
+  src/grok/syntax.rs        <- xai-grok-markdown/src/syntax.rs
+  src/grok/open_code.rs     <- xai-grok-markdown/src/open_code_highlighter.rs
+  src/grok/color.rs         <- xai-grok-pager-render/src/theme/color_support.rs,
+                               src/render/color.rs, src/syntax.rs,
+                               src/terminal/mod.rs (truecolor brands)
+  src/grok/appearance.rs    <- xai-grok-pager-render/src/theme/env_appearance.rs,
+                               osc11.rs, system_appearance.rs, cache.rs
+  src/grok/theme.rs         <- xai-grok-pager-render/src/syntax.rs,
+                               src/theme/groknight.rs, src/theme/grokday.rs
+  coder-terminal/src/components/diff.rs
+                            <- xai-grok-pager/src/scrollback/blocks/tool/edit.rs
+
+Syntax definitions come from the two-face crate (MIT OR Apache-2.0,
+Copyright (c) 2023 The two-face developers) and syntect (MIT).

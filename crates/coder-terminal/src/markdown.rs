@@ -4,18 +4,21 @@
 //! headings, fenced code, quotes, lists, tables, rules — each holding
 //! flat inline runs with their marks. [`render`] lays the tree out as
 //! [`Marked`] lines: marked text the draw loop wraps and styles. Raw
-//! HTML in the source is text. Fenced code in a language `code-highlight`
-//! knows carries its syntax class per run, drawn on the white ladder.
+//! HTML in the source is text. Fenced code in a language syntect knows
+//! carries grok-build's highlighting per run: its Grok Night / Grok Day
+//! token colors, quantized for the terminal (`code_highlight::grok`). A
+//! fence still streaming in is highlighted incrementally, each committed
+//! line once, as grok-build does.
 
-use std::collections::VecDeque;
+use std::cell::RefCell;
 use std::ops::Range;
-use std::sync::{LazyLock, Mutex};
+use std::sync::LazyLock;
 
-use code_highlight::{Class, Kind};
+use code_highlight::grok::{self, ColorLevel, HlLine, OpenCodeHighlighter, Token};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};
 
-use crate::{Intensity, Ladder, wrap_rows};
+use crate::{Colors, Intensity, Ladder, wrap_rows};
 
 /// The marks on one run of text. Marks nest, so a run inside `**_a_**`
 /// carries both `bold` and `italic`.
@@ -29,30 +32,51 @@ pub struct Marks {
     pub link: Option<String>,
     /// The source of an image. The run's text is the image's alt text.
     pub image: Option<String>,
-    /// In fenced code, what the grammar says this run is.
-    pub syntax: Option<Kind>,
+    /// In fenced code, the token's look from grok-build's theme.
+    pub syntax: Option<Token>,
 }
 
-/// How a syntax class draws: a step of the ladder and a modifier. No class
-/// adds a color; comments recede, keywords are bold, literals sit a step
-/// below the code around them.
-pub fn syntax_look(kind: Kind) -> (Intensity, Modifier) {
-    match kind {
-        Kind::Comment => (Intensity::Half, Modifier::ITALIC),
-        Kind::Keyword | Kind::Tag | Kind::MarkupHeading | Kind::MarkupStrong => {
-            (Intensity::Full, Modifier::BOLD)
-        }
-        Kind::String
-        | Kind::StringSpecial
-        | Kind::Escape
-        | Kind::Number
-        | Kind::Boolean
-        | Kind::Constant
-        | Kind::Attribute
-        | Kind::MarkupRaw => (Intensity::ThreeQuarters, Modifier::empty()),
-        Kind::MarkupEmphasis => (Intensity::Full, Modifier::ITALIC),
-        Kind::MarkupLink | Kind::MarkupReference => (Intensity::Full, Modifier::UNDERLINED),
-        _ => (Intensity::Full, Modifier::empty()),
+/// The color level syntax colors draw at: none when the ladder has no
+/// color (`NO_COLOR`), truecolor when it draws RGB, and otherwise what
+/// grok-build's detection finds (256, 16, or a truecolor terminal that
+/// did not say so in `COLORTERM`).
+pub fn syntax_level(ladder: Ladder) -> ColorLevel {
+    match ladder.colors() {
+        Colors::None => ColorLevel::None,
+        Colors::True => ColorLevel::TrueColor,
+        Colors::Indexed => grok::color::get(),
+    }
+}
+
+/// grok-build's choice of palette for the field code is drawn on: Grok Day
+/// on a light field, Grok Night on a dark one. The ladder paints its own
+/// near-black field, so that is the polarity; only a colorless ladder
+/// leaves the terminal's own background showing, and then the terminal's
+/// polarity decides (`OPENAGENTS_APPEARANCE`, `COLORFGBG`; Grok Night when
+/// nothing says).
+pub fn palette_for(ladder: Ladder) -> grok::Palette {
+    match grok::color::resolve_to_rgb(ladder.background()) {
+        Some((r, g, b)) => grok::Palette::for_appearance(Some(grok::Appearance::of_field(r, g, b))),
+        None => grok::Palette::for_appearance(grok::Appearance::detect(None)),
+    }
+}
+
+/// This process's palette, chosen once from the environment's ladder.
+pub fn palette() -> grok::Palette {
+    static CHOSEN: LazyLock<grok::Palette> = LazyLock::new(|| {
+        let _ = grok::set_palette(palette_for(Ladder::from_environment()));
+        grok::palette()
+    });
+    *CHOSEN
+}
+
+/// The style a code run draws in: its token's grok-build color at the
+/// ladder's level, or the top of the ladder when the fence's language is
+/// unknown.
+pub fn code_style(syntax: Option<Token>, ladder: Ladder) -> Style {
+    match syntax {
+        Some(token) => token.style(syntax_level(ladder)),
+        None => ladder.style(Intensity::Full),
     }
 }
 
@@ -60,13 +84,7 @@ impl Marks {
     /// Applies the terminal's Markdown marks without emitting terminal escapes.
     pub fn style(&self, base: Style, ladder: Ladder) -> Style {
         let mut style = if self.code {
-            let (step, modifier) = self
-                .syntax
-                .map_or((Intensity::Full, Modifier::empty()), syntax_look);
-            ladder
-                .style(step)
-                .bg(ladder.background())
-                .add_modifier(modifier)
+            code_style(self.syntax, ladder).bg(ladder.background())
         } else {
             base
         };
@@ -242,19 +260,32 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
             };
             out.push(marked_line(&inlines, prefix, hang, intensity));
         }
-        Block::Code { language, source } => {
-            let classes = language
+        Block::Code {
+            language,
+            source,
+            body,
+            start,
+            open,
+        } => {
+            let highlighted = language
                 .as_deref()
-                .map(|language| highlighted(language, source))
-                .unwrap_or_default();
-            let mut at = 0;
-            for line in source.split('\n').filter(|_| !source.is_empty()) {
-                let start = at;
-                at += line.len() + 1;
+                .and_then(|language| highlighted(language, body, *start, *open));
+            let plain = Marks {
+                code: true,
+                ..Marks::default()
+            };
+            for (index, line) in source
+                .split('\n')
+                .filter(|_| !source.is_empty())
+                .enumerate()
+            {
                 let line = line.strip_suffix('\r').unwrap_or(line);
                 let mut marked = Marked::default();
                 marked.push(prefix, &Marks::default());
-                code_runs(&mut marked, source, start..start + line.len(), &classes);
+                match highlighted.as_ref().and_then(|lines| lines.get(index)) {
+                    Some(segments) => code_runs(&mut marked, segments),
+                    None => marked.push(line, &plain),
+                }
                 out.push(Rendered {
                     marked,
                     intensity: Intensity::ThreeQuarters,
@@ -296,55 +327,36 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
     }
 }
 
-/// Pushes the code in `line` (a byte range of `source`) as code runs,
-/// each carrying the syntax class covering it.
-fn code_runs(marked: &mut Marked, source: &str, line: Range<usize>, classes: &[Class]) {
-    let plain = Marks {
-        code: true,
-        ..Marks::default()
-    };
-    let mut at = line.start;
-    for class in classes {
-        let start = class.start.max(at);
-        let end = class.end.min(line.end);
-        if start >= end {
-            continue;
-        }
-        if start > at {
-            marked.push(&source[at..start], &plain);
-        }
+/// Pushes one highlighted line's segments as code runs, each carrying its
+/// token, with the line ending dropped.
+fn code_runs(marked: &mut Marked, segments: &HlLine) {
+    for (style, text) in segments {
+        let text = text.trim_end_matches(['\n', '\r']);
         let marks = Marks {
-            syntax: class.kind,
-            ..plain.clone()
+            code: true,
+            syntax: Some(Token::from_syntect(*style)),
+            ..Marks::default()
         };
-        marked.push(&source[start..end], &marks);
-        at = end;
-    }
-    if at < line.end {
-        marked.push(&source[at..line.end], &plain);
+        marked.push(text, &marks);
     }
 }
 
-/// The syntax classes of a code block. The draw loop lays a streaming
-/// reply out every frame, so recent blocks are kept.
-fn highlighted(language: &str, source: &str) -> Vec<Class> {
-    type Recent = VecDeque<(String, String, Vec<Class>)>;
-    static RECENT: LazyLock<Mutex<Recent>> = LazyLock::new(Default::default);
-    if let Ok(recent) = RECENT.lock()
-        && let Some((_, _, classes)) = recent
-            .iter()
-            .find(|(held, text, _)| held == language && text == source)
-    {
-        return classes.clone();
+/// A code block's highlighted lines, through grok-build's streaming
+/// highlighter: a fence still open at the end of the source resumes from
+/// its last committed line, a closed one is memoized on its body. The draw
+/// loop lays a streaming reply out every frame, so this is what keeps a
+/// long fence from being re-highlighted whole on every chunk. syntect's
+/// parse state is not `Send`, so each drawing thread keeps its own.
+fn highlighted(language: &str, body: &str, start: usize, open: bool) -> Option<Vec<HlLine>> {
+    thread_local! {
+        static HIGHLIGHTER: RefCell<Option<OpenCodeHighlighter>> = const { RefCell::new(None) };
     }
-    let classes = code_highlight::classes(language, source);
-    if let Ok(mut recent) = RECENT.lock() {
-        if recent.len() >= 16 {
-            recent.pop_front();
-        }
-        recent.push_back((language.to_owned(), source.to_owned(), classes.clone()));
-    }
-    classes
+    let syntect = palette().syntect();
+    HIGHLIGHTER.with(|held| {
+        held.borrow_mut()
+            .get_or_insert_with(|| OpenCodeHighlighter::new(syntect))
+            .highlight_block(syntect, language, start, open, body)
+    })
 }
 
 fn table_cells(cells: &[Vec<Inline>]) -> Vec<Inline> {
@@ -413,9 +425,17 @@ enum Block {
     },
     /// A fenced or indented code block. `language` is the first word of
     /// the fence's info string, when it has one.
+    ///
+    /// `body` is the text as the fence holds it, line endings and all —
+    /// what the highlighter reads; `source` drops its last newline. `start`
+    /// is the block's byte offset in the document, and `open` says its text
+    /// runs to the end of the document: a fence still streaming in.
     Code {
         language: Option<String>,
         source: String,
+        body: String,
+        start: usize,
+        open: bool,
     },
     Quote(Vec<Block>),
     /// `start` is `None` for a bullet list and the first number for an
@@ -453,14 +473,24 @@ fn options() -> Options {
 
 /// Parses `source` into its top-level blocks.
 fn parse(source: &str) -> Vec<Block> {
-    let events: Vec<Event> = Parser::new_ext(source, options()).collect();
-    let mut cursor = Cursor { events, at: 0 };
+    let (events, ranges) = Parser::new_ext(source, options())
+        .into_offset_iter()
+        .unzip();
+    let mut cursor = Cursor {
+        events,
+        ranges,
+        len: source.len(),
+        at: 0,
+    };
     blocks(&mut cursor, None)
 }
 
-/// A position in the event stream.
+/// A position in the event stream, with each event's source range.
 struct Cursor<'a> {
     events: Vec<Event<'a>>,
+    ranges: Vec<Range<usize>>,
+    /// The length of the source.
+    len: usize,
     at: usize,
 }
 
@@ -549,7 +579,13 @@ fn block(cursor: &mut Cursor<'_>, tag: Tag<'_>) -> Vec<Block> {
             level: heading_level(level),
             inlines: inlines(cursor, Some(TagEnd::Heading(level))),
         }],
-        Tag::CodeBlock(kind) => vec![code(cursor, kind)],
+        Tag::CodeBlock(kind) => {
+            let start = cursor
+                .ranges
+                .get(cursor.at.wrapping_sub(1))
+                .map_or(0, |range| range.start);
+            vec![code(cursor, kind, start)]
+        }
         Tag::BlockQuote(_) => vec![Block::Quote(blocks(cursor, Some(TagEnd::BlockQuote(None))))],
         Tag::List(start) => vec![list(cursor, start)],
         Tag::Table(_) => vec![table(cursor)],
@@ -581,7 +617,7 @@ fn heading_level(level: HeadingLevel) -> u8 {
     }
 }
 
-fn code(cursor: &mut Cursor<'_>, kind: CodeBlockKind<'_>) -> Block {
+fn code(cursor: &mut Cursor<'_>, kind: CodeBlockKind<'_>, start: usize) -> Block {
     let language = match kind {
         CodeBlockKind::Fenced(info) => info
             .split_whitespace()
@@ -591,20 +627,33 @@ fn code(cursor: &mut Cursor<'_>, kind: CodeBlockKind<'_>) -> Block {
         CodeBlockKind::Indented => None,
     };
     let mut source = String::new();
+    let mut open = false;
     while let Some(event) = cursor.take() {
+        let reaches_end = cursor
+            .ranges
+            .get(cursor.at.wrapping_sub(1))
+            .is_some_and(|range| range.end == cursor.len);
         match event {
             Event::End(TagEnd::CodeBlock) => break,
             Event::Text(text) | Event::Code(text) | Event::Html(text) | Event::InlineHtml(text) => {
-                source.push_str(&text)
+                source.push_str(&text);
+                open = reaches_end;
             }
             Event::SoftBreak | Event::HardBreak => source.push('\n'),
             _ => {}
         }
     }
+    let body = source.clone();
     if source.ends_with('\n') {
         source.pop();
     }
-    Block::Code { language, source }
+    Block::Code {
+        language,
+        source,
+        body,
+        start,
+        open,
+    }
 }
 
 fn list(cursor: &mut Cursor<'_>, start: Option<u64>) -> Block {
@@ -904,57 +953,100 @@ mod tests {
         assert!(lines[0].marked.runs[0].1.code);
     }
 
+    /// The token a run in `line` whose text is `text` carries.
+    fn token_of(lines: &[Rendered], line: usize, text: &str) -> Option<Token> {
+        let marked = &lines[line].marked;
+        marked
+            .runs
+            .iter()
+            .find(|(range, _)| marked.text[range.clone()].trim() == text)
+            .and_then(|(_, marks)| marks.syntax)
+    }
+
     #[test]
-    fn known_code_carries_syntax_classes_on_the_ladder() {
+    fn known_code_carries_grok_night_tokens() {
         let lines = render("```rust\n// note\nlet s = \"hi\";\n```");
         assert_eq!(texts(&lines), ["// note", "let s = \"hi\";"]);
-        let kind_of = |line: usize, text: &str| {
-            let marked = &lines[line].marked;
-            marked
-                .runs
-                .iter()
-                .find(|(range, _)| &marked.text[range.clone()] == text)
-                .and_then(|(_, marks)| marks.syntax)
-        };
-        assert_eq!(kind_of(0, "// note"), Some(Kind::Comment));
-        assert_eq!(kind_of(1, "let"), Some(Kind::Keyword));
-        assert_eq!(kind_of(1, "\"hi\""), Some(Kind::String));
         assert!(
             lines
                 .iter()
                 .all(|line| line.marked.runs.iter().all(|(_, marks)| marks.code))
         );
+        let keyword = token_of(&lines, 1, "let").expect("keyword token");
+        let string = token_of(&lines, 1, "hi")
+            .or_else(|| token_of(&lines, 1, "\"hi\""))
+            .expect("string token");
+        let comment = token_of(&lines, 0, "// note").expect("comment token");
+        assert_ne!(keyword, string);
+        assert_ne!(keyword, comment);
+        // Each is the color Grok Night gives it, drawn exactly in truecolor.
+        let night = grok::Palette::Night.syntect();
+        let mut hl = night.highlight_lines_for_token("rust").expect("rust");
+        let want = hl
+            .highlight_line("// note\n", &night.syntax_set)
+            .expect("highlight")
+            .into_iter()
+            .map(|(style, _)| Token::from_syntect(style))
+            .next();
+        assert_eq!(Some(comment), want);
         let ladder = Ladder::default();
         let base = ladder.style(Intensity::ThreeQuarters);
-        let comment = Marks {
+        let marks = Marks {
             code: true,
-            syntax: Some(Kind::Comment),
+            syntax: Some(keyword),
             ..Marks::default()
         };
-        let style = comment.style(base, ladder);
-        assert_eq!(style.fg, ladder.style(Intensity::Half).fg);
-        assert!(style.add_modifier.contains(Modifier::ITALIC));
-        let keyword = Marks {
-            code: true,
-            syntax: Some(Kind::Keyword),
-            ..Marks::default()
-        };
-        assert!(
-            keyword
-                .style(base, ladder)
-                .add_modifier
-                .contains(Modifier::BOLD)
-        );
-        // An unknown fence stays plain code.
+        let (r, g, b) = keyword.rgb;
+        let style = marks.style(base, ladder);
+        assert_eq!(style.fg, Some(ratatui::style::Color::Rgb(r, g, b)));
+        assert_eq!(style.bg, Some(ladder.background()));
+        // An unknown fence stays plain code at the top of the ladder.
         let plain = render("```nope\nlet s = 1;\n```");
         assert!(
             plain[0]
                 .marked
                 .runs
                 .iter()
-                .all(|(_, marks)| marks.syntax.is_none())
+                .all(|(_, marks)| marks.code && marks.syntax.is_none())
         );
         assert!(render("```rust\n```").is_empty());
+    }
+
+    #[test]
+    fn the_near_black_field_takes_grok_night() {
+        assert_eq!(palette_for(Ladder::default()), grok::Palette::Night);
+        assert_eq!(
+            palette_for(Ladder::new(Colors::Indexed)),
+            grok::Palette::Night
+        );
+    }
+
+    #[test]
+    fn a_fence_still_streaming_highlights_like_the_finished_one() {
+        let full = "Here:\n\n```rust\nfn main() {\n    let x = 1;\n}\n```\n";
+        let done = render(full);
+        let end = full.rfind("```").expect("closing fence");
+        // Every prefix of the open fence lays out as the finished block does,
+        // line for line, as it streams in.
+        let body_start = full.find("fn main").expect("body");
+        for cut in body_start + 1..end {
+            let partial = render(&full[..cut]);
+            let complete_lines = full[body_start..cut].matches('\n').count();
+            for line in 0..complete_lines {
+                assert_eq!(
+                    partial[2 + line].marked,
+                    done[2 + line].marked,
+                    "prefix {cut}, line {line}"
+                );
+            }
+        }
+        let open = render(&full[..end]);
+        assert_eq!(
+            token_of(&open, 2, "fn"),
+            token_of(&done, 2, "fn"),
+            "the open fence highlights"
+        );
+        assert!(token_of(&open, 2, "fn").is_some());
     }
 
     #[test]

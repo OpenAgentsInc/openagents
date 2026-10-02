@@ -34,8 +34,8 @@ impl Who {
 ///
 /// The person's text is plain at `Intensity::Full`. A reply is Markdown:
 /// each rendered line draws at the step the Markdown layout gives it (body
-/// text at `ThreeQuarters`), code at `Full` with its syntax classes as
-/// steps and modifiers, and bold, italic, strike, and
+/// text at `ThreeQuarters`), code in grok-build's syntax colors (at `Full`
+/// when its language is unknown), and bold, italic, strike, and
 /// link marks as modifiers.
 pub fn turn(who: Who, text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
     let mut lines = vec![label(who, None, width, ladder)];
@@ -125,14 +125,12 @@ fn body(who: Who, text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> 
     }
 }
 
-/// A reply's inline marks over its line's base style: code at the top of
-/// the ladder, the rest as modifiers.
+/// A reply's inline marks over its line's base style: code in grok-build's
+/// syntax colors (the top of the ladder when unhighlighted), the rest as
+/// modifiers.
 pub(crate) fn marked_style(base: Style, ladder: Ladder, marks: &Marks) -> Style {
     let mut style = if marks.code {
-        let (step, modifier) = marks
-            .syntax
-            .map_or((Intensity::Full, Modifier::empty()), markdown::syntax_look);
-        ladder.style(step).add_modifier(modifier)
+        markdown::code_style(marks.syntax, ladder)
     } else {
         base
     };

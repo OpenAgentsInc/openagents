@@ -14,7 +14,8 @@
 
 use std::path::{Path, PathBuf};
 
-use coder_terminal::markdown::syntax_look;
+use code_highlight::grok::{self, syntect::easy::HighlightLines};
+use coder_terminal::markdown;
 use coder_terminal::{Intensity, Ladder};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -233,55 +234,70 @@ pub fn open(
     Ok(Some(view))
 }
 
-/// A file's lines: a line number on the quarter step, then the code with
-/// its syntax classes on the ladder, as a code block draws them.
+/// A file's lines: a line number on the quarter step, then the code
+/// highlighted as grok-build highlights a file (syntect by the file's
+/// extension, the palette's theme at the terminal's color level), as a code
+/// block draws it. A file over `code_highlight::MAX_BYTES` draws plain.
 pub fn file_lines(text: &str, language: &str, ladder: Ladder) -> Vec<Line<'static>> {
-    let classes = code_highlight::classes(language, text);
+    let syntect = markdown::palette().syntect();
+    let level = markdown::syntax_level(ladder);
+    let mut highlighter = (text.len() <= code_highlight::MAX_BYTES)
+        .then(|| syntect.highlight_lines_by_file_path(&Path::new("file").with_extension(language)))
+        .flatten();
     let count = text.lines().count().max(1);
     let gutter = count.to_string().len();
     let number = ladder.style(Intensity::Quarter);
     let plain = ladder.style(Intensity::Full);
     let mut out = Vec::with_capacity(count);
-    let mut at = 0usize;
-    let mut first = 0usize;
     for (index, line) in text.split_inclusive('\n').enumerate() {
-        let start = at;
-        let end = start + line.trim_end_matches(['\n', '\r']).len();
-        at += line.len();
+        let line = line.trim_end_matches(['\n', '\r']).replace('\t', "    ");
         let mut spans = vec![Span::styled(format!("{:>gutter$}  ", index + 1), number)];
-        let mut push = |from: usize, to: usize, style: Style| {
-            if to > from {
-                spans.push(Span::styled(text[from..to].replace('\t', "    "), style));
-            }
-        };
-        while first < classes.len() && classes[first].end <= start {
-            first += 1;
-        }
-        let mut cursor = start;
-        for class in classes[first..]
-            .iter()
-            .take_while(|class| class.start < end)
-        {
-            let from = class.start.max(cursor);
-            let to = class.end.min(end);
-            push(cursor, from, plain);
-            push(from, to, look(class.kind, ladder));
-            cursor = cursor.max(to);
-        }
-        push(cursor, end, plain);
+        spans.extend(highlight_line(
+            &line,
+            &mut highlighter,
+            syntect,
+            level,
+            plain,
+        ));
         out.push(Line::from(spans));
     }
     out
 }
 
-fn look(kind: Option<code_highlight::Kind>, ladder: Ladder) -> Style {
-    kind.map_or_else(
-        || ladder.style(Intensity::Full),
-        |kind| {
-            let (step, modifier) = syntax_look(kind);
-            ladder.style(step).add_modifier(modifier)
-        },
-    )
+/// grok-build's `highlight_line`: syntect's segments as styled spans, or
+/// the whole line in `fallback` when there is no highlighter or it fails.
+fn highlight_line(
+    text: &str,
+    highlighter: &mut Option<HighlightLines<'_>>,
+    syntect: &grok::Syntect,
+    level: grok::ColorLevel,
+    fallback: Style,
+) -> Vec<Span<'static>> {
+    if let Some(hl) = highlighter.as_mut()
+        && let Ok(ranges) = hl.highlight_line(&format!("{text}\n"), &syntect.syntax_set)
+    {
+        let mut spans = Vec::new();
+        for (style, segment) in ranges {
+            let mut s = segment.to_owned();
+            while s.ends_with('\n') || s.ends_with('\r') {
+                s.pop();
+            }
+            if s.is_empty() {
+                continue;
+            }
+            spans.push(Span::styled(
+                s,
+                grok::color::syntect_to_ratatui_fg(style, level),
+            ));
+        }
+        if !spans.is_empty() {
+            return spans;
+        }
+    }
+    if text.is_empty() {
+        return Vec::new();
+    }
+    vec![Span::styled(text.to_string(), fallback)]
 }
 
 /// Paints `selection` over the cells of `area` it covers: the ladder's
@@ -364,13 +380,23 @@ mod tests {
             .map(|s| s.content.as_ref())
             .collect();
         assert_eq!(first, " 1  fn f1() {}");
-        // `fn` is a keyword: bold, as code blocks draw it.
+        // `fn` is a keyword: Grok Night's keyword color, as code blocks
+        // draw it, not the plain text around it.
         let keyword = view.lines[0]
             .spans
             .iter()
             .find(|s| s.content == "fn")
             .unwrap();
-        assert!(keyword.style.add_modifier.contains(Modifier::BOLD));
+        let name = view.lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.contains("f1"))
+            .unwrap();
+        assert!(matches!(
+            keyword.style.fg,
+            Some(ratatui::style::Color::Rgb(..))
+        ));
+        assert_ne!(keyword.style.fg, name.style.fg);
         assert!(
             open("blob.bin", None, &bases, ladder)
                 .unwrap_err()

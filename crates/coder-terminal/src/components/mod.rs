@@ -19,6 +19,7 @@
 //! [`Buffer`][ratatui::buffer::Buffer] directly.
 
 pub mod card;
+pub mod diff;
 pub mod overlay;
 pub mod run;
 pub mod turn;

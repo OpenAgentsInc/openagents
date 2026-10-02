@@ -1,5 +1,8 @@
 //! Syntax classes for code blocks, from tree-sitter grammars.
 //!
+//! The native renderer (desktop) uses these. The terminal uses [`grok`]
+//! (feature `grok`): grok-build's syntect highlighting and color schemes.
+//!
 //! [`Grammars`] compiles each language's highlight query once and splits a
 //! block into byte ranges, each with the [`Kind`] tree-sitter gave it (or
 //! none, for plain text). How a kind looks is the caller's choice: the
@@ -12,6 +15,9 @@ use std::collections::BTreeMap;
 use std::sync::{LazyLock, Mutex};
 
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
+
+#[cfg(feature = "grok")]
+pub mod grok;
 
 /// The largest block that is classified.
 pub const MAX_BYTES: usize = 64 * 1024;

@@ -689,7 +689,8 @@ fn ctrl_y_copies_the_last_reply_then_its_code_blocks() {
 }
 
 /// A run's result shows its files collapsed; Ctrl+O shows each file's
-/// patch under it (#10152), and condenses it again.
+/// patch under it (#10152, drawn as grok-build draws a diff: #10154), and
+/// condenses it again.
 #[test]
 fn a_results_changes_expand_with_ctrl_o() {
     use openagents_chat::coder_events::{FileChange, Finished};
@@ -724,8 +725,9 @@ fn a_results_changes_expand_with_ctrl_o() {
     assert!(!collapsed.contains("pub fn new"));
     app.key(&ctrl('o'), 80);
     let expanded = shown(&mut app);
-    assert!(expanded.contains("-pub fn old() {}"), "{expanded}");
-    assert!(expanded.contains("+pub fn new() {}"));
+    // Drawn as grok-build draws an edit: numbered, no +/- marks (#10154).
+    assert!(expanded.contains("1  pub fn old() {}"), "{expanded}");
+    assert!(expanded.contains("1  pub fn new() {}"));
     assert!(!expanded.contains("Press Ctrl+O"));
     app.key(&ctrl('o'), 80);
     assert_eq!(shown(&mut app), collapsed);

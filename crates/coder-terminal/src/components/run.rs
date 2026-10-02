@@ -8,7 +8,7 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::{INDENT, cells, clip, indent_at, sanitize, wrap_paragraphs};
+use super::{INDENT, cells, clip, diff, indent_at, sanitize, wrap_paragraphs};
 use crate::{Intensity, Ladder};
 
 /// One row of a Coder run as the transcript shows it. The caller maps its
@@ -54,9 +54,10 @@ pub enum RunRow {
     /// "  {status} {path} (+a -r)" (Half; "?" when unknown), then
     /// "worktree {path}" (Half). Collapsed, a file with a patch adds
     /// "Press Ctrl+O to see the changes." (Half) at the end; `expanded`,
-    /// each file's patch follows its row, clipped rather than wrapped,
-    /// its added and removed lines at ThreeQuarters and the rest at Half,
-    /// then "{n} more lines not shown" when the patch was cut.
+    /// each file's patch follows its row as grok-build draws an edit
+    /// ([`super::diff`]): numbered, syntax-highlighted, removed and added
+    /// lines on red and green bands, then "{n} more lines not shown" when
+    /// the patch was cut.
     Result {
         summary: String,
         files: Vec<FileRow>,
@@ -391,17 +392,18 @@ impl Block {
         }
     }
 
-    /// A changed file's patch under its row, one clipped row per line,
-    /// then how many lines were left out.
+    /// A changed file's patch under its row, drawn as grok-build draws an
+    /// edit, then how many lines were left out.
     fn patch(&self, out: &mut Vec<Line<'static>>, file: &FileRow) {
-        for line in file.patch.as_deref().unwrap_or("").lines() {
-            let at = if line.starts_with(['+', '-']) {
-                Intensity::ThreeQuarters
-            } else {
-                Intensity::Half
-            };
-            self.clipped(out, INDENT * 2, "", line, at);
-        }
+        out.extend(diff::lines(
+            file.patch.as_deref().unwrap_or(""),
+            &file.path,
+            self.lead(INDENT * 2)
+                .saturating_sub(super::diff::INDENT_CELLS),
+            self.width,
+            crate::markdown::palette(),
+            crate::markdown::syntax_level(self.ladder),
+        ));
         if file.cut > 0 {
             let noun = if file.cut == 1 { "line" } else { "lines" };
             let note = format!("{} more {noun} not shown", file.cut);
@@ -435,7 +437,8 @@ mod tests {
     fn text(row: &RunRow, width: u16) -> Vec<String> {
         lines(row, width, Ladder::default())
             .iter()
-            .map(|line| line.to_string())
+            // A diff's band pads its rows to the width.
+            .map(|line| line.to_string().trim_end().to_owned())
             .collect()
     }
 
@@ -539,9 +542,8 @@ mod tests {
             [
                 "  Coder finished · 1 file changed · +1 -1",
                 "    modified a.rs (+1 -1)",
-                "      @@ -1 +1 @@",
-                "      -old",
-                "      +new",
+                "      1  old",
+                "      1  new",
                 "      1 more line not shown",
             ]
         );
