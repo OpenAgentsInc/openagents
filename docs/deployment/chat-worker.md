@@ -1516,3 +1516,23 @@ symlink and restarting `coder-worker-chat` (after `928c40bd5b` the same
 day); the environment file and unit did not change, `coder-worker.service`
 and `/opt/coder-worker/current` were not touched, and `155bf09d01` stays in
 `releases/` for rollback.
+
+Release `f1409c846d` (2026-10-02 UTC) makes every reply that starts work
+begin with the verb and name no one doing it
+([#10212](https://github.com/OpenAgentsInc/openagents/issues/10212)):
+"Picking up issue #10178.", "Looking through your latest commits to tell
+you what changed.", "Working on adding dark mode to your settings page.",
+"Starting Claude Code on this.", "Exploring the repo with Codex, Claude
+Code, Grok Build, and Devin.", "Running the openagents command for that on
+this computer." (it said "We'll have Coder ...", "We'll dispatch ...",
+"We're running ..."), and refuses a continuation that opens with a broken
+word ([#10178](https://github.com/OpenAgentsInc/openagents/issues/10178)).
+It followed `fa12c8313d` (which already carried the #10212 stems), was
+built with `cargo zigbuild` on a Boat sandbox, installed with `knowledge/`
+and `codebase-kb.gz` copied from `fa12c8313d`, checked with `--check`, and
+put live by moving the `chat` symlink and restarting `coder-worker-chat`;
+the environment file and unit did not change, `coder-worker.service` and
+`current` were not touched, and `fa12c8313d` stays in `releases/` for
+rollback. The live hosted rows of `crates/coder/tests/dispatch_ack_eval.rs`
+passed: every work reply started with an -ing verb and none said "We'll
+have", "We'll dispatch", "Coder will", or "have Coder".
