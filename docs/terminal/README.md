@@ -97,16 +97,12 @@ terminal`.
 
 The first thing it shows is the welcome card: the version and three rows.
 
-- **Project:** the Git checkout you started in, where Coder would work.
+- **Project:** the Git checkout you started in, where Coder would work,
+  written from the home folder (`~/openagents`).
 - **Agents:** every coding agent ready here, such as Codex, Claude Code, and
   Grok Build. An agent that is not signed in, at its usage limit, or not
   enabled in `coder.providers` is left off the card; the chat still knows
   each one's state.
-- **Chats:** `synced` with this computer's host running (the OpenAgents app,
-  or `openagents host serve --control`): they are the desktop app's threads,
-  and a paired phone reads and continues them. Without one, `this computer`:
-  they stay in this command's store until a host starts here, then move into
-  it, keeping their IDs. `scratch` for `--scratch`.
 
 Below the transcript sits the composer. Its top line says what is happening
 (`ready`, `replying`, `Starting Grok Build…`, `Coder · step 4 · ≈40% done ·

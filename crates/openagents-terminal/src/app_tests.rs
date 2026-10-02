@@ -431,17 +431,14 @@ fn the_welcome_card_is_three_short_facts() {
         .text(80, Ladder::new(Colors::None))
         .join("\n");
     assert!(shown.contains("OpenAgents dev build"), "{shown}");
-    assert!(shown.contains("Project  demo"), "{shown}");
+    assert!(shown.contains("Project  /work/demo"), "{shown}");
     // Only the agents that can run are named, without a word of state.
     assert!(shown.contains("Agents   Codex"), "{shown}");
     assert!(
         !shown.contains("Claude Code") && !shown.contains("ready"),
         "{shown}"
     );
-    assert!(
-        shown.contains("Chats    this computer · Ctrl+S to sync"),
-        "{shown}"
-    );
+    assert!(!shown.contains("Chats"), "{shown}");
     // Three facts and nothing else: no prose, no key legend.
     assert!(
         !shown.contains("Ask anything") && !shown.contains("Enter send"),
@@ -450,7 +447,7 @@ fn the_welcome_card_is_three_short_facts() {
     let host = Row::Card(welcome(Kind::Host, &Context::default(), Some("Fix CI")))
         .text(80, Ladder::new(Colors::None))
         .join("\n");
-    assert!(host.contains("Chats    synced"), "{host}");
+    assert!(!host.contains("synced"), "{host}");
     assert!(!host.contains("Ctrl+S"), "a host needs no offer: {host}");
     assert!(host.contains("Project  none"), "{host}");
     assert!(host.contains("Agents   none signed in"), "{host}");
@@ -617,7 +614,7 @@ fn a_start_shows_starting_then_one_line() {
     grok.reason = "You asked for Grok Build; it is signed in and has capacity.".into();
     grok.runner = Some(runner);
     app.event(line(1, CoderEvent::CoderStarted(grok)));
-    assert_eq!(app.status(), "Coder is working · Esc stops");
+    assert_eq!(app.status(), "Working · Esc stops");
     let shown = shown(&mut app);
     let after: Vec<&str> = shown
         .lines()
@@ -877,7 +874,7 @@ fn another_computers_welcome_names_it() {
     app.welcome(&Context::default(), None);
     let text = shown(&mut app);
     assert!(text.contains("Computer") && text.contains("Desk"), "{text}");
-    assert!(text.contains("that computer's"), "{text}");
+    assert!(!text.contains("Chats"), "{text}");
     assert!(!text.contains("│ Agents"), "{text}");
 }
 
@@ -1078,4 +1075,16 @@ fn an_open_file_fills_the_screen_and_esc_closes_it() {
     assert!(app.editor.is_empty());
     app.key(&key(KeyCode::Esc), 80);
     assert!(app.file.is_none());
+}
+
+#[test]
+fn the_project_is_written_from_the_home_folder() {
+    let home = std::env::var("HOME").unwrap();
+    assert_eq!(home_relative(&format!("{home}/openagents")), "~/openagents");
+    assert_eq!(home_relative(&home), "~");
+    assert_eq!(home_relative("/srv/repo"), "/srv/repo");
+    assert_eq!(
+        home_relative(&format!("{home}x/repo")),
+        format!("{home}x/repo")
+    );
 }

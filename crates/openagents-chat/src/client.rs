@@ -1226,8 +1226,8 @@ impl Client {
                 id,
                 true,
                 &format!(
-                    "Coder already started task {} for this thread; following it.",
-                    coder.task
+                    "Following task {}.",
+                    coder.task.get(..8).unwrap_or(&coder.task)
                 ),
                 serde_json::to_value(coder).ok(),
             );

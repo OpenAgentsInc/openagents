@@ -587,14 +587,14 @@ pub struct Progress {
 }
 
 impl Progress {
-    /// The running line every surface shows: "Coder is working · step 5
+    /// The running line every surface shows: "Working · step 5
     /// · ≈40% done · 9s". The share is Jev's estimate of how much of the
     /// task is complete, left out until Jev has given one; there is never
     /// a step budget ("of N").
     #[must_use]
     pub fn line(&self) -> String {
         format!(
-            "Coder is working · step {}{} · {:.0}s",
+            "Working · step {}{} · {:.0}s",
             self.step,
             self.complete
                 .map(|complete| format!(" · ≈{:.0}% done", complete.clamp(0.0, 1.0) * 100.0))
@@ -1935,10 +1935,7 @@ mod tests {
             (progress.step, progress.done, progress.complete),
             (1, Some(0.02), Some(0.4))
         );
-        assert_eq!(
-            progress.line(),
-            "Coder is working · step 1 · ≈40% done · 2s"
-        );
+        assert_eq!(progress.line(), "Working · step 1 · ≈40% done · 2s");
         let line = serde_json::to_string(&CoderEvent::Progress(progress.clone())).unwrap();
         assert!(
             !line.contains("max_steps") && line.contains("\"complete\":0.4"),
@@ -1987,12 +1984,9 @@ mod tests {
             panic!()
         };
         assert_eq!(progress.complete, None);
-        assert_eq!(progress.line(), "Coder is working · step 5 · 9s");
+        assert_eq!(progress.line(), "Working · step 5 · 9s");
         progress.complete = Some(0.4);
-        assert_eq!(
-            progress.line(),
-            "Coder is working · step 5 · ≈40% done · 9s"
-        );
+        assert_eq!(progress.line(), "Working · step 5 · ≈40% done · 9s");
         assert!(!progress.line().contains(" of "));
         let text = text(&CoderEvent::Progress(progress)).unwrap();
         assert_eq!(text, "  [step 5, ≈40% done, 9s]");

@@ -305,10 +305,7 @@ impl App {
         if let Some(computer) = &self.computer {
             // Its Coder runs there, so this computer's project and agents
             // say nothing about it.
-            card.rows = vec![
-                ("Computer".into(), computer.clone()),
-                ("Chats".into(), "that computer's · Ctrl+T lists them".into()),
-            ];
+            card.rows = vec![("Computer".into(), computer.clone())];
         }
         self.push(Row::Card(card));
     }
@@ -1135,7 +1132,7 @@ impl App {
                         .unwrap_or_default(),
                     coder_terminal::components::run::elapsed(*seconds)
                 ),
-                _ => "Coder is working · Esc stops".into(),
+                _ => "Working · Esc stops".into(),
             },
             _ if self.offer => "Enter starts Coder".into(),
             _ => "ready".into(),
@@ -1188,11 +1185,16 @@ fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
 
 /// The welcome card: the version, then three short facts, as the old Coder
 /// Terminal's was. No prose and no key legend: `/help` lists the keys.
-pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card {
-    let project = context
-        .project
-        .as_ref()
-        .map_or_else(|| "none".to_owned(), |project| project.name.clone());
+pub fn welcome(_backend: Kind, context: &Context, _resumed: Option<&str>) -> Card {
+    let project = context.project.as_ref().map_or_else(
+        || "none".to_owned(),
+        |project| {
+            project
+                .path
+                .as_deref()
+                .map_or_else(|| project.name.clone(), home_relative)
+        },
+    );
     let ready: Vec<String> = match &context.computer {
         Some(openagents_chat::router::Computer::Here { engines, .. }) => engines
             .iter()
@@ -1206,19 +1208,9 @@ pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card
     } else {
         ready.join(" · ")
     };
-    let chats = match backend {
-        Kind::Host => "synced",
-        Kind::InProcess => "this computer · Ctrl+S to sync",
-        Kind::Scratch => "scratch",
-        Kind::Computer => "another computer's",
-    };
     Card {
         title: title(),
-        rows: vec![
-            ("Project".into(), project),
-            ("Agents".into(), agents),
-            ("Chats".into(), chats.into()),
-        ],
+        rows: vec![("Project".into(), project), ("Agents".into(), agents)],
         body: Vec::new(),
         art: Vec::new(),
         keys: Vec::new(),
@@ -1296,5 +1288,19 @@ fn title() -> String {
     match option_env!("OPENAGENTS_RELEASE") {
         Some("1") => format!("OpenAgents v{}", env!("CARGO_PKG_VERSION")),
         _ => "OpenAgents dev build".to_owned(),
+    }
+}
+
+/// `path` with the home folder written `~`, as a shell prompt writes it:
+/// `/home/me/openagents` is `~/openagents`.
+pub fn home_relative(path: &str) -> String {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    let home = home.trim_end_matches(['/', '\\']);
+    match path.strip_prefix(home) {
+        Some("") if !home.is_empty() => "~".to_owned(),
+        Some(rest) if !home.is_empty() && rest.starts_with(['/', '\\']) => format!("~{rest}"),
+        _ => path.to_owned(),
     }
 }
