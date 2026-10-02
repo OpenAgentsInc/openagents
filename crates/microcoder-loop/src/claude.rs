@@ -54,6 +54,18 @@ use crate::models::{Basis, Generate, Generated, dump_request, next_action_schema
 /// The variable that names the binary.
 pub const BIN_VAR: &str = "CLAUDE_BIN";
 
+/// The effort a call asks for when its route names none: the lean
+/// delegate setup's (#10163). Low effort, with the five-minute cache below,
+/// carried most of the measured saving against Claude Code on its own
+/// defaults (docs/cost/2026-10-02-system-one-cost-efficiency-audit.md).
+pub const DEFAULT_EFFORT: &str = "low";
+
+/// The variable and value that give each call Claude Code's five-minute
+/// prompt cache: cache writes cost 1.25 times input instead of twice it,
+/// and a step reads the previous step's prefix well within five minutes.
+/// The cache alone cut the lean Opus arm 19 to 25% (#9535).
+pub const PROMPT_CACHE_TTL: (&str, &str) = ("CLAUDE_CODE_PROMPT_CACHE_TTL", "5m");
+
 /// The model alias a default Microcoder model name maps to: Microcoder's
 /// defaults name Codex models, which Claude Code can't serve.
 pub const DEFAULT_ALIAS: &str = "opus";
@@ -90,8 +102,8 @@ pub fn alias(model: &str) -> String {
 pub struct ClaudeGenerator {
     /// The model alias or name passed as `--model`.
     pub model: String,
-    /// `low`, `medium`, `high`, `xhigh`, or `max`, or `None` for the
-    /// model's default.
+    /// `low`, `medium`, `high`, `xhigh`, or `max`; `None` asks for
+    /// [`DEFAULT_EFFORT`]. Every call names its effort.
     pub effort: Option<String>,
     pub binary: PathBuf,
     /// Pass `--permission-mode bypassPermissions`, for a run with the
@@ -193,10 +205,12 @@ impl ClaudeGenerator {
             "--model".to_string(),
             self.model.clone(),
         ];
-        if let Some(effort) = &self.effort {
-            args.push("--effort".to_string());
-            args.push(effort.clone());
-        }
+        args.push("--effort".to_string());
+        args.push(
+            self.effort
+                .clone()
+                .unwrap_or_else(|| DEFAULT_EFFORT.to_string()),
+        );
         if self.bypass_permissions {
             args.push("--permission-mode".to_string());
             args.push("bypassPermissions".to_string());
@@ -681,6 +695,7 @@ impl ClaudeGenerator {
             .args(self.args(system))
             .current_dir(std::env::temp_dir())
             .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
+            .env(PROMPT_CACHE_TTL.0, PROMPT_CACHE_TTL.1)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1231,6 +1246,8 @@ printf '%s\n' '{{"type":"result","is_error":false,"result":"","structured_output
         };
         assert_eq!(at("--permission-mode"), Some("bypassPermissions".into()));
         assert_eq!(at("--tools"), Some(String::new()));
+        // A route that names no effort still asks for one (#10163).
+        assert_eq!(at("--effort"), Some(DEFAULT_EFFORT.into()));
         assert!(args.contains(&"--no-session-persistence".to_string()));
     }
 

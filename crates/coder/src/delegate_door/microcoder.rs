@@ -8,9 +8,10 @@
 //!
 //! # Which provider generates
 //!
-//! [`providers`] lists the providers in preference order, Codex (GPT-6 Luna
-//! on the operator's Codex login), then Claude (through the `claude`
-//! binary), then, last and always, Vertex through the OpenAgents cloud
+//! [`providers`] lists the providers in preference order, Codex
+//! ([`CODEX_MODEL`], gpt-6.1-sol at [`CODEX_EFFORT`] effort, on the
+//! operator's Codex login), then Claude (through the `claude` binary, at
+//! low effort with the five-minute prompt cache), then, last and always, Vertex through the OpenAgents cloud
 //! ([`crate::cloud`]), the no-setup fallback that needs no login or token
 //! on this host, each with whether it has a usable login and whether the
 //! capacity book (`capacity.json` in the task store, the book the

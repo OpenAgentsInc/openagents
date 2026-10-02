@@ -634,13 +634,16 @@ async fn answer_wrapped<X, E: Engine<X>>(
         env: Vec::new(),
     });
     if request.agent != cli.agent {
-        // The policy's switches are Claude Code's; Codex takes its own
-        // defaults, keeping only the effort.
+        // Another agent keeps every lean setting it has an equivalent for
+        // (#10163): the effort (Codex's `model_reasoning_effort`) and the
+        // system prompt (Codex's `model_instructions_file` or
+        // `developer_instructions`). Claude Code's tool list and its
+        // prompt-cache variable have none (Codex caches prompts on its
+        // own), so the record does not claim them.
         cli.agent = request.agent;
         cli.model = request.agent.default_model().to_string();
         cli.tools = None;
         cli.prompt_cache_ttl = None;
-        cli.system = None;
     }
     if let Some(model) = &request.model {
         cli.model.clone_from(model);
