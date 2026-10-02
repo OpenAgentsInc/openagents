@@ -1014,7 +1014,7 @@ impl Runner {
             Some(branch) => branch.clone(),
             None => local::default_branch(&checkout.top),
         };
-        local::git_out(&checkout.top, &["fetch", "-q", "origin", &branch]).map_err(|why| {
+        landing::fetch(&checkout.top, &branch).map_err(|why| {
             Refused::Failed(format!("Git could not fetch origin/{branch}: {why}"))
         })?;
         let base = format!("origin/{branch}");

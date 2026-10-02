@@ -133,6 +133,96 @@ fn plan(worktree: &Path) -> Plan<'_> {
     }
 }
 
+#[test]
+fn linked_worktrees_share_the_fetch_lock_but_other_repositories_do_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let remote = origin(dir.path());
+    let first = host(dir.path(), &remote, "first", "docs/first.md", "first");
+    let linked = dir.path().join("linked");
+    run(
+        &first,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            linked.to_str().unwrap(),
+        ],
+    );
+    let other = host(dir.path(), &remote, "other", "docs/other.md", "other");
+    let held = fetch_lock(&first).unwrap();
+    held.lock().unwrap();
+    let contender = fetch_lock(&linked).unwrap();
+    assert!(matches!(
+        contender.try_lock(),
+        Err(std::fs::TryLockError::WouldBlock)
+    ));
+    fetch_lock(&other).unwrap().try_lock().unwrap();
+    held.unlock().unwrap();
+    contender.try_lock().unwrap();
+}
+
+#[test]
+fn concurrent_fetches_from_linked_worktrees_all_observe_the_remote() {
+    const FETCHERS: usize = 8;
+    let dir = tempfile::tempdir().unwrap();
+    let remote = origin(dir.path());
+    let first = host(dir.path(), &remote, "first", "docs/first.md", "first");
+    let mut worktrees = vec![first.clone()];
+    for i in 1..FETCHERS {
+        let linked = dir.path().join(format!("linked-{i}"));
+        run(
+            &first,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                linked.to_str().unwrap(),
+            ],
+        );
+        worktrees.push(linked);
+    }
+    let seed = dir.path().join("seed");
+    for round in 0..3 {
+        write(&seed, "docs/readme.md", &format!("round {round}"));
+        run(&seed, &["commit", "-qam", "advance origin"]);
+        run(
+            &seed,
+            &[
+                "push",
+                "-q",
+                remote.to_str().unwrap(),
+                "HEAD:refs/heads/main",
+            ],
+        );
+        let barrier = Barrier::new(FETCHERS);
+        std::thread::scope(|scope| {
+            for worktree in &worktrees {
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    fetch(worktree, "main").unwrap();
+                });
+            }
+        });
+        assert_eq!(
+            run(&first, &["rev-parse", "origin/main"]),
+            run(&seed, &["rev-parse", "HEAD"])
+        );
+    }
+}
+
+#[test]
+fn a_failed_fetch_releases_the_repository_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let remote = origin(dir.path());
+    let worktree = host(dir.path(), &remote, "first", "docs/first.md", "first");
+    assert!(fetch(&worktree, "missing-branch").is_err());
+    fetch_lock(&worktree).unwrap().try_lock().unwrap();
+    fetch(&worktree, "main").unwrap();
+}
+
 /// Many hosts land at once against one bare `origin`: every change lands,
 /// none replaces another, and the history stays a line.
 #[test]
