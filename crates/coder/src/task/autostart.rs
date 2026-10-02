@@ -2351,9 +2351,7 @@ const MICROCODER: &str = if cfg!(windows) {
 /// # Errors
 /// Names where it looked.
 pub fn default_controller() -> std::result::Result<PathBuf, String> {
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.canonicalize().ok());
+    let exe = std::env::current_exe().ok().map(controller_executable_path);
     let home = std::env::var_os("HOME").map(PathBuf::from);
     controller_candidates(exe.as_deref(), home.as_deref())
         .into_iter()
@@ -2361,6 +2359,19 @@ pub fn default_controller() -> std::result::Result<PathBuf, String> {
         .ok_or_else(|| {
             "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
         })
+}
+
+/// Linux appends ` (deleted)` when a running executable has been replaced.
+/// Keep its directory even if the original executable no longer exists.
+fn controller_executable_path(exe: PathBuf) -> PathBuf {
+    let exe = if let Some(name) = exe.file_name().and_then(|name| name.to_str())
+        && let Some(name) = name.strip_suffix(" (deleted)")
+    {
+        exe.with_file_name(name)
+    } else {
+        exe
+    };
+    exe.canonicalize().unwrap_or(exe)
 }
 
 /// Where [`default_controller`] looks, in order: beside `exe`; when `exe`
@@ -4425,6 +4436,29 @@ mod tests {
             Process.launch(&words, &grant, &store).unwrap_err(),
             "the controller refused the launch: cannot open the grant"
         );
+    }
+
+    #[test]
+    fn a_replaced_executable_keeps_the_engine_beside_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("bin");
+        let home = temp.path().join("home");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(home.join(".openagents/bin")).unwrap();
+        let beside = bin.join(MICROCODER);
+        let installed = home.join(".openagents/bin").join(MICROCODER);
+        std::fs::write(&beside, b"new").unwrap();
+        std::fs::write(&installed, b"old").unwrap();
+        let exe = controller_executable_path(bin.join("openagents (deleted)"));
+        assert_eq!(exe, bin.join("openagents"));
+        let find = || {
+            controller_candidates(Some(&exe), Some(&home))
+                .into_iter()
+                .find(|path| path.is_file())
+        };
+        assert_eq!(find(), Some(beside.clone()));
+        std::fs::remove_file(beside).unwrap();
+        assert_eq!(find(), Some(installed));
     }
 
     /// #10074: the Mac app's `openagents` CLI lives in `Contents/Helpers`
