@@ -1,5 +1,5 @@
-  ◈ Read 3 files, Searched 2 patterns, Listed 1 dir
-  ◆ Run List files and recent git commits
-  · Now the tests.
-  ◆ Run cargo test -p demo · exit 101
-  ◈ Reading 1 file · 1 failed
+    ◈ Read 3 files, Searched 2 patterns, Listed 1 dir
+    ◆ Run List files and recent git commits
+    ◆ Now the tests.
+    ◆ Run cargo test -p demo · exit 101
+    ◈ Reading 1 file · 1 failed

@@ -34,8 +34,10 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::wrap_rows;
 
-/// The cells a turn's text sits in from the left edge.
-pub(crate) const INDENT: usize = 2;
+/// The cells a turn's text sits in from the left edge: grok-build's
+/// content column (its accent column, then `block_pad_left` 2) past the
+/// one cell the screen leaves at its edge, so text starts five cells in.
+pub(crate) const INDENT: usize = 4;
 
 /// The indent a row gets at `width`: [`INDENT`], less at widths too narrow
 /// to give it and still leave two cells, room for a wide character.

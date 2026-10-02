@@ -10,7 +10,7 @@
 //! than in a second copy of the ladder: [`Colorless`] is the only such
 //! option so far.
 
-use crate::intensity::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
+use crate::intensity::{Intensity, NEAR_BLACK_TINT};
 use ratatui::style::{Color, Modifier, Style};
 
 /// The color depth the terminal supports.
@@ -121,10 +121,12 @@ impl Ladder {
         }
     }
 
-    /// The near-black field the whites sit on, at this terminal.
+    /// The near-black field the whites sit on, at this terminal: Grok
+    /// Night's `bg_base` (#141414), the field grok-build's transcript sits
+    /// on.
     pub fn background(self) -> Color {
         match self.colors {
-            Colors::True => rgb(NEAR_BLACK),
+            Colors::True => rgb(GROK_FIELD),
             Colors::Indexed => Color::Indexed(INDEXED_BACKGROUND),
             Colors::None => Color::Reset,
         }
@@ -158,8 +160,11 @@ const fn indexed(intensity: Intensity) -> Color {
     }
 }
 
-/// The indexed entry nearest to [`NEAR_BLACK`].
-const INDEXED_BACKGROUND: u8 = 232;
+/// Grok Night's `bg_base` (grok-build `theme/groknight.rs`, Apache-2.0,
+/// Copyright 2023-2026 SpaceXAI).
+const GROK_FIELD: u32 = 0x141414;
+/// The indexed entry nearest to [`GROK_FIELD`] (#121212).
+const INDEXED_BACKGROUND: u8 = 233;
 /// The indexed entry nearest to [`NEAR_BLACK_TINT`].
 const INDEXED_SELECTION: u8 = 234;
 
@@ -227,7 +232,7 @@ mod tests {
             ladder.style(Intensity::Quarter).fg,
             Some(Color::Indexed(239))
         );
-        assert_eq!(ladder.background(), Color::Indexed(232));
+        assert_eq!(ladder.background(), Color::Indexed(233));
     }
 
     #[test]

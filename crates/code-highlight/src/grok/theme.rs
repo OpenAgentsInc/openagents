@@ -1,6 +1,8 @@
 //! Ported from grok-build (Apache-2.0, Copyright 2023-2026 SpaceXAI):
-//! the per-theme syntect instances of `xai-grok-pager-render/src/syntax.rs`
-//! and the diff colors of `src/theme/groknight.rs` / `src/theme/grokday.rs`.
+//! the per-theme syntect instances of `xai-grok-pager-render/src/syntax.rs`,
+//! and the diff and transcript colors of `src/theme/groknight.rs` /
+//! `src/theme/grokday.rs` (the transcript's as `src/theme/md_style.rs` and
+//! `xai-grok-pager/src/scrollback/blocks/user.rs` use them).
 //!
 //! Grok Night (`grok-night.tmTheme`) is the default; Grok Day
 //! (`grok-day.tmTheme`, deepened colors for light backgrounds) is for a light
@@ -89,6 +91,119 @@ impl Palette {
             },
         };
         canonical.quantized(level)
+    }
+}
+
+impl Palette {
+    /// The palette's transcript colors, quantized for `level` as
+    /// grok-build's `Theme::quantized` does at startup.
+    pub fn transcript(self, level: ColorLevel) -> TranscriptColors {
+        const fn rgb(r: u8, g: u8, b: u8) -> Color {
+            Color::Rgb(r, g, b)
+        }
+        let canonical = match self {
+            Palette::Night => TranscriptColors {
+                // BG_HIGHLIGHT #242424: the band behind a prompt
+                bg_light: rgb(36, 36, 36),
+                // FG_DARK #c8c8c8: the prompt's ❯
+                accent_user: rgb(200, 200, 200),
+                // FG #e1e1e1: the prompt's text
+                text_primary: rgb(225, 225, 225),
+                // FG_DARK: a reply's body text
+                md_text: rgb(200, 200, 200),
+                // BLUE1 #3A95AB: inline code
+                md_code: rgb(58, 149, 171),
+                // #1c1c1c: a code block's band
+                md_code_bg: rgb(28, 28, 28),
+                // COMMENT #6c6c6c: list markers, rules, quote bars, URLs
+                md_muted: rgb(108, 108, 108),
+                // #7aa6da: link text
+                link_fg: rgb(122, 166, 218),
+                // TEAL, BLUE, PURPLE, DARK5, COMMENT, DARK3
+                headings: [
+                    rgb(26, 188, 156),
+                    rgb(122, 162, 247),
+                    rgb(157, 124, 216),
+                    rgb(120, 120, 120),
+                    rgb(108, 108, 108),
+                    rgb(90, 90, 90),
+                ],
+                // GREEN #9ece6a / FG_DARK
+                task_checked: rgb(158, 206, 106),
+                task_unchecked: rgb(200, 200, 200),
+                // #585858 / COMMENT / DARK5
+                gray_dim: rgb(88, 88, 88),
+                gray: rgb(108, 108, 108),
+                gray_bright: rgb(120, 120, 120),
+            },
+            Palette::Day => TranscriptColors {
+                bg_light: rgb(222, 222, 222),
+                accent_user: rgb(68, 68, 68),
+                text_primary: rgb(38, 38, 38),
+                md_text: rgb(68, 68, 68),
+                md_code: rgb(15, 135, 162),
+                md_code_bg: rgb(228, 228, 228),
+                md_muted: rgb(118, 118, 118),
+                // BLUE #2F64D2: deep blue for a light field
+                link_fg: rgb(47, 100, 210),
+                headings: [
+                    rgb(10, 142, 112),
+                    rgb(47, 100, 210),
+                    rgb(108, 62, 178),
+                    rgb(98, 98, 98),
+                    rgb(118, 118, 118),
+                    rgb(142, 142, 142),
+                ],
+                task_checked: rgb(55, 142, 35),
+                task_unchecked: rgb(68, 68, 68),
+                gray_dim: rgb(165, 165, 165),
+                gray: rgb(118, 118, 118),
+                gray_bright: rgb(98, 98, 98),
+            },
+        };
+        canonical.quantized(level)
+    }
+}
+
+/// The colors a transcript draws with: grok-build's prompt band and
+/// `md_*` theme slots. Headings 1 to 4 and 5 are bold; heading 6 is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TranscriptColors {
+    pub bg_light: Color,
+    pub accent_user: Color,
+    pub text_primary: Color,
+    pub md_text: Color,
+    pub md_code: Color,
+    pub md_code_bg: Color,
+    pub md_muted: Color,
+    pub link_fg: Color,
+    pub headings: [Color; 6],
+    pub task_checked: Color,
+    pub task_unchecked: Color,
+    pub gray_dim: Color,
+    pub gray: Color,
+    pub gray_bright: Color,
+}
+
+impl TranscriptColors {
+    fn quantized(self, level: ColorLevel) -> Self {
+        let q = |c| quantize_color(c, level);
+        Self {
+            bg_light: q(self.bg_light),
+            accent_user: q(self.accent_user),
+            text_primary: q(self.text_primary),
+            md_text: q(self.md_text),
+            md_code: q(self.md_code),
+            md_code_bg: q(self.md_code_bg),
+            md_muted: q(self.md_muted),
+            link_fg: q(self.link_fg),
+            headings: self.headings.map(q),
+            task_checked: q(self.task_checked),
+            task_unchecked: q(self.task_unchecked),
+            gray_dim: q(self.gray_dim),
+            gray: q(self.gray),
+            gray_bright: q(self.gray_bright),
+        }
     }
 }
 

@@ -29,9 +29,24 @@ Ported, with changes noted at the top of each file:
   src/grok/appearance.rs    <- xai-grok-pager-render/src/theme/env_appearance.rs,
                                osc11.rs, system_appearance.rs, cache.rs
   src/grok/theme.rs         <- xai-grok-pager-render/src/syntax.rs,
-                               src/theme/groknight.rs, src/theme/grokday.rs
+                               src/theme/groknight.rs, src/theme/grokday.rs,
+                               src/theme/md_style.rs (transcript colors)
   coder-terminal/src/components/diff.rs
                             <- xai-grok-pager/src/scrollback/blocks/tool/edit.rs
+  coder-terminal/src/components/turn.rs
+                            <- xai-grok-pager/src/scrollback/blocks/user.rs,
+                               blocks/agent.rs, wrappers/entry_renderer.rs,
+                               state/layout.rs (gaps), and
+                               xai-grok-pager-render/src/theme/md_style.rs
+  coder-terminal/src/components/run.rs (tool row colors)
+                            <- xai-grok-pager/src/scrollback/blocks/tool/*.rs,
+                               wrappers/entry_renderer.rs (dimmed bullet),
+                               xai-grok-pager-render/src/render/color.rs
+                               (blend_color)
+  coder-terminal/src/markdown.rs (tables, links, quote bars, rules)
+                            <- xai-grok-markdown/src/parse.rs, src/style.rs
+  coder-terminal/src/ladder.rs (the #141414 field)
+                            <- xai-grok-pager-render/src/theme/groknight.rs
 
 Syntax definitions come from the two-face crate (MIT OR Apache-2.0,
 Copyright (c) 2023 The two-face developers) and syntect (MIT).

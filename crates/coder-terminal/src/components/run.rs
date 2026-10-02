@@ -4,8 +4,13 @@
 //! protocol, no clock, and no budget. Progress says where the run is —
 //! the step, an estimate of how done it is, the time it has taken — and
 //! never "of N": a Coder run has no step limit to count toward.
+//!
+//! In color a stretch of tool calls takes grok-build's collapsed tool row
+//! colors (ported from grok-build, Apache-2.0, Copyright 2023-2026
+//! SpaceXAI: `xai-grok-pager/src/scrollback/blocks/tool/*.rs` and the entry
+//! renderer's dimmed bullet), and a result's summary its message styles.
 
-use ratatui::style::Style;
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::turn::marked_style;
@@ -54,8 +59,8 @@ pub enum RunRow {
     Question { text: String, hint: Option<String> },
     /// The turn finished: "Coder finished · {n} file(s) changed · +{ins}
     /// -{del}" (Full; "Coder finished" alone when nothing changed), the
-    /// summary as Markdown, laid out as a reply is (body at ThreeQuarters,
-    /// wrapped; never its raw `**`, backticks, or list dashes), each file
+    /// summary as Markdown, laid out and colored as a reply is (never its
+    /// raw `**`, backticks, or list dashes), each file
     /// "  {status} {path} (+a -r)" (Half; "?" when unknown), then
     /// "worktree {path}" (Half). Collapsed, a file with a patch adds
     /// "Press Ctrl+O to see the changes." (Half) at the end; `expanded`,
@@ -85,22 +90,26 @@ pub enum RunRow {
 /// with its output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ToolRow {
-    /// "◈ Read 3 files, Searched 2 patterns" (mark Half, label
-    /// ThreeQuarters), then " · N failed" (Full) when any member failed.
+    /// "◈ Read 3 files, Searched 2 patterns", then " · N failed" when any
+    /// member failed. In color, as grok-build draws a group: the mark
+    /// `gray`, the label `gray_bright` and bold.
     Group { label: String, failed: usize },
-    /// "◆ Run cargo test" (mark Half, line Half; the mark Full while it
-    /// runs or when it failed), then " · {result}" (Full) when it failed.
-    /// Expanded, `command` ("$ …", Half) and `output` (Half) follow under
-    /// it, clipped rather than wrapped.
+    /// "◆ Run cargo test": the `verb`, when there is one, then `line`, and
+    /// " · {result}" when it failed. In color, as grok-build draws a
+    /// collapsed call: the mark green (red when it failed, violet while it
+    /// runs) at half strength, the verb bold, the words `gray`. Expanded,
+    /// `command` ("$ …") and `output` follow under it, clipped rather than
+    /// wrapped.
     Call {
+        verb: Option<String>,
         line: String,
         result: Option<String>,
         running: bool,
         command: Option<String>,
         output: Vec<String>,
     },
-    /// "· {text}": a thought (mark Half, text Half), its first line drawn
-    /// as inline Markdown.
+    /// "◆ {text}": a thought, its first line drawn as inline Markdown, in
+    /// grok-build's `gray` when there is color.
     Thought(String),
 }
 
@@ -273,6 +282,44 @@ fn progress(step: usize, percent: Option<u8>, seconds: u64) -> String {
     out
 }
 
+/// grok-build's collapsed call bullets (Grok Night): `accent_success` and
+/// `accent_error` blended halfway into the field (`dim_accent` 0.5, its
+/// `blend_color`), and `accent_running` while the call runs.
+const BULLET_DONE: (u8, u8, u8) = (89, 113, 63);
+const BULLET_FAILED: (u8, u8, u8) = (134, 69, 81);
+const BULLET_RUNNING: (u8, u8, u8) = (187, 154, 247);
+
+/// A bullet color at the ladder's level.
+fn bullet((r, g, b): (u8, u8, u8), ladder: Ladder) -> Color {
+    code_highlight::grok::color::quantize_color(Color::Rgb(r, g, b), super::turn::level(ladder))
+}
+
+/// `runs` clipped to `room` cells, the last visible cell "…" when
+/// anything was cut.
+fn clip_runs(runs: Vec<(String, Marks)>, room: usize) -> Vec<(String, Marks)> {
+    let total: usize = runs.iter().map(|(run, _)| cells(run)).sum();
+    if total <= room {
+        return runs;
+    }
+    let mut left = room.saturating_sub(1);
+    let mut out = Vec::new();
+    for (run, marks) in runs {
+        let kept = cut(&run, left);
+        left -= cells(&kept);
+        let whole = kept.len() == run.len();
+        if !kept.is_empty() {
+            out.push((kept, marks));
+        }
+        if !whole {
+            break;
+        }
+    }
+    if room > 0 {
+        out.push(("…".to_owned(), Marks::default()));
+    }
+    out
+}
+
 /// One line of Markdown as inline runs, without its marks' syntax,
 /// clipped to `room` cells with "…" when it is longer.
 fn inline(line: &str, room: usize) -> Vec<(String, Marks)> {
@@ -388,7 +435,12 @@ impl Block {
             .collect::<Vec<_>>()
             .join("\n");
         let rows = markdown::wrapped(text.trim(), room.saturating_sub(hang).max(1));
+        let colors = super::turn::transcript(self.ladder);
         for (index, rendered) in rows.into_iter().enumerate() {
+            if index > 0 && rendered.marked.text.is_empty() && !rendered.code {
+                out.push(Line::default());
+                continue;
+            }
             let base = self.style(text_at.unwrap_or(rendered.intensity));
             let mut spans = vec![Span::raw(" ".repeat(lead))];
             if index == 0 && hang > 0 {
@@ -397,43 +449,81 @@ impl Block {
                 spans.push(Span::raw(" ".repeat(hang)));
             }
             for (run, marks) in rendered.marked.runs_in(0..rendered.marked.text.len()) {
-                spans.push(Span::styled(run, marked_style(base, self.ladder, &marks)));
+                // A summary is the engine's reply: grok-build's message
+                // styles. A thought or a question keeps its step.
+                let style = match text_at {
+                    Some(_) => marked_style(base, self.ladder, &marks),
+                    None => super::turn::reply_style(&marks, self.ladder, &colors),
+                };
+                spans.push(Span::styled(run, style));
             }
             out.push(Line::from(spans));
         }
     }
 
     /// One line of a stretch of tool activity: its mark, its words, and a
-    /// failure in Full, clipped to one row; an expanded call's command and
-    /// output under it.
+    /// failure, clipped to one row; an expanded call's command and output
+    /// under it. In color it draws as grok-build draws a collapsed tool row
+    /// (`scrollback/blocks/tool/*.rs`, the entry renderer's dimmed bullet);
+    /// without, on the white ladder.
     fn tool(&self, out: &mut Vec<Line<'static>>, row: &ToolRow) {
         let half = Intensity::Half;
         let full = Intensity::Full;
-        let (mark, mark_at, text, text_at, tail) = match row {
+        let grok = (self.ladder.colors() != crate::Colors::None)
+            .then(|| super::turn::transcript(self.ladder));
+        let gray = |color: Option<ratatui::style::Color>| match (grok, color) {
+            (Some(_), Some(color)) => Some(Style::new().fg(color)),
+            _ => None,
+        };
+        let (mark, mark_style, verb, text, text_style, tail) = match row {
             ToolRow::Group { label, failed } => (
                 GROUP_MARK,
-                half,
+                gray(grok.map(|g| g.gray)).unwrap_or(self.style(half)),
+                None,
                 label.as_str(),
-                Intensity::ThreeQuarters,
+                gray(grok.map(|g| g.gray_bright))
+                    .map(|style| style.add_modifier(Modifier::BOLD))
+                    .unwrap_or(self.style(Intensity::ThreeQuarters)),
                 (*failed > 0).then(|| format!(" · {failed} failed")),
             ),
             ToolRow::Call {
+                verb,
                 line,
                 result,
                 running,
                 ..
-            } => (
-                CALL_MARK,
-                if *running || result.is_some() {
-                    full
-                } else {
-                    half
-                },
-                line.as_str(),
-                half,
-                result.as_ref().map(|result| format!(" · {result}")),
+            } => {
+                let mark = match grok {
+                    Some(_) => Style::new().fg(bullet(
+                        if *running {
+                            BULLET_RUNNING
+                        } else if result.is_some() {
+                            BULLET_FAILED
+                        } else {
+                            BULLET_DONE
+                        },
+                        self.ladder,
+                    )),
+                    None if *running || result.is_some() => self.style(full),
+                    None => self.style(half),
+                };
+                (
+                    CALL_MARK,
+                    mark,
+                    verb.as_deref(),
+                    line.as_str(),
+                    gray(grok.map(|g| g.gray)).unwrap_or(self.style(half)),
+                    result.as_ref().map(|result| format!(" · {result}")),
+                )
+            }
+            ToolRow::Thought(text) => (
+                if grok.is_some() { CALL_MARK } else { "· " },
+                gray(grok.map(|g| g.gray)).unwrap_or(self.style(half)),
+                None,
+                text.as_str(),
+                gray(grok.map(|g| g.gray)).unwrap_or(self.style(half)),
+                None,
             ),
-            ToolRow::Thought(text) => ("· ", half, text.as_str(), half, None),
         };
         let lead = self.lead(0);
         let room = self.width.saturating_sub(lead);
@@ -448,24 +538,36 @@ impl Block {
         let space = room.saturating_sub(cells(&tail).min(room));
         // A thought is the engine's Markdown; a call or a label is a path,
         // a pattern, or a command, drawn as it is.
-        let body = if matches!(row, ToolRow::Thought(_)) {
-            inline(first, space)
+        let mut body = Vec::new();
+        if let Some(verb) = verb.filter(|verb| !verb.is_empty()) {
+            body.push((
+                format!("{verb} "),
+                Marks {
+                    bold: true,
+                    ..Marks::default()
+                },
+            ));
+        }
+        if matches!(row, ToolRow::Thought(_)) {
+            body.extend(inline(first, space));
         } else {
-            vec![(clip(&sanitize(first), space), Marks::default())]
-        };
+            body.push((sanitize(first), Marks::default()));
+        }
+        let body = clip_runs(body, space);
         let used: usize = body.iter().map(|(run, _)| cells(run)).sum();
         let tail = clip(&tail, room.saturating_sub(used));
-        let base = self.style(text_at);
-        let mut spans = vec![
-            Span::raw(" ".repeat(lead)),
-            Span::styled(mark, self.style(mark_at)),
-        ];
+        let mut spans = vec![Span::raw(" ".repeat(lead)), Span::styled(mark, mark_style)];
         spans.extend(
-            body.into_iter()
-                .map(|(run, marks)| Span::styled(run, marked_style(base, self.ladder, &marks))),
+            body.into_iter().map(|(run, marks)| {
+                Span::styled(run, marked_style(text_style, self.ladder, &marks))
+            }),
         );
         if !tail.is_empty() {
-            spans.push(Span::styled(tail, self.style(full)));
+            let failed = match grok {
+                Some(_) => Style::new().fg(bullet(BULLET_FAILED, self.ladder)),
+                None => self.style(full),
+            };
+            spans.push(Span::styled(tail, failed));
         }
         out.push(Line::from(spans));
         if let ToolRow::Call {
@@ -493,8 +595,7 @@ impl Block {
         out.extend(diff::lines(
             file.patch.as_deref().unwrap_or(""),
             &file.path,
-            self.lead(INDENT * 2)
-                .saturating_sub(super::diff::INDENT_CELLS),
+            self.lead(INDENT).saturating_sub(super::diff::INDENT_CELLS),
             self.width,
             crate::markdown::palette(),
             crate::markdown::syntax_level(self.ladder),
@@ -502,7 +603,7 @@ impl Block {
         if file.cut > 0 {
             let noun = if file.cut == 1 { "line" } else { "lines" };
             let note = format!("{} more {noun} not shown", file.cut);
-            self.clipped(out, INDENT * 2, "", &note, Intensity::Half);
+            self.clipped(out, INDENT, "", &note, Intensity::Half);
         }
     }
 
@@ -563,7 +664,7 @@ mod tests {
                 },
                 80
             ),
-            ["  step 3 · ≈40% done · 1m 5s"]
+            ["    step 3 · ≈40% done · 1m 5s"]
         );
     }
 
@@ -586,7 +687,7 @@ mod tests {
         };
         assert_eq!(
             text(&row, 20),
-            ["  · reading the", "    file that", "    matters"]
+            ["    · reading the", "      file that", "      matters"]
         );
     }
 
@@ -624,9 +725,9 @@ mod tests {
         assert_eq!(
             text(&row, 80),
             [
-                "  Coder finished · 1 file changed · +1 -1",
-                "    modified a.rs (+1 -1)",
-                "  Press Ctrl+O to see the changes.",
+                "    Coder finished · 1 file changed · +1 -1",
+                "        modified a.rs (+1 -1)",
+                "    Press Ctrl+O to see the changes.",
             ]
         );
         if let RunRow::Result { expanded, .. } = &mut row {
@@ -635,11 +736,11 @@ mod tests {
         assert_eq!(
             text(&row, 80),
             [
-                "  Coder finished · 1 file changed · +1 -1",
-                "    modified a.rs (+1 -1)",
-                "      1  old",
-                "      1  new",
-                "      1 more line not shown",
+                "    Coder finished · 1 file changed · +1 -1",
+                "        modified a.rs (+1 -1)",
+                "        1  old",
+                "        1  new",
+                "        1 more line not shown",
             ]
         );
     }
@@ -676,9 +777,10 @@ mod tests {
         };
         let rows = text(&row, 80);
         assert_eq!(raw_markdown(&rows), Vec::<String>::new(), "{rows:#?}");
-        assert_eq!(rows[0], "  Coder finished", "nothing changed: no counts");
+        assert_eq!(rows[0], "    Coder finished", "nothing changed: no counts");
         assert!(
-            rows.iter().any(|row| row == "  • 45 terminal unit tests."),
+            rows.iter()
+                .any(|row| row == "    • 45 terminal unit tests."),
             "{rows:#?}"
         );
         assert!(rows.iter().any(|row| row.contains("Commit: 0d6afa57b4.")));
@@ -702,11 +804,14 @@ mod tests {
             mark: '·',
             text: "**Inspecting** the `Store::open` path".into(),
         };
-        assert_eq!(text(&thought, 80), ["  · Inspecting the Store::open path"]);
+        assert_eq!(
+            text(&thought, 80),
+            ["    · Inspecting the Store::open path"]
+        );
         let tool = RunRow::Tools(vec![ToolRow::Thought(
             "**Planning the fix**\n\nThen `cargo test`.".into(),
         )]);
-        assert_eq!(text(&tool, 80), ["  · Planning the fix"]);
+        assert_eq!(text(&tool, 80), ["    ◆ Planning the fix"]);
         let long = RunRow::Tools(vec![ToolRow::Thought(format!(
             "**{}**",
             "word ".repeat(30).trim()
@@ -721,8 +826,8 @@ mod tests {
         };
         let rows = text(&asked, 80);
         assert_eq!(raw_markdown(&rows), Vec::<String>::new(), "{rows:#?}");
-        assert_eq!(rows[0], "  Coder asks: Which one?");
-        assert!(rows.contains(&"  • main".to_owned()), "{rows:#?}");
+        assert_eq!(rows[0], "    Coder asks: Which one?");
+        assert!(rows.contains(&"    • main".to_owned()), "{rows:#?}");
     }
 
     #[test]

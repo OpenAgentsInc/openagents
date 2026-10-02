@@ -1,2 +1,2 @@
-openagents ⠋
-  Looking at wrap_rows now; the bug is
+    Looking at wrap_rows now; the
+    bug is

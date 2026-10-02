@@ -61,12 +61,7 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     let mut live: Vec<Line<'static>> = Vec::new();
     let viewing = app.run_view.is_some();
     if !app.partial.is_empty() && !viewing {
-        live.extend(turn::streaming(
-            &app.partial,
-            frame_for(app.tick),
-            width,
-            ladder,
-        ));
+        live.extend(turn::streaming(&app.partial, width, ladder));
     }
     if let Some(progress) = &app.progress {
         live.extend(run::lines(progress, width, ladder));

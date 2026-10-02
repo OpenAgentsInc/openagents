@@ -24,7 +24,7 @@ pub use appearance::Appearance;
 pub use color::ColorLevel;
 pub use open_code::{HlLine, OpenCodeHighlighter};
 pub use syntax::Syntect;
-pub use theme::{DiffColors, Palette};
+pub use theme::{DiffColors, Palette, TranscriptColors};
 
 /// One highlighted token's look, as syntect gave it: the theme's RGB and
 /// font style. Quantized only when drawn, at the terminal's level.

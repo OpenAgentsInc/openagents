@@ -117,11 +117,17 @@ computer's host restarting), the screen says so once and the top line reads
 doubles up to 30 seconds, until the reply comes or Esc stops it; what had
 streamed stays, and the reply streams on once it is back.
 
-Replies render as Markdown. Fenced code is highlighted as Grok Build
-highlights it: syntect with two-face's syntaxes and Grok Build's own colors,
-Grok Night by default and Grok Day on a light background. A run result's diffs
-(Ctrl+O) are drawn as Grok Build draws an edit: numbered, highlighted, removed
-and added lines on red and green bands.
+The transcript looks as Grok Build's does, in its Grok Night colors (Grok
+Day on a light background) on its #141414 field. No turn carries a label:
+your message is a prompt, `❯` and the text on a raised band, and a reply is
+Markdown under it, with its heading colors, bold, italic, inline code, links
+with their address, muted bullets and numbers, quote bars, boxed tables, and
+code blocks on their own band. One blank row separates turns. A Coder run's
+result renders the same way, never as raw Markdown, and its tool calls
+group as Grok Build groups them. Fenced code is highlighted as Grok Build
+highlights it: syntect with two-face's syntaxes and Grok Build's own colors.
+A run result's diffs (Ctrl+O) are drawn as Grok Build draws an edit:
+numbered, highlighted, removed and added lines on red and green bands.
 Suggested follow-ups are not shown here; a card
 that opens in the app (a Gym result, a deck, the wallet) says where to open
 it.

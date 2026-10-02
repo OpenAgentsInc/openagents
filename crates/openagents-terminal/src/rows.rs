@@ -52,16 +52,34 @@ impl Row {
 }
 
 /// The row's drawn lines at `width`.
+///
+/// As grok-build spaces its entries, one blank row follows a turn, a
+/// stretch of tool calls, and a run's ending (its result, failure, stop,
+/// or question); the rows inside a stretch keep no gap.
 pub fn lines(row: &Row, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
-    match row {
-        Row::Turn(who, text) => turn::turn(*who, text, width, ladder),
-        Row::Note(text, intensity) => turn::note(text, *intensity, width, ladder),
-        Row::Card(card) => card.lines(width, ladder),
+    let mut lines = match row {
+        Row::Turn(who, text) => return turn::turn(*who, text, width, ladder),
+        Row::Note(text, intensity) => return turn::note(text, *intensity, width, ladder),
+        Row::Card(card) => return card.lines(width, ladder),
         Row::Run(row) => run::lines(row, width, ladder),
         Row::Tools { stretch, expanded } => {
             run::lines(&RunRow::Tools(tool_rows(stretch, *expanded)), width, ladder)
         }
+    };
+    let gap = matches!(
+        row,
+        Row::Tools { .. }
+            | Row::Run(
+                RunRow::Result { .. }
+                    | RunRow::Failed { .. }
+                    | RunRow::Stopped { .. }
+                    | RunRow::Question { .. }
+            )
+    );
+    if gap && !lines.is_empty() {
+        lines.push(Line::default());
     }
+    lines
 }
 
 /// A stretch's lines: condensed, each group's label, each call one line,
@@ -101,12 +119,9 @@ fn push_item(rows: &mut Vec<ToolRow>, item: &Item<'_>, expanded: bool) {
 }
 
 fn call_row(shown: &Shown, expanded: bool) -> ToolRow {
-    let line = match shown.verb() {
-        Some(verb) => format!("{verb} {}", shown.target()),
-        None => shown.target(),
-    };
     ToolRow::Call {
-        line,
+        verb: shown.verb().map(str::to_owned),
+        line: shown.target(),
         result: shown.result(),
         running: shown.running,
         // The command shows under its line only when the line names what

@@ -273,7 +273,7 @@ fn turns() {
         check(
             &format!("streaming_{width}"),
             &draw(
-                &streaming("Looking at `wrap_rows` now; the bug is", '⠋', width, TRUE),
+                &streaming("Looking at `wrap_rows` now; the bug is", width, TRUE),
                 width,
             ),
         );
@@ -450,7 +450,9 @@ fn a_reply_styles_its_marks() {
         .iter()
         .find(|span| span.content == "wrap_rows")
         .expect("the code span");
-    assert_eq!(code.style.fg, TRUE.style(Intensity::Full).fg);
+    // grok-build's inline code: md_code (#3A95AB), bold.
+    assert_eq!(code.style.fg, Some(Color::Rgb(58, 149, 171)));
+    assert!(code.style.add_modifier.contains(Modifier::BOLD));
     let link = spans
         .iter()
         .find(|span| span.content == "notes")
@@ -461,9 +463,12 @@ fn a_reply_styles_its_marks() {
         .find(|span| span.content == "wide")
         .expect("the bold span");
     assert!(bold.style.add_modifier.contains(Modifier::BOLD));
-    let label = &lines[0].spans[0];
-    assert_eq!(label.content, "openagents");
-    assert_eq!(label.style.fg, TRUE.style(Intensity::Half).fg);
+    // No label: the reply starts with its own text.
+    assert!(
+        lines
+            .iter()
+            .all(|line| !line.to_string().contains("openagents"))
+    );
 }
 
 /// Grok Build's capture in the design note
@@ -471,6 +476,7 @@ fn a_reply_styles_its_marks() {
 /// looking calls under one label, the command one line, a failure loud.
 fn tool_rows(expanded: bool) -> Vec<ToolRow> {
     let call = |line: &str, command: Option<&str>, output: &[&str]| ToolRow::Call {
+        verb: None,
         line: line.into(),
         result: None,
         running: false,
@@ -513,7 +519,8 @@ fn tool_rows(expanded: bool) -> Vec<ToolRow> {
     ));
     rows.push(ToolRow::Thought("Now the tests.".into()));
     rows.push(ToolRow::Call {
-        line: "Run cargo test -p demo".into(),
+        verb: Some("Run".into()),
+        line: "cargo test -p demo".into(),
         result: Some("exit 101".into()),
         running: false,
         command: expanded.then(|| "cargo test -p demo".into()),
@@ -558,14 +565,28 @@ fn tool_groups() {
 
 #[test]
 fn a_failure_is_loud_and_a_quiet_line_is_half() {
+    // In color the rows take grok-build's collapsed tool colors: a green
+    // bullet at half strength, a red one when the call failed, the words
+    // gray, the verb bold, a group's label brighter and bold.
     let lines = run::lines(&RunRow::Tools(tool_rows(false)), 80, TRUE);
     let failed = &lines[3];
     let last = failed.spans.last().unwrap();
     assert_eq!(last.content.as_ref(), " · exit 101");
-    assert_eq!(last.style, TRUE.style(Intensity::Full));
+    assert_eq!(last.style.fg, Some(Color::Rgb(134, 69, 81)));
+    assert_eq!(failed.spans[1].style.fg, Some(Color::Rgb(134, 69, 81)));
+    let verb = &failed.spans[2];
+    assert_eq!(verb.content.as_ref(), "Run ");
+    assert!(verb.style.add_modifier.contains(Modifier::BOLD));
     let quiet = &lines[1];
-    assert_eq!(quiet.spans[1].style, TRUE.style(Intensity::Half));
-    assert_eq!(quiet.spans[2].style, TRUE.style(Intensity::Half));
+    assert_eq!(quiet.spans[1].style.fg, Some(Color::Rgb(89, 113, 63)));
+    assert_eq!(quiet.spans[2].style.fg, Some(Color::Rgb(108, 108, 108)));
     let group = &lines[0];
-    assert_eq!(group.spans[2].style, TRUE.style(Intensity::ThreeQuarters));
+    assert_eq!(group.spans[1].style.fg, Some(Color::Rgb(108, 108, 108)));
+    assert_eq!(group.spans[2].style.fg, Some(Color::Rgb(120, 120, 120)));
+    assert!(group.spans[2].style.add_modifier.contains(Modifier::BOLD));
+    // Without color the white ladder still says it.
+    let ladder = Ladder::new(Colors::None);
+    let lines = run::lines(&RunRow::Tools(tool_rows(false)), 80, ladder);
+    let last = lines[3].spans.last().unwrap();
+    assert_eq!(last.style, ladder.style(Intensity::Full));
 }

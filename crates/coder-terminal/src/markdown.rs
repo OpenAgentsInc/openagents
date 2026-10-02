@@ -1,5 +1,11 @@
 //! A reply's Markdown as styled display lines.
 //!
+//! The layout of tables, links, quote bars, and rules is ported from
+//! grok-build (Apache-2.0, Copyright 2023-2026 SpaceXAI),
+//! `xai-grok-markdown/src/parse.rs`: a boxed table with a bold header and
+//! dim borders, `[text](url)` as "text (url)", the bar through a quote's
+//! blank rows, a three-cell rule.
+//!
 //! `pulldown-cmark` events project onto a tree of blocks — paragraphs,
 //! headings, fenced code, quotes, lists, tables, rules — each holding
 //! flat inline runs with their marks. [`render`] lays the tree out as
@@ -34,6 +40,14 @@ pub struct Marks {
     pub image: Option<String>,
     /// In fenced code, the token's look from grok-build's theme.
     pub syntax: Option<Token>,
+    /// The heading level, 1 to 6, of a heading's text.
+    pub heading: Option<u8>,
+    /// Layout the Markdown drew rather than wrote: a list's bullet or
+    /// number, a quote's bar, a rule, a table's borders. grok-build draws
+    /// it muted.
+    pub muted: bool,
+    /// Muted and dimmed as well: a quote's bar, a table's borders.
+    pub dim: bool,
 }
 
 /// The color level syntax colors draw at: none when the ladder has no
@@ -104,6 +118,43 @@ impl Marks {
     }
 }
 
+/// The marks of layout the Markdown drew: bullets, bars, rules, borders.
+const MUTED: Marks = Marks {
+    bold: false,
+    italic: false,
+    code: false,
+    strike: false,
+    link: None,
+    image: None,
+    syntax: None,
+    heading: None,
+    muted: true,
+    dim: false,
+};
+
+/// The marks of a quote's bar and a table's borders: muted and dim.
+const BORDER: Marks = Marks {
+    bold: false,
+    italic: false,
+    code: false,
+    strike: false,
+    link: None,
+    image: None,
+    syntax: None,
+    heading: None,
+    muted: true,
+    dim: true,
+};
+
+/// Pushes a line's lead: list bullets and numbers muted, quote bars
+/// muted and dim, as grok-build draws them.
+fn push_prefix(marked: &mut Marked, prefix: &str) {
+    for ch in prefix.chars() {
+        let marks = if ch == '│' { &BORDER } else { &MUTED };
+        marked.push(ch.encode_utf8(&mut [0; 4]), marks);
+    }
+}
+
 /// Text plus the marks it carries: non-overlapping runs, sorted, covering
 /// the whole string.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -163,6 +214,8 @@ pub struct Rendered {
     pub marked: Marked,
     pub intensity: Intensity,
     pub hang: usize,
+    /// A line of a code block, which draws on grok-build's code band.
+    pub code: bool,
 }
 
 /// Lays `source` out as display lines. Blocks separate with a blank
@@ -218,6 +271,7 @@ pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
                 marked,
                 intensity: rendered.intensity,
                 hang: 0,
+                code: rendered.code,
             });
         }
     }
@@ -227,10 +281,15 @@ pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
 fn blocks_lines(blocks: &[Block], prefix: &str, hang: usize, out: &mut Vec<Rendered>) {
     for (index, block) in blocks.iter().enumerate() {
         if index > 0 {
+            // Inside a quote the bar runs through the blank row, as
+            // grok-build draws it ("│ Foo", "│", "│ Bar").
+            let mut marked = Marked::default();
+            push_prefix(&mut marked, prefix.trim_end());
             out.push(Rendered {
-                marked: Marked::default(),
+                marked,
                 intensity: Intensity::Half,
                 hang: 0,
+                code: false,
             });
         }
         block_lines(block, prefix, hang, out);
@@ -249,6 +308,7 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
                     text: inline.text.clone(),
                     marks: Marks {
                         bold: true,
+                        heading: Some(*level),
                         ..inline.marks.clone()
                     },
                 })
@@ -281,7 +341,7 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
             {
                 let line = line.strip_suffix('\r').unwrap_or(line);
                 let mut marked = Marked::default();
-                marked.push(prefix, &Marks::default());
+                push_prefix(&mut marked, prefix);
                 match highlighted.as_ref().and_then(|lines| lines.get(index)) {
                     Some(segments) => code_runs(&mut marked, segments),
                     None => marked.push(line, &plain),
@@ -290,6 +350,7 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
                     marked,
                     intensity: Intensity::ThreeQuarters,
                     hang,
+                    code: true,
                 });
             }
         }
@@ -307,22 +368,16 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
                 item_lines(item, &marker, prefix, hang, out);
             }
         }
-        Block::Table { header, rows, .. } => {
-            out.push(marked_line(
-                &table_cells(header),
-                prefix,
-                hang,
-                Intensity::Full,
-            ));
-            for row in rows {
-                let cells = table_cells(row);
-                out.push(marked_line(&cells, prefix, hang, Intensity::ThreeQuarters));
-            }
-        }
+        Block::Table { header, rows, .. } => table_lines(header, rows, prefix, hang, out),
         Block::Rule => out.push(Rendered {
-            marked: Marked::plain(format!("{prefix}{}", "─".repeat(24))),
+            marked: {
+                let mut marked = Marked::default();
+                marked.push(&format!("{prefix}───"), &MUTED);
+                marked
+            },
             intensity: Intensity::Half,
             hang,
+            code: false,
         }),
     }
 }
@@ -359,24 +414,90 @@ fn highlighted(language: &str, body: &str, start: usize, open: bool) -> Option<V
     })
 }
 
-fn table_cells(cells: &[Vec<Inline>]) -> Vec<Inline> {
-    cells
-        .iter()
-        .enumerate()
-        .flat_map(|(index, cell)| {
-            let mut cell = cell.clone();
-            if index > 0 {
-                cell.insert(
-                    0,
-                    Inline {
-                        text: " │ ".to_owned(),
-                        marks: Marks::default(),
-                    },
-                );
+/// A table boxed as grok-build boxes one (`xai-grok-markdown` `parse.rs`,
+/// `format_border_line` and `format_styled_content_lines`): borders in the
+/// muted rule style, one cell of padding, the header bold, a divider under
+/// the header and between body rows. Columns take their natural widths.
+fn table_lines(
+    header: &[Vec<Inline>],
+    rows: &[Vec<Vec<Inline>>],
+    prefix: &str,
+    hang: usize,
+    out: &mut Vec<Rendered>,
+) {
+    use unicode_width::UnicodeWidthStr;
+    let columns = std::iter::once(header.len())
+        .chain(rows.iter().map(Vec::len))
+        .max()
+        .unwrap_or(0);
+    if columns == 0 {
+        return;
+    }
+    let mut widths = vec![0usize; columns];
+    for row in std::iter::once(header).chain(rows.iter().map(Vec::as_slice)) {
+        for (index, cell) in row.iter().enumerate() {
+            widths[index] = widths[index].max(text_of(cell).width());
+        }
+    }
+    let border = |left: char, mid: char, right: char| {
+        let mut line = String::new();
+        line.push(left);
+        for (index, width) in widths.iter().enumerate() {
+            line.push_str(&"─".repeat(width + 2));
+            if index + 1 < columns {
+                line.push(mid);
             }
-            cell
-        })
-        .collect()
+        }
+        line.push(right);
+        let mut marked = Marked::default();
+        push_prefix(&mut marked, prefix);
+        marked.push(&line, &BORDER);
+        Rendered {
+            marked,
+            intensity: Intensity::Half,
+            hang,
+            code: false,
+        }
+    };
+    let row_line = |cells: &[Vec<Inline>], bold: bool| {
+        let mut marked = Marked::default();
+        push_prefix(&mut marked, prefix);
+        marked.push("│", &BORDER);
+        for (index, width) in widths.iter().enumerate() {
+            let cell = cells.get(index).map(Vec::as_slice).unwrap_or(&[]);
+            marked.push(" ", &Marks::default());
+            for inline in cell {
+                let marks = Marks {
+                    bold: inline.marks.bold || bold,
+                    ..inline.marks.clone()
+                };
+                marked.push(&inline.text, &marks);
+            }
+            let pad = width.saturating_sub(text_of(cell).width()) + 1;
+            marked.push(&" ".repeat(pad), &Marks::default());
+            marked.push("│", &BORDER);
+        }
+        Rendered {
+            marked,
+            intensity: if bold {
+                Intensity::Full
+            } else {
+                Intensity::ThreeQuarters
+            },
+            hang,
+            code: false,
+        }
+    };
+    out.push(border('┌', '┬', '┐'));
+    out.push(row_line(header, true));
+    out.push(border('├', '┼', '┤'));
+    for (index, row) in rows.iter().enumerate() {
+        out.push(row_line(row, false));
+        if index + 1 < rows.len() {
+            out.push(border('├', '┼', '┤'));
+        }
+    }
+    out.push(border('└', '┴', '┘'));
 }
 
 /// A list item's blocks: the marker leads the first line, padding the
@@ -384,11 +505,14 @@ fn table_cells(cells: &[Vec<Inline>]) -> Vec<Inline> {
 fn item_lines(item: &Item, marker: &str, prefix: &str, hang: usize, out: &mut Vec<Rendered>) {
     let width = marker.chars().count();
     for (index, block) in item.blocks.iter().enumerate() {
-        if index > 0 {
+        // A nested list sits right under its item's text, as grok-build
+        // draws a tight list.
+        if index > 0 && !matches!(block, Block::List { .. }) {
             out.push(Rendered {
                 marked: Marked::default(),
                 intensity: Intensity::Half,
                 hang: 0,
+                code: false,
             });
         }
         let lead = if index == 0 {
@@ -402,7 +526,7 @@ fn item_lines(item: &Item, marker: &str, prefix: &str, hang: usize, out: &mut Ve
 
 fn marked_line(inlines: &[Inline], prefix: &str, hang: usize, intensity: Intensity) -> Rendered {
     let mut marked = Marked::default();
-    marked.push(prefix, &Marks::default());
+    push_prefix(&mut marked, prefix);
     for inline in inlines {
         marked.push(&inline.text, &inline.marks);
     }
@@ -410,6 +534,7 @@ fn marked_line(inlines: &[Inline], prefix: &str, hang: usize, intensity: Intensi
         marked,
         intensity,
         hang,
+        code: false,
     }
 }
 
@@ -735,6 +860,8 @@ fn row(cursor: &mut Cursor<'_>, until: TagEnd) -> Vec<Vec<Inline>> {
 fn inlines(cursor: &mut Cursor<'_>, until: Option<TagEnd>) -> Vec<Inline> {
     let mut runs: Vec<Inline> = Vec::new();
     let mut stack: Vec<Marks> = vec![Marks::default()];
+    // Each open link's destination and the run its text starts at.
+    let mut links: Vec<(String, usize)> = Vec::new();
     while let Some(event) = cursor.peek() {
         let marks = stack.last().cloned().unwrap_or_default();
         match event {
@@ -744,6 +871,20 @@ fn inlines(cursor: &mut Cursor<'_>, until: Option<TagEnd>) -> Vec<Inline> {
                 {
                     cursor.advance();
                     break;
+                }
+                if matches!(end, TagEnd::Link)
+                    && let Some((url, start)) = links.pop()
+                {
+                    // grok-build writes `[text](url)` as "text (url)", the
+                    // parentheses and the URL muted; an autolink once.
+                    let text = text_of(runs.get(start..).unwrap_or(&[]));
+                    if !url.is_empty() && text != url && !url.starts_with('#') {
+                        let muted = Marks {
+                            muted: true,
+                            ..stack.first().cloned().unwrap_or_default()
+                        };
+                        push(&mut runs, &format!(" ({url})"), muted);
+                    }
                 }
                 match end {
                     TagEnd::Emphasis
@@ -794,6 +935,7 @@ fn inlines(cursor: &mut Cursor<'_>, until: Option<TagEnd>) -> Vec<Inline> {
                 cursor.advance();
             }
             Event::Start(Tag::Link { dest_url, .. }) => {
+                links.push((dest_url.to_string(), runs.len()));
                 stack.push(Marks {
                     link: Some(dest_url.to_string()),
                     ..marks
@@ -1077,14 +1219,16 @@ mod tests {
     #[test]
     fn a_quote_prefaces_its_blocks() {
         let lines = render("> **note**\n>\n> more");
-        assert_eq!(texts(&lines), ["│ note", "", "│ more"]);
+        assert_eq!(texts(&lines), ["│ note", "│", "│ more"]);
     }
 
     #[test]
     fn a_link_marks_its_text() {
         let lines = render("see [the door](https://example.com)");
         let marked = &lines[0].marked;
-        assert_eq!(marked.text, "see the door");
+        // grok-build: the text, then the URL in parentheses, muted.
+        assert_eq!(marked.text, "see the door (https://example.com)");
+        assert!(marked.runs.last().unwrap().1.muted);
         assert_eq!(
             marked.runs[1].1.link.as_deref(),
             Some("https://example.com")
@@ -1152,8 +1296,26 @@ mod tests {
                 .all(|line| line.marked.runs.iter().all(|(_, marks)| marks.code))
         );
         let table = render("| Name | State |\n| --- | --- |\n| Parser | **Ready** |");
-        assert_eq!(texts(&table), ["Name │ State", "Parser │ Ready"]);
-        assert!(table[1].marked.runs.last().unwrap().1.bold);
+        // Boxed as grok-build boxes a table: muted borders, a bold header.
+        assert_eq!(
+            texts(&table),
+            [
+                "┌────────┬───────┐",
+                "│ Name   │ State │",
+                "├────────┼───────┤",
+                "│ Parser │ Ready │",
+                "└────────┴───────┘"
+            ]
+        );
+        let bold = |line: &Rendered, word: &str| {
+            line.marked
+                .runs
+                .iter()
+                .any(|(range, marks)| &line.marked.text[range.clone()] == word && marks.bold)
+        };
+        assert!(bold(&table[1], "Name") && bold(&table[3], "Ready"));
+        assert!(!bold(&table[3], "Parser"));
+        assert!(table[0].marked.runs.iter().all(|(_, marks)| marks.muted));
     }
 
     #[test]
