@@ -280,7 +280,8 @@ pub(crate) fn resolve(target: &str) -> Result<Target, String> {
         }
         _ => Vec::new(),
     };
-    let skills = arms::skills_in(&root.join(SKILLS_DIR))?;
+    let mut skills = arms::skills_in(&root.join(SKILLS_DIR))?;
+    skills.extend(background_skills(&root, &lock)?);
     // An unpublished extension is named under the local key, whoever runs
     // it, so a check by another trainer names the same subject.
     let publisher = if is_hex64(&package.publisher) {
@@ -308,6 +309,28 @@ pub(crate) fn resolve(target: &str) -> Result<Target, String> {
         only_case,
         installed,
     })
+}
+
+/// A plugin's background rules, as the subject arm reads them: each pinned
+/// rule document, under a line saying the host runs it on its own. A Coder
+/// turn never runs the rule; what the plugin knows (what is safe to clean,
+/// what never is, and that it previews first) is what a test can measure.
+fn background_skills(root: &Path, lock: &coder::package::Lock) -> Result<Vec<arms::Skill>, String> {
+    let mut skills = Vec::new();
+    for (name, pin) in &lock.background {
+        let path = root.join(&pin.found);
+        let text = std::fs::read_to_string(&path)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        let body = format!(
+            "# Background rule `{name}`\n\nThis plugin brings a rule the OpenAgents host runs on its own while the plugin is on. The host decides from this rule what is safe to delete, checks every safety rule itself, and shows a dry run first. The rule:\n\n```json\n{}\n```\n",
+            text.trim()
+        );
+        skills.push(arms::Skill {
+            name: format!("background-{name}"),
+            bytes: body.into_bytes(),
+        });
+    }
+    Ok(skills)
 }
 
 /// The agent binary: `--coder`, `coder` beside this program, or `coder`

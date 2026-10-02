@@ -313,7 +313,12 @@ pub async fn interview<G: Generate>(
         ),
     );
     let mut interview = Interview::new(Surface::Terminal, author.catalog().clone());
-    let mut transcript: Vec<Message> = Vec::new();
+    // What running this command asks, as the person's first message: a
+    // model door refuses a conversation with no message in it.
+    let mut transcript: Vec<Message> = vec![Message {
+        role: Role::User,
+        text: format!("Help me write a test set for my plugin {}.", tool.name),
+    }];
     let need = match interview.start(Pick::Existing(tool)) {
         Ok(need) => need,
         Err(turn) => return Err(Stop::Failed(turn.text())),
