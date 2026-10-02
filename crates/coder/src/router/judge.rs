@@ -990,6 +990,7 @@ mod tests {
                     context: &context,
                     personalize: true,
                     draft: false,
+                    earlier: false,
                 },
             );
             if routing.route.word() == *expected {

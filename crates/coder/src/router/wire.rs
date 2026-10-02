@@ -401,6 +401,7 @@ mod tests {
                 context: &context,
                 personalize: false,
                 draft: false,
+                earlier: false,
             },
         );
         assert_eq!(
@@ -608,6 +609,7 @@ mod tests {
                 context: &Context::default(),
                 personalize: false,
                 draft: false,
+                earlier: false,
             },
         );
         let record = Shadow::of(&routing, bank, Mode::Router, false, &tier, &tier, 180);

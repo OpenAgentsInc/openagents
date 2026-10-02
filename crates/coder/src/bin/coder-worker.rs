@@ -2105,6 +2105,9 @@ impl Job {
         );
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();
+        // Whether the latest message has earlier ones to refer to: a
+        // count, never text (#10138).
+        let earlier = judged.len() > 1;
         Some(Box::pin(async move {
             let started = Instant::now();
             let answered = tokio::time::timeout(first::LATE, judge.system_one(request)).await;
@@ -2137,6 +2140,7 @@ impl Job {
                                 context: &context,
                                 personalize,
                                 draft,
+                                earlier,
                             },
                         )
                     };
@@ -2259,9 +2263,14 @@ impl Job {
     /// A turn that asks to be shown a first response holds the model's
     /// words while the judgment is out, up to [`first::LATE`], so a late
     /// judgment still routes it (#10110); past [`first::BUDGET`] the bank's
-    /// [`first::PROGRESS_OPENER`] line shows meanwhile, as partial `seq` 0
-    /// and the start of the result. A judgment that never comes leaves the
-    /// model's reply, written under [`first::UNROUTED_NOTE`].
+    /// [`first::PROGRESS_OPENER`] line shows meanwhile, as partial `seq` 0,
+    /// and is left out of the result (#10139). A judgment that never comes
+    /// leaves the model's reply, written under [`first::UNROUTED_NOTE`].
+    ///
+    /// An opener the judgment chose is never written into the reply: a
+    /// reply starts with its answer (#10139). Only a bank lead that says
+    /// something, such as a possible secret's warning or the Gym news
+    /// line, goes above the model's words.
     async fn generate(
         &self,
         version: u64,
@@ -2271,19 +2280,20 @@ impl Job {
         triage: Option<Judging>,
         turn: &Turn,
     ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
+        // The progress line shows only while the reply is pending: the
+        // result, which replaces the partials, starts with the reply
+        // (#10139).
         let mut opening = String::new();
-        let answered = self
-            .routed(
-                version,
-                instructions,
-                input,
-                publish,
-                triage,
-                turn,
-                &mut opening,
-            )
-            .await;
-        answered.map(|(text, usage, served)| (format!("{opening}{text}"), usage, served))
+        self.routed(
+            version,
+            instructions,
+            input,
+            publish,
+            triage,
+            turn,
+            &mut opening,
+        )
+        .await
     }
 
     /// [`Job::generate`]'s turn, with the progress line it showed, if any,
@@ -2571,6 +2581,7 @@ impl Job {
                                 draining = true;
                             }
                             if let Some(shown) = shown
+                                && bank.opener(&shown.id).is_none()
                                 && opening.is_empty()
                             {
                                 lead = format!("{}\n\n", shown.text);
@@ -2723,6 +2734,7 @@ impl Job {
                                 }
                             }
                             if let Some(shown) = shown
+                                && bank.opener(&shown.id).is_none()
                                 && lead.is_empty()
                                 && opening.is_empty()
                             {
@@ -2780,6 +2792,7 @@ impl Job {
                                         ));
                                     }
                                     if let Some(shown) = shown
+                                        && bank.opener(&shown.id).is_none()
                                         && opening.is_empty()
                                     {
                                         lead = format!("{}\n\n", shown.text);
@@ -2836,6 +2849,7 @@ impl Job {
                                 router::CliGate::Withhold => {}
                             }
                             if let Some(shown) = shown
+                                && bank.opener(&shown.id).is_none()
                                 && opening.is_empty()
                             {
                                 lead = format!("{}\n\n", shown.text);
@@ -2875,6 +2889,7 @@ impl Job {
                             }
                             let mut tier_word = "model";
                             if let Tier::Grounded { lead: Some(shown), .. } | Tier::Cli { lead: Some(shown), .. } = tier
+                                && bank.opener(&shown.id).is_none()
                                 && opening.is_empty()
                             {
                                 lead = format!("{}\n\n", shown.text);
@@ -4222,11 +4237,11 @@ mod tests {
     }
 
     /// The judge answers in its own time, before the model: the caller
-    /// hears `processing`, then the typed judgment and the chosen opener as
-    /// the first partial, then the model's words, and the result carries
-    /// the opener it showed.
+    /// hears `processing`, then the typed judgment naming the opener it
+    /// chose, then the model's words. The opener is never written into the
+    /// reply: the partials and the result start with the answer (#10139).
     #[tokio::test]
-    async fn the_judge_answers_first_and_the_model_follows_its_opener() {
+    async fn the_judge_answers_first_and_the_reply_starts_with_its_answer() {
         let frames = frames_through(
             slow_door(Duration::from_millis(600)),
             Some(judge(Duration::ZERO, triaged("explain"))),
@@ -4240,34 +4255,20 @@ mod tests {
         assert_eq!(bodies[1]["lane"], "computer");
         assert_eq!(bodies[1]["opener"], "explain");
         assert_eq!(bodies[1]["tier"], "opener");
-        assert_eq!(bodies[1]["line"], "We'll look that up for you.");
-        assert_eq!(bodies[2]["type"], "partial");
-        assert_eq!(bodies[2]["seq"], 0);
-        assert_eq!(bodies[2]["delta"], "We'll look that up for you.\n\n");
-        // The opener arrived well before the model's first word could.
+        let opener = "We'll look that up for you.";
         assert!(
-            frames[2].0 < Duration::from_millis(500),
-            "{:?}",
-            frames[2].0
+            bodies
+                .iter()
+                .filter(|body| body["type"] == "partial")
+                .all(|body| !body["delta"].as_str().unwrap().contains(opener))
         );
-        // Any partial of the model's continues the sequence. (A stream that
-        // lands in one read may finish before its deltas drain; the result
-        // carries the whole text either way.)
-        if let Some(model) = bodies
-            .iter()
-            .filter(|body| body["type"] == "partial")
-            .nth(1)
-        {
-            assert_eq!(model["seq"], 1);
+        if let Some(model) = bodies.iter().find(|body| body["type"] == "partial") {
+            assert_eq!(model["seq"], 0);
         }
         let result = bodies.last().unwrap();
         assert_eq!(result["type"], "result");
         let text = result["text"].as_str().unwrap();
-        assert!(
-            text.starts_with("We'll look that up for you.\n\n"),
-            "{text}"
-        );
-        assert!(text.len() > "We'll look that up for you.\n\n".len());
+        assert!(!text.is_empty() && !text.contains(opener), "{text}");
         assert_eq!(result["model"], GEMINI);
     }
 
@@ -4397,7 +4398,8 @@ mod tests {
 
     /// A judgment past the first budget still routes the turn: the bank's
     /// progress line shows at the budget as partial `seq` 0, the routed
-    /// reply follows it, and the result starts with it (#10110).
+    /// reply follows it (#10110), and the result, which replaces the
+    /// partials, is the reply alone (#10139).
     #[tokio::test]
     async fn a_judge_past_the_first_budget_still_routes_under_a_progress_line() {
         let frames = frames_through(
@@ -4426,11 +4428,11 @@ mod tests {
         assert!(answer.starts_with("We are OpenAgents."), "{answer}");
         let result = bodies.last().unwrap();
         assert_eq!(result["model"], "bank:chat-answers-v1");
-        assert_eq!(result["text"], format!("{line}{answer}"));
+        assert_eq!(result["text"], answer);
     }
 
-    /// A judge past the second bound leaves the reply the model's, under
-    /// the progress line, and the model was told what OpenAgents' own
+    /// A judge past the second bound leaves the reply the model's, shown
+    /// under the progress line while pending, and the model was told what OpenAgents' own
     /// products are (#10110).
     #[tokio::test]
     async fn a_judge_past_the_late_bound_leaves_the_model_under_the_unrouted_note() {
@@ -4454,7 +4456,12 @@ mod tests {
         assert!(*at >= first::LATE, "{at:?}");
         assert_eq!(result["model"], GEMINI);
         let text = result["text"].as_str().unwrap();
-        assert!(text.starts_with(&line) && text.len() > line.len(), "{text}");
+        assert!(!text.is_empty() && !text.starts_with(&line), "{text}");
+        assert!(
+            frames
+                .iter()
+                .any(|(_, body)| body["type"] == "partial" && body["delta"] == line.as_str())
+        );
         assert!(frames.iter().all(|(_, body)| body["type"] != "judgment"));
         let instructions = seen.lock().unwrap()[0]["instructions"]
             .as_str()
@@ -4931,7 +4938,8 @@ mod tests {
     }
 
     /// In shadow mode the router's decision is logged and named, but the
-    /// turn is served as the first response always served it.
+    /// turn is served as the first response always served it, less the
+    /// opener line (#10139).
     #[tokio::test]
     async fn shadow_mode_serves_the_legacy_tier_and_names_the_routed_one() {
         let answers = routed("work.dispatch", "dispatch.stem", 0.9, "plan");
@@ -4949,11 +4957,11 @@ mod tests {
         assert!(of_type(&frames, "offer").is_empty());
         let result = &frames.last().unwrap().1;
         assert_eq!(result["model"], GEMINI);
+        // The opener is never written into the reply (#10139).
+        let text = result["text"].as_str().unwrap();
         assert!(
-            result["text"]
-                .as_str()
-                .unwrap()
-                .starts_with("Here's a plan.")
+            !text.is_empty() && !text.contains("Here's a plan."),
+            "{text}"
         );
     }
 

@@ -1692,7 +1692,10 @@
           "engine",
           "model",
           "provider",
-          "capacity"
+          "capacity",
+          "settings",
+          "claude-code",
+          "codex"
         ],
         "answer": true
       },

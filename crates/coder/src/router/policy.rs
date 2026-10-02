@@ -21,7 +21,8 @@
 //!    `money_movement` at [`RISK_WARN`] answers `wallet.send` with the
 //!    wallet screen offered and no amount carried.
 //! 2. **Close call.** When the second route is within [`CLOSE_MARGIN`] of
-//!    the first, the router does less: a clarify at [`CLARIFY_WINS`], else
+//!    the first, the router does less: a clarify at [`CLARIFY_WINS`] (on a
+//!    later turn, only when `clarify` is the first route, #10138), else
 //!    the model (with a Run Coder offer only when `work.dispatch` is one
 //!    of the two, the other is in [`LANE_ROUTES`], and the lane says
 //!    computer).
@@ -78,7 +79,10 @@
 //!     a route with its own answer.
 //! 12. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
 //!     `clarify.generic` stem when personalization is available, else the
-//!     model told to ask one question.
+//!     model told to ask one question; but an `answer` reading at
+//!     [`ANSWER_CONFIDENCE`] on an entry that answers in the chat, with
+//!     `needs_specifics` below [`SPECIFICS_CEILING`], serves that entry
+//!     whole instead (#10138).
 //! 13. **T3 model**, led by the argmax opener at [`OPENER_CONFIDENCE`];
 //!     when the route or the runner-up is a Gym or eval route, the model is
 //!     told it has no verified records ([`super::gym::NO_RECORDS_NOTE`]).
@@ -211,6 +215,9 @@ pub struct Situation<'a> {
     /// Whether the request carries an authoring interview's draft that
     /// passed [`super::card::draft`]: a bounded field, never text.
     pub draft: bool,
+    /// Whether the conversation has a message before the latest one, which
+    /// the latest can refer to: a count, never text (#10138).
+    pub earlier: bool,
 }
 
 /// A line above the model's reply.
@@ -756,7 +763,12 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         if let Some(tier) = knowledge(routing) {
             return tier;
         }
-        if routing.clarify_p >= CLARIFY_WINS {
+        // A clarify that is only the runner-up does not ask on a later
+        // turn: the earlier messages give the latest one its meaning, and
+        // the model reads them (#10138).
+        if routing.clarify_p >= CLARIFY_WINS
+            && (routing.route == RouteId::Clarify || !situation.earlier)
+        {
             return clarify(bank, facts, situation);
         }
         // An offer loses to an answer: work and a route with its own answer
@@ -884,7 +896,7 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
 
     // 12. Clarify.
     if routing.route == RouteId::Clarify && routing.route_p >= CLARIFY_ROUTE {
-        return clarify(bank, facts, situation);
+        return clarify_or_answer(routing, bank, facts, situation);
     }
 
     // 13. T3, grounded when the question is about us.
@@ -927,6 +939,32 @@ fn knowledge(routing: &Routing) -> Option<Tier> {
 /// Rule 2's and rule 13's last answer: [`knowledge`], else the model.
 fn answered(routing: &Routing) -> Tier {
     knowledge(routing).unwrap_or_else(|| model(routing))
+}
+
+/// Rule 12: a clarify loses to a sure prepared answer (#10138).
+/// When the `answer` reading is sure of an entry that answers in the chat
+/// (an [`RouteFamily::Answers`] route) and the reply needs none of the
+/// user's particulars, the message is clear enough that the entry answers
+/// it: "what is this?" on the website reads as asking who we are.
+fn clarify_or_answer(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+    if let Some((entry, p)) = &routing.answer
+        && *p >= ANSWER_CONFIDENCE
+        && routing.needs_specifics < SPECIFICS_CEILING
+        && !dispatches(entry)
+        && !entry.answers(RouteId::Refuse)
+        && entry
+            .routes
+            .iter()
+            .any(|word| RouteId::parse(word).family() == Some(RouteFamily::Answers))
+        && let Some(text) = entry.render(facts)
+    {
+        return Tier::CannedFinal {
+            text,
+            offer: entry.offer(),
+            answer: entry.clone(),
+        };
+    }
+    clarify(bank, facts, situation)
 }
 
 fn clarify(bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
@@ -1007,6 +1045,7 @@ mod tests {
                 context,
                 personalize,
                 draft: false,
+                earlier: false,
             },
         )
     }
@@ -1305,6 +1344,71 @@ mod tests {
         assert!(matches!(router(&poem), Tier::Model { .. }));
     }
 
+    /// On a later turn a runner-up clarify does not ask: the earlier
+    /// messages give the latest its meaning, and the model answers
+    /// (#10138). A first-route clarify still asks.
+    #[test]
+    fn a_close_call_on_a_later_turn_asks_only_a_first_route_clarify() {
+        let later = |routing: &Routing| {
+            decide(
+                routing,
+                Bank::builtin(),
+                &facts(),
+                &Situation {
+                    mode: Mode::Router,
+                    context: &Context::default(),
+                    personalize: true,
+                    draft: false,
+                    earlier: true,
+                },
+            )
+        };
+        // "try that again, I stopped it too soon", after a reply.
+        let mut again = routed(RouteId::General, 0.52, "none", 0.0, 0.21);
+        again.runner_up = Some((RouteId::Clarify, 0.42));
+        again.clarify_p = 0.42;
+        assert_eq!(
+            later(&again),
+            Tier::Model {
+                lead: None,
+                note: None
+            }
+        );
+        let mut unclear = routed(RouteId::Clarify, 0.5, "none", 0.0, 0.5);
+        unclear.runner_up = Some((RouteId::General, 0.4));
+        unclear.clarify_p = 0.5;
+        assert!(matches!(
+            later(&unclear),
+            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
+        ));
+    }
+
+    /// A clarify reading loses to a sure prepared answer that answers in
+    /// the chat: "what is this?" is who we are, on the website too
+    /// (#10138). An unsure answer, or one that needs particulars, still
+    /// asks.
+    #[test]
+    fn a_sure_prepared_answer_beats_a_clarify() {
+        let mut what = routed(RouteId::Clarify, 0.72, "meta.who", 0.93, 0.22);
+        what.clarify_p = 0.72;
+        for context in [Context::default(), web()] {
+            assert!(matches!(
+                decided(&what, &context, true),
+                Tier::CannedFinal { answer, .. } if answer.id == "meta.who"
+            ));
+        }
+        let unsure = routed(RouteId::Clarify, 0.72, "meta.who", 0.6, 0.22);
+        assert!(matches!(
+            decided(&unsure, &Context::default(), true),
+            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
+        ));
+        let particular = routed(RouteId::Clarify, 0.72, "meta.who", 0.93, 0.5);
+        assert!(matches!(
+            decided(&particular, &Context::default(), true),
+            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
+        ));
+    }
+
     #[test]
     fn end_knowledge_cli_and_clarify_routes() {
         let end = routed(RouteId::End, 0.9, "none", 0.0, 0.0);
@@ -1398,6 +1502,7 @@ mod tests {
                     context: &Context::default(),
                     personalize: true,
                     draft: false,
+                    earlier: false,
                 },
             )
         };
@@ -1490,6 +1595,7 @@ mod tests {
                     context: &Context::default(),
                     personalize: false,
                     draft: true,
+                    earlier: false,
                 },
             )
         };

@@ -230,6 +230,7 @@ async fn run_router(name: &str, mode: router::Mode) {
         context: &context,
         personalize: true,
         draft: false,
+        earlier: false,
     };
     let set = Set::fixture();
     let (rows, split_label) = if publishing() {
@@ -279,6 +280,11 @@ async fn run_router(name: &str, mode: router::Mode) {
         readings.push(match asked {
             Ok(response) => {
                 let routing = router::reading(&response, bank, &facts, &admitted);
+                // A multi-turn row has messages before its latest (#10138).
+                let situation = router::Situation {
+                    earlier: row.messages.len() > 1,
+                    ..situation
+                };
                 let tier = router::decide(&routing, bank, &facts, &situation);
                 let offered = offers.count(row, &tier, &starter, bank, &facts);
                 engines.count(row, &tier);
