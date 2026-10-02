@@ -552,6 +552,8 @@ What exists already does the receiving side; this is setup, not new code.
   priced endpoint.
 - **Paying authors.** Plugin fee payouts (D9) go out from this same wallet;
   its outbound liquidity is the payments it has received.
+  The ledger, split rules, payout rails, and live view are designed in
+  [central receive and splits](../payments/2026-10-02-central-receive-and-splits.md).
 
 Owner steps, once:
 
