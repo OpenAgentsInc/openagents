@@ -186,6 +186,7 @@ fn slash_commands_are_a_closed_list_and_other_text_is_a_message() {
     let mut app = app();
     assert_eq!(typed(&mut app, "/threads"), vec![Action::Threads]);
     assert_eq!(typed(&mut app, "/new"), vec![Action::New]);
+    assert_eq!(app.key(&ctrl('n'), 80), vec![Action::New]);
     assert_eq!(typed(&mut app, "/connect"), vec![Action::Connect]);
     assert_eq!(typed(&mut app, "/quit"), vec![Action::Quit]);
     assert!(typed(&mut app, "/frobnicate").is_empty());

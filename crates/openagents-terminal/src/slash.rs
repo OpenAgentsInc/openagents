@@ -87,7 +87,7 @@ impl Slash {
     /// What it does, for `/help`.
     pub const fn about(self) -> &'static str {
         match self {
-            Slash::New => "start a new thread",
+            Slash::New => "start a new thread (Ctrl+N)",
             Slash::Resume => "pick a thread to open; /resume ID or title opens that one",
             Slash::Threads => "list threads to open, start, or archive (Ctrl+T)",
             Slash::Stop => "stop the reply or the Coder run (Esc)",

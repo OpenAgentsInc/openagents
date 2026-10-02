@@ -146,6 +146,7 @@ it.
 | Enter | Send. On an empty line, start the Coder run OpenAgents offered. |
 | Option+Enter (Alt+Enter on Linux), Ctrl+J | A new line in the message. |
 | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
+| Ctrl+N | A new thread, as `/new`. |
 | Ctrl+T | The thread picker, as `/resume`. |
 | Ctrl+R | The thread's Coder run full screen (below). Esc or Ctrl+R goes back. |
 | Ctrl+Y | Copy the last reply. Press again for each code block in it, last first. It copies through the terminal (OSC 52), so it works over SSH; in tmux, `set-clipboard on`. |

@@ -438,6 +438,7 @@ impl App {
             }
             (KeyCode::Esc, _, _) => self.stop(),
             (KeyCode::Char('t'), true, _) => vec![Action::Threads],
+            (KeyCode::Char('n'), true, _) => vec![Action::New],
             (KeyCode::Char('y'), true, _) => self.copy(copied),
             (KeyCode::Char('o'), true, _) => {
                 self.toggle_tools();
@@ -1543,6 +1544,7 @@ pub fn help() -> Card {
             "Esc".to_owned(),
             "stop the reply, or stop the Coder run".to_owned(),
         ),
+        ("Ctrl+N".to_owned(), "new thread".to_owned()),
         ("Ctrl+T".to_owned(), "resume a thread".to_owned()),
         (
             "Ctrl+R".to_owned(),
