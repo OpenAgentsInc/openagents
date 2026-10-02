@@ -265,3 +265,34 @@ fn download_guidance_matches_the_published_apps() {
         }
     }
 }
+
+#[test]
+fn desktop_grid_guidance_keeps_the_world_off_chat() {
+    let corpus = Corpus::load(&default_dir(), Some(&repository())).expect("the corpus loads");
+    let entry = corpus
+        .base
+        .entries
+        .iter()
+        .find(|entry| entry.id == "openagents.verse-grid")
+        .expect("the Verse entry exists");
+    assert!(entry.version >= 2);
+    assert!(
+        entry
+            .cites
+            .iter()
+            .any(|cite| cite == "crates/openagents-desktop/src/grid.rs")
+    );
+    for claim in [
+        "sidebar footer beside the Local profile and Settings",
+        "only on the desktop's Verse page and the deck's title slide",
+        "not behind chat or other screens",
+        "leaving it closes the relay connection",
+        "releases the world's GPU resources",
+        "Grid, Watch, Play, and Reduce motion",
+    ] {
+        assert!(
+            entry.body.contains(claim),
+            "missing desktop guidance: {claim}"
+        );
+    }
+}

@@ -1,6 +1,6 @@
 ---
 id: openagents.verse-grid
-version: 1
+version: 2
 kind: product
 title: "Verse and the Grid"
 summary: >-
@@ -21,11 +21,14 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
+    - crates/openagents-desktop/README.md
+    - crates/openagents-desktop/src/grid.rs
     - docs/verse/mobile.md
     - bins/openagents-ios/README.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-02: clarified desktop Grid scope and lifecycle from the desktop README and renderer (#10133, #10071)."
 ---
 
 ## Answer
@@ -36,9 +39,13 @@ Verse is the app's shared world, and the Grid is where the Verse tab puts you: a
 
 - Walk into the ball to push it; it rolls with real physics and comes to rest.
 - Shared state can lag between players.
+- On the Mac, open **Verse** from the sidebar footer beside the Local profile and Settings. The Grid is drawn only on the desktop's Verse page and the deck's title slide, not behind chat or other screens.
+- Opening the Verse page loads the world; leaving it closes the relay connection and releases the world's GPU resources. Grid, Watch, Play, and Reduce motion behavior stay on that page.
 
 ## Sources
 
+- `crates/openagents-desktop/README.md`
+- `crates/openagents-desktop/src/grid.rs`
 - `docs/verse/mobile.md`
 - `bins/openagents-ios/README.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
