@@ -241,6 +241,14 @@ projects, and what the run's commands may reach.
   so a question such as "summarize what happened" is answered in chat. A
   reply that hands the message to Coder continues the same task with it as
   its next turn, in the same worktree, and follows that turn (#10094).
+  The next turn carries the earlier turns' conversation into the engine,
+  so it continues the same session. While the run still works, a message
+  the router hands to Coder goes to that run, read at its next step (or
+  the turn it starts, for an agent that reads only at a turn's start), as
+  the run view's composer sends it, and the client follows it
+  ([#10171](https://github.com/OpenAgentsInc/openagents/issues/10171)).
+  Whether a follow-up is more work or a question is the router's Jev
+  reading, never the message's words.
 
 Text mode shows a compact live view on stderr (the provider and why, each
 step's thinking, commands, their exit and the last lines of output, progress,

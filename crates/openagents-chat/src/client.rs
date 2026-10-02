@@ -1152,6 +1152,9 @@ impl Client {
                 // The reply arrived; a coding reply then succeeds only if
                 // Coder does.
                 if coding && run {
+                    if let Some(ended) = self.steer_working(id, &snapshot, text, sink).await {
+                        return Ok(ended);
+                    }
                     return Ok(self.run_coder(id, sink).await);
                 }
                 Ok(Ended::Done)
@@ -1174,6 +1177,44 @@ impl Client {
                 Ok(Ended::Failed)
             }
         }
+    }
+
+    /// The router judged `text` more work while the thread's Coder run on
+    /// this computer still works: the run takes it, as the run view's
+    /// composer sends it (at its next step, or as the turn it starts), and
+    /// the client follows. Following alone would leave the message unread
+    /// by the session it continues. `None` when there is no such run (a
+    /// run that ended continues through [`Client::start`]) or it cannot
+    /// take a message here, which then follows it as before.
+    async fn steer_working(
+        &mut self,
+        id: &str,
+        snapshot: &Snapshot,
+        text: &str,
+        sink: &mut Sink<'_>,
+    ) -> Option<Ended> {
+        if matches!(self.backend, Backend::Computer { .. }) {
+            return None;
+        }
+        let coder = snapshot
+            .coder
+            .as_ref()
+            .filter(|coder| coder.host == LOCAL_HOST)?;
+        if self.result(id, &coder.task).await.is_some() {
+            return None;
+        }
+        let (runner, store) = (self.coder.clone(), self.store(id));
+        let (task, message) = (coder.task.clone(), text.to_owned());
+        let steered = tokio::task::spawn_blocking(move || runner.steer(&store, &task, &message))
+            .await
+            .ok()?
+            .ok()?;
+        let (said, turn) = match steered {
+            Steering::NextStep => ("Sent. Coder reads it at its next step.", 1),
+            Steering::NextTurn(turn) => ("Sent. Coder starts its next turn with it.", turn),
+        };
+        coder_report(sink, id, true, said, serde_json::to_value(coder).ok());
+        Some(self.follow_from(id, &coder.task, turn, false, sink).await)
     }
 
     /// Another computer's thread: its Coder run is there, so this client

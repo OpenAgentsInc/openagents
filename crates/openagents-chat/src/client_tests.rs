@@ -70,6 +70,8 @@ struct FakeCoder {
     ended: bool,
     /// What it was told to continue with.
     answered: Mutex<Vec<String>>,
+    /// What a working run was sent.
+    steered: Mutex<Vec<String>>,
 }
 
 impl Coder for FakeCoder {
@@ -140,6 +142,10 @@ impl Coder for FakeCoder {
     fn answer(&self, _: &Path, _: &str, text: &str) -> Result<usize, String> {
         self.answered.lock().unwrap().push(text.to_owned());
         Ok(2)
+    }
+    fn steer(&self, _: &Path, _: &str, text: &str) -> Result<Steering, String> {
+        self.steered.lock().unwrap().push(text.to_owned());
+        Ok(Steering::NextStep)
     }
     fn result(&self, _: &Path, _: &str) -> Option<CoderRun> {
         self.ended.then(|| CoderRun {
@@ -294,7 +300,7 @@ async fn a_coding_reply_starts_coder_at_once_and_streams_its_events() {
 /// follow of an ended run only replayed what the screen showed, and the
 /// screen sat on "working" with nothing coming (owner, 2026-10-02).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_message_to_an_ended_run_continues_it_and_one_to_a_working_run_follows_it() {
+async fn a_message_to_an_ended_run_continues_it_and_one_to_a_working_run_steers_it() {
     for ended in [true, false] {
         let dir = tempfile::tempdir().unwrap();
         let door = Arc::new(Worker {
@@ -326,6 +332,7 @@ async fn a_message_to_an_ended_run_continues_it_and_one_to_a_working_run_follows
             })
             .collect();
         let answered = coder.answered.lock().unwrap().clone();
+        let steered = coder.steered.lock().unwrap().clone();
         if ended {
             assert_eq!(
                 said,
@@ -333,9 +340,17 @@ async fn a_message_to_an_ended_run_continues_it_and_one_to_a_working_run_follows
                 "{events:?}"
             );
             assert_eq!(answered, ["summarize its latest 3 commits"]);
+            assert!(steered.is_empty());
         } else {
-            assert_eq!(said, ["Following task t1."], "{events:?}");
+            // The working run's session reads the message; following alone
+            // would leave it unread.
+            assert_eq!(
+                said,
+                ["Sent. Coder reads it at its next step."],
+                "{events:?}"
+            );
             assert!(answered.is_empty());
+            assert_eq!(steered, ["summarize its latest 3 commits"]);
         }
         assert_eq!(
             coder.started.lock().unwrap().len(),
@@ -949,5 +964,114 @@ async fn a_refused_send_is_not_sent_again() {
             .iter()
             .all(|event| !matches!(event, Event::Offline { .. })),
         "{events:?}"
+    );
+}
+
+/// A stand-in for the chat router's Jev reading: it reads each message as
+/// more work (`work.dispatch`, a Coder offer) or not (`general`), from a
+/// script, and keeps whether each turn told it about the thread's run.
+struct StandInJev {
+    work: Vec<&'static str>,
+    saw_run: Arc<Mutex<Vec<(String, bool)>>>,
+}
+
+impl Door for StandInJev {
+    fn ask(
+        &self,
+        turns: Vec<Turn>,
+        context: Context,
+        reply: Arc<std::sync::Mutex<Reply>>,
+    ) -> BoxFuture<'static, ()> {
+        let asked = turns.last().unwrap().text.clone();
+        self.saw_run
+            .lock()
+            .unwrap()
+            .push((asked.clone(), context.coder_run.is_some()));
+        let work = self.work.contains(&asked.as_str());
+        Box::pin(async move {
+            let mut reply = lock(&reply);
+            reply.text = if work {
+                "Coder will do that.".into()
+            } else {
+                "The review found two issues.".into()
+            };
+            if work {
+                reply.meta = Meta {
+                    offers: vec![Offer::RunCoder],
+                    ..Meta::default()
+                };
+            }
+            reply.done = true;
+        })
+    }
+}
+
+/// The owner's thread (2026-10-02): Codex reviewed the latest commits and
+/// its turn ended; the follow-up asked for more work on it. The router,
+/// told about the run, reads it as more work, and the same task (the same
+/// engine session, with its earlier turns) takes it as its next turn: no
+/// new run, and not the chat model. A question about the run the router
+/// reads as `general` is answered in chat and leaves the run alone.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_follow_up_the_router_reads_as_more_work_continues_the_same_session() {
+    const FOLLOW_UP: &str = "ok, create issues for them and delegate each to a subagent in \
+                             separeate worktree and merge to main when done";
+    const QUESTION: &str = "which of the two is worse?";
+    let dir = tempfile::tempdir().unwrap();
+    let saw_run = Arc::new(Mutex::new(Vec::new()));
+    let door = Arc::new(StandInJev {
+        work: vec!["review the latest commits in this repo", FOLLOW_UP],
+        saw_run: saw_run.clone(),
+    });
+    let coder = Arc::new(FakeCoder {
+        ended: true,
+        ..FakeCoder::default()
+    });
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let thread = new_id();
+    let (_, client, _) = drain(client.stream(send(
+        &thread,
+        "review the latest commits in this repo",
+        Start::Settings,
+    )))
+    .await;
+    let again = |text: &str| {
+        let mut op = send(&thread, text, Start::Settings);
+        if let Op::Send { new, .. } = &mut op {
+            *new = false;
+        }
+        op
+    };
+    let (asked, client, _) = drain(client.stream(again(QUESTION))).await;
+    assert!(
+        asked
+            .iter()
+            .all(|event| !matches!(event, Event::Coder { .. })),
+        "{asked:?}"
+    );
+    assert!(coder.answered.lock().unwrap().is_empty());
+    let (events, _, _) = drain(client.stream(again(FOLLOW_UP))).await;
+    assert!(
+        events.iter().any(
+            |event| matches!(event, Event::Coder { accepted: true, message, .. }
+            if message == "Coder continues task t1 with your message.")
+        ),
+        "{events:?}"
+    );
+    assert_eq!(*coder.answered.lock().unwrap(), [FOLLOW_UP]);
+    assert_eq!(
+        coder.started.lock().unwrap().len(),
+        1,
+        "one task, never two"
+    );
+    // Every follow-up told the router about the run that ended.
+    let saw_run = saw_run.lock().unwrap().clone();
+    assert_eq!(
+        saw_run,
+        [
+            ("review the latest commits in this repo".to_owned(), false),
+            (QUESTION.to_owned(), true),
+            (FOLLOW_UP.to_owned(), true),
+        ]
     );
 }
