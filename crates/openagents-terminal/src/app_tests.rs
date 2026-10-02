@@ -718,8 +718,8 @@ fn a_results_changes_expand_with_ctrl_o() {
     );
     assert!(collapsed.contains("Press Ctrl+O to see the changes."));
     assert!(!collapsed.contains("pub fn new"));
-    // What the run cost shows as plain information on the card (#10161).
-    assert!(collapsed.contains("+1 -1 · $0.94"), "{collapsed}");
+    // The run's cost is recorded, never shown (owner, 2026-10-02).
+    assert!(!collapsed.contains('$'), "{collapsed}");
     app.key(&ctrl('o'), 80);
     let expanded = shown(&mut app);
     // Drawn as grok-build draws an edit: numbered, no +/- marks (#10154).
