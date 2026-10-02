@@ -1,8 +1,8 @@
 {
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
-  "set": "chat-router-v4@71bde73d1610",
-  "bank": "chat-answers-v1@5f34ebd34f0a",
+  "set": "chat-router-v4@9d17e4d3e2d7",
+  "bank": "chat-answers-v1@cfc839ef703b",
   "routes": [
     {
       "id": "meta",
@@ -64,8 +64,8 @@
       "id": "wallet",
       "family": "screens",
       "description": "Questions about the OpenAgents wallet: bitcoin amounts and units, receiving or getting paid, sending, backups and recovery words, or fees, including a request to send money",
-      "what": "Questions about the OpenAgents wallet: bitcoin amounts and the ₿ sign, receiving or getting paid, sending or paying, backups and recovery words, or fees, including a request to send money",
-      "not_for": "Identity keys or an npub (account)",
+      "what": "Anything about the user's own built-in OpenAgents wallet, the only wallet this chat ever means: checking its balance, how many sats or how much bitcoin they have, its address, bitcoin amounts and the ₿ sign, receiving or getting paid, sending or paying, backups and recovery words, or fees, including a request to send money and a bare word about their balance or sats with nothing else",
+      "not_for": "Identity keys or an npub (account); a wallet, exchange, or coin of another company that the user names (general)",
       "examples": 4
     },
     {
@@ -81,7 +81,7 @@
       "family": "boundaries",
       "description": "The latest message is too ambiguous to act on or answer well without asking what the user means",
       "what": "The latest message is too ambiguous to act on or answer well without asking what the user means",
-      "not_for": "A short but clear question or request, including a short question about us or this app such as who built it, or a short request to open our map (meta); a short request to summarize or compare \"the essays\" or \"both essays\", which are our two published essays (product.kb); a short answer to our question while we make a tool or a test set together (eval.author)",
+      "not_for": "A short but clear question or request, including a short question about us or this app such as who built it, or a short request to open our map (meta); a short request to summarize or compare \"the essays\" or \"both essays\", which are our two published essays (product.kb); a short answer to our question while we make a tool or a test set together (eval.author); a short word about their balance, sats, or bitcoin, which always means their built-in OpenAgents wallet (wallet)",
       "examples": 5
     },
     {
@@ -711,6 +711,21 @@
       "offer": null,
       "sources": [
         "docs/cli/README.md"
+      ]
+    },
+    {
+      "id": "cli.run",
+      "version": 1,
+      "routes": [
+        "cli"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/cli/README.md",
+        "docs/cli/chat.md"
       ]
     },
     {

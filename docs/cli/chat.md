@@ -40,6 +40,7 @@ openagents chat threads [--all] [--limit N]
 openagents chat read --thread ID
 openagents chat export --thread ID
 openagents chat run-coder --thread ID
+openagents chat run-command --thread ID
 openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]
 ```
 
@@ -62,6 +63,13 @@ Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
   turn the answer starts.
 - `run-coder` runs Coder for the thread's last offer, as `send` does
   without `--no-run` (useful after `--no-run`).
+- `run-command` runs the `openagents` command the thread's last reply
+  proposed (#10170). `send` already runs a command this build's command
+  tree declares read-only, such as `wallet info` for "check my wallet
+  balance", and prints its output as the answer; a command that changes
+  something on this computer waits for `run-command` (in OpenAgents
+  Terminal, Enter); a command that moves money or shows a secret never runs
+  from the chat.
 - `work` hands several GitHub issues to Coder, one issue flow each
   ([below](#working-a-github-issue)).
 
@@ -428,6 +436,8 @@ With `--json`, `send` prints NDJSON, one event per line, in this order:
 | `route` | `thread`, `tier`, `route`, `bank`, `served_answer` (a knowledge entry `id@version`, when the reply is one), `judgment` (the router's typed judgment as it arrived), `computer` (the judgment placed it on a computer), `followups`, `cards` |
 | `offer` | `thread`, `offer` (the typed offer, such as `{"offer": "run_coder"}`), `accept` (the command that accepts it, when there is one) |
 | `result` | `thread`, `text`, `model` (the model the worker named), `served_answer` |
+| `command` | `thread`, `argv` (without `openagents`), `confirm` (false: it runs now; true: it waits for `run-command`) |
+| `ran` | `thread`, `argv`, `ok`, `output` (what it printed, at most 16 KiB) |
 | `starting` | `thread`, `engine` (the provider's word), `text` ("Starting Grok Build…"): a start on this computer began; its worktree and launch follow (#10115) |
 | `coder` | `thread`, `accepted`, `message`, `task` (`{host, task, project, worktree}` when Coder started) |
 | `stop` | `thread`, `task`, `requested`, `message` (from `chat stop`) |

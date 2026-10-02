@@ -267,10 +267,15 @@ pub fn route(route: RouteId) -> Value {
             ],
         ),
         RouteId::Wallet => option(
-            "Questions about the OpenAgents wallet: bitcoin amounts and the ₿ sign, receiving \
-             or getting paid, sending or paying, backups and recovery words, or fees, \
-             including a request to send money",
-            Some("Identity keys or an npub (account)"),
+            "Anything about the user's own built-in OpenAgents wallet, the only wallet this \
+             chat ever means: checking its balance, how many sats or how much bitcoin they \
+             have, its address, bitcoin amounts and the ₿ sign, receiving or getting paid, \
+             sending or paying, backups and recovery words, or fees, including a request to \
+             send money and a bare word about their balance or sats with nothing else",
+            Some(
+                "Identity keys or an npub (account); a wallet, exchange, or coin of another \
+                 company that the user names (general)",
+            ),
             &[
                 "how do I get paid",
                 "what's ₿",
@@ -301,7 +306,9 @@ pub fn route(route: RouteId) -> Value {
                  or this app such as who built it, or a short request to open our map (meta); \
                  a short request to summarize or compare \"the essays\" or \"both essays\", \
                  which are our two published essays (product.kb); a short answer to our question while \
-                 we make a tool or a test set together (eval.author)",
+                 we make a tool or a test set together (eval.author); a short word about their \
+                 balance, sats, or bitcoin, which always means their built-in OpenAgents wallet \
+                 (wallet)",
             ),
             &[
                 "can you check",

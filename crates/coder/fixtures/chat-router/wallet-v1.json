@@ -1,0 +1,4581 @@
+{
+  "schema": "openagents.chat-router.wallet-eval.v1",
+  "set": "chat-wallet-v1",
+  "about": "Wallet requests always mean the built-in OpenAgents wallet (#10170). A terminal row expects the wallet's commands (`command`): the router descends the `wallet` group, so a read-only request runs on the computer. A `send` row expects the wallet's own send answer, never a command. An `answer` row (phone, desktop) expects a wallet answer: a prepared wallet entry, or the model told WALLET_NOTE; never a clarifying question. No reply may name a wallet in `forbidden`. `recorded` is Jev's response body for the row, rewritten by the live test with WALLET_EVAL_RECORD=1.",
+  "forbidden": [
+    "MetaMask",
+    "Phantom",
+    "Coinbase",
+    "Binance",
+    "Kraken",
+    "Trust Wallet",
+    "Ledger",
+    "exchange account",
+    "which wallet",
+    "which provider"
+  ],
+  "rows": [
+    {
+      "id": "w01",
+      "surface": "terminal",
+      "message": "check my wallet balance",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "respond",
+            "confidence": 0.39,
+            "probabilities": {
+              "end_conversation": 0,
+              "none": 0.02,
+              "respond": 0.54,
+              "clarify": 0.44
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "meta": 0,
+              "eval.run": 0,
+              "smalltalk": 0,
+              "capability.missing": 0,
+              "end": 0,
+              "product.kb": 0,
+              "codebase.kb": 0,
+              "general": 0,
+              "gym.news": 0,
+              "eval.check": 0,
+              "wallet": 1,
+              "none": 0,
+              "cli": 0,
+              "eval.author": 0,
+              "work.dispatch": 0,
+              "eval.credit": 0,
+              "account": 0,
+              "clarify": 0,
+              "refuse": 0,
+              "eval.result": 0,
+              "presentation.open": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.93,
+            "probabilities": {
+              "meta.quota": 0,
+              "wallet.send": 0,
+              "warn.secret_shared": 0,
+              "refuse.secret_shared": 0,
+              "account.playtest": 0,
+              "meta.languages": 0,
+              "wallet.receive": 0,
+              "meta.open_source": 0,
+              "meta.model": 0,
+              "none": 0.94,
+              "gym.what_test": 0,
+              "account.report_problem": 0,
+              "dispatch.stem": 0,
+              "meta.team": 0,
+              "cli.run": 0.02,
+              "dispatch.github_stem": 0,
+              "clarify.generic": 0.02,
+              "meta.pricing": 0,
+              "meta.memory": 0,
+              "meta.github": 0,
+              "eval.credit.mine": 0,
+              "smalltalk.how_are_you": 0,
+              "wallet.backup": 0,
+              "meta.jev": 0,
+              "smalltalk.test": 0,
+              "smalltalk.bye": 0,
+              "refuse.harmful": 0,
+              "dispatch.no_computer": 0,
+              "meta.map": 0,
+              "dispatch.explore_stem": 0,
+              "smalltalk.thanks": 0,
+              "meta.coder": 0,
+              "meta.who": 0,
+              "smalltalk.hello": 0,
+              "refuse.asks_for_secret": 0,
+              "eval.credit.how": 0,
+              "account.computers": 0,
+              "meta.capabilities": 0,
+              "account.keys": 0,
+              "gym.what": 0,
+              "meta.web_access": 0,
+              "gym.what_tool": 0,
+              "meta.limits_chat": 0,
+              "wallet.never_share": 0,
+              "wallet.units": 0,
+              "cli.offer": 0.01,
+              "meta.privacy": 0,
+              "wallet.what": 0,
+              "meta.data_retention": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.4
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "computer",
+            "confidence": 0.28,
+            "probabilities": {
+              "computer": 0.52,
+              "none": 0.01,
+              "chat": 0.47
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.95,
+            "probabilities": {
+              "summary": 0,
+              "sorry": 0,
+              "none": 0.96,
+              "compare": 0,
+              "plan": 0,
+              "explain": 0.04,
+              "draft": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.98,
+            "probabilities": {
+              "service": 0,
+              "task": 0,
+              "settings": 0,
+              "none": 0.02,
+              "prg": 0,
+              "session": 0,
+              "study": 0,
+              "doctor": 0,
+              "eval": 0,
+              "discover": 0,
+              "zone": 0,
+              "computer": 0,
+              "completions": 0,
+              "terminal": 0,
+              "relay": 0,
+              "verse": 0,
+              "chat": 0,
+              "background": 0,
+              "playtest": 0,
+              "plugin": 0,
+              "wallet": 0.98,
+              "ssh": 0,
+              "mcp": 0,
+              "connect": 0,
+              "key": 0,
+              "version": 0,
+              "sov": 0,
+              "cap": 0,
+              "x402": 0,
+              "gym": 0,
+              "labor": 0,
+              "reach": 0,
+              "pair": 0,
+              "host": 0,
+              "kb": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-project-map": 0,
+              "none": 1,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-release-notes": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.83,
+            "probabilities": {
+              "chat.gym": 0,
+              "chat.wallet": 0.85,
+              "chat.account": 0,
+              "openagents.tool-project-map": 0,
+              "chat.knowledge": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-dependency-check": 0,
+              "not-a-capability-request": 0,
+              "openagents.tool-test-reader": 0,
+              "none": 0.14,
+              "chat.coder": 0,
+              "chat.cli": 0.01
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "claude_code": 0,
+              "opencode": 0,
+              "none": 1,
+              "codex": 0,
+              "devin": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.96,
+            "probabilities": {
+              "secret_shared": 0,
+              "asks_for_secret": 0,
+              "none": 0.03,
+              "harmful": 0,
+              "money_movement": 0,
+              "ok": 0.97
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18135,
+          "output_tokens": 1471,
+          "cost": 0.00076167
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.39,
+              "route": 1,
+              "answer": 0.93,
+              "lane": 0.28,
+              "opener": 0.95,
+              "cli_group": 0.98,
+              "tool": 1,
+              "capability": 0.83,
+              "engine": 1,
+              "risk": 0.96
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: digitalocean(system) → typesafe-ai(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 2,
+                  "providerAttempts": [
+                    {
+                      "provider": "digitalocean",
+                      "credentialType": "system",
+                      "success": false,
+                      "error": "Service temporarily unavailable",
+                      "startTime": 1790958147210,
+                      "endTime": 1790958147306,
+                      "providerRequestId": "c3c60ffc-ca28-48ae-a223-aa8ad51d595f",
+                      "statusCode": 503
+                    },
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958147311,
+                      "endTime": 1790958147569,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 2
+            },
+            "cost": "0.00076167",
+            "marketCost": "0.00076167",
+            "surchargeCost": "0",
+            "gatewayCost": "0.00076167",
+            "inferenceCost": "0.00076167",
+            "inputInferenceCost": "0.00076167",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPS5JZR1GAN7EDAE1VM4AK"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w02",
+      "surface": "terminal",
+      "message": "check the wallet shit",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.81,
+            "probabilities": {
+              "end_conversation": 0,
+              "clarify": 0.86,
+              "none": 0.01,
+              "respond": 0.13
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.96,
+            "probabilities": {
+              "eval.result": 0,
+              "product.kb": 0,
+              "eval.author": 0,
+              "clarify": 0.02,
+              "gym.news": 0,
+              "none": 0,
+              "eval.check": 0,
+              "wallet": 0.97,
+              "capability.missing": 0,
+              "smalltalk": 0,
+              "general": 0,
+              "eval.run": 0,
+              "work.dispatch": 0.01,
+              "account": 0,
+              "presentation.open": 0,
+              "refuse": 0,
+              "cli": 0,
+              "eval.credit": 0,
+              "meta": 0,
+              "codebase.kb": 0,
+              "end": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "clarify.generic",
+            "confidence": 0.71,
+            "probabilities": {
+              "meta.capabilities": 0,
+              "meta.who": 0,
+              "wallet.receive": 0,
+              "refuse.secret_shared": 0,
+              "meta.data_retention": 0,
+              "wallet.backup": 0,
+              "warn.secret_shared": 0,
+              "account.computers": 0,
+              "none": 0.15000000000000002,
+              "cli.run": 0.05,
+              "gym.what": 0,
+              "smalltalk.thanks": 0,
+              "meta.pricing": 0,
+              "eval.credit.how": 0,
+              "account.playtest": 0,
+              "smalltalk.hello": 0,
+              "account.keys": 0,
+              "gym.what_tool": 0,
+              "meta.map": 0,
+              "dispatch.stem": 0,
+              "smalltalk.how_are_you": 0,
+              "meta.model": 0,
+              "wallet.never_share": 0,
+              "meta.github": 0,
+              "gym.what_test": 0,
+              "meta.jev": 0,
+              "wallet.units": 0,
+              "meta.web_access": 0,
+              "dispatch.explore_stem": 0,
+              "meta.privacy": 0,
+              "meta.open_source": 0,
+              "dispatch.github_stem": 0,
+              "meta.memory": 0,
+              "account.report_problem": 0,
+              "meta.languages": 0,
+              "smalltalk.bye": 0,
+              "wallet.send": 0,
+              "smalltalk.test": 0,
+              "meta.limits_chat": 0,
+              "refuse.asks_for_secret": 0,
+              "meta.coder": 0,
+              "cli.offer": 0.01,
+              "dispatch.no_computer": 0.01,
+              "meta.quota": 0,
+              "refuse.harmful": 0,
+              "meta.team": 0,
+              "eval.credit.mine": 0.02,
+              "wallet.what": 0.04,
+              "clarify.generic": 0.72
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.63
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "computer",
+            "confidence": 0.48,
+            "probabilities": {
+              "computer": 0.65,
+              "none": 0.03,
+              "chat": 0.32
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.95,
+            "probabilities": {
+              "draft": 0,
+              "none": 0.96,
+              "explain": 0.04,
+              "plan": 0,
+              "summary": 0,
+              "compare": 0,
+              "sorry": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.94,
+            "probabilities": {
+              "completions": 0,
+              "terminal": 0,
+              "settings": 0,
+              "zone": 0,
+              "gym": 0,
+              "key": 0,
+              "doctor": 0,
+              "sov": 0,
+              "none": 0.04,
+              "reach": 0,
+              "wallet": 0.95,
+              "host": 0,
+              "labor": 0,
+              "connect": 0,
+              "background": 0,
+              "relay": 0,
+              "eval": 0,
+              "service": 0,
+              "playtest": 0,
+              "ssh": 0,
+              "cap": 0,
+              "x402": 0,
+              "chat": 0,
+              "discover": 0,
+              "plugin": 0,
+              "mcp": 0,
+              "pair": 0,
+              "task": 0.01,
+              "verse": 0,
+              "computer": 0,
+              "kb": 0,
+              "session": 0,
+              "prg": 0,
+              "study": 0,
+              "version": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.95,
+            "probabilities": {
+              "none": 0.96,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-dependency-check": 0.04,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-code-finder": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.92,
+            "probabilities": {
+              "none": 0.04,
+              "chat.account": 0,
+              "not-a-capability-request": 0.01,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-code-finder": 0,
+              "chat.knowledge": 0,
+              "openagents.tool-explain-error": 0,
+              "chat.wallet": 0.93,
+              "openagents.tool-project-map": 0,
+              "chat.coder": 0.01,
+              "chat.gym": 0,
+              "chat.cli": 0.01
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "devin": 0,
+              "none": 1,
+              "opencode": 0,
+              "codex": 0,
+              "claude_code": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.6,
+            "probabilities": {
+              "money_movement": 0.02,
+              "ok": 0.67,
+              "none": 0.3,
+              "secret_shared": 0,
+              "harmful": 0,
+              "asks_for_secret": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18135,
+          "output_tokens": 1474,
+          "cost": 0.00076167
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.81,
+              "route": 0.96,
+              "answer": 0.71,
+              "lane": 0.48,
+              "opener": 0.95,
+              "cli_group": 0.94,
+              "tool": 0.95,
+              "capability": 0.92,
+              "engine": 1,
+              "risk": 0.6
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958148219,
+                      "endTime": 1790958148694,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.00076167",
+            "marketCost": "0.00076167",
+            "surchargeCost": "0",
+            "gatewayCost": "0.00076167",
+            "inferenceCost": "0.00076167",
+            "inputInferenceCost": "0.00076167",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPS6JZAF9FA6QB3V8GAH4W"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w03",
+      "surface": "terminal",
+      "message": "balance and wallet address basic readonly identifying shit",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.67,
+            "probabilities": {
+              "respond": 0.24,
+              "none": 0,
+              "clarify": 0.76,
+              "end_conversation": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.98,
+            "probabilities": {
+              "refuse": 0,
+              "eval.author": 0,
+              "clarify": 0.01,
+              "account": 0,
+              "eval.check": 0,
+              "gym.news": 0,
+              "smalltalk": 0,
+              "general": 0,
+              "meta": 0,
+              "end": 0,
+              "eval.credit": 0,
+              "none": 0,
+              "eval.run": 0,
+              "eval.result": 0,
+              "product.kb": 0,
+              "presentation.open": 0,
+              "capability.missing": 0,
+              "cli": 0,
+              "codebase.kb": 0,
+              "wallet": 0.99,
+              "work.dispatch": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "clarify.generic",
+            "confidence": 0.32,
+            "probabilities": {
+              "refuse.harmful": 0,
+              "wallet.never_share": 0,
+              "refuse.secret_shared": 0,
+              "cli.run": 0.17,
+              "meta.web_access": 0,
+              "wallet.what": 0.08,
+              "meta.coder": 0,
+              "meta.capabilities": 0.01,
+              "meta.map": 0,
+              "gym.what_tool": 0,
+              "wallet.units": 0,
+              "account.report_problem": 0,
+              "meta.jev": 0,
+              "clarify.generic": 0.34,
+              "dispatch.no_computer": 0.01,
+              "cli.offer": 0.02,
+              "meta.open_source": 0,
+              "meta.pricing": 0,
+              "none": 0.34,
+              "account.computers": 0,
+              "smalltalk.test": 0,
+              "gym.what_test": 0,
+              "smalltalk.thanks": 0,
+              "eval.credit.mine": 0,
+              "meta.github": 0,
+              "dispatch.stem": 0,
+              "wallet.backup": 0,
+              "dispatch.github_stem": 0,
+              "meta.languages": 0,
+              "meta.quota": 0,
+              "account.keys": 0,
+              "meta.team": 0,
+              "gym.what": 0,
+              "account.playtest": 0,
+              "meta.memory": 0,
+              "meta.privacy": 0,
+              "wallet.receive": 0.02,
+              "smalltalk.how_are_you": 0,
+              "meta.model": 0,
+              "dispatch.explore_stem": 0,
+              "wallet.send": 0,
+              "refuse.asks_for_secret": 0,
+              "meta.who": 0,
+              "smalltalk.bye": 0,
+              "meta.limits_chat": 0,
+              "warn.secret_shared": 0,
+              "meta.data_retention": 0,
+              "smalltalk.hello": 0,
+              "eval.credit.how": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.61
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.56,
+            "probabilities": {
+              "computer": 0.28,
+              "chat": 0.7,
+              "none": 0.02
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.63,
+            "probabilities": {
+              "compare": 0,
+              "sorry": 0,
+              "summary": 0,
+              "plan": 0.02,
+              "none": 0.6900000000000001,
+              "explain": 0.29,
+              "draft": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.69,
+            "probabilities": {
+              "openagents.tool-explain-error": 0,
+              "not-a-capability-request": 0.04,
+              "openagents.tool-dependency-check": 0,
+              "none": 0.21,
+              "chat.account": 0.01,
+              "chat.cli": 0.01,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-test-reader": 0,
+              "chat.wallet": 0.72,
+              "chat.gym": 0,
+              "chat.knowledge": 0,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-code-finder": 0,
+              "chat.coder": 0.01
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "opencode": 0,
+              "claude_code": 0,
+              "none": 1,
+              "codex": 0,
+              "devin": 0,
+              "grok_build": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.98,
+            "probabilities": {
+              "verse": 0,
+              "eval": 0,
+              "ssh": 0,
+              "chat": 0,
+              "study": 0,
+              "playtest": 0,
+              "discover": 0,
+              "background": 0,
+              "mcp": 0,
+              "settings": 0,
+              "plugin": 0,
+              "cap": 0,
+              "none": 0.01,
+              "labor": 0,
+              "computer": 0,
+              "wallet": 0.99,
+              "service": 0,
+              "pair": 0,
+              "host": 0,
+              "task": 0,
+              "session": 0,
+              "x402": 0,
+              "key": 0,
+              "version": 0,
+              "kb": 0,
+              "terminal": 0,
+              "gym": 0,
+              "sov": 0,
+              "zone": 0,
+              "relay": 0,
+              "prg": 0,
+              "completions": 0,
+              "reach": 0,
+              "doctor": 0,
+              "connect": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 1,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-release-notes": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.88,
+            "probabilities": {
+              "asks_for_secret": 0.01,
+              "ok": 0.91,
+              "money_movement": 0,
+              "secret_shared": 0,
+              "harmful": 0,
+              "none": 0.08
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18143,
+          "output_tokens": 1474,
+          "cost": 0.000762006
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.67,
+              "route": 0.98,
+              "answer": 0.32,
+              "lane": 0.56,
+              "opener": 0.63,
+              "capability": 0.69,
+              "engine": 1,
+              "cli_group": 0.98,
+              "tool": 1,
+              "risk": 0.88
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958149287,
+                      "endTime": 1790958149841,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000762006",
+            "marketCost": "0.000762006",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000762006",
+            "inferenceCost": "0.000762006",
+            "inputInferenceCost": "0.000762006",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPS7MGMX5ZPHJGZVTG2K1R"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w04",
+      "surface": "terminal",
+      "message": "balance?",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.87,
+            "probabilities": {
+              "none": 0,
+              "clarify": 0.91,
+              "end_conversation": 0,
+              "respond": 0.09
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.97,
+            "probabilities": {
+              "presentation.open": 0,
+              "codebase.kb": 0,
+              "eval.run": 0,
+              "capability.missing": 0,
+              "product.kb": 0,
+              "cli": 0,
+              "refuse": 0,
+              "eval.author": 0,
+              "eval.result": 0,
+              "wallet": 0.98,
+              "eval.credit": 0,
+              "end": 0,
+              "general": 0,
+              "meta": 0,
+              "clarify": 0.02,
+              "account": 0,
+              "smalltalk": 0,
+              "eval.check": 0,
+              "work.dispatch": 0,
+              "gym.news": 0,
+              "none": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "clarify.generic",
+            "confidence": 0.87,
+            "probabilities": {
+              "dispatch.explore_stem": 0,
+              "meta.data_retention": 0,
+              "account.keys": 0,
+              "meta.languages": 0,
+              "meta.github": 0,
+              "smalltalk.how_are_you": 0,
+              "account.report_problem": 0,
+              "meta.capabilities": 0,
+              "gym.what_tool": 0,
+              "gym.what": 0,
+              "warn.secret_shared": 0,
+              "meta.web_access": 0,
+              "meta.coder": 0,
+              "smalltalk.bye": 0,
+              "wallet.what": 0.02,
+              "meta.model": 0,
+              "gym.what_test": 0,
+              "refuse.harmful": 0,
+              "meta.team": 0,
+              "meta.pricing": 0,
+              "meta.who": 0,
+              "meta.limits_chat": 0,
+              "smalltalk.test": 0,
+              "meta.jev": 0,
+              "wallet.never_share": 0,
+              "meta.memory": 0,
+              "meta.privacy": 0,
+              "meta.open_source": 0,
+              "wallet.send": 0,
+              "meta.map": 0,
+              "refuse.asks_for_secret": 0,
+              "dispatch.github_stem": 0,
+              "smalltalk.hello": 0,
+              "cli.run": 0.01,
+              "clarify.generic": 0.88,
+              "eval.credit.mine": 0.01,
+              "smalltalk.thanks": 0,
+              "wallet.backup": 0,
+              "account.playtest": 0,
+              "eval.credit.how": 0,
+              "dispatch.stem": 0,
+              "none": 0.06999999999999999,
+              "dispatch.no_computer": 0,
+              "wallet.receive": 0,
+              "account.computers": 0,
+              "meta.quota": 0,
+              "wallet.units": 0.01,
+              "cli.offer": 0,
+              "refuse.secret_shared": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.17
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.64,
+            "probabilities": {
+              "none": 0.08,
+              "chat": 0.76,
+              "computer": 0.16
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.69,
+            "probabilities": {
+              "none": 0.74,
+              "draft": 0,
+              "sorry": 0,
+              "plan": 0,
+              "summary": 0,
+              "compare": 0,
+              "explain": 0.26
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.86,
+            "probabilities": {
+              "kb": 0,
+              "study": 0,
+              "doctor": 0,
+              "background": 0,
+              "completions": 0,
+              "verse": 0,
+              "wallet": 0.88,
+              "ssh": 0,
+              "mcp": 0,
+              "pair": 0,
+              "eval": 0,
+              "computer": 0,
+              "session": 0,
+              "cap": 0,
+              "terminal": 0,
+              "plugin": 0,
+              "chat": 0,
+              "reach": 0,
+              "zone": 0,
+              "gym": 0,
+              "prg": 0,
+              "playtest": 0,
+              "host": 0,
+              "sov": 0,
+              "service": 0,
+              "connect": 0,
+              "version": 0,
+              "task": 0,
+              "discover": 0,
+              "relay": 0,
+              "none": 0.12,
+              "x402": 0,
+              "settings": 0,
+              "key": 0,
+              "labor": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.99,
+            "probabilities": {
+              "none": 0.99,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-dependency-check": 0.01,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-release-notes": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "not-a-capability-request",
+            "confidence": 0.47,
+            "probabilities": {
+              "openagents.tool-test-reader": 0,
+              "chat.account": 0.01,
+              "chat.cli": 0.05,
+              "openagents.tool-project-map": 0.01,
+              "chat.wallet": 0.1,
+              "chat.gym": 0,
+              "openagents.tool-code-finder": 0,
+              "not-a-capability-request": 0.52,
+              "openagents.tool-explain-error": 0,
+              "none": 0.3,
+              "openagents.tool-dependency-check": 0,
+              "chat.coder": 0,
+              "chat.knowledge": 0.01,
+              "openagents.tool-release-notes": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "none": 1,
+              "opencode": 0,
+              "devin": 0,
+              "codex": 0,
+              "claude_code": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.66,
+            "probabilities": {
+              "none": 0.26,
+              "ok": 0.72,
+              "secret_shared": 0,
+              "asks_for_secret": 0,
+              "harmful": 0,
+              "money_movement": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18131,
+          "output_tokens": 1478,
+          "cost": 0.000761502
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.87,
+              "route": 0.97,
+              "answer": 0.87,
+              "lane": 0.64,
+              "opener": 0.69,
+              "cli_group": 0.86,
+              "tool": 0.99,
+              "capability": 0.47,
+              "engine": 1,
+              "risk": 0.66
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958150452,
+                      "endTime": 1790958150681,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761502",
+            "marketCost": "0.000761502",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761502",
+            "inferenceCost": "0.000761502",
+            "inputInferenceCost": "0.000761502",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPS8RSS83WSNX9Z8FRWQVX"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w05",
+      "surface": "terminal",
+      "message": "how many sats do I have",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.77,
+            "probabilities": {
+              "respond": 0.16,
+              "clarify": 0.83,
+              "none": 0.01,
+              "end_conversation": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "eval.author": 0,
+              "work.dispatch": 0,
+              "meta": 0,
+              "none": 0,
+              "refuse": 0,
+              "eval.check": 0,
+              "eval.result": 0,
+              "account": 0,
+              "eval.run": 0,
+              "end": 0,
+              "codebase.kb": 0,
+              "capability.missing": 0,
+              "presentation.open": 0,
+              "eval.credit": 0,
+              "smalltalk": 0,
+              "cli": 0,
+              "wallet": 1,
+              "clarify": 0,
+              "general": 0,
+              "gym.news": 0,
+              "product.kb": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.57,
+            "probabilities": {
+              "dispatch.no_computer": 0,
+              "refuse.secret_shared": 0,
+              "meta.jev": 0,
+              "none": 0.59,
+              "dispatch.stem": 0,
+              "meta.github": 0,
+              "clarify.generic": 0.32,
+              "meta.memory": 0,
+              "wallet.send": 0,
+              "gym.what_test": 0,
+              "meta.who": 0,
+              "meta.quota": 0,
+              "meta.pricing": 0,
+              "smalltalk.hello": 0,
+              "meta.team": 0,
+              "meta.data_retention": 0,
+              "meta.open_source": 0,
+              "meta.limits_chat": 0,
+              "cli.offer": 0,
+              "eval.credit.mine": 0.05,
+              "wallet.never_share": 0,
+              "meta.privacy": 0,
+              "warn.secret_shared": 0,
+              "account.keys": 0,
+              "wallet.units": 0.01,
+              "gym.what": 0,
+              "account.report_problem": 0,
+              "refuse.harmful": 0,
+              "wallet.backup": 0,
+              "wallet.what": 0.01,
+              "meta.capabilities": 0,
+              "meta.web_access": 0,
+              "gym.what_tool": 0,
+              "smalltalk.test": 0,
+              "account.computers": 0,
+              "smalltalk.bye": 0,
+              "smalltalk.how_are_you": 0,
+              "dispatch.github_stem": 0,
+              "meta.languages": 0,
+              "smalltalk.thanks": 0,
+              "account.playtest": 0,
+              "wallet.receive": 0,
+              "meta.coder": 0,
+              "meta.map": 0,
+              "eval.credit.how": 0,
+              "meta.model": 0,
+              "refuse.asks_for_secret": 0,
+              "cli.run": 0.02,
+              "dispatch.explore_stem": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.37
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "computer",
+            "confidence": 0.25,
+            "probabilities": {
+              "computer": 0.5,
+              "chat": 0.48,
+              "none": 0.02
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.9,
+            "probabilities": {
+              "compare": 0,
+              "plan": 0,
+              "summary": 0,
+              "sorry": 0,
+              "draft": 0,
+              "none": 0.92,
+              "explain": 0.08
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.6,
+            "probabilities": {
+              "cap": 0,
+              "x402": 0,
+              "chat": 0.02,
+              "computer": 0,
+              "none": 0.35000000000000003,
+              "discover": 0,
+              "settings": 0,
+              "session": 0,
+              "kb": 0,
+              "plugin": 0,
+              "pair": 0,
+              "service": 0,
+              "host": 0,
+              "playtest": 0,
+              "doctor": 0,
+              "sov": 0,
+              "reach": 0,
+              "prg": 0,
+              "mcp": 0,
+              "study": 0,
+              "eval": 0,
+              "connect": 0,
+              "labor": 0,
+              "background": 0,
+              "gym": 0,
+              "verse": 0,
+              "ssh": 0,
+              "completions": 0,
+              "version": 0,
+              "terminal": 0,
+              "wallet": 0.63,
+              "zone": 0,
+              "relay": 0,
+              "key": 0,
+              "task": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-code-finder": 0,
+              "none": 1,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.78,
+            "probabilities": {
+              "openagents.tool-code-finder": 0,
+              "chat.cli": 0.02,
+              "openagents.tool-dependency-check": 0,
+              "chat.gym": 0,
+              "openagents.tool-explain-error": 0,
+              "chat.account": 0,
+              "chat.coder": 0,
+              "none": 0.16,
+              "openagents.tool-release-notes": 0,
+              "chat.knowledge": 0,
+              "chat.wallet": 0.8,
+              "not-a-capability-request": 0.02,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "devin": 0,
+              "codex": 0,
+              "opencode": 0,
+              "none": 1,
+              "grok_build": 0,
+              "claude_code": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.95,
+            "probabilities": {
+              "secret_shared": 0,
+              "asks_for_secret": 0,
+              "money_movement": 0.01,
+              "ok": 0.96,
+              "harmful": 0,
+              "none": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18139,
+          "output_tokens": 1472,
+          "cost": 0.000761838
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.77,
+              "route": 1,
+              "answer": 0.57,
+              "lane": 0.25,
+              "opener": 0.9,
+              "cli_group": 0.6,
+              "tool": 1,
+              "capability": 0.78,
+              "engine": 1,
+              "risk": 0.95
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958151324,
+                      "endTime": 1790958151622,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761838",
+            "marketCost": "0.000761838",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761838",
+            "inferenceCost": "0.000761838",
+            "inputInferenceCost": "0.000761838",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPS9M5CY90KPE0HFRH7FEX"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w06",
+      "surface": "terminal",
+      "message": "what's my wallet address",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.75,
+            "probabilities": {
+              "end_conversation": 0,
+              "none": 0.01,
+              "respond": 0.18,
+              "clarify": 0.81
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "smalltalk": 0,
+              "eval.run": 0,
+              "meta": 0,
+              "end": 0,
+              "capability.missing": 0,
+              "product.kb": 0,
+              "general": 0,
+              "codebase.kb": 0,
+              "gym.news": 0,
+              "eval.check": 0,
+              "wallet": 1,
+              "none": 0,
+              "cli": 0,
+              "eval.author": 0,
+              "work.dispatch": 0,
+              "eval.credit": 0,
+              "account": 0,
+              "clarify": 0,
+              "refuse": 0,
+              "eval.result": 0,
+              "presentation.open": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.62,
+            "probabilities": {
+              "meta.quota": 0,
+              "account.keys": 0.01,
+              "refuse.secret_shared": 0,
+              "wallet.units": 0,
+              "account.playtest": 0,
+              "meta.languages": 0,
+              "wallet.receive": 0.22,
+              "meta.open_source": 0,
+              "meta.model": 0,
+              "clarify.generic": 0.1,
+              "meta.pricing": 0,
+              "account.report_problem": 0,
+              "dispatch.stem": 0,
+              "none": 0.64,
+              "cli.run": 0.01,
+              "dispatch.github_stem": 0,
+              "gym.what_test": 0,
+              "meta.team": 0,
+              "meta.memory": 0,
+              "meta.github": 0,
+              "eval.credit.mine": 0,
+              "meta.who": 0,
+              "wallet.backup": 0,
+              "meta.jev": 0,
+              "smalltalk.test": 0,
+              "smalltalk.bye": 0,
+              "refuse.harmful": 0,
+              "dispatch.no_computer": 0,
+              "meta.map": 0,
+              "smalltalk.thanks": 0,
+              "smalltalk.how_are_you": 0,
+              "meta.coder": 0,
+              "dispatch.explore_stem": 0,
+              "smalltalk.hello": 0,
+              "refuse.asks_for_secret": 0.01,
+              "eval.credit.how": 0,
+              "account.computers": 0,
+              "meta.capabilities": 0,
+              "meta.data_retention": 0,
+              "wallet.send": 0,
+              "meta.web_access": 0,
+              "gym.what_tool": 0,
+              "meta.limits_chat": 0,
+              "wallet.never_share": 0,
+              "gym.what": 0,
+              "cli.offer": 0,
+              "meta.privacy": 0,
+              "wallet.what": 0.01,
+              "warn.secret_shared": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.26
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.43,
+            "probabilities": {
+              "computer": 0.37,
+              "none": 0.01,
+              "chat": 0.62
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.91,
+            "probabilities": {
+              "summary": 0,
+              "sorry": 0,
+              "none": 0.92,
+              "draft": 0,
+              "plan": 0,
+              "explain": 0.08,
+              "compare": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.81,
+            "probabilities": {
+              "service": 0,
+              "settings": 0,
+              "task": 0,
+              "none": 0.13,
+              "prg": 0,
+              "session": 0,
+              "study": 0,
+              "doctor": 0,
+              "eval": 0,
+              "discover": 0,
+              "zone": 0,
+              "computer": 0,
+              "completions": 0,
+              "terminal": 0,
+              "relay": 0,
+              "verse": 0,
+              "chat": 0,
+              "x402": 0,
+              "playtest": 0,
+              "mcp": 0,
+              "wallet": 0.83,
+              "ssh": 0,
+              "plugin": 0,
+              "connect": 0,
+              "key": 0.04,
+              "version": 0,
+              "sov": 0,
+              "cap": 0,
+              "background": 0,
+              "gym": 0,
+              "pair": 0,
+              "reach": 0,
+              "labor": 0,
+              "host": 0,
+              "kb": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-explain-error": 0,
+              "none": 1
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.85,
+            "probabilities": {
+              "chat.coder": 0,
+              "chat.wallet": 0.87,
+              "chat.account": 0.01,
+              "openagents.tool-project-map": 0,
+              "chat.knowledge": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 0.1,
+              "not-a-capability-request": 0.01,
+              "openagents.tool-test-reader": 0,
+              "chat.gym": 0,
+              "chat.cli": 0.01
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "claude_code": 0,
+              "none": 1,
+              "opencode": 0,
+              "codex": 0,
+              "devin": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.96,
+            "probabilities": {
+              "secret_shared": 0,
+              "asks_for_secret": 0.02,
+              "none": 0,
+              "harmful": 0,
+              "ok": 0.98,
+              "money_movement": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18137,
+          "output_tokens": 1472,
+          "cost": 0.000761754
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.75,
+              "route": 1,
+              "answer": 0.62,
+              "lane": 0.43,
+              "opener": 0.91,
+              "cli_group": 0.81,
+              "tool": 1,
+              "capability": 0.85,
+              "engine": 1,
+              "risk": 0.96
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958152272,
+                      "endTime": 1790958152496,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761754",
+            "marketCost": "0.000761754",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761754",
+            "inferenceCost": "0.000761754",
+            "inputInferenceCost": "0.000761754",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSAHCJBDECADBDCVKYEZ8"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w07",
+      "surface": "terminal",
+      "message": "my sats",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.92,
+            "probabilities": {
+              "respond": 0.06,
+              "clarify": 0.94,
+              "end_conversation": 0,
+              "none": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.98,
+            "probabilities": {
+              "eval.run": 0,
+              "gym.news": 0,
+              "work.dispatch": 0,
+              "codebase.kb": 0,
+              "wallet": 0.99,
+              "capability.missing": 0,
+              "eval.author": 0,
+              "general": 0,
+              "product.kb": 0,
+              "end": 0,
+              "account": 0,
+              "presentation.open": 0,
+              "meta": 0,
+              "cli": 0,
+              "eval.result": 0,
+              "eval.check": 0,
+              "refuse": 0,
+              "clarify": 0.01,
+              "none": 0,
+              "eval.credit": 0,
+              "smalltalk": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "clarify.generic",
+            "confidence": 0.66,
+            "probabilities": {
+              "wallet.receive": 0,
+              "meta.coder": 0,
+              "gym.what": 0,
+              "refuse.secret_shared": 0,
+              "account.keys": 0,
+              "warn.secret_shared": 0,
+              "meta.team": 0,
+              "meta.model": 0,
+              "smalltalk.test": 0.01,
+              "smalltalk.how_are_you": 0,
+              "smalltalk.thanks": 0,
+              "meta.web_access": 0,
+              "meta.jev": 0,
+              "meta.map": 0,
+              "cli.offer": 0,
+              "gym.what_test": 0.01,
+              "refuse.harmful": 0,
+              "none": 0.09,
+              "cli.run": 0.01,
+              "eval.credit.mine": 0.18000000000000002,
+              "wallet.what": 0,
+              "smalltalk.hello": 0,
+              "dispatch.stem": 0,
+              "meta.capabilities": 0,
+              "eval.credit.how": 0.01,
+              "account.computers": 0,
+              "meta.languages": 0,
+              "meta.memory": 0,
+              "wallet.send": 0,
+              "account.report_problem": 0,
+              "meta.pricing": 0,
+              "smalltalk.bye": 0,
+              "meta.who": 0,
+              "meta.data_retention": 0,
+              "meta.quota": 0,
+              "refuse.asks_for_secret": 0,
+              "dispatch.no_computer": 0,
+              "gym.what_tool": 0,
+              "meta.limits_chat": 0,
+              "meta.privacy": 0,
+              "clarify.generic": 0.68,
+              "wallet.backup": 0,
+              "meta.open_source": 0,
+              "dispatch.explore_stem": 0,
+              "wallet.never_share": 0,
+              "meta.github": 0,
+              "dispatch.github_stem": 0,
+              "wallet.units": 0,
+              "account.playtest": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.48
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.51,
+            "probabilities": {
+              "chat": 0.68,
+              "none": 0.13,
+              "computer": 0.19
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.92,
+            "probabilities": {
+              "summary": 0,
+              "compare": 0,
+              "sorry": 0,
+              "plan": 0,
+              "none": 0.94,
+              "draft": 0,
+              "explain": 0.06
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.67,
+            "probabilities": {
+              "ssh": 0,
+              "x402": 0.01,
+              "plugin": 0,
+              "pair": 0,
+              "settings": 0,
+              "host": 0,
+              "reach": 0,
+              "sov": 0.02,
+              "terminal": 0.01,
+              "task": 0.1,
+              "doctor": 0,
+              "eval": 0.02,
+              "connect": 0,
+              "mcp": 0.01,
+              "service": 0,
+              "verse": 0.01,
+              "none": 0.6900000000000001,
+              "kb": 0,
+              "computer": 0,
+              "zone": 0,
+              "session": 0,
+              "wallet": 0.03,
+              "version": 0,
+              "completions": 0,
+              "chat": 0.02,
+              "discover": 0,
+              "playtest": 0,
+              "prg": 0,
+              "key": 0,
+              "background": 0,
+              "cap": 0,
+              "gym": 0,
+              "study": 0.06999999999999999,
+              "relay": 0,
+              "labor": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.86,
+            "probabilities": {
+              "openagents.tool-project-map": 0.01,
+              "openagents.tool-test-reader": 0.1,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 0.89,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-code-finder": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "not-a-capability-request",
+            "confidence": 0.39,
+            "probabilities": {
+              "chat.account": 0.02,
+              "chat.gym": 0,
+              "openagents.tool-test-reader": 0.03,
+              "openagents.tool-release-notes": 0,
+              "chat.cli": 0.14,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-explain-error": 0,
+              "chat.wallet": 0.01,
+              "openagents.tool-code-finder": 0,
+              "not-a-capability-request": 0.44,
+              "openagents.tool-dependency-check": 0,
+              "chat.coder": 0.09,
+              "none": 0.26,
+              "chat.knowledge": 0.01
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "codex": 0,
+              "devin": 0,
+              "none": 1,
+              "opencode": 0,
+              "claude_code": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.63,
+            "probabilities": {
+              "harmful": 0,
+              "asks_for_secret": 0.01,
+              "secret_shared": 0,
+              "none": 0.26,
+              "ok": 0.69,
+              "money_movement": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18131,
+          "output_tokens": 1478,
+          "cost": 0.000761502
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.92,
+              "route": 0.98,
+              "answer": 0.66,
+              "lane": 0.51,
+              "opener": 0.92,
+              "cli_group": 0.67,
+              "tool": 0.86,
+              "capability": 0.39,
+              "engine": 1,
+              "risk": 0.63
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958153128,
+                      "endTime": 1790958153353,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761502",
+            "marketCost": "0.000761502",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761502",
+            "inferenceCost": "0.000761502",
+            "inputInferenceCost": "0.000761502",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSBCD7YK0NSGW9T68FJKV"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w08",
+      "surface": "terminal",
+      "message": "show me my bitcoin balance",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.33,
+            "probabilities": {
+              "clarify": 0.5,
+              "respond": 0.49,
+              "end_conversation": 0,
+              "none": 0.01
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.99,
+            "probabilities": {
+              "gym.news": 0,
+              "clarify": 0,
+              "cli": 0,
+              "eval.credit": 0,
+              "end": 0,
+              "general": 0,
+              "codebase.kb": 0,
+              "capability.missing": 0.01,
+              "account": 0,
+              "presentation.open": 0,
+              "eval.check": 0,
+              "refuse": 0,
+              "product.kb": 0,
+              "wallet": 0.99,
+              "eval.result": 0,
+              "smalltalk": 0,
+              "eval.run": 0,
+              "meta": 0,
+              "work.dispatch": 0,
+              "eval.author": 0,
+              "none": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.95,
+            "probabilities": {
+              "meta.quota": 0,
+              "eval.credit.mine": 0,
+              "dispatch.stem": 0,
+              "meta.languages": 0,
+              "smalltalk.how_are_you": 0,
+              "smalltalk.hello": 0,
+              "refuse.secret_shared": 0,
+              "eval.credit.how": 0,
+              "smalltalk.bye": 0,
+              "meta.open_source": 0,
+              "meta.github": 0,
+              "account.report_problem": 0,
+              "meta.who": 0,
+              "meta.team": 0,
+              "smalltalk.test": 0,
+              "wallet.send": 0,
+              "warn.secret_shared": 0,
+              "refuse.asks_for_secret": 0,
+              "gym.what_tool": 0,
+              "account.computers": 0,
+              "meta.memory": 0,
+              "meta.capabilities": 0,
+              "wallet.never_share": 0,
+              "cli.run": 0.02,
+              "dispatch.github_stem": 0,
+              "gym.what": 0,
+              "dispatch.no_computer": 0,
+              "none": 0.96,
+              "wallet.what": 0,
+              "gym.what_test": 0,
+              "cli.offer": 0,
+              "meta.coder": 0,
+              "account.playtest": 0,
+              "meta.limits_chat": 0,
+              "meta.data_retention": 0,
+              "wallet.units": 0,
+              "clarify.generic": 0.02,
+              "meta.pricing": 0,
+              "smalltalk.thanks": 0,
+              "meta.web_access": 0,
+              "account.keys": 0,
+              "dispatch.explore_stem": 0,
+              "meta.map": 0,
+              "meta.jev": 0,
+              "meta.privacy": 0,
+              "refuse.harmful": 0,
+              "wallet.receive": 0,
+              "meta.model": 0,
+              "wallet.backup": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.73
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.27,
+            "probabilities": {
+              "computer": 0.47,
+              "chat": 0.52,
+              "none": 0.01
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.95,
+            "probabilities": {
+              "explain": 0.04,
+              "draft": 0,
+              "sorry": 0,
+              "plan": 0,
+              "summary": 0,
+              "compare": 0,
+              "none": 0.96
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.62,
+            "probabilities": {
+              "eval": 0,
+              "computer": 0,
+              "zone": 0.01,
+              "sov": 0,
+              "playtest": 0,
+              "settings": 0,
+              "service": 0,
+              "plugin": 0,
+              "verse": 0,
+              "reach": 0,
+              "completions": 0,
+              "mcp": 0,
+              "discover": 0,
+              "study": 0,
+              "labor": 0,
+              "none": 0.35000000000000003,
+              "relay": 0,
+              "kb": 0,
+              "pair": 0,
+              "connect": 0,
+              "key": 0,
+              "host": 0,
+              "ssh": 0,
+              "x402": 0,
+              "cap": 0,
+              "background": 0,
+              "chat": 0,
+              "wallet": 0.64,
+              "gym": 0,
+              "version": 0,
+              "session": 0,
+              "doctor": 0,
+              "terminal": 0,
+              "task": 0,
+              "prg": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-explain-error": 0,
+              "none": 1
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.91,
+            "probabilities": {
+              "chat.coder": 0,
+              "chat.cli": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-test-reader": 0,
+              "chat.account": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-explain-error": 0,
+              "chat.knowledge": 0,
+              "chat.wallet": 0.92,
+              "chat.gym": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-project-map": 0,
+              "not-a-capability-request": 0,
+              "none": 0.08
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "claude_code": 0,
+              "codex": 0,
+              "opencode": 0,
+              "devin": 0,
+              "none": 1
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.96,
+            "probabilities": {
+              "none": 0.02,
+              "secret_shared": 0,
+              "harmful": 0,
+              "money_movement": 0.01,
+              "asks_for_secret": 0,
+              "ok": 0.97
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18137,
+          "output_tokens": 1472,
+          "cost": 0.000761754
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.33,
+              "route": 0.99,
+              "answer": 0.95,
+              "lane": 0.27,
+              "opener": 0.95,
+              "cli_group": 0.62,
+              "tool": 1,
+              "capability": 0.91,
+              "engine": 1,
+              "risk": 0.96
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958153939,
+                      "endTime": 1790958154162,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761754",
+            "marketCost": "0.000761754",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761754",
+            "inferenceCost": "0.000761754",
+            "inputInferenceCost": "0.000761754",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSC5THGES8XEJQJJ3FE1G"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w09",
+      "surface": "terminal",
+      "message": "whats in my wallet rn",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "respond",
+            "confidence": 0.33,
+            "probabilities": {
+              "respond": 0.49,
+              "none": 0.02,
+              "end_conversation": 0,
+              "clarify": 0.49
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.94,
+            "probabilities": {
+              "general": 0,
+              "refuse": 0,
+              "clarify": 0.03,
+              "gym.news": 0,
+              "capability.missing": 0.02,
+              "none": 0,
+              "eval.check": 0,
+              "eval.author": 0,
+              "presentation.open": 0,
+              "eval.result": 0,
+              "codebase.kb": 0,
+              "smalltalk": 0,
+              "eval.credit": 0,
+              "work.dispatch": 0,
+              "wallet": 0.95,
+              "product.kb": 0,
+              "meta": 0,
+              "eval.run": 0,
+              "cli": 0,
+              "account": 0,
+              "end": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.63,
+            "probabilities": {
+              "dispatch.explore_stem": 0,
+              "meta.jev": 0,
+              "meta.memory": 0,
+              "wallet.backup": 0,
+              "meta.quota": 0,
+              "wallet.what": 0.09,
+              "none": 0.65,
+              "gym.what": 0,
+              "meta.who": 0,
+              "eval.credit.mine": 0,
+              "wallet.send": 0,
+              "cli.run": 0.02,
+              "meta.pricing": 0,
+              "refuse.secret_shared": 0,
+              "meta.languages": 0,
+              "meta.limits_chat": 0.01,
+              "wallet.never_share": 0,
+              "smalltalk.how_are_you": 0,
+              "meta.github": 0,
+              "smalltalk.hello": 0,
+              "account.keys": 0,
+              "dispatch.github_stem": 0,
+              "meta.privacy": 0,
+              "account.playtest": 0,
+              "meta.coder": 0,
+              "dispatch.no_computer": 0,
+              "meta.capabilities": 0,
+              "cli.offer": 0,
+              "dispatch.stem": 0,
+              "wallet.units": 0,
+              "gym.what_test": 0,
+              "smalltalk.thanks": 0,
+              "smalltalk.bye": 0,
+              "meta.open_source": 0,
+              "warn.secret_shared": 0,
+              "clarify.generic": 0.21,
+              "smalltalk.test": 0,
+              "wallet.receive": 0,
+              "gym.what_tool": 0,
+              "meta.team": 0,
+              "account.report_problem": 0,
+              "meta.model": 0,
+              "meta.map": 0,
+              "refuse.harmful": 0,
+              "eval.credit.how": 0,
+              "meta.data_retention": 0,
+              "meta.web_access": 0,
+              "account.computers": 0,
+              "refuse.asks_for_secret": 0.01
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.23
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.62,
+            "probabilities": {
+              "computer": 0.22,
+              "none": 0.03,
+              "chat": 0.75
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.98,
+            "probabilities": {
+              "plan": 0,
+              "explain": 0.01,
+              "none": 0.99,
+              "sorry": 0,
+              "draft": 0,
+              "summary": 0,
+              "compare": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.75,
+            "probabilities": {
+              "doctor": 0,
+              "settings": 0,
+              "discover": 0,
+              "plugin": 0,
+              "kb": 0,
+              "host": 0,
+              "study": 0,
+              "x402": 0,
+              "none": 0.22,
+              "verse": 0,
+              "reach": 0,
+              "service": 0,
+              "key": 0,
+              "prg": 0,
+              "terminal": 0,
+              "relay": 0,
+              "sov": 0,
+              "session": 0,
+              "wallet": 0.77,
+              "chat": 0.01,
+              "eval": 0,
+              "ssh": 0,
+              "cap": 0,
+              "labor": 0,
+              "version": 0,
+              "zone": 0,
+              "playtest": 0,
+              "pair": 0,
+              "task": 0,
+              "computer": 0,
+              "gym": 0,
+              "connect": 0,
+              "mcp": 0,
+              "completions": 0,
+              "background": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-project-map": 0,
+              "none": 1,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-code-finder": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.71,
+            "probabilities": {
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-project-map": 0,
+              "none": 0.21,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-dependency-check": 0,
+              "not-a-capability-request": 0.05,
+              "chat.knowledge": 0,
+              "chat.gym": 0,
+              "chat.wallet": 0.73,
+              "chat.cli": 0.01,
+              "chat.coder": 0,
+              "chat.account": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "codex": 0,
+              "none": 1,
+              "devin": 0,
+              "opencode": 0,
+              "grok_build": 0,
+              "claude_code": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.83,
+            "probabilities": {
+              "money_movement": 0.01,
+              "none": 0.12,
+              "secret_shared": 0,
+              "ok": 0.86,
+              "asks_for_secret": 0.01,
+              "harmful": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18139,
+          "output_tokens": 1471,
+          "cost": 0.000761838
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.33,
+              "route": 0.94,
+              "answer": 0.63,
+              "lane": 0.62,
+              "opener": 0.98,
+              "cli_group": 0.75,
+              "tool": 1,
+              "capability": 0.71,
+              "engine": 1,
+              "risk": 0.83
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958154809,
+                      "endTime": 1790958155009,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761838",
+            "marketCost": "0.000761838",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761838",
+            "inferenceCost": "0.000761838",
+            "inputInferenceCost": "0.000761838",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSD12J4CCDC271170NKTD"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w10",
+      "surface": "terminal",
+      "message": "how much btc have i got",
+      "expect": "command",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.73,
+            "probabilities": {
+              "none": 0.01,
+              "respond": 0.19,
+              "clarify": 0.8,
+              "end_conversation": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.99,
+            "probabilities": {
+              "presentation.open": 0,
+              "wallet": 1,
+              "product.kb": 0,
+              "codebase.kb": 0,
+              "eval.credit": 0,
+              "eval.run": 0,
+              "gym.news": 0,
+              "work.dispatch": 0,
+              "end": 0,
+              "capability.missing": 0,
+              "eval.result": 0,
+              "meta": 0,
+              "eval.check": 0,
+              "clarify": 0,
+              "smalltalk": 0,
+              "account": 0,
+              "cli": 0,
+              "none": 0,
+              "refuse": 0,
+              "eval.author": 0,
+              "general": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.9,
+            "probabilities": {
+              "wallet.send": 0,
+              "gym.what_test": 0,
+              "meta.jev": 0,
+              "account.report_problem": 0,
+              "meta.coder": 0,
+              "meta.map": 0,
+              "refuse.harmful": 0,
+              "meta.capabilities": 0,
+              "gym.what": 0,
+              "dispatch.stem": 0,
+              "account.computers": 0,
+              "meta.quota": 0,
+              "warn.secret_shared": 0,
+              "account.keys": 0,
+              "none": 0.91,
+              "smalltalk.hello": 0,
+              "meta.languages": 0,
+              "meta.open_source": 0,
+              "meta.privacy": 0,
+              "wallet.receive": 0,
+              "cli.offer": 0,
+              "wallet.never_share": 0,
+              "dispatch.github_stem": 0,
+              "smalltalk.how_are_you": 0,
+              "wallet.units": 0,
+              "meta.github": 0,
+              "meta.model": 0,
+              "meta.web_access": 0,
+              "meta.team": 0,
+              "meta.memory": 0,
+              "account.playtest": 0,
+              "cli.run": 0.02,
+              "smalltalk.thanks": 0,
+              "wallet.backup": 0,
+              "dispatch.no_computer": 0,
+              "wallet.what": 0.01,
+              "meta.who": 0,
+              "refuse.asks_for_secret": 0,
+              "eval.credit.mine": 0,
+              "refuse.secret_shared": 0,
+              "clarify.generic": 0.060000000000000005,
+              "dispatch.explore_stem": 0,
+              "meta.pricing": 0,
+              "smalltalk.test": 0,
+              "meta.limits_chat": 0,
+              "eval.credit.how": 0,
+              "gym.what_tool": 0,
+              "smalltalk.bye": 0,
+              "meta.data_retention": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.54
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.35,
+            "probabilities": {
+              "none": 0.01,
+              "computer": 0.43,
+              "chat": 0.56
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.95,
+            "probabilities": {
+              "compare": 0,
+              "none": 0.96,
+              "draft": 0,
+              "explain": 0.04,
+              "sorry": 0,
+              "summary": 0,
+              "plan": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.54,
+            "probabilities": {
+              "terminal": 0,
+              "wallet": 0.39,
+              "background": 0,
+              "cap": 0,
+              "zone": 0,
+              "ssh": 0,
+              "eval": 0,
+              "x402": 0,
+              "gym": 0,
+              "kb": 0,
+              "connect": 0,
+              "none": 0.56,
+              "prg": 0,
+              "pair": 0,
+              "key": 0,
+              "chat": 0.03,
+              "computer": 0,
+              "relay": 0,
+              "doctor": 0,
+              "host": 0,
+              "reach": 0,
+              "plugin": 0,
+              "completions": 0,
+              "task": 0.01,
+              "version": 0,
+              "playtest": 0,
+              "study": 0,
+              "settings": 0,
+              "discover": 0,
+              "session": 0,
+              "labor": 0,
+              "mcp": 0,
+              "service": 0,
+              "sov": 0,
+              "verse": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-release-notes": 0,
+              "none": 1,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.9,
+            "probabilities": {
+              "chat.account": 0,
+              "openagents.tool-release-notes": 0,
+              "chat.coder": 0,
+              "openagents.tool-code-finder": 0,
+              "chat.wallet": 0.91,
+              "chat.knowledge": 0,
+              "openagents.tool-explain-error": 0,
+              "none": 0.09,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-project-map": 0,
+              "not-a-capability-request": 0,
+              "chat.cli": 0,
+              "chat.gym": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "claude_code": 0,
+              "none": 1,
+              "devin": 0,
+              "codex": 0,
+              "opencode": 0,
+              "grok_build": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.94,
+            "probabilities": {
+              "none": 0.04,
+              "secret_shared": 0,
+              "asks_for_secret": 0,
+              "money_movement": 0.01,
+              "ok": 0.95,
+              "harmful": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18139,
+          "output_tokens": 1472,
+          "cost": 0.000761838
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.73,
+              "route": 0.99,
+              "answer": 0.9,
+              "lane": 0.35,
+              "opener": 0.95,
+              "cli_group": 0.54,
+              "tool": 1,
+              "capability": 0.9,
+              "engine": 1,
+              "risk": 0.94
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: digitalocean(system) → typesafe-ai(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 2,
+                  "providerAttempts": [
+                    {
+                      "provider": "digitalocean",
+                      "credentialType": "system",
+                      "success": false,
+                      "error": "Service temporarily unavailable",
+                      "startTime": 1790958155608,
+                      "endTime": 1790958155712,
+                      "providerRequestId": "47977875-1674-46b6-b8b9-b50cd8015369",
+                      "statusCode": 503
+                    },
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958155715,
+                      "endTime": 1790958155953,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 2
+            },
+            "cost": "0.000761838",
+            "marketCost": "0.000761838",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761838",
+            "inferenceCost": "0.000761838",
+            "inputInferenceCost": "0.000761838",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSDT3EXCMMAQ95VKQHNN1"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w11",
+      "surface": "terminal",
+      "message": "send 1000 sats to bc1qexample",
+      "expect": "send",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "respond",
+            "confidence": 0.4,
+            "probabilities": {
+              "respond": 0.55,
+              "end_conversation": 0,
+              "none": 0.02,
+              "clarify": 0.43
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "eval.check": 0,
+              "eval.result": 0,
+              "wallet": 1,
+              "eval.author": 0,
+              "capability.missing": 0,
+              "gym.news": 0,
+              "codebase.kb": 0,
+              "refuse": 0,
+              "product.kb": 0,
+              "smalltalk": 0,
+              "general": 0,
+              "work.dispatch": 0,
+              "cli": 0,
+              "end": 0,
+              "eval.credit": 0,
+              "none": 0,
+              "account": 0,
+              "eval.run": 0,
+              "meta": 0,
+              "presentation.open": 0,
+              "clarify": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "wallet.send",
+            "confidence": 0.95,
+            "probabilities": {
+              "smalltalk.how_are_you": 0,
+              "smalltalk.hello": 0,
+              "meta.who": 0,
+              "wallet.units": 0,
+              "wallet.what": 0,
+              "eval.credit.mine": 0,
+              "refuse.asks_for_secret": 0,
+              "warn.secret_shared": 0,
+              "meta.limits_chat": 0,
+              "smalltalk.test": 0,
+              "meta.map": 0,
+              "smalltalk.bye": 0,
+              "dispatch.stem": 0,
+              "dispatch.no_computer": 0,
+              "wallet.never_share": 0,
+              "meta.web_access": 0,
+              "cli.run": 0,
+              "none": 0.04,
+              "eval.credit.how": 0,
+              "meta.open_source": 0,
+              "refuse.harmful": 0,
+              "meta.memory": 0,
+              "wallet.receive": 0,
+              "account.playtest": 0,
+              "meta.coder": 0,
+              "meta.data_retention": 0,
+              "account.computers": 0,
+              "refuse.secret_shared": 0,
+              "meta.capabilities": 0,
+              "account.keys": 0,
+              "dispatch.github_stem": 0,
+              "meta.team": 0,
+              "account.report_problem": 0,
+              "wallet.backup": 0,
+              "gym.what_test": 0,
+              "gym.what": 0,
+              "smalltalk.thanks": 0,
+              "dispatch.explore_stem": 0,
+              "clarify.generic": 0,
+              "meta.languages": 0,
+              "meta.model": 0,
+              "meta.privacy": 0,
+              "meta.jev": 0,
+              "wallet.send": 0.96,
+              "gym.what_tool": 0,
+              "meta.github": 0,
+              "cli.offer": 0,
+              "meta.pricing": 0,
+              "meta.quota": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.95
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "computer",
+            "confidence": 0.32,
+            "probabilities": {
+              "chat": 0.43,
+              "none": 0.02,
+              "computer": 0.55
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.98,
+            "probabilities": {
+              "summary": 0,
+              "sorry": 0,
+              "draft": 0,
+              "none": 0.99,
+              "plan": 0.01,
+              "compare": 0,
+              "explain": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.86,
+            "probabilities": {
+              "playtest": 0,
+              "wallet": 0.87,
+              "zone": 0,
+              "plugin": 0,
+              "chat": 0.01,
+              "labor": 0,
+              "verse": 0,
+              "none": 0.1,
+              "connect": 0,
+              "eval": 0,
+              "settings": 0,
+              "session": 0,
+              "prg": 0,
+              "ssh": 0,
+              "computer": 0,
+              "completions": 0,
+              "x402": 0,
+              "relay": 0,
+              "doctor": 0,
+              "terminal": 0,
+              "reach": 0,
+              "version": 0,
+              "background": 0,
+              "pair": 0,
+              "service": 0,
+              "mcp": 0,
+              "task": 0.02,
+              "kb": 0,
+              "gym": 0,
+              "sov": 0,
+              "cap": 0,
+              "key": 0,
+              "study": 0,
+              "discover": 0,
+              "host": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-test-reader": 0,
+              "none": 1,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-project-map": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.68,
+            "probabilities": {
+              "openagents.tool-dependency-check": 0,
+              "chat.cli": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-explain-error": 0,
+              "none": 0.29,
+              "chat.gym": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-project-map": 0,
+              "not-a-capability-request": 0,
+              "openagents.tool-code-finder": 0,
+              "chat.wallet": 0.71,
+              "chat.account": 0,
+              "chat.coder": 0,
+              "chat.knowledge": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "opencode": 0,
+              "codex": 0,
+              "devin": 0,
+              "claude_code": 0,
+              "none": 1,
+              "grok_build": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "money_movement",
+            "confidence": 1,
+            "probabilities": {
+              "secret_shared": 0,
+              "ok": 0,
+              "none": 0,
+              "money_movement": 1,
+              "harmful": 0,
+              "asks_for_secret": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18155,
+          "output_tokens": 1474,
+          "cost": 0.00076251
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.4,
+              "route": 1,
+              "answer": 0.95,
+              "lane": 0.32,
+              "opener": 0.98,
+              "cli_group": 0.86,
+              "tool": 1,
+              "capability": 0.68,
+              "engine": 1,
+              "risk": 1
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958156699,
+                      "endTime": 1790958156911,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.00076251",
+            "marketCost": "0.00076251",
+            "surchargeCost": "0",
+            "gatewayCost": "0.00076251",
+            "inferenceCost": "0.00076251",
+            "inputInferenceCost": "0.00076251",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSEW4E19NGMBRHSJJ7X4J"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w12",
+      "surface": "phone",
+      "message": "check my wallet balance",
+      "expect": "answer",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "respond",
+            "confidence": 0.43,
+            "probabilities": {
+              "respond": 0.57,
+              "clarify": 0.41,
+              "none": 0.02,
+              "end_conversation": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "eval.run": 0,
+              "eval.credit": 0,
+              "work.dispatch": 0,
+              "gym.news": 0,
+              "wallet": 1,
+              "capability.missing": 0,
+              "eval.author": 0,
+              "general": 0,
+              "product.kb": 0,
+              "end": 0,
+              "account": 0,
+              "cli": 0,
+              "meta": 0,
+              "presentation.open": 0,
+              "eval.result": 0,
+              "eval.check": 0,
+              "refuse": 0,
+              "clarify": 0,
+              "none": 0,
+              "codebase.kb": 0,
+              "smalltalk": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.92,
+            "probabilities": {
+              "meta.open_source": 0,
+              "dispatch.explore_stem": 0,
+              "refuse.asks_for_secret": 0,
+              "warn.secret_shared": 0,
+              "meta.privacy": 0,
+              "smalltalk.hello": 0,
+              "meta.team": 0,
+              "meta.web_access": 0,
+              "smalltalk.test": 0,
+              "meta.model": 0,
+              "smalltalk.how_are_you": 0,
+              "smalltalk.thanks": 0,
+              "meta.jev": 0,
+              "cli.offer": 0,
+              "meta.map": 0,
+              "gym.what_test": 0,
+              "refuse.harmful": 0,
+              "none": 0.93,
+              "cli.run": 0.03,
+              "eval.credit.mine": 0,
+              "wallet.what": 0.01,
+              "wallet.receive": 0,
+              "dispatch.stem": 0,
+              "meta.capabilities": 0,
+              "wallet.never_share": 0,
+              "dispatch.no_computer": 0,
+              "meta.languages": 0,
+              "meta.memory": 0,
+              "wallet.send": 0,
+              "account.report_problem": 0,
+              "meta.pricing": 0,
+              "meta.who": 0,
+              "smalltalk.bye": 0,
+              "meta.coder": 0,
+              "meta.quota": 0,
+              "account.keys": 0,
+              "meta.data_retention": 0,
+              "gym.what_tool": 0,
+              "meta.limits_chat": 0,
+              "account.computers": 0,
+              "clarify.generic": 0.02,
+              "wallet.backup": 0,
+              "refuse.secret_shared": 0,
+              "gym.what": 0,
+              "eval.credit.how": 0,
+              "meta.github": 0,
+              "wallet.units": 0,
+              "dispatch.github_stem": 0,
+              "account.playtest": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.44
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "computer",
+            "confidence": 0.25,
+            "probabilities": {
+              "chat": 0.49,
+              "none": 0.01,
+              "computer": 0.5
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.96,
+            "probabilities": {
+              "summary": 0,
+              "compare": 0,
+              "none": 0.97,
+              "plan": 0,
+              "sorry": 0,
+              "draft": 0,
+              "explain": 0.03
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.97,
+            "probabilities": {
+              "ssh": 0,
+              "x402": 0,
+              "plugin": 0,
+              "pair": 0,
+              "settings": 0,
+              "reach": 0,
+              "host": 0,
+              "sov": 0,
+              "service": 0,
+              "task": 0,
+              "connect": 0,
+              "doctor": 0,
+              "terminal": 0,
+              "mcp": 0,
+              "eval": 0,
+              "verse": 0,
+              "kb": 0,
+              "none": 0.02,
+              "computer": 0,
+              "zone": 0,
+              "session": 0,
+              "wallet": 0.98,
+              "chat": 0,
+              "completions": 0,
+              "discover": 0,
+              "version": 0,
+              "playtest": 0,
+              "prg": 0,
+              "key": 0,
+              "background": 0,
+              "cap": 0,
+              "gym": 0,
+              "relay": 0,
+              "study": 0,
+              "labor": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 1,
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-code-finder": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.85,
+            "probabilities": {
+              "chat.account": 0,
+              "chat.gym": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-release-notes": 0,
+              "chat.cli": 0.01,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-code-finder": 0,
+              "chat.wallet": 0.87,
+              "openagents.tool-explain-error": 0,
+              "not-a-capability-request": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 0.12,
+              "chat.coder": 0,
+              "chat.knowledge": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "grok_build": 0,
+              "codex": 0,
+              "devin": 0,
+              "claude_code": 0,
+              "opencode": 0,
+              "none": 1
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.97,
+            "probabilities": {
+              "harmful": 0,
+              "asks_for_secret": 0,
+              "secret_shared": 0,
+              "none": 0.02,
+              "ok": 0.98,
+              "money_movement": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18135,
+          "output_tokens": 1471,
+          "cost": 0.00076167
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.43,
+              "route": 1,
+              "answer": 0.92,
+              "lane": 0.25,
+              "opener": 0.96,
+              "cli_group": 0.97,
+              "tool": 1,
+              "capability": 0.85,
+              "engine": 1,
+              "risk": 0.97
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958157577,
+                      "endTime": 1790958157785,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.00076167",
+            "marketCost": "0.00076167",
+            "surchargeCost": "0",
+            "gatewayCost": "0.00076167",
+            "inferenceCost": "0.00076167",
+            "inputInferenceCost": "0.00076167",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSFQ9699EV0J2PJ76SP23"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w13",
+      "surface": "phone",
+      "message": "how many sats do I have",
+      "expect": "answer",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.79,
+            "probabilities": {
+              "end_conversation": 0,
+              "clarify": 0.84,
+              "respond": 0.15,
+              "none": 0.01
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "gym.news": 0,
+              "work.dispatch": 0,
+              "cli": 0,
+              "eval.check": 0,
+              "meta": 0,
+              "none": 0,
+              "smalltalk": 0,
+              "eval.result": 0,
+              "clarify": 0,
+              "wallet": 1,
+              "eval.author": 0,
+              "presentation.open": 0,
+              "general": 0,
+              "capability.missing": 0,
+              "eval.run": 0,
+              "product.kb": 0,
+              "eval.credit": 0,
+              "refuse": 0,
+              "codebase.kb": 0,
+              "account": 0,
+              "end": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.63,
+            "probabilities": {
+              "gym.what_tool": 0,
+              "meta.quota": 0,
+              "meta.memory": 0,
+              "meta.open_source": 0,
+              "refuse.harmful": 0,
+              "meta.jev": 0,
+              "smalltalk.thanks": 0,
+              "meta.who": 0,
+              "refuse.secret_shared": 0,
+              "wallet.units": 0.01,
+              "dispatch.no_computer": 0,
+              "cli.offer": 0,
+              "account.computers": 0,
+              "meta.data_retention": 0,
+              "clarify.generic": 0.26,
+              "account.report_problem": 0,
+              "account.keys": 0,
+              "meta.coder": 0,
+              "gym.what": 0,
+              "meta.web_access": 0,
+              "wallet.send": 0,
+              "meta.team": 0,
+              "eval.credit.mine": 0.05,
+              "meta.privacy": 0,
+              "account.playtest": 0,
+              "wallet.never_share": 0,
+              "meta.github": 0,
+              "meta.limits_chat": 0,
+              "gym.what_test": 0,
+              "none": 0.65,
+              "smalltalk.test": 0,
+              "refuse.asks_for_secret": 0,
+              "smalltalk.bye": 0,
+              "meta.map": 0,
+              "wallet.what": 0.01,
+              "meta.languages": 0,
+              "cli.run": 0.02,
+              "dispatch.explore_stem": 0,
+              "dispatch.stem": 0,
+              "meta.model": 0,
+              "wallet.receive": 0,
+              "wallet.backup": 0,
+              "meta.capabilities": 0,
+              "warn.secret_shared": 0,
+              "dispatch.github_stem": 0,
+              "eval.credit.how": 0,
+              "meta.pricing": 0,
+              "smalltalk.hello": 0,
+              "smalltalk.how_are_you": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.36
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.28,
+            "probabilities": {
+              "none": 0.02,
+              "chat": 0.52,
+              "computer": 0.46
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.92,
+            "probabilities": {
+              "sorry": 0,
+              "compare": 0,
+              "explain": 0.07,
+              "none": 0.93,
+              "summary": 0,
+              "plan": 0,
+              "draft": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.6,
+            "probabilities": {
+              "prg": 0,
+              "version": 0,
+              "host": 0,
+              "background": 0,
+              "terminal": 0,
+              "labor": 0,
+              "pair": 0,
+              "eval": 0,
+              "key": 0,
+              "computer": 0,
+              "wallet": 0.62,
+              "plugin": 0,
+              "playtest": 0,
+              "task": 0,
+              "zone": 0,
+              "discover": 0,
+              "study": 0,
+              "mcp": 0,
+              "session": 0,
+              "verse": 0,
+              "connect": 0,
+              "gym": 0,
+              "x402": 0,
+              "reach": 0,
+              "none": 0.37,
+              "relay": 0,
+              "chat": 0.01,
+              "sov": 0,
+              "doctor": 0,
+              "cap": 0,
+              "kb": 0,
+              "completions": 0,
+              "service": 0,
+              "settings": 0,
+              "ssh": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 1,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-explain-error": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.79,
+            "probabilities": {
+              "openagents.tool-project-map": 0,
+              "chat.gym": 0,
+              "chat.knowledge": 0,
+              "not-a-capability-request": 0.02,
+              "chat.wallet": 0.81,
+              "chat.account": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "none": 0.15,
+              "chat.cli": 0.02,
+              "chat.coder": 0,
+              "openagents.tool-explain-error": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "codex": 0,
+              "opencode": 0,
+              "claude_code": 0,
+              "devin": 0,
+              "none": 1,
+              "grok_build": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.95,
+            "probabilities": {
+              "ok": 0.96,
+              "money_movement": 0.01,
+              "asks_for_secret": 0,
+              "secret_shared": 0,
+              "harmful": 0,
+              "none": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18139,
+          "output_tokens": 1472,
+          "cost": 0.000761838
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.79,
+              "route": 1,
+              "answer": 0.63,
+              "lane": 0.28,
+              "opener": 0.92,
+              "cli_group": 0.6,
+              "tool": 1,
+              "capability": 0.79,
+              "engine": 1,
+              "risk": 0.95
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958158438,
+                      "endTime": 1790958158761,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000761838",
+            "marketCost": "0.000761838",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000761838",
+            "inferenceCost": "0.000761838",
+            "inputInferenceCost": "0.000761838",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSGJH6EPPB9GQA527M7W9"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w14",
+      "surface": "desktop",
+      "message": "what's my wallet address",
+      "expect": "answer",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.74,
+            "probabilities": {
+              "respond": 0.19,
+              "none": 0.01,
+              "clarify": 0.8,
+              "end_conversation": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 1,
+            "probabilities": {
+              "refuse": 0,
+              "eval.author": 0,
+              "clarify": 0,
+              "account": 0,
+              "eval.check": 0,
+              "product.kb": 0,
+              "gym.news": 0,
+              "general": 0,
+              "eval.run": 0,
+              "end": 0,
+              "eval.credit": 0,
+              "none": 0,
+              "smalltalk": 0,
+              "eval.result": 0,
+              "meta": 0,
+              "presentation.open": 0,
+              "capability.missing": 0,
+              "cli": 0,
+              "codebase.kb": 0,
+              "work.dispatch": 0,
+              "wallet": 1
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.57,
+            "probabilities": {
+              "refuse.harmful": 0,
+              "wallet.never_share": 0,
+              "refuse.secret_shared": 0,
+              "gym.what_tool": 0,
+              "meta.web_access": 0,
+              "wallet.what": 0.01,
+              "meta.coder": 0,
+              "meta.capabilities": 0,
+              "cli.run": 0.01,
+              "wallet.units": 0,
+              "account.report_problem": 0,
+              "meta.jev": 0,
+              "eval.credit.mine": 0,
+              "dispatch.no_computer": 0,
+              "cli.offer": 0,
+              "meta.pricing": 0,
+              "clarify.generic": 0.1,
+              "account.computers": 0,
+              "none": 0.59,
+              "smalltalk.test": 0,
+              "gym.what_test": 0,
+              "meta.open_source": 0,
+              "smalltalk.thanks": 0,
+              "meta.github": 0,
+              "meta.quota": 0,
+              "meta.languages": 0,
+              "dispatch.github_stem": 0,
+              "wallet.backup": 0,
+              "dispatch.stem": 0,
+              "meta.team": 0,
+              "smalltalk.bye": 0,
+              "gym.what": 0,
+              "account.playtest": 0,
+              "wallet.receive": 0.27,
+              "meta.privacy": 0,
+              "meta.memory": 0,
+              "smalltalk.how_are_you": 0,
+              "account.keys": 0.01,
+              "dispatch.explore_stem": 0,
+              "wallet.send": 0,
+              "refuse.asks_for_secret": 0.01,
+              "meta.who": 0,
+              "meta.model": 0,
+              "meta.limits_chat": 0,
+              "warn.secret_shared": 0,
+              "meta.data_retention": 0,
+              "smalltalk.hello": 0,
+              "eval.credit.how": 0,
+              "meta.map.desktop": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.29
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.48,
+            "probabilities": {
+              "computer": 0.34,
+              "none": 0.01,
+              "chat": 0.65
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.88,
+            "probabilities": {
+              "compare": 0,
+              "sorry": 0,
+              "explain": 0.09,
+              "none": 0.91,
+              "summary": 0,
+              "plan": 0,
+              "draft": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.82,
+            "probabilities": {
+              "ssh": 0,
+              "verse": 0,
+              "eval": 0,
+              "playtest": 0,
+              "study": 0,
+              "chat": 0,
+              "discover": 0,
+              "background": 0,
+              "mcp": 0,
+              "settings": 0,
+              "plugin": 0,
+              "none": 0.13,
+              "cap": 0,
+              "labor": 0,
+              "computer": 0,
+              "wallet": 0.84,
+              "service": 0,
+              "pair": 0,
+              "task": 0,
+              "session": 0,
+              "host": 0,
+              "x402": 0,
+              "kb": 0,
+              "version": 0,
+              "key": 0.03,
+              "terminal": 0,
+              "gym": 0,
+              "sov": 0,
+              "zone": 0,
+              "relay": 0,
+              "prg": 0,
+              "completions": 0,
+              "doctor": 0,
+              "reach": 0,
+              "connect": 0
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-explain-error": 0,
+              "openagents.tool-test-reader": 0,
+              "openagents.tool-project-map": 0,
+              "none": 1,
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-release-notes": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.86,
+            "probabilities": {
+              "openagents.tool-explain-error": 0,
+              "not-a-capability-request": 0.01,
+              "openagents.tool-dependency-check": 0,
+              "none": 0.09,
+              "chat.account": 0.01,
+              "chat.cli": 0.01,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-test-reader": 0,
+              "chat.wallet": 0.88,
+              "openagents.tool-project-map": 0,
+              "chat.knowledge": 0,
+              "chat.gym": 0,
+              "openagents.tool-code-finder": 0,
+              "chat.coder": 0
+            }
+          },
+          "deck": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "three-devdays-later": 0,
+              "test-time-capabilities": 0,
+              "none": 1,
+              "episode-289": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "codex": 0,
+              "claude_code": 0,
+              "none": 1,
+              "opencode": 0,
+              "devin": 0,
+              "grok_build": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "ok",
+            "confidence": 0.97,
+            "probabilities": {
+              "asks_for_secret": 0.02,
+              "ok": 0.98,
+              "money_movement": 0,
+              "secret_shared": 0,
+              "harmful": 0,
+              "none": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18590,
+          "output_tokens": 1527,
+          "cost": 0.00078078
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.74,
+              "route": 1,
+              "answer": 0.57,
+              "lane": 0.48,
+              "opener": 0.88,
+              "cli_group": 0.82,
+              "tool": 1,
+              "capability": 0.86,
+              "deck": 1,
+              "engine": 1,
+              "risk": 0.97
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958159552,
+                      "endTime": 1790958159776,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.00078078",
+            "marketCost": "0.00078078",
+            "surchargeCost": "0",
+            "gatewayCost": "0.00078078",
+            "inferenceCost": "0.00078078",
+            "inputInferenceCost": "0.00078078",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSHN4XVF1FGKXM8JP4QGQ"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    },
+    {
+      "id": "w15",
+      "surface": "phone",
+      "message": "send 1000 sats to my friend",
+      "expect": "send",
+      "recorded": {
+        "model": "typesafe-ai/jev",
+        "answers": {
+          "action": {
+            "type": "choice",
+            "choice": "clarify",
+            "confidence": 0.91,
+            "probabilities": {
+              "respond": 0.07,
+              "clarify": 0.93,
+              "none": 0,
+              "end_conversation": 0
+            }
+          },
+          "route": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.99,
+            "probabilities": {
+              "eval.author": 0,
+              "work.dispatch": 0,
+              "eval.check": 0,
+              "none": 0,
+              "refuse": 0,
+              "meta": 0,
+              "eval.result": 0,
+              "account": 0,
+              "eval.run": 0,
+              "end": 0,
+              "codebase.kb": 0,
+              "capability.missing": 0,
+              "presentation.open": 0,
+              "general": 0,
+              "eval.credit": 0,
+              "cli": 0,
+              "wallet": 1,
+              "clarify": 0,
+              "smalltalk": 0,
+              "gym.news": 0,
+              "product.kb": 0
+            }
+          },
+          "answer": {
+            "type": "choice",
+            "choice": "wallet.send",
+            "confidence": 0.92,
+            "probabilities": {
+              "dispatch.no_computer": 0,
+              "refuse.secret_shared": 0,
+              "meta.jev": 0,
+              "none": 0.04,
+              "dispatch.stem": 0,
+              "meta.github": 0,
+              "clarify.generic": 0.03,
+              "meta.memory": 0,
+              "wallet.send": 0.93,
+              "gym.what_test": 0,
+              "meta.who": 0,
+              "meta.quota": 0,
+              "meta.pricing": 0,
+              "smalltalk.hello": 0,
+              "meta.limits_chat": 0,
+              "meta.data_retention": 0,
+              "meta.open_source": 0,
+              "meta.team": 0,
+              "cli.offer": 0,
+              "eval.credit.mine": 0,
+              "wallet.never_share": 0,
+              "meta.privacy": 0,
+              "warn.secret_shared": 0,
+              "account.keys": 0,
+              "gym.what": 0,
+              "wallet.units": 0,
+              "account.report_problem": 0,
+              "refuse.harmful": 0,
+              "meta.capabilities": 0,
+              "wallet.what": 0,
+              "wallet.backup": 0,
+              "account.computers": 0,
+              "gym.what_tool": 0,
+              "smalltalk.test": 0,
+              "meta.web_access": 0,
+              "smalltalk.bye": 0,
+              "smalltalk.how_are_you": 0,
+              "dispatch.github_stem": 0,
+              "meta.languages": 0,
+              "smalltalk.thanks": 0,
+              "account.playtest": 0,
+              "eval.credit.how": 0,
+              "meta.coder": 0,
+              "cli.run": 0,
+              "meta.model": 0,
+              "wallet.receive": 0,
+              "refuse.asks_for_secret": 0,
+              "dispatch.explore_stem": 0,
+              "meta.map": 0
+            }
+          },
+          "needs_specifics": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "lane": {
+            "type": "choice",
+            "choice": "chat",
+            "confidence": 0.35,
+            "probabilities": {
+              "computer": 0.4,
+              "chat": 0.57,
+              "none": 0.03
+            }
+          },
+          "opener": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 0.98,
+            "probabilities": {
+              "compare": 0,
+              "plan": 0.01,
+              "summary": 0,
+              "sorry": 0,
+              "draft": 0,
+              "none": 0.99,
+              "explain": 0
+            }
+          },
+          "cli_group": {
+            "type": "choice",
+            "choice": "wallet",
+            "confidence": 0.76,
+            "probabilities": {
+              "cap": 0,
+              "computer": 0,
+              "chat": 0.02,
+              "x402": 0,
+              "none": 0.15000000000000002,
+              "discover": 0,
+              "settings": 0,
+              "session": 0,
+              "kb": 0,
+              "plugin": 0,
+              "pair": 0,
+              "service": 0,
+              "host": 0,
+              "playtest": 0,
+              "doctor": 0,
+              "sov": 0,
+              "reach": 0,
+              "prg": 0,
+              "mcp": 0,
+              "study": 0,
+              "labor": 0,
+              "connect": 0,
+              "eval": 0,
+              "background": 0,
+              "verse": 0,
+              "gym": 0,
+              "ssh": 0,
+              "completions": 0,
+              "version": 0,
+              "terminal": 0,
+              "wallet": 0.78,
+              "zone": 0,
+              "key": 0,
+              "relay": 0,
+              "task": 0.04
+            }
+          },
+          "tool": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "openagents.tool-code-finder": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-dependency-check": 0,
+              "openagents.tool-explain-error": 0,
+              "none": 1,
+              "openagents.tool-project-map": 0,
+              "openagents.tool-test-reader": 0
+            }
+          },
+          "capability": {
+            "type": "choice",
+            "choice": "chat.wallet",
+            "confidence": 0.72,
+            "probabilities": {
+              "openagents.tool-code-finder": 0,
+              "chat.cli": 0,
+              "openagents.tool-dependency-check": 0,
+              "chat.gym": 0,
+              "openagents.tool-explain-error": 0,
+              "chat.account": 0,
+              "openagents.tool-release-notes": 0,
+              "openagents.tool-project-map": 0,
+              "none": 0.26,
+              "chat.wallet": 0.74,
+              "chat.coder": 0,
+              "not-a-capability-request": 0,
+              "chat.knowledge": 0,
+              "openagents.tool-test-reader": 0
+            }
+          },
+          "engine": {
+            "type": "choice",
+            "choice": "none",
+            "confidence": 1,
+            "probabilities": {
+              "none": 1,
+              "codex": 0,
+              "opencode": 0,
+              "claude_code": 0,
+              "devin": 0,
+              "grok_build": 0
+            }
+          },
+          "risk": {
+            "type": "choice",
+            "choice": "money_movement",
+            "confidence": 1,
+            "probabilities": {
+              "money_movement": 1,
+              "asks_for_secret": 0,
+              "secret_shared": 0,
+              "ok": 0,
+              "none": 0,
+              "harmful": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 18147,
+          "output_tokens": 1475,
+          "cost": 0.000762174
+        },
+        "provider_metadata": {
+          "typesafe": {
+            "confidence": {
+              "action": 0.91,
+              "route": 0.99,
+              "answer": 0.92,
+              "lane": 0.35,
+              "opener": 0.98,
+              "cli_group": 0.76,
+              "tool": 1,
+              "capability": 0.72,
+              "engine": 1,
+              "risk": 1
+            }
+          },
+          "gateway": {
+            "routing": {
+              "originalModelId": "typesafe-ai/jev",
+              "resolvedProvider": "digitalocean",
+              "fallbacksAvailable": [
+                "typesafe-ai"
+              ],
+              "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+              "canonicalSlug": "typesafe-ai/jev",
+              "finalProvider": "typesafe-ai",
+              "modelAttemptCount": 1,
+              "modelAttempts": [
+                {
+                  "canonicalSlug": "typesafe-ai/jev",
+                  "success": true,
+                  "providerAttemptCount": 1,
+                  "providerAttempts": [
+                    {
+                      "provider": "typesafe-ai",
+                      "credentialType": "system",
+                      "success": true,
+                      "startTime": 1790958160407,
+                      "endTime": 1790958160640,
+                      "statusCode": 200
+                    }
+                  ]
+                }
+              ],
+              "totalProviderAttemptCount": 1
+            },
+            "cost": "0.000762174",
+            "marketCost": "0.000762174",
+            "surchargeCost": "0",
+            "gatewayCost": "0.000762174",
+            "inferenceCost": "0.000762174",
+            "inputInferenceCost": "0.000762174",
+            "outputInferenceCost": "0",
+            "generationId": "gen_01M3YPSJG7CT7HFHCC1A85C5MF"
+          }
+        },
+        "service": {
+          "door": "https://ai-gateway.vercel.sh",
+          "version": "decision-worker@a3de5c8ff8",
+          "exchange": "hosted decision service ad6b4d9199bf0864b1a402116d44e36daa1a72c6f8df4ae07bd57c8df5c922fc on wss://relay.openagents.com"
+        }
+      }
+    }
+  ]
+}

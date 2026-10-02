@@ -430,15 +430,59 @@ fn opener_lead(routing: &Routing) -> Option<Lead> {
 /// T3: the model, led by the opener; told it has no Gym records when the
 /// route or the runner-up is a Gym or eval route, so it states no result.
 fn model(routing: &Routing) -> Tier {
-    let gym = routing.route.is_gym()
-        || routing
-            .runner_up
-            .is_some_and(|(route, p)| route.is_gym() && routing.route_p - p < CLOSE_MARGIN);
+    let near = |is: fn(RouteId) -> bool| {
+        is(routing.route)
+            || routing
+                .runner_up
+                .is_some_and(|(route, p)| is(route) && routing.route_p - p < CLOSE_MARGIN)
+    };
+    let note = if near(RouteId::is_gym) {
+        Some(super::gym::NO_RECORDS_NOTE)
+    } else if near(|route| route == RouteId::Wallet) {
+        Some(WALLET_NOTE)
+    } else {
+        None
+    };
     Tier::Model {
         lead: opener_lead(routing),
-        note: gym.then_some(super::gym::NO_RECORDS_NOTE),
+        note,
     }
 }
+
+/// The note the model gets on the wallet route (#10170): the wallet is
+/// always the user's own OpenAgents wallet. An instruction, never a
+/// router: it reads nothing.
+pub const WALLET_NOTE: &str = "A wallet in this chat is always the user's built-in OpenAgents \
+wallet, which holds bitcoin over Lightning and on-chain. Never ask which wallet, app, provider, or \
+exchange they mean, and never name another wallet, app, or exchange. In a terminal on their \
+computer, `openagents wallet status` shows its balance and receiving address; in the OpenAgents app, \
+the Wallet screen does. We never move money from this chat: sending happens in the wallet, where \
+the user confirms it.";
+
+/// Rule 3a: a wallet request in a terminal descends the `wallet` command
+/// group: the typed `route` reading is sure the message is about the
+/// built-in wallet, whose commands are that group, unless the `cli_group`
+/// reading is sure of another group. Nothing reads words in the message;
+/// the descent's own `none` leaves a question no command answers to the
+/// model, told [`WALLET_NOTE`].
+fn terminal_wallet(routing: &Routing, situation: &Situation) -> Option<Tier> {
+    let elsewhere = routing
+        .cli_group
+        .as_ref()
+        .is_some_and(|(group, p)| group != WALLET_GROUP && *p >= CLI_GROUP);
+    (situation.context.surface() == Surface::Terminal
+        && routing.route == RouteId::Wallet
+        && routing.route_p >= CLI_ROUTE
+        && !elsewhere)
+        .then(|| Tier::Cli {
+            group: WALLET_GROUP.to_owned(),
+            also: Vec::new(),
+            lead: opener_lead(routing),
+        })
+}
+
+/// The command group of the built-in wallet.
+pub const WALLET_GROUP: &str = "wallet";
 
 /// Rule 8b: the Gym and eval routes.
 fn gym(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
@@ -800,6 +844,15 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         return tier;
     }
 
+    // 3a. The wallet in a terminal (#10170): a request about the built-in
+    // wallet that no prepared answer serves descends the wallet's
+    // commands, so a balance request runs the read-only command on this
+    // computer and shows what it printed, before the model could ask
+    // which wallet.
+    if let Some(tier) = terminal_wallet(routing, situation) {
+        return tier;
+    }
+
     // 4. End.
     if routing.route == RouteId::End
         && routing.route_p >= ROUTE_CONFIDENCE
@@ -1070,6 +1123,56 @@ mod tests {
 
     fn web() -> Context {
         Context::of(&serde_json::json!({ "surface": "web" }))
+    }
+
+    /// #10170: a wallet request in a terminal descends the wallet's
+    /// commands, so "balance and wallet address" runs `wallet status`
+    /// rather than the model asking which wallet; elsewhere the model is
+    /// told the wallet is ours ([`WALLET_NOTE`]).
+    #[test]
+    fn a_wallet_request_in_a_terminal_descends_the_wallet_commands() {
+        let terminal = Context::of(&serde_json::json!({ "surface": "terminal" }));
+        // Thread 7cd10ec8…'s last turn, as the worker judged it.
+        let mut wallet = routed(RouteId::Wallet, 0.91, "clarify.generic", 0.0, 0.88);
+        wallet.lane = Lane::Computer;
+        wallet.cli_group = Some(("wallet".into(), 0.89));
+        assert_eq!(
+            decided(&wallet, &terminal, false),
+            Tier::Cli {
+                group: "wallet".into(),
+                also: Vec::new(),
+                lead: None,
+            }
+        );
+        // On the phone the wallet is a screen: the model, told the wallet
+        // is the built-in one.
+        assert_eq!(
+            router(&wallet),
+            Tier::Model {
+                lead: None,
+                note: Some(WALLET_NOTE),
+            }
+        );
+        // A message that moves money is the wallet's own answer, never a
+        // command, in a terminal too.
+        let mut send = wallet.clone();
+        send.risk = Risk::MoneyMovement;
+        assert!(matches!(
+            decided(&send, &terminal, false),
+            Tier::CannedFinal { answer, .. } if answer.id == "wallet.send"
+        ));
+        // A group reading for another group is not the wallet's rule.
+        let mut other = wallet.clone();
+        other.cli_group = Some(("verse".into(), 0.9));
+        assert!(!matches!(
+            decided(&other, &terminal, false),
+            Tier::Cli { group, .. } if group == "wallet"
+        ));
+        for word in ["MetaMask", "Phantom", "Coinbase"] {
+            assert!(!WALLET_NOTE.contains(word));
+        }
+        assert!(WALLET_NOTE.contains("built-in OpenAgents wallet"));
+        assert!(WALLET_NOTE.contains("Never ask which wallet"));
     }
 
     /// On the website (#10106) work, commands, and screens become the

@@ -422,6 +422,14 @@ when = "The user wants something an openagents command does, and we have the com
 text = "Here's the openagents command for that. It runs only when you confirm it."
 sources = ["docs/cli/README.md"]
 
+[[answer]]
+id = "cli.run"
+version = 1
+routes = ["cli"]
+when = "The user wants something a read-only openagents command shows, and the terminal runs it now"
+text = "We're running the openagents command for that on this computer."
+sources = ["docs/cli/README.md", "docs/cli/chat.md"]
+
 # ---------------------------------------------------------------------------
 # wallet
 # ---------------------------------------------------------------------------

@@ -71,6 +71,12 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         .openagents/coder-issues.json says (this repository: rebase and push
         main when the checks pass; others: a pull request), comments the
         evidence, and closes the issue. Ctrl-C stops the flow.
+  run-command --thread ID
+        Run the openagents command the thread's last reply proposed, on
+        this computer. send runs a command that only reads at once, as this
+        build's command tree declares it; one that changes something here
+        waits for this; one that moves money or shows a secret never runs
+        from the chat.
   work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]
         Hand several issues to Coder, one issue flow each, each in its own
         thread: NUMBERS such as 10050,10051, or a LABEL's open issues.
@@ -105,6 +111,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("read", Effect::ReadOnly),
     Declared::computer("export", Effect::ReadOnly),
     Declared::computer("run-coder", Effect::Publishes),
+    Declared::computer("run-command", Effect::LocalWrite),
     Declared::computer("follow", Effect::ReadOnly),
     Declared::computer("stop", Effect::Publishes),
     Declared::computer("answer", Effect::Publishes),
@@ -143,8 +150,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{USAGE}");
             return 0;
         }
-        "send" | "threads" | "read" | "export" | "run-coder" | "follow" | "stop" | "answer"
-        | "work" => (first.as_str(), &words[1..]),
+        "send" | "threads" | "read" | "export" | "run-coder" | "run-command" | "follow"
+        | "stop" | "answer" | "work" => (first.as_str(), &words[1..]),
         // `openagents chat MESSAGE` is `openagents chat send MESSAGE`.
         _ => ("send", words),
     };
@@ -264,7 +271,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             }
             Ok(0)
         }
-        "run-coder" | "follow" | "stop" | "answer" => {
+        "run-coder" | "run-command" | "follow" | "stop" | "answer" => {
             if command != "answer" {
                 no_positional(args)?;
             }
@@ -275,6 +282,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
                     text: message(args.positional())?,
                 },
                 "run-coder" => Op::RunCoder { thread: id.clone() },
+                "run-command" => Op::RunCommand { thread: id.clone() },
                 "follow" => Op::Follow { thread: id.clone() },
                 _ => Op::Stop { thread: id.clone() },
             };
@@ -599,6 +607,44 @@ impl<'a> Printer<'a> {
                     eprintln!("Connected again.");
                 }
             }
+            Event::Command {
+                thread,
+                argv,
+                confirm,
+            } => {
+                let line = Offer::command_line(&argv);
+                event(
+                    output,
+                    json!({"event": "command", "thread": thread, "argv": argv, "confirm": confirm}),
+                );
+                if !output.json() {
+                    if confirm {
+                        let flag = coder_run::flag(self.kind);
+                        eprintln!(
+                            "offer: {line} changes something on this computer; run it with `openagents chat run-command{flag} --thread {thread}`"
+                        );
+                    } else {
+                        eprintln!("running: {line}");
+                    }
+                }
+            }
+            Event::Ran {
+                thread,
+                argv,
+                ok,
+                output: printed,
+            } => {
+                event(
+                    output,
+                    json!({"event": "ran", "thread": thread, "argv": argv, "ok": ok, "output": printed}),
+                );
+                if !output.json() {
+                    println!("\n{printed}");
+                    if !ok {
+                        eprintln!("{} failed", Offer::command_line(&argv));
+                    }
+                }
+            }
             Event::Detached { thread } => {
                 let flag = coder_run::flag(self.kind);
                 eprintln!(
@@ -712,7 +758,11 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
             Offer::OpenScreen { screen } => {
                 eprintln!("offer: open {screen:?} in the OpenAgents app");
             }
-            Offer::Cli { argv, .. } => eprintln!("offer: {}", Offer::command_line(argv)),
+            // The client runs or offers the reply's command itself.
+            Offer::Cli { argv, .. } if meta.command.is_none() => {
+                eprintln!("offer: {}", Offer::command_line(argv))
+            }
+            Offer::Cli { .. } => {}
             Offer::StartEval { .. } => {
                 eprintln!("offer: run this test set from the OpenAgents app")
             }

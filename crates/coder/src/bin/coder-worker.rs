@@ -2805,7 +2805,18 @@ impl Job {
                         (SeamOutcome::Cli(Ok(CliAnswer::Proposal(proposal))), Tier::Cli { lead: shown, .. }) => {
                             match router::gate(proposal.effect, turn.context.surface()) {
                                 router::CliGate::Offer => {
-                                    if let Some(entry) = bank.entry("cli.offer")
+                                    // A terminal runs a read-only command at
+                                    // once and shows what it printed
+                                    // (#10170); anything else waits for a
+                                    // confirm.
+                                    let id = if turn.context.surface() == router::Surface::Terminal
+                                        && proposal.effect == router::Effect::ReadOnly
+                                    {
+                                        "cli.run"
+                                    } else {
+                                        "cli.offer"
+                                    };
+                                    if let Some(entry) = bank.entry(id)
                                         && let Some(text) = entry.render(facts)
                                     {
                                         send(0, &text)?;
@@ -2888,6 +2899,19 @@ impl Job {
                                 eprintln!("router seam failed: {why}");
                             }
                             let mut tier_word = "model";
+                            // A wallet request the wallet's commands did
+                            // not serve: the model answers about the
+                            // built-in wallet, never asking which (#10170).
+                            if matches!(tier, Tier::Cli { .. }) && routing.route == router::RouteId::Wallet {
+                                buffer.clear();
+                                held = false;
+                                (generating, incoming, said) = start_model(
+                                    self.door.clone(),
+                                    format!("{instructions}\n\n{}", router::policy::WALLET_NOTE),
+                                    input.to_vec(),
+                                );
+                                draining = true;
+                            }
                             if let Tier::Grounded { lead: Some(shown), .. } | Tier::Cli { lead: Some(shown), .. } = tier
                                 && bank.opener(&shown.id).is_none()
                                 && opening.is_empty()

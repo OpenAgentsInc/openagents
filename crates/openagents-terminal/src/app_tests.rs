@@ -1709,3 +1709,86 @@ fn unfollowed_runs_refresh_from_the_store_and_expire_without_end_events() {
         "refreshes reuse readers instead of replaying logs"
     );
 }
+
+/// #10170, thread 2deab1bf…: "openagents cli" got "Here's the openagents
+/// command for that. It runs only when you confirm it." and nothing to
+/// confirm. A command that waits shows itself and Enter runs it; a
+/// read-only one runs at once and its output is the answer.
+#[test]
+fn a_proposed_command_shows_itself_and_enter_runs_it() {
+    let mut app = app();
+    app.fresh = false;
+    let mut meta = Meta::default();
+    meta.offered(
+        &serde_json::json!({"offer": "cli", "argv": ["wallet", "init"],
+        "effect": "local_write", "runs_on": "this_device", "confirm": true}),
+    );
+    app.event(reply(
+        "Here's the openagents command for that. It runs only when you confirm it.",
+        meta,
+    ));
+    app.event(Event::Command {
+        thread: app.thread.clone(),
+        argv: vec!["wallet".into(), "init".into()],
+        confirm: true,
+    });
+    let screen = shown(&mut app);
+    assert!(
+        screen.contains("Enter runs openagents wallet init · Esc cancels"),
+        "{screen}"
+    );
+    assert!(!app.offer);
+    assert_eq!(app.status(), "Enter runs the command · Esc cancels");
+    let actions = app.key(&key(KeyCode::Enter), 80);
+    assert_eq!(
+        actions,
+        vec![Action::Run(Op::RunCommand {
+            thread: app.thread.clone()
+        })]
+    );
+    app.began(&Op::RunCommand {
+        thread: app.thread.clone(),
+    });
+    app.event(Event::Ran {
+        thread: app.thread.clone(),
+        argv: vec!["wallet".into(), "init".into()],
+        ok: true,
+        output: "Wallet created.".into(),
+    });
+    app.ended(None);
+    let screen = shown(&mut app);
+    assert!(screen.contains("Wallet created."), "{screen}");
+    assert!(app.command.is_none());
+
+    // Esc cancels a waiting command.
+    let mut app = self::app();
+    app.fresh = false;
+    app.event(Event::Command {
+        thread: app.thread.clone(),
+        argv: vec!["wallet".into(), "init".into()],
+        confirm: true,
+    });
+    assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
+    assert!(app.command.is_none());
+    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
+
+    // A read-only command runs at once: no confirm, its output shown.
+    let mut app = self::app();
+    app.fresh = false;
+    app.event(Event::Command {
+        thread: app.thread.clone(),
+        argv: vec!["wallet".into(), "status".into()],
+        confirm: false,
+    });
+    assert!(app.command.is_none());
+    app.event(Event::Ran {
+        thread: app.thread.clone(),
+        argv: vec!["wallet".into(), "status".into()],
+        ok: true,
+        output: "balance: 2100 sats".into(),
+    });
+    let screen = shown(&mut app);
+    assert!(screen.contains("openagents wallet status"), "{screen}");
+    assert!(screen.contains("balance: 2100 sats"), "{screen}");
+    assert!(!screen.contains("Enter"), "{screen}");
+}

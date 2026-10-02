@@ -699,6 +699,25 @@ pub const READ_ONLY: &[(&str, &[&str])] = &[
     ("session", &["list"]),
 ];
 
+/// A `cli` offer's command without the program's name, when its words are
+/// bounded and printable: what a computer looks up in its own command tree
+/// before it runs anything (#10170).
+pub fn command_of(payload: &Value) -> Option<Vec<String>> {
+    let mut argv: Vec<String> = payload["argv"]
+        .as_array()?
+        .iter()
+        .map(|word| word.as_str().map(str::to_owned))
+        .collect::<Option<_>>()?;
+    if argv.first().is_some_and(|word| word == "openagents") {
+        argv.remove(0);
+    }
+    ((1..=MAX_ARGV).contains(&argv.len())
+        && argv.iter().all(|word| {
+            !word.is_empty() && word.len() <= MAX_ARG_BYTES && !word.chars().any(char::is_control)
+        }))
+    .then_some(argv)
+}
+
 /// Whether `argv` (without `openagents`) is a read-only command in
 /// [`READ_ONLY`], with bounded, printable words.
 pub fn read_only(argv: &[String]) -> bool {
@@ -990,6 +1009,13 @@ pub struct Meta {
     /// never text. A request the start puts first, not permission.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<nostr::cj_conversation::Engine>,
+    /// The `openagents` command the worker's `cli` offer proposed
+    /// (#10170), whatever its effect, without the program's name: bounded,
+    /// printable words. The worker's own effect word is not kept; a
+    /// computer runs it only after reading the command's effect from its
+    /// own command tree ([`crate::client::Coder::effect`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<String>>,
 }
 
 impl Meta {
@@ -1015,6 +1041,12 @@ impl Meta {
 
     /// Takes an `offer` feedback payload.
     pub fn offered(&mut self, payload: &Value) {
+        if payload["offer"].as_str() == Some("cli")
+            && self.command.is_none()
+            && let Some(argv) = command_of(payload)
+        {
+            self.command = Some(argv);
+        }
         if let Some(offer) = Offer::parse(payload)
             && self.offers.len() < MAX_OFFERS
             && !self.offers.contains(&offer)

@@ -10,8 +10,8 @@
 use std::path::{Path, PathBuf};
 
 use openagents_chat::client::{
-    BoxFuture, Coder, Dial, Follow, Host, Issue, IssueStarted, Migration, Progress, Started,
-    Steering,
+    BoxFuture, Coder, Dial, Follow, Host, Issue, IssueStarted, Migration, Permit, Progress, Ran,
+    Started, Steering,
 };
 use openagents_chat::coder_events::{Line, Runner};
 use openagents_chat::router::{Caller, CoderRun, Context};
@@ -26,6 +26,84 @@ use tokio::net::UnixStream as Stream;
 use tokio::net::TcpStream as Stream;
 
 use super::local::{self, Local, State};
+
+/// How long a command a chat reply proposed may run here.
+pub const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The most of a command's output a chat shows.
+pub const COMMAND_OUTPUT: usize = 16 * 1024;
+
+/// Run `openagents ARGV` with this program, as [`Here::run_command`] does.
+fn run_here(argv: &[String]) -> Result<Ran, String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
+    let mut child = std::process::Command::new(exe)
+        .args(argv)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("cannot start openagents {}: {e}", argv.join(" ")))?;
+    let read = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    };
+    let out = read(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err = read(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() >= COMMAND_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "openagents {} did not finish within {} s and was stopped.",
+                    argv.join(" "),
+                    COMMAND_TIMEOUT.as_secs()
+                ));
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(e) => return Err(format!("cannot wait for openagents: {e}")),
+        }
+    };
+    let mut text = String::from_utf8_lossy(&out.join().unwrap_or_default()).into_owned();
+    let errors = String::from_utf8_lossy(&err.join().unwrap_or_default()).into_owned();
+    if !errors.trim().is_empty() {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&errors);
+    }
+    if text.len() > COMMAND_OUTPUT {
+        let mut end = COMMAND_OUTPUT;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+        text.push_str("\n…");
+    }
+    Ok(Ran {
+        ok: status.success(),
+        output: text.trim_end().to_owned(),
+    })
+}
 
 /// Coder on this computer, with the person's settings
 /// ([`super::settings`]): Codex, Claude Code, or Grok Build, the first
@@ -160,6 +238,28 @@ impl Coder for Here {
 
     fn result(&self, store: &Path, task: &str) -> Option<CoderRun> {
         local::result_in(Some(store), task)
+    }
+
+    /// A command a reply proposed runs only as this build's own command
+    /// tree declares it (#10170): read-only commands at once, commands
+    /// that change something here after a confirm, and money, secrets,
+    /// and anything the tree does not know never.
+    fn permit(&self, argv: &[String]) -> Permit {
+        use crate::cli_route::tree::Effect;
+        match crate::cli_route::gate::effect_here(argv) {
+            Some(Effect::ReadOnly) => Permit::Now,
+            Some(Effect::LocalWrite | Effect::Publishes | Effect::Grants | Effect::LongRunning) => {
+                Permit::Confirm
+            }
+            Some(Effect::Spends | Effect::Secret) | None => Permit::Never,
+        }
+    }
+
+    /// `openagents ARGV` as a child of this program, as `openagents mcp
+    /// serve` runs a tool call: no input, stopped after
+    /// [`COMMAND_TIMEOUT`], what it printed kept to [`COMMAND_OUTPUT`].
+    fn run_command(&self, argv: &[String]) -> Result<Ran, String> {
+        run_here(argv)
     }
 
     fn trajectories(&self, store: &Path, task: &str) -> Vec<Value> {

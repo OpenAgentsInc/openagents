@@ -356,8 +356,42 @@ pub trait Coder: Send + Sync {
     }
     /// What the task's last turn did, once it ended (#10094).
     fn result(&self, store: &Path, task: &str) -> Option<CoderRun>;
+    /// How the `openagents` command `argv` (without the program's name)
+    /// that a reply proposed may run here (#10170), read from this
+    /// computer's own command tree, never from the worker's word.
+    fn permit(&self, _argv: &[String]) -> Permit {
+        Permit::Never
+    }
+    /// Run the `openagents` command `argv` on this computer. Blocking.
+    ///
+    /// # Errors
+    /// Why it could not run.
+    fn run_command(&self, _argv: &[String]) -> Result<Ran, String> {
+        Err("Commands do not run here.".into())
+    }
     /// Every turn's ATIF trajectory the store holds, for an export.
     fn trajectories(&self, store: &Path, task: &str) -> Vec<Value>;
+}
+
+/// How a command a reply proposed may run here ([`Coder::permit`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Permit {
+    /// It only reads: it runs at once, and the reply shows what it printed.
+    Now,
+    /// It changes something here: it runs after the person confirms it.
+    Confirm,
+    /// It moves money, shows a secret, or is unknown here: it never runs
+    /// from the chat.
+    Never,
+}
+
+/// What a command printed ([`Coder::run_command`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ran {
+    /// It exited with success.
+    pub ok: bool,
+    /// What it printed, bounded.
+    pub output: String,
 }
 
 /// Where a message sent to a working run went ([`Coder::steer`]).
@@ -515,6 +549,21 @@ pub enum Event {
     Offline { thread: String, retry_in: u64 },
     /// It can be reached again, and the reply streams on.
     Online { thread: String },
+    /// The reply proposed the `openagents` command `argv` (#10170): it
+    /// runs here now (`confirm` false, [`Event::Ran`] follows), or waits
+    /// for the person to confirm it ([`Op::RunCommand`]).
+    Command {
+        thread: String,
+        argv: Vec<String>,
+        confirm: bool,
+    },
+    /// The command ran here, and what it printed.
+    Ran {
+        thread: String,
+        argv: Vec<String>,
+        ok: bool,
+        output: String,
+    },
 }
 
 /// How an operation ended.
@@ -587,6 +636,8 @@ pub enum Op {
     },
     /// Run Coder for the thread's last offer.
     RunCoder { thread: String },
+    /// Run the command the thread's last reply proposed, confirmed.
+    RunCommand { thread: String },
     /// Replay the thread's task from its first event and keep streaming.
     Follow { thread: String },
     /// Stop the thread's running task.
@@ -928,6 +979,7 @@ impl Client {
                 self.send(&thread, new, &text, run, timeout, sink).await
             }
             Op::RunCoder { thread } => Ok(self.run_coder(&thread, sink).await),
+            Op::RunCommand { thread } => Ok(self.confirmed(&thread, sink).await),
             Op::Follow { thread } | Op::Stop { thread } | Op::Answer { thread, .. }
                 if matches!(self.backend, Backend::Computer { .. }) =>
             {
@@ -1141,6 +1193,7 @@ impl Client {
                 // The router judged this is coding: Coder runs here at
                 // once, unless the person asked only for the offer.
                 let coding = crate::delegation::offered(reply.meta.as_ref(), snapshot.computer);
+                let command = reply.meta.as_ref().and_then(|meta| meta.command.clone());
                 // Say who will run it, from what the run itself reads here.
                 let mut turns = [reply];
                 let store = self.store(id);
@@ -1161,6 +1214,14 @@ impl Client {
                         return Ok(ended);
                     }
                     return Ok(self.run_coder(id, sink).await);
+                }
+                // A command the reply proposed runs here: at once when it
+                // only reads, else after a confirm (#10170).
+                if !coding
+                    && let Some(argv) = command
+                    && !matches!(self.backend, Backend::Computer { .. })
+                {
+                    return Ok(self.command(id, argv, run, false, sink).await);
                 }
                 Ok(Ended::Done)
             }
@@ -1220,6 +1281,98 @@ impl Client {
         };
         coder_report(sink, id, true, said, serde_json::to_value(coder).ok());
         Some(self.follow_from(id, &coder.task, turn, false, sink).await)
+    }
+
+    /// The command `argv` a reply proposed, as this computer's command
+    /// tree permits it ([`Coder::permit`]): run now when it only reads and
+    /// `now`, or when the person `confirmed` it; otherwise offered.
+    async fn command(
+        &mut self,
+        id: &str,
+        argv: Vec<String>,
+        now: bool,
+        confirmed: bool,
+        sink: &mut Sink<'_>,
+    ) -> Ended {
+        let runs = match self.coder.permit(&argv) {
+            Permit::Never => {
+                if confirmed {
+                    sink(Event::Failure {
+                        thread: id.to_owned(),
+                        message: format!(
+                            "openagents {} does not run from the chat.",
+                            argv.join(" ")
+                        ),
+                    });
+                    return Ended::Failed;
+                }
+                return Ended::Done;
+            }
+            Permit::Now => now || confirmed,
+            Permit::Confirm => confirmed,
+        };
+        sink(Event::Command {
+            thread: id.to_owned(),
+            argv: argv.clone(),
+            confirm: !runs,
+        });
+        if !runs {
+            return Ended::Done;
+        }
+        let coder = self.coder.clone();
+        let words = argv.clone();
+        let ran = tokio::task::spawn_blocking(move || coder.run_command(&words))
+            .await
+            .unwrap_or_else(|error| Err(format!("the command stopped: {error}")));
+        let (ok, output) = match ran {
+            Ok(ran) => (ran.ok, ran.output),
+            Err(why) => (false, why),
+        };
+        sink(Event::Ran {
+            thread: id.to_owned(),
+            argv,
+            ok,
+            output,
+        });
+        if ok { Ended::Done } else { Ended::Failed }
+    }
+
+    /// Run the command the thread's last reply proposed, after the person
+    /// confirmed it.
+    async fn confirmed(&mut self, id: &str, sink: &mut Sink<'_>) -> Ended {
+        let refuse = |sink: &mut Sink<'_>, message: &str| {
+            sink(Event::Failure {
+                thread: id.to_owned(),
+                message: message.to_owned(),
+            });
+            Ended::Failed
+        };
+        if let Backend::Computer { label, .. } = &self.backend {
+            let message = format!("Commands for this thread run on {label}.");
+            return refuse(sink, &message);
+        }
+        let argv = match self
+            .apply(Command::Read {
+                chat: id.to_owned(),
+                before: None,
+            })
+            .await
+        {
+            Ok(snapshot) => snapshot
+                .turns
+                .last()
+                .filter(|turn| turn.role == Role::Assistant)
+                .and_then(|turn| turn.meta.as_ref())
+                .and_then(|meta| meta.command.clone()),
+            Err(message) => return refuse(sink, &message),
+        };
+        match argv {
+            Some(argv) => self.command(id, argv, true, true, sink).await,
+            None => refuse(
+                sink,
+                "OpenAgents has not proposed a command for this thread's last reply.",
+            ),
+        }
     }
 
     /// Another computer's thread: its Coder run is there, so this client

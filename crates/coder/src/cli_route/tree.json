@@ -3306,6 +3306,37 @@
           }
         },
         {
+          "name": "run-command",
+          "leaf": {
+            "path": [
+              "chat",
+              "run-command"
+            ],
+            "usage": [
+              "run-command --thread ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run-command"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the openagents command the thread's last reply proposed, on this computer. send runs a command that only reads at once, as this build's command tree declares it; one that changes something here waits for this; one that moves money or shows a secret never runs from the chat.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "work",
           "leaf": {
             "path": [
@@ -7869,7 +7900,7 @@
     },
     {
       "name": "wallet",
-      "summary": "Lightning node for x402 (ldk-node): invoices, payments, channels.",
+      "summary": "This computer's OpenAgents wallet, a Lightning node (ldk-node): balances, funding address, payments, channels, and x402.",
       "children": [
         {
           "name": "init",

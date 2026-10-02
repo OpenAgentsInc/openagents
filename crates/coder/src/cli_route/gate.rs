@@ -38,6 +38,24 @@ pub fn offered(leaf: &Leaf, surface: Surface) -> bool {
         && (surface != Surface::Phone || PHONE_COMMANDS.contains(&leaf.path.join(" ").as_str()))
 }
 
+/// The declared effect of the command `argv` (group first, without the
+/// program's name) from this build's own command tree, when the tree
+/// knows the command and its own argument parser accepts the words
+/// (#10170). A computer reads this, never the effect a worker sent,
+/// before it runs a command a chat reply proposed.
+#[must_use]
+pub fn effect_here(argv: &[String]) -> Option<super::tree::Effect> {
+    let tree = super::tree::bundled();
+    let words = super::tree::tree_argv(argv);
+    let group = tree.group(words.first()?)?;
+    // The longest path of the tree's words that names a command.
+    let leaf = (1..=words.len())
+        .rev()
+        .find_map(|end| tree.leaf(&words[..end]))?;
+    super::params::validate(leaf, group, argv).ok()?;
+    Some(leaf.effect)
+}
+
 /// Where the command runs for `surface`: the declared place on the phone,
 /// this device (where the program is) on the desktop and in the terminal.
 #[must_use]
@@ -56,6 +74,23 @@ mod tests {
 
     fn words(path: &str) -> Vec<String> {
         path.split(' ').map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn a_command_here_has_its_tree_effect_only_when_its_words_parse() {
+        assert_eq!(effect_here(&words("wallet status")), Some(Effect::ReadOnly));
+        assert_eq!(effect_here(&words("computer list")), Some(Effect::ReadOnly));
+        assert_eq!(
+            effect_here(&words("wallet send bc1qexample --sats 1000")),
+            Some(Effect::Spends)
+        );
+        assert_eq!(
+            effect_here(&words("wallet export --reveal")),
+            Some(Effect::Secret)
+        );
+        assert_eq!(effect_here(&words("wallet status --bogus")), None);
+        assert_eq!(effect_here(&words("wallet")), None);
+        assert_eq!(effect_here(&words("rm -rf")), None);
     }
 
     #[test]

@@ -1075,3 +1075,191 @@ async fn a_follow_up_the_router_reads_as_more_work_continues_the_same_session() 
         ]
     );
 }
+
+/// A worker whose reply proposes an `openagents` command, as its `cli`
+/// offer feedback carries it (#10170).
+struct Proposes(Vec<&'static str>);
+
+impl Door for Proposes {
+    fn ask(
+        &self,
+        _: Vec<Turn>,
+        _: Context,
+        reply: Arc<std::sync::Mutex<Reply>>,
+    ) -> BoxFuture<'static, ()> {
+        let argv = self.0.clone();
+        Box::pin(async move {
+            let mut reply = lock(&reply);
+            reply.text = "We're running the openagents command for that on this computer.".into();
+            let mut meta = Meta {
+                route: Some("wallet".into()),
+                tier: Some("cli".into()),
+                ..Meta::default()
+            };
+            meta.offered(&serde_json::json!({
+                "offer": "cli", "argv": argv, "effect": "read_only",
+                "runs_on": "this_device", "confirm": true,
+            }));
+            reply.meta = meta;
+            reply.done = true;
+        })
+    }
+}
+
+/// A stand-in for this computer's command tree and runner: `wallet
+/// status` reads, `wallet init` changes something, `wallet send` moves
+/// money; it records what it ran.
+#[derive(Default)]
+struct Commands {
+    ran: Mutex<Vec<Vec<String>>>,
+}
+
+impl Coder for Commands {
+    fn default_store(&self) -> PathBuf {
+        std::env::temp_dir().join("openagents-chat-client-test-tasks")
+    }
+    fn context(&self, _: &Path, _: Option<&Path>) -> Context {
+        Context::default()
+    }
+    fn predict(&self, _: &Path, _: Option<nostr::cj_conversation::Engine>) -> Option<Runner> {
+        None
+    }
+    fn asks_first(&self) -> bool {
+        false
+    }
+    fn checkout(&self, _: &Path) -> Result<(), String> {
+        Err("no".into())
+    }
+    fn start(
+        &self,
+        _: &Path,
+        _: &Path,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Option<nostr::cj_conversation::Engine>,
+    ) -> Result<Started, String> {
+        Err("no".into())
+    }
+    fn issue(&self, _: &str, _: &str, _: &Path) -> Option<Box<dyn Issue>> {
+        None
+    }
+    fn follow(&self, s: &Path, t: &str, c: &str, h: Option<String>) -> Box<dyn Follow> {
+        NoCoder.follow(s, t, c, h)
+    }
+    fn stop(&self, _: &Path, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn answer(&self, _: &Path, _: &str, _: &str) -> Result<usize, String> {
+        Err("no".into())
+    }
+    fn result(&self, _: &Path, _: &str) -> Option<CoderRun> {
+        None
+    }
+    fn trajectories(&self, _: &Path, _: &str) -> Vec<Value> {
+        Vec::new()
+    }
+    fn permit(&self, argv: &[String]) -> Permit {
+        match argv.join(" ").as_str() {
+            "wallet status" => Permit::Now,
+            "wallet init" => Permit::Confirm,
+            _ => Permit::Never,
+        }
+    }
+    fn run_command(&self, argv: &[String]) -> Result<Ran, String> {
+        self.ran.lock().unwrap().push(argv.to_vec());
+        Ok(Ran {
+            ok: true,
+            output: "balance: 2100 sats\naddress: bc1qexample".into(),
+        })
+    }
+}
+
+/// #10170: "balance and wallet address" in a terminal. The reply's
+/// read-only command runs here at once, with no confirm and no Coder run,
+/// and its output is what the person sees.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_read_only_command_a_reply_proposes_runs_at_once_and_shows_its_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(Commands::default());
+    let door = Arc::new(Proposes(vec!["wallet", "status"]));
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let thread = new_id();
+    let (events, _, ended) = drain(client.stream(send(
+        &thread,
+        "balance and wallet address basic readonly identifying shit",
+        Start::Settings,
+    )))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done));
+    let words = |argv: &[String]| argv.join(" ");
+    assert!(
+        events.iter().any(|event| matches!(event,
+            Event::Command { argv, confirm: false, .. } if words(argv) == "wallet status")),
+        "{events:?}"
+    );
+    let Some(Event::Ran {
+        ok: true, output, ..
+    }) = events.last()
+    else {
+        panic!("{events:?}");
+    };
+    assert!(output.contains("2100 sats"), "{output}");
+    assert_eq!(coder.ran.lock().unwrap().len(), 1);
+    // No Coder offer, and no Coder run.
+    assert!(
+        events.iter().all(|event| !matches!(
+            event,
+            Event::Coder { .. } | Event::Reply { running: true, .. }
+        )),
+        "{events:?}"
+    );
+}
+
+/// A command that changes something here waits for the confirm, and the
+/// confirm runs exactly it; one that moves money never runs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_command_that_changes_something_waits_for_the_confirm_and_money_never_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(Commands::default());
+    let door = Arc::new(Proposes(vec!["wallet", "init"]));
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let thread = new_id();
+    let (events, client, ended) =
+        drain(client.stream(send(&thread, "set up my wallet", Start::Settings))).await;
+    assert_eq!(ended, Ok(Ended::Done));
+    assert!(
+        matches!(events.last(), Some(Event::Command { confirm: true, .. })),
+        "{events:?}"
+    );
+    assert!(coder.ran.lock().unwrap().is_empty());
+    let (events, _, ended) = drain(client.stream(Op::RunCommand {
+        thread: thread.clone(),
+    }))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done));
+    assert!(
+        matches!(events.last(), Some(Event::Ran { ok: true, .. })),
+        "{events:?}"
+    );
+    assert_eq!(
+        coder.ran.lock().unwrap().as_slice(),
+        [vec!["wallet".to_owned(), "init".to_owned()]]
+    );
+
+    let coder = Arc::new(Commands::default());
+    let door = Arc::new(Proposes(vec!["wallet", "send", "bc1q", "--sats", "1000"]));
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let thread = new_id();
+    let (events, client, _) =
+        drain(client.stream(send(&thread, "send 1000 sats", Start::Settings))).await;
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, Event::Command { .. } | Event::Ran { .. })),
+        "{events:?}"
+    );
+    let (_, _, ended) = drain(client.stream(Op::RunCommand { thread })).await;
+    assert_eq!(ended, Ok(Ended::Failed));
+    assert!(coder.ran.lock().unwrap().is_empty());
+}

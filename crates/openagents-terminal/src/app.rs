@@ -150,6 +150,9 @@ pub struct App {
     pub asked: bool,
     /// The last reply offered a Coder run that waits for Enter.
     pub offer: bool,
+    /// The last reply proposed this `openagents` command, which changes
+    /// something here and waits for Enter (#10170).
+    pub command: Option<Vec<String>>,
     /// Who runs Coder now, for the status line.
     pub engine: Option<String>,
     /// A run is starting on this engine and has not said it works yet:
@@ -236,6 +239,7 @@ impl App {
             running: false,
             asked: false,
             offer: false,
+            command: None,
             engine: None,
             starting: None,
             overlay: None,
@@ -293,6 +297,7 @@ impl App {
         self.running = false;
         self.asked = false;
         self.offer = false;
+        self.command = None;
         self.engine = None;
         self.starting = None;
         self.activity = None;
@@ -421,6 +426,11 @@ impl App {
                 Vec::new()
             }
             (KeyCode::Char('d'), true, _) if self.editor.is_empty() => vec![Action::Quit],
+            (KeyCode::Esc, _, _) if self.command.is_some() && !self.busy() => {
+                self.command = None;
+                self.note("The command was not run.");
+                Vec::new()
+            }
             (KeyCode::Esc, _, _) if self.plugin.is_some() => {
                 self.plugin = None;
                 self.note("No plugin runs.");
@@ -688,6 +698,12 @@ impl App {
             }
         }
         match slash::parse(draft) {
+            Draft::Empty if self.command.is_some() && !self.busy() => {
+                self.command = None;
+                vec![Action::Run(Op::RunCommand {
+                    thread: self.thread.clone(),
+                })]
+            }
             Draft::Empty if self.offer && !self.busy() => {
                 self.offer = false;
                 vec![Action::Run(Op::RunCoder {
@@ -782,6 +798,7 @@ impl App {
         }
         self.push(Row::Turn(Who::You, text.clone()));
         self.offer = false;
+        self.command = None;
         if self.asked && self.task.is_some() {
             self.asked = false;
             self.push_run(Row::Turn(Who::You, text.clone()));
@@ -820,7 +837,7 @@ impl App {
             Op::Send { .. } => Phase::Replying,
             Op::Follow { .. } => Phase::Following,
             Op::RunCoder { .. } | Op::Answer { .. } => Phase::Following,
-            Op::Stop { .. } => Phase::Working,
+            Op::Stop { .. } | Op::RunCommand { .. } => Phase::Working,
         };
         self.partial.clear();
         if let Op::Send { .. } = op {
@@ -986,6 +1003,33 @@ impl App {
             Event::Online { .. } => {
                 if self.offline.take().is_some() {
                     self.note("Connected again.");
+                }
+            }
+            Event::Command { argv, confirm, .. } => {
+                let line = Offer::command_line(&argv);
+                if confirm {
+                    self.push(Row::Note(
+                        format!("Enter runs {line} · Esc cancels"),
+                        Intensity::ThreeQuarters,
+                    ));
+                    self.command = Some(argv);
+                } else {
+                    self.doing(format!("Running {line}…"));
+                }
+            }
+            Event::Ran {
+                argv, ok, output, ..
+            } => {
+                self.activity = None;
+                let line = Offer::command_line(&argv);
+                let shown = if output.trim().is_empty() {
+                    format!("{line} printed nothing.")
+                } else {
+                    format!("{line}\n\n```\n{output}\n```")
+                };
+                self.push(Row::Turn(Who::OpenAgents, shown));
+                if !ok {
+                    self.loud(format!("{line} failed."));
                 }
             }
             Event::Detached { .. } => {
@@ -1275,9 +1319,12 @@ impl App {
                 Offer::OpenScreen { screen } => {
                     self.note(format!("Open {screen:?} in the OpenAgents app."));
                 }
-                Offer::Cli { argv, .. } => {
+                // The client runs or offers the reply's command itself
+                // (`Event::Command`).
+                Offer::Cli { argv, .. } if meta.command.is_none() => {
                     self.note(format!("Run: {}", Offer::command_line(argv)));
                 }
+                Offer::Cli { .. } => {}
                 Offer::StartEval { .. } => {
                     self.note("Run this test set from the OpenAgents app.");
                 }
@@ -1361,6 +1408,7 @@ impl App {
                 ),
                 _ => "Working · Esc stops".into(),
             },
+            _ if self.command.is_some() => "Enter runs the command · Esc cancels".into(),
             _ if self.offer => "Enter starts Coder".into(),
             _ => "ready".into(),
         }
