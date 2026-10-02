@@ -8,7 +8,9 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::{INDENT, cells, clip, diff, indent_at, sanitize, wrap_paragraphs};
+use super::turn::marked_style;
+use super::{INDENT, cells, clip, cut, diff, indent_at, sanitize, wrap_paragraphs};
+use crate::markdown::{self, Marks};
 use crate::{Intensity, Ladder};
 
 /// One row of a Coder run as the transcript shows it. The caller maps its
@@ -24,7 +26,8 @@ pub enum RunRow {
     },
     /// A step's text: thinking, a tool call, a note. `mark` is the one-char
     /// lead ("·", ">", "!"). The text draws at ThreeQuarters after a Half
-    /// mark; a "!" step draws at Full.
+    /// mark; a "!" step draws at Full. A thought ("·") is the engine's
+    /// Markdown and draws with its marks, never its `**` or backticks.
     Step { mark: char, text: String },
     /// A command with its exit and the last lines of its output:
     /// "$ {command}" (ThreeQuarters), then "  exit {n}" / "  timed out"
@@ -46,11 +49,13 @@ pub enum RunRow {
     },
     /// A provider switch, in words, at ThreeQuarters with a "~" lead.
     Switched { text: String },
-    /// Coder asks the person: "Coder asks: {text}" at Full, then "{hint}" at
-    /// Half when present (how to answer).
+    /// Coder asks the person: "Coder asks: {text}" at Full, the text drawn
+    /// as Markdown, then "{hint}" at Half when present (how to answer).
     Question { text: String, hint: Option<String> },
     /// The turn finished: "Coder finished · {n} file(s) changed · +{ins}
-    /// -{del}" (Full), the summary (ThreeQuarters, wrapped), each file
+    /// -{del}" (Full; "Coder finished" alone when nothing changed), the
+    /// summary as Markdown, laid out as a reply is (body at ThreeQuarters,
+    /// wrapped; never its raw `**`, backticks, or list dashes), each file
     /// "  {status} {path} (+a -r)" (Half; "?" when unknown), then
     /// "worktree {path}" (Half). Collapsed, a file with a patch adds
     /// "Press Ctrl+O to see the changes." (Half) at the end; `expanded`,
@@ -94,7 +99,8 @@ pub enum ToolRow {
         command: Option<String>,
         output: Vec<String>,
     },
-    /// "· {text}": a thought (mark Half, text Half).
+    /// "· {text}": a thought (mark Half, text Half), its first line drawn
+    /// as inline Markdown.
     Thought(String),
 }
 
@@ -149,7 +155,11 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
             } else {
                 (half, three)
             };
-            block.marked(&mut out, 0, &format!("{mark} "), mark_at, text, text_at);
+            if *mark == '·' {
+                block.markdown(&mut out, 0, "· ", mark_at, text, Some(text_at));
+            } else {
+                block.marked(&mut out, 0, &format!("{mark} "), mark_at, text, text_at);
+            }
         }
         RunRow::Command {
             command,
@@ -182,7 +192,8 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
             block.marked(&mut out, 0, "~ ", three, text, three);
         }
         RunRow::Question { text, hint } => {
-            block.text(&mut out, 0, "", &format!("Coder asks: {text}"), full);
+            let asked = format!("Coder asks: {text}");
+            block.markdown(&mut out, 0, "", full, &asked, Some(full));
             if let Some(hint) = hint.as_deref().filter(|hint| !hint.is_empty()) {
                 block.text(&mut out, 0, "", hint, half);
             }
@@ -197,11 +208,14 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
         } => {
             let count = files.len();
             let noun = if count == 1 { "file" } else { "files" };
-            let head =
-                format!("Coder finished · {count} {noun} changed · +{insertions} -{deletions}");
+            let head = if count == 0 && *insertions == 0 && *deletions == 0 {
+                "Coder finished".to_owned()
+            } else {
+                format!("Coder finished · {count} {noun} changed · +{insertions} -{deletions}")
+            };
             block.text(&mut out, 0, "", &head, full);
             if !summary.is_empty() {
-                block.text(&mut out, 0, "", summary, three);
+                block.markdown(&mut out, 0, "", three, summary, None);
             }
             for file in files {
                 let count = |n: Option<u64>| n.map_or_else(|| "?".to_owned(), |n| n.to_string());
@@ -256,6 +270,37 @@ fn progress(step: usize, percent: Option<u8>, seconds: u64) -> String {
     }
     out.push_str(" · ");
     out.push_str(&elapsed(seconds));
+    out
+}
+
+/// One line of Markdown as inline runs, without its marks' syntax,
+/// clipped to `room` cells with "…" when it is longer.
+fn inline(line: &str, room: usize) -> Vec<(String, Marks)> {
+    let marked = markdown::render(&sanitize(line))
+        .into_iter()
+        .map(|rendered| rendered.marked)
+        .find(|marked| !marked.text.trim().is_empty())
+        .unwrap_or_else(|| markdown::Marked::plain(sanitize(line)));
+    let runs = marked.runs_in(0..marked.text.len());
+    if cells(&marked.text) <= room {
+        return runs;
+    }
+    let mut left = room.saturating_sub(1);
+    let mut out = Vec::new();
+    for (run, marks) in runs {
+        let kept = cut(&run, left);
+        left -= cells(&kept);
+        let whole = kept.len() == run.len();
+        if !kept.is_empty() {
+            out.push((kept, marks.clone()));
+        }
+        if !whole {
+            break;
+        }
+    }
+    if room > 0 {
+        out.push(("…".to_owned(), Marks::default()));
+    }
     out
 }
 
@@ -321,6 +366,43 @@ impl Block {
         }
     }
 
+    /// A lead `mark` then `text` as Markdown, laid out as a reply is: inline
+    /// marks styled, lists and code as blocks, continuation rows hanging
+    /// under the text rather than the mark. Each line draws at `text_at`,
+    /// or at the step the layout gives it when `None`.
+    fn markdown(
+        &self,
+        out: &mut Vec<Line<'static>>,
+        extra: usize,
+        mark: &str,
+        mark_at: Intensity,
+        text: &str,
+        text_at: Option<Intensity>,
+    ) {
+        let lead = self.lead(extra);
+        let room = self.width.saturating_sub(lead).max(1);
+        let hang = cells(mark).min(room.saturating_sub(1));
+        let text = text
+            .split('\n')
+            .map(sanitize)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let rows = markdown::wrapped(text.trim(), room.saturating_sub(hang).max(1));
+        for (index, rendered) in rows.into_iter().enumerate() {
+            let base = self.style(text_at.unwrap_or(rendered.intensity));
+            let mut spans = vec![Span::raw(" ".repeat(lead))];
+            if index == 0 && hang > 0 {
+                spans.push(Span::styled(cut(mark, hang), self.style(mark_at)));
+            } else if hang > 0 {
+                spans.push(Span::raw(" ".repeat(hang)));
+            }
+            for (run, marks) in rendered.marked.runs_in(0..rendered.marked.text.len()) {
+                spans.push(Span::styled(run, marked_style(base, self.ladder, &marks)));
+            }
+            out.push(Line::from(spans));
+        }
+    }
+
     /// One line of a stretch of tool activity: its mark, its words, and a
     /// failure in Full, clipped to one row; an expanded call's command and
     /// output under it.
@@ -358,17 +440,30 @@ impl Block {
         let mark = clip(mark, room);
         let room = room.saturating_sub(cells(&mark));
         let tail = tail.unwrap_or_default();
-        let first = text.lines().next().unwrap_or("");
-        let body = clip(
-            &sanitize(first),
-            room.saturating_sub(cells(&tail).min(room)),
-        );
-        let tail = clip(&tail, room.saturating_sub(cells(&body)));
+        let first = text
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("");
+        let space = room.saturating_sub(cells(&tail).min(room));
+        // A thought is the engine's Markdown; a call or a label is a path,
+        // a pattern, or a command, drawn as it is.
+        let body = if matches!(row, ToolRow::Thought(_)) {
+            inline(first, space)
+        } else {
+            vec![(clip(&sanitize(first), space), Marks::default())]
+        };
+        let used: usize = body.iter().map(|(run, _)| cells(run)).sum();
+        let tail = clip(&tail, room.saturating_sub(used));
+        let base = self.style(text_at);
         let mut spans = vec![
             Span::raw(" ".repeat(lead)),
             Span::styled(mark, self.style(mark_at)),
-            Span::styled(body, self.style(text_at)),
         ];
+        spans.extend(
+            body.into_iter()
+                .map(|(run, marks)| Span::styled(run, marked_style(base, self.ladder, &marks))),
+        );
         if !tail.is_empty() {
             spans.push(Span::styled(tail, self.style(full)));
         }
@@ -549,10 +644,91 @@ mod tests {
         );
     }
 
+    /// The summary a Codex run on CoderOS ended with (2026-10-02): the
+    /// transcript showed its `**`, backticks, and list dashes raw.
+    const CODEX_SUMMARY: &str = "Added and committed a tested Terminal improvement: **Ctrl+P opens a searchable command palette**. It searches command names and descriptions, preserves your draft, and runs the existing command handlers. Updated `/help` and the user guide.\n\n**Validation passed:**\n- 45 terminal unit tests.\n- 2 PTY tests, including rendering, filtering, and using the palette.\n- Offline release and installer tests.\n- Formatting and diff checks.\n\nCommit: `0d6afa57b4`.\n\n**Terminal 1.0.0 is not launched yet.** The public release-candidate channel still points to `1.0.0-rc.2`, and the stable channel returns HTTP 404.";
+
+    /// Whether any drawn row still shows Markdown's syntax.
+    pub(crate) fn raw_markdown(rows: &[String]) -> Vec<String> {
+        rows.iter()
+            .filter(|row| {
+                let text = row.trim_start();
+                row.contains("**")
+                    || row.contains('`')
+                    || text.starts_with("- ")
+                    || text.starts_with("# ")
+                    || text.starts_with("## ")
+                    || row.contains("](")
+            })
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn a_result_summary_draws_as_markdown_not_its_syntax() {
+        let row = RunRow::Result {
+            summary: CODEX_SUMMARY.into(),
+            files: Vec::new(),
+            insertions: 0,
+            deletions: 0,
+            worktree: String::new(),
+            expanded: false,
+        };
+        let rows = text(&row, 80);
+        assert_eq!(raw_markdown(&rows), Vec::<String>::new(), "{rows:#?}");
+        assert_eq!(rows[0], "  Coder finished", "nothing changed: no counts");
+        assert!(
+            rows.iter().any(|row| row == "  • 45 terminal unit tests."),
+            "{rows:#?}"
+        );
+        assert!(rows.iter().any(|row| row.contains("Commit: 0d6afa57b4.")));
+        // Bold and code keep their marks as styles.
+        let lines = lines(&row, 80, Ladder::default());
+        let bold = lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content.contains("Validation passed:"))
+            .expect("the bold line");
+        assert!(
+            bold.style
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD)
+        );
+    }
+
+    #[test]
+    fn a_thought_and_a_question_draw_as_markdown() {
+        let thought = RunRow::Step {
+            mark: '·',
+            text: "**Inspecting** the `Store::open` path".into(),
+        };
+        assert_eq!(text(&thought, 80), ["  · Inspecting the Store::open path"]);
+        let tool = RunRow::Tools(vec![ToolRow::Thought(
+            "**Planning the fix**\n\nThen `cargo test`.".into(),
+        )]);
+        assert_eq!(text(&tool, 80), ["  · Planning the fix"]);
+        let long = RunRow::Tools(vec![ToolRow::Thought(format!(
+            "**{}**",
+            "word ".repeat(30).trim()
+        ))]);
+        let rows = text(&long, 30);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].ends_with('…') && cells(&rows[0]) <= 30, "{rows:?}");
+        assert!(!rows[0].contains("**"));
+        let asked = RunRow::Question {
+            text: "Which one?\n\n- `main`\n- **a branch**".into(),
+            hint: None,
+        };
+        let rows = text(&asked, 80);
+        assert_eq!(raw_markdown(&rows), Vec::<String>::new(), "{rows:#?}");
+        assert_eq!(rows[0], "  Coder asks: Which one?");
+        assert!(rows.contains(&"  • main".to_owned()), "{rows:#?}");
+    }
+
     #[test]
     fn nothing_is_wider_than_the_width() {
         let row = RunRow::Result {
-            summary: "a summary of the change".into(),
+            summary: format!("a summary of the change\n\n{CODEX_SUMMARY}"),
             files: vec![FileRow {
                 status: "M".into(),
                 path: "crates/a/very/long/path/to/a/file.rs".into(),

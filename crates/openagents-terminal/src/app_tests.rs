@@ -1088,3 +1088,70 @@ fn the_project_is_written_from_the_home_folder() {
         format!("{home}x/repo")
     );
 }
+
+fn replay(fixture: &str) -> App {
+    let mut app = app();
+    for text in fixture.lines() {
+        let parsed: CoderLine = serde_json::from_str(text).unwrap();
+        app.event(Event::Line(Box::new(parsed)));
+    }
+    app
+}
+
+/// The two runs the owner watched on CoderOS (2026-10-02), replayed as the
+/// host sent them: a Grok Build delegation and a Codex run. Their results
+/// draw as Markdown, collapsed and expanded, never as `**`, backticks, or
+/// list dashes; an expanded command shows once.
+#[test]
+fn the_owners_runs_draw_their_markdown() {
+    for (fixture, bullet) in [
+        (
+            include_str!(
+                "../../openagents-chat/fixtures/coder-events/owner-grok-delegation.ndjson"
+            ),
+            None,
+        ),
+        (
+            include_str!("../../openagents-chat/fixtures/coder-events/owner-codex-terminal.ndjson"),
+            Some("• 45 terminal unit tests."),
+        ),
+    ] {
+        let mut app = replay(fixture);
+        for expanded in [false, true] {
+            let text = shown(&mut app);
+            let raw: Vec<&str> = text
+                .lines()
+                .filter(|row| {
+                    let lead = row.trim_start();
+                    row.contains("**")
+                        || (row.contains('`') && !lead.starts_with("$ ") && !lead.starts_with("◆ "))
+                        || lead.starts_with("- ")
+                })
+                .filter(|row| !expanded || !row.starts_with("    "))
+                .collect();
+            assert!(raw.is_empty(), "raw Markdown: {raw:#?}\n{text}");
+            if let Some(bullet) = bullet {
+                assert!(text.contains(bullet), "{text}");
+            }
+            let mut previous = "";
+            for row in text.lines() {
+                let command = row.trim_start().strip_prefix("$ ");
+                let call = previous.trim_start().strip_prefix("◆ Run ");
+                if let (Some(command), Some(call)) = (command, call) {
+                    assert_ne!(command, call, "a command shown twice:\n{text}");
+                }
+                previous = row;
+            }
+            app.key(&ctrl('o'), 80);
+        }
+    }
+    let mut grok = replay(include_str!(
+        "../../openagents-chat/fixtures/coder-events/owner-grok-delegation.ndjson"
+    ));
+    let text = shown(&mut grok);
+    assert!(
+        text.contains("  Coder finished\n"),
+        "nothing changed: no counts\n{text}"
+    );
+    assert!(text.contains("at detached commit fe70e10131"), "{text}");
+}

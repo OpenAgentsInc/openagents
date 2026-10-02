@@ -109,7 +109,13 @@ fn call_row(shown: &Shown, expanded: bool) -> ToolRow {
         line,
         result: shown.result(),
         running: shown.running,
-        command: shown.command().filter(|_| expanded).map(str::to_owned),
+        // The command shows under its line only when the line names what
+        // it does in words; a line that is the command already shows it
+        // (grok-build: `$ command` is the description's second line).
+        command: shown
+            .command()
+            .filter(|_| expanded && shown.call.about.is_some())
+            .map(str::to_owned),
         output: if expanded {
             shown.output.lines().map(str::to_owned).collect()
         } else {
@@ -178,7 +184,7 @@ pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
                 .collect(),
             insertions: result.insertions,
             deletions: result.deletions,
-            worktree: result.worktree.clone(),
+            worktree: crate::app::home_relative(&result.worktree),
             expanded: false,
         },
         CoderEvent::Failure(_) => RunRow::Failed {

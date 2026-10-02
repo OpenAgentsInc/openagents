@@ -689,7 +689,7 @@ fn the_screen_end_to_end() {
             "◆ Read lib.rs",
             "a - b",
             "◆ Search \"fn add\"",
-            "$ cargo test",
+            "◆ Run cargo test",
             "test adds ... FAILED",
         ],
     );
