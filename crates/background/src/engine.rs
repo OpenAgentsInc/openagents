@@ -20,6 +20,8 @@ use crate::rule::{self, Action, Condition, Rule, TaskOutcome, Trigger, expand};
 use crate::run::{Cause, Record, Report};
 use crate::store::{self, State};
 
+pub use crate::builtins::Powers;
+
 /// One named threshold on a Jev probability, as
 /// `coder_delegate::decision::Setting` names them.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -391,6 +393,9 @@ pub enum StepOutcome {
     Would,
     /// Nothing to do, or a check said no.
     Skipped,
+    /// Left as it is because it needs the person (a checkout with
+    /// uncommitted work, or on another branch): said once, not every check.
+    Blocked,
     Failed,
 }
 
@@ -430,7 +435,7 @@ fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
 /// only when it is clean and has nothing its upstream lacks. A dry run
 /// fetches nothing and reads the last-fetched upstream.
 #[must_use]
-pub fn fast_forward(repo: &str, home: &Path, dry_run: bool) -> Step {
+pub fn fast_forward(repo: &str, branch: Option<&str>, home: &Path, dry_run: bool) -> Step {
     let path = expand(repo, home);
     let shown = show(&path, home);
     let step = |outcome, detail: String| Step {
@@ -445,11 +450,24 @@ pub fn fast_forward(repo: &str, home: &Path, dry_run: bool) -> Step {
             format!("{shown} is not a Git checkout"),
         );
     }
+    if let Some(wanted) = branch {
+        let on = git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+        if on != wanted {
+            return step(
+                StepOutcome::Blocked,
+                format!("{shown} is on {on}, not {wanted}; left as it is."),
+            );
+        }
+    }
     match git(&path, &["status", "--porcelain"]) {
         Ok(status) if !status.is_empty() => {
             return step(
-                StepOutcome::Skipped,
-                format!("{shown} has uncommitted changes; left as it is"),
+                if branch.is_some() {
+                    StepOutcome::Blocked
+                } else {
+                    StepOutcome::Skipped
+                },
+                format!("{shown} has uncommitted changes; left as it is."),
             );
         }
         Err(why) => return step(StepOutcome::Failed, why),
@@ -473,7 +491,11 @@ pub fn fast_forward(repo: &str, home: &Path, dry_run: bool) -> Step {
     let ahead = count("@{u}..HEAD");
     if ahead > 0 {
         return step(
-            StepOutcome::Skipped,
+            if branch.is_some() {
+                StepOutcome::Blocked
+            } else {
+                StepOutcome::Skipped
+            },
             format!("{shown} has {ahead} commit(s) {upstream} lacks; left as it is"),
         );
     }
@@ -505,26 +527,58 @@ pub fn fast_forward(repo: &str, home: &Path, dry_run: bool) -> Step {
 /// hold. A dry run says what each would do and changes nothing.
 #[must_use]
 pub fn steps(env: &Env<'_>, rule: &Rule, event: &Event, dry_run: bool) -> Vec<Step> {
-    rule.actions
-        .iter()
-        .filter_map(|action| match action {
-            Action::Notify { text } => {
-                let text = fill(text, env, rule, event);
-                Some(Step {
-                    kind: "notify".into(),
-                    target: None,
-                    outcome: if dry_run {
-                        StepOutcome::Would
-                    } else {
-                        StepOutcome::Done
-                    },
-                    detail: text,
-                })
-            }
-            Action::GitFastForward { repo } => Some(fast_forward(repo, &env.layout.home, dry_run)),
-            _ => None,
-        })
-        .collect()
+    steps_with(env, rule, event, Powers::default(), dry_run)
+}
+
+/// [`steps`] with the host's judge and services for the phase 3 actions.
+#[must_use]
+pub fn steps_with(
+    env: &Env<'_>,
+    rule: &Rule,
+    event: &Event,
+    powers: Powers<'_>,
+    dry_run: bool,
+) -> Vec<Step> {
+    let mut out = Vec::new();
+    for action in &rule.actions {
+        if let Some(steps) = crate::builtins::steps(env, rule, action, powers, dry_run) {
+            out.extend(steps);
+        } else {
+            out.extend(plain(env, rule, event, action, dry_run));
+        }
+    }
+    out
+}
+
+fn plain(
+    env: &Env<'_>,
+    rule: &Rule,
+    event: &Event,
+    action: &Action,
+    dry_run: bool,
+) -> Option<Step> {
+    match action {
+        Action::Notify { text } => {
+            let text = fill(text, env, rule, event);
+            Some(Step {
+                kind: "notify".into(),
+                target: None,
+                outcome: if dry_run {
+                    StepOutcome::Would
+                } else {
+                    StepOutcome::Done
+                },
+                detail: text,
+            })
+        }
+        Action::GitFastForward { repo, branch } => Some(fast_forward(
+            repo,
+            branch.as_deref(),
+            &env.layout.home,
+            dry_run,
+        )),
+        _ => None,
+    }
 }
 
 /// Evaluate a rule now: conditions, then its actions (disk cleanup
@@ -542,6 +596,34 @@ pub fn evaluate(
     judge: Option<&dyn Judge>,
     dry_run: bool,
 ) -> Result<Option<Report>, String> {
+    evaluate_with(
+        env,
+        rule,
+        cause,
+        event,
+        clock,
+        Powers {
+            judge,
+            services: None,
+        },
+        dry_run,
+    )
+}
+
+/// [`evaluate`] with the host's services for the phase 3 actions.
+///
+/// # Errors
+/// Another run holds the run lock.
+pub fn evaluate_with(
+    env: &Env<'_>,
+    rule: &Rule,
+    cause: Cause,
+    event: &Event,
+    clock: Clock,
+    powers: Powers<'_>,
+    dry_run: bool,
+) -> Result<Option<Report>, String> {
+    let judge = powers.judge;
     if holds(env, rule, event, clock, judge).is_err() {
         return Ok(None);
     }
@@ -556,14 +638,34 @@ pub fn evaluate(
     } else {
         None
     };
-    let steps = steps(env, rule, event, dry_run);
+    let steps = steps_with(env, rule, event, powers, dry_run);
     if steps.is_empty() {
         return Ok(report);
     }
+    let blocked: Option<String> = {
+        let lines: Vec<&str> = steps
+            .iter()
+            .filter(|step| step.outcome == StepOutcome::Blocked)
+            .map(|step| step.detail.as_str())
+            .collect();
+        (!lines.is_empty()).then(|| lines.join(" "))
+    };
+    let said_before = State::load(env.layout)
+        .rules
+        .get(&rule.id)
+        .and_then(|state| state.last_blocked.clone());
+    if !dry_run && blocked != said_before {
+        let now_blocked = blocked.clone();
+        State::update(env.layout, &rule.id, |state| {
+            state.last_blocked = now_blocked
+        });
+    }
+    let repeat = blocked.is_some() && blocked == said_before;
     let said: Vec<String> = steps
         .iter()
         .filter(|step| step.outcome != StepOutcome::Would)
         .filter(|step| step.kind == "notify" || step.outcome != StepOutcome::Skipped)
+        .filter(|step| !(repeat && step.outcome == StepOutcome::Blocked))
         .map(|step| step.detail.clone())
         .collect();
     let line = (!said.is_empty()).then(|| said.join(" "));
@@ -640,7 +742,7 @@ pub fn dry_run(env: &Env<'_>, rule: &Rule, clock: Clock) -> Vec<String> {
             lines.push(format!("Now it would do nothing: {why}."));
         }
         _ => {
-            for step in steps(env, rule, &event, true) {
+            for step in steps_with(env, rule, &event, Powers::default(), true) {
                 lines.push(match step.outcome {
                     StepOutcome::Would if step.kind == "notify" => {
                         format!("Now it would tell you: {}", step.detail)

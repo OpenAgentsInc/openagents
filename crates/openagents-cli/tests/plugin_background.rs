@@ -58,6 +58,8 @@ fn rules(home: &Path) -> Vec<String> {
         .iter()
         .filter(|row| row["error"].is_null())
         .map(|row| row["id"].as_str().unwrap().to_owned())
+        // The other built-in processes (all off here) are listed too.
+        .filter(|id| id == "disk" || background::rule::built_in(id).is_none())
         .collect()
 }
 

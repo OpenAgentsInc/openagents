@@ -1,0 +1,514 @@
+{
+ "$comment": [
+  "Labeled folders for the unknown-folder judgment (#10158); crates/gym/suites/build_background_cache_dir_v1.py turns them into the Gym suite background-cache-dir-v1."
+ ],
+ "rows": [
+  {
+   "id": "pip",
+   "path": "~/.cache/pip",
+   "bytes": 12000000000,
+   "age_days": 3,
+   "top": [
+    [
+     "http",
+     11000000000
+    ],
+    [
+     "wheels",
+     1000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "package_cache",
+   "why": "pip's download and wheel cache; pip fetches it again.",
+   "partition": "calibration"
+  },
+  {
+   "id": "huggingface",
+   "path": "~/.cache/huggingface",
+   "bytes": 41000000000,
+   "age_days": 12,
+   "top": [
+    [
+     "hub",
+     40000000000
+    ],
+    [
+     "token",
+     0
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "app_cache",
+   "why": "Downloaded model files the Hugging Face libraries fetch again.",
+   "partition": "calibration"
+  },
+  {
+   "id": "npm",
+   "path": "~/.npm",
+   "bytes": 8000000000,
+   "age_days": 5,
+   "top": [
+    [
+     "_cacache",
+     8000000000
+    ],
+    [
+     "_logs",
+     2000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "package_cache",
+   "why": "npm's content cache; npm fetches it again.",
+   "partition": "calibration"
+  },
+  {
+   "id": "cargo-registry",
+   "path": "~/.cargo/registry",
+   "bytes": 5000000000,
+   "age_days": 2,
+   "top": [
+    [
+     "cache",
+     3000000000
+    ],
+    [
+     "src",
+     2000000000
+    ],
+    [
+     "index",
+     200000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "package_cache",
+   "why": "Cargo's downloaded crates; Cargo fetches them again.",
+   "partition": "calibration"
+  },
+  {
+   "id": "scratch-target",
+   "path": "~/work/openagents-target-scratch",
+   "bytes": 31000000000,
+   "age_days": 9,
+   "top": [
+    [
+     "debug",
+     30000000000
+    ],
+    [
+     "release",
+     1000000000
+    ]
+   ],
+   "markers": [
+    "CACHEDIR.TAG"
+   ],
+   "users": 0,
+   "cache": true,
+   "kind": "build_output",
+   "why": "A Cargo target directory with CACHEDIR.TAG; a build rewrites it.",
+   "partition": "calibration"
+  },
+  {
+   "id": "go-build",
+   "path": "~/.cache/go-build",
+   "bytes": 6000000000,
+   "age_days": 4,
+   "top": [
+    [
+     "ff",
+     30000000
+    ],
+    [
+     "fe",
+     30000000
+    ],
+    [
+     "fd",
+     30000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "build_output",
+   "why": "Go's build cache, by content hash; go build refills it.",
+   "partition": "development"
+  },
+  {
+   "id": "gradle",
+   "path": "~/.gradle/caches",
+   "bytes": 9000000000,
+   "age_days": 20,
+   "top": [
+    [
+     "modules-2",
+     7000000000
+    ],
+    [
+     "transforms-3",
+     2000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "package_cache",
+   "why": "Gradle's dependency cache; Gradle fetches it again.",
+   "partition": "development"
+  },
+  {
+   "id": "spotify",
+   "path": "~/Library/Caches/com.spotify.client",
+   "bytes": 4000000000,
+   "age_days": 1,
+   "top": [
+    [
+     "Data",
+     4000000000
+    ]
+   ],
+   "markers": [],
+   "users": 1,
+   "cache": true,
+   "kind": "app_cache",
+   "why": "Spotify's streaming cache; the app refills it.",
+   "partition": "development"
+  },
+  {
+   "id": "playwright",
+   "path": "~/.cache/ms-playwright",
+   "bytes": 2000000000,
+   "age_days": 30,
+   "top": [
+    [
+     "chromium-1140",
+     1000000000
+    ],
+    [
+     "firefox-1458",
+     800000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "app_cache",
+   "why": "Browser builds Playwright downloads again on install.",
+   "partition": "development"
+  },
+  {
+   "id": "bazel",
+   "path": "~/.cache/bazel",
+   "bytes": 21000000000,
+   "age_days": 6,
+   "top": [
+    [
+     "_bazel_chris",
+     21000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "build_output",
+   "why": "Bazel's output base; a build recreates it.",
+   "partition": "locked"
+  },
+  {
+   "id": "torch-hub",
+   "path": "~/.cache/torch/hub",
+   "bytes": 4000000000,
+   "age_days": 40,
+   "top": [
+    [
+     "checkpoints",
+     4000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "package_cache",
+   "why": "Downloaded model checkpoints torch.hub fetches again.",
+   "partition": "locked"
+  },
+  {
+   "id": "oa-cache",
+   "path": "~/.openagents/cache",
+   "bytes": 6000000000,
+   "age_days": 2,
+   "top": [
+    [
+     "http",
+     6000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": true,
+   "kind": "app_cache",
+   "why": "An HTTP cache; the program refills it.",
+   "partition": "locked"
+  },
+  {
+   "id": "recordings",
+   "path": "~/.openagents/recordings",
+   "bytes": 13000000000,
+   "age_days": 8,
+   "top": [
+    [
+     "session-2026-09-30.mp4",
+     12000000000
+    ],
+    [
+     "session-2026-09-29.mp4",
+     1000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "Screen recordings a person made; nothing makes them again.",
+   "partition": "calibration"
+  },
+  {
+   "id": "datasets",
+   "path": "~/work/datasets",
+   "bytes": 82000000000,
+   "age_days": 60,
+   "top": [
+    [
+     "imagenet-subset",
+     80000000000
+    ],
+    [
+     "labels.csv",
+     2000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "A collected dataset and its labels.",
+   "partition": "calibration"
+  },
+  {
+   "id": "pylon",
+   "path": "~/.openagents/pylon",
+   "bytes": 47000000000,
+   "age_days": 1,
+   "top": [
+    [
+     "models",
+     40000000000
+    ],
+    [
+     "wallet.db",
+     10000000
+    ],
+    [
+     "state",
+     7000000000
+    ]
+   ],
+   "markers": [],
+   "users": 2,
+   "cache": false,
+   "kind": "unknown",
+   "why": "Pylon state with a wallet and models; not known to be disposable, and in use.",
+   "partition": "calibration"
+  },
+  {
+   "id": "notes",
+   "path": "~/work/notes-archive",
+   "bytes": 3000000000,
+   "age_days": 200,
+   "top": [
+    [
+     "2025",
+     2000000000
+    ],
+    [
+     "2024",
+     1000000000
+    ]
+   ],
+   "markers": [
+    "README.md"
+   ],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "Notes a person wrote.",
+   "partition": "calibration"
+  },
+  {
+   "id": "project",
+   "path": "~/work/scratch-project",
+   "bytes": 4000000000,
+   "age_days": 1,
+   "top": [
+    [
+     "target",
+     3000000000
+    ],
+    [
+     "src",
+     20000000
+    ]
+   ],
+   "markers": [
+    "Cargo.toml",
+    "target"
+   ],
+   "users": 0,
+   "cache": false,
+   "kind": "source",
+   "why": "A Rust project with its source; only its target folder is a cache.",
+   "partition": "development"
+  },
+  {
+   "id": "backups",
+   "path": "~/.openagents/backups",
+   "bytes": 9000000000,
+   "age_days": 4,
+   "top": [
+    [
+     "tasks-2026-09-28.tar",
+     9000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "Backups a person or tool kept on purpose.",
+   "partition": "development"
+  },
+  {
+   "id": "exports",
+   "path": "~/.openagents/exports",
+   "bytes": 3000000000,
+   "age_days": 10,
+   "top": [
+    [
+     "chat-export-2026-09.json",
+     3000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "Exported chats a person asked for.",
+   "partition": "development"
+  },
+  {
+   "id": "videos",
+   "path": "~/work/videos",
+   "bytes": 30000000000,
+   "age_days": 15,
+   "top": [
+    [
+     "ep287.mov",
+     30000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "A video a person recorded and edits.",
+   "partition": "development"
+  },
+  {
+   "id": "evals",
+   "path": "~/.openagents/evals",
+   "bytes": 10000000000,
+   "age_days": 7,
+   "top": [
+    [
+     "runs",
+     10000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "Evaluation results kept as a record; running again costs and may not match.",
+   "partition": "locked"
+  },
+  {
+   "id": "journal",
+   "path": "~/.openagents/journal",
+   "bytes": 1000000000,
+   "age_days": 0,
+   "top": [
+    [
+     "2026-10",
+     1000000000
+    ]
+   ],
+   "markers": [],
+   "users": 1,
+   "cache": false,
+   "kind": "user_data",
+   "why": "A journal a person writes, open now.",
+   "partition": "locked"
+  },
+  {
+   "id": "photos",
+   "path": "~/work/photos-raw",
+   "bytes": 120000000000,
+   "age_days": 90,
+   "top": [
+    [
+     "2026",
+     70000000000
+    ],
+    [
+     "2025",
+     50000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "user_data",
+   "why": "Raw photos.",
+   "partition": "locked"
+  },
+  {
+   "id": "mystery",
+   "path": "~/.openagents/swarm",
+   "bytes": 2000000000,
+   "age_days": 30,
+   "top": [
+    [
+     "state",
+     2000000000
+    ]
+   ],
+   "markers": [],
+   "users": 0,
+   "cache": false,
+   "kind": "unknown",
+   "why": "A tool's state folder whose contents do not say what made them.",
+   "partition": "locked"
+  }
+ ]
+}

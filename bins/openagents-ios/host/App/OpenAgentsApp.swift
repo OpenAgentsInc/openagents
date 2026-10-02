@@ -271,6 +271,9 @@ private struct ComputerRow: View {
                 if let watchers = row.watchers {
                     Text(watchers).font(.footnote).foregroundStyle(.secondary)
                 }
+                if let background = row.background {
+                    Text(background).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")

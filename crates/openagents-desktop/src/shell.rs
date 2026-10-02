@@ -401,7 +401,13 @@ impl DesktopApp {
         let Some(chat) = &self.chat else {
             return;
         };
-        let notices = self.notices.observe(chat.coder_statuses(), self.focused);
+        let mut notices = self.notices.observe(chat.coder_statuses(), self.focused);
+        let background = self
+            .model
+            .host
+            .as_ref()
+            .and_then(|host| host.background.clone());
+        notices.extend(self.notices.observe_background(background, self.focused));
         if self.live && !self.fixture && self.notifications_on() {
             for notice in notices {
                 crate::platform::notify(notice);

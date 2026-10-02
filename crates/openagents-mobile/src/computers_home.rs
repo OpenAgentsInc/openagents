@@ -76,6 +76,9 @@ pub struct Row {
     /// terminal and desktop show: "1 background watcher · disk cleanup".
     /// `None` when it runs none, is not online, or has not said.
     pub watchers: Option<String>,
+    /// What the computer's background rules last did, in one line
+    /// ("Freed 41 GB: 2 old build folders."), while it is online.
+    pub background: Option<String>,
     pub menu: Vec<Item>,
 }
 
@@ -175,16 +178,20 @@ pub fn short_status(host: &HostRecord, now: u64) -> (String, Tone) {
 
 fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
     let (status, tone) = short_status(host, snapshot.now);
-    let watchers = matches!(
+    let online = matches!(
         HostStatus::derive(host, snapshot.now),
         HostStatus::Online { .. }
-    )
-    .then(|| {
-        host.watchers
-            .as_deref()
-            .and_then(openagents_chat_app::watchers::line)
-    })
-    .flatten();
+    );
+    let watchers = online
+        .then(|| {
+            host.watchers
+                .as_deref()
+                .and_then(openagents_chat_app::watchers::line)
+        })
+        .flatten();
+    let background = online
+        .then(|| host.background.as_ref().map(|(_, line)| line.clone()))
+        .flatten();
     let key = host.key.as_str();
     let mut menu = vec![];
     let offer = |menu: &mut Vec<Item>, choice, label, confirm, action: Option<Action>| {
@@ -289,6 +296,7 @@ fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
         status,
         tone,
         watchers,
+        background,
         menu,
     }
 }
@@ -452,6 +460,20 @@ mod tests {
         // Hosts that never said, and every other row: nothing.
         for name in ["Build server", "Old laptop", "Lab box", "Travel mini"] {
             assert!(row(&home, name)["watchers"].is_null(), "{name}");
+        }
+        // What its background rules last did, in one line, while online.
+        assert_eq!(
+            row(&home, "Studio Mac")["background"],
+            "Freed 41 GB: 2 old build folders."
+        );
+        for name in [
+            "Home NAS",
+            "Build server",
+            "Old laptop",
+            "Lab box",
+            "Travel mini",
+        ] {
+            assert!(row(&home, name)["background"].is_null(), "{name}");
         }
     }
 

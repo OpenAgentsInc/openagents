@@ -16,6 +16,10 @@ pub const SCHEMA: &str = "openagents.background.rule.v1";
 /// One gigabyte, as the policy counts it (10^9 bytes).
 pub const GB: u64 = 1_000_000_000;
 
+/// A start level this high means "clean whatever qualifies, whatever the
+/// free space": the pruning rules use it.
+pub const ALWAYS: u64 = 1_000_000 * GB;
+
 /// A durable, user-defined rule the host runs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -42,6 +46,10 @@ pub struct Rule {
     pub classes: Classes,
     pub safety: Safety,
     pub cooldown_secs: u64,
+    /// When the actions fall short of the goal, start a Coder run that
+    /// proposes rule changes (phase 3). At most one a day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub escalate: Option<Escalate>,
     /// What a plugin's rule asks the host for. Empty for the built-in
     /// rule, which the host trusts; a plugin's rule is admitted only
     /// within what it names ([`crate::plugins::admit`]).
@@ -65,13 +73,57 @@ pub struct Needs {
     /// Send notifications.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub notify: bool,
+    /// Start Coder runs (escalation, or a `StartCoderRun` action).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coder: bool,
 }
 
 impl Needs {
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.delete.is_empty() && !self.tasks && !self.notify
+        self.delete.is_empty() && !self.tasks && !self.notify && !self.coder
     }
+}
+
+/// Escalation to a Coder run when a rule falls short.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Escalate {
+    /// The checkout the run works in; the host's default when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+}
+
+/// What a health watch probes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Watched {
+    /// The relay this computer publishes to.
+    Relay,
+    /// This computer's host.
+    Host,
+}
+
+impl Watched {
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Watched::Relay => "relay",
+            Watched::Host => "host",
+        }
+    }
+}
+
+/// A folder the person confirmed as a disposable cache after Jev judged
+/// it one (or a plugin proposed it). Later runs need no model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Judged {
+    pub path: String,
+    /// `build_output`, `package_cache`, or `app_cache`.
+    pub kind: String,
+    /// When the person confirmed it.
+    pub confirmed: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,8 +264,12 @@ pub enum Class {
     /// 5: `debug/incremental` and `release/incremental` of idle target
     /// directories.
     Incremental,
-    /// 6: the background trash, in an emergency only.
+    /// 6: the background trash, in an emergency only (and anything in
+    /// it past its 24-hour window).
     Trash,
+    /// 7: folders the person confirmed as caches after a judgment. They
+    /// move to the trash, never straight to deletion.
+    Judged,
 }
 
 impl Class {
@@ -236,6 +292,7 @@ impl Class {
             Class::GatePools => 4,
             Class::Incremental => 5,
             Class::Trash => 6,
+            Class::Judged => 7,
         }
     }
 
@@ -256,6 +313,8 @@ impl Class {
             Class::Incremental => "incremental caches",
             Class::Trash if one => "trash folder",
             Class::Trash => "trash folders",
+            Class::Judged if one => "confirmed cache",
+            Class::Judged => "confirmed caches",
         }
     }
 }
@@ -279,7 +338,41 @@ pub enum Action {
     /// then `git merge --ff-only`, only when the checkout is clean and
     /// has no commits its upstream lacks; otherwise it changes nothing
     /// and says why. No other command runs.
-    GitFastForward { repo: String },
+    GitFastForward {
+        repo: String,
+        /// Only on this branch; on another it changes nothing and says so.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+    },
+    /// Start a Coder run with `prompt` in `workspace` (the host's default
+    /// when unset) and a code-built briefing.
+    StartCoderRun {
+        prompt: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace: Option<String>,
+    },
+    /// Run an installed plugin's declared background action, read-only.
+    /// A plugin's rule may run only its own plugin.
+    RunPlugin {
+        plugin: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        input: String,
+    },
+    /// Release Coder issue claims whose task ended, or that have not run
+    /// for `idle_hours`, with a comment saying why.
+    ReleaseStaleClaims { idle_hours: u64 },
+    /// Probe the relay or the host; after `failures` failures in a row,
+    /// restart it through the service manager and say so.
+    HealthWatch { target: Watched, failures: u32 },
+    /// Judge each new test failure against the known flakes (Jev), then
+    /// update the flake or report a new failure.
+    FlakeWatch,
+    /// One short line: what ran, what it cost, what finished. A summary,
+    /// never a limit.
+    UsageSummary,
+    /// Compress traces, gate logs, and run artifacts older than
+    /// `compress_days`; remove those older than `keep_days`.
+    RotateLogs { compress_days: u64, keep_days: u64 },
 }
 
 impl Action {
@@ -291,7 +384,7 @@ impl Action {
             Action::PruneWorktrees => vec![Class::Worktrees],
             Action::CargoCleanPartial => vec![Class::Incremental],
             Action::EmptyTrash => vec![Class::Trash],
-            Action::Notify { .. } | Action::GitFastForward { .. } => Vec::new(),
+            _ => Vec::new(),
         }
     }
 
@@ -300,7 +393,13 @@ impl Action {
     /// checkout.
     #[must_use]
     pub fn cleans(&self) -> bool {
-        !matches!(self, Action::Notify { .. } | Action::GitFastForward { .. })
+        matches!(
+            self,
+            Action::DeleteCaches { .. }
+                | Action::PruneWorktrees
+                | Action::CargoCleanPartial
+                | Action::EmptyTrash
+        )
     }
 }
 
@@ -328,6 +427,18 @@ pub struct Classes {
     /// Classes measured and named but never deleted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub report_only: Vec<Class>,
+    /// An ended task's worktree is a candidate only this many days after
+    /// it was last used (0: at once).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub worktree_days: u64,
+    /// Folders confirmed as caches (class 7).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub judged: Vec<Judged>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// Allow and deny lists. The built-in deny list ([`crate::paths`]) always
@@ -395,6 +506,8 @@ pub fn disk() -> Rule {
             orphan_worktree_days: 7,
             gate_idle_hours: 1,
             report_only: Vec::new(),
+            worktree_days: 0,
+            judged: Vec::new(),
         },
         safety: Safety {
             allow: vec![
@@ -413,14 +526,32 @@ pub fn disk() -> Rule {
             ],
         },
         cooldown_secs: 600,
+        escalate: None,
         needs: Needs::default(),
     }
 }
 
+/// The built-in rules, by id. `disk` first; the rest are the spec's
+/// other background processes ([`crate::builtins`]).
+pub const BUILT_IN: [&str; 9] = [
+    "disk",
+    "worktrees",
+    "claims",
+    "checkout",
+    "health",
+    "flakes",
+    "qa",
+    "usage",
+    "rotate",
+];
+
 /// The built-in rules, by id.
 #[must_use]
 pub fn built_in(id: &str) -> Option<Rule> {
-    (id == "disk").then(disk)
+    match id {
+        "disk" => Some(disk()),
+        _ => crate::builtins::rule(id),
+    }
 }
 
 impl Rule {
@@ -596,10 +727,63 @@ impl Rule {
                 Action::Notify { text } if text.trim().is_empty() || text.len() > 280 => {
                     return Err("a notification is 1 to 280 bytes".into());
                 }
-                Action::GitFastForward { repo } if !path_like(repo) => {
-                    return Err(format!("checkout `{repo}` must be absolute or under ~"));
+                Action::GitFastForward { repo, branch } => {
+                    if !path_like(repo) {
+                        return Err(format!("checkout `{repo}` must be absolute or under ~"));
+                    }
+                    if branch
+                        .as_ref()
+                        .is_some_and(|b| b.trim().is_empty() || b.len() > 200)
+                    {
+                        return Err("a branch name is 1 to 200 bytes".into());
+                    }
+                }
+                Action::StartCoderRun { prompt, workspace } => {
+                    if prompt.trim().is_empty() || prompt.len() > 4000 {
+                        return Err("a Coder run's prompt is 1 to 4000 bytes".into());
+                    }
+                    if let Some(bad) = workspace.as_ref().filter(|w| !path_like(w)) {
+                        return Err(format!("workspace `{bad}` must be absolute or under ~"));
+                    }
+                }
+                Action::RunPlugin { plugin, input } => {
+                    if plugin.trim().is_empty() || plugin.len() > 200 || input.len() > 4000 {
+                        return Err(
+                            "a plugin action names a plugin and at most 4000 bytes of input".into(),
+                        );
+                    }
+                }
+                Action::ReleaseStaleClaims { idle_hours } if *idle_hours == 0 => {
+                    return Err("a claim is stale after at least an hour".into());
+                }
+                Action::HealthWatch { failures, .. } if *failures == 0 => {
+                    return Err("a health watch restarts after at least one failure".into());
+                }
+                Action::RotateLogs {
+                    compress_days,
+                    keep_days,
+                } if *keep_days == 0 || compress_days > keep_days => {
+                    return Err(
+                        "logs are kept at least a day, and compressed before they are removed"
+                            .into(),
+                    );
                 }
                 _ => {}
+            }
+        }
+        if let Some(Escalate {
+            workspace: Some(bad),
+        }) = &self.escalate
+            && !path_like(bad)
+        {
+            return Err(format!("workspace `{bad}` must be absolute or under ~"));
+        }
+        for judged in &self.classes.judged {
+            if !path_like(&judged.path) || judged.path == "~/" || judged.path == "/" {
+                return Err(format!("`{}` is not a folder a rule can name", judged.path));
+            }
+            if !crate::judged::KINDS.contains(&judged.kind.as_str()) {
+                return Err(format!("`{}` is not a kind of cache", judged.kind));
             }
         }
         if self.cleans() && matches!(self.origin, Origin::Conversation { .. }) {

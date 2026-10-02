@@ -409,6 +409,9 @@ pub struct Refreshed {
     /// The background watchers running on this computer, by name ("disk
     /// cleanup"), for the sidebar's line.
     pub watchers: Vec<String>,
+    /// The newest background notice (`(when, line)`), for a desktop
+    /// notification.
+    pub background: Option<(u64, String)>,
 }
 
 /// The window's state.
@@ -1014,6 +1017,7 @@ mod tests {
                                 autostart: host.autostart().expect("a policy"),
                                 nearby: host.nearby_pending().unwrap_or_default(),
                                 watchers: Vec::new(),
+                                background: None,
                             })
                         });
                         Some(Outcome::Refreshed(state))
@@ -1561,6 +1565,7 @@ mod tests {
                 autostart: host.autostart().expect("a policy"),
                 nearby: None,
                 watchers: Vec::new(),
+                background: None,
             })))
         };
         for tries in 2..=SAVE_TRIES {

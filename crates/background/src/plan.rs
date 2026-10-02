@@ -237,6 +237,9 @@ pub(crate) fn check(
             "in use: {open} open files or working folders inside"
         ));
     }
+    if class == Class::Judged && path.join(".git").exists() {
+        return Err("a Git checkout".into());
+    }
     let undo = if class == Class::Worktrees {
         Some(git::removable(path)?)
     } else {
@@ -247,6 +250,22 @@ pub(crate) fn check(
 
 fn short(id: &str) -> &str {
     &id[..id.len().min(12)]
+}
+
+/// The newest modification time of a folder and its top entries.
+pub(crate) fn newest(path: &Path) -> u64 {
+    let mut newest = std::fs::symlink_metadata(path)
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+        .map_or(0, paths::unix);
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.filter_map(Result::ok) {
+            if let Ok(modified) = entry.metadata().and_then(|meta| meta.modified()) {
+                newest = newest.max(paths::unix(modified));
+            }
+        }
+    }
+    newest
 }
 
 fn days(secs: u64) -> u64 {
@@ -510,6 +529,18 @@ fn candidates(
                     Some(_) if view.live(&path).is_some() => {
                         keep(&path, "its task is still running", &mut kept);
                     }
+                    Some(_)
+                        if now.saturating_sub(touched) < rule.classes.worktree_days * 86_400 =>
+                    {
+                        keep(
+                            &path,
+                            &format!(
+                                "its task ended, used in the last {} days",
+                                rule.classes.worktree_days
+                            ),
+                            &mut kept,
+                        );
+                    }
                     Some(task) => {
                         let mut candidate =
                             Candidate::new(class, path.clone(), touched, "its task ended");
@@ -582,6 +613,23 @@ fn candidates(
                     ];
                     found.push(candidate);
                 }
+            }
+        }
+        Class::Judged => {
+            for judged in &rule.classes.judged {
+                let path = crate::rule::expand(&judged.path, &layout.home);
+                if !real_dir(&path) {
+                    continue;
+                }
+                let touched = newest(&path);
+                let mut candidate = Candidate::new(
+                    class,
+                    path,
+                    touched,
+                    format!("confirmed {}", judged.kind.replace('_', " ")),
+                );
+                candidate.markers = vec!["confirmed".into()];
+                found.push(candidate);
             }
         }
         Class::Trash => {

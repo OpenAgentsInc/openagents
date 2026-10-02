@@ -80,6 +80,8 @@ struct ComputersHome: Decodable, Equatable {
         /// "1 background watcher · disk cleanup" for an online computer
         /// that runs any; otherwise absent.
         let watchers: String?
+        /// What its background rules last did, in one line, while online.
+        let background: String?
         let menu: [Item]
         var id: String { host }
     }

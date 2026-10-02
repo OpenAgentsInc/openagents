@@ -35,6 +35,9 @@ pub enum Outcome {
     Deleted,
     /// A worktree removed with `git worktree remove`.
     Removed,
+    /// Moved to the background trash (a confirmed cache), emptied after
+    /// 24 hours; `undo` puts it back.
+    Trashed,
     /// A check failed right before deletion.
     Skipped,
     Failed,
@@ -52,6 +55,9 @@ pub struct Action {
     pub evidence: Evidence,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undo: Option<Undo>,
+    /// Where a trashed folder went.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trashed: Option<PathBuf>,
 }
 
 /// One volume before and after.
@@ -64,7 +70,7 @@ pub struct Observation {
 }
 
 /// A run in the audit log.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Record {
     pub run: String,
     pub rule: String,
@@ -87,6 +93,9 @@ pub struct Record {
     /// checkout updates (phase 2).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<crate::engine::Step>,
+    /// Folders Jev judged after the run fell short (phase 3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub judgments: Vec<crate::judged::Judgment>,
 }
 
 impl Record {
@@ -108,12 +117,13 @@ impl Record {
             notified: None,
             escalated: false,
             steps: Vec::new(),
+            judgments: Vec::new(),
         }
     }
 }
 
 /// What [`run`] did, or would do for a dry run.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Report {
     pub dry_run: bool,
     pub plan: Plan,
@@ -185,17 +195,74 @@ pub fn run(
         });
     }
     let _lock = lock(env.layout)?;
-    Ok(execute(env, rule, cause, plan))
+    let expired = expire_trash(env);
+    Ok(execute_after(env, rule, cause, plan, expired))
+}
+
+/// How long a trashed folder stays.
+pub const TRASH_SECS: u64 = 24 * 3600;
+
+/// Delete what has been in the background trash past its window.
+fn expire_trash(env: &Env<'_>) -> Vec<Action> {
+    let mut done = Vec::new();
+    let Ok(entries) = std::fs::read_dir(env.layout.trash()) else {
+        return done;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !meta.is_dir() {
+            continue;
+        }
+        let at = meta.modified().map_or(0, paths::unix);
+        if env.now.saturating_sub(at) < TRASH_SECS {
+            continue;
+        }
+        let bytes = paths::measure(&path, &env.layout.home).map_or(0, |m| m.bytes);
+        let outcome = std::fs::remove_dir_all(&path);
+        done.push(Action {
+            class: Class::Trash,
+            path: path.clone(),
+            bytes: if outcome.is_ok() { bytes } else { 0 },
+            outcome: if outcome.is_ok() {
+                Outcome::Deleted
+            } else {
+                Outcome::Failed
+            },
+            reason: outcome.map_or_else(
+                |error| error.to_string(),
+                |()| "in the trash past 24 hours".into(),
+            ),
+            evidence: Evidence::default(),
+            undo: None,
+            trashed: None,
+        });
+    }
+    done
 }
 
 /// Execute `plan`: each item is checked again (locks taken and held,
 /// processes read fresh, the task store read fresh) right before it is
 /// deleted.
 pub fn execute(env: &Env<'_>, rule: &Rule, cause: Cause, plan: Plan) -> Report {
+    execute_after(env, rule, cause, plan, Vec::new())
+}
+
+/// [`execute`], recording `before` (the trash past its window) first.
+fn execute_after(
+    env: &Env<'_>,
+    rule: &Rule,
+    cause: Cause,
+    plan: Plan,
+    before: Vec<Action>,
+) -> Report {
     let started = paths::now();
-    let mut actions = Vec::new();
+    let run = run_id(started);
+    let mut actions = before;
     for item in plan.items() {
-        actions.push(act(env, rule, item));
+        actions.push(act(env, rule, item, &run));
     }
     let freed_sum: u64 = actions
         .iter()
@@ -242,7 +309,7 @@ pub fn execute(env: &Env<'_>, rule: &Rule, cause: Cause, plan: Plan) -> Report {
         emergency,
     );
     let record = Record {
-        run: run_id(started),
+        run,
         rule: rule.id.clone(),
         rule_version: rule.version,
         rule_digest: rule.digest(),
@@ -257,6 +324,7 @@ pub fn execute(env: &Env<'_>, rule: &Rule, cause: Cause, plan: Plan) -> Report {
         notified: notice.clone(),
         escalated: false,
         steps: Vec::new(),
+        judgments: Vec::new(),
     };
     if !record.actions.is_empty() || record.notified.is_some() {
         store::append(env.layout, &record);
@@ -270,7 +338,7 @@ pub fn execute(env: &Env<'_>, rule: &Rule, cause: Cause, plan: Plan) -> Report {
     }
 }
 
-fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
+fn act(env: &Env<'_>, rule: &Rule, item: &Item, run: &str) -> Action {
     let mut action = Action {
         class: item.class,
         path: item.path.clone(),
@@ -279,11 +347,12 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
         reason: item.why.clone(),
         evidence: item.evidence.clone(),
         undo: None,
+        trashed: None,
     };
-    let touched = if item.class == Class::Worktrees || item.class == Class::Trash {
-        paths::touched_worktree(&item.path)
-    } else {
-        paths::touched(&item.path)
+    let touched = match item.class {
+        Class::Worktrees | Class::Trash => paths::touched_worktree(&item.path),
+        Class::Judged => plan::newest(&item.path),
+        _ => paths::touched(&item.path),
     };
     if touched > item.touched && item.class != Class::Incremental {
         action.reason = "used since the plan".into();
@@ -313,9 +382,16 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
         }
     };
     action.bytes = paths::measure(&item.path, &env.layout.home).map_or(item.bytes, |m| m.bytes);
-    let result = match &undo {
-        Some(undo) => git::remove(undo).map(|()| Outcome::Removed),
-        None => std::fs::remove_dir_all(&item.path)
+    let trash = (item.class == Class::Judged).then(|| trash_path(env.layout, run, &item.path));
+    let result = match (&undo, &trash) {
+        (Some(undo), _) => git::remove(undo).map(|()| Outcome::Removed),
+        (None, Some(to)) => to
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::rename(&item.path, to))
+            .map(|()| Outcome::Trashed)
+            .map_err(|error| error.to_string()),
+        (None, None) => std::fs::remove_dir_all(&item.path)
             .map(|()| Outcome::Deleted)
             .map_err(|error| error.to_string()),
     };
@@ -324,6 +400,19 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
         Ok(outcome) => {
             action.outcome = outcome;
             action.undo = undo;
+            if outcome == Outcome::Trashed {
+                action.trashed = trash;
+                if let Some(at) = action.trashed.as_ref().and_then(|p| p.parent()) {
+                    // The trash window starts now.
+                    let _ = std::fs::File::open(at)
+                        .and_then(|dir| dir.set_modified(std::time::SystemTime::now()));
+                }
+            }
+        }
+        Err(_) if trash.is_some() => {
+            action.outcome = Outcome::Failed;
+            action.reason = "could not move it to the trash (another volume?)".into();
+            action.bytes = 0;
         }
         Err(why) => {
             action.outcome = Outcome::Failed;
@@ -334,6 +423,22 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item) -> Action {
         }
     }
     action
+}
+
+/// Where a confirmed cache goes in the trash: `trash/<run>/<n>-<name>`.
+fn trash_path(layout: &Layout, run: &str, path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .map_or_else(|| "folder".into(), |n| n.to_string_lossy().into_owned());
+    let dir = layout.trash().join(run);
+    let mut n = 0;
+    loop {
+        let to = dir.join(format!("{n}-{name}"));
+        if !to.exists() {
+            return to;
+        }
+        n += 1;
+    }
 }
 
 /// The one line a run says, or `None` when it did nothing worth saying.
@@ -348,7 +453,12 @@ fn notice(
 ) -> Option<String> {
     let done: Vec<&Action> = actions
         .iter()
-        .filter(|action| matches!(action.outcome, Outcome::Deleted | Outcome::Removed))
+        .filter(|action| {
+            matches!(
+                action.outcome,
+                Outcome::Deleted | Outcome::Removed | Outcome::Trashed
+            )
+        })
         .collect();
     let free = observation.iter().map(|o| o.free_after).min()?;
     let low = plan
@@ -376,7 +486,14 @@ fn notice(
             .iter()
             .map(|(class, count)| format!("{count} {}", class.noun(*count)))
             .collect();
-        line = format!("Freed {}: {}.", bytes(freed), parts.join(", "));
+        line = if freed > 0 || counts.iter().any(|(class, _)| *class != Class::Judged) {
+            format!("Freed {}: {}.", bytes(freed), parts.join(", "))
+        } else {
+            format!(
+                "Moved {} to the trash; it empties in a day.",
+                parts.join(", ")
+            )
+        };
         let rise = u64::try_from(measured.max(0)).unwrap_or(0);
         if cfg!(target_os = "macos") && freed > 10 * crate::rule::GB && rise < freed / 2 {
             line.push_str(&format!(
@@ -417,9 +534,23 @@ pub fn undo(layout: &Layout, run: &str) -> Result<Vec<(PathBuf, Result<(), Strin
     Ok(record
         .actions
         .iter()
-        .filter_map(|action| action.undo.as_ref())
-        .map(|undo| (undo.path.clone(), git::restore(undo)))
+        .filter_map(|action| match (&action.undo, &action.trashed) {
+            (Some(undo), _) => Some((undo.path.clone(), git::restore(undo))),
+            (None, Some(trashed)) => Some((action.path.clone(), untrash(trashed, &action.path))),
+            (None, None) => None,
+        })
         .collect())
+}
+
+/// Put a trashed folder back where it was.
+fn untrash(trashed: &Path, to: &Path) -> Result<(), String> {
+    if to.exists() {
+        return Err(format!("{} exists again", to.display()));
+    }
+    if !trashed.exists() {
+        return Err("the trash was emptied".into());
+    }
+    std::fs::rename(trashed, to).map_err(|error| error.to_string())
 }
 
 /// A plan's lines for a person: each item with class, size, and why;

@@ -367,7 +367,8 @@ fn every_morning_pull_main_keeps_the_project_up_to_date() {
     assert_eq!(
         rule.actions,
         vec![Action::GitFastForward {
-            repo: "~/work/openagents".into()
+            repo: "~/work/openagents".into(),
+            branch: None,
         }]
     );
     // A time in the words wins over the part of the day.
@@ -389,7 +390,8 @@ fn every_morning_pull_main_keeps_the_project_up_to_date() {
     assert_eq!(
         draft.rule.actions,
         vec![Action::GitFastForward {
-            repo: "~/work/psionic".into()
+            repo: "~/work/psionic".into(),
+            branch: None,
         }]
     );
 }
@@ -492,6 +494,7 @@ fn a_draft_is_saved_only_when_applied() {
         .into_iter()
         .filter_map(Result::ok)
         .map(|rule| rule.id)
+        .filter(|id| id == "disk" || crate::rule::built_in(id).is_none())
         .collect();
     assert_eq!(ids, vec!["disk", "notify-run-failed"]);
     // A second rule of the same kind gets its own id.
@@ -552,6 +555,7 @@ fn a_conversation_rule_cleans_only_where_the_host_does() {
     plugin.id = "update".into();
     plugin.actions = vec![Action::GitFastForward {
         repo: "~/work/x".into(),
+        branch: None,
     }];
     let installed = crate::plugins::Installed {
         id: "k:s".into(),
@@ -561,6 +565,7 @@ fn a_conversation_rule_cleans_only_where_the_host_does() {
         version: "1".into(),
         dir: s.layout.home.clone(),
         background: vec!["update".into()],
+        classes: Vec::new(),
         enabled: true,
     };
     assert!(
@@ -981,27 +986,27 @@ fn a_checkout_is_fast_forwarded_only_when_clean_and_not_ahead() {
     git(&seed, &["commit", "-am", "two"]);
     git(&seed, &["push", "origin", "HEAD:main"]);
     // A dry run fetches nothing and changes nothing.
-    let dry = engine::fast_forward("~/work/checkout", home, true);
+    let dry = engine::fast_forward("~/work/checkout", None, home, true);
     assert_eq!(dry.outcome, StepOutcome::Would, "{dry:?}");
     assert_eq!(std::fs::read_to_string(checkout.join("a")).unwrap(), "1");
-    let done = engine::fast_forward("~/work/checkout", home, false);
+    let done = engine::fast_forward("~/work/checkout", None, home, false);
     assert_eq!(done.outcome, StepOutcome::Done, "{done:?}");
     assert_eq!(std::fs::read_to_string(checkout.join("a")).unwrap(), "2");
-    let again = engine::fast_forward("~/work/checkout", home, false);
+    let again = engine::fast_forward("~/work/checkout", None, home, false);
     assert_eq!(again.outcome, StepOutcome::Skipped);
     assert!(again.detail.contains("up to date"), "{again:?}");
     // Unsaved work: left as it is.
     std::fs::write(checkout.join("a"), "mine").unwrap();
-    let dirty = engine::fast_forward("~/work/checkout", home, false);
+    let dirty = engine::fast_forward("~/work/checkout", None, home, false);
     assert_eq!(dirty.outcome, StepOutcome::Skipped);
     assert!(dirty.detail.contains("uncommitted"), "{dirty:?}");
     assert_eq!(std::fs::read_to_string(checkout.join("a")).unwrap(), "mine");
     // A commit the remote lacks: left as it is.
     git(&checkout, &["commit", "-am", "local"]);
-    let ahead = engine::fast_forward("~/work/checkout", home, false);
+    let ahead = engine::fast_forward("~/work/checkout", None, home, false);
     assert_eq!(ahead.outcome, StepOutcome::Skipped);
     assert!(ahead.detail.contains("lacks"), "{ahead:?}");
     // Not a checkout.
-    let none = engine::fast_forward("~/work", home, false);
+    let none = engine::fast_forward("~/work", None, home, false);
     assert_eq!(none.outcome, StepOutcome::Skipped);
 }

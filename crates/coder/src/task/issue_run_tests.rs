@@ -794,3 +794,140 @@ fn a_queue_leaves_an_issue_in_progress_on_the_project() {
         "{why}"
     );
 }
+
+/// A tracker whose issue #42 carries the given comments and records what
+/// the release posts.
+struct Claimed {
+    comments: Vec<String>,
+    posted: Mutex<Vec<String>>,
+}
+
+impl crate::claim::Hub for Claimed {
+    fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
+        self.posted.lock().unwrap().push(body.into());
+        Ok(())
+    }
+    fn comments(&self, _: &str, _: u64) -> Result<Vec<Comment>, String> {
+        Ok(Vec::new())
+    }
+    fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
+        Ok(vec![])
+    }
+    fn viewer(&self) -> Result<String, String> {
+        Err("no viewer here".into())
+    }
+}
+
+impl Tracker for Claimed {
+    fn repository(&self, _: &Path) -> Result<String, String> {
+        Ok("acme/app".into())
+    }
+    fn issue(&self, _: &str, _: u64) -> Result<Issue, String> {
+        let comments: Vec<(&str, u64)> = self.comments.iter().map(|c| (c.as_str(), 100)).collect();
+        Ok(issue(&comments))
+    }
+    fn close(&self, _: &str, _: u64) -> Result<(), String> {
+        panic!("must not close")
+    }
+    fn pull_request(
+        &self,
+        _: &Path,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<String, String> {
+        panic!("must not land")
+    }
+}
+
+#[test]
+fn a_claim_whose_task_ended_is_stale_and_released_but_live_landed_and_foreign_ones_are_not() {
+    use super::super::{
+        Action, COMMAND_SCHEMA, Command, RequestedConfiguration, Store, TaskIntent, Workspace,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::create_dir(dir.path().join("local")).unwrap();
+    let mut flow = flow("stopped");
+    save(dir.path(), &flow).unwrap();
+    let ours = format!("Claimed: Coder. {CLAIM_MARK} task=task-fixture-1234 -->");
+    let tracker = Claimed {
+        comments: vec![ours.clone()],
+        posted: Mutex::new(Vec::new()),
+    };
+    let now = 2_000_000_000;
+    // No task record and recently written: not stale yet.
+    assert!(stale_claims(dir.path(), &tracker, now - 1_000_000_000, 6).is_empty());
+    {
+        let mut store = Store::open(dir.path()).unwrap();
+        for (id, action) in [
+            (
+                "submit",
+                Action::Submit {
+                    intent: TaskIntent {
+                        title: "fixture".into(),
+                        prompt: "fixture".into(),
+                        workspace: Workspace {
+                            path: "/fixture".into(),
+                            source_revision: None,
+                        },
+                        configuration: RequestedConfiguration {
+                            adapter: "bounded-command".into(),
+                            model: None,
+                        },
+                        images: vec![],
+                    },
+                },
+            ),
+            (
+                "cancel",
+                Action::Cancel {
+                    reason: "stopped".into(),
+                },
+            ),
+        ] {
+            store
+                .apply(
+                    &serde_json::to_vec(&Command {
+                        schema: COMMAND_SCHEMA.into(),
+                        command_id: id.into(),
+                        task_id: "task-fixture-1234".into(),
+                        expected_revision: (id != "submit").then_some(1),
+                        action,
+                    })
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+    }
+    let stale = stale_claims(dir.path(), &tracker, now, 6);
+    assert_eq!(stale.len(), 1);
+    assert_eq!(stale[0].number, 42);
+    assert_eq!(stale[0].why, "its task ended");
+    release_stale(&tracker, &stale[0]).unwrap();
+    let posted = tracker.posted.lock().unwrap().clone();
+    assert!(posted[0].contains(RELEASE_MARK) && posted[0].contains("task-fixture-1234"));
+    // A live flow, a landed one, and another computer's claim are kept.
+    flow.process_id = Some(std::process::id());
+    save(dir.path(), &flow).unwrap();
+    assert!(stale_claims(dir.path(), &tracker, now, 6).is_empty());
+    flow.process_id = None;
+    flow.link.outcome = "landed".into();
+    save(dir.path(), &flow).unwrap();
+    assert!(stale_claims(dir.path(), &tracker, now, 6).is_empty());
+    flow.link.outcome = "stopped".into();
+    save(dir.path(), &flow).unwrap();
+    let foreign = Claimed {
+        comments: vec![format!("Claimed: Coder. {CLAIM_MARK} task=other -->")],
+        posted: Mutex::new(Vec::new()),
+    };
+    assert!(stale_claims(dir.path(), &foreign, now, 6).is_empty());
+    let released = Claimed {
+        comments: vec![ours, format!("Free again. {RELEASE_MARK}")],
+        posted: Mutex::new(Vec::new()),
+    };
+    assert!(stale_claims(dir.path(), &released, now, 6).is_empty());
+}

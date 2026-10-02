@@ -262,6 +262,7 @@ fn host(enrollment: Enrollment, link: Option<Status>) -> HostRecord {
         enrollments: Vec::new(),
         workspaces: None,
         watchers: None,
+        background: None,
     }
 }
 
@@ -1994,6 +1995,30 @@ fn publishing_a_change_needs_operate_and_reading_it_needs_observe() {
 /// A host's `background.list` answer names the watchers running: rules on,
 /// readable, and not paused, first letter lowercased, as the computer's own
 /// terminal and desktop name them.
+#[test]
+fn background_list_gives_the_newest_notice() {
+    let list = serde_json::json!([
+        {"name": "Disk cleanup", "enabled": true, "state": {"notice": [100, "Freed 4 GB: 2 old build folders."]}},
+        {"name": "Usage", "enabled": true, "state": {"notice": [200, "Today: 3 Coder runs ended (3 finished, 0 failed)."]}},
+        {"name": "Quiet", "enabled": true, "state": {}},
+    ]);
+    assert_eq!(
+        crate::model::background_notice(&list),
+        Some((
+            200,
+            "Today: 3 Coder runs ended (3 finished, 0 failed).".into()
+        ))
+    );
+    assert_eq!(
+        crate::model::background_notice(&serde_json::json!([])),
+        None
+    );
+    assert_eq!(
+        crate::model::background_notice(&serde_json::json!({"queued": "x"})),
+        None
+    );
+}
+
 #[test]
 fn background_list_names_the_running_watchers() {
     let list = serde_json::json!([

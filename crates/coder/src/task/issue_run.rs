@@ -549,6 +549,118 @@ fn inactive_own_claim(store: &Path, repository: &str, issue: &Issue) -> Option<S
     ))
 }
 
+/// This computer's issue claims that nothing works any more (the
+/// background rule `claims`, docs/background): the latest claim on the
+/// issue is this store's task's, the issue is open, the flow neither
+/// landed nor opened a pull request, and either the task ended or no
+/// process has run it for `idle_hours`. A claim another computer or agent
+/// made is never one.
+#[must_use]
+pub fn stale_claims(
+    store: &Path,
+    tracker: &dyn Tracker,
+    now: u64,
+    idle_hours: u64,
+) -> Vec<background::services::Claim> {
+    let Ok(entries) = std::fs::read_dir(store.join("local")) else {
+        return Vec::new();
+    };
+    let mut tasks: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".issue.json").map(str::to_owned)
+        })
+        .collect();
+    tasks.sort();
+    let inbox = super::Store::open(store).ok();
+    let mut stale = Vec::new();
+    for task in tasks {
+        let Some(flow) = load(store, &task) else {
+            continue;
+        };
+        if flow.link.number == 0
+            || matches!(
+                flow.link.outcome.as_str(),
+                "landed" | "pull_request" | "unchanged"
+            )
+        {
+            continue;
+        }
+        let running = flow.process_id.is_some_and(crate::activity::alive);
+        let ended = inbox
+            .as_ref()
+            .and_then(|inbox| inbox.show(&task).ok())
+            .is_some_and(|task| matches!(task.status, Status::Finished | Status::Cancelled));
+        let idle = std::fs::metadata(flow_path(store, &task))
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |since| now.saturating_sub(since.as_secs()));
+        let why = if running {
+            continue;
+        } else if ended {
+            "its task ended".to_owned()
+        } else if idle >= idle_hours * 3600 {
+            format!("no run for {} hours", idle / 3600)
+        } else {
+            continue;
+        };
+        let Ok(issue) = tracker.issue(&flow.link.repository, flow.link.number) else {
+            continue;
+        };
+        let ours = active_claim(&issue).is_some_and(|claim| {
+            claim
+                .body
+                .split_once(CLAIM_MARK)
+                .and_then(|(_, rest)| rest.strip_prefix(" task="))
+                .and_then(|rest| rest.split_once(" -->"))
+                .is_some_and(|(id, _)| id == task)
+        });
+        if issue.open && ours {
+            stale.push(background::services::Claim {
+                repository: flow.link.repository.clone(),
+                number: flow.link.number,
+                task,
+                why,
+            });
+        }
+    }
+    stale
+}
+
+/// Release a stale claim with a comment saying why.
+///
+/// # Errors
+/// What GitHub refused.
+pub fn release_stale(
+    tracker: &dyn Tracker,
+    claim: &background::services::Claim,
+) -> Result<(), String> {
+    let body = format!(
+        "Released by this computer's background rule: Coder task {} {}, so #{} is free to take again.\n\n{RELEASE_MARK}",
+        claim.task, claim.why, claim.number
+    );
+    let said = crate::claim::release(
+        tracker,
+        &claim.repository,
+        claim.number,
+        Some(&body),
+        &crate::claim::Project::default(),
+    );
+    // The comment is the release; the assignee and project status follow
+    // it when they can.
+    let failed: Vec<String> = said
+        .into_iter()
+        .filter(|line| line.starts_with("Could not post"))
+        .collect();
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(failed.join(" "))
+    }
+}
+
 /// The issues `spec` names: numbers (`10050,10051`, `#10050 #10051`) or,
 /// when it names none, a label.
 ///

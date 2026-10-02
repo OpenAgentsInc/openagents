@@ -16,12 +16,13 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::Duration;
 
-use crate::engine::{self, Clock, Event, Judge};
+use crate::engine::{self, Clock, Event, Judge, Powers};
 use crate::inuse::System;
 use crate::paths::{self, Layout};
 use crate::plan::{Env, Facts, TaskFact, observe};
 use crate::rule::{Rule, Trigger};
 use crate::run::{self, Cause, Report};
+use crate::services::Services;
 use crate::store::{self, State};
 use crate::volume::Statvfs;
 
@@ -68,10 +69,27 @@ pub fn start_with(
     judge: Option<Arc<dyn Judge>>,
     say: Say,
 ) -> Handle {
+    start_full(layout, facts, judge, None, say)
+}
+
+/// Start the runner with a judge and the host's services (phase 3:
+/// Coder runs, issue claims, health, usage, flakes, plugins).
+#[must_use]
+pub fn start_full(
+    layout: Layout,
+    facts: Option<Arc<dyn Facts>>,
+    judge: Option<Arc<dyn Judge>>,
+    services: Option<Arc<dyn Services>>,
+    say: Say,
+) -> Handle {
     let (sender, receiver) = channel();
     let _ = std::thread::Builder::new()
         .name("background".into())
-        .spawn(move || Runner::new(layout, facts, judge, say).serve(&receiver));
+        .spawn(move || {
+            let mut runner = Runner::new(layout, facts, judge, say);
+            runner.services = services;
+            runner.serve(&receiver);
+        });
     Handle { sender }
 }
 
@@ -79,6 +97,7 @@ struct Runner {
     layout: Layout,
     facts: Option<Arc<dyn Facts>>,
     judge: Option<Arc<dyn Judge>>,
+    services: Option<Arc<dyn Services>>,
     say: Say,
     /// The tasks seen ended at the last look; `None` before the first.
     ended: Option<BTreeSet<String>>,
@@ -103,6 +122,7 @@ impl Runner {
             layout,
             facts,
             judge,
+            services: None,
             say,
             ended: None,
             next: BTreeMap::new(),
@@ -320,13 +340,13 @@ impl Runner {
         let result = if rule.cleans() && rule.conditions.is_empty() {
             run::run(&self.env(), &rule, Cause::Manual, false, true)
         } else {
-            engine::evaluate(
+            engine::evaluate_with(
                 &self.env(),
                 &rule,
                 Cause::Manual,
                 &Event::default(),
                 Clock::here(),
-                self.judge.as_deref(),
+                self.powers(),
                 false,
             )
             .map(|report| report.unwrap_or_else(engine::nothing))
@@ -340,14 +360,21 @@ impl Runner {
         }
     }
 
+    fn powers(&self) -> Powers<'_> {
+        Powers {
+            judge: self.judge.as_deref(),
+            services: self.services.as_deref(),
+        }
+    }
+
     fn check_one(&self, rule: &Rule, cause: Cause, event: &Event) {
-        let result = check_with(
+        let result = check_powers(
             &self.env(),
             rule,
             cause,
             event,
             Clock::here(),
-            self.judge.as_deref(),
+            self.powers(),
         );
         if let Some(result) = result {
             self.finish(rule, result);
@@ -364,6 +391,24 @@ impl Runner {
             }
         };
         crate::view::remember(&self.layout, id, &report);
+        // A cleanup that fell short: judge unknown folders and, when the
+        // rule asks, escalate to Coder once a day.
+        if let Some(record) = crate::escalate::after(
+            &self.env(),
+            rule,
+            &report,
+            self.judge.as_deref(),
+            self.services.as_deref(),
+        ) && let Some(line) = &record.notified
+        {
+            let at = paths::now();
+            State::update(&self.layout, id, |state| {
+                state.notice = Some((at, line.clone()))
+            });
+            if !matches!(rule.origin, crate::rule::Origin::Plugin { .. }) || rule.needs.notify {
+                (self.say)(line);
+            }
+        }
         // A plugin's rule notifies only when it asked to; its result is
         // still recorded and listed.
         if matches!(rule.origin, crate::rule::Origin::Plugin { .. }) && !rule.needs.notify {
@@ -389,6 +434,29 @@ pub fn check_with(
     clock: Clock,
     judge: Option<&dyn Judge>,
 ) -> Option<Result<Report, String>> {
+    check_powers(
+        env,
+        rule,
+        cause,
+        event,
+        clock,
+        Powers {
+            judge,
+            services: None,
+        },
+    )
+}
+
+/// [`check_with`] with the host's services for the phase 3 actions.
+pub fn check_powers(
+    env: &Env<'_>,
+    rule: &Rule,
+    cause: Cause,
+    event: &Event,
+    clock: Clock,
+    powers: Powers<'_>,
+) -> Option<Result<Report, String>> {
+    let judge = powers.judge;
     if rule.cleans() && rule.conditions.is_empty() {
         return check(env, rule, cause);
     }
@@ -411,7 +479,7 @@ pub fn check_with(
         engine::holds(env, rule, event, clock, judge).ok()?;
         return check(env, rule, cause);
     }
-    engine::evaluate(env, rule, cause, event, clock, judge, false).transpose()
+    engine::evaluate_with(env, rule, cause, event, clock, powers, false).transpose()
 }
 
 /// Whether an evaluation with `cause` may happen for `rule`: a run someone

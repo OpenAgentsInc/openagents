@@ -257,13 +257,41 @@ pub fn deliver<C: Center + Send + Sync + 'static>(
     }));
 }
 
-/// The last status seen for each chat.
+/// The prefix of a background rule's notice ID.
+const BACKGROUND: &str = "background-";
+
+/// The last status seen for each chat, and the newest background notice.
 #[derive(Debug, Default)]
 pub struct Notices {
     seen: BTreeMap<String, Status>,
+    /// When the newest background notice seen was sent; `None` before the
+    /// first look.
+    background: Option<u64>,
 }
 
 impl Notices {
+    /// Records the newest background notice (`(when, line)`, from the
+    /// rules the host runs) and returns it as a notice when it is newer
+    /// than the last one seen, while the window is not `focused`. The
+    /// first look only records, so opening the app notifies nothing.
+    pub fn observe_background(
+        &mut self,
+        latest: Option<(u64, String)>,
+        focused: bool,
+    ) -> Option<Notice> {
+        let at = latest.as_ref().map_or(0, |(at, _)| *at);
+        let before = self
+            .background
+            .replace(at.max(self.background.unwrap_or(0)))?;
+        let (at, line) = latest?;
+        (!focused && at > before).then(|| Notice {
+            id: format!("{BACKGROUND}{at}"),
+            title: "Background".into(),
+            body: line,
+            urgent: false,
+        })
+    }
+
     /// Records each chat's `(id, title, status)` and returns the notices
     /// to show: chats whose status changed to one that asks for the
     /// person, while the window is not `focused`. Chats no longer listed
@@ -305,6 +333,23 @@ mod tests {
 
     fn chat(status: Status) -> Vec<(String, String, Status)> {
         vec![("c1".into(), "Fix the login bug".into(), status)]
+    }
+
+    #[test]
+    fn a_new_background_notice_notifies_once_and_the_first_look_only_records() {
+        let mut notices = Notices::default();
+        let line = |at: u64| Some((at, format!("Freed {at} GB.")));
+        assert_eq!(notices.observe_background(line(10), false), None);
+        assert_eq!(notices.observe_background(line(10), false), None);
+        let shown = notices.observe_background(line(20), false).unwrap();
+        assert_eq!(shown.title, "Background");
+        assert_eq!(shown.body, "Freed 20 GB.");
+        assert!(!shown.urgent);
+        assert_eq!(shown.chat(), None, "it opens no chat");
+        // In front, it is only recorded.
+        assert_eq!(notices.observe_background(line(30), true), None);
+        assert_eq!(notices.observe_background(line(30), false), None);
+        assert_eq!(notices.observe_background(None, false), None);
     }
 
     #[test]

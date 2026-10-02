@@ -39,7 +39,16 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
                   delete and why, and what it keeps, changing nothing.
   log [ID] [--since TIME] [--stats]
                   The audit log; --stats totals bytes freed by week and class.
-  undo RUN        Recreate the worktrees that run removed.
+  undo RUN        Recreate the worktrees that run removed, and put back
+                  what it moved to the trash.
+  proposals       Folders Jev judged to be caches, waiting for you.
+  confirm PATH    Clean that folder from now on (to the trash first, for
+                  a day).
+  decline PATH    Keep that folder and never ask about it again.
+  judge           Ask Jev now about the largest folders no rule covers.
+                  Nothing is deleted.
+  publish ID [--out DIR]
+                  Package the rule as a plugin folder to publish.
 Every command takes --tasks DIR (the Coder task store, default
 ~/.openagents/tasks). Rules run in the host on their own: the built-in
 disk rule, each rule a plugin brings while the plugin is on here
@@ -47,7 +56,8 @@ disk rule, each rule a plugin brings while the plugin is on here
 These commands look at them, change them, or run one now. Words become a
 rule through Jev (TYPESAFE_API_KEY or ~/.openagents/jev.json); a rule
 only uses the host's own actions (delete build caches and finished
-worktrees, notify, fast-forward a clean checkout), never another command.";
+worktrees, notify, fast-forward a clean checkout, start a Coder run, and
+the built-in processes), never another command.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -65,6 +75,12 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("run", Effect::LocalWrite),
     Declared::computer("log", Effect::ReadOnly),
     Declared::computer("undo", Effect::LocalWrite),
+    Declared::computer("proposals", Effect::ReadOnly),
+    Declared::computer("confirm", Effect::LocalWrite),
+    Declared::computer("decline", Effect::LocalWrite),
+    // Asks Jev and keeps its proposals; deletes nothing.
+    Declared::computer("judge", Effect::LocalWrite),
+    Declared::computer("publish", Effect::LocalWrite),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -104,6 +120,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "run" => need_id().and_then(|id| run_now(output, &layout, &id, args.switch("dry-run"))),
         "log" => log(output, &layout, id.as_deref(), &args),
         "undo" => need_id().and_then(|id| undo(output, &layout, &id)),
+        "proposals" => proposals(output, &layout),
+        "confirm" => need_id().and_then(|path| confirm(output, &layout, &path, true)),
+        "decline" => need_id().and_then(|path| confirm(output, &layout, &path, false)),
+        "judge" => judge_now(output, &layout),
+        "publish" => need_id().and_then(|id| publish(output, &layout, &id, &args)),
         other => {
             return output.usage("background", &format!("unknown command `{other}`"), USAGE);
         }
@@ -245,6 +266,141 @@ impl background::engine::Judge for JevJudge {
             answers.insert(id.clone(), answer);
         }
         Ok(answers)
+    }
+}
+
+/// What only the host can do for a background rule (phase 3): start a
+/// Coder run, read and release this computer's stale issue claims,
+/// probe the relay and the host and restart the host through the service
+/// manager, read what Coder runs did, open or note an issue, and run an
+/// installed plugin's background action read-only.
+pub(crate) struct HostServices {
+    store: PathBuf,
+    home: PathBuf,
+}
+
+impl HostServices {
+    pub(crate) fn at(
+        store: &std::path::Path,
+    ) -> std::sync::Arc<dyn background::services::Services> {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        std::sync::Arc::new(Self {
+            store: store.to_owned(),
+            home,
+        })
+    }
+
+    /// The checkout a run works in when the rule names none: `~/openagents`
+    /// (CoderOS) or `~/work/openagents`.
+    fn workspace(&self, named: Option<&str>) -> Result<PathBuf, String> {
+        if let Some(named) = named {
+            return Ok(PathBuf::from(named));
+        }
+        ["openagents", "work/openagents"]
+            .iter()
+            .map(|dir| self.home.join(dir))
+            .find(|dir| dir.join(".git").exists())
+            .ok_or_else(|| "no openagents checkout here; name a workspace in the rule".into())
+    }
+}
+
+impl background::services::Services for HostServices {
+    fn start_coder_run(&self, run: &background::services::CoderRun) -> Result<String, String> {
+        let dir = self.workspace(run.workspace.as_deref())?;
+        coder::task::local::Local::here(self.store.clone())
+            .start(&dir, &run.title, &run.prompt, None)
+            .map(|record| record.task)
+    }
+
+    fn stale_claims(
+        &self,
+        idle_hours: u64,
+        now: u64,
+    ) -> Result<Vec<background::services::Claim>, String> {
+        Ok(coder::task::issue_run::stale_claims(
+            &self.store,
+            &coder::claim::Gh,
+            now,
+            idle_hours,
+        ))
+    }
+
+    fn release_claim(&self, claim: &background::services::Claim) -> Result<(), String> {
+        coder::task::issue_run::release_stale(&coder::claim::Gh, claim)
+    }
+
+    fn probe(&self, target: background::rule::Watched) -> Result<(), String> {
+        use std::net::ToSocketAddrs;
+        match target {
+            background::rule::Watched::Relay => {
+                let addr = "relay.openagents.com:443"
+                    .to_socket_addrs()
+                    .map_err(|error| error.to_string())?
+                    .next()
+                    .ok_or("the relay's name did not resolve")?;
+                std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(10))
+                    .map(drop)
+                    .map_err(|error| error.to_string())
+            }
+            background::rule::Watched::Host => {
+                let layout = Layout::new(&self.home, Some(self.store.clone()))
+                    .map_err(|error| error.to_string())?;
+                if view::runner_running(&layout) {
+                    Ok(())
+                } else {
+                    Err("no host is running here".into())
+                }
+            }
+        }
+    }
+
+    fn restart(&self, _target: background::rule::Watched) -> Result<String, String> {
+        use coder_service::launcher::{Config, Layout as HostLayout};
+        let layout = HostLayout::new(self.home.join(".openagents/host"));
+        let config = Config::load(&layout).map_err(|error| error.to_string())?;
+        coder_service::service::restart(&config, &mut coder_service::service::SystemRunner)
+            .map_err(|error| error.to_string())?;
+        Ok("restarted the host through the service manager.".into())
+    }
+
+    fn usage(&self, since: u64) -> Result<background::services::Usage, String> {
+        coder::task::recent::usage(&self.store, since)
+    }
+
+    fn failures(&self, since: u64) -> Result<Vec<background::services::Failure>, String> {
+        coder::task::recent::failures(&self.store, since)
+    }
+
+    fn report_issue(
+        &self,
+        title: &str,
+        body: &str,
+        existing: Option<&str>,
+    ) -> Result<String, String> {
+        let dir = self.workspace(None)?;
+        match existing {
+            Some(issue) => {
+                let number = issue.rsplit(['/', '#']).next().unwrap_or(issue);
+                coder::claim::gh(Some(&dir), &["issue", "comment", number, "--body", body])?;
+                Ok(issue.to_owned())
+            }
+            None => coder::claim::gh(
+                Some(&dir),
+                &["issue", "create", "--title", title, "--body", body],
+            )
+            .map(|url| url.trim().to_owned()),
+        }
+    }
+
+    fn run_plugin(&self, plugin: &str, input: &str) -> Result<String, String> {
+        let layout =
+            Layout::new(&self.home, Some(self.store.clone())).map_err(|error| error.to_string())?;
+        let installed = background::plugins::find(&layout, plugin)?;
+        let workspace = self.workspace(None).unwrap_or_else(|_| self.home.clone());
+        let ran = crate::ext_run::execute(&installed.dir, &workspace, input)?;
+        Ok(ran["reply"].as_str().unwrap_or_default().to_owned())
     }
 }
 
@@ -495,8 +651,14 @@ fn pause(
     Ok(())
 }
 
-fn run_now(output: &Output, layout: &Layout, id: &str, dry_run: bool) -> Result<(), Failure> {
-    let rule = store::load(layout, id).map_err(Failure::Refused)?;
+/// Run `rule` now in this process: a cleanup through the planner (with
+/// every safety check and the run lock), any other rule through the
+/// engine with Jev and the host's services. A real run is remembered.
+fn run_rule(
+    layout: &Layout,
+    rule: &background::Rule,
+    dry_run: bool,
+) -> Result<background::Report, String> {
     let store_dir = layout.store.clone();
     let facts = move || coder::task::background_facts(&store_dir);
     let env = background::Env {
@@ -506,9 +668,54 @@ fn run_now(output: &Output, layout: &Layout, id: &str, dry_run: bool) -> Result<
         processes: &background::inuse::System,
         now: background::paths::now(),
     };
-    let report = run::run(&env, &rule, Cause::Manual, dry_run, true).map_err(Failure::Refused)?;
+    let report = if rule.cleans() {
+        run::run(&env, rule, Cause::Manual, dry_run, true)?
+    } else {
+        let judge = JevJudge::from_env();
+        let services = HostServices::at(&layout.store);
+        let powers = background::engine::Powers {
+            judge: judge
+                .as_ref()
+                .map(|judge| judge as &dyn background::engine::Judge),
+            services: Some(services.as_ref()),
+        };
+        background::engine::evaluate_with(
+            &env,
+            rule,
+            Cause::Manual,
+            &background::engine::Event::default(),
+            background::engine::Clock::here(),
+            powers,
+            dry_run,
+        )?
+        .unwrap_or_else(background::engine::nothing)
+    };
     if !dry_run {
-        view::remember(layout, id, &report);
+        view::remember(layout, &rule.id, &report);
+    }
+    Ok(report)
+}
+
+/// The lines a run of a rule that is not a cleanup shows.
+fn step_lines(report: &background::Report) -> Vec<String> {
+    let steps = report
+        .record
+        .as_ref()
+        .map_or(&report.steps, |record| &record.steps);
+    let mut lines: Vec<String> = steps.iter().map(|step| step.detail.clone()).collect();
+    if lines.is_empty() {
+        lines.push("Nothing to do now.".into());
+    }
+    lines
+}
+
+fn run_now(output: &Output, layout: &Layout, id: &str, dry_run: bool) -> Result<(), Failure> {
+    let rule = store::load(layout, id).map_err(Failure::Refused)?;
+    let report = run_rule(layout, &rule, dry_run).map_err(Failure::Refused)?;
+    if !rule.cleans() {
+        let value = serde_json::to_value(&report).unwrap_or(Value::Null);
+        output.emit(&value, |_| step_lines(&report).join("\n"));
+        return Ok(());
     }
     let value = serde_json::to_value(&report).unwrap_or(Value::Null);
     output.emit(&value, |_| {
@@ -600,6 +807,97 @@ fn undo(output: &Output, layout: &Layout, run: &str) -> Result<(), Failure> {
     Ok(())
 }
 
+fn proposals(output: &Output, layout: &Layout) -> Result<(), Failure> {
+    let all = background::judged::Proposals::load(layout);
+    let waiting = all.waiting();
+    output.emit(&json!({ "proposals": waiting }), |_| {
+        if waiting.is_empty() {
+            return "No folders waiting.".into();
+        }
+        waiting
+            .iter()
+            .map(|proposal| background::judged::line(proposal))
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    Ok(())
+}
+
+fn confirm(output: &Output, layout: &Layout, path: &str, yes: bool) -> Result<(), Failure> {
+    if yes {
+        let rule = background::judged::confirm(layout, path, background::paths::now())
+            .map_err(Failure::Refused)?;
+        output.emit(&json!({ "rule": rule }), |_| {
+            format!("{path} is now cleaned by {} (to the trash first).", rule.id)
+        });
+    } else {
+        background::judged::decline(layout, path).map_err(Failure::Refused)?;
+        output.emit(&json!({ "declined": path }), |_| format!("{path} stays."));
+    }
+    Ok(())
+}
+
+/// Judge the largest unknown folders now with Jev; nothing is deleted.
+fn judge_now(output: &Output, layout: &Layout) -> Result<(), Failure> {
+    let judge = JevJudge::from_env().ok_or_else(|| {
+        Failure::Refused(
+            "Jev is not set up here (TYPESAFE_API_KEY or ~/.openagents/jev.json).".into(),
+        )
+    })?;
+    let rule = store::load(layout, "disk").map_err(Failure::Refused)?;
+    let store_dir = layout.store.clone();
+    let facts = move || coder::task::background_facts(&store_dir);
+    let env = background::Env {
+        layout,
+        facts: Some(&facts),
+        volumes: &background::volume::Statvfs,
+        processes: &background::inuse::System,
+        now: background::paths::now(),
+    };
+    let judgments = background::judged::consider(&env, &rule, &judge).map_err(Failure::Refused)?;
+    output.emit(&json!({ "judgments": judgments }), |_| {
+        if judgments.is_empty() {
+            return "No unknown folders to judge.".into();
+        }
+        judgments
+            .iter()
+            .map(|j| {
+                format!(
+                    "{} {} · {} {:.2} · {}",
+                    j.path,
+                    background::paths::bytes(j.bytes),
+                    j.kind.replace('_', " "),
+                    j.probability,
+                    if j.proposed { "proposed" } else { "kept" }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    Ok(())
+}
+
+/// Package a rule as a plugin folder `openagents plugin publish` takes.
+fn publish(output: &Output, layout: &Layout, id: &str, args: &Args) -> Result<(), Failure> {
+    let dir = args.option("out").map_or_else(
+        || {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .join(format!("{id}-plugin"))
+        },
+        PathBuf::from,
+    );
+    let dir = background::plugins::package(layout, id, &dir).map_err(Failure::Refused)?;
+    output.emit(&json!({ "plugin": dir }), |_| {
+        format!(
+            "{}\nPublish it with: openagents plugin publish {}",
+            dir.display(),
+            dir.display()
+        )
+    });
+    Ok(())
+}
+
 fn home_layout() -> Result<Layout, String> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -650,21 +948,14 @@ pub(crate) fn act(
         }
         Act::DryRun | Act::Run => {
             let rule = store::load(&layout, id)?;
-            let store_dir = layout.store.clone();
-            let facts = move || coder::task::background_facts(&store_dir);
-            let env = background::Env {
-                layout: &layout,
-                facts: Some(&facts),
-                volumes: &background::volume::Statvfs,
-                processes: &background::inuse::System,
-                now: background::paths::now(),
-            };
             let dry = act == Act::DryRun;
-            let report = run::run(&env, &rule, Cause::Manual, dry, true)?;
+            let report = run_rule(&layout, &rule, dry)?;
+            if !rule.cleans() {
+                return Ok(step_lines(&report));
+            }
             if dry {
                 return Ok(run::describe(&report.plan, &layout.home, false));
             }
-            view::remember(&layout, id, &report);
             Ok(vec![
                 report
                     .notice

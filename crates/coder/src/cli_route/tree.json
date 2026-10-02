@@ -5555,7 +5555,151 @@
                 ]
               }
             ],
-            "summary": "Recreate the worktrees that run removed.",
+            "summary": "Recreate the worktrees that run removed, and put back what it moved to the trash.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "proposals",
+          "leaf": {
+            "path": [
+              "background",
+              "proposals"
+            ],
+            "usage": [
+              "proposals"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "proposals"
+                  }
+                ]
+              }
+            ],
+            "summary": "Folders Jev judged to be caches, waiting for you.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "confirm",
+          "leaf": {
+            "path": [
+              "background",
+              "confirm"
+            ],
+            "usage": [
+              "confirm PATH"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "confirm"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PATH"
+                  }
+                ]
+              }
+            ],
+            "summary": "Clean that folder from now on (to the trash first, for a day).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "decline",
+          "leaf": {
+            "path": [
+              "background",
+              "decline"
+            ],
+            "usage": [
+              "decline PATH"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "decline"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PATH"
+                  }
+                ]
+              }
+            ],
+            "summary": "Keep that folder and never ask about it again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "judge",
+          "leaf": {
+            "path": [
+              "background",
+              "judge"
+            ],
+            "usage": [
+              "judge"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "judge"
+                  }
+                ]
+              }
+            ],
+            "summary": "Ask Jev now about the largest folders no rule covers. Nothing is deleted.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "publish",
+          "leaf": {
+            "path": [
+              "background",
+              "publish"
+            ],
+            "usage": [
+              "publish ID [--out DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "publish"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "out",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Package the rule as a plugin folder to publish.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -5633,6 +5777,14 @@
         {
           "kind": "option",
           "name": "stats",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "DIR",
+          "open": true,
           "optional": true,
           "repeated": true
         },

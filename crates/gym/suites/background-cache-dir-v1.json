@@ -1,0 +1,540 @@
+{
+  "schema": "openagents.gym.suite.v1",
+  "name": "background-cache-dir-v1",
+  "description": "Folders no background cleanup class covers, in the state the unknown-folder judgment shows Jev (#10158): build output, package and application caches, user data, source, and folders nobody can call, each labeled whether it holds only what a program regenerates and what kind it is. Calibrates background.cache_dir.",
+  "created": "2026-10-02",
+  "tier": "smoke",
+  "gate": "decision-v1",
+  "questions": "background-cache-dir-v1",
+  "digest": "2c3aa29712fb1d2331ef6927b21a49e78e065e1c7df6ddb27632536b5e6ff9b4",
+  "items": [
+    {
+      "id": "cache/pip",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cache/pip\nSize: 12 GB\nLast changed: 3 days ago\nLargest entries: http (11 GB), wheels (1 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "calibration",
+      "label_rule": "pip's download and wheel cache; pip fetches it again."
+    },
+    {
+      "id": "kind/pip",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cache/pip\nSize: 12 GB\nLast changed: 3 days ago\nLargest entries: http (11 GB), wheels (1 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "package_cache",
+      "partition": "calibration",
+      "label_rule": "pip's download and wheel cache; pip fetches it again."
+    },
+    {
+      "id": "cache/huggingface",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cache/huggingface\nSize: 41 GB\nLast changed: 12 days ago\nLargest entries: hub (40 GB), token (0 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "calibration",
+      "label_rule": "Downloaded model files the Hugging Face libraries fetch again."
+    },
+    {
+      "id": "kind/huggingface",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cache/huggingface\nSize: 41 GB\nLast changed: 12 days ago\nLargest entries: hub (40 GB), token (0 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "app_cache",
+      "partition": "calibration",
+      "label_rule": "Downloaded model files the Hugging Face libraries fetch again."
+    },
+    {
+      "id": "cache/npm",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.npm\nSize: 8 GB\nLast changed: 5 days ago\nLargest entries: _cacache (8 GB), _logs (2 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "calibration",
+      "label_rule": "npm's content cache; npm fetches it again."
+    },
+    {
+      "id": "kind/npm",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.npm\nSize: 8 GB\nLast changed: 5 days ago\nLargest entries: _cacache (8 GB), _logs (2 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "package_cache",
+      "partition": "calibration",
+      "label_rule": "npm's content cache; npm fetches it again."
+    },
+    {
+      "id": "cache/cargo-registry",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cargo/registry\nSize: 5 GB\nLast changed: 2 days ago\nLargest entries: cache (3 GB), src (2 GB), index (200 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "calibration",
+      "label_rule": "Cargo's downloaded crates; Cargo fetches them again."
+    },
+    {
+      "id": "kind/cargo-registry",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cargo/registry\nSize: 5 GB\nLast changed: 2 days ago\nLargest entries: cache (3 GB), src (2 GB), index (200 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "package_cache",
+      "partition": "calibration",
+      "label_rule": "Cargo's downloaded crates; Cargo fetches them again."
+    },
+    {
+      "id": "cache/scratch-target",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/work/openagents-target-scratch\nSize: 31 GB\nLast changed: 9 days ago\nLargest entries: debug (30 GB), release (1 GB)\nMarkers: CACHEDIR.TAG\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "calibration",
+      "label_rule": "A Cargo target directory with CACHEDIR.TAG; a build rewrites it."
+    },
+    {
+      "id": "kind/scratch-target",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/work/openagents-target-scratch\nSize: 31 GB\nLast changed: 9 days ago\nLargest entries: debug (30 GB), release (1 GB)\nMarkers: CACHEDIR.TAG\nProcesses using it now: 0"
+      },
+      "truth": "build_output",
+      "partition": "calibration",
+      "label_rule": "A Cargo target directory with CACHEDIR.TAG; a build rewrites it."
+    },
+    {
+      "id": "cache/go-build",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cache/go-build\nSize: 6 GB\nLast changed: 4 days ago\nLargest entries: ff (30 MB), fe (30 MB), fd (30 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "development",
+      "label_rule": "Go's build cache, by content hash; go build refills it."
+    },
+    {
+      "id": "kind/go-build",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cache/go-build\nSize: 6 GB\nLast changed: 4 days ago\nLargest entries: ff (30 MB), fe (30 MB), fd (30 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "build_output",
+      "partition": "development",
+      "label_rule": "Go's build cache, by content hash; go build refills it."
+    },
+    {
+      "id": "cache/gradle",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.gradle/caches\nSize: 9 GB\nLast changed: 20 days ago\nLargest entries: modules-2 (7 GB), transforms-3 (2 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "development",
+      "label_rule": "Gradle's dependency cache; Gradle fetches it again."
+    },
+    {
+      "id": "kind/gradle",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.gradle/caches\nSize: 9 GB\nLast changed: 20 days ago\nLargest entries: modules-2 (7 GB), transforms-3 (2 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "package_cache",
+      "partition": "development",
+      "label_rule": "Gradle's dependency cache; Gradle fetches it again."
+    },
+    {
+      "id": "cache/spotify",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/Library/Caches/com.spotify.client\nSize: 4 GB\nLast changed: 1 days ago\nLargest entries: Data (4 GB)\nMarkers: none\nProcesses using it now: 1"
+      },
+      "truth": "yes",
+      "partition": "development",
+      "label_rule": "Spotify's streaming cache; the app refills it."
+    },
+    {
+      "id": "kind/spotify",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/Library/Caches/com.spotify.client\nSize: 4 GB\nLast changed: 1 days ago\nLargest entries: Data (4 GB)\nMarkers: none\nProcesses using it now: 1"
+      },
+      "truth": "app_cache",
+      "partition": "development",
+      "label_rule": "Spotify's streaming cache; the app refills it."
+    },
+    {
+      "id": "cache/playwright",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cache/ms-playwright\nSize: 2 GB\nLast changed: 30 days ago\nLargest entries: chromium-1140 (1 GB), firefox-1458 (800 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "development",
+      "label_rule": "Browser builds Playwright downloads again on install."
+    },
+    {
+      "id": "kind/playwright",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cache/ms-playwright\nSize: 2 GB\nLast changed: 30 days ago\nLargest entries: chromium-1140 (1 GB), firefox-1458 (800 MB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "app_cache",
+      "partition": "development",
+      "label_rule": "Browser builds Playwright downloads again on install."
+    },
+    {
+      "id": "cache/bazel",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cache/bazel\nSize: 21 GB\nLast changed: 6 days ago\nLargest entries: _bazel_chris (21 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "locked",
+      "label_rule": "Bazel's output base; a build recreates it."
+    },
+    {
+      "id": "kind/bazel",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cache/bazel\nSize: 21 GB\nLast changed: 6 days ago\nLargest entries: _bazel_chris (21 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "build_output",
+      "partition": "locked",
+      "label_rule": "Bazel's output base; a build recreates it."
+    },
+    {
+      "id": "cache/torch-hub",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.cache/torch/hub\nSize: 4 GB\nLast changed: 40 days ago\nLargest entries: checkpoints (4 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "locked",
+      "label_rule": "Downloaded model checkpoints torch.hub fetches again."
+    },
+    {
+      "id": "kind/torch-hub",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.cache/torch/hub\nSize: 4 GB\nLast changed: 40 days ago\nLargest entries: checkpoints (4 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "package_cache",
+      "partition": "locked",
+      "label_rule": "Downloaded model checkpoints torch.hub fetches again."
+    },
+    {
+      "id": "cache/oa-cache",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/cache\nSize: 6 GB\nLast changed: 2 days ago\nLargest entries: http (6 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "yes",
+      "partition": "locked",
+      "label_rule": "An HTTP cache; the program refills it."
+    },
+    {
+      "id": "kind/oa-cache",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/cache\nSize: 6 GB\nLast changed: 2 days ago\nLargest entries: http (6 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "app_cache",
+      "partition": "locked",
+      "label_rule": "An HTTP cache; the program refills it."
+    },
+    {
+      "id": "cache/recordings",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/recordings\nSize: 13 GB\nLast changed: 8 days ago\nLargest entries: session-2026-09-30.mp4 (12 GB), session-2026-09-29.mp4 (1 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "calibration",
+      "label_rule": "Screen recordings a person made; nothing makes them again."
+    },
+    {
+      "id": "kind/recordings",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/recordings\nSize: 13 GB\nLast changed: 8 days ago\nLargest entries: session-2026-09-30.mp4 (12 GB), session-2026-09-29.mp4 (1 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "calibration",
+      "label_rule": "Screen recordings a person made; nothing makes them again."
+    },
+    {
+      "id": "cache/datasets",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/work/datasets\nSize: 82 GB\nLast changed: 60 days ago\nLargest entries: imagenet-subset (80 GB), labels.csv (2 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "calibration",
+      "label_rule": "A collected dataset and its labels."
+    },
+    {
+      "id": "kind/datasets",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/work/datasets\nSize: 82 GB\nLast changed: 60 days ago\nLargest entries: imagenet-subset (80 GB), labels.csv (2 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "calibration",
+      "label_rule": "A collected dataset and its labels."
+    },
+    {
+      "id": "cache/pylon",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/pylon\nSize: 47 GB\nLast changed: 1 days ago\nLargest entries: models (40 GB), wallet.db (10 MB), state (7 GB)\nMarkers: none\nProcesses using it now: 2"
+      },
+      "truth": "no",
+      "partition": "calibration",
+      "label_rule": "Pylon state with a wallet and models; not known to be disposable, and in use."
+    },
+    {
+      "id": "kind/pylon",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/pylon\nSize: 47 GB\nLast changed: 1 days ago\nLargest entries: models (40 GB), wallet.db (10 MB), state (7 GB)\nMarkers: none\nProcesses using it now: 2"
+      },
+      "truth": "unknown",
+      "partition": "calibration",
+      "label_rule": "Pylon state with a wallet and models; not known to be disposable, and in use."
+    },
+    {
+      "id": "cache/notes",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/work/notes-archive\nSize: 3 GB\nLast changed: 200 days ago\nLargest entries: 2025 (2 GB), 2024 (1 GB)\nMarkers: README.md\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "calibration",
+      "label_rule": "Notes a person wrote."
+    },
+    {
+      "id": "kind/notes",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/work/notes-archive\nSize: 3 GB\nLast changed: 200 days ago\nLargest entries: 2025 (2 GB), 2024 (1 GB)\nMarkers: README.md\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "calibration",
+      "label_rule": "Notes a person wrote."
+    },
+    {
+      "id": "cache/project",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/work/scratch-project\nSize: 4 GB\nLast changed: 1 days ago\nLargest entries: target (3 GB), src (20 MB)\nMarkers: Cargo.toml, target\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "development",
+      "label_rule": "A Rust project with its source; only its target folder is a cache."
+    },
+    {
+      "id": "kind/project",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/work/scratch-project\nSize: 4 GB\nLast changed: 1 days ago\nLargest entries: target (3 GB), src (20 MB)\nMarkers: Cargo.toml, target\nProcesses using it now: 0"
+      },
+      "truth": "source",
+      "partition": "development",
+      "label_rule": "A Rust project with its source; only its target folder is a cache."
+    },
+    {
+      "id": "cache/backups",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/backups\nSize: 9 GB\nLast changed: 4 days ago\nLargest entries: tasks-2026-09-28.tar (9 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "development",
+      "label_rule": "Backups a person or tool kept on purpose."
+    },
+    {
+      "id": "kind/backups",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/backups\nSize: 9 GB\nLast changed: 4 days ago\nLargest entries: tasks-2026-09-28.tar (9 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "development",
+      "label_rule": "Backups a person or tool kept on purpose."
+    },
+    {
+      "id": "cache/exports",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/exports\nSize: 3 GB\nLast changed: 10 days ago\nLargest entries: chat-export-2026-09.json (3 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "development",
+      "label_rule": "Exported chats a person asked for."
+    },
+    {
+      "id": "kind/exports",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/exports\nSize: 3 GB\nLast changed: 10 days ago\nLargest entries: chat-export-2026-09.json (3 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "development",
+      "label_rule": "Exported chats a person asked for."
+    },
+    {
+      "id": "cache/videos",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/work/videos\nSize: 30 GB\nLast changed: 15 days ago\nLargest entries: ep287.mov (30 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "development",
+      "label_rule": "A video a person recorded and edits."
+    },
+    {
+      "id": "kind/videos",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/work/videos\nSize: 30 GB\nLast changed: 15 days ago\nLargest entries: ep287.mov (30 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "development",
+      "label_rule": "A video a person recorded and edits."
+    },
+    {
+      "id": "cache/evals",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/evals\nSize: 10 GB\nLast changed: 7 days ago\nLargest entries: runs (10 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "locked",
+      "label_rule": "Evaluation results kept as a record; running again costs and may not match."
+    },
+    {
+      "id": "kind/evals",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/evals\nSize: 10 GB\nLast changed: 7 days ago\nLargest entries: runs (10 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "locked",
+      "label_rule": "Evaluation results kept as a record; running again costs and may not match."
+    },
+    {
+      "id": "cache/journal",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/journal\nSize: 1 GB\nLast changed: 0 days ago\nLargest entries: 2026-10 (1 GB)\nMarkers: none\nProcesses using it now: 1"
+      },
+      "truth": "no",
+      "partition": "locked",
+      "label_rule": "A journal a person writes, open now."
+    },
+    {
+      "id": "kind/journal",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/journal\nSize: 1 GB\nLast changed: 0 days ago\nLargest entries: 2026-10 (1 GB)\nMarkers: none\nProcesses using it now: 1"
+      },
+      "truth": "user_data",
+      "partition": "locked",
+      "label_rule": "A journal a person writes, open now."
+    },
+    {
+      "id": "cache/photos",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/work/photos-raw\nSize: 120 GB\nLast changed: 90 days ago\nLargest entries: 2026 (70 GB), 2025 (50 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "locked",
+      "label_rule": "Raw photos."
+    },
+    {
+      "id": "kind/photos",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/work/photos-raw\nSize: 120 GB\nLast changed: 90 days ago\nLargest entries: 2026 (70 GB), 2025 (50 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "user_data",
+      "partition": "locked",
+      "label_rule": "Raw photos."
+    },
+    {
+      "id": "cache/mystery",
+      "family": "cache",
+      "kind": "noul",
+      "state": {
+        "directory": "Path: ~/.openagents/swarm\nSize: 2 GB\nLast changed: 30 days ago\nLargest entries: state (2 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "no",
+      "partition": "locked",
+      "label_rule": "A tool's state folder whose contents do not say what made them."
+    },
+    {
+      "id": "kind/mystery",
+      "family": "kind",
+      "kind": "choice",
+      "state": {
+        "directory": "Path: ~/.openagents/swarm\nSize: 2 GB\nLast changed: 30 days ago\nLargest entries: state (2 GB)\nMarkers: none\nProcesses using it now: 0"
+      },
+      "truth": "unknown",
+      "partition": "locked",
+      "label_rule": "A tool's state folder whose contents do not say what made them."
+    }
+  ]
+}

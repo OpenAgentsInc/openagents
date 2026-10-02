@@ -445,7 +445,19 @@ impl HostLane {
                 }),
             nearby: self.control.nearby_pending().unwrap_or_default(),
             watchers: self.watchers(),
+            background: self.background_notice(),
         })
+    }
+
+    /// The newest background notice this computer's host sent; none for a
+    /// stand-in host.
+    fn background_notice(&self) -> Option<(u64, String)> {
+        #[cfg(unix)]
+        if self.fake.is_none() {
+            return openagents_desktop::background_pane::here()
+                .and_then(|layout| openagents_desktop::background_pane::latest(&layout));
+        }
+        None
     }
 
     /// The background watchers this computer's host runs, read from its

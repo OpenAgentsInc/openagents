@@ -456,6 +456,16 @@ impl DesktopApp {
                 {
                     state.settings.coder = coder_choices(&file);
                 }
+                // The background rules as the host keeps them now; only
+                // a real window reads this computer's.
+                #[cfg(unix)]
+                if pane == openagents_desktop::settings::Pane::Background
+                    && state.settings.file.is_some()
+                    && let Some(layout) = openagents_desktop::background_pane::here()
+                {
+                    state.settings.background =
+                        openagents_desktop::background_pane::rows(&layout, super::unix_now());
+                }
                 if pane == openagents_desktop::settings::Pane::Providers
                     && let Some(file) = state.settings.file.clone()
                 {
@@ -474,6 +484,22 @@ impl DesktopApp {
                     let requests = self.model.tick(now);
                     self.send(requests, now);
                 }
+            }
+            Action::Background { rule, resume } => {
+                #[cfg(unix)]
+                if let Some(state) = &mut self.navigation
+                    && state.settings.file.is_some()
+                    && let Some(layout) = openagents_desktop::background_pane::here()
+                {
+                    state.settings.notice =
+                        openagents_desktop::background_pane::set(&layout, &rule, resume)
+                            .err()
+                            .map(|why| format!("Couldn't change {rule}: {why}"));
+                    state.settings.background =
+                        openagents_desktop::background_pane::rows(&layout, super::unix_now());
+                }
+                #[cfg(not(unix))]
+                let _ = (rule, resume);
             }
             Action::Restore { chat } => {
                 if let Some(request) = self.chat.as_mut().and_then(|panel| panel.restore(&chat)) {

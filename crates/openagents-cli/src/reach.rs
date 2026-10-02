@@ -563,6 +563,7 @@ mod tests {
             enrollments: Vec::new(),
             workspaces: None,
             watchers: None,
+            background: None,
         }
     }
 

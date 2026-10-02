@@ -408,6 +408,8 @@ struct HostLive {
     workspaces: Option<Vec<String>>,
     /// The background watchers its `background.list` names, with `observe`.
     watchers: Option<Vec<String>>,
+    /// The newest background notice in that answer.
+    background: Option<(u64, String)>,
     /// The connection the last catch-up read, and when it finished.
     caught_up: Option<(u64, Instant)>,
     catching_up: bool,
@@ -1385,9 +1387,10 @@ async fn catch_up(
             return None;
         }
         match link.call(Operation::ListBackground {}).await {
-            Ok(Outcome::Background { background }) => {
-                crate::model::watchers(&background, (shared.settings.now)())
-            }
+            Ok(Outcome::Background { background }) => Some((
+                crate::model::watchers(&background, (shared.settings.now)()),
+                crate::model::background_notice(&background),
+            )),
             _ => None,
         }
     };
@@ -1429,7 +1432,9 @@ async fn catch_up(
             if workspaces.is_some() {
                 live.workspaces = workspaces;
             }
+            let (watchers, background) = watchers.unwrap_or_default();
             live.watchers = watchers;
+            live.background = background;
         }
     }
     if revoked {
@@ -1626,6 +1631,7 @@ impl ComputersService for Live {
                         .collect(),
                     workspaces: live.workspaces.clone(),
                     watchers: live.watchers.clone(),
+                    background: live.background.clone(),
                 }
             })
             .collect();
@@ -1655,6 +1661,7 @@ impl ComputersService for Live {
                     enrollments: Vec::new(),
                     workspaces: None,
                     watchers: None,
+                    background: None,
                 });
             }
         }

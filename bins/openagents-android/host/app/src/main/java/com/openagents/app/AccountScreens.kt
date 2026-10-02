@@ -568,9 +568,10 @@ internal class AccountScreens(private val activity: MainActivity, private val br
             add(activity.label(name, 16f))
             add(activity.label(row.getString("status"), 14f, Palette.SECONDARY), 2)
             row.textOrNull("watchers")?.let { add(activity.label(it, 13f, Palette.SECONDARY), 2) }
+            row.textOrNull("background")?.let { add(activity.label(it, 13f, Palette.SECONDARY), 2) }
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = activity.dp(12) })
         addView(activity.text("›", 22f, Palette.TERTIARY))
-        contentDescription = listOfNotNull(name, row.getString("status"), row.textOrNull("watchers")).joinToString(", ")
+        contentDescription = listOfNotNull(name, row.getString("status"), row.textOrNull("watchers"), row.textOrNull("background")).joinToString(", ")
         val host = row.getString("host")
         val menu = row.optJSONArray("menu")?.objects() ?: emptyList()
         setOnClickListener { bridge.openComputer(host) }

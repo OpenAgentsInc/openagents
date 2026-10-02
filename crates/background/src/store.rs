@@ -132,11 +132,14 @@ fn conversation_ids(layout: &Layout) -> Vec<String> {
     ids
 }
 
-/// Every rule: the built-in `disk`, then each enabled plugin's rules,
+/// Every rule: the built-in ones (`disk` first), then each enabled plugin's rules,
 /// then the rules made in conversation.
 #[must_use]
 pub fn list(layout: &Layout) -> Vec<Result<Rule, (String, String)>> {
-    let mut rules = vec![load(layout, "disk").map_err(|why| ("disk".to_owned(), why))];
+    let mut rules: Vec<Result<Rule, (String, String)>> = rule::BUILT_IN
+        .iter()
+        .map(|id| load(layout, id).map_err(|why| ((*id).to_owned(), why)))
+        .collect();
     for admitted in crate::plugins::rules(layout) {
         rules.push(match admitted {
             Ok(rule) => load(layout, &rule.id).map_err(|why| (rule.id.clone(), why)),
@@ -231,6 +234,19 @@ pub struct RuleState {
     /// The host process that runs the rules, when one does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
+    /// Failures in a row, by what a health watch probes.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub failures: BTreeMap<String, u32>,
+    /// When unknown folders were last judged after the rule fell short.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_judged: Option<u64>,
+    /// When the rule last started a Coder run because it fell short.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_escalation: Option<u64>,
+    /// The last thing that needed the person (a checkout left dirty), so
+    /// it is said once, not every check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_blocked: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

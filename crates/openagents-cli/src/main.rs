@@ -362,6 +362,8 @@ async fn host(arguments: &[String]) -> u8 {
     if let Some(judge) = background::JevJudge::from_env() {
         coder_host::background::set_judge(std::sync::Arc::new(judge));
     }
+    #[cfg(unix)]
+    coder_host::background::set_services(background::HostServices::at);
     coder_host::cli::run(arguments, open).await
 }
 

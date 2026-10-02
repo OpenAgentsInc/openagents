@@ -6,7 +6,10 @@ and NIP-HOST `background.*`; see "Phase 1 as built" at the end. Plugins
 can now bring background rules that run only while turned on
 ([Disk cleanup as a plugin](2026-10-02-disk-cleanup-plugin.md), #10165).
 Phase 2 (rules from conversation and the general rule engine) implemented
-the same day; see "Phase 2 as built" at the end. Phase 3 is design. Issues:
+the same day; see "Phase 2 as built" at the end. Phase 3 (Jev judgment of
+unknown folders, escalation to Coder, the other built-ins, desktop and
+phone, plugins) implemented the same day; see "Phase 3 as built" at the
+end. Issues:
 umbrella [#10155](https://github.com/OpenAgentsInc/openagents/issues/10155),
 phase 1 [#10156](https://github.com/OpenAgentsInc/openagents/issues/10156),
 phase 2 [#10157](https://github.com/OpenAgentsInc/openagents/issues/10157),
@@ -623,3 +626,101 @@ design above, and why:
   instead of using FSEvents or inotify: the runner already wakes on that
   period for ended tasks, it needs no new dependency, and a rule that
   watches a file does not need sub-second reaction.
+
+## Phase 3 as built
+
+Judgment, escalation, the other built-ins, desktop and phone, and plugins
+(#10158). Where the implementation differs from the design above, and why:
+
+- **Unknown folders** (`background::judged`). When a cleanup run ends with
+  a volume still below its start level, the runner looks at the children
+  of `~/.openagents`, `~/work`, and `~/.cache` that no class covers, takes
+  the five largest of at least 1 GB, and asks Jev, per folder, the Noul
+  and a Choice of kind over a code-built state (path, size, days since it
+  changed, its eight largest entries, marker files, processes using it
+  now). Code never asks about a Git checkout, anything on the deny list or
+  privacy-protected, a link or another volume, or a folder that holds or
+  sits inside one a class covers. A folder is proposed only when the Noul
+  reads at or above `background.cache_dir` (0.9), the likeliest kind is
+  build output, a package cache, or an application cache, and nothing
+  uses it now. Proposals wait in `background/proposals.json`;
+  `openagents background proposals`, `confirm PATH`, and `decline PATH`
+  answer them, and `judge` asks now. A folder judged once is not asked
+  about again for 30 days; a declined one never. Each judgment (question
+  set, setting, probability, kind) is in the log's `judgments`.
+- **Confirmed folders** become `classes.judged` entries of the rule that
+  fell short and class 7 (`judged`), with a `DeleteCaches` step for it
+  before the trash step. Later runs need no model. Class 7 is never
+  deleted outright: the folder moves to `background/trash/<run>/`
+  (outcome `trashed`, which frees nothing yet and is not counted as
+  freed), `undo RUN` moves it back, and any real cleanup run deletes trash
+  older than 24 hours first. A confirmed folder that has become a Git
+  checkout is kept.
+- **Escalation** (`background::escalate`). A rule with `escalate:
+  {workspace?}` that falls short starts one Coder run a day (state
+  `last_escalation`) through the host's services. The prompt asks for
+  proposed rule changes and forbids deleting, moving, or applying
+  anything; the briefing code assembles holds the rule and its digest,
+  each volume's free space before and after against its levels, what the
+  run removed with its evidence, what was skipped at deletion, what was
+  kept and why (40 at most, then a count), the measured folders that are
+  not a known cache, the judgments and waiting proposals, and the deny
+  list. The record has `escalated: true`. No built-in rule escalates by
+  default.
+- **Host services** (`background::services::Services`). What only the
+  host can do goes through one trait the program that starts the host
+  supplies (`coder_host::background::set_services`; `openagents host`
+  sets it, `coder host` does not): start a Coder run, list and release
+  stale claims, probe and restart, read usage and failed checks, open or
+  comment on an issue, and run a plugin. Without it those steps say the
+  host cannot do them here; everything else still runs.
+- **Built-ins**, all off on a new computer except `checkout` on CoderOS
+  (`/etc/coderos` exists); each is turned on with `resume ID`, the
+  terminal, or the desktop:
+
+  | Rule | Trigger | Does |
+  | --- | --- | --- |
+  | `worktrees` | daily 03:30 | Prunes ended tasks' clean, pushed worktrees at least 7 days after their last use (`classes.worktree_days`), whatever the free space, through the planner and every class 3 check. |
+  | `claims` | hourly | `ReleaseStaleClaims { idle_hours: 6 }`: an issue flow in this store whose latest claim comment names its task, on an open issue, that neither landed nor opened a pull request, and whose task ended or whose flow has not changed for 6 hours with no live process, is released with a comment saying why (`coder::task::issue_run::stale_claims`). Claims made elsewhere are never touched. |
+  | `checkout` | hourly | `GitFastForward { repo: "~/openagents", branch: "main" }`. On another branch, with uncommitted work, or with commits the upstream lacks it changes nothing and says so once (a `blocked` step; repeated identical ones are not said again). |
+  | `health` | every 5 min | `HealthWatch` for the relay (a TCP connection to `relay.openagents.com:443`) and the host (a runner holds `runner.lock`); after three failures in a row it restarts the host through the service manager (`coder_service::service::restart`), which reconnects to the relay. |
+  | `flakes` | every 30 min | `FlakeWatch`: reads failed checks from the task store's check reports since the last look. A test failing in a second run is shown to Jev with both failures (`background.flake`, 0.8); the same failure opens an issue (`gh issue create`), and later ones comment on it. Memory in `background/flakes.json`. |
+  | `qa` | daily 02:00 | `StartCoderRun` with the simulated-user QA prompt (`docs/qa/simulated-users.md`). |
+  | `usage` | daily 21:00 | `UsageSummary`: "Today: 12 Coder runs ended (10 finished, 2 failed), $3.40 (1 unpriced); background rules ran 3 times and freed 41 GB." A task's time is its store file's last change. Never a limit. |
+  | `rotate` | daily 04:00 | `RotateLogs { compress_days: 7, keep_days: 30 }` over `~/.openagents/traces`, `logs`, `log`, `run-artifacts`, and `gate/logs`: log, trace, and text files only, never through a link or into another volume, never one a process has open; compressed with gzip keeping the modification time, removed after `keep_days`. The task store's own traces are on the deny list and stay. |
+
+- **Manual runs** of a rule that is not a cleanup (`background run ID`,
+  `/background`) now go through the engine with Jev and the host's
+  services, so `run usage` or `run qa --dry-run` do what the rule does.
+- **Plugins.** A rule may name `RunPlugin { plugin, input }`, which runs
+  the plugin's workflow read-only (`openagents plugin run`'s executor); a
+  plugin's rule may run only its own plugin. `StartCoderRun` and
+  `escalate` need `needs.coder`. The host's own processes (claims,
+  health, flakes, usage, rotation) and checkout updates stay the host's.
+  A plugin's record may propose folders as caches (`"classes": [{"path",
+  "kind"}]`, `~/` paths and disposable kinds only); turning it on adds
+  them to the proposals, and the person confirms each like Jev's. A
+  package can never bring confirmed folders (`classes.judged`) or class 7.
+  `openagents background publish ID [--out DIR]` packages a rule as a
+  plugin folder (its record pinning the rule by digest, `needs` computed
+  from its actions, confirmed folders left on this computer, paused until
+  a dry run) for `openagents plugin publish`.
+- **Desktop.** Settings has a Background page listing every rule with
+  On or Paused, its last result, and how long ago, and an On switch per
+  rule. It reads and writes `~/.openagents/background` directly, as the
+  sidebar's watcher line does, rather than through `background.*`: the
+  local control socket admits task operations only. The newest notice is
+  a desktop notification (title "Background") when it is newer than the
+  last one seen and the window is not in front; the first look only
+  records.
+- **Phone.** Each online computer on Computers shows, under its watchers,
+  the newest notice from its `background.list` answer ("Freed 41 GB: 2
+  old build folders."). The phone has no system notifications of its own
+  yet, so this line is the phone's notice.
+- **Gym.** `crates/gym/suites/background-cache-dir-v1.json` (24 labeled
+  folders, two families) and its question set
+  `background-cache-dir-v1`, generated from
+  `crates/background/fixtures/cache-dir-v1.json` by
+  `crates/gym/suites/build_background_cache_dir_v1.py`; a test in the
+  background crate fails when the states or the questions drift from
+  production.

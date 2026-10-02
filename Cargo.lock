@@ -1472,6 +1472,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder-boundary",
+ "flate2",
  "libc",
  "serde",
  "serde_json",

@@ -674,6 +674,7 @@ mod tests {
             autostart: host.autostart().unwrap(),
             nearby: None,
             watchers: Vec::new(),
+            background: None,
         });
         assert_eq!(MenuState::of(&model).coder, Coder::Running);
         assert_eq!(

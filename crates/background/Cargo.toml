@@ -10,6 +10,8 @@ description = "Background processes: durable rules the host runs without a conve
 atif = { path = "../atif" }
 # The places macOS guards with a privacy prompt, which no walk enters.
 coder-boundary = { path = "../coder-boundary" }
+# Log and trace rotation compresses old files.
+flate2 = "1"
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

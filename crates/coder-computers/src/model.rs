@@ -347,6 +347,9 @@ pub struct HostRecord {
     /// its `background.list` answered (see [`watchers`]). `None` until read,
     /// or when the host runs no background runner.
     pub watchers: Option<Vec<String>>,
+    /// The newest background notice in that answer (`(when, line)`), the
+    /// short summary of the last run that did something.
+    pub background: Option<(u64, String)>,
 }
 
 impl HostRecord {
@@ -601,6 +604,21 @@ pub fn right_label(right: Right) -> &'static str {
         Right::AccessRead => "See who has access",
         Right::AccessAdmin => "Manage access",
     }
+}
+
+/// The newest notice in a host's `background.list` answer: when, and the
+/// one line the run said ("Freed 41 GB: 2 old build folders.").
+#[must_use]
+pub fn background_notice(list: &serde_json::Value) -> Option<(u64, String)> {
+    list.as_array()?
+        .iter()
+        .filter_map(|row| {
+            let notice = row.get("state")?.get("notice")?.as_array()?;
+            let at = notice.first()?.as_u64()?;
+            let line = notice.get(1)?.as_str()?.trim();
+            (!line.is_empty()).then(|| (at, line.chars().take(280).collect()))
+        })
+        .max_by_key(|(at, _)| *at)
 }
 
 /// The background watchers in a host's `background.list` answer, by name:

@@ -41,11 +41,13 @@ pub enum Pane {
     /// The person's own model provider keys (BYOK, #10176).
     Providers,
     Computers,
+    /// The background rules this computer runs.
+    Background,
     Archived,
 }
 
 impl Pane {
-    pub const ALL: [Pane; 8] = [
+    pub const ALL: [Pane; 9] = [
         Pane::Appearance,
         Pane::TextSize,
         Pane::Shortcuts,
@@ -53,6 +55,7 @@ impl Pane {
         Pane::Coder,
         Pane::Providers,
         Pane::Computers,
+        Pane::Background,
         Pane::Archived,
     ];
 
@@ -65,6 +68,7 @@ impl Pane {
             Pane::Coder => "Coder",
             Pane::Providers => "Model providers",
             Pane::Computers => "Phones and computers",
+            Pane::Background => "Background",
             Pane::Archived => "Archived chats",
         }
     }
@@ -78,6 +82,7 @@ impl Pane {
             Pane::Coder => "coder",
             Pane::Providers => "providers",
             Pane::Computers => "computers",
+            Pane::Background => "background",
             Pane::Archived => "archived",
         }
     }
@@ -91,6 +96,7 @@ impl Pane {
             Pane::Coder => Glyph::Key,
             Pane::Providers => Glyph::Key,
             Pane::Computers => Glyph::Computer,
+            Pane::Background => Glyph::History,
             Pane::Archived => Glyph::Archive,
         }
     }
@@ -147,6 +153,11 @@ pub enum Action {
     ProvidersMine {
         on: bool,
     },
+    /// Pause a background rule, or resume it.
+    Background {
+        rule: String,
+        resume: bool,
+    },
 }
 
 impl Action {
@@ -164,7 +175,8 @@ impl Action {
             | Action::ProviderTest { .. }
             | Action::ProviderConnect
             | Action::ProviderRemove { .. }
-            | Action::ProvidersMine { .. } => None,
+            | Action::ProvidersMine { .. }
+            | Action::Background { .. } => None,
         }
     }
 }
@@ -254,6 +266,8 @@ pub struct Settings {
     pub coder: CoderChoices,
     /// The person's own model providers ([`Providers`]); empty until read.
     pub providers: Providers,
+    /// The background rules, read when the page opens.
+    pub background: Vec<crate::background_pane::Rule>,
     /// The settings file the window keeps them in; none in a capture or a
     /// test, where they live only in memory.
     pub file: Option<std::path::PathBuf>,
@@ -739,6 +753,43 @@ fn providers(settings: &Settings) -> Vec<Node<Intent>> {
     rows
 }
 
+fn background(settings: &Settings, now: u64) -> Vec<Node<Intent>> {
+    let mut rows = vec![title("settings-background-title", "Background")];
+    if settings.background.is_empty() {
+        rows.push(text(
+            "settings-background-empty",
+            "No background rules here.",
+            TextRole::Status,
+        ));
+        return rows;
+    }
+    for rule in &settings.background {
+        let key = format!("settings-background-{}", rule.id);
+        let mut name = text(&format!("{key}-name"), rule.name.clone(), TextRole::Body);
+        name.style.foreground = Some(TEXT);
+        let mut head = vec![name];
+        if rule.status != crate::background_pane::Status::Broken {
+            let resume = rule.resumes();
+            head.push(toggle(
+                &format!("{key}-toggle"),
+                "On",
+                !resume,
+                Action::Background {
+                    rule: rule.id.clone(),
+                    resume,
+                },
+            ));
+        }
+        rows.push(stack(&key, Axis::Horizontal, Space::Md, head));
+        rows.push(text(
+            &format!("{key}-line"),
+            rule.line(now),
+            TextRole::Status,
+        ));
+    }
+    rows
+}
+
 fn archived(settings: &Settings) -> Vec<Node<Intent>> {
     let mut rows = vec![title("settings-archived-title", "Archived chats")];
     if settings.archived.is_empty() {
@@ -860,6 +911,7 @@ pub fn view(
         Pane::Coder => coder(settings, model),
         Pane::Providers => providers(settings),
         Pane::Computers => vec![crate::screens::root(model, now)],
+        Pane::Background => background(settings, now),
         Pane::Archived => archived(settings),
     };
     let mut rows = vec![
@@ -990,6 +1042,74 @@ mod tests {
     /// While a key is tested or OpenRouter connects off the window's
     /// thread, the row says so and every key button waits; Connect
     /// OpenRouter shows only while no OpenRouter key is added.
+    #[test]
+    fn the_background_page_lists_rules_with_their_last_run_and_a_switch() {
+        use crate::background_pane::{Rule, Status};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut settings = Settings {
+            pane: Pane::Background,
+            ..Settings::default()
+        };
+        let rendered = view(&settings, true, None, &model, 0);
+        assert!(find(&rendered, "settings-background-empty").is_some());
+        settings.background = vec![
+            Rule {
+                id: "disk".into(),
+                name: "Disk cleanup".into(),
+                status: Status::On,
+                last: Some("Freed 4 GB: 2 old build folders.".into()),
+                when: Some(1000 - 120),
+            },
+            Rule {
+                id: "usage".into(),
+                name: "Daily usage summary".into(),
+                status: Status::Off,
+                last: None,
+                when: None,
+            },
+            Rule {
+                id: "bad".into(),
+                name: "bad".into(),
+                status: Status::Broken,
+                last: Some("does not read".into()),
+                when: None,
+            },
+        ];
+        let rendered = view(&settings, true, None, &model, 1000);
+        let intent = |id: &str| match find(&rendered, id) {
+            Some(Node {
+                element: Element::Button { intent, .. },
+                ..
+            }) => intent.clone(),
+            _ => panic!("no {id}"),
+        };
+        assert_eq!(
+            intent("settings-background-disk-toggle"),
+            Intent::Settings {
+                action: Action::Background {
+                    rule: "disk".into(),
+                    resume: false
+                }
+            }
+        );
+        assert_eq!(
+            intent("settings-background-usage-toggle"),
+            Intent::Settings {
+                action: Action::Background {
+                    rule: "usage".into(),
+                    resume: true
+                }
+            }
+        );
+        assert!(find(&rendered, "settings-background-bad-toggle").is_none());
+        let words = crate::screens::words(&rendered).join(" ");
+        assert!(
+            words.contains("On · Freed 4 GB: 2 old build folders. · 2 min ago"),
+            "{words}"
+        );
+        assert!(crate::words::banned_in(&words).is_empty(), "{words}");
+    }
+
     #[test]
     fn a_key_test_in_flight_holds_the_buttons() {
         let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);

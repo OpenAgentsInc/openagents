@@ -17,6 +17,12 @@ pub type FactsFn = fn(&Path) -> Result<Vec<TaskFact>, String>;
 
 static FACTS: OnceLock<FactsFn> = OnceLock::new();
 static JUDGE: OnceLock<Arc<dyn background::engine::Judge>> = OnceLock::new();
+static SERVICES: OnceLock<ServicesFn> = OnceLock::new();
+
+/// Makes the host's services for the task store at a directory: the
+/// program that starts the host sets it (Coder runs, issue claims, health,
+/// usage, flakes, plugins).
+pub type ServicesFn = fn(&Path) -> Arc<dyn background::services::Services>;
 static RUNNER: OnceLock<(Layout, background::runner::Handle)> = OnceLock::new();
 
 /// Name the task store reader the runner uses. Without one, the classes
@@ -30,6 +36,12 @@ pub fn set_facts(facts: FactsFn) {
 /// program that starts the host). Without one, a judgment never holds.
 pub fn set_judge(judge: Arc<dyn background::engine::Judge>) {
     let _ = JUDGE.set(judge);
+}
+
+/// Name what makes the services phase 3 rules use. Without them, those
+/// actions say the host cannot do them here.
+pub fn set_services(services: ServicesFn) {
+    let _ = SERVICES.set(services);
 }
 
 /// Start the runner over the task store `tasks`. `OPENAGENTS_BACKGROUND=off`
@@ -55,10 +67,11 @@ pub(crate) fn start(tasks: &Path) {
         let store = tasks.to_owned();
         Arc::new(move || read(&store)) as Arc<dyn background::Facts>
     });
-    let handle = background::runner::start_with(
+    let handle = background::runner::start_full(
         layout.clone(),
         facts,
         JUDGE.get().cloned(),
+        SERVICES.get().map(|make| make(tasks)),
         Box::new(|line| eprintln!("coder host: {line}")),
     );
     let _ = RUNNER.set((layout, handle));

@@ -93,9 +93,12 @@ and `crates/openagents-cli` (`plugin list|run|test|defaults`):
   A rule a person defines in chat is a plugin rule with `origin: plugin`
   once saved as a plugin, so publishing a rule as a plugin (phase 3) is
   packaging, not translation, and every admission check above applies.
-- **Jev judgment (phase 3)** proposes a new candidate class; a confirmed
-  class becomes host code, never something a plugin declares, so the host
-  still owns what "safe to delete" means.
+- **Jev judgment (phase 3)** proposes a folder; a confirmed folder becomes
+  an entry of the rule on this computer (class 7, trashed for a day
+  first), never something a package brings, so the host still owns what
+  "safe to delete" means. A plugin may only propose folders in its
+  record's `classes`, which the person confirms like Jev's (built in
+  #10158; see the main spec's "Phase 3 as built").
 - **A plugin marketplace for background plugins** lists them like any
   plugin. Installing one never turns it on; what it may delete is shown
   from its `needs` before it is turned on.

@@ -54,6 +54,7 @@ pub const fn release_flag(value: Option<&str>) -> bool {
 
 #[cfg(all(feature = "app", not(windows)))]
 pub mod backdrop;
+pub mod background_pane;
 #[cfg(all(feature = "app", not(windows)))]
 pub mod chat_gym;
 pub mod chrome;

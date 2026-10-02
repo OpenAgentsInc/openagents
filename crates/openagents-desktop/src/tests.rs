@@ -73,6 +73,7 @@ fn host(devices: Vec<Device>, project: bool, autostart: bool) -> Refreshed {
         projects,
         nearby: None,
         watchers: Vec::new(),
+        background: None,
     }
 }
 

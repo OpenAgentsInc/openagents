@@ -85,6 +85,16 @@ impl Layout {
     pub fn drafts(&self) -> PathBuf {
         self.background().join("drafts")
     }
+    /// Folders Jev judged, and what the person said (phase 3).
+    #[must_use]
+    pub fn proposals(&self) -> PathBuf {
+        self.background().join("proposals.json")
+    }
+    /// What the flake watch remembers.
+    #[must_use]
+    pub fn flakes(&self) -> PathBuf {
+        self.background().join("flakes.json")
+    }
     /// What the file trigger last saw of its watched paths.
     #[must_use]
     pub fn watched(&self) -> PathBuf {
@@ -186,6 +196,7 @@ impl Layout {
         rule.safety
             .allow
             .iter()
+            .chain(rule.classes.judged.iter().map(|judged| &judged.path))
             .map(|root| expand(root, &self.home))
             .collect()
     }

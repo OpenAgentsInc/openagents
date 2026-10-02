@@ -169,11 +169,13 @@ impl Synthetic {
             enrollments: Vec::new(),
             workspaces: None,
             watchers: None,
+            background: None,
         };
         let mut studio = record(0xa1, "Studio Mac", enrolled(Rights::all()));
         studio.route = Some(Class::Lan);
         studio.workspaces = Some(vec!["openagents".into(), "scratch".into()]);
         studio.watchers = Some(vec!["disk cleanup".into()]);
+        studio.background = Some((at - 600, "Freed 41 GB: 2 old build folders.".into()));
         studio.devices = DeviceList::Loaded {
             as_of: at - 90,
             devices: vec![
@@ -415,6 +417,7 @@ impl Synthetic {
             enrollments: Vec::new(),
             workspaces: None,
             watchers: None,
+            background: None,
         };
         let key = record.key.clone();
         self.hosts.push(Host {

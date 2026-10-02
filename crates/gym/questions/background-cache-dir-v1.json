@@ -1,0 +1,43 @@
+{
+  "$comment": [
+    "The production questions of crates/background/src/judged.rs (QUESTION and ALL_KINDS), word for word; judged_suite.rs checks they match."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "background-cache-dir-v1",
+  "suite": "background-cache-dir-v1",
+  "questions": {
+    "cache": {
+      "type": "noul",
+      "instructions": "Is this directory output a program will regenerate, or a download cache, holding nothing a person made?",
+      "decision": {
+        "threshold": 0.9
+      }
+    },
+    "kind": {
+      "type": "choice",
+      "instructions": {
+        "question": "What kind of folder is this?"
+      },
+      "criteria": {
+        "build_output": {
+          "what": "Output a build tool writes and rebuilds (compiled objects, bundles)."
+        },
+        "package_cache": {
+          "what": "Downloaded packages or dependencies a package manager fetches again."
+        },
+        "app_cache": {
+          "what": "A program's cache it refills on its own (thumbnails, downloads, indexes)."
+        },
+        "user_data": {
+          "what": "Things a person made or collected: documents, media, datasets, settings, keys."
+        },
+        "source": {
+          "what": "Source code or a project someone works on."
+        },
+        "unknown": {
+          "what": "Cannot tell from what is shown."
+        }
+      }
+    }
+  }
+}

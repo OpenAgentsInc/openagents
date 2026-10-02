@@ -1376,6 +1376,7 @@ mod tests {
             autostart: host.autostart().unwrap(),
             nearby: None,
             watchers,
+            background: None,
         };
         model.host = Some(answer(vec![]));
         assert!(!contains(&root(&state, &model, 0), "sidebar-watchers"));

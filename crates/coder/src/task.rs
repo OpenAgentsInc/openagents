@@ -49,6 +49,7 @@ pub mod local_checks;
 pub mod media;
 pub mod owner;
 pub mod publish;
+pub mod recent;
 pub mod remote;
 pub mod review;
 pub mod run_artifacts;

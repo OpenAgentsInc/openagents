@@ -188,6 +188,7 @@ pub fn class_option(class: Class) -> (&'static str, &'static str) {
             "Incremental compile caches inside build folders.",
         ),
         Class::Trash => ("trash", "The background trash."),
+        Class::Judged => ("judged", "Folders the person confirmed as caches."),
     }
 }
 
@@ -599,9 +600,7 @@ fn keep_free(rule: &mut Rule, level: Level) {
     }
 }
 
-/// A start level no disk is above: the rule cleans whatever the free
-/// space (pruning worktrees on a schedule).
-const ALWAYS: u64 = 1_000_000 * GB;
+use crate::rule::ALWAYS;
 
 /// The schedule a new rule gets: what the message said, or `default`.
 fn schedule(
@@ -797,7 +796,7 @@ fn define(
                 part.as_ref(),
                 vec![Trigger::Daily { at: "09:00".into() }],
             );
-            rule.actions = vec![Action::GitFastForward { repo }];
+            rule.actions = vec![Action::GitFastForward { repo, branch: None }];
             rule
         }
         _ => {
@@ -1164,7 +1163,7 @@ pub fn describe(rule: &Rule) -> Vec<String> {
     for action in &rule.actions {
         match action {
             Action::Notify { text } => does.push(format!("tells you \"{text}\"")),
-            Action::GitFastForward { repo } => does.push(format!(
+            Action::GitFastForward { repo, .. } => does.push(format!(
                 "fetches {repo} and fast-forwards it when it is clean, never otherwise"
             )),
             _ => {}

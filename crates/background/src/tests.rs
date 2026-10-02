@@ -718,6 +718,7 @@ fn plugin_rule(id: &str) -> Rule {
         delete: crate::rule::Class::ALL.to_vec(),
         tasks: true,
         notify: true,
+        coder: false,
     };
     rule
 }
@@ -746,11 +747,13 @@ fn install(home: &Home, slug: &str, rule: &Rule) -> PathBuf {
     dir
 }
 
+/// The rule ids listed, without the phase 3 built-ins (all off here).
 fn ids(home: &Home) -> Vec<String> {
     crate::store::list(&home.layout)
         .into_iter()
         .filter_map(Result::ok)
         .map(|rule| rule.id)
+        .filter(|id| id == "disk" || crate::rule::built_in(id).is_none())
         .collect()
 }
 

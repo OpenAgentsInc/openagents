@@ -49,6 +49,10 @@ pub struct Installed {
     pub dir: PathBuf,
     /// The rule ids its package record pins.
     pub background: Vec<String>,
+    /// Folders it proposes as caches (`"classes": [{"path", "kind"}]`):
+    /// the person confirms each, as for Jev's proposals.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub classes: Vec<(String, String)>,
     pub enabled: bool,
 }
 
@@ -89,6 +93,7 @@ pub fn installed(layout: &Layout) -> Vec<Installed> {
                     .into_iter()
                     .map(|(name, _)| name)
                     .collect(),
+                classes: proposed(&record),
                 slug: slug_name,
                 dir,
                 id,
@@ -132,6 +137,9 @@ pub fn set_enabled(layout: &Layout, name: &str, on: bool) -> Result<Installed, S
         for id in &plugin.background {
             load_rule(&plugin, id)?;
         }
+    }
+    if on && !plugin.classes.is_empty() {
+        crate::judged::from_plugin(layout, &plugin.id, &plugin.classes, crate::paths::now())?;
     }
     let mut set = enabled(layout);
     if on {
@@ -211,6 +219,18 @@ pub fn load_rule(plugin: &Installed, id: &str) -> Result<Rule, String> {
     }
     let asked: Rule =
         serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    // Confirmed caches are this computer's, never a package's.
+    if !asked.classes.judged.is_empty()
+        || asked
+            .actions
+            .iter()
+            .any(|action| action.classes().contains(&Class::Judged))
+    {
+        return Err(format!(
+            "{}: a plugin cannot bring confirmed caches; it proposes folders in its record's classes",
+            plugin.name
+        ));
+    }
     admit(asked, plugin)
 }
 
@@ -241,7 +261,9 @@ pub fn admit(mut asked: Rule, plugin: &Installed) -> Result<Rule, String> {
     asked.validate().map_err(named)?;
     let granted: BTreeSet<Class> = asked.needs.delete.iter().copied().collect();
     for action in &asked.actions {
-        for class in action.classes() {
+        // Folders the person confirmed on this computer (class 7) need
+        // no grant: the confirmation is the grant.
+        for class in action.classes().into_iter().filter(|c| *c != Class::Judged) {
             if !granted.contains(&class) {
                 return Err(named(format!(
                     "it deletes {} without asking for them in needs.delete",
@@ -260,8 +282,34 @@ pub fn admit(mut asked: Rule, plugin: &Installed) -> Result<Rule, String> {
                     "a plugin's rule cannot update a Git checkout; that is a rule made here".into(),
                 ));
             }
+            rule::Action::StartCoderRun { .. } if !asked.needs.coder => {
+                return Err(named(
+                    "it starts Coder runs without asking for needs.coder".into(),
+                ));
+            }
+            rule::Action::RunPlugin { plugin: other, .. }
+                if *other != plugin.id && *other != plugin.slug =>
+            {
+                return Err(named(format!(
+                    "it runs {other}; a plugin's rule runs only its own plugin"
+                )));
+            }
+            rule::Action::ReleaseStaleClaims { .. }
+            | rule::Action::HealthWatch { .. }
+            | rule::Action::FlakeWatch
+            | rule::Action::UsageSummary
+            | rule::Action::RotateLogs { .. } => {
+                return Err(named(
+                    "that action belongs to the host's built-in rules".into(),
+                ));
+            }
             _ => {}
         }
+    }
+    if asked.escalate.is_some() && !asked.needs.coder {
+        return Err(named(
+            "it escalates to Coder without asking for needs.coder".into(),
+        ));
     }
     let task_classes = [Class::EndedTargets, Class::Worktrees];
     if !asked.needs.tasks && granted.iter().any(|class| task_classes.contains(class)) {
@@ -315,6 +363,108 @@ fn read_record(dir: &Path) -> Result<Value, String> {
     let path = dir.join("package.json");
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The folders a record proposes as caches, kept only when each is a
+/// folder a rule may name and a disposable kind.
+fn proposed(record: &Value) -> Vec<(String, String)> {
+    record["classes"]
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .map(|item| (text(item, "path"), text(item, "kind")))
+                .filter(|(path, kind)| {
+                    path.starts_with("~/")
+                        && path.len() > 2
+                        && !path.contains("..")
+                        && crate::judged::KINDS.contains(&kind.as_str())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Package rule `id` as a plugin in `dir`: its record pins the rule by
+/// digest and asks for exactly what the rule's actions need. The rule
+/// starts paused, so its first real run waits for a dry run. Confirmed
+/// caches stay on this computer. `openagents plugin publish DIR` then
+/// publishes it.
+///
+/// # Errors
+/// No such rule, an action a plugin cannot take, or the files cannot be
+/// written.
+pub fn package(layout: &Layout, id: &str, dir: &Path) -> Result<PathBuf, String> {
+    let mut rule = crate::store::load(layout, id)?;
+    rule.classes.judged.clear();
+    for action in &mut rule.actions {
+        if let rule::Action::DeleteCaches { classes } = action {
+            classes.retain(|class| *class != Class::Judged);
+        }
+    }
+    rule.actions.retain(
+        |action| !matches!(action, rule::Action::DeleteCaches { classes } if classes.is_empty()),
+    );
+    let slug = if rule::built_in(id).is_some() {
+        format!("{id}-rule")
+    } else {
+        id.to_owned()
+    };
+    rule.id.clone_from(&slug);
+    let mut needs = rule::Needs::default();
+    for action in &rule.actions {
+        for class in action.classes() {
+            if !needs.delete.contains(&class) {
+                needs.delete.push(class);
+            }
+        }
+        match action {
+            rule::Action::Notify { .. } => needs.notify = true,
+            rule::Action::StartCoderRun { .. } => needs.coder = true,
+            rule::Action::GitFastForward { .. }
+            | rule::Action::ReleaseStaleClaims { .. }
+            | rule::Action::HealthWatch { .. }
+            | rule::Action::FlakeWatch
+            | rule::Action::UsageSummary
+            | rule::Action::RotateLogs { .. } => {
+                return Err(format!(
+                    "{} uses an action only this computer's own rules take; it cannot be a plugin",
+                    rule.name
+                ));
+            }
+            _ => {}
+        }
+    }
+    needs.delete.sort();
+    needs.tasks = needs
+        .delete
+        .iter()
+        .any(|class| matches!(class, Class::EndedTargets | Class::Worktrees));
+    needs.coder |= rule.escalate.is_some();
+    rule.needs = needs;
+    rule.origin = Origin::File {
+        path: format!("background/{slug}.json"),
+    };
+    rule.enabled = false;
+    rule.paused_until = Some(u64::MAX);
+    rule.version = 1;
+    let text = serde_json::to_string_pretty(&rule).map_err(|e| e.to_string())?;
+    let record = json!({
+        "v": 1,
+        "slug": slug,
+        "name": rule.name,
+        "summary": format!("The background rule {} from this computer.", rule.name),
+        "version": "0.1.0",
+        "publisher": "",
+        "provenance": "local file",
+        "background": [{"name": slug, "digest": digest(&text)}],
+    });
+    let background = dir.join("background");
+    std::fs::create_dir_all(&background).map_err(|e| e.to_string())?;
+    write_atomic(&background.join(format!("{slug}.json")), text.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let record = serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?;
+    write_atomic(&dir.join("package.json"), &record).map_err(|e| e.to_string())?;
+    Ok(dir.to_owned())
 }
 
 fn references(record: &Value) -> Vec<(String, String)> {
