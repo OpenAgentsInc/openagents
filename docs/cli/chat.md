@@ -275,9 +275,10 @@ A message that asks for the same work on several coding engines ("do 3
 readonly delegations, 1 per agent", "ask all three agents", "have codex
 and claude both look") gets a dispatch plan from the router's typed
 readings (`fanout`, `read_only`, `summarize`; #10183), only from a
-terminal: the reply says what starts ("Starting 3 read-only runs: Codex,
-Claude Code, Grok Build."), and the client starts one run per engine in
-parallel, each in its own worktree, pinned to its engine with no fallback.
+terminal: the reply says what starts, verb first ("Exploring the repo with
+Codex, Claude Code, and Grok Build."), and the client starts one run per
+engine in parallel ("Running Codex, Claude Code, and Grok Build,
+read-only."), each in its own worktree, pinned to its engine with no fallback.
 A read-only plan's runs start with a grant that writes nothing in the
 worktree and seals Git, and a full-access setting runs them under this
 computer's toolchains instead, so the boundary holds whatever the engine

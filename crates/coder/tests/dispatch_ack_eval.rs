@@ -127,13 +127,15 @@ fn every_bank_line_that_starts_work_starts_with_the_verb() {
     let bank = Bank::builtin();
     let facts = Facts::default()
         .set("engine.name", "Claude Code")
-        .set("capability.name", "Project map");
+        .set("capability.name", "Project map")
+        .set("fanout.doing", "Exploring the repo")
+        .set("fanout.engines", "Codex, Claude Code, and Grok Build");
     let mut wrong = Vec::new();
     let mut seen = 0;
     for entry in &bank.answers {
-        let line = if entry.answers(RouteId::WorkDispatch) {
+        let line = if entry.answers(RouteId::WorkDispatch) && entry.stem.is_some() {
             entry.stem(&facts).map(|(stem, end)| format!("{stem}{end}"))
-        } else if entry.id == "cli.run" {
+        } else if entry.id == "cli.run" || entry.id == "dispatch.fan_out" {
             entry.render(&facts)
         } else {
             None
@@ -158,6 +160,7 @@ fn the_set_has_the_owners_phrasings() {
         "dispatch.github_stem",
         "dispatch.capability_stem",
         "dispatch.engine_stem",
+        "dispatch.fan_out",
         "cli.run",
     ] {
         assert!(set.rows.iter().any(|row| row.answer == answer), "{answer}");

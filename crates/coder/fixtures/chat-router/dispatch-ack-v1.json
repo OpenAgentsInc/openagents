@@ -121,6 +121,17 @@
       "recorded": null
     },
     {
+      "id": "fan-out",
+      "message": "do 3 readonly delegations, 1 per agent, explore repo and summarize briefly",
+      "answer": "dispatch.fan_out",
+      "facts": {
+        "fanout.doing": "Exploring the repo",
+        "fanout.engines": "Codex, Claude Code, and Grok Build"
+      },
+      "live": true,
+      "recorded": null
+    },
+    {
       "id": "wallet",
       "message": "check my wallet balance",
       "answer": "cli.run",

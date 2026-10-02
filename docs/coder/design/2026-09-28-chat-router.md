@@ -1887,7 +1887,11 @@ recalibration):
   code."); `dispatch.github_stem` "Picking up"; `dispatch.capability_stem`
   "Using {capability} to"; `dispatch.engine_stem` "Starting {engine} on
   this."; `cli.run` "Running the openagents command for that on this
-  computer."
+  computer."; `dispatch.fan_out` (version 2) "Exploring the repo with
+  Codex, Claude Code, and Grok Build." for a read-only plan, "Working on
+  this with ..." otherwise, and the client's start report "Running Codex,
+  Claude Code, and Grok Build, read-only." (it said "Started 3 read-only
+  runs: ...").
 - **Personalization.** The prompt asks for the -ing form after a stem ending
   in "on", and -ing for every listed verb after an -ing stem; `check`
   refuses a continuation that hands the work to someone by name ("have

@@ -4617,7 +4617,7 @@ mod tests {
         let result = &frames.last().unwrap().1;
         assert_eq!(
             result["text"],
-            "Starting 3 read-only runs: Codex, Claude Code, Grok Build."
+            "Exploring the repo with Codex, Claude Code, and Grok Build."
         );
         assert!(
             result["answer"]
@@ -4639,7 +4639,7 @@ mod tests {
         let mut payload = turn(ask);
         payload["transcript"] = json!([
             {"role": "user", "content": ask},
-            {"role": "assistant", "content": "Starting 3 read-only runs: Codex, Claude Code, Grok Build."},
+            {"role": "assistant", "content": "Exploring the repo with Codex, Claude Code, and Grok Build."},
         ]);
         payload["router"] = json!("chat-router-v2");
         payload["context"] = json!({

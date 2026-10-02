@@ -1425,7 +1425,7 @@ impl Door for Planner {
             let mut reply = lock(&reply);
             if context.runs.is_empty() {
                 use nostr::cj_conversation::{Engine, Plan};
-                reply.text = "Starting 3 read-only runs: Codex, Claude Code, Grok Build.".into();
+                reply.text = "Exploring the repo with Codex, Claude Code, and Grok Build.".into();
                 reply.meta = Meta {
                     offers: vec![Offer::RunCoder],
                     route: Some("work.dispatch".into()),
@@ -1616,7 +1616,7 @@ async fn a_plan_starts_one_read_only_run_per_engine_and_summarizes_them() {
         .collect();
     assert_eq!(
         said,
-        ["Started 3 read-only runs: Codex, Claude Code, Grok Build."]
+        ["Running Codex, Claude Code, and Grok Build, read-only."]
     );
     let lines: Vec<&str> = events
         .iter()

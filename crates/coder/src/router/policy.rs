@@ -648,20 +648,25 @@ pub fn fan_out(routing: &Routing, context: &super::Context) -> Option<super::Dis
 }
 
 /// The reply for a plan: the bank's `dispatch.fan_out`, saying plainly
-/// what starts ("Starting 3 read-only runs: Codex, Claude Code, Grok
-/// Build."), with the `run_coder` offer carrying the plan. No
-/// continuation: a continuation could restate the request as its topic.
+/// what starts, verb first ("Exploring the repo with Codex, Claude Code,
+/// and Grok Build." for a read-only plan, #10212), with the `run_coder`
+/// offer carrying the plan. No continuation: a continuation could restate
+/// the request as its topic.
 fn fan_out_tier(bank: &Bank, facts: &Facts, plan: super::DispatchPlan) -> Option<Tier> {
-    let count = plan.runs.len();
-    let runs = format!(
-        "{count} {}runs",
-        if plan.read_only { "read-only " } else { "" }
-    );
-    let engines: Vec<&str> = plan.runs.iter().map(|engine| engine.name()).collect();
+    let doing = if plan.read_only {
+        "Exploring the repo"
+    } else {
+        "Working on this"
+    };
+    let engines: Vec<String> = plan
+        .runs
+        .iter()
+        .map(|engine| engine.name().to_string())
+        .collect();
     let facts = facts
         .clone()
-        .set("fanout.runs", runs)
-        .set("fanout.engines", engines.join(", "));
+        .set("fanout.doing", doing)
+        .set("fanout.engines", super::series(&engines));
     let mut tier = final_of(bank, &facts, "dispatch.fan_out")?;
     if let Tier::CannedFinal {
         offer: Some(Offer::RunCoder { plan: planned, .. }),
@@ -2102,7 +2107,7 @@ mod tests {
         assert_eq!(answer.id, "dispatch.fan_out");
         assert_eq!(
             text,
-            "Starting 3 read-only runs: Codex, Claude Code, Grok Build."
+            "Exploring the repo with Codex, Claude Code, and Grok Build."
         );
         let plan = DispatchPlan {
             runs: vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild],
@@ -2131,7 +2136,7 @@ mod tests {
         let Tier::CannedFinal { text, offer, .. } = decided(&work, &terminal, false) else {
             panic!();
         };
-        assert_eq!(text, "Starting 2 runs: Codex, Claude Code.");
+        assert_eq!(text, "Working on this with Codex and Claude Code.");
         assert!(matches!(
             offer,
             Some(Offer::RunCoder { plan: DispatchPlan { ref runs, read_only: false, summarize: false }, .. })
@@ -2163,7 +2168,10 @@ mod tests {
         let Tier::CannedFinal { text, .. } = decided(&work, &bare, false) else {
             panic!();
         };
-        assert_eq!(text, "Starting 3 runs: Codex, Claude Code, Grok Build.");
+        assert_eq!(
+            text,
+            "Working on this with Codex, Claude Code, and Grok Build."
+        );
         // Not a dispatch: no plan, whatever the reading.
         let mut general = routed(RouteId::General, 0.9, "none", 0.0, 0.9);
         general.fanout = Some((Fanout::EachEngine, 0.9));

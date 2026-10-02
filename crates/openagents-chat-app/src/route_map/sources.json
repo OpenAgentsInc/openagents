@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v4@60fb0f55d6ab",
-  "bank": "chat-answers-v1@179e56482e87",
+  "bank": "chat-answers-v1@78eb3422431f",
   "routes": [
     {
       "id": "meta",
@@ -668,7 +668,7 @@
     },
     {
       "id": "dispatch.fan_out",
-      "version": 1,
+      "version": 2,
       "routes": [
         "work.dispatch"
       ],

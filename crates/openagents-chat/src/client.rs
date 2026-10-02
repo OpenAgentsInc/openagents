@@ -1860,7 +1860,6 @@ impl Client {
                 Err(_) => refused.push((plan.runs[at], "Coder could not start.".to_owned())),
             }
         }
-        let kind = if plan.read_only { "read-only " } else { "" };
         for (engine, why) in &refused {
             coder_report(
                 sink,
@@ -1877,13 +1876,19 @@ impl Client {
             self.bind(id, &started[0].1, false, sink).await;
         }
         let names: Vec<&str> = started.iter().map(|(engine, _)| engine.name()).collect();
-        let count = started.len();
-        let runs = if count == 1 { "run" } else { "runs" };
+        // Verb first, naming the engines, never "Started N runs" (#10212).
+        let names = match names.as_slice() {
+            [one] => (*one).to_owned(),
+            [one, two] => format!("{one} and {two}"),
+            [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+            [] => String::new(),
+        };
+        let kind = if plan.read_only { ", read-only" } else { "" };
         coder_report(
             sink,
             id,
             true,
-            &format!("Started {count} {kind}{runs}: {}.", names.join(", ")),
+            &format!("Running {names}{kind}."),
             Some(serde_json::json!(
                 started
                     .iter()

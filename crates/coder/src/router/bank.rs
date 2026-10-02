@@ -60,7 +60,7 @@ pub const FACT_KEYS: &[&str] = &[
     "chat.project",
     "chat.project_path",
     "engine.name",
-    "fanout.runs",
+    "fanout.doing",
     "fanout.engines",
 ];
 

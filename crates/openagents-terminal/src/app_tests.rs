@@ -1851,7 +1851,7 @@ fn a_plans_runs_each_get_a_rail_row_and_their_results_show_by_engine() {
     app.event(Event::Coder {
         thread: "a".repeat(32),
         accepted: true,
-        message: "Started 3 read-only runs: Codex, Claude Code, Grok Build.".into(),
+        message: "Running Codex, Claude Code, and Grok Build, read-only.".into(),
         task: Some(serde_json::Value::Array(runs)),
         quiet: false,
     });
@@ -1866,7 +1866,7 @@ fn a_plans_runs_each_get_a_rail_row_and_their_results_show_by_engine() {
     // The tool call is in run 1's own log, not the transcript.
     let shown = frame(&mut app, 70, 30);
     assert!(!shown.contains("ls crates"), "{shown}");
-    assert!(shown.contains("Started 3 read-only runs"), "{shown}");
+    assert!(shown.contains("Running Codex, Claude Code"), "{shown}");
     assert!(app.running);
     app.event(of("t1", 3, finished()));
     app.event(of("t2", 3, finished()));
