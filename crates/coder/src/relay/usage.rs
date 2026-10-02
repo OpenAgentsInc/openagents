@@ -114,6 +114,17 @@ pub struct Record {
     pub bytes_in: usize,
     /// The published reply text's length, in bytes.
     pub bytes_out: usize,
+    /// Who paid for the job's model calls: `theirs` when the caller sent
+    /// its own provider keys (BYOK, a `payer.keys` job); absent is ours.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer: Option<String>,
+    /// The provider of the caller's first key: `openrouter`, `vercel`, or
+    /// `typesafe`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer_provider: Option<String>,
+    /// That key's fingerprint (`model_access::fingerprint`), never the key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer_fingerprint: Option<String>,
 }
 
 /// What a job published, watched as it is published, folded into a
@@ -154,6 +165,20 @@ impl Observed {
                 _ => "turn".to_string(),
             }
         };
+    }
+
+    /// Notes that the caller paid with its own keys: the first key's
+    /// provider and fingerprint, never a key.
+    pub fn paid_by(&mut self, payer: &model_access::Payer) {
+        if let model_access::Payer::Theirs {
+            provider,
+            fingerprint,
+        } = payer
+        {
+            self.record.payer = Some("theirs".to_string());
+            self.record.payer_provider = Some(provider.word().to_string());
+            self.record.payer_fingerprint = Some(fingerprint.clone());
+        }
     }
 
     /// Notes one published body, `elapsed_ms` after the job arrived.
@@ -369,6 +394,8 @@ pub enum By {
     Day,
     Kind,
     Outcome,
+    /// `ours`, or `theirs PROVIDER` for a job the caller paid for.
+    Payer,
 }
 
 impl By {
@@ -387,9 +414,10 @@ impl By {
             "day" => By::Day,
             "kind" => By::Kind,
             "outcome" => By::Outcome,
+            "payer" => By::Payer,
             other => {
                 return Err(format!(
-                    "--by is key, surface, route, model, day, kind, or outcome, not {other}"
+                    "--by is key, surface, route, model, day, kind, outcome, or payer, not {other}"
                 ));
             }
         })
@@ -406,6 +434,7 @@ impl By {
             By::Day => "day",
             By::Kind => "kind",
             By::Outcome => "outcome",
+            By::Payer => "payer",
         }
     }
 
@@ -426,6 +455,11 @@ impl By {
             By::Outcome => match &record.code {
                 Some(code) => format!("{} {code}", record.outcome.word()),
                 None => record.outcome.word().to_string(),
+            },
+            By::Payer => match (&record.payer, &record.payer_provider) {
+                (Some(payer), Some(provider)) => format!("{payer} {provider}"),
+                (Some(payer), None) => payer.clone(),
+                _ => "ours".to_string(),
             },
         }
     }
@@ -619,6 +653,28 @@ mod tests {
         assert_eq!(record.bytes_out, "secret answer more".len());
         let line = serde_json::to_string(&record).unwrap();
         assert!(!line.contains("secret"), "{line}");
+    }
+
+    /// A job the caller paid for with its own key names the payer, the
+    /// provider, and the fingerprint, never the key, and groups by payer.
+    #[test]
+    fn a_job_on_the_callers_key_records_the_payer_and_never_the_key() {
+        let key = "sk-or-v1-callers-own-key";
+        let mut observed = Observed::new("ab", 10, 0);
+        observed.paid_by(&model_access::Payer::Theirs {
+            provider: model_access::Provider::OpenRouter,
+            fingerprint: model_access::fingerprint(key),
+        });
+        observed.saw(&json!({"type": "result", "text": "hi", "model": "m"}), 5);
+        let record = observed.finish(6, None);
+        let line = serde_json::to_string(&record).unwrap();
+        assert!(!line.contains(key), "{line}");
+        assert!(line.contains(r#""payer":"theirs""#), "{line}");
+        assert!(line.contains(&model_access::fingerprint(key)), "{line}");
+        let ours = Observed::new("cd", 10, 0).finish(6, None);
+        let rows = stats(&[record, ours], By::parse("payer").unwrap());
+        let groups: Vec<&str> = rows.iter().map(|row| row.group.as_str()).collect();
+        assert!(groups.contains(&"theirs openrouter") && groups.contains(&"ours"));
     }
 
     #[test]

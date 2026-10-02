@@ -4085,6 +4085,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jev"
+version = "0.1.0"
+dependencies = [
+ "http",
+ "httpdate",
+ "indexmap 2.14.2",
+ "rand 0.9.5",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "jiff"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4625,6 +4642,16 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "model-access"
+version = "0.1.0"
+dependencies = [
+ "jev",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -5288,6 +5315,7 @@ name = "openagents-chat"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "model-access",
  "nostr",
  "nostr-transport",
  "playtest",

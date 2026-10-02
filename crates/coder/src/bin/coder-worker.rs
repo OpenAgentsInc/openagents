@@ -110,8 +110,8 @@ use std::time::{Duration, Instant};
 
 use coder::first;
 use coder::generate::{
-    Door, FallbackDoor, Generate, GenerateError, Lane, Message, Meta, OPENROUTER_KEY_VAR, Role,
-    Usage, WORKER_MODEL_VAR, WORKER_PRIMARY_VAR, model_from_env, model_named,
+    Door, FallbackDoor, Generate, GenerateError, Lane, Message, Meta, OPENROUTER_KEY_VAR,
+    ResponsesDoor, Role, Usage, WORKER_MODEL_VAR, WORKER_PRIMARY_VAR, model_from_env, model_named,
 };
 use coder::relay::liveness::{
     self, DRAIN, Liveness, PROBE_PREFIX, Renewal, Successor, next_draining, notify_watchdog,
@@ -217,7 +217,7 @@ const USAGE: &str = "\
 coder-worker — answer NIP-CJ job requests from a relay.
 
 Usage: coder-worker [--once] [--decline <CODE>] [--check]
-       coder-worker usage [--since YYYY-MM-DD] [--by key|surface|route|model|day|kind|outcome]
+       coder-worker usage [--since YYYY-MM-DD] [--by key|surface|route|model|day|kind|outcome|payer]
                           [--json] [--dir DIR]
 
   --once             Answer one job, then exit.
@@ -1192,9 +1192,68 @@ impl Worker<'_> {
             permit,
             waits: WAITS,
             routing: self.routing.clone(),
+            payer: None,
+            payer_last: None,
+            payer_refusal: None,
         };
         self.tasks.spawn(async move { job.answer(&request).await });
     }
+}
+
+/// The chat door on a caller's own keys (BYOK): our current primary and
+/// fallback models, on their OpenRouter key and then their Vercel AI
+/// Gateway key ([`model_access::Access::chat`]). A gateway-only key gets
+/// the fallback model, since the gateway does not serve every primary.
+/// Returns the door, who pays when its first door answers, and the
+/// provider of its last door.
+///
+/// # Errors
+///
+/// No key of theirs serves the chat, or this worker's door is not a model
+/// door (an executor), in one plain line.
+fn their_door(
+    ours: &Door,
+    access: &model_access::Access,
+) -> Result<(Door, model_access::Payer, model_access::Provider), String> {
+    let (primary, fallback) = match ours {
+        Door::Fallback(ordered) => (
+            ordered.primary.model.clone(),
+            ordered.fallback.model.clone(),
+        ),
+        Door::Live(live) => (live.model.clone(), live.model.clone()),
+        _ => return Err("this worker can't answer on your keys".to_string()),
+    };
+    let doors = match access.chat(model_access::Use::Chat {
+        primary: &primary,
+        fallback: &fallback,
+    }) {
+        Ok(model_access::Doors::Theirs(doors)) => doors,
+        Ok(model_access::Doors::Ours) => return Err("no payer keys".to_string()),
+        Err(no_door) => return Err(no_door.to_string()),
+    };
+    let to_door = |door: &model_access::ChatDoor| {
+        let responses =
+            ResponsesDoor::new(door.responses_base(), door.model.clone(), door.key.expose());
+        if door.provider == model_access::Provider::OpenRouter
+            && door.model == primary
+            && primary != fallback
+        {
+            responses.with_options(serde_json::Map::from_iter([(
+                "reasoning".to_string(),
+                json!({ "effort": coder::generate::PRIMARY_EFFORT }),
+            )]))
+        } else {
+            responses
+        }
+    };
+    let first = doors.first().ok_or("no door")?;
+    let last = doors.last().ok_or("no door")?;
+    let door = if doors.len() > 1 {
+        Door::Fallback(Box::new(FallbackDoor::new(to_door(first), to_door(last))))
+    } else {
+        Door::Live(to_door(first))
+    };
+    Ok((door, first.payer(), last.provider))
 }
 
 /// The worker's jobs subscription request.
@@ -1377,6 +1436,15 @@ struct Job {
     waits: Waits,
     /// Everything a routed turn needs beyond the judge.
     routing: Arc<RouterConfig>,
+    /// Who pays for this job's model calls when the caller sent its own
+    /// provider keys (`payer.keys`, BYOK): `None` is ours.
+    payer: Option<model_access::Payer>,
+    /// The provider of the caller's last door, whose failure is the one
+    /// the caller hears.
+    payer_last: Option<model_access::Provider>,
+    /// Why the caller's payer envelope could not be used; the job is then
+    /// refused, never answered on our keys.
+    payer_refusal: Option<String>,
 }
 
 /// The chat router's configuration on this worker.
@@ -1648,13 +1716,25 @@ impl Job {
     /// Whatever happens, the job is recorded in the usage log afterwards
     /// (#10120): who asked, from where, how it was answered, and how long
     /// it took, never its text.
-    async fn answer(self, request: &Event) -> Result<(), String> {
+    async fn answer(mut self, request: &Event) -> Result<(), String> {
         let arrived = Instant::now();
         let observed = std::sync::Mutex::new(coder::relay::usage::Observed::new(
             &request.pubkey,
             request.content.len(),
             unix_now_ms(),
         ));
+        // A job that carries the caller's own provider keys runs every
+        // model call on them, or is refused: never on ours (BYOK).
+        match self.bind_payer(request) {
+            Ok(Some(payer)) => {
+                if let Ok(mut observed) = observed.lock() {
+                    observed.paid_by(&payer);
+                }
+                self.payer = Some(payer);
+            }
+            Ok(None) => {}
+            Err(why) => self.payer_refusal = Some(why),
+        }
         let served = self.serve(request, &observed, arrived).await;
         if let Some(log) = &self.usage {
             let observed = observed
@@ -1671,6 +1751,77 @@ impl Job {
             }
         }
         served
+    }
+
+    /// Bind this job to the caller's own provider keys when its body names
+    /// `payer.keys` (BYOK, NIP-CJ "Caller-paid model calls"): the model,
+    /// the personalizer, and Jev run on the caller's keys for this job
+    /// only, and the routed seams that would embed or judge on our keys
+    /// are off. The keys live in this job's doors and are dropped with it;
+    /// they are never logged, recorded, or published. `None` for a job
+    /// that names no payer.
+    ///
+    /// # Errors
+    ///
+    /// A sentence that never carries a key: the envelope is missing or does
+    /// not open, or no key of the caller's serves the chat.
+    fn bind_payer(&mut self, request: &Event) -> Result<Option<model_access::Payer>, String> {
+        let Some(customer) = parse_hex(&request.pubkey)
+            .and_then(|bytes| XOnlyPublicKey::from_byte_array(bytes).ok())
+        else {
+            return Ok(None);
+        };
+        let conversation = nip44::conversation_key(self.identity.secret(), &customer);
+        let Some(payload) = nip44::decrypt(&request.content, &conversation)
+            .ok()
+            .and_then(|plaintext| serde_json::from_str::<Value>(&plaintext).ok())
+        else {
+            // `serve` refuses a body that does not open.
+            return Ok(None);
+        };
+        let named = payload["requires"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item == model_access::PAYER_FEATURE));
+        if !named {
+            return Ok(None);
+        }
+        let sealed = payload["payer"]["keys"]
+            .as_str()
+            .ok_or("the job names payer.keys and carries no payer envelope")?;
+        let mut opened = nip44::decrypt(sealed, &conversation)
+            .map_err(|_| "the payer envelope does not decrypt".to_string())?;
+        let keys = model_access::Keys::from_envelope_plaintext(&opened);
+        // SAFETY: zero bytes keep the string valid UTF-8.
+        unsafe { opened.as_bytes_mut().fill(0) };
+        let access = model_access::Access::theirs(keys?);
+        let (door, first, last) = their_door(&self.door, &access)?;
+        let judge = match access.decisions() {
+            Ok(model_access::Decisions::Theirs { config, .. }) => {
+                let model = self.judge.as_ref().map_or_else(
+                    || jev::defaults::MODEL.to_string(),
+                    |judge| judge.default_model().to_string(),
+                );
+                jev::Client::new(config.default_model(model))
+                    .ok()
+                    .map(Arc::new)
+            }
+            _ => None,
+        };
+        let seams = Seams {
+            personalize: match router::personalize::Personalizer::theirs(&access) {
+                Some(personalizer) => Arc::new(personalizer),
+                None => Arc::new(router::seams::NoPersonalize),
+            },
+            ..Seams::default()
+        };
+        let routing =
+            RouterConfig::with_news_and_jev(self.routing.setting, seams, &door, None, &[])
+                .calibrated(self.routing.calibration.clone());
+        self.door = Arc::new(door);
+        self.judge = judge;
+        self.routing = Arc::new(routing);
+        self.payer_last = Some(last);
+        Ok(Some(first))
     }
 
     /// [`Job::answer`]'s work, noting each published body in `observed`.
@@ -1768,6 +1919,47 @@ impl Job {
                 "the job request names a payload version this worker does not serve".to_string(),
             );
         };
+
+        // NIP-CJ: a body naming a feature this worker does not serve is
+        // refused. The one feature served is `payer.keys`, and a job that
+        // names it runs only on the caller's keys.
+        let requires: Vec<&str> = match payload.get("requires") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(items)) => {
+                let words: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+                if words.len() != items.len() {
+                    return refuse(
+                        version,
+                        "malformed",
+                        "requires is not a list of words".into(),
+                    );
+                }
+                words
+            }
+            Some(_) => return refuse(version, "malformed", "requires is not a list".into()),
+        };
+        if let Some(unknown) = requires
+            .iter()
+            .find(|feature| **feature != model_access::PAYER_FEATURE)
+        {
+            return refuse(
+                version,
+                "unsupported_feature",
+                format!("this worker does not serve the feature {unknown}"),
+            );
+        }
+        if requires.contains(&model_access::PAYER_FEATURE) {
+            if let Some(why) = &self.payer_refusal {
+                return refuse(version, "malformed", why.clone());
+            }
+            if self.payer.is_none() {
+                return refuse(
+                    version,
+                    "malformed",
+                    "the job names payer.keys and carries no usable payer envelope".into(),
+                );
+            }
+        }
 
         let listed = self
             .allow
@@ -2072,6 +2264,17 @@ impl Job {
                 refuse(version, &code, message)?;
             }
             Err(error) => {
+                // On the caller's own keys, their provider's refusal is
+                // theirs: one plain line from its status, never the
+                // provider's words (BYOK).
+                if let (Some(provider), GenerateError::Status(status, _)) =
+                    (self.payer_last, &error)
+                    && let Some(failure) = model_access::Failure::of_status(provider, *status)
+                {
+                    refuse(version, "internal", failure.line())?;
+                    eprintln!("job {label} failed on the caller's key: HTTP {status}");
+                    return Ok(());
+                }
                 // The worker's own door failed. That is the worker's
                 // problem and the caller should hear it as one, with a
                 // code, rather than as silence it cannot tell from an
@@ -3542,6 +3745,9 @@ mod tests {
                     grace: Duration::from_millis(200),
                     undelegated: Duration::from_millis(200),
                 },
+                payer: None,
+                payer_last: None,
+                payer_refusal: None,
             };
             job.answer(&request).await.unwrap();
             assert_eq!(
@@ -3946,6 +4152,118 @@ mod tests {
         }
     }
 
+    /// BYOK (NIP-CJ "Caller-paid model calls"): a job that names a feature
+    /// this worker does not serve is refused; a `payer.keys` job whose
+    /// envelope does not open, or that this worker cannot run on the
+    /// caller's keys, is refused and never answered on ours; and the usage
+    /// log and every published body name the payer and never a key.
+    #[tokio::test]
+    async fn a_payer_job_runs_on_the_callers_keys_or_is_refused() {
+        let (_, _, conversation) = identities();
+        let dir = tempfile::tempdir().unwrap();
+        let log = Arc::new(coder::relay::usage::Log::new(dir.path().join("usage")));
+        let key = "sk-or-v1-callers-own-key-0123456789";
+        let mut keys = model_access::Keys::none();
+        keys.insert(
+            model_access::Provider::OpenRouter,
+            model_access::ApiKey::new(key),
+        );
+        let ask = |payload: Value| {
+            let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+            response_logged(
+                Door::Stub(StubGenerate::default()),
+                content,
+                unix_now(),
+                None,
+                None,
+                true,
+                None,
+                Some(log.clone()),
+            )
+        };
+        let unknown = ask(json!({"v":2,"requires":["teleport"],"task":"hi"})).await;
+        assert_eq!(unknown["code"], "unsupported_feature");
+
+        let mut sealed = json!({"v":2,"requires":[],"task":"hi"});
+        openagents_chat::basic_coder::seal_payer(&mut sealed, &keys, &conversation).unwrap();
+        assert_eq!(sealed["requires"], json!(["payer.keys"]));
+        assert!(
+            !sealed.to_string().contains(key),
+            "the body never holds the key"
+        );
+        // A stub door is not a model door: the job is refused, not answered
+        // on this worker's own door.
+        let stubbed = ask(sealed).await;
+        assert_eq!(stubbed["status"], "error");
+        assert_ne!(stubbed["type"], "result");
+        assert!(!stubbed.to_string().contains(key));
+
+        let broken =
+            ask(json!({"v":2,"requires":["payer.keys"],"task":"hi","payer":{"keys":"nope"}})).await;
+        assert_eq!(broken["code"], "malformed");
+        let missing = ask(json!({"v":2,"requires":["payer.keys"],"task":"hi"})).await;
+        assert_eq!(missing["code"], "malformed");
+
+        for entry in std::fs::read_dir(log.dir()).unwrap() {
+            let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            assert!(!text.contains(key), "{text}");
+        }
+    }
+
+    /// The chat door on a caller's keys asks our primary on their
+    /// OpenRouter key, then our fallback on their gateway key, at the
+    /// providers' own URLs and never at our door.
+    #[test]
+    fn the_callers_door_is_our_models_on_their_providers() {
+        let ours = Door::Fallback(Box::new(FallbackDoor::new(
+            coder::generate::ResponsesDoor::new(
+                "https://our.door",
+                "stealth/space-bunny-alpha",
+                "our-key",
+            ),
+            coder::generate::ResponsesDoor::new("https://our.gateway", GEMINI, "our-key"),
+        )));
+        let mut keys = model_access::Keys::none();
+        keys.insert(
+            model_access::Provider::OpenRouter,
+            model_access::ApiKey::new("their-or"),
+        );
+        keys.insert(
+            model_access::Provider::Vercel,
+            model_access::ApiKey::new("their-gw"),
+        );
+        let (door, payer, last) = their_door(&ours, &model_access::Access::theirs(keys)).unwrap();
+        let Door::Fallback(ordered) = door else {
+            panic!("not two doors");
+        };
+        assert_eq!(ordered.primary.url, "https://openrouter.ai/api");
+        assert_eq!(ordered.primary.model, "stealth/space-bunny-alpha");
+        assert_eq!(ordered.fallback.url, "https://ai-gateway.vercel.sh");
+        assert_eq!(ordered.fallback.model, GEMINI);
+        assert_eq!(payer.word(), "theirs");
+        assert_eq!(last, model_access::Provider::Vercel);
+        let mut gateway = model_access::Keys::none();
+        gateway.insert(
+            model_access::Provider::Vercel,
+            model_access::ApiKey::new("their-gw"),
+        );
+        let (door, _, _) = their_door(&ours, &model_access::Access::theirs(gateway)).unwrap();
+        let Door::Live(live) = door else {
+            panic!("a gateway key alone is one door");
+        };
+        assert_eq!(
+            live.model, GEMINI,
+            "a gateway-only key gets the fallback model"
+        );
+        assert!(
+            their_door(
+                &Door::Stub(StubGenerate::default()),
+                &model_access::Access::theirs(model_access::Keys::none())
+            )
+            .is_err()
+        );
+    }
+
     /// A request past the quota's byte bound is refused `limit_exceeded`
     /// before anything is generated or counted.
     #[tokio::test]
@@ -4270,6 +4588,9 @@ mod tests {
             permit: slots.clone().try_acquire_owned().ok(),
             waits: WAITS,
             routing,
+            payer: None,
+            payer_last: None,
+            payer_refusal: None,
         };
         let started = Instant::now();
         tokio::spawn(async move { job.answer(&request).await });

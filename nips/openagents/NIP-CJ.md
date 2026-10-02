@@ -34,7 +34,8 @@ before accepting a payload. Deduplicate verified event IDs. An unsigned
 subscription label cannot identify a job. NIP-42 authenticates a relay
 connection, not a forwarded event's execution authority. The verified request
 signer maps to host principal/tenant policy outside the payload. Payloads
-contain no bearer credential or self-asserted grant.
+contain no bearer credential or self-asserted grant, with one exception:
+caller-paid model calls, below.
 
 Workers bound input bytes, output bytes, active jobs, spend, and elapsed time.
 They validate request freshness under a declared skew/window policy. Bodies
@@ -177,6 +178,32 @@ or `limit_exceeded`; a metered caller's refusal is not an outage.
 Conversation jobs have no durable retransmission identity. Another request is
 a new invocation. A dropped socket does not stop remote work. Effects requiring
 recovery, cancellation, or exact implementation attribution use execution jobs.
+
+### Caller-paid model calls
+
+Added 2026-10-02. A conversation request MAY carry the caller's own model
+provider keys, so the caller pays for the job's model calls. Such a request
+names `payer.keys` in `requires` and carries `payer: {keys: <ciphertext>}`,
+where the ciphertext is the JSON array `[{provider, key}]` (1 to 3 entries,
+`provider` one of `openrouter`, `vercel`, `typesafe`, each at most once, each
+key 1 to 512 bytes) NIP-44 v2 encrypted under the request's own conversation
+key, separately from the body, so a decrypted body never holds a key in
+plain text.
+
+A worker that serves `payer.keys`:
+
+- runs every model call of that job (the reply, personalization, and
+  decision subcalls) only on those keys, and refuses the job rather than
+  answering any part of it on keys of its own;
+- uses the keys for that job only, never stores, logs, or publishes them,
+  and records at most each key's provider and a fingerprint (the first 8 hex
+  characters of its SHA-256 digest);
+- treats them as payment only: they never widen admission, delegation, or
+  execution, and a caller admitted only for conversations stays so.
+
+A worker that does not serve `payer.keys` refuses the request
+`unsupported_feature`, as for any unknown feature, so a caller's job is never
+answered silently on the worker's keys.
 
 ## Typed decision jobs
 

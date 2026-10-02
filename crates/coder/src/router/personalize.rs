@@ -576,6 +576,35 @@ impl Personalizer {
     }
 }
 
+impl Personalizer {
+    /// The personalizer on a caller's own keys (BYOK, a `payer.keys`
+    /// job): [`DEFAULT_OPENROUTER_MODEL`] on their OpenRouter key, else on
+    /// their Vercel AI Gateway key. `None` when no key of theirs serves
+    /// it, and the dispatch sentence then stays the bank's own words: it
+    /// never falls back to our key.
+    #[must_use]
+    pub fn theirs(access: &model_access::Access) -> Option<Self> {
+        let Ok(model_access::Doors::Theirs(doors)) =
+            access.chat(model_access::Use::Model(DEFAULT_OPENROUTER_MODEL))
+        else {
+            return None;
+        };
+        let door = doors.into_iter().next()?;
+        match door.provider {
+            model_access::Provider::Vercel => Some(Self::Gateway(GatewayLane::new(
+                ResponsesDoor::new(door.responses_base(), door.model.clone(), door.key.expose()),
+                &door.model,
+            ))),
+            _ => {
+                let config = openrouter::Config::new(openrouter::ApiKey::new(door.key.expose()))
+                    .base_url(door.base_url);
+                let client = openrouter::Client::new(config).ok()?;
+                Some(Self::OpenRouter(OpenRouterLane::new(client, &door.model)))
+            }
+        }
+    }
+}
+
 /// The seam the worker holds: the provider [`PROVIDER_VAR`] names, or
 /// [`NoPersonalize`] when it names none.
 ///

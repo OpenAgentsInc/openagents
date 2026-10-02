@@ -10,6 +10,8 @@ description = "Shared OpenAgents hosted chat transport, state, and encrypted sto
 # Each thread renders as one ATIF trajectory (`thread`).
 atif = { path = "../atif" }
 nostr = { path = "../nostr" }
+# BYOK: the person's own keys travel sealed with each job (#10176).
+model-access = { path = "../model-access" }
 nostr-transport = { path = "../nostr-transport" }
 playtest = { path = "../playtest" }
 rust-native = { path = "../rust-native" }

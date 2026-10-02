@@ -609,6 +609,34 @@ fn unix_now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
+/// Seal the person's own provider keys into `payload` for the worker
+/// (BYOK): `requires` names [`model_access::PAYER_FEATURE`], so a worker
+/// that cannot pay with them refuses the job rather than answering it on
+/// its own keys, and `payer.keys` holds the keys encrypted (NIP-44) a
+/// second time under `conversation`, so the decrypted body never holds a
+/// key in plain text.
+///
+/// # Errors
+/// The keys do not encrypt.
+pub fn seal_payer(
+    payload: &mut Value,
+    keys: &model_access::Keys,
+    conversation: &[u8; 32],
+) -> Result<(), String> {
+    let mut plaintext = keys.envelope_plaintext();
+    let sealed = nip44::encrypt(
+        &plaintext,
+        conversation,
+        secp256k1::rand::random::<[u8; 32]>(),
+    );
+    // SAFETY: zero bytes keep the string valid UTF-8.
+    unsafe { plaintext.as_bytes_mut().fill(0) };
+    let sealed = sealed?;
+    payload["requires"] = json!([model_access::PAYER_FEATURE]);
+    payload["payer"] = json!({ "keys": sealed });
+    Ok(())
+}
+
 /// The basic Coder through the OpenAgents chat worker, on a relay, over
 /// one kept connection ([`Link`]).
 pub struct Relay {
@@ -662,6 +690,13 @@ impl Relay {
             .map_err(|error| Failure::Transport(error.to_string()))?;
         let me = crate::public(&secret);
         let key = nip44::conversation_key(&secret, &worker);
+        let mut payload = payload;
+        // BYOK `mine`: the person's own keys pay for this job, sealed to the
+        // worker apart from the body (NIP-CJ, "Caller-paid model calls").
+        let access = model_access::current();
+        if access.is_mine() {
+            seal_payer(&mut payload, access.keys(), &key).map_err(Failure::Transport)?;
+        }
         let content = nip44::encrypt(
             &payload.to_string(),
             &key,
