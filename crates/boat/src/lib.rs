@@ -12,6 +12,7 @@ pub mod auth;
 mod client;
 mod error;
 pub mod exec;
+pub mod follow;
 mod helpers;
 pub mod models;
 mod nullable;
@@ -21,6 +22,7 @@ pub use auth::ApiKey;
 pub use client::{Client, ClientBuilder, Download, RetryPolicy};
 pub use error::{ApiError, Error, Result};
 pub use exec::{CommandFrame, CommandOutput, CommandStream};
+pub use follow::{CommandFollower, OutputCursor, Signal, shell_quote};
 pub use helpers::{Cancellation, EventStream, WaitOptions};
 pub use nullable::Nullable;
 
