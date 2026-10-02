@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v4@9d17e4d3e2d7",
-  "bank": "chat-answers-v1@d8b84f3faf1d",
+  "bank": "chat-answers-v1@179e56482e87",
   "routes": [
     {
       "id": "meta",
@@ -664,6 +664,25 @@
       "sources": [
         "crates/coder/src/router/judge.rs",
         "crates/coder/src/task/local.rs"
+      ]
+    },
+    {
+      "id": "dispatch.fan_out",
+      "version": 1,
+      "routes": [
+        "work.dispatch"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": {
+        "run_coder": true,
+        "screen": null,
+        "label": "Run Coder"
+      },
+      "sources": [
+        "crates/coder/src/router/judge.rs",
+        "crates/openagents-chat/src/client.rs"
       ]
     },
     {
