@@ -587,3 +587,20 @@ fn a_start_shows_starting_then_one_line() {
         assert!(!shown.contains(noise), "{noise}: {shown}");
     }
 }
+
+#[test]
+fn help_says_what_esc_does_and_never_names_a_limit() {
+    let card = help();
+    let text = card
+        .rows
+        .iter()
+        .flat_map(|(label, value)| [label.as_str(), value.as_str()])
+        .chain(card.body.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    assert!(text.contains("press esc to stop a reply or a coder run"));
+    for word in ["limit", "budget", "quota"] {
+        assert!(!text.contains(word), "help names a {word}: {text}");
+    }
+}

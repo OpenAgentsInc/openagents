@@ -793,8 +793,7 @@ pub fn help() -> Card {
         title: "Commands and keys".into(),
         rows,
         body: vec![
-            "Everything else you type goes to OpenAgents. Coder runs approve every step and have \
-             no step or time limit; Esc is the only stop."
+            "Everything else you type goes to OpenAgents. Press Esc to stop a reply or a Coder run."
                 .into(),
         ],
         art: Vec::new(),
