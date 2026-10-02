@@ -215,3 +215,53 @@ fn a_reply_cites_only_the_entries_it_was_given() {
     assert!(check_reply("[openagents.a]", std::slice::from_ref(&a)).grounded());
     assert!(!check_reply("No citation here.", &[a]).grounded());
 }
+
+#[test]
+fn download_guidance_matches_the_published_apps() {
+    let corpus = Corpus::load(&default_dir(), Some(&repository())).expect("the corpus loads");
+    let download_source = "crates/openagents-web/src/pages/download.rs";
+    for (id, minimum_version) in [
+        ("openagents.get-the-app", 4),
+        ("openagents.overview", 3),
+        ("openagents.playtesting", 2),
+    ] {
+        let entry = corpus
+            .base
+            .entries
+            .iter()
+            .find(|entry| entry.id == id)
+            .expect("the download entry exists");
+        assert!(
+            entry.version >= minimum_version,
+            "{id} must bump its version."
+        );
+        assert!(entry.cites.iter().any(|cite| cite == download_source));
+        for text in [entry.answer.as_deref().unwrap(), &entry.body] {
+            let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            for claim in [
+                "openagents.com/download",
+                "Mac 1.0.0-rc.2",
+                ".dmg",
+                "Terminal 1.0.0-rc.2",
+                "macOS, Linux, and Windows",
+                "Build iPhone, Android, and",
+                "desktop apps from source",
+            ] {
+                assert!(
+                    text.contains(claim),
+                    "{id} must include the following download guidance:\n{claim}"
+                );
+            }
+            for outdated in [
+                "TestFlight",
+                "signed APK",
+                "Android app is still in testing",
+            ] {
+                assert!(
+                    !text.contains(outdated),
+                    "{id} must not include the following outdated guidance:\n{outdated}"
+                );
+            }
+        }
+    }
+}
