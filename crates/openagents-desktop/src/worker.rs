@@ -444,7 +444,21 @@ impl HostLane {
                     max_running: 1,
                 }),
             nearby: self.control.nearby_pending().unwrap_or_default(),
+            watchers: self.watchers(),
         })
+    }
+
+    /// The background watchers this computer's host runs, read from its
+    /// store under `~/.openagents/background`; none for a stand-in host.
+    fn watchers(&self) -> Vec<String> {
+        #[cfg(unix)]
+        if self.fake.is_none()
+            && let Some(home) = std::env::var_os("HOME")
+            && let Ok(layout) = background::Layout::new(std::path::Path::new(&home), None)
+        {
+            return background::view::watchers(&layout);
+        }
+        Vec::new()
     }
 
     /// In `--fake-host` mode, a phone scans the newest code once.

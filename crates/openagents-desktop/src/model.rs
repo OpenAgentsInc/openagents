@@ -406,6 +406,9 @@ pub struct Refreshed {
     pub autostart: Autostart,
     /// A phone nearby waiting for a click (`DSK-04`).
     pub nearby: Option<NearbyPrompt>,
+    /// The background watchers running on this computer, by name ("disk
+    /// cleanup"), for the sidebar's line.
+    pub watchers: Vec<String>,
 }
 
 /// The window's state.
@@ -1010,6 +1013,7 @@ mod tests {
                                 projects: host.projects().unwrap_or_default(),
                                 autostart: host.autostart().expect("a policy"),
                                 nearby: host.nearby_pending().unwrap_or_default(),
+                                watchers: Vec::new(),
                             })
                         });
                         Some(Outcome::Refreshed(state))
@@ -1556,6 +1560,7 @@ mod tests {
                 projects: vec![],
                 autostart: host.autostart().expect("a policy"),
                 nearby: None,
+                watchers: Vec::new(),
             })))
         };
         for tries in 2..=SAVE_TRIES {

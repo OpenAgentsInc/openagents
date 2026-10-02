@@ -328,13 +328,16 @@ impl App {
     }
 
     /// The welcome card: where the threads live, the project, the coding
-    /// agents, and the offer to keep chats in sync with the phone.
-    pub fn welcome(&mut self, context: &Context, resumed: Option<&str>) {
+    /// agents, the background watchers running here, and the offer to keep
+    /// chats in sync with the phone.
+    pub fn welcome(&mut self, context: &Context, resumed: Option<&str>, watchers: &[String]) {
         let mut card = welcome(self.backend, context, resumed);
         if let Some(computer) = &self.computer {
-            // Its Coder runs there, so this computer's project and agents
-            // say nothing about it.
+            // Its Coder runs there, so this computer's project, agents,
+            // and watchers say nothing about it.
             card.rows = vec![("Computer".into(), computer.clone())];
+        } else if let Some(line) = openagents_chat_app::watchers::line(watchers) {
+            card.rows.push(("Running".into(), line));
         }
         self.push(Row::Card(card));
     }

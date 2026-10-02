@@ -145,7 +145,7 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
         app.computer = Some(client.place());
     }
     app.editor.set_history(prompts::read(&home));
-    app.welcome(&context, resumed.as_deref());
+    app.welcome(&context, resumed.as_deref(), &extras.watchers());
     for notice in notices {
         app.note(notice);
     }

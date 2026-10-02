@@ -127,6 +127,8 @@ block2 = { version = "0.6.2", optional = true }
 # Process CPU and peak resident memory in the offline native benchmark.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+# The background watchers the sidebar counts (`crates/background`).
+background = { path = "../background" }
 
 [dev-dependencies]
 pollster = "0.4"

@@ -155,6 +155,11 @@ pub trait Extras: Send + Sync {
     fn background_notice(&self) -> Option<(u64, String)> {
         None
     }
+    /// The background watchers running on this computer, by name, for
+    /// the welcome card.
+    fn watchers(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// One background rule in `/background`.

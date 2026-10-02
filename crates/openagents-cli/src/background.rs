@@ -448,6 +448,12 @@ pub(crate) fn notice() -> Option<(u64, String)> {
         .max_by_key(|(at, _)| *at)
 }
 
+/// The background watchers running on this computer, for the terminal's
+/// welcome card.
+pub(crate) fn watchers() -> Vec<String> {
+    home_layout().map_or_else(|_| Vec::new(), |layout| view::watchers(&layout))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

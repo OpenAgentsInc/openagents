@@ -572,6 +572,11 @@ impl Extras for ProgramExtras {
     fn background_notice(&self) -> Option<(u64, String)> {
         crate::background::notice()
     }
+
+    #[cfg(unix)]
+    fn watchers(&self) -> Vec<String> {
+        crate::background::watchers()
+    }
 }
 
 /// What an import did, in words.

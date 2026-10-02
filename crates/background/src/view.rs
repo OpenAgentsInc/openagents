@@ -100,6 +100,44 @@ pub fn list(layout: &Layout) -> Vec<Row> {
         .collect()
 }
 
+/// The background watchers running on this computer, by name ("disk
+/// cleanup"): the rules that are on and not paused, while a host's runner
+/// holds `runner.lock`. Without a runner nothing runs them, so none.
+#[must_use]
+pub fn watchers(layout: &Layout) -> Vec<String> {
+    if !runner_running(layout) {
+        return Vec::new();
+    }
+    let at = now();
+    store::list(layout)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|rule| rule.active(at))
+        .map(|rule| lower_first(&rule.name))
+        .collect()
+}
+
+/// Whether a host's runner holds `runner.lock`. Never creates the file.
+#[must_use]
+pub fn runner_running(layout: &Layout) -> bool {
+    let Ok(file) = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(layout.runner_lock())
+    else {
+        return false;
+    };
+    // Taken here means no runner holds it; dropping the file frees it.
+    matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock))
+}
+
+fn lower_first(name: &str) -> String {
+    let mut chars = name.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_lowercase().chain(chars).collect()
+    })
+}
+
 /// Pause `id` until `until` (or indefinitely), or resume it.
 ///
 /// # Errors
@@ -208,6 +246,31 @@ pub fn date(secs: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::paths::Layout;
+
+    #[test]
+    fn watchers_are_the_rules_on_while_a_runner_holds_its_lock() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        // No runner: nothing runs the rules.
+        assert!(super::watchers(&layout).is_empty());
+        std::fs::create_dir_all(layout.background()).unwrap();
+        let lock = std::fs::File::create(layout.runner_lock()).unwrap();
+        assert!(
+            super::watchers(&layout).is_empty(),
+            "the file alone is no runner"
+        );
+        lock.lock().unwrap();
+        assert_eq!(super::watchers(&layout), vec!["disk cleanup".to_owned()]);
+        let mut rule = crate::store::load(&layout, "disk").unwrap();
+        rule.paused_until = Some(super::now() + 3600);
+        crate::store::save(&layout, &rule).unwrap();
+        assert!(
+            super::watchers(&layout).is_empty(),
+            "a paused rule is not running"
+        );
+    }
+
     #[test]
     fn dates() {
         assert_eq!(super::date(0), "1970-01-01");

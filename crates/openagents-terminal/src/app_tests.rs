@@ -874,11 +874,47 @@ fn another_computers_welcome_names_it() {
         "demo".into(),
     );
     app.computer = Some("Desk".into());
-    app.welcome(&Context::default(), None);
+    app.welcome(&Context::default(), None, &["disk cleanup".into()]);
     let text = shown(&mut app);
     assert!(text.contains("Computer") && text.contains("Desk"), "{text}");
     assert!(!text.contains("Chats"), "{text}");
     assert!(!text.contains("│ Agents"), "{text}");
+    assert!(
+        !text.contains("watcher"),
+        "this computer's watchers: {text}"
+    );
+}
+
+/// The background watchers running here show on the welcome card at every
+/// start, counted and named; with none, no row.
+#[test]
+fn the_welcome_card_counts_the_background_watchers() {
+    let card = |watchers: &[String]| {
+        let mut app = App::new(
+            Ladder::new(Colors::None),
+            "a".repeat(32),
+            true,
+            Kind::Host,
+            "demo".into(),
+        );
+        app.welcome(&Context::default(), None, watchers);
+        shown(&mut app)
+    };
+    let one = card(&["disk cleanup".into()]);
+    assert!(
+        one.contains("Running  1 background watcher · disk cleanup"),
+        "{one}"
+    );
+    let two = card(&["disk cleanup".into(), "logs".into()]);
+    assert!(
+        two.contains("Running  2 background watchers · disk cleanup, logs"),
+        "{two}"
+    );
+    let none = card(&[]);
+    assert!(
+        !none.contains("Running") && !none.contains("watcher"),
+        "{none}"
+    );
 }
 
 fn run_shown(app: &mut App) -> String {

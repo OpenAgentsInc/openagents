@@ -699,6 +699,19 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
     );
     footer.style.gap_points = Some(4);
     let mut bottom = vec![];
+    if let Some(line) = model
+        .host
+        .as_ref()
+        .and_then(|host| openagents_chat_app::watchers::line(&host.watchers))
+    {
+        // The background watchers running on this computer (#10172): one
+        // quiet line, shown from the host's first answer at every start.
+        let mut line = text("sidebar-watchers", line, TextRole::Status);
+        line.style.text_size = Some(11);
+        line.style.foreground = Some(MUTED);
+        line.style.padding_points = Some([0, 8, 0, 8]);
+        bottom.push(line);
+    }
     if state.live
         && let Some(engines) = engines(model, state.sidebar_width)
     {
@@ -1344,6 +1357,46 @@ mod tests {
         state.total_chats = 2;
         state.search = "pla".into();
         assert!(contains(&root(&state, &model, 0), "chat-search"));
+    }
+
+    /// The background watchers running here show above the engines from
+    /// the host's first answer (#10172); with none, no line.
+    #[test]
+    fn the_sidebar_counts_the_background_watchers() {
+        use crate::control::HostControl;
+        use crate::model::{Agent, Refreshed, Screen};
+        let mut model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let state = State::empty();
+        assert!(!contains(&root(&state, &model, 0), "sidebar-watchers"));
+        let mut host = crate::fake::FakeHost::new("Studio Mac", 0);
+        let mut answer = |watchers: Vec<String>| Refreshed {
+            status: host.status().unwrap(),
+            devices: vec![],
+            projects: vec![],
+            autostart: host.autostart().unwrap(),
+            nearby: None,
+            watchers,
+        };
+        model.host = Some(answer(vec![]));
+        assert!(!contains(&root(&state, &model, 0), "sidebar-watchers"));
+        model.host = Some(answer(vec!["disk cleanup".into(), "logs".into()]));
+        let view = root(&state, &model, 0);
+        let Some(Node {
+            element: Element::Text { value, .. },
+            ..
+        }) = find(&view, "sidebar-watchers")
+        else {
+            panic!("no watchers line")
+        };
+        assert_eq!(value, "2 background watchers · disk cleanup, logs");
+        let bottom = find(&view, "sidebar-bottom").expect("the sidebar's bottom");
+        let Element::Stack { children, .. } = &bottom.element else {
+            panic!("a stack")
+        };
+        assert_eq!(children[0].key, "sidebar-watchers");
+        for value in crate::screens::words(&view) {
+            assert!(crate::words::banned_in(&value).is_empty(), "{value}");
+        }
     }
 
     #[test]

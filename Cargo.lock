@@ -7496,6 +7496,7 @@ version = "1.0.0"
 dependencies = [
  "accesskit_consumer",
  "acp-client",
+ "background",
  "base64 0.22.1",
  "block2 0.6.2",
  "coder",

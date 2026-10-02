@@ -20,6 +20,7 @@ pub mod preferences;
 pub mod route_map;
 pub mod transcripts;
 pub mod wake;
+pub mod watchers;
 
 #[cfg(test)]
 mod gym_fixture {
