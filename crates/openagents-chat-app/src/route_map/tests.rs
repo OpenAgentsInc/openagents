@@ -479,6 +479,19 @@ fn engine_readiness_from_this_computer() {
         )),
     };
     let map = Map::build(Sources::committed(), Records::committed(), local);
+    let codex = map.find("engine:codex").unwrap();
+    assert_eq!(
+        map.evidence(codex).as_deref(),
+        Some("Temporarily unavailable")
+    );
+    let inspector = map.inspect(codex);
+    assert!(
+        inspector
+            .fields
+            .iter()
+            .any(|field| field.label == "On this computer"
+                && field.value == "Temporarily unavailable; another engine runs")
+    );
     let limit = gap_on(&map, "engine:codex", GapKind::EngineAtLimit).unwrap();
     assert_eq!(
         limit.step,

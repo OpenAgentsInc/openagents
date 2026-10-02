@@ -2582,6 +2582,11 @@ mod tests {
         // The provider's refusal is the record's, never the sentence's
         // (#10120): the run fails over to Claude Code silently.
         assert_eq!(why, "Claude Code is signed in and has capacity.");
+        assert_eq!(runner.started("is running."), "Claude Code is running.");
+        let json = serde_json::to_value(&runner).unwrap();
+        assert_eq!(json["passed"][0]["why"], "refused");
+        assert_eq!(json["passed"][0]["kind"], "usage_limit");
+        assert_eq!(json["passed"][0]["until"], now + 3600);
         assert!(matches!(
             &runner,
             Runner::Runs { passed, .. } if passed.iter().any(|p| p.provider == "codex"

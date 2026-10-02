@@ -138,7 +138,7 @@ pub const CHANGELOG: &[Release] = &[
         items: &[
             Item {
                 title: "Your engine, from any chat",
-                detail: "When you ask for Claude, Codex, or another coding engine and tap Run Coder in a chat on the phone, your computer now starts that engine, not only in the computer's own chats. If it can't, because your computer's Coder settings don't allow it, it isn't signed in, or it has reached a limit, the start card says so and names the one running instead. This needs the latest OpenAgents on your computer.",
+                detail: "When you ask for Claude, Codex, or another coding engine and tap Run Coder in a chat on the phone, your computer now starts that engine, not only in the computer's own chats. If that engine isn't available, the start card names the one running instead. This needs the latest OpenAgents on your computer.",
             },
             Item {
                 title: "Delegations do the work",
@@ -877,6 +877,17 @@ mod tests {
             assert!(!text.contains(SECRET));
             assert!(!text.contains("nsec1"));
         }
+    }
+
+    #[test]
+    fn build_40_names_the_running_engine_without_usage_limits() {
+        let release = CHANGELOG
+            .iter()
+            .find(|release| release.build == "40")
+            .unwrap();
+        let detail = release.items[0].detail;
+        assert!(detail.contains("the start card names the one running instead"));
+        assert!(!detail.contains("limit"));
     }
 
     #[test]

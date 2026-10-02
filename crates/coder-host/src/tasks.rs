@@ -76,7 +76,7 @@ pub enum Passed {
 }
 
 impl Passed {
-    /// Why, without its name: `reached its usage limit until …`.
+    /// Why, without its name; provider usage windows stay in the record.
     #[must_use]
     pub fn clause(self) -> String {
         match self {
@@ -84,11 +84,7 @@ impl Passed {
                 "is not one of the engines this computer's Coder policy allows".into()
             }
             Passed::NotSignedIn => "is not signed in on this computer".into(),
-            Passed::Refused { until: Some(until) } => {
-                format!("reached its usage limit until {}", utc(until))
-            }
-            Passed::Refused { until: None } => "reached its usage limit".into(),
-            Passed::NearLimit => "is near its usage limit".into(),
+            Passed::Refused { .. } | Passed::NearLimit => "isn't available right now".into(),
         }
     }
 }
@@ -107,6 +103,13 @@ impl Note {
             Note::OwnerEnded => "Coder's process ended unexpectedly".to_owned(),
             Note::Question => "Coder asked a question".to_owned(),
             Note::Approval => "Coder asked for approval".to_owned(),
+            Note::Requested {
+                runs,
+                why: Passed::Refused { .. } | Passed::NearLimit,
+                ..
+            } => {
+                format!("{runs} is running.")
+            }
             Note::Requested { asked, runs, why } => format!(
                 "You asked for {}; it {}, so {} is running.",
                 asked.name(),
@@ -493,6 +496,10 @@ mod tests {
             for asked in Engine::ALL {
                 for runs in Engine::ALL.map(Engine::name) {
                     let headline = Note::Requested { asked, runs, why }.headline();
+                    assert!(!headline.contains("limit"));
+                    if matches!(why, Passed::Refused { .. } | Passed::NearLimit) {
+                        assert_eq!(headline, format!("{runs} is running."));
+                    }
                     let summary = activity_summary::encode(&SummaryDraft {
                         host: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
                         subject_kind: SubjectKind::Task,
@@ -519,7 +526,7 @@ mod tests {
                 },
             }
             .headline(),
-            "You asked for Claude Code; it reached its usage limit until 2026-10-03 18:07 UTC, so Codex is running."
+            "Codex is running."
         );
     }
 

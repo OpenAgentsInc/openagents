@@ -186,8 +186,8 @@ projects, and what the run's commands may reach.
   and asking no network). A provider with a usage or rate-limit refusal that
   still holds in the task store's capacity book is passed over, and so is
   one a fresh usage reading in the store shows near its limit. The
-  `coder_started` event says which one and why, for example "Codex reached
-  its usage limit until 2026-10-03 18:07 UTC; using Claude Code." Without
+  `coder_started` JSON keeps the precise passed-over reasons. The display
+  names the running engine without naming provider usage windows. Without
   `--json` a start prints two short lines, "Starting Grok Build…" at once
   and "Grok Build is working." when the run starts, and the reason only
   when another engine runs than the one asked for or one was passed over;

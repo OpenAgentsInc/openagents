@@ -1919,6 +1919,10 @@ mod tests {
         let CoderEvent::ProviderSwitched(switch) = &events[2] else {
             panic!()
         };
+        assert_eq!(switch.line(), "Claude Code is working.");
+        let json = serde_json::to_value(switch).unwrap();
+        assert_eq!(json["reason"], switch.reason);
+        assert_eq!(json["resets_at"], switch.resets_at.unwrap());
         assert_eq!(switch.from, "codex:gpt-6-luna");
         assert_eq!(switch.to.as_deref(), Some("claude:claude-opus-5-5"));
         assert!(

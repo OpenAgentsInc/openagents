@@ -1593,6 +1593,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-highlight"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-cpp",
+ "tree-sitter-css",
+ "tree-sitter-go",
+ "tree-sitter-highlight",
+ "tree-sitter-html",
+ "tree-sitter-javascript",
+ "tree-sitter-json",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+]
+
+[[package]]
 name = "coder-access"
 version = "0.1.0"
 dependencies = [
@@ -6472,22 +6490,11 @@ dependencies = [
 name = "rust-native"
 version = "0.1.0"
 dependencies = [
+ "code-highlight",
  "pulldown-cmark",
  "serde",
  "serde_json",
  "swash",
- "tree-sitter-bash",
- "tree-sitter-c",
- "tree-sitter-cpp",
- "tree-sitter-css",
- "tree-sitter-go",
- "tree-sitter-highlight",
- "tree-sitter-html",
- "tree-sitter-javascript",
- "tree-sitter-json",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-typescript",
  "unicode-segmentation",
 ]
 

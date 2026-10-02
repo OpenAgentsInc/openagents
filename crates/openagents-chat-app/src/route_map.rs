@@ -1051,7 +1051,7 @@ impl Map {
                 match engine_reading(&self.local, &n.label) {
                     EngineReading::Ready => "Ready",
                     EngineReading::SignedOut => "Not signed in",
-                    EngineReading::AtLimit => "Used up for now",
+                    EngineReading::AtLimit => "Temporarily unavailable",
                     EngineReading::Unknown => "No reading",
                 }
                 .to_string(),
@@ -1303,7 +1303,7 @@ impl Map {
                     match reading {
                         EngineReading::Ready => "Signed in, with capacity",
                         EngineReading::SignedOut => "Not signed in",
-                        EngineReading::AtLimit => "Used up for now; another engine runs",
+                        EngineReading::AtLimit => "Temporarily unavailable; another engine runs",
                         EngineReading::Unknown => "No reading from this computer's Coder",
                     },
                 ));

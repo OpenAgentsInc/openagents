@@ -166,7 +166,7 @@ pub fn usage_sentence(usage: &RouteUsage) -> String {
                 })
                 .collect();
             if *limit_reached {
-                parts.push("Used up".into());
+                parts.push("Temporarily unavailable".into());
             }
             if parts.is_empty() {
                 format!("{used_percent}%")
@@ -358,7 +358,9 @@ mod tests {
         assert!(words.contains("Signed in"));
         assert!(words.contains("Not signed in"));
         assert!(words.contains("Primary 100%"));
-        assert!(words.contains("Used up"));
+        assert!(words.contains("Temporarily unavailable"));
+        assert!(!words.contains("Used up"));
+        assert!(!words.contains("limit"));
         assert!(words.contains("5 hours 4%"));
         assert!(words.contains("7 days 66%"));
         assert!(!words.contains("microcoder"));
