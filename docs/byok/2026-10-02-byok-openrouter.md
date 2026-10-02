@@ -14,9 +14,12 @@ the terminal's `/settings` key fields and switch; the desktop's Model
 providers page; and `OpenAgents-Provider-Key` on model-cost routes of the
 x402 pay front; Connect OpenRouter (OAuth PKCE, `model_access::connect`)
 in `openagents settings provider-key connect`, the terminal's `/settings`,
-and the desktop, whose key tests and sign-in run off the window's thread.
-Not yet: the phone's Account section and grounded product and codebase answers for a chat on the
-person's keys (those seams are off for such a chat).
+and the desktop, whose key tests and sign-in run off the window's thread;
+the phone's Account tab (**Your keys**: a secure field, this-device-only
+Keychain items on iPhone, Keystore-encrypted files on Android); grounded
+product, codebase, Gym, CLI, and authoring answers for a chat on the
+person's keys (each seam lent their embedder and Jev, over our shared
+records), with model and privacy answers that name their key as the door.
 
 The design started with OpenRouter. The owner's answers the same day (section 9)
 added Vercel AI Gateway and TypeSafe keys from the start, and narrowed the

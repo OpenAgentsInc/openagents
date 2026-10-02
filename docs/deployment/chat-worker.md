@@ -1588,3 +1588,23 @@ logged `product kb openagents-product@be62fe0e41ba (106 entries)`. Make such
 an archive with `COPYFILE_DISABLE=1 tar`. Scratch chats then proposed
 `wallet balance` for "check my wallet balance" and "my sats", `wallet
 address` for "whats my wallet address", and no command for a send.
+
+Release `bf30328c27` (2026-10-02 UTC) keeps a chat on the caller's own keys
+grounded ([#10176](https://github.com/OpenAgentsInc/openagents/issues/10176)):
+a `payer.keys` job's product, codebase, Gym, CLI, and authoring seams are
+lent the caller's embedder and Jev on their keys over our shared records,
+where they had been off, and its model and privacy answers name the caller's
+own key as the door; `openagents.chat-privacy` is v5. The static binary was
+built on a Boat sandbox from a clean worktree at that commit (`cargo build
+--locked --release --target x86_64-unknown-linux-musl` with `musl-tools`,
+sha256 `7b86cf88a121…`), fetched through the sandbox files API, installed with
+`knowledge/` from `git archive bf30328c27 knowledge/` (no `._*` files) and
+`codebase-kb.gz` from `d4310fc4fa`, checked with `--check`, and put live by
+moving the `chat` symlink from `d4310fc4fa`, which stays for rollback; the
+environment file and unit did not change, and `coder-worker.service` and
+`current` were not touched. The log names `product kb
+openagents-product@6259d1d4d956 (106 entries)` and every seam on. Scratch
+chats answered "How do I connect a phone" from `openagents.connect-computer@2`
+and "What happens to my messages?" from `openagents.chat-privacy@5`, and a
+turn with a fake OpenRouter key was refused with "Your OpenRouter key was
+refused. Update it in Settings."
