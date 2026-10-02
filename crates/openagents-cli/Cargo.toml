@@ -55,6 +55,10 @@ microcoder = { path = "../microcoder" }
 model-access = { path = "../model-access", features = ["http", "keychain"] }
 nostr = { path = "../nostr" }
 openagents-wallet = { path = "../wallet" }
+# Idempotency keys for wallet payments.
+uuid = { version = "1", features = ["v4"] }
+# The person's Spark wallet, the same as the phone's (`openagents wallet`).
+openagents-spark = { path = "../spark-wallet" }
 openagents-x402 = { path = "../x402" }
 # The playtest triage inbox: reports, drafts, and the triage log.
 playtest = { path = "../playtest" }

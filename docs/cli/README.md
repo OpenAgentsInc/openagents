@@ -513,11 +513,45 @@ a grant, or retries an execution.
 
 ## Your wallet (`openagents wallet`)
 
-`openagents wallet` is the person's wallet on this computer. Its answers are
-plain: `openagents wallet balance` prints one sentence ("Your balance is
-₿12,000 (0.00012000 BTC).") and `openagents wallet address` one line ("Your
-address: …"). Neither names a node, a network, a chain server, channels, or
-liquidity. `--json` keeps machine fields (`balance_sats`, `address`).
+`openagents wallet` is the person's Spark wallet on this computer: the same
+wallet, from the same seed, as the OpenAgents app on the phone, so there is
+one balance on every device (owner decision 8 in
+[docs/breez/README.md](../breez/README.md#owner-decision-2026-10-02)). It runs
+on Bitcoin mainnet only, through the shared `crates/spark-wallet`.
+
+```sh
+openagents wallet link              # bring the phone's wallet here (approve on the phone)
+openagents wallet restore           # or type the recovery words (not shown as you type)
+openagents wallet balance           # Your balance is ₿12,000 (0.00012000 BTC).
+openagents wallet address           # Your address: spark1…
+openagents wallet receive --amount 5000   # a Lightning invoice to share
+openagents wallet receive --bitcoin       # a Bitcoin address to send to
+openagents wallet send alice@example.com --amount 1000   # shows the fee, asks before paying
+openagents wallet history
+```
+
+Answers are plain: a balance is one sentence and an address one line, and
+none names a node, a network, a chain server, channels, or liquidity.
+`--json` keeps machine fields (`balance_sats`, `address`, `invoice`,
+`payments`). `send` asks before it pays (type `yes`); `--yes` pays without
+asking, and a non-interactive `send` without `--yes` pays nothing.
+
+`link` needs this computer's OpenAgents host, which the phone reaches over
+NIP-HOST. The command makes a one-time key, prints a six-digit code, and
+records a request beside the host's access store; the app on the phone
+shows "Use your wallet on COMPUTER?" with the same code. Only after the owner
+approves there (with Face ID or the passcode) does the phone seal the seed's
+entropy with NIP-44 to the one-time key, which only the waiting command
+holds. The host and relay see ciphertext; the request is removed once read.
+`restore` reads 12 or 24 recovery words with echo off (or one line from a
+pipe). Both refuse to replace a different wallet without `--replace`.
+Nothing prints the seed or the words.
+
+Files live in `~/.openagents/spark` (`OPENAGENTS_SPARK_HOME` overrides): the
+seed as hex entropy in `seed` (mode 0600, folder 0700), and Breez's records
+as one JSON file per wallet under `wallets/`. The computers' Cargo workspace
+cannot link Breez's SQLite store beside `ldk-node`'s, so computers keep the
+records in that file; the phone keeps Breez's SQLite store.
 
 ## The x402 node (`openagents x402 node`, the Lightning rail)
 

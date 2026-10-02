@@ -55,6 +55,7 @@ mod transcripts;
 mod verse;
 mod wake;
 mod wallet;
+mod wallet_link;
 // Debug builds only: offline fixtures for simulator and emulator screenshots.
 // A release build does not compile them.
 #[cfg(any(debug_assertions, test))]

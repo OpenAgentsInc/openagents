@@ -42,9 +42,11 @@ xp-ledger = { path = "../xp-ledger" }
 base64 = "0.22"
 # Every amount on screen: BIP 177 integer base units, or legacy BTC.
 bitcoin-amount = { path = "../bitcoin-amount" }
-# The Wallet tab: Breez's Spark wallet, on Bitcoin mainnet. Its SQLite store
+# The Wallet tab: Breez's Spark wallet, on Bitcoin mainnet, through the
+# wallet code computers share (`crates/spark-wallet`). Its SQLite store
 # needs `rusqlite` 0.32, which cannot share a lock file with `ldk-node`'s
 # 0.31, so this crate is its own workspace; see the note at the end.
+openagents-spark = { path = "../spark-wallet" }
 breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.26.0", features = ["sqlite"] }
 # Recovery words for the Spark wallet's seed.
 bip39 = "2"
@@ -99,8 +101,8 @@ tokio-tungstenite = "0.30.0"
 futures-util = "0.3"
 
 # This crate is its own workspace, excluded from the repository's: Breez's
-# SQLite store links `libsqlite3-sys` 0.30 and `ldk-node` (the computers'
-# wallet, `crates/wallet`) links 0.28, and Cargo allows one `sqlite3` link per
+# SQLite store links `libsqlite3-sys` 0.30 and `ldk-node` (the x402
+# receiver, `crates/wallet`) links 0.28, and Cargo allows one `sqlite3` link per
 # lock file. Build it with `--manifest-path crates/openagents-mobile/Cargo.toml`.
 # The lints repeat the repository's.
 [workspace]

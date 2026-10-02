@@ -127,6 +127,8 @@ struct AppPacket: Decodable {
     let wallet_open_url: String?
     /// Agents' payment requests (`spend::View`).
     let spend: SpendState?
+    /// A computer's ask for the wallet (`wallet_link::View`).
+    let wallet_link: WalletLinkState?
     /// How bitcoin amounts show and are typed, app-wide (BIP 177 or BTC).
     let amounts: AmountsState?
     /// Push wake status, present once push is configured or requested.

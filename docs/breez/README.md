@@ -2,10 +2,14 @@
 
 This directory studies re-adding the Breez SDK (Spark implementation) and
 making the OpenAgents app's Wallet a Spark wallet for people and agents. The
-phone Wallet now runs it on mainnet (`crates/openagents-mobile/src/spark.rs`
-and `wallet.rs`; epic [#9854](https://github.com/OpenAgentsInc/openagents/issues/9854)).
-Computers keep `crates/wallet` (`ldk-node`) and `crates/x402`; see
-[Bitcoin](../bitcoin/README.md).
+phone Wallet runs it on mainnet (epic
+[#9854](https://github.com/OpenAgentsInc/openagents/issues/9854)), and since
+2026-10-02 computers run the same wallet from the same seed
+([#10202](https://github.com/OpenAgentsInc/openagents/issues/10202)): the
+shared code is `crates/spark-wallet` (`openagents-spark`), used by
+`crates/openagents-mobile` and by `openagents wallet`. `crates/wallet`
+(`ldk-node`) and `crates/x402` remain only as the x402 receiver, under
+`openagents x402 node`; see [Bitcoin](../bitcoin/README.md).
 
 ## Owner decisions (2026-09-28)
 
@@ -23,8 +27,42 @@ Computers keep `crates/wallet` (`ldk-node`) and `crates/x402`; see
 6. Mainnet on the phone. Spark has no Lightning test network, so regtest
    is for automated tests only. The phone's Mutinynet `ldk-node` wallet is
    replaced; `ldk-node` stays on computers and as the x402 receiver.
+   **Superseded for the person's wallet on 2026-10-02 by decision 8.**
 7. Buy bitcoin with dollars in the Wallet, through Breez's MoonPay and
    Cash App integrations ([#9865](https://github.com/OpenAgentsInc/openagents/issues/9865)).
+
+## Owner decision (2026-10-02)
+
+8. **Spark on every device.** Computers (OpenAgents Terminal, the
+   `openagents` command, the desktop app) run the same Spark wallet as the
+   phone, from the same seed, so the person has one balance everywhere.
+   `ldk-node` stays only as the x402 receiver, hidden from people under
+   `openagents x402 node`. This supersedes decision 6 for the person's
+   wallet ([#10202](https://github.com/OpenAgentsInc/openagents/issues/10202)).
+   The trigger: asking the chat on a computer for the balance printed the
+   computer's `ldk-node` id, network, chain server, channels, and inbound
+   liquidity.
+
+   How it works:
+
+   - `openagents wallet balance`, `address`, `receive`, `send`, and
+     `history` run the shared wallet (`crates/spark-wallet`) on mainnet with
+     the committed Breez key, and answer in plain words: "Your balance is
+     ₿12,000 (0.00012000 BTC)." No answer names a node, network, chain
+     server, channel, liquidity, or msat.
+   - The wallet lives in `~/.openagents/spark`: the seed as a 0600 file in a
+     0700 folder, and Breez's records as a JSON file
+     (`openagents_spark::store`), because the computers' Cargo workspace
+     cannot link Breez's SQLite store beside `ldk-node`'s (one
+     `libsqlite3-sys` per lock file). The phone keeps Breez's SQLite store.
+   - The seed reaches a computer two ways. `openagents wallet link` asks the
+     phone through the computer's OpenAgents host (NIP-HOST
+     `wallet.link.list` and `wallet.link.answer`); the phone shows the
+     computer's name and a six-digit code that the computer also prints, and
+     only after the owner approves (with Face ID or the passcode) seals the
+     seed with NIP-44 to a one-time key that only that command holds.
+     `openagents wallet restore` takes the recovery words typed without
+     echo. Nothing prints the seed or the words.
 
 - [Breez and Spark in this repository](history.md): every earlier use, from
   2025 to 2026, what worked, and why each ended, with commits.

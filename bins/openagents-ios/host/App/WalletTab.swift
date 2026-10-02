@@ -1048,7 +1048,7 @@ struct WalletTab: View {
     private func recovery(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Recovery").font(.headline).foregroundStyle(.white)
-            Text("Your recovery words restore this wallet on another phone. Write them down and keep them offline.")
+            Text("Your recovery words restore this wallet on another phone or a computer. Write them down and keep them offline.")
                 .font(.footnote).foregroundStyle(.gray)
             HStack(spacing: 12) {
                 Button("Show recovery words") { confirmWords = true }

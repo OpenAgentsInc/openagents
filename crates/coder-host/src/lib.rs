@@ -55,6 +55,8 @@ pub mod tasks;
 pub mod telemetry;
 #[cfg(feature = "host")]
 mod tls;
+#[cfg(feature = "host")]
+pub mod wallet_link;
 
 /// The composed profiles, re-exported so a client names one dependency.
 pub use {coder_access as access, coder_link as link, coder_pty as pty, coder_reach as reach};

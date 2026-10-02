@@ -16,6 +16,7 @@ pub mod review;
 pub mod rights;
 pub mod spend;
 pub mod thread;
+pub mod wallet_link;
 
 pub use client::{Client, Pending};
 pub use coder_connect::RelayPolicy;

@@ -623,6 +623,17 @@ pub enum Operation {
     /// Record the sender's receipt for one of those requests.
     #[serde(rename = "spend.settle")]
     SettleSpend { receipt: Box<crate::spend::Receipt> },
+    /// List the computer's open asks for the owner's wallet
+    /// (`openagents wallet link`, [`crate::wallet_link`]).
+    #[serde(rename = "wallet.link.list")]
+    ListWalletLinks {},
+    /// Answer one ask: the wallet seed sealed to its key, or `None` when the
+    /// owner declined.
+    #[serde(rename = "wallet.link.answer")]
+    AnswerWalletLink {
+        id: String,
+        sealed: Option<crate::wallet_link::Sealed>,
+    },
     /// Ask for a single-use `coder-pair:` invitation to the host's
     /// read-only Coder chats, so the sender reads the tasks it starts. A
     /// device asks after pairing by any path and again before the chat
@@ -764,6 +775,8 @@ impl Operation {
             Self::QueueTask { .. } => "task.queue",
             Self::ListSpends { .. } => "spend.list",
             Self::SettleSpend { .. } => "spend.settle",
+            Self::ListWalletLinks {} => "wallet.link.list",
+            Self::AnswerWalletLink { .. } => "wallet.link.answer",
             Self::InviteChats {} => "chats.invite",
             Self::ListThreads {} => "thread.list",
             Self::ReadThread { .. } => "thread.read",
@@ -807,6 +820,8 @@ impl Operation {
             | Self::QueueTask { .. }
             | Self::ListSpends { .. }
             | Self::SettleSpend { .. }
+            | Self::ListWalletLinks {}
+            | Self::AnswerWalletLink { .. }
             | Self::SendThread { .. }
             | Self::StopThread { .. }
             | Self::RunThread { .. }
@@ -946,6 +961,13 @@ impl Operation {
             }
             Self::ListSpends { grant } => grant.validate()?,
             Self::SettleSpend { receipt } => receipt.validate()?,
+            Self::ListWalletLinks {} => {}
+            Self::AnswerWalletLink { id, sealed } => {
+                crate::wallet_link::id(id)?;
+                if let Some(sealed) = sealed {
+                    sealed.validate()?;
+                }
+            }
         }
         Ok(())
     }
@@ -1066,6 +1088,15 @@ pub enum Outcome {
     Settled {
         receipt: Box<crate::spend::Receipt>,
     },
+    /// The open asks for the owner's wallet (`wallet.link.list`), oldest
+    /// first, at most [`crate::wallet_link::MAX_LISTED`].
+    WalletLinks {
+        links: Vec<crate::wallet_link::Ask>,
+    },
+    /// The host recorded the answer to this ask (`wallet.link.answer`).
+    WalletLinkAnswered {
+        id: String,
+    },
     /// A single-use `coder-pair:` invitation to the host's read-only Coder
     /// chats (`chats.invite`), and when the chat grant it carries ends.
     Chats {
@@ -1153,6 +1184,17 @@ impl Outcome {
                 public(&lease.device)?;
             }
         }
+        if let Self::WalletLinks { links } = self {
+            if links.len() > crate::wallet_link::MAX_LISTED {
+                return fail(Code::Bounds, "too many wallet link asks");
+            }
+            for ask in links {
+                ask.validate()?;
+            }
+        }
+        if let Self::WalletLinkAnswered { id } = self {
+            crate::wallet_link::id(id)?;
+        }
         if let Self::Spends { spends } = self {
             if spends.len() > crate::spend::MAX_LISTED {
                 return fail(Code::Bounds, "too many spend requests");
@@ -1233,6 +1275,10 @@ impl Outcome {
             | (Operation::Revoke { .. }, Self::Revoked { .. })
             | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
             (Operation::QueueTask { task, .. }, Self::Queue { queue }) => queue.task == *task,
+            (Operation::ListWalletLinks {}, Self::WalletLinks { .. }) => true,
+            (Operation::AnswerWalletLink { id, .. }, Self::WalletLinkAnswered { id: answered }) => {
+                id == answered
+            }
             (Operation::ListSpends { .. }, Self::Spends { .. })
             | (Operation::InviteChats {}, Self::Chats { .. })
             | (Operation::ListThreads {}, Self::Threads { .. }) => true,

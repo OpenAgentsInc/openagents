@@ -22,15 +22,19 @@ pub(crate) struct Dispatcher {
     pub(crate) changed: Vec<TaskRef>,
     /// Agent spend requests, beside the access store.
     spends: crate::spend::Book,
+    /// Asks for the owner's wallet, beside the access store.
+    links: crate::wallet_link::Book,
 }
 
 impl Dispatcher {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
         let spends = crate::spend::Book::open(&shared.config.access);
+        let links = crate::wallet_link::Book::open(&shared.config.access);
         Self {
             shared,
             changed: Vec::new(),
             spends,
+            links,
         }
     }
 
@@ -97,6 +101,11 @@ impl Dispatch for Dispatcher {
     /// The book of agent spend requests the phone answers.
     fn spends(&mut self) -> Option<&mut dyn coder_access::host::Spends> {
         Some(&mut self.spends)
+    }
+
+    /// The book of asks for the owner's wallet the phone answers.
+    fn links(&mut self) -> Option<&mut dyn coder_access::host::Links> {
+        Some(&mut self.links)
     }
 
     /// One image chunk, kept by the task owner for this device only.

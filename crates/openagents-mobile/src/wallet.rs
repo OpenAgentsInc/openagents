@@ -4,10 +4,13 @@
 //!
 //! The network is fixed in this file. No request, configuration, or stored
 //! value switches the phone's wallet to another network, and it never opens
-//! a computer's wallet (`~/.openagents/wallet`) or any treasury wallet. The
+//! the x402 receiver's Lightning node on a computer (`~/.openagents/wallet`) or
+//! any treasury wallet. The same wallet runs on computers the owner links
+//! (`crates/spark-wallet`, `openagents wallet link`). The
 //! seed arrives with `wallet_open` as BIP39 entropy (16 or 32 bytes); it and
 //! its mnemonic stay in memory, and neither is written, logged, or put in the
-//! app packet or an error. The recovery words leave Rust only in the direct
+//! app packet or an error; the entropy leaves the phone only sealed to a
+//! computer the owner approves (`crate::wallet_link`). The recovery words leave Rust only in the direct
 //! reply to [`crate::Request::WalletWords`], which the host sends after the
 //! person confirms a warning.
 
@@ -57,217 +60,26 @@ const PEOPLE_LIMIT: usize = 20;
 /// The trust note: what Spark is and who the person relies on.
 pub const TRUST_TITLE: &str = "About this wallet";
 /// The trust note in one plain paragraph, shown first.
-pub const TRUST_SUMMARY: &str = "Your bitcoin is kept by this phone, and only your recovery words can bring it back. Payments are instant because a few companies help move them; if they ever stop, you can still take your bitcoin out yourself, slowly. Keep only what you'd carry in your pocket.";
+pub const TRUST_SUMMARY: &str = "Your bitcoin is kept by this phone and any computer you link to it, and only your recovery words can bring it back. Payments are instant because a few companies help move them; if they ever stop, you can still take your bitcoin out yourself, slowly. Keep only what you'd carry in your pocket.";
 pub const TRUST_LINES: [&str; 5] = [
-    "This wallet runs on Spark, not on a Lightning node of your own. Your keys stay on this phone.",
+    "This wallet runs on Spark, not on a Lightning node of your own. Your keys stay on this phone and any computer you link to it.",
     "Three companies run Spark's operators: Lightspark, Breez, and Flashnet. Two of them must cooperate for payments off the chain, and your safety depends on at least one of them having deleted old keys, which no one can check.",
     "If the operators stop, you can still withdraw on the Bitcoin chain yourself, but it can take days and needs a separate on-chain payment for fees.",
     "Lightning payments go through Lightspark.",
     "Keep amounts you'd be comfortable carrying in a phone wallet, and write down your recovery words.",
 ];
 
-/// What the screen needs from a running wallet. `SparkNode` is the real one;
-/// tests supply their own. Every call blocks.
-pub trait Node: Send + Sync {
-    /// The balance in base units, as last synced.
-    fn balance(&self) -> Result<u64, String>;
-    fn sync(&self) -> Result<(), String>;
-    /// The wallet's static Spark address.
-    fn spark_address(&self) -> Result<String, String>;
-    /// The wallet's static Bitcoin deposit address.
-    fn bitcoin_address(&self) -> Result<String, String>;
-    /// A new Lightning invoice, with an amount or without one.
-    fn invoice(&self, amount_sats: Option<u64>, description: &str) -> Result<String, String>;
-    /// Prepare a payment and quote its fee. The node keeps only the latest
-    /// quote.
-    fn quote(&self, request: &SendRequest) -> Result<Quote, QuoteFailure>;
-    /// Pay a quote once; a repeat with the same key returns the same payment.
-    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, String>;
-    /// Recent payments, newest first.
-    fn payments(&self, limit: u32) -> Result<Vec<PaymentRow>, String>;
-    /// Start a purchase with a provider; the URL for the person to open.
-    fn buy(&self, provider: Provider, amount_sats: u64) -> Result<String, String>;
-    /// On-chain deposits not yet claimed into the balance.
-    fn deposits(&self) -> Result<Vec<DepositRow>, String>;
-    /// What claiming a deposit now would cost.
-    fn claim_quote(&self, txid: &str, vout: u32) -> Result<ClaimQuote, String>;
-    /// Claim a deposit for at most `max_fee_sats` base units; what happened,
-    /// in words.
-    fn claim(&self, txid: &str, vout: u32, max_fee_sats: u64) -> Result<String, String>;
-    /// The network's recommended on-chain fee rates.
-    fn fee_rates(&self) -> Result<FeeRates, String>;
-    /// Send a deposit back on-chain to `address` at `sat_per_vbyte`; the
-    /// refund transaction's ID.
-    fn refund(
-        &self,
-        txid: &str,
-        vout: u32,
-        address: &str,
-        sat_per_vbyte: u64,
-    ) -> Result<String, String>;
-    /// Choose how fast a quoted on-chain withdrawal confirms; its fee.
-    fn set_speed(&self, quote: u64, speed: Speed) -> Result<u64, String>;
-    /// Saved contacts: Lightning addresses with names, from the SDK's own
-    /// contact list.
-    fn contacts(&self) -> Result<Vec<Contact>, String>;
-    /// Save a Lightning address as a contact.
-    fn add_contact(&self, name: &str, address: &str) -> Result<(), String>;
-    /// The unilateral-exit state (Breez's `export_unilateral_exit_state`):
-    /// what lets the recovery words take the balance out on-chain while
-    /// Spark's operators are down. It holds no keys. Read locally.
-    fn exit_state(&self) -> Result<String, String>;
-    /// Call `notify` when the wallet syncs, a payment changes, or a deposit
-    /// arrives.
-    fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>);
-    /// Quote the fee, in sats, to pay a BOLT11 invoice now, keeping no quote
-    /// (an agent's payment request; see `crate::spend`).
-    fn invoice_fee(&self, invoice: &str) -> Result<u64, String> {
-        let _ = invoice;
-        Err("This wallet can't pay an agent's request.".into())
-    }
-    /// Pay a BOLT11 invoice for at most `max_fee_sats`, once per
-    /// `idempotency_key` (a UUID): a repeat returns the same payment.
-    fn pay_invoice(
-        &self,
-        invoice: &str,
-        max_fee_sats: u64,
-        idempotency_key: &str,
-    ) -> Result<InvoicePayment, AgentPayFailure> {
-        let _ = (invoice, max_fee_sats, idempotency_key);
-        Err(AgentPayFailure::Failed(
-            "This wallet can't pay an agent's request.".into(),
-        ))
-    }
-}
-
-/// An invoice the wallet paid for an agent: the payment and, once the
-/// payee released it, its preimage (lowercase hex).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InvoicePayment {
-    pub row: PaymentRow,
-    pub preimage: Option<String>,
-}
-
-/// Why the wallet did not pay an agent's invoice.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AgentPayFailure {
-    /// The quoted fee, in sats, is above the ceiling.
-    FeeTooHigh(u64),
-    InsufficientFunds,
-    Failed(String),
-}
-
-/// Who sells bitcoin for dollars. Both are Breez integrations on mainnet.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Provider {
-    /// Card or Apple Pay; MoonPay sends bitcoin on-chain to the deposit
-    /// address, which the wallet claims.
-    Moonpay,
-    /// A fixed-amount Lightning invoice that Cash App pays from the
-    /// person's cash balance or debit card.
-    CashApp,
-}
-
-impl Provider {
-    fn parse(id: &str) -> Option<Self> {
-        match id {
-            "moonpay" => Some(Self::Moonpay),
-            "cashapp" => Some(Self::CashApp),
-            _ => None,
-        }
-    }
-}
-
-/// An on-chain deposit waiting to be claimed.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DepositRow {
-    pub txid: String,
-    pub vout: u32,
-    pub amount_sats: u64,
-    /// It has the confirmations a claim at maturity needs.
-    pub mature: bool,
-    /// Why the last claim failed.
-    pub problem: Option<DepositProblem>,
-    /// A refund of it was broadcast in this transaction.
-    #[serde(default)]
-    pub refund_txid: Option<String>,
-}
-
-/// Why the SDK's last automatic claim of a deposit failed. The screen words
-/// it in the person's amount format.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DepositProblem {
-    /// Claiming costs this many base units, above the automatic limit.
-    FeeAboveLimit(u64),
-    /// The deposit wasn't found on the chain.
-    Missing,
-    /// Another failure, in the SDK's words.
-    Failed(String),
-}
-
-/// A saved contact: a name and a Lightning address.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Contact {
-    pub name: String,
-    pub address: String,
-}
+// The wallet's values and the `Node` trait are shared with `openagents
+// wallet` on computers (`crates/spark-wallet`).
+pub use openagents_spark::model::*;
+use openagents_spark::seed::Seed;
+pub use openagents_spark::seed::restore_entropy;
 
 /// Someone paid by npub, kept so the Send screen can offer them again.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct PaidPerson {
     npub: String,
     name: Option<String>,
-}
-
-/// Recommended on-chain fee rates, in sat/vB.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FeeRates {
-    pub fastest: u64,
-    pub half_hour: u64,
-    pub hour: u64,
-}
-
-impl FeeRates {
-    fn rate(self, speed: Speed) -> u64 {
-        match speed {
-            Speed::Fast => self.fastest,
-            Speed::Medium => self.half_hour,
-            Speed::Slow => self.hour,
-        }
-        .max(1)
-    }
-}
-
-/// How fast an on-chain transaction should confirm.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Speed {
-    Slow,
-    Medium,
-    Fast,
-}
-
-impl Speed {
-    pub const ALL: [Self; 3] = [Self::Slow, Self::Medium, Self::Fast];
-
-    pub fn id(self) -> &'static str {
-        match self {
-            Self::Slow => "slow",
-            Self::Medium => "medium",
-            Self::Fast => "fast",
-        }
-    }
-
-    fn parse(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|speed| speed.id() == id)
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Slow => "Slow · about an hour or more",
-            Self::Medium => "Medium · about half an hour",
-            Self::Fast => "Fast · the next block or two",
-        }
-    }
 }
 
 /// About how large a deposit refund is: one Taproot input and one output.
@@ -288,304 +100,14 @@ pub struct SavedExit {
     pub saved_at: u64,
 }
 
-/// The cost of claiming a deposit now.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ClaimQuote {
-    pub fee_sats: u64,
-    pub credit_sats: u64,
-    /// Claimed ahead of maturity, for a provider's spread.
-    pub early: bool,
-    pub confirmations: u32,
-    pub confirmations_required: u32,
-}
-
 /// Opens the wallet under a home with a mnemonic. Blocking.
 pub type Opener = Arc<dyn Fn(&Path, &str) -> Result<Arc<dyn Node>, String> + Send + Sync>;
 
 /// The real opener: Breez's SDK on mainnet.
 pub fn spark_opener() -> Opener {
     Arc::new(|home, mnemonic| {
-        crate::spark::SparkNode::open(home, NETWORK, mnemonic)
-            .map(|node| Arc::new(node) as Arc<dyn Node>)
+        crate::spark::open(home, NETWORK, mnemonic).map(|node| Arc::new(node) as Arc<dyn Node>)
     })
-}
-
-/// Where a payment goes, as its request decoded it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Destination {
-    Lightning(String),
-    LightningAddress(String),
-    Spark(String),
-    Bitcoin(String),
-}
-
-/// What the person asked to pay: a request as pasted or scanned, the amount
-/// they typed when the request carries none (base units), a comment for a
-/// recipient that takes one, and the format to word amounts in.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SendRequest {
-    pub input: String,
-    pub amount_sats: Option<u64>,
-    pub comment: Option<String>,
-    pub format: Format,
-}
-
-/// A prepared payment and its fee.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Quote {
-    pub id: u64,
-    pub destination: Destination,
-    pub amount_sats: u64,
-    pub fee_sats: u64,
-    /// The payment request's own description, or an LNURL recipient's.
-    pub note: Option<String>,
-    /// The comment sent to an LNURL recipient.
-    pub comment: Option<String>,
-    /// For an on-chain withdrawal: each speed and its fee, and the one
-    /// chosen. Empty otherwise.
-    pub speeds: Vec<(Speed, u64)>,
-    pub speed: Option<Speed>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum QuoteFailure {
-    /// The request has no amount, or the amount is out of its range.
-    NeedsAmount(Ask),
-    Refused(String),
-}
-
-/// What the screen asks for before a payment can be quoted.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Ask {
-    pub message: String,
-    /// Who is paid, as the request names them: "alice@example.com".
-    pub recipient: Option<String>,
-    /// The recipient's own description of the payment.
-    pub description: Option<String>,
-    /// The longest comment the recipient takes, in characters; 0 takes none.
-    pub comment_max: u16,
-}
-
-impl Ask {
-    /// Ask for an amount, and nothing else.
-    pub fn amount(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            recipient: None,
-            description: None,
-            comment_max: 0,
-        }
-    }
-}
-
-/// A payment that went out, and what the recipient said about it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Paid {
-    pub row: PaymentRow,
-    /// An LNURL recipient's message after the payment, as plain text.
-    pub message: Option<String>,
-}
-
-/// What an LNURL-pay recipient (a Lightning address or an `lnurl` code)
-/// accepts, read from its pay request.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LnurlTerms {
-    /// The Lightning address, or the service's domain.
-    pub recipient: String,
-    /// Whole base units: the minimum rounded up, the maximum rounded down.
-    /// LNURL states them in msat (LUD-06), which stays the wire unit.
-    pub min_sats: u64,
-    pub max_sats: u64,
-    /// The longest comment it takes (LUD-12); 0 takes none.
-    pub comment_max: u16,
-    /// Its `text/plain` metadata (LUD-06), as plain text.
-    pub description: Option<String>,
-}
-
-impl LnurlTerms {
-    pub fn of(
-        recipient: String,
-        min_msat: u64,
-        max_msat: u64,
-        comment_max: u16,
-        metadata: &str,
-    ) -> Self {
-        Self {
-            recipient,
-            min_sats: bitcoin_amount::from_msat_ceil(min_msat),
-            max_sats: bitcoin_amount::from_msat_floor(max_msat),
-            comment_max,
-            description: lnurl_description(metadata),
-        }
-    }
-
-    fn ask(&self, message: String) -> QuoteFailure {
-        QuoteFailure::NeedsAmount(Ask {
-            message,
-            recipient: Some(self.recipient.clone()),
-            description: self.description.clone(),
-            comment_max: self.comment_max,
-        })
-    }
-
-    /// The amount and comment to prepare, or what to ask the person. A
-    /// recipient that takes one amount only is paid that amount. Amounts in
-    /// what it asks are worded in `format`.
-    pub fn check(
-        &self,
-        amount: Option<u64>,
-        comment: Option<&str>,
-        format: Format,
-    ) -> Result<(u64, Option<String>), QuoteFailure> {
-        if self.max_sats == 0 || self.min_sats > self.max_sats {
-            return Err(QuoteFailure::Refused(format!(
-                "{} isn't taking payments right now.",
-                self.recipient
-            )));
-        }
-        let range = if self.min_sats == self.max_sats {
-            format!(
-                "{} takes exactly {}.",
-                self.recipient,
-                format.show(self.min_sats)
-            )
-        } else {
-            format!(
-                "{} takes from {} to {}.",
-                self.recipient,
-                format.show(self.min_sats),
-                format.show(self.max_sats)
-            )
-        };
-        let amount = match amount {
-            Some(amount) => amount,
-            None if self.min_sats == self.max_sats => self.min_sats,
-            None => return Err(self.ask(format!("Enter an amount. {range}"))),
-        };
-        if amount < self.min_sats || amount > self.max_sats {
-            return Err(self.ask(range));
-        }
-        let comment = comment
-            .map(str::trim)
-            .filter(|comment| !comment.is_empty() && self.comment_max > 0);
-        if let Some(comment) = comment
-            && comment.chars().count() > usize::from(self.comment_max)
-        {
-            return Err(self.ask(format!(
-                "{} takes a comment of up to {} characters.",
-                self.recipient, self.comment_max
-            )));
-        }
-        Ok((amount, comment.map(str::to_owned)))
-    }
-}
-
-/// The `text/plain` entry of LNURL-pay metadata: a JSON array of
-/// `[type, value]` pairs.
-pub fn lnurl_description(metadata: &str) -> Option<String> {
-    let entries: Vec<Vec<serde_json::Value>> = serde_json::from_str(metadata).ok()?;
-    entries.iter().find_map(|entry| match entry.as_slice() {
-        [kind, value] if kind.as_str() == Some("text/plain") => {
-            value.as_str().and_then(|text| plain_text(text, 200))
-        }
-        _ => None,
-    })
-}
-
-/// Text from a stranger, fit for one line of the screen: control characters
-/// become spaces, runs of space collapse, and it stops at `limit` characters.
-pub fn plain_text(text: &str, limit: usize) -> Option<String> {
-    let cleaned: String = text
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if cleaned.is_empty() {
-        return None;
-    }
-    let mut chars = cleaned.chars();
-    let head: String = chars.by_ref().take(limit).collect();
-    Some(if chars.next().is_some() {
-        format!("{head}…")
-    } else {
-        head
-    })
-}
-
-/// A payment as the SDK reported it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaymentRow {
-    pub id: String,
-    pub received: bool,
-    pub amount_sats: u64,
-    pub fee_sats: u64,
-    pub method: String,
-    /// `completed`, `pending`, or `failed`.
-    pub status: String,
-    /// Unix seconds.
-    pub at: u64,
-}
-
-/// The wallet's seed. It has no `Debug`, so it cannot reach a log line.
-struct Seed {
-    entropy: Vec<u8>,
-    mnemonic: String,
-}
-
-impl Seed {
-    fn from_entropy(entropy: Vec<u8>) -> Result<Self, String> {
-        if entropy.len() != 16 && entropy.len() != 32 {
-            return Err("The wallet key is unreadable.".into());
-        }
-        let mnemonic = bip39::Mnemonic::from_entropy(&entropy)
-            .map_err(|_| "The wallet key is unreadable.".to_string())?
-            .to_string();
-        Ok(Self { entropy, mnemonic })
-    }
-
-    /// A one-way fingerprint that tells this seed apart from another, for
-    /// the words-saved marker. It reveals nothing about the seed.
-    fn fingerprint(&self) -> String {
-        use sha2::{Digest, Sha256};
-        let mut hash = Sha256::new();
-        hash.update(b"openagents-wallet-words-saved-v1");
-        hash.update(&self.entropy);
-        hex(&hash.finalize()[..16])
-    }
-}
-
-/// Check recovery words for a restore and return their entropy as hex, for
-/// the host to put in its key store. Errors never repeat the words.
-pub fn restore_entropy(words: &str) -> Result<String, String> {
-    let words: Vec<String> = words
-        .split_whitespace()
-        .map(|word| word.to_lowercase())
-        .collect();
-    if words.len() != 12 && words.len() != 24 {
-        return Err(format!(
-            "Enter 12 or 24 recovery words; that was {}.",
-            words.len()
-        ));
-    }
-    let mnemonic =
-        bip39::Mnemonic::parse_in(bip39::Language::English, words.join(" ")).map_err(|error| {
-            match error {
-                bip39::Error::UnknownWord(index) => {
-                    format!(
-                        "Word {} isn't a recovery word. Check its spelling.",
-                        index + 1
-                    )
-                }
-                bip39::Error::InvalidChecksum => {
-                    "These words don't form a valid recovery phrase. Check each word and its order."
-                        .to_string()
-                }
-                _ => "These recovery words can't be read.".to_string(),
-            }
-        })?;
-    Ok(hex(&mnemonic.to_entropy()))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1226,6 +748,18 @@ impl Wallet {
     }
 
     /// The recovery words, for the direct reply to an explicit request.
+    /// The wallet seed sealed to a computer's one-time link key
+    /// (`openagents wallet link`), or `None` while this phone has no
+    /// wallet. The seed never leaves here otherwise.
+    pub(crate) fn seal_for(
+        &self,
+        key: &str,
+    ) -> Option<Result<openagents_spark::link::Sealed, String>> {
+        self.seed
+            .as_ref()
+            .map(|seed| openagents_spark::link::seal(seed, key))
+    }
+
     pub fn words(&self) -> Option<Vec<String>> {
         self.seed.as_ref().map(|seed| {
             seed.mnemonic
@@ -4063,8 +3597,8 @@ mod tests {
         let home = tempfile::tempdir().expect("temp dir");
         let entropy: [u8; 16] = rand_entropy();
         let mnemonic = bip39::Mnemonic::from_entropy(&entropy).unwrap().to_string();
-        let node = crate::spark::SparkNode::open(home.path(), Network::Regtest, &mnemonic)
-            .expect("regtest wallet");
+        let node =
+            crate::spark::open(home.path(), Network::Regtest, &mnemonic).expect("regtest wallet");
         node.sync().expect("sync");
         assert_eq!(node.balance().expect("balance"), 0);
         assert!(node.spark_address().expect("address").starts_with("spark"));
@@ -4091,8 +3625,8 @@ mod tests {
         let mnemonic = bip39::Mnemonic::from_entropy(&rand_entropy())
             .unwrap()
             .to_string();
-        let node = crate::spark::SparkNode::open(home.path(), Network::Regtest, &mnemonic)
-            .expect("regtest wallet");
+        let node =
+            crate::spark::open(home.path(), Network::Regtest, &mnemonic).expect("regtest wallet");
         node.sync().expect("sync");
         let rates = node.fee_rates().expect("fee rates");
         assert!(rates.fastest >= rates.hour, "{rates:?}");
@@ -4114,8 +3648,7 @@ mod tests {
         let mnemonic = bip39::Mnemonic::from_entropy(&rand_entropy())
             .unwrap()
             .to_string();
-        let node =
-            crate::spark::SparkNode::open(home.path(), NETWORK, &mnemonic).expect("mainnet wallet");
+        let node = crate::spark::open(home.path(), NETWORK, &mnemonic).expect("mainnet wallet");
         node.sync().expect("sync");
         assert_eq!(node.balance().expect("balance"), 0);
         assert!(node.spark_address().expect("spark").starts_with("spark1"));
@@ -4144,8 +3677,7 @@ mod tests {
         let mnemonic = bip39::Mnemonic::from_entropy(&rand_entropy())
             .unwrap()
             .to_string();
-        let node =
-            crate::spark::SparkNode::open(home.path(), NETWORK, &mnemonic).expect("mainnet wallet");
+        let node = crate::spark::open(home.path(), NETWORK, &mnemonic).expect("mainnet wallet");
         let ask = |amount, comment: Option<&str>| {
             node.quote(&SendRequest {
                 input: "hello@getalby.com".into(),

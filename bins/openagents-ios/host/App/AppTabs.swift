@@ -156,6 +156,17 @@ struct AppTabs: View {
             SpendApprovalSheet(sheet: sheet, waiting: bridge.packet?.spend?.waiting ?? 0,
                                busy: bridge.packet?.spend?.busy ?? false, bridge: bridge)
         }
+        // A computer's ask for the wallet shows over any tab until the
+        // owner approves or denies it; Rust closes it.
+        .sheet(item: Binding(get: { bridge.packet?.spend?.sheet == nil ? bridge.packet?.wallet_link?.sheet : nil },
+                             set: { _ in })) { sheet in
+            WalletLinkSheet(sheet: sheet, busy: bridge.packet?.wallet_link?.busy ?? false, bridge: bridge)
+        }
+        .alert(bridge.packet?.wallet_link?.notice ?? "",
+               isPresented: Binding(get: { bridge.packet?.wallet_link?.notice != nil },
+                                    set: { shown in if !shown { bridge.wallet("wallet_link_dismiss") } })) {
+            Button("OK") { bridge.wallet("wallet_link_dismiss") }
+        }
         // Connect a computer, from a chat's offer or Account > Computers.
         // Done or Close returns to the screen it was opened from.
         .fullScreenCover(isPresented: Binding(get: { bridge.packet?.connect != nil },

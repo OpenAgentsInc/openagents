@@ -743,7 +743,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
 
     private fun recovery(wallet: JSONObject) {
         content.add(activity.label("Recovery", 17f, bold = true), 24)
-        content.add(activity.label("Your recovery words restore this wallet on another phone. Write them down and keep them offline.",
+        content.add(activity.label("Your recovery words restore this wallet on another phone or a computer. Write them down and keep them offline.",
             13f, Palette.SECONDARY), 6)
         val actions = activity.row()
         actions.addView(activity.pill("Show recovery words", "wallet-show-words") { confirmWords() }

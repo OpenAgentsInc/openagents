@@ -81,14 +81,15 @@ fn completions_name_the_groups() {
 }
 
 #[test]
-fn wallet_refuses_offline_use_with_json() {
+fn x402_node_refuses_offline_use_with_json() {
     let home = std::env::temp_dir().join(format!("openagents-wallet-cli-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let run = |args: &[&str]| {
         std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
             .env("OPENAGENTS_WALLET_HOME", &home)
             .arg("--json")
-            .arg("wallet")
+            .arg("x402")
+            .arg("node")
             .args(args)
             .output()
             .unwrap()
@@ -96,7 +97,7 @@ fn wallet_refuses_offline_use_with_json() {
     let missing = run(&["info"]);
     assert_eq!(missing.status.code(), Some(1));
     let doc: serde_json::Value = serde_json::from_slice(&missing.stdout).unwrap();
-    assert!(doc["error"].as_str().unwrap().contains("wallet init"));
+    assert!(doc["error"].as_str().unwrap().contains("x402 node init"));
 
     let regtest = run(&["init", "--network", "regtest"]);
     assert_eq!(regtest.status.code(), Some(64));
@@ -152,7 +153,7 @@ fn x402_refuses_bad_arguments_with_json() {
     assert_eq!(no_wallet.status.code(), Some(1), "{no_wallet:?}");
     let doc: serde_json::Value = serde_json::from_slice(&no_wallet.stdout).unwrap();
     assert!(
-        doc["error"].as_str().unwrap().contains("wallet init"),
+        doc["error"].as_str().unwrap().contains("x402 node init"),
         "{doc}"
     );
 

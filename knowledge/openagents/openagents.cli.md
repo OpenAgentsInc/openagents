@@ -1,6 +1,6 @@
 ---
 id: openagents.cli
-version: 2
+version: 3
 kind: product
 title: "The openagents command"
 summary: >-
@@ -13,7 +13,7 @@ applies_when: >-
 answer: >-
   `openagents` is our command-line program for everything over Nostr:
   computers and pairing (connect, host, pair, computer, session), Coder tasks, Verse,
-  XP, and the Lagrange zone, the Gym, labor orders, keys, a Lightning wallet
+  XP, and the Lagrange zone, the Gym, labor orders, keys, your wallet
   and x402, the knowledge base, relays, and playtest triage. `openagents
   COMMAND --help` shows each group's syntax, `--json` makes output
   machine-readable, and `openagents mcp serve` offers it as MCP tools.
@@ -28,11 +28,12 @@ provenance:
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: updated for QR pairing with OpenAgents for Mac, which replaced the Tailscale setup (#9978), and checked against the cited documents (#9995); the answer text awaits the owner's copy review."
+  - "2026-10-02: the wallet in the command list is the person's own wallet, not a Lightning node (#10202)."
 ---
 
 ## Answer
 
-`openagents` is our command-line program for everything over Nostr: computers and pairing (connect, host, pair, computer, session), Coder tasks, Verse, XP, and the Lagrange zone, the Gym, labor orders, keys, a Lightning wallet and x402, the knowledge base, relays, and playtest triage. `openagents COMMAND --help` shows each group's syntax, `--json` makes output machine-readable, and `openagents mcp serve` offers it as MCP tools.
+`openagents` is our command-line program for everything over Nostr: computers and pairing (connect, host, pair, computer, session), Coder tasks, Verse, XP, and the Lagrange zone, the Gym, labor orders, keys, your wallet and x402, the knowledge base, relays, and playtest triage. `openagents COMMAND --help` shows each group's syntax, `--json` makes output machine-readable, and `openagents mcp serve` offers it as MCP tools.
 
 ## Details
 

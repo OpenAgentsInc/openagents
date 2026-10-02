@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var wallet: WalletScreen
     private lateinit var payments: AgentPayments
+    private lateinit var walletLink: WalletLink
 
     // Coder tab: the menu, the first run, or the chat (Rust's `gym.screen`).
     private lateinit var coderRenderer: NativeRenderer
@@ -189,6 +190,7 @@ class MainActivity : ComponentActivity() {
         playtest = Playtest(this, bridge)
         SelectionLayer.giveFeedback = { text, row -> playtest.feedback(text, row, playtestTab, playtestRoute) }
         payments = AgentPayments(this, bridge)
+        walletLink = WalletLink(this, bridge)
         tailnetRenderer = NativeRenderer(this, { view, node -> bridge.activate("tailnet", view, node) })
         terminal = TerminalScreen(this, bridge)
         connect = ConnectScreen(this, bridge, scanner)
@@ -753,6 +755,7 @@ class MainActivity : ComponentActivity() {
         // An agent's payment request shows over any tab until the owner
         // approves or denies it; Rust closes it.
         if (::payments.isInitialized) payments.update(packet)
+        if (::walletLink.isInitialized) walletLink.update(packet)
         terminal.update(packet?.optBoolean("terminal") == true, bridge.terminalView)
         if (tab == AppTab.VERSE) renderVerse()
     }

@@ -8470,14 +8470,240 @@
                 ]
               }
             ],
-            "summary": "An address to receive bitcoin at.",
+            "summary": "Your address to get paid at.",
             "effect": "read_only",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "receive",
+          "leaf": {
+            "path": [
+              "wallet",
+              "receive"
+            ],
+            "usage": [
+              "receive [--amount N] [--bitcoin]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "receive"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "amount",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "bitcoin",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A payment request to share: a Lightning invoice, for N if given; --bitcoin gives a Bitcoin address to send to instead.",
+            "effect": "local_write",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "send",
+          "leaf": {
+            "path": [
+              "wallet",
+              "send"
+            ],
+            "usage": [
+              "send TO [--amount N] [--yes]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "send"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TO"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "amount",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "yes",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Pay TO: a Lightning invoice, a Lightning address, or a Spark or Bitcoin address. Shows the amount and fee and asks before paying; --yes pays without asking.",
+            "effect": "spends",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "history",
+          "leaf": {
+            "path": [
+              "wallet",
+              "history"
+            ],
+            "usage": [
+              "history [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "history"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Your recent payments, newest first.",
+            "effect": "read_only",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "link",
+          "leaf": {
+            "path": [
+              "wallet",
+              "link"
+            ],
+            "usage": [
+              "link [--replace] [--wait SECONDS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "link"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "replace",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Use your phone's wallet on this computer. Your phone asks you to approve and shows a code to check against this screen (default wait 600).",
+            "effect": "secret",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "restore",
+          "leaf": {
+            "path": [
+              "wallet",
+              "restore"
+            ],
+            "usage": [
+              "restore [--replace]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "restore"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "replace",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Use the wallet for your recovery words, typed without showing them.",
+            "effect": "secret",
             "runs_on": "screen",
             "screen": "wallet"
           }
         }
       ],
       "options": [
+        {
+          "kind": "option",
+          "name": "amount",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "bitcoin",
+          "value": "A",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "yes",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "replace",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wait",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
         {
           "kind": "option",
           "name": "json",

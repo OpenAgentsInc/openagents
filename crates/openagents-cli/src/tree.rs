@@ -286,6 +286,10 @@ mod tests {
         // is never under it.
         assert_eq!(effect("wallet balance"), Some(Effect::ReadOnly));
         assert_eq!(effect("wallet address"), Some(Effect::ReadOnly));
+        assert_eq!(effect("wallet history"), Some(Effect::ReadOnly));
+        assert_eq!(effect("wallet send"), Some(Effect::Spends));
+        assert_eq!(effect("wallet link"), Some(Effect::Secret));
+        assert_eq!(effect("wallet restore"), Some(Effect::Secret));
         let wallet = tree.group("wallet").expect("the wallet group");
         for leaf in wallet.leaves() {
             let text = format!("{} {}", leaf.summary, leaf.usage.join(" ")).to_lowercase();

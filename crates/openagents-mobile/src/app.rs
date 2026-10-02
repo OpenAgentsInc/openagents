@@ -487,6 +487,21 @@ pub enum Request {
     },
     /// Clear the last agent payment's notice.
     SpendDismiss,
+    /// Send the wallet to the computer on the link sheet
+    /// (`openagents wallet link`), sealed to its one-time key. The host
+    /// sends it only after the owner's tap on Approve and Face ID or the
+    /// passcode.
+    WalletLinkApprove {
+        host: String,
+        id: String,
+    },
+    /// Decline the computer's ask for the wallet.
+    WalletLinkDeny {
+        host: String,
+        id: String,
+    },
+    /// Clear the last wallet link notice.
+    WalletLinkDismiss,
     /// Pay the request on the sheet and trust its payee: later payments to
     /// it from that computer, within the automatic ceilings, need no tap.
     /// The host sends it only after the owner's tap and Face ID or the
@@ -672,6 +687,9 @@ pub struct Packet {
     /// Agents' payment requests: the approval sheet, the computers that may
     /// ask, and the payments they asked for.
     pub spend: crate::spend::View,
+    /// A computer's ask for the wallet (`openagents wallet link`): the sheet
+    /// that names it and its code.
+    pub wallet_link: crate::wallet_link::View,
     /// How amounts show and are typed, app-wide.
     pub amounts: crate::amounts::AmountsView,
     /// Push wake status (`Wakes on`, `Wakes off`, or why not), once the
@@ -741,6 +759,9 @@ pub struct App {
     /// How agent spend requests reach the computers; `None` without the
     /// live client.
     spend_transport: Option<Arc<dyn crate::spend::Transport>>,
+    /// Computers' asks for the wallet, and how they are answered.
+    wallet_link: crate::wallet_link::Linking,
+    link_transport: Option<Arc<dyn crate::wallet_link::Transport>>,
     /// Chat invitations asked of computers paired without a current one.
     chat_invites: crate::chat_invites::Invites,
     /// How those asks reach the computers; `None` without the live client.
@@ -869,6 +890,12 @@ impl App {
         let spend_transport = terminals.clone().map(|terminals| {
             Arc::new(crate::spend::Live::new(terminals, runtime.handle().clone()))
                 as Arc<dyn crate::spend::Transport>
+        });
+        let link_transport = terminals.clone().map(|terminals| {
+            Arc::new(crate::wallet_link::Live::new(
+                terminals,
+                runtime.handle().clone(),
+            )) as Arc<dyn crate::wallet_link::Transport>
         });
         let chat_asker = terminals.clone().map(|terminals| {
             Arc::new(crate::chat_invites::Live::new(
@@ -1032,6 +1059,8 @@ impl App {
             },
             spend,
             spend_transport,
+            wallet_link: crate::wallet_link::Linking::default(),
+            link_transport,
             chat_invites: crate::chat_invites::Invites::default(),
             chat_asker,
             trainer: crate::trainer::Trainer::default(),
@@ -1315,6 +1344,7 @@ impl App {
                     // Opened from a wake or brought back: read the
                     // computers' payment requests now.
                     self.spend.soon();
+                    self.wallet_link.soon();
                     self.wallet.refresh_if_open();
                     self.chats.refresh();
                     self.chats.warm();
@@ -1523,6 +1553,20 @@ impl App {
             Request::SpendBlock { host } => self.spend.block(&host),
             Request::SpendAllow { host } => self.spend.allow(&host),
             Request::SpendDismiss => self.spend.dismiss(),
+            Request::WalletLinkApprove { host, id } => {
+                let wallet = &self.wallet;
+                self.wallet_link.approve(
+                    &host,
+                    &id,
+                    |key| wallet.seal_for(key),
+                    self.link_transport.clone(),
+                );
+            }
+            Request::WalletLinkDeny { host, id } => {
+                self.wallet_link
+                    .deny(&host, &id, self.link_transport.clone());
+            }
+            Request::WalletLinkDismiss => self.wallet_link.dismiss(),
             Request::SpendApproveTrust { request } => {
                 self.spend
                     .approve_and_trust(&request, self.payer(), self.spend_transport.clone())
@@ -1828,7 +1872,7 @@ impl App {
             return;
         };
         let snapshot = computers.snapshot();
-        let hosts = snapshot
+        let hosts: Vec<(String, String)> = snapshot
             .hosts
             .iter()
             // The controller's snapshot can be older than the live links,
@@ -1843,6 +1887,9 @@ impl App {
             })
             .map(|record| (record.key.clone(), record.label.clone()))
             .collect();
+        if let Some(links) = self.link_transport.clone() {
+            self.wallet_link.poll(hosts.clone(), links);
+        }
         self.spend.poll(hosts, transport, self.payer());
     }
 
@@ -1917,7 +1964,9 @@ impl App {
             },
             self.coder.notice_shown(),
         );
-        let coder_live = self.coder.live(self.computers.as_ref()) || self.spend.live();
+        let coder_live = self.coder.live(self.computers.as_ref())
+            || self.spend.live()
+            || self.wallet_link.live();
         crate::wake::set_live(coder_live);
         Packet {
             schema: "openagents.mobile.v1",
@@ -1983,6 +2032,7 @@ impl App {
             wallet_loading: self.wallet.loading(),
             wallet_open_url: self.wallet.take_open_url(),
             spend: self.spend.view(),
+            wallet_link: self.wallet_link.view(),
             push: self.push_status.clone(),
             amounts: self.amounts.view(),
             gym,

@@ -36,7 +36,7 @@ Non-goals for this design:
 
 | Principal | Key | Where it lives | What it can do with money |
 | --- | --- | --- | --- |
-| Person (owner) | Spark wallet seed, new and separate | Phone: this-device-only Keychain item or Keystore-wrapped file, handed to Rust at open, memory only | Everything, subject to Spark's trust model |
+| Person (owner) | Spark wallet seed, new and separate | Phone: this-device-only Keychain item or Keystore-wrapped file, handed to Rust at open, memory only. Since 2026-10-02 also each computer the owner links: a 0600 file in `~/.openagents/spark` | Everything, subject to Spark's trust model |
 | Phone (device) | Existing device key (`com.openagents.app.device`) | Phone Keychain | Signs grants and receipts. Holds no funds. |
 | Agent | The agent's own Nostr key | The host that runs it, or the agent's own store | Only what a grant or its own allowance wallet allows |
 | Host | Host key (NIP-HOST) | The owner's computer | Runs agents. Host access never implies spending, as NIP-HOST and NIP-SOV already say. |
@@ -376,16 +376,18 @@ their Spark wallet.
 
 ## Relation to the current wallet
 
-Today the phone's Wallet tab runs `crates/wallet`'s `ldk-node` wallet on
-Mutinynet signet, with its own Keychain item (`833528ed81`). The CLI's
-`openagents wallet` runs the same crate on mainnet or testnet as the x402
-receiver and payer.
+When this was written, the phone's Wallet tab ran `crates/wallet`'s
+`ldk-node` wallet on Mutinynet signet, with its own Keychain item
+(`833528ed81`), and the CLI's `openagents wallet` ran the same crate on
+mainnet or testnet as the x402 receiver and payer. Since 2026-10-02 the
+phone and every linked computer run one Spark wallet, and that crate is
+only the x402 receiver, under `openagents x402 node`.
 
 | Surface | Position |
 | --- | --- |
 | Phone Wallet tab | **Replace** the Mutinynet `ldk-node` wallet with Breez Spark. The Mutinynet coins are test coins, so nothing migrates. Keep the Mutinynet path only behind a developer setting until the Spark regtest wallet passes its tests, then delete it. |
 | Phone Keychain | New item for the Spark seed. Delete the Mutinynet item when that path is deleted. |
-| `openagents wallet` on hosts | **Keep** `ldk-node` as the x402 receiver and sovereign node. |
+| `openagents wallet` on hosts | **Keep** `ldk-node` as the x402 receiver and sovereign node. Superseded on 2026-10-02: `openagents wallet` is the same Spark wallet as the phone's, and `ldk-node` moved to `openagents x402 node` ([README, decision 8](README.md#owner-decision-2026-10-02)). |
 | Host agent spending | **Add** the phone payer and Spark allowance adapters beside the `ldk-node` wallet. |
 | Invariants | The [Phone wallet](../../INVARIANTS.md#phone-wallet) rows must be rewritten in the same change that ships Spark: Spark on regtest only at first, mainnet only behind the gate below, the seed rule unchanged in substance. |
 

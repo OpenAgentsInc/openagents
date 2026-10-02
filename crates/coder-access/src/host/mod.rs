@@ -79,6 +79,11 @@ pub trait Dispatch: Send {
     fn spends(&mut self) -> Option<&mut dyn Spends> {
         None
     }
+    /// The host's asks for the owner's wallet (`openagents wallet link`). A
+    /// host without them has none to offer.
+    fn links(&mut self) -> Option<&mut dyn Links> {
+        None
+    }
     /// A single-use `coder-pair:` invitation to the host's read-only Coder
     /// chats for `device`, which holds `observe`, and when the chat grant it
     /// carries ends (`chats.invite`). A host that serves no chats has none
@@ -173,6 +178,28 @@ pub trait Spends: Send {
         receipt: &crate::spend::Receipt,
         now: u64,
     ) -> std::result::Result<crate::spend::Receipt, Code>;
+}
+
+/// Where the host keeps asks for the owner's wallet
+/// ([`crate::wallet_link`]). The host has checked the sender's `operate`
+/// right before it calls here.
+pub trait Links: Send {
+    /// The open asks, oldest first.
+    fn list(
+        &mut self,
+        device: &str,
+        now: u64,
+    ) -> std::result::Result<Vec<crate::wallet_link::Ask>, Code>;
+    /// Record `device`'s answer to ask `id`: the sealed seed, or `None` when
+    /// the owner declined. An ask that is unknown, expired, or answered is
+    /// refused.
+    fn answer(
+        &mut self,
+        device: &str,
+        id: &str,
+        sealed: Option<&crate::wallet_link::Sealed>,
+        now: u64,
+    ) -> std::result::Result<(), Code>;
 }
 
 /// The default dispatcher: task and terminal effects are not connected.
@@ -1023,6 +1050,31 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host did not keep the image")),
             },
+            Operation::ListWalletLinks {} => match dispatch.links().map(|l| l.list(&p.key, now)) {
+                Some(Ok(mut links)) => {
+                    links.truncate(crate::wallet_link::MAX_LISTED);
+                    let outcome = Outcome::WalletLinks { links };
+                    outcome.validate().map(|()| outcome)
+                }
+                Some(Err(code)) => Err(Error::new(code, "the host refused the wallet link list")),
+                None => Err(Error::new(
+                    Code::Unavailable,
+                    "the host holds no wallet links",
+                )),
+            },
+            Operation::AnswerWalletLink { id, sealed } => {
+                match dispatch
+                    .links()
+                    .map(|l| l.answer(&p.key, id, sealed.as_ref(), now))
+                {
+                    Some(Ok(())) => Ok(Outcome::WalletLinkAnswered { id: id.clone() }),
+                    Some(Err(code)) => Err(Error::new(code, "the host refused the answer")),
+                    None => Err(Error::new(
+                        Code::Unavailable,
+                        "the host holds no wallet links",
+                    )),
+                }
+            }
             Operation::SettleSpend { receipt } => {
                 match dispatch.spends().map(|s| s.settle(&p.key, receipt, now)) {
                     Some(Ok(recorded)) => {
