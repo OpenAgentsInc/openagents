@@ -24,7 +24,11 @@ no revenue) and [Episode 289](../transcripts/289.md):
 | D4 | **Coder through the API runs only on computers a user explicitly grants to that partner's key.** Never on the owner's computers, never on our machines, by default. |
 | D5 | **Threads are kept by us from the first slice.** `POST /v1/messages` takes an optional `thread`; we store turns as the apps do. |
 | D6 | **The address is `https://api.openagents.com`.** |
-| D7 | **Plugin authors are paid a share of each x402 payment for calls that used their plugin**, split automatically over Lightning. |
+| D7 | **Plugin authors are paid from each x402 payment for calls that used their plugin**, split automatically over Lightning. D9 sets how much. |
+| D8 | **Keyless callers get a small free tier per caller**, like the Ask box, then a `402` with a Lightning or USDC price. |
+| D9 | **Each plugin declares its own per-call fee.** The fee is added to the call's price, and the author receives all of it, split automatically after the call settles. |
+| D10 | **Payment accepts upstream x402's USDC `exact` schemes as well as Lightning**, so stock x402 clients pay out of the box. Lightning stays the native path. |
+| D11 | **Every response shows route, model, cost, and time for the call**, never Jev's internal scores. |
 
 ## 1. What the API is
 
@@ -92,6 +96,10 @@ developer --HTTPS, API key, JSON/SSE, x402--> API front --signed, NIP-44 encrypt
 - **The Lightning receiver key** that issues x402 invoices is the front's
   wallet node key, on the front's host, with exclusive invoice authority as
   the x402 Lightning scheme requires.
+- **USDC receiving addresses** (one on Base, one on Solana) are only public
+  addresses in the front's configuration; their private keys stay in the
+  treasury wallet, off the front's host. The facilitator that submits USDC
+  payments holds only its own gas key, on its own host (section 5).
 - **On a user's computer**, the host uses its own keys and grants. Nothing
   leaves the machine except the jobs it already sends.
 
@@ -146,7 +154,7 @@ event: message.accepted
 data: {"thread":"th_8f2c…","message":"msg_41…","created_at":"2026-10-02T15:01:02Z"}
 
 event: route
-data: {"route":"knowledge.product","tier":"model","confidence":0.94,"router":"chat-router-v4@3b1e…"}
+data: {"route":"knowledge.product","model":"stealth/space-bunny-alpha"}
 
 event: text.delta
 data: {"delta":"Three new plugins landed in the Gym this week: "}
@@ -160,6 +168,10 @@ data: {"message":"msg_41…","text":"Three new plugins …","follow_ups":["Show 
 event: usage
 data: {"route":"knowledge.product","model":"stealth/space-bunny-alpha","cost_usd":0.0014,"cost_status":"priced","first_token_ms":1050,"total_ms":3900}
 ```
+
+The `route` event and the `usage` event carry what D11 allows: the route,
+the model, the cost, and the time. Jev's probabilities, the question set's
+digest, and the prepared-answer ids stay in our records.
 
 Event types: `message.accepted`, `route`, `text.delta`, `command` (a
 proposed `openagents` command), `plugin` (a plugin used, or an offer to build
@@ -305,14 +317,28 @@ an `openagents` extension field. It cannot carry offers or runs; those need
 
 ## 5. Payment: x402
 
-We use [x402](https://github.com/x402-foundation/x402) v2 over HTTP, unchanged,
-with its `exact` scheme on Lightning
+We use [x402](https://github.com/x402-foundation/x402) v2 over HTTP, unchanged.
+A `402` offers two kinds of payment in one `accepts` list, and the client
+picks one (D10):
+
+- **Lightning (native):** the `exact` scheme on Lightning
 ([`scheme_exact_lnbtc.md`](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md),
-merged upstream as #2861). Our [NIP-X402](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-X402.md)
+merged upstream as #2861), priced in sats.
+- **USDC:** upstream's standard `exact` scheme on Base (`eip155:8453`, EIP-3009
+  `transferWithAuthorization`) and Solana mainnet
+  (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`, SPL transfer), the two networks
+  every stock x402 client and production facilitator supports. Other chains
+  upstream lists can be added later the same way.
+
+For Lightning, our [NIP-X402](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-X402.md)
 already requires the HTTP role to be exactly that upstream profile, and
 [`crates/x402`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/x402)
 already implements it: the challenge, the request binding, the replay store,
 and an embedded facilitator. Nothing Nostr is involved on this path.
+
+**Prices** are set in sats. The USDC amount in the same `402` is the sat
+price converted at the rate when the `402` is issued, and that quote holds
+for the requirement's `maxTimeoutSeconds`.
 
 **Who sees a 402.**
 
@@ -321,10 +347,11 @@ and an embedded facilitator. Nothing Nostr is involved on this path.
 | Our own apps and the owner's keys | Never. No price, no limit, no usage shown (#10120, #10121). |
 | A key on a free or prepaid plan | Never. Calls draw on the plan. |
 | A caller that sends its own provider key (OpenRouter, Vercel AI Gateway, or TypeSafe) | No 402 for the call's model cost: the model calls run on the caller's key, and a call its key cannot make fails plainly rather than being billed to us. See [BYOK, section 6](../byok/2026-10-02-byok-openrouter.md#6-api-callers-bring-their-own-key). |
-| A key with no plan, or no key at all | `402 Payment Required` with x402 terms on any priced endpoint. Free endpoints (reading the plugin registry, knowledge reads) answer without payment. |
+| No key, within the free tier (D8) | Answered free, like the Ask box. A keyless caller is the client's IP address (its `/64` for IPv6); the tier is a small daily number of messages. This applies only to third-party API callers; nothing is ever counted or limited in our own apps. |
+| A key with no plan, or no key past the free tier | `402 Payment Required` with x402 terms on any priced endpoint. Free endpoints (reading the plugin registry, knowledge reads) answer without payment. |
 
-**The flow.** The x402 Lightning scheme uses the `upfront` flow: payment
-settles before the work runs. The steps:
+**The flow over Lightning.** The x402 Lightning scheme uses the `upfront`
+flow: payment settles before the work runs. The steps:
 
 1. Call without payment:
 
@@ -352,8 +379,17 @@ settles before the work runs. The steps:
       "amount":"21000","asset":"BTC","payTo":"02…","maxTimeoutSeconds":300,
       "extra":{"assetTransferMethod":"bolt11","paymentFlow":"upfront",
         "requestBindingProfile":"http:1","requestBindingParams":{"headers":["accept","content-type"]},
-        "requestHash":"0d66…","invoice":"lnbc210n1…"}}]}
+        "requestHash":"0d66…","invoice":"lnbc210n1…"}},
+     {"scheme":"exact","network":"eip155:8453","amount":"25000",
+      "asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x…",
+      "maxTimeoutSeconds":600,"extra":{"name":"USD Coin","version":"2"}},
+     {"scheme":"exact","network":"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp","amount":"25000",
+      "asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","payTo":"…",
+      "maxTimeoutSeconds":600,"extra":{"feePayer":"…"}}]}
    ```
+
+   (Illustrative: 21 sats and 0.025 USDC, whose amount is in USDC's six
+   decimals.)
 
 2. Pay the invoice with any Lightning wallet that returns the preimage.
 
@@ -382,17 +418,52 @@ echo '{"message":"What is new in the Gym?"}' | openagents x402 fetch https://api
 
 The request hash binds the method, URL, body bytes, and the configured
 headers, so a paid proof cannot buy a different call. A key holder who pays
-per call has `authorization` in the bound headers.
+per call has `authorization` in the bound headers, and a caller that sends
+`OpenAgents-Provider-Key` (BYOK, below) has it bound too, since it changes
+the price.
 
-**Pricing follows the upfront flow.** The price must be known before the
-router runs, so each endpoint has one published price (a message, a knowledge
-search, a plugin invocation). Anything costly is not hidden inside a message:
-it comes back as an offer with its own `price_sats`, and confirming it is the
-paid call. A Coder run's price is quoted on its offer.
+**Paying with USDC.** Any stock x402 client (the upstream `@x402/fetch`,
+`x402` for Python, or the Go SDK with its EVM or SVM mechanism) reads the
+same `402`, picks the Base or Solana requirement, signs a payment
+authorization with its wallet, and retries with `PAYMENT-SIGNATURE`; no
+OpenAgents code is needed. USDC uses upstream's default `authorization`
+flow: our facilitator verifies the signature before the work starts and
+settles after it succeeds, so a call that fails is not charged. A
+non-streamed answer carries `PAYMENT-RESPONSE` as usual. A streamed answer
+has already sent its headers when it settles, so the settlement result
+arrives as a final `payment` event in the stream; `maxTimeoutSeconds` is long
+enough to cover the answer.
 
-**Plugin authors (D7).** When a paid call used a plugin, the front splits a
-share of that payment to the plugin author's Lightning address after the call
-settles, and records the split beside the usage record.
+**The USDC facilitator** is the upstream open-source facilitator, run by us
+on our own host, with a production facilitator provider as a fallback.
+`crates/x402` stays the Lightning facilitator. Both write to one settlement
+log beside the usage records.
+
+**Bring your own provider key.** A caller that sends `OpenAgents-Provider-Key:
+<provider> <key>` gets no `402` for the call's model cost; see
+[BYOK, section 6](../byok/2026-10-02-byok-openrouter.md#6-api-callers-bring-their-own-key).
+
+**The price is known before the router runs.** Each endpoint has one
+published price (a message, a knowledge search, a plugin invocation).
+Anything costly is not hidden inside a message: it comes back as an offer
+with its own `price_sats`, and confirming it is the paid call. A Coder run's
+price is quoted on its offer.
+
+**Plugin fees (D9).** Each plugin declares a per-call fee in sats in its
+release. `POST /v1/plugins/{id}/invoke` costs the endpoint price plus that
+fee. In a message, a plugin with no fee runs inline; one with a fee comes
+back as a `plugin` offer whose price includes it, so the caller sees the fee
+before paying. After the call settles, the front pays the whole fee to the
+author's Lightning payout address and records the split beside the usage
+record.
+
+**Authors are always paid in sats over Lightning, whatever the caller paid
+with.** The author sets one fee in sats and one Lightning address. When a
+caller pays in USDC, the fee was converted into the USDC quote at issue time;
+the USDC goes to our address and we pay the author the declared sats from
+our Lightning wallet. Authors never need a chain wallet, every author is paid
+the same way, and the small rate difference between quote and payout is
+ours to carry.
 
 **Threads without a key.** A pay-per-call caller with no key still gets a
 `thread` id. The id is long and random and is the only thing that opens the
@@ -404,7 +475,7 @@ thread, like a share link.
 | --- | --- |
 | The NIP pins upstream commit `4fcf836`. Upstream `main` is 16 commits later; none of them touch the v2 core, the HTTP transport, or the Lightning scheme. | Bump the pin in NIP-X402 and `crates/x402` (doc-only). |
 | The repository moved from `coinbase/x402` to `x402-foundation/x402`; the old `coinbase` `main` still lacks the Lightning scheme. | Link only `x402-foundation` (the NIP already does). |
-| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A generic x402 client handles the 402 and the headers but cannot pay Lightning. | Contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. Until then, `openagents x402 fetch` and the curl steps above are the clients. |
+| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client pays the USDC requirements out of the box but cannot pay Lightning. | Contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. Until then, `openagents x402 fetch` and the curl steps above are the clients. |
 | Lightning supports only the `upfront` flow; upstream has `upto` and `escrow` flows on other networks, not Lightning. A message whose cost depends on the route cannot be priced exactly. | Fixed per-endpoint prices and priced offers now. Later, propose an `escrow`-flow Lightning variant upstream using hold invoices (settle a ceiling, charge the actual). |
 | v1 clients use `X-PAYMENT` and `X-PAYMENT-RESPONSE`; the Lightning scheme is v2-only (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`). | Serve v2 only and say so in the 402 body. |
 | Upstream has an A2A transport; the Lightning request binding defines only `http:1` and `mcp:1`. | If we offer A2A, propose an `a2a:1` binding profile upstream first. |
@@ -434,7 +505,7 @@ sees the right-hand columns.
 | `GET /v1/plugins`, `GET /v1/plugins/{id}` | [EXT](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-EXT.md) listings `30184`, releases `3184`, revocations `3185`; [EVAL](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-EVAL.md) publications for results | The front queries public relays and caches. |
 | `POST /v1/plugins/{id}/invoke` | [CAP](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-CAP.md) operation through CJ execution `25920`/`26920`/`27020` ([PRG](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-PRG.md) workflows) | Runs where the plugin's effects allow: on the granted computer, or hosted for read-only ones. |
 | `POST /v1/evals`, `GET /v1/evals/{id}`, `POST /v1/evals/{id}/publish` | EVAL hosted runs: CJ execution `25920` to the eval runner, `ext-eval` actions `run` and `publish` | |
-| `POST /v1/plugins/{id}/publish` | EXT release `3184` and listing `30184`, signed by the author's derived key | The author's Lightning address for D7 rides in the release `meta` (G9). |
+| `POST /v1/plugins/{id}/publish` | EXT release `3184` and listing `30184`, signed by the author's derived key | The author's per-call fee and Lightning payout address (D9) ride in the release (G9). |
 | `POST /v1/knowledge/search` | No NIP operation today (G3); [KB](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-KB.md) entries are `3190`/`30190` | |
 | `GET /v1/knowledge/{id}` | KB head `30190`, version `3190`, withdrawals `3191`, evidence `3189` | |
 | `GET /v1/wallet`, `GET /v1/wallet/payments`, `POST /v1/wallet/payments` | HOST `spend.list` covers x402 spends only; no wallet operations (G4) | |
@@ -468,7 +539,7 @@ Each gap is closed in the NIP, not with a side channel in the front.
 | G6 | Attachments. CJ conversation content is strings only. | CJ request `attachments` as bounded ArtifactRefs, as HOST `task.create` already takes `images`. |
 | G7 | Confirmations and quotes. CJ offers have no stable id or price. | Offers gain `id` and optional `price_msat`, so a confirmation and an x402 quote bind to one offer. |
 | G8 | A person must see which app holds a grant. HOST device listings have no label. | An enrollment `label` (the app's name) kept in the grant and shown in `devices`. |
-| G9 | Paying plugin authors (D7). EXT releases name no payout address. | An optional `payout` (Lightning address or node key) in the EXT release, signed by the author. |
+| G9 | Plugin fees and payouts (D7, D9). EXT releases name no fee or payout address. | Optional `fee_msat` and `payout` (Lightning address or node key) in the EXT release, signed by the author, so the fee is part of the pinned release. |
 
 None needs a new event kind.
 
@@ -508,7 +579,8 @@ retrieval and a fast model; a Coder run uses the recipe in the
 development tasks, and 45% cheaper with more passes on 26 Terminal-Bench 4.0
 tasks. Every response includes `usage` (route, model, `cost_usd`,
 `cost_status`, `first_token_ms`, `total_ms`) so the claim is checkable per
-call. In the owner's apps, cost stays recorded and unshown
+call; responses show route, model, cost, and time, never Jev's internal
+scores (D11). In the owner's apps, cost stays recorded and unshown
 ([f9a8cce433](https://github.com/OpenAgentsInc/openagents/commit/f9a8cce433)).
 
 ## 10. Phased path
@@ -522,7 +594,9 @@ records ([#10161](https://github.com/OpenAgentsInc/openagents/issues/10161)).
 - `POST /v1/messages` (JSON and server-sent events), `/v1/threads` reads and
   stop, `/v1/knowledge/search`, `/v1/plugins` reads, `/v1/usage`, on
   `api.openagents.com`.
-- `oak_` keys with plans; x402 Lightning for everyone else.
+- `oak_` keys with plans; the keyless free tier (D8); x402 for everyone
+  else, Lightning through `crates/x402` and USDC on Base and Solana through
+  our own run of the upstream facilitator.
 - A new `Surface::Api` router policy, starting from the web surface's
   (answers and knowledge, no Coder).
 - The OpenAI-compatible `/v1/chat/completions`.
@@ -532,7 +606,8 @@ records ([#10161](https://github.com/OpenAgentsInc/openagents/issues/10161)).
   `gateway` (key lookup), `x402` (the HTTP edge). Size: medium.
 
 **Phase 2, plugins and evals.** Invoke, create through conversation, evals on
-the eval runner, publish, and author payouts (D7, G9). An MCP `ask` tool.
+the eval runner, publish, per-call plugin fees and author payouts over
+Lightning (D7, D9, G9). An MCP `ask` tool.
 Size: medium.
 
 **Phase 3, computers.** Connect codes for partner apps (G8), runs, steer,
@@ -568,12 +643,8 @@ speaks Nostr natively.
 
 ## 12. Still open
 
-1. Prices: the per-endpoint price list, and what free plan (if any) a new key
-   gets. The Ask box answers anonymous visitors free today; should an
-   anonymous `POST /v1/messages` be free too, or always x402?
-2. The plugin author's share of a payment (D7): a fixed percentage, or a fee
-   the author sets?
-3. Accept upstream's standard stablecoin schemes (USDC through a public
-   facilitator) beside Lightning, or Lightning only?
-4. How much of the `route` event to show: the route id only, or also
-   probabilities and the question set's digest?
+The owner's answers to the earlier questions are D8 to D11. What remains is
+setting numbers, not design:
+
+1. The price list per endpoint, and the size of the keyless free tier.
+2. The free plan, if any, that a new `oak_` key gets.
