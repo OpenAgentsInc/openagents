@@ -102,6 +102,9 @@ pub struct Flow {
     pub notes: Vec<Note>,
     /// Whether the flow ended; the last turn's ending waits for it.
     pub finished: bool,
+    /// The process running the flow, including checks and landing between turns.
+    #[serde(default)]
+    pub process_id: Option<u32>,
     /// What the flow did, in a sentence, once it ended.
     #[serde(default)]
     pub closing: String,
@@ -550,20 +553,7 @@ fn iso_seconds(text: &str) -> Option<u64> {
 /// [`CLAIM_MARK`].
 #[must_use]
 pub fn claimed(issue: &Issue, now: u64, hours: u64) -> Option<String> {
-    let mut claim: Option<&Comment> = None;
-    for comment in &issue.comments {
-        let body = comment.body.trim_start();
-        let is_claim = body
-            .get(..7)
-            .is_some_and(|head| head.eq_ignore_ascii_case("claimed"))
-            || body.contains(CLAIM_MARK);
-        if is_claim {
-            claim = Some(comment);
-        } else if body.contains(RELEASE_MARK) {
-            claim = None;
-        }
-    }
-    let claim = claim?;
+    let claim = active_claim(issue)?;
     let age = now.saturating_sub(claim.at);
     (age < hours * 3_600).then(|| {
         format!(
@@ -573,6 +563,51 @@ pub fn claimed(issue: &Issue, now: u64, hours: u64) -> Option<String> {
             clip(claim.body.lines().next().unwrap_or("").trim(), 120)
         )
     })
+}
+
+/// The latest claim that has not been released.
+fn active_claim(issue: &Issue) -> Option<&Comment> {
+    let mut claim = None;
+    for comment in &issue.comments {
+        let body = comment.body.trim_start();
+        if body.contains(CLAIM_MARK)
+            || body
+                .get(..7)
+                .is_some_and(|head| head.eq_ignore_ascii_case("claimed"))
+        {
+            claim = Some(comment);
+        } else if body.contains(RELEASE_MARK) {
+            claim = None;
+        }
+    }
+    claim
+}
+
+/// Only a marker backed by this store's local task can be this computer's claim.
+fn inactive_own_claim(store: &Path, repository: &str, issue: &Issue) -> Option<String> {
+    let body = &active_claim(issue)?.body;
+    let marker = body.split_once(CLAIM_MARK)?.1;
+    let task = marker.strip_prefix(" task=")?.split_once(" -->")?.0;
+    let record = local::record(store, task)?;
+    let flow = load(store, task)?;
+    if flow.link.number != issue.number
+        || !flow.link.repository.eq_ignore_ascii_case(repository)
+        || (!flow.finished && flow.process_id.is_some_and(crate::activity::alive))
+    {
+        return None;
+    }
+    let mut inbox = super::Store::open(store).ok()?;
+    inbox.settle(task).ok()?;
+    let current = inbox.show(task).ok()?;
+    if !matches!(current.status, Status::Finished | Status::Cancelled)
+        || current.intent.workspace.path != record.worktree
+    {
+        return None;
+    }
+    Some(format!(
+        "Coder is taking #{} again: this computer's previous task is no longer running.",
+        issue.number
+    ))
 }
 
 fn ago(seconds: u64) -> String {
@@ -930,13 +965,16 @@ impl Runner {
             format!("Issue #{number}: {} ({})", issue.title, issue.url),
         );
         if let Some(why) = claimed(&issue, (self.now)(), policy.claim_hours) {
-            if self.skip_claimed {
+            if let Some(recovery) = inactive_own_claim(self.local.store(), &repository, &issue) {
+                note(&mut notes, recovery);
+            } else if self.skip_claimed {
                 return Err(Refused::Claimed(why));
+            } else {
+                note(
+                    &mut notes,
+                    format!("{why}. You asked for this issue by name, so Coder works it anyway."),
+                );
             }
-            note(
-                &mut notes,
-                format!("{why}. You asked for this issue by name, so Coder works it anyway."),
-            );
         }
         let branch = match &policy.branch {
             Some(branch) => branch.clone(),
@@ -978,6 +1016,7 @@ impl Runner {
             },
             notes,
             finished: false,
+            process_id: Some(std::process::id()),
             closing: String::new(),
             files: None,
         };
@@ -1124,6 +1163,7 @@ impl Started {
             },
             notes: Vec::new(),
             finished: false,
+            process_id: Some(std::process::id()),
             closing: String::new(),
             files: None,
         });
@@ -1265,6 +1305,13 @@ impl Run<'_> {
         // the flow fails only once it stays busy past `READER_BUSY_WAIT`.
         let mut reading = super::Reading::default();
         loop {
+            if self.stopping() {
+                let _ = self.work.local.stop(task);
+            }
+            // A dead owner leaves no result until the store settles it.
+            if let Ok(mut inbox) = super::Store::open(store) {
+                let _ = inbox.settle(task);
+            }
             let current = match reading.show(store, task) {
                 Ok(Some(current)) => current,
                 Ok(None) => {
@@ -1684,6 +1731,16 @@ impl Run<'_> {
     }
 
     fn end(&mut self, closing: String) {
+        if !matches!(self.flow.link.outcome.as_str(), "landed" | "pull_request") {
+            let release = format!("Coder released its claim; nothing landed. {RELEASE_MARK}");
+            if let Err(why) =
+                self.work
+                    .tracker
+                    .comment(self.repository, self.issue.number, &release)
+            {
+                self.note(format!("Coder could not release its claim: {why}"));
+            }
+        }
         self.note(closing.clone());
         self.flow.closing = closing;
         self.flow.finished = true;

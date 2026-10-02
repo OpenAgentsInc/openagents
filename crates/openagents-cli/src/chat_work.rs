@@ -172,6 +172,9 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
                 project,
                 url,
             } => {
+                if stopping {
+                    let _ = Local::here(store.clone()).stop(&task);
+                }
                 active.push(task.clone());
                 bind(&mut backend, &thread, &task, &project, issue).await;
                 event(

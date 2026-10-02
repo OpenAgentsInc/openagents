@@ -152,7 +152,7 @@ fn this_repository_lands_on_main_with_its_checks() {
 fn flow(outcome: &str) -> Flow {
     Flow {
         schema: FLOW_SCHEMA.into(),
-        task: "t".into(),
+        task: "task-fixture-1234".into(),
         link: IssueLink {
             repository: "acme/app".into(),
             number: 42,
@@ -165,6 +165,7 @@ fn flow(outcome: &str) -> Flow {
         },
         notes: Vec::new(),
         finished: true,
+        process_id: None,
         closing: "Closing words.".into(),
         files: None,
     }
@@ -247,4 +248,204 @@ fn iso_times_read_as_unix_seconds() {
     assert_eq!(iso_seconds("1970-01-01T00:00:00Z"), Some(0));
     assert_eq!(iso_seconds("2026-09-30T12:00:00Z"), Some(1_790_769_600));
     assert_eq!(iso_seconds("nope"), None);
+}
+
+fn local_record() -> Record {
+    Record {
+        schema: local::RECORD_SCHEMA.into(),
+        task: "task-fixture-1234".into(),
+        thread: None,
+        project: "app".into(),
+        checkout: "/fixture".into(),
+        worktree: "/fixture".into(),
+        base: "main".into(),
+        turns: Vec::new(),
+        ends: Default::default(),
+        requested: None,
+    }
+}
+
+#[test]
+fn an_inactive_own_claim_is_recovered_but_live_and_foreign_claims_are_not() {
+    use super::super::{
+        Action, COMMAND_SCHEMA, Command, RequestedConfiguration, Store, TaskIntent, Workspace,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let record = local_record();
+    std::fs::create_dir(dir.path().join("local")).unwrap();
+    std::fs::write(
+        dir.path().join("local/task-fixture-1234.json"),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+    let mut old = flow("stopped");
+    save(dir.path(), &old).unwrap();
+    let apply = |store: &mut Store, id: &str, action| {
+        store
+            .apply(
+                &serde_json::to_vec(&Command {
+                    schema: COMMAND_SCHEMA.into(),
+                    command_id: id.into(),
+                    task_id: "task-fixture-1234".into(),
+                    expected_revision: (id != "submit").then_some(1),
+                    action,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+    };
+    {
+        let mut store = Store::open(dir.path()).unwrap();
+        apply(
+            &mut store,
+            "submit",
+            Action::Submit {
+                intent: TaskIntent {
+                    title: "fixture".into(),
+                    prompt: "fixture".into(),
+                    workspace: Workspace {
+                        path: record.worktree.clone(),
+                        source_revision: None,
+                    },
+                    configuration: RequestedConfiguration {
+                        adapter: "bounded-command".into(),
+                        model: None,
+                    },
+                    images: vec![],
+                },
+            },
+        );
+    }
+    let marked = format!("Claimed: Coder. {CLAIM_MARK} task=task-fixture-1234 -->");
+    let own = issue(&[(&marked, 100)]);
+    assert!(
+        inactive_own_claim(dir.path(), "acme/app", &own).is_none(),
+        "queued tasks are protected"
+    );
+    {
+        let mut store = Store::open(dir.path()).unwrap();
+        apply(
+            &mut store,
+            "cancel",
+            Action::Cancel {
+                reason: "stopped".into(),
+            },
+        );
+    }
+    let recovered = inactive_own_claim(dir.path(), "acme/app", &own).unwrap();
+    assert!(recovered.contains("taking #42 again"));
+    assert_eq!(recovered.lines().count(), 1);
+    old.finished = false;
+    old.process_id = Some(std::process::id());
+    save(dir.path(), &old).unwrap();
+    assert!(
+        inactive_own_claim(dir.path(), "acme/app", &own).is_none(),
+        "live flows between turns are protected"
+    );
+    old.process_id = None;
+    save(dir.path(), &old).unwrap();
+    assert!(inactive_own_claim(dir.path(), "acme/app", &own).is_some());
+    assert!(inactive_own_claim(dir.path(), "other/app", &own).is_none());
+    let foreign = format!("Claimed: Coder. {CLAIM_MARK} task=other-computer -->");
+    assert!(inactive_own_claim(dir.path(), "acme/app", &issue(&[(&foreign, 100)])).is_none());
+    assert!(
+        inactive_own_claim(
+            dir.path(),
+            "acme/app",
+            &issue(&[("Claimed: another agent", 100)])
+        )
+        .is_none()
+    );
+}
+
+#[derive(Default)]
+struct Comments(Mutex<Vec<String>>);
+impl Tracker for Comments {
+    fn repository(&self, _: &Path) -> Result<String, String> {
+        Ok("acme/app".into())
+    }
+    fn issue(&self, _: &str, _: u64) -> Result<Issue, String> {
+        Ok(issue(&[]))
+    }
+    fn comment(&self, _: &str, _: u64, body: &str) -> Result<(), String> {
+        self.0.lock().unwrap().push(body.into());
+        Ok(())
+    }
+    fn close(&self, _: &str, _: u64) -> Result<(), String> {
+        panic!("must not close")
+    }
+    fn labeled(&self, _: &str, _: &str) -> Result<Vec<u64>, String> {
+        Ok(vec![])
+    }
+    fn pull_request(
+        &self,
+        _: &Path,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<String, String> {
+        panic!("must not land")
+    }
+}
+struct NoChecks;
+impl Checks for NoChecks {
+    fn check(&self, _: &Path, _: &Policy) -> Checked {
+        panic!("must not check")
+    }
+}
+
+#[test]
+fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
+    for stopped in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let tracker = Arc::new(Comments::default());
+        let work = Work {
+            store: dir.path().into(),
+            local: Arc::new(Local::new(dir.path().into())),
+            tracker: tracker.clone(),
+            checks: Arc::new(NoChecks),
+            policy: Policy::default(),
+            branch: "main".into(),
+            top: dir.path().into(),
+            now: || 100,
+        };
+        let record = local_record();
+        let mut flow = flow("working");
+        flow.finished = false;
+        let issue = issue(&[]);
+        let mut run = Run {
+            work: &work,
+            flow: &mut flow,
+            record: &record,
+            issue: &issue,
+            repository: "acme/app",
+            worktree: dir.path(),
+            turn: 1,
+            summaries: vec![],
+            checked: Checked::default(),
+            rounds: 0,
+        };
+        if stopped {
+            run.stopped("Stopped by the person.");
+        } else {
+            run.failed("The task owner process ended.", None);
+        }
+        assert!(flow.finished);
+        let comments = tracker.0.lock().unwrap();
+        let release = comments.last().unwrap();
+        assert_eq!(release.lines().count(), 1);
+        assert!(release.contains("released its claim"));
+        assert_eq!(
+            claimed(
+                &self::issue(&[("Claimed: Coder", 90), (release, 100)]),
+                101,
+                6
+            ),
+            None
+        );
+    }
 }
