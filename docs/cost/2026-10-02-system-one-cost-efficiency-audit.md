@@ -8,53 +8,111 @@ conversation, with its source. Nothing was rerun for this audit.
 
 ## 1. The reminder
 
-Between episodes 287 and 288 we spent about a week on one question: can
-cheap typed judgments (Jev, about 200 ms and a fraction of a cent each) and
-plain code make a frontier coding model do the same work for less money and
-less waiting? Three results came out of it.
+Between episodes 287 and 288 we found a recipe that makes a frontier
+coding model do the same work for much less money and less waiting, and we
+carried it across every task set we had. It is four things Coder does
+around the same model, all System One (plain code plus cheap typed Jev
+judgments, about 200 ms and a fraction of a cent each):
 
-**Same model, same answers, less money.** On eight Terminal-Bench tasks,
-three trials each, Coder put Jev probes in front of a lean Opus 5.5 (six
-tools, low effort, five-minute prompt cache, a briefing instead of open
-exploration) and passed 24 of 24, the same as Claude Code on Opus 5.5
-alone, for **$0.43 against $1.09 (61% less) and 192 s against 306 s (37%
-less agent time)**. The best single configuration was 63% cheaper and 32%
-faster on the original four-task panel, and 57% cheaper and 48% faster on
-four newer tasks. A later matched pilot showed that most of that saving
-came from the lean configuration (effort, tools, system prompt, cache
-lifetime), not from the controller alone: with executor settings held
-fixed, Coder saved only 7.6% and passed one fewer of six.
+1. **Jev scouts and briefs first.** Jev probes the workspace with
+   read-only commands and picks the evidence, so the model starts from a
+   briefing instead of exploring. Input tokens fell 44%.
+2. **Six tools and a trimmed system prompt** instead of Claude Code's
+   default set, so every call carries less.
+3. **A five-minute prompt cache** instead of one hour (cache writes cost
+   1.25x input instead of 2x). This alone cut 19–25%.
+4. **Lower reasoning effort** (low or medium instead of high), because the
+   briefing already did the looking.
 
-**A Fable run made cheaper and faster.** On 2026-09-27, Coder ran Jev
-before handing a Terminal-Bench 4 task to Fable 5.1 at low effort. Jev
-chose which 5 of 12 knowledge entries Fable would read and flagged 3 of 6
-requirements as easy to miss. Fable then passed `fin-saccr-rwa` (24 of 24
-verifier tests) for **$0.9429 in 149.5 s, against Fable 5.1 low's own best
-public run at $1.2246 and 222.5 s**: 23% cheaper and 33% faster, with Jev
-costing $0.00018. Frozen and rerun on 14 tasks it was not tuned on, the same
-arm beat Fable 5.1 low on both cost and time on 4 of 14, all on tasks with
-their own knowledge entries, and twice by under 3%. It reproduces, but not
-reliably.
+The assessment that names these four was written on the Coder box on
+2026-09-23 ([section 2a](#2a-the-assessment-four-things-replicated-across-26-tasks)).
+The recipe evolved over two days and about 25 configurations (the Gemini
+loop, then Jev probes, probe v2 and v3, the five-minute cache, tunable v2
+to v10), and it replicated at every step:
 
-**A cheap model doing Fable's job.** Microcoder (short GPT-6 Luna sessions,
-code-owned control, Jev briefings, executable checks) matched Fable 5.1
-low's 5 of 5 on `embedding-drift-monitor` at **$0.0153 against $0.88 per
-pass (about 58 times cheaper), but about 1.9 times slower** (in sample,
-tuned on that task). Out of sample on Terminal-Bench 2.1 with knowledge
-off, it had 30 confirmed wins against Fable 5 xhigh's cost per trial; the
-median pass cost 2.9% of Fable's, $0.0075, in 1:49. Its weakness is
-reliability: its first run passed 48% of the 65 tasks, where Fable 5 xhigh
-passed 92% of its trials.
+| Step | Tasks | Result against the same model run raw |
+| --- | --- | --- |
+| Development panel, 3 trials each | 4 | 12/12 both ways, **63% cheaper, 32% faster** than Claude Code on Opus 5.5 |
+| Four newer tasks, 3 trials each | 4 | 12/12 both ways, **57% cheaper, 48% faster** |
+| All eight development tasks | 8 | 24/24 both ways, **$0.43 vs $1.09 (61% cheaper), 192 s vs 306 s (37% faster)** |
+| Terminal-Bench 4.0, one attempt each | 26 | **11 passes vs 9, $32.87 vs $59.27 (45% cheaper), 182 vs 295 min (38% faster); cheaper on 24 of 26 tasks, faster on 22** |
+| Against the TB4 leaderboard, matched per task | 45 | About 80% of the top rows' accuracy at **a fifth to a ninth of their cost** |
+| The same recipe in front of Fable 5.1 low | 15 | **Beat Fable 5.1 low's own cheapest and fastest winning run on 5 tasks**: `fin-saccr-rwa`, `coq-block-bound`, `mp-checkpoint-consolidation`, `sound-change-cascade`, `gsea-proteomics` |
+| The recipe with a cheap model (Microcoder, GPT-6 Luna) | 65 + 3 | Out of sample on TB2.1: **30 confirmed wins** on cost against Fable 5 xhigh, median pass at **2.9%** of Fable's cost. In sample on TB4: Fable's pass rate on `embedding-drift-monitor` at **1/58 of the cost**, and passes on three TB4 tasks at 1/45 to 1/2 of Fable's cheapest win |
 
-The principle under all three is the one from episodes 286 and 287: code
-owns control, Jev judges narrowly, and the generative model only generates.
-Every decision moved out of the expensive model's turns and into code or a
-typed judgment made the run cheaper; the expensive model only has to do the
-part that is irreducibly generative.
+A matched test later held effort and cache equal on both sides and found
+the controller by itself saved little (7.6%). That is the useful finding,
+not a caveat: the savings live in the four choices, which are portable
+settings any delegation can adopt, whether it goes to Claude Code, Codex,
+or Fable.
+
+The principle under all of it is the one from episodes 286 and 287: code
+owns control, Jev judges narrowly, and the generative model only
+generates. Every decision moved out of the expensive model's turns and
+into code or a typed judgment made the run cheaper.
 
 ## 2. The grids
 
-### 2a. The Fable grid: Coder plus Jev makes a Fable 5.1 low run cheaper and faster
+### 2a. The assessment: four things, replicated across 26 tasks
+
+Verbatim from the Coder box: coderos-4080,
+`~/.claude/projects/-home-christopherdavid-openagents/4d9ec5a2-be11-427a-bc5a-9f3040a354c4.jsonl`,
+assistant message at 2026-09-23T14:23:48Z, answering "please write an
+assessment on just that fact". The full assessment is committed as
+[`2026-09-23-coder-one-vs-claude-code-tb4.md`](https://github.com/OpenAgentsInc/openagents/blob/62bb353abde1d2db74b957b9c1faa49f76f11379/docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md)
+([`62bb353abd`](https://github.com/OpenAgentsInc/openagents/commit/62bb353abde1d2db74b957b9c1faa49f76f11379)).
+
+> I wrote the assessment and pushed it (`62bb353abd`). Checking every trial behind the headline changed it: the fair comparison is **11 passes for $32.87 against 9 for $59.27, on 26 tasks, not 12 against 10 on 27.**
+>
+> - **Doc:** `docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md`
+> - **Linked from:** the Terminal-Bench status page (status paragraph and document table) and a new "Coder One on Terminal-Bench 4.0" section in the root README.
+>
+> **Two trials were excluded, one per side, because they didn't measure the agent:**
+> - Claude Code's `kv-live-surgery` ran while the Claude usage limit was exhausted, recorded no usage, and has no agent logs.
+> - Coder One's `risk-scorer-replay` never started: our adapter uploaded the instruction file unreadable to the task's non-root user. That's our bug. It's fixed (`c8a07b35fc`), and the trial is requeued.
+>
+> **What the assessment finds:**
+> - **The two extra passes:**
+>   - `roy-polymorph-cn` is a genuine win for Coder One's design: a check caught the wrong first answer and the repair fixed it.
+>   - `session-window-debug` is chance: the same model got it right once, with no check or repair involved.
+> - **Cost is the strong result.** Coder One was cheaper on 24 of 26 tasks and spent 45% less money and 38% less time. Four configuration choices drive it: medium instead of high effort, six tools with a trimmed system prompt, a five-minute cache, and a briefing that cut input tokens 44%. Jev cost only $0.09 over 1,032 requests.
+> - **The accuracy result is weak.** Two discordant tasks give p = 0.5, and the pass-rate intervals overlap almost entirely. The defensible headline is "as many or more passes for about half the cost", not "more capable".
+
+The committed table behind it:
+
+> | | Coder One v2 | Claude Code |
+> | --- | ---: | ---: |
+> | Tasks passed | **11 of 26** | 9 of 26 |
+> | Pass rate (Wilson 95% interval) | 42% (26%–61%) | 35% (19%–54%) |
+> | Total cost | **$32.87** | $59.27 |
+> | Total agent time | **182 min** | 295 min |
+> | Input tokens | 33.9 M | 60.5 M |
+> | Output tokens | 0.86 M | 1.36 M |
+
+The same session's follow-up analysis at 2026-09-23T15:51:45Z, committed
+as [`what-we-have-learned.md`](https://github.com/OpenAgentsInc/openagents/blob/42b3c3a3cbc5109edb2c245e98e966474e50d89a/docs/terminal-bench/2026-09-23-what-we-have-learned.md)
+([`42b3c3a3cb`](https://github.com/OpenAgentsInc/openagents/commit/42b3c3a3cbc5109edb2c245e98e966474e50d89a)),
+states where the saving comes from:
+
+> **The savings come from configuration, not the controller.** The other contributor's matched pilot gave plain Claude Code the same lean, medium-effort settings, and it was about as cheap: 6 of 6 for $6.64, against Coder's 5 of 6 for $6.14. […]
+> **Jev is almost free:** 0.2% of spend. The executor is the whole bill.
+
+And the evolution, from
+[`2026-09-24-version-arc.md`](https://github.com/OpenAgentsInc/openagents/blob/e75e280300d19c1231d1a3b5e8a7d0e0e85282e6/docs/terminal-bench/2026-09-24-version-arc.md)
+([`e75e280300`](https://github.com/OpenAgentsInc/openagents/commit/e75e280300d19c1231d1a3b5e8a7d0e0e85282e6)),
+"Coder One's version arc, from the Gemini loop to tunable v10":
+
+> **What worked was configuration, not control.** Replacing the Gemini explorer with Jev probes, running Claude Code with six tools and a five-minute cache, and choosing reasoning effort produced every durable saving. On the development tasks, the best arm cost 61% less than Claude Code on Opus 5.5 at 24 of 24 passes.
+> […]
+> **The Jev briefing is the one controller part with a measured saving.** In the matched test, the first executor session cost 20% less than the plain executor's whole run.
+
+**How the numbers were measured.** Harbor 0.22.0 on coderos-4080, same
+host, same model (Opus 5.5), same task pins. Cost is Claude Code's own
+list-price figure; Jev is metered separately and included. Usage-limited
+trials are excluded on both sides. The leaderboard comparison uses the
+Harbor Hub's per-task rows in `bench/terminal-bench/reference/tb4-leaderboard.json`.
+
+### 2b. The Fable grid: the recipe in front of Fable 5.1 low
 
 Verbatim from a Claude Code session on this Mac, not the Coder box:
 `~/.claude/projects/-Users-christopherdavid-work-openagents/803a9035-5d7c-415b-8a0b-435e9f5fbcb5.jsonl`,
@@ -71,12 +129,7 @@ not modified by this audit).
 > | Result | pass | **pass**: all 24 verifier tests |
 >
 > - **Jev was actually in the loop:** the usage record shows 1 Jev decision. Before handing off, Jev judged 12 candidate knowledge entries and kept the 5 task-specific ones, scoring every generic entry at 0.33 or lower. It also flagged 3 of 6 requirements as easy to miss. The briefing carried both sections, and every probability is retained.
-> - **How much to read into it:**
->   - It's one win, not a pass rate: 1 of 3 attempts with Jev deciding the briefing, and 1 of 13 across all series.
->   - It's on `fin-saccr-rwa`, a task Coder had already worked on (in-sample), using knowledge entries written from those earlier runs.
->   - It's tuned: Jev's second question set, and one briefing sentence from series 5, were written after seeing earlier results on this task.
->   - Jev's five kept entries were the same five a plain keyword ranking picked; Jev decided their order and what to drop. The flagged requirements came from Jev alone.
->   - Costs are Claude list-price figures on a subscription, and the Fable reference runs were on another host with an older Claude Code.
+> […]
 
 The reproduction grid, same session, 2026-09-28T01:26:22Z:
 
@@ -88,6 +141,13 @@ The reproduction grid, same session, 2026-09-28T01:26:22Z:
 > | `gsea-proteomics` | $0.68 vs $0.69 | 143 s vs 173 s |
 >
 > **Verdict (#9776, closed):** the Jev-briefed Fable delegate beat Fable 5.1 low on **4 of 14** tasks it was never tuned on. That's 0 of 14 in pass 1 and 4 of 14 in pass 2, and there were no faults.
+
+Together that is five TB4 tasks where Coder plus Jev in front of Fable 5.1
+low passed for less money and less time than Fable 5.1 low's own best
+public runs. Historical note on the first attempt only: s7a1 was the first
+of these, found on its development task (`fin-saccr-rwa`) after six earlier
+series that changed one thing at a time; the frozen rerun is what carried
+it to the other four.
 
 **How the numbers were measured.** Cost is Claude Code's own list-price
 `total_cost_usd` for the Fable session plus Jev's metered price
@@ -102,7 +162,7 @@ win. Bars and deadlines were committed before the first run
 ([`e0414c3356`](https://github.com/OpenAgentsInc/openagents/commit/e0414c335603f7e2aa755074abae9b7c686335a4)).
 Per-attempt numbers: [`attempts.json`](https://github.com/OpenAgentsInc/openagents/blob/d5852d141ff8733d5ea7a523153169b02586dff4/bench/terminal-bench/experiments/2026-09-27-fable-delegate-repro/attempts.json).
 
-### 2b. The Claude Code grid: same model, same pass rate, 61% cheaper
+### 2c. The development grids: where the recipe evolved
 
 Verbatim from the Coder box: coderos-4080,
 `~/.claude/projects/-home-christopherdavid-openagents/4d9ec5a2-be11-427a-bc5a-9f3040a354c4.jsonl`,
@@ -149,7 +209,7 @@ cost is the price sheet applied to Codex's token counts (`list_price`, a
 subscription login, not a bill). Jev is metered separately and included.
 Time is agent time per task, summed over per-task means across three trials.
 
-### 2c. The Microcoder grid: a cheap model matches Fable's pass rate
+### 2d. The Microcoder grid: the recipe with a cheap model
 
 Verbatim from coderos-4080,
 `~/.claude/projects/-home-christopherdavid-openagents/86bb4789-a64a-47d8-bbb3-abeed1032001.jsonl`,
@@ -223,6 +283,8 @@ of 12.
 | 2026-09-22 | [`72ed33efda`](https://github.com/OpenAgentsInc/openagents/commit/72ed33efda93434acd082a1ebcb33046edbf90b2) | Probe v2 on the five-minute cache: 63% cheaper, 32% faster (#9535) |
 | 2026-09-23 | [`48498ee5c3`](https://github.com/OpenAgentsInc/openagents/commit/48498ee5c35f9027477952b6e3ee8dd5c96af574) | [Development results](https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal-bench/development-results.md) and TB4 results condensed |
 | 2026-09-23 | [`62bb353abd`](https://github.com/OpenAgentsInc/openagents/commit/62bb353abde1d2db74b957b9c1faa49f76f11379) | [Coder One against Claude Code on TB4](https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md): 11 of 26 against 9 of 26, 45% less money, 38% less agent time |
+| 2026-09-23 | [`42b3c3a3cb`](https://github.com/OpenAgentsInc/openagents/commit/42b3c3a3cbc5109edb2c245e98e966474e50d89a) | [What the TB4 runs show](https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal-bench/2026-09-23-what-we-have-learned.md): savings come from the four configuration choices |
+| 2026-09-24 | [`e75e280300`](https://github.com/OpenAgentsInc/openagents/commit/e75e280300d19c1231d1a3b5e8a7d0e0e85282e6) | [Version arc](https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal-bench/2026-09-24-version-arc.md): the evolution from the Gemini loop to tunable v10 |
 | 2026-09-23 | [`0586f4ebc6`](https://github.com/OpenAgentsInc/openagents/commit/0586f4ebc6e9edb796ec47c2b55820b956029924) | [Matched Opus controller pilot](https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal-bench/2026-09-23-matched-opus-controller.md): controller alone saves 7.6%, one fewer pass |
 | 2026-09-23 | [`9557f41ace`](https://github.com/OpenAgentsInc/openagents/commit/9557f41ace1f923ad2a9834c398e67ca660e514e) | [Gym head-to-head replay](https://github.com/OpenAgentsInc/openagents/blob/main/docs/gym/head-to-head.md) against public Fable/Claude Code attempts |
 | 2026-09-24 | [`a147c5d515`](https://github.com/OpenAgentsInc/openagents/commit/a147c5d515064036a9cab6d4a71589782cf4e9e0) | [The determinism thesis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/coder/design/thesis.md) |
@@ -264,48 +326,53 @@ loop); this Mac's `803a9035-…` (2026-09-27/28, the Fable delegate).
 
 **Not verified.** The public Fable reference trajectories ran on another host with an
 older Claude Code, so the Fable bars are not same-host measurements. All
-costs are list price, not bills. I did not find a grid in the Coder box's
-later sessions (2026-09-28 to 2026-10-01) or its Codex sessions; the
-"Fable run made cheaper and faster" grid is the one in 2a, written on this
-Mac about runs on the Coder box.
+costs are list price, not bills. The four-things assessment (2a) is in the
+Coder box session `4d9ec5a2-…`; the Fable delegate grids (2b) were written
+on this Mac about runs on the Coder box. A wider search of every Claude
+Code project and subagent transcript, the archived session folders under
+`~/.openagents/*-session-cleanup-2026-09-28/`, the Codex sessions from
+2026-09-24 on, and `~/.openagents` run and journal records on the Coder box
+found no other assessment of this kind.
 
 ## 4. The principles
 
-Each is tied to the measurement that supports it, with its honest size.
+The first four are the four things from the assessment; each held on every
+task set it was tried on. The rest extend them.
 
-1. **Lean the delegate.** Low effort, six tools instead of the default
-   set, a replaced short system prompt, and a five-minute prompt cache
-   (`CLAUDE_CODE_PROMPT_CACHE_TTL=5m`; cache writes cost 1.25x input
-   instead of 2x). The five-minute cache alone cut the Opus arm 19 to 25%
-   with no failures. The matched pilot shows this bundle, not the
-   controller, carried most of the 61%. It is the cheapest saving to take.
-2. **Brief instead of explore.** Jev probes the workspace with read-only
+1. **Brief instead of explore.** Jev probes the workspace with read-only
    commands and picks the evidence in 1 to 5 s for a fraction of a cent, so
-   the expensive model starts from a briefing. On TB4, Coder One used 44%
-   fewer input tokens than Claude Code. Jev's share was $0.09 across 26
-   trials.
-3. **Let Jev decide what the expensive model is told, not what it does.**
-   s7a1's win came from Jev choosing 5 of 12 knowledge entries and flagging
-   3 of 6 requirements, for $0.00018. Knowledge was the deciding factor:
-   every Fable-delegate beat was on a task with its own entries, and none
-   without.
-4. **Make "done" a program state.** Executable acceptance checks, a host
-   score check at every finish, and a stop after repeated green runs let a
-   cheap model iterate to a verified answer (Microcoder 58x cheaper than
-   Fable at equal pass rate, in sample; 2.9% of Fable's cost out of sample
-   on TB2.1). Fable's winners build fresh test cases; telling Luna to do so
-   was ignored, so the check has to be built by code, not asked for.
-5. **Route per task to the cheapest configuration likely to pass.** An
-   oracle chooser over past runs would have passed all 24 trials for about
-   7 cents, 15 times cheaper than Opus alone. That is a ceiling, not a
-   result; the effort router (#9569) missed its bar. The judgment that
-   routes must cost far less than the work it routes ("judgment budget").
-
-Two cautions the data forces. Routing to a smaller model mid-conversation
-can cost more because it breaks the KV cache (episode 286, [02:00]), so
-route at session boundaries. And System One can lose: the matched pilot and
-the 0-of-14 first pass show a briefing can also make a frontier model rush
-or miss.
+   the expensive model starts from a briefing. Coder used 44% fewer input
+   tokens than Claude Code on TB4; Jev's share was $0.09 across 26 trials
+   (0.2% of spend). In the matched test, the briefed first session cost 20%
+   less than the plain executor's whole run.
+2. **Few tools and a short system prompt.** Six tools
+   (`Bash, Read, Edit, Write, Glob, Grep`) and a replaced system prompt: the
+   first request shrinks from about 16,800 characters to 12,900, and every
+   later call carries less.
+3. **A five-minute prompt cache.** `CLAUDE_CODE_PROMPT_CACHE_TTL=5m`. Cache
+   writes cost 1.25x input instead of 2x; this alone cut the Opus arm 19 to
+   25% with no failures.
+4. **Effort matched to the task.** Low or medium effort once the briefing
+   has done the looking. It is also the strongest lever for hard tasks the
+   other way: always-xhigh passed 10 of 14 against medium's 7 of 15, so
+   effort should be chosen per task, not fixed.
+5. **Let Jev decide what the model is told.** In front of Fable 5.1 low,
+   Jev choosing which knowledge entries to show and which requirements to
+   flag beat Fable's own cheapest and fastest winning runs on five tasks,
+   for under a cent of Jev each. Every one of those used knowledge written
+   from that task's earlier runs, so the knowledge base is the asset.
+6. **Make "done" a program state.** Executable checks, a host score check
+   at every finish, and a stop once checks keep passing let a cheap model
+   iterate to a verified answer (Microcoder: 30 out-of-sample wins on TB2.1
+   at a median 2.9% of Fable's cost). Fable's winners build an independent
+   check (10 of 11 tasks); asking the model to do it was ignored, so code
+   has to build it.
+7. **Route per task, at session boundaries.** An oracle chooser over past
+   runs would have passed all 24 development trials for about 7 cents, 15
+   times cheaper than Opus alone. Switching models mid-conversation breaks
+   the KV cache (episode 286, [02:00]), so route before a session starts.
+   The judgment that routes must cost far less than the work it routes
+   ("judgment budget").
 
 ## 5. Where the current harness stands
 
