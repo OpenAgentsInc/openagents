@@ -3,8 +3,29 @@
 Status of moving the openagents.com website from the private `coder`
 repository (`bins/coder-serve`) into this repository's
 [`crates/openagents-web`](../../crates/openagents-web/README.md). Recorded
-2026-09-29. openagents.com still deploys from the `coder` repository; nothing
-here is deployed.
+2026-09-29.
+
+## Live (2026-10-01)
+
+openagents.com serves this site since 2026-10-02 02:20 UTC (#10128): Cloud
+Run service `coder` (us-central1, openagentsgemini), revision
+`coder-web-a0c19b1829-b`, two containers. `web` is this crate's image
+(`openagents/openagents-web:a0c19b1829`, built by `crates/openagents-web/cloudbuild.yaml`)
+on port 8080 with `--public-host openagents.com`; it serves its own pages
+and passes every other path (APIs, `/v1`, `/mcp`, `/auth`, `/computers/seen`,
+`/releases`, …) to `coder-serve`, the previous production image and config
+unchanged, as a sidecar on port 8081 (`OPENAGENTS_WEB_UPSTREAM`), with the
+original Host so sign-in and billing links stay on openagents.com. Removed
+sections stay 404. `OPENAGENTS_WEB_ASK_SALT` is the secret
+`openagents-web-ask-salt`.
+
+- Deploy a new site build: build the image with Cloud Build, then replace
+  the `web` container's image in a copy of the live revision spec
+  (`gcloud run services describe coder --format export`) and apply it with
+  `gcloud run services replace` under a new revision name with no traffic and
+  a tag, check the tag URL, then move traffic.
+- Roll back to the old site: `gcloud run services update-traffic coder
+  --region us-central1 --project openagentsgemini --to-revisions coder-00168-smb=100`.
 
 The port reimplements the pages. It copies the published content (the terms
 and the privacy policy) and no backend code,
