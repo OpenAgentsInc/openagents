@@ -1315,3 +1315,39 @@ fn background_runs_only_after_its_dry_run() {
     open(&mut app);
     assert_eq!(app.key(&key(KeyCode::Enter), 80), act(BackgroundAct::Show));
 }
+
+/// #10170, thread 7cd10ec8…: the worker judged "balance and wallet address
+/// basic readonly identifying shit" on the computer lane with route
+/// `wallet` and no `run_coder` offer. `run-coder` refuses that reply, so
+/// the screen must not offer Coder for it; a `work.dispatch` reply on the
+/// same lane is an offer, and Enter runs it.
+#[test]
+fn a_computer_lane_reply_without_an_offer_shows_no_enter_to_run_coder() {
+    let mut app = app();
+    app.fresh = false;
+    let meta = Meta {
+        tier: Some("model".into()),
+        route: Some("wallet".into()),
+        bank: Some("chat-answers-v1@5f34ebd34f0a".into()),
+        ..Meta::default()
+    };
+    app.event(reply(
+        "Coder can query the OpenAgents wallet here and report the current address and balance without sending transactions.",
+        meta,
+    ));
+    assert!(!app.offer);
+    let shown = shown(&mut app);
+    assert!(!shown.contains("Enter to run Coder."), "{shown}");
+    assert_ne!(app.status(), "Enter starts Coder");
+
+    let mut app = self::app();
+    app.fresh = false;
+    let meta = Meta {
+        route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
+        ..Meta::default()
+    };
+    app.event(reply("Coder can fix that.", meta.clone()));
+    assert!(app.offer);
+    // What the screen offers is what `run-coder` accepts.
+    assert!(openagents_chat::delegation::offered(Some(&meta), true));
+}

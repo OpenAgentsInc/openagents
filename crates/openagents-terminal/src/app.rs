@@ -846,8 +846,11 @@ impl App {
             } => {
                 self.partial.clear();
                 self.push(Row::Turn(Who::OpenAgents, reply.text.clone()));
+                // The offer is what `run-coder` accepts, read the same way
+                // (#10170): the computer lane alone is not an offer.
+                let offered = openagents_chat::delegation::offered(reply.meta.as_ref(), computer);
                 let meta = reply.meta.clone().unwrap_or_default();
-                self.notes(&meta, computer && !running, running);
+                self.notes(&meta, offered && !running, running);
                 if running {
                     self.phase = Phase::Following;
                     // The rail says who is starting from the reply on: a

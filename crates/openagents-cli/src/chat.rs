@@ -686,7 +686,9 @@ fn finish(
     }
     println!();
     printed.clone_from(&reply.text);
-    notes(id, &meta, computer && !running, running);
+    // The offer is what `run-coder` accepts, read the same way (#10170).
+    let offered = openagents_chat::delegation::offered(reply.meta.as_ref(), computer);
+    notes(id, &meta, offered && !running, running);
 }
 
 /// The command that accepts `offer`, when this command can.
