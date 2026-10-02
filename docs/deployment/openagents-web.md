@@ -49,6 +49,19 @@ and the privacy policy) and no backend code,
 prompts, endpoints, or secrets. The site is now drawn in four intensities of
 white on near-black instead of four intensities of amber.
 
+Built, not yet live (2026-10-02 23:30 UTC): image
+`openagents/openagents-web:3a46b3c415` (`/live` and `/stats`, #10196) was
+built by Cloud Build as the automation account, but `services replace` of
+revision `coder-web-3a46b3c415` (no traffic, tag `new`) was refused
+`iam.serviceAccounts.actAs` on the runtime account again, although that
+account's policy still lists the automation account as
+`roles/iam.serviceAccountUser` and `testIamPermissions` grants it only
+`get` and `setIamPolicy` there; something above the account's own policy
+withholds `actAs`. Apply it as `chris@` with the steps above. No pay host
+is wired yet (`OPENAGENTS_WEB_PAY_HOST` is unset), so after the deploy
+`/api/flow/*` and `/api/stats` answer `503`, `/live` says the stream is
+unreachable, and `/stats` says the statistics are unreachable.
+
 `/live` (#10197) is on `main` but not deployed: it reads
 `/api/flow/snapshot` and `/api/flow/stream` on this origin, which this
 server proxies to the pay host once #10195 lands. Until then it says the
