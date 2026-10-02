@@ -1,0 +1,84 @@
+#!/bin/sh
+# One encrypted backup of the central receiver: `openagents wallet backup`
+# (seed, config.json, a consistent VACUUM INTO snapshot of the channel
+# store, with its digest manifest), the x402 replay store, and the ledger
+# directory when present. The tar is encrypted to an age recipient whose
+# identity is not on this host, kept on the data disk, and uploaded to a
+# bucket the host can write to but not read or delete from.
+#
+# Runs as openagents-pay beside the resident node; `wallet backup` is safe
+# while the node writes. Plaintext exists only in a 0700 work directory on
+# the data disk and is removed on every exit.
+#
+# Environment (from /etc/openagents-pay/openagents-pay.env):
+#   OPENAGENTS_WALLET_HOME, OPENAGENTS_X402_HOME,
+#   OPENAGENTS_PAY_BACKUP_RECIPIENT    age recipient (age1...)
+#   OPENAGENTS_PAY_BACKUP_BUCKET       GCS bucket; unset keeps local copies only
+#   OPENAGENTS_PAY_BACKUP_PREFIX       object prefix, one per host
+#   OPENAGENTS_PAY_BACKUP_LOCAL_KEEP   encrypted copies kept locally (48)
+set -eu
+umask 077
+
+state=/var/lib/openagents-pay
+openagents=/opt/openagents-pay/current/openagents
+x402_home="${OPENAGENTS_X402_HOME:-${state}/x402}"
+ledger="${state}/ledger"
+recipient="${OPENAGENTS_PAY_BACKUP_RECIPIENT:?OPENAGENTS_PAY_BACKUP_RECIPIENT is unset}"
+bucket="${OPENAGENTS_PAY_BACKUP_BUCKET:-}"
+prefix="${OPENAGENTS_PAY_BACKUP_PREFIX:-$(hostname -s)}"
+keep="${OPENAGENTS_PAY_BACKUP_LOCAL_KEEP:-48}"
+backups="${state}/backups"
+stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
+name="openagents-pay-${stamp}.tar.age"
+metadata="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+
+fail() {
+    echo "openagents-pay-backup: $*" >&2
+    exit 1
+}
+
+mkdir -p -- "${backups}"
+work="$(mktemp -d "${backups}/.work.XXXXXX")"
+trap 'rm -rf -- "${work}"' EXIT HUP INT TERM
+
+# 1. The wallet: seed, config, channel store snapshot, digest manifest.
+"${openagents}" --json wallet backup "${work}/unit/wallet" > "${work}/wallet.json" \
+    || fail "wallet backup failed"
+jq -e '.store == true' "${work}/wallet.json" > /dev/null \
+    || fail "wallet backup holds no channel store"
+
+# 2. The replay store and the ledger. A copy taken while a settle writes may
+#    miss that one entry, so the copy is never a rollback target on its own;
+#    see docs/deployment/pay-host.md, Restore.
+if test -d "${x402_home}"; then
+    cp -a -- "${x402_home}" "${work}/unit/x402"
+fi
+if test -d "${ledger}"; then
+    cp -a -- "${ledger}" "${work}/unit/ledger"
+fi
+printf '{"created_at":"%s","host":"%s"}\n' "${stamp}" "$(hostname -s)" > "${work}/unit/unit.json"
+
+# 3. Encrypt. The tar is streamed straight into age; no plaintext archive.
+tar --create --directory="${work}/unit" . | age --encrypt --recipient "${recipient}" \
+    --output "${work}/${name}" || fail "encryption failed"
+mv -- "${work}/${name}" "${backups}/${name}"
+
+# 4. Upload. The token goes through a header file, never argv.
+if test -n "${bucket}"; then
+    curl -sSf --max-time 10 -H 'Metadata-Flavor: Google' "${metadata}" \
+        | jq -r '"Authorization: Bearer " + .access_token' > "${work}/auth" \
+        || fail "no access token from the metadata server"
+    object="$(printf '%s/%s' "${prefix}" "${name}" | jq -sRr @uri)"
+    curl -sSf --max-time 300 -X POST -H "@${work}/auth" \
+        -H 'Content-Type: application/octet-stream' \
+        --data-binary "@${backups}/${name}" \
+        "https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${object}" \
+        -o /dev/null || fail "upload to gs://${bucket}/${prefix}/${name} failed"
+fi
+
+# 5. Local retention: the newest $keep encrypted copies.
+ls -1 "${backups}"/openagents-pay-*.tar.age 2>/dev/null | sort -r \
+    | tail -n "+$((keep + 1))" | while read -r old; do rm -f -- "${old}"; done
+
+printf '%s\n' "${stamp}" > "${backups}/latest"
+echo "openagents-pay-backup: ${name} ($(wc -c < "${backups}/${name}" | tr -d ' ') bytes)${bucket:+ uploaded to gs://${bucket}/${prefix}/}"

@@ -1,0 +1,43 @@
+[Unit]
+Description=Encrypted backup of the OpenAgents central receiver (wallet, replay store, ledger)
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/pay-host.md
+# The wallet home's seed is a symlink into the receiver's runtime directory,
+# which exists only while the receiver runs.
+Requisite=openagents-pay.service
+After=openagents-pay.service
+RequiresMountsFor=/var/lib/openagents-pay
+
+[Service]
+Type=oneshot
+User=openagents-pay
+Group=openagents-pay
+EnvironmentFile=/etc/openagents-pay/openagents-pay.env
+ExecStart=/usr/local/sbin/openagents-pay-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/openagents-pay
+UMask=0077

@@ -1,0 +1,117 @@
+#!/bin/sh
+# The central receiver's wallet seed, kept in Secret Manager and never on the
+# data disk. Runs as root. Prints no secret material: the mnemonic, the
+# access token, and the request bodies only ever pass through files in a
+# root-only directory, never through argv, stdout, or the journal.
+#
+#   openagents-pay-seed fetch   Write the seed to /run/openagents-pay/seed
+#                               (tmpfs, owner openagents-pay, mode 0400).
+#                               The unit's ExecStartPre runs this.
+#   openagents-pay-seed store   One time, after `openagents wallet init`
+#                               generated a fresh seed on this host: add it
+#                               as the secret's first version, read it back
+#                               and compare digests, then shred the file and
+#                               replace it with the symlink to the tmpfs copy.
+#
+# Environment (from /etc/openagents-pay/openagents-pay.env when unset):
+#   OPENAGENTS_PAY_PROJECT, OPENAGENTS_PAY_SEED_SECRET, OPENAGENTS_WALLET_HOME
+set -eu
+umask 077
+
+env_file=/etc/openagents-pay/openagents-pay.env
+if test -z "${OPENAGENTS_PAY_PROJECT:-}" && test -r "${env_file}"; then
+    set -a
+    # shellcheck disable=SC1090
+    . "${env_file}"
+    set +a
+fi
+project="${OPENAGENTS_PAY_PROJECT:?OPENAGENTS_PAY_PROJECT is unset}"
+secret="${OPENAGENTS_PAY_SEED_SECRET:-openagents-pay-wallet-seed}"
+home="${OPENAGENTS_WALLET_HOME:-/var/lib/openagents-pay/wallet}"
+run_dir=/run/openagents-pay
+run_seed="${run_dir}/seed"
+service_user=openagents-pay
+api="https://secretmanager.googleapis.com/v1/projects/${project}/secrets/${secret}"
+metadata="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+
+fail() {
+    echo "openagents-pay-seed: $*" >&2
+    exit 1
+}
+
+work="$(mktemp -d /run/openagents-pay-seed.XXXXXX)"
+trap 'rm -rf -- "${work}"' EXIT HUP INT TERM
+
+# The access token goes into a header file, so it never appears in argv.
+auth() {
+    curl -sSf --max-time 10 -H 'Metadata-Flavor: Google' "${metadata}" \
+        | jq -r '"Authorization: Bearer " + .access_token' > "${work}/auth" \
+        || fail "no access token from the metadata server"
+}
+
+# Read the latest secret version into $1, base64-decoded.
+read_secret() {
+    curl -sSf --max-time 20 -H "@${work}/auth" "${api}/versions/latest:access" \
+        | jq -r '.payload.data' | base64 -d > "$1" \
+        || fail "could not read ${secret} (latest version) from Secret Manager"
+    test -s "$1" || fail "${secret} is empty"
+}
+
+# A BIP39 mnemonic is 12 to 24 lowercase words; check the shape only.
+check_shape() {
+    words="$(wc -w < "$1" | tr -d ' ')"
+    case "${words}" in
+        12 | 15 | 18 | 21 | 24) ;;
+        *) fail "the seed does not look like a BIP39 mnemonic (${words} words)" ;;
+    esac
+    if LC_ALL=C grep -q '[^a-z ]' "$1"; then
+        fail "the seed holds characters outside a BIP39 English mnemonic"
+    fi
+}
+
+case "${1:-}" in
+fetch)
+    if test -f "${home}/seed" && ! test -L "${home}/seed"; then
+        fail "${home}/seed is a regular file on disk; run \`openagents-pay-seed store\` first"
+    fi
+    install -d -o "${service_user}" -g "${service_user}" -m 0700 "${run_dir}"
+    auth
+    read_secret "${work}/seed"
+    check_shape "${work}/seed"
+    install -o "${service_user}" -g "${service_user}" -m 0400 "${work}/seed" "${run_seed}.new"
+    mv -f -- "${run_seed}.new" "${run_seed}"
+    if ! test -L "${home}/seed"; then
+        ln -s "${run_seed}" "${home}/seed"
+        chown -h "${service_user}:${service_user}" "${home}/seed"
+    fi
+    echo "openagents-pay-seed: seed loaded from ${secret} into ${run_seed}"
+    ;;
+store)
+    if ! test -f "${home}/seed" || test -L "${home}/seed"; then
+        fail "${home}/seed is not a regular file; nothing to store"
+    fi
+    check_shape "${home}/seed"
+    auth
+    if curl -sSf --max-time 20 -H "@${work}/auth" "${api}/versions/latest:access" \
+        -o /dev/null 2>/dev/null; then
+        fail "${secret} already has a version; refusing to replace a live seed"
+    fi
+    printf '{"payload":{"data":"%s"}}' "$(base64 -w0 < "${home}/seed")" > "${work}/body"
+    curl -sSf --max-time 20 -X POST -H "@${work}/auth" \
+        -H 'Content-Type: application/json' --data-binary "@${work}/body" \
+        "${api}:addVersion" -o /dev/null \
+        || fail "could not add a version to ${secret}"
+    read_secret "${work}/check"
+    test "$(sha256sum < "${work}/check")" = "$(sha256sum < "${home}/seed")" \
+        || fail "the stored seed does not read back identically; the file is kept"
+    shred -u -- "${home}/seed"
+    install -d -o "${service_user}" -g "${service_user}" -m 0700 "${run_dir}"
+    install -o "${service_user}" -g "${service_user}" -m 0400 "${work}/check" "${run_seed}"
+    ln -s "${run_seed}" "${home}/seed"
+    chown -h "${service_user}:${service_user}" "${home}/seed"
+    echo "openagents-pay-seed: seed stored in ${secret}; ${home}/seed now links to ${run_seed}"
+    ;;
+*)
+    fail "usage: openagents-pay-seed fetch|store"
+    ;;
+esac

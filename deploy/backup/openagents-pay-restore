@@ -1,0 +1,91 @@
+#!/bin/sh
+# Restore one encrypted central-receiver backup onto a host whose wallet home
+# is empty (a new data disk). Runs as root with the receiver stopped.
+#
+#   openagents-pay-restore ARCHIVE.tar.age IDENTITY_FILE [--with-replay]
+#
+# IDENTITY_FILE is the age identity from Secret Manager
+# (openagents-pay-backup-age-key), brought to the host for this run only and
+# removed after. The script:
+#   1. refuses while openagents-pay.service runs, or when the wallet home
+#      holds anything (never restore over a live channel store: an older
+#      store can broadcast a revoked commitment and lose the channel);
+#   2. decrypts and unpacks into a root-only staging directory;
+#   3. runs `openagents wallet restore`, which checks every digest;
+#   4. checks the restored seed equals the Secret Manager seed, then replaces
+#      the file with the symlink the unit expects;
+#   5. leaves the replay store and the ledger alone when live copies exist.
+#      With neither present it restores them only under --with-replay: an
+#      older replay store forgets proofs settled after the backup, so serve
+#      from it only after the longest invoice expiry plus the paid-retry
+#      grace has passed since the backup was taken.
+set -eu
+umask 077
+
+fail() {
+    echo "openagents-pay-restore: $*" >&2
+    exit 1
+}
+
+test "$#" -ge 2 || fail "usage: openagents-pay-restore ARCHIVE.tar.age IDENTITY_FILE [--with-replay]"
+archive="$1"
+identity="$2"
+with_replay="${3:-}"
+env_file=/etc/openagents-pay/openagents-pay.env
+set -a
+# shellcheck disable=SC1090
+. "${env_file}"
+set +a
+state=/var/lib/openagents-pay
+home="${OPENAGENTS_WALLET_HOME:-${state}/wallet}"
+x402_home="${OPENAGENTS_X402_HOME:-${state}/x402}"
+openagents=/opt/openagents-pay/current/openagents
+user="openagents-pay"
+
+test "$(id -u)" = 0 || fail "run as root"
+systemctl is-active --quiet openagents-pay.service && fail "stop openagents-pay.service first"
+test -f "${archive}" || fail "no archive at ${archive}"
+test -f "${identity}" || fail "no identity at ${identity}"
+if test -e "${home}" && test -n "$(ls -A -- "${home}")"; then
+    fail "${home} is not empty; a restore never replaces a wallet home"
+fi
+
+staging="$(mktemp -d "${state}/.restore.XXXXXX")"
+trap 'rm -rf -- "${staging}"' EXIT HUP INT TERM
+age --decrypt --identity "${identity}" "${archive}" | tar --extract --directory="${staging}" \
+    || fail "could not decrypt or unpack ${archive}"
+test -f "${staging}/wallet/backup.json" || fail "the archive holds no wallet backup"
+chown -R "${user}:${user}" "${staging}"
+
+install -d -o "${user}" -g "${user}" -m 0700 "${home}"
+runuser -u "${user}" -- env OPENAGENTS_WALLET_HOME="${home}" HOME="${state}" \
+    "${openagents}" --json wallet restore "${staging}/wallet" > /dev/null \
+    || fail "wallet restore refused the backup"
+
+# The seed must be the one the unit will fetch; then it leaves the disk.
+seed_check="$(mktemp "${staging}/check.XXXXXX")"
+runtime_seed=/run/openagents-pay/seed
+mkdir -p /run/openagents-pay
+mv -- "${home}/seed" "${seed_check}"
+OPENAGENTS_WALLET_HOME="${home}" /usr/local/sbin/openagents-pay-seed fetch > /dev/null
+test "$(sha256sum < "${seed_check}")" = "$(sha256sum < "${runtime_seed}")" \
+    || fail "the backup's seed is not the Secret Manager seed; nothing more was changed"
+shred -u -- "${seed_check}"
+
+for part in x402 ledger; do
+    case "${part}" in
+        x402) live="${x402_home}" ;;
+        ledger) live="${state}/ledger" ;;
+    esac
+    test -d "${staging}/${part}" || continue
+    if test -e "${live}"; then
+        echo "openagents-pay-restore: kept the live ${part} at ${live}; the backup's copy is older"
+    elif test "${with_replay}" = "--with-replay"; then
+        cp -a -- "${staging}/${part}" "${live}"
+        chown -R "${user}:${user}" "${live}"
+        echo "openagents-pay-restore: restored ${part} from the backup; see the replay gap rule"
+    else
+        echo "openagents-pay-restore: ${part} not restored (no --with-replay)"
+    fi
+done
+echo "openagents-pay-restore: wallet restored into ${home}; start openagents-pay.service"

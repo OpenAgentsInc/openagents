@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the OpenAgents central receiver every five minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=5m
+Unit=openagents-pay-health.service
+
+[Install]
+WantedBy=timers.target

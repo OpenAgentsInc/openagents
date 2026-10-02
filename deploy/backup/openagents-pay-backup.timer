@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly encrypted backup of the OpenAgents central receiver
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+Unit=openagents-pay-backup.service
+
+[Install]
+WantedBy=timers.target

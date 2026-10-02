@@ -1,0 +1,244 @@
+# Pay host: the central receiver
+
+The one Lightning node that receives every paid call
+([central receive and splits](../payments/2026-10-02-central-receive-and-splits.md),
+decisions P1 and P2; issue
+[#10185](https://github.com/OpenAgentsInc/openagents/issues/10185)). It is
+`openagents wallet serve` from [`crates/wallet`](../../crates/wallet) on
+bitcoin mainnet with `--lsp mdk`: MoneyDevKit's `ldk-node` fork and
+MoneyDevKit's LSPS4 just-in-time liquidity, so the first payment opens the
+channel and nothing is funded first. Its node id is the x402 `payTo`.
+
+It is not the production MDK treasury (`MdkTreasuryContainer`). That
+container, its mnemonic, and its secret file are out of this host's path:
+nothing here reads them, and no node here ever runs on that mnemonic.
+
+## The host
+
+| Thing | Value |
+| --- | --- |
+| Instance | `oa-pay-1`, `us-central1-a`, project `openagentsgemini`, `e2-small`, Debian 12, Shielded VM, deletion protection on |
+| Network | `default` VPC, no external address; outbound through the region's Cloud NAT; SSH through IAP only (firewall `oa-pay-host-iap-ssh`, tag `oa-pay-host`) |
+| Service account | `oa-pay-host@openagentsgemini.iam.gserviceaccount.com`: read and add versions on `openagents-pay-wallet-seed`, add versions on `openagents-pay-backup-age-key`, create objects in the backup bucket. No project roles. |
+| Data disk | `oa-pay-data`, 10 GB `pd-balanced`, mounted at `/var/lib/openagents-pay` by label, kept when the instance is deleted |
+| Seed | Secret Manager `openagents-pay-wallet-seed`, generated on the host |
+| Backups | `gs://openagentsgemini-pay-backups/oa-pay-1/`, age-encrypted, hourly, deleted after 30 days; the host can create objects but not read or delete them |
+| Backup key | Secret Manager `openagents-pay-backup-age-key` (the age identity); only the recipient is on the host |
+| Cost | About $14.50 a month: `e2-small` $12.23, two 10 GB `pd-balanced` disks $2.00, Secret Manager and storage a few cents. The LSP's fee is per payment (about 2% of a just-in-time open), not a host cost. |
+
+## Layout
+
+```text
+/opt/openagents-pay/releases/<commit>/openagents   immutable release
+/opt/openagents-pay/current -> releases/<commit>
+/etc/openagents-pay/openagents-pay.env             deploy/openagents-pay.env.example, filled in
+/usr/local/sbin/openagents-pay-seed                deploy/pay/
+/usr/local/sbin/openagents-pay-health              deploy/pay/
+/usr/local/sbin/openagents-pay-backup              deploy/backup/
+/usr/local/sbin/openagents-pay-restore             deploy/backup/
+/var/lib/openagents-pay/                           the data disk (StateDirectory)
+  wallet/          OPENAGENTS_WALLET_HOME: config.json, ldk/ (channel store),
+                   control.sock, seed -> /run/openagents-pay/seed
+  x402/replay/     OPENAGENTS_X402_HOME: the one replay store for this payTo
+  ledger/          crates/pay-ledger (#10187), when it exists
+  backups/         encrypted copies, newest 48; health.json
+/run/openagents-pay/seed                           tmpfs, 0400, written at each start
+```
+
+The units are `deploy/systemd/openagents-pay.service` (the node),
+`deploy/backup/openagents-pay-backup.{service,timer}` (hourly), and
+`deploy/pay/openagents-pay-health.{service,timer}` (every five minutes).
+
+### For the pay front (#10186)
+
+`openagents pay serve` runs as the same `openagents-pay` user with the same
+environment file. It reaches the node through the resident's
+`control.sock` (the `open_wallet` path in `crates/openagents-cli/src/x402.rs`
+uses the resident when one answers), keeps its one replay store under
+`OPENAGENTS_X402_HOME`, and its ledger under `/var/lib/openagents-pay/ledger`,
+which the backup already picks up. Add it as its own unit with
+`After=openagents-pay.service` and `Requires=openagents-pay.service`; it
+needs `ReadWritePaths=/var/lib/openagents-pay` and the one TCP port Caddy
+proxies to.
+
+## Install from a checkout
+
+The binary is built on the host (or a builder with the same Debian release),
+from the commit being installed, with the pinned toolchain:
+
+```sh
+cargo build --locked --release -p openagents-cli --bin openagents
+```
+
+The first install built on the same instance at `e2-standard-8` with a
+temporary 60 GB scratch disk, then the instance was stopped, resized to
+`e2-small`, and the scratch disk deleted. Repeat that for a rebuild, or build
+on any Debian 12 x86_64 builder and copy the binary in.
+
+```sh
+sudo useradd --system --home /var/lib/openagents-pay --shell /usr/sbin/nologin openagents-pay
+sudo apt-get install -y age jq curl
+V=$(git rev-parse --short=12 HEAD)
+sudo install -d -m 0755 /opt/openagents-pay/releases/$V
+sudo install -m 0755 target/release/openagents /opt/openagents-pay/releases/$V/openagents
+sudo ln -sfn /opt/openagents-pay/releases/$V /opt/openagents-pay/current
+
+sudo install -m 0755 deploy/pay/openagents-pay-seed deploy/pay/openagents-pay-health \
+  deploy/backup/openagents-pay-backup deploy/backup/openagents-pay-restore /usr/local/sbin/
+sudo install -m 0644 deploy/systemd/openagents-pay.service \
+  deploy/backup/openagents-pay-backup.service deploy/backup/openagents-pay-backup.timer \
+  deploy/pay/openagents-pay-health.service deploy/pay/openagents-pay-health.timer \
+  /etc/systemd/system/
+sudo install -d -o root -g openagents-pay -m 0750 /etc/openagents-pay
+sudo install -o root -g openagents-pay -m 0640 deploy/openagents-pay.env.example \
+  /etc/openagents-pay/openagents-pay.env
+sudoedit /etc/openagents-pay/openagents-pay.env      # fill every <PLACEHOLDER>
+sudo chown openagents-pay:openagents-pay /var/lib/openagents-pay
+sudo systemd-analyze verify /etc/systemd/system/openagents-pay*.service
+```
+
+### The backup key (once)
+
+The identity goes straight from `age-keygen` into Secret Manager; only the
+recipient (`age1…`, public) stays, in the environment file.
+
+```sh
+sudo sh -c 'umask 077; age-keygen -o /root/pay-backup.key 2>/dev/null'
+sudo gcloud secrets versions add openagents-pay-backup-age-key \
+  --data-file=/root/pay-backup.key --project openagentsgemini
+sudo age-keygen -y /root/pay-backup.key          # the recipient, for the env file
+sudo shred -u /root/pay-backup.key
+```
+
+### The seed (once)
+
+`init` generates a fresh BIP39 seed on the host and prints only the node's
+info, never the mnemonic. `openagents-pay-seed store` adds it as the
+secret's first version, reads it back and compares digests, shreds the file,
+and leaves the symlink the unit expects. It refuses if the secret already
+has a version.
+
+```sh
+sudo -u openagents-pay env OPENAGENTS_WALLET_HOME=/var/lib/openagents-pay/wallet \
+  HOME=/var/lib/openagents-pay \
+  /opt/openagents-pay/current/openagents --json wallet init --network bitcoin --lsp mdk
+sudo /usr/local/sbin/openagents-pay-seed store
+```
+
+MoneyDevKit publishes no minimum for LSPS4 forwards (the LSPS4
+registration carries no fee parameters, and MDK's checkout accepts 1 sat),
+so `--lsp-min-msat` is not set. Set it with `wallet init --lsp-min-msat N`
+(init keeps the seed) if the first receives show a floor.
+
+## Start, stop, logs
+
+```sh
+sudo systemctl enable --now openagents-pay openagents-pay-backup.timer openagents-pay-health.timer
+sudo systemctl status openagents-pay
+sudo systemctl restart openagents-pay           # the seed is fetched again before each start
+sudo systemctl stop openagents-pay
+sudo journalctl -u openagents-pay -f            # node events as JSON lines
+sudo journalctl -u openagents-pay-backup -n 20
+```
+
+Run any wallet command as the service user with the environment file; it
+acts through the resident:
+
+```sh
+pay() { sudo -u openagents-pay env $(sudo grep -v '^#' /etc/openagents-pay/openagents-pay.env | xargs) \
+  /opt/openagents-pay/current/openagents --json "$@"; }
+pay wallet info              # node id (payTo), balances, channels, last backup
+pay wallet channel list
+pay wallet lookup PAYMENT_HASH
+```
+
+## Health
+
+`openagents-pay-health` prints one JSON line and exits 1 when unhealthy: the
+resident must answer on `control.sock`, the network must be bitcoin, and the
+newest encrypted backup must be younger than
+`OPENAGENTS_PAY_BACKUP_MAX_AGE_SECS` (two hours). The timer runs it every
+five minutes; the last result is in `/var/lib/openagents-pay/health.json`,
+and a failure shows in `systemctl --failed`.
+
+```sh
+sudo systemctl start openagents-pay-health && sudo cat /var/lib/openagents-pay/health.json
+```
+
+## Backups
+
+Every hour `openagents-pay-backup` takes `openagents wallet backup` (seed,
+`config.json`, a `VACUUM INTO` snapshot of the channel store, a digest
+manifest), the replay store, and the ledger, streams the tar into `age`
+for the recipient in the environment file, keeps the newest 48 on the data
+disk, and uploads each to `gs://openagentsgemini-pay-backups/oa-pay-1/`.
+The host cannot decrypt, list, or delete them.
+
+```sh
+sudo systemctl start openagents-pay-backup
+sudo ls -l /var/lib/openagents-pay/backups/
+```
+
+## Restore
+
+Two rules come before any command:
+
+- **Never run an older channel store while the live one exists.** The
+  counterparty holds the only other copy of each channel's state; a node
+  that runs from an older copy can broadcast a revoked commitment and lose
+  the channel's balance as a penalty. If the data disk survived, there is
+  nothing to restore: attach it to a new instance and start the unit.
+- **Never reuse an older replay store.** It forgets the proofs settled after
+  the backup, and a forgotten proof can be presented again. If the live
+  replay store is lost, serve paid routes again only after the longest
+  invoice expiry plus the paid-retry grace has passed since the backup was
+  taken: x402 refuses a proof for an expired invoice
+  (`invalid_exact_lnbtc_invoice_expired`), so by then no forgotten proof can
+  settle.
+
+With the data disk lost: bring up a new instance and install as above
+(not `init`, not `seed store`), bring the newest archive and the identity
+from Secret Manager to the host, restore, and remove the identity.
+
+```sh
+gcloud storage cp gs://openagentsgemini-pay-backups/oa-pay-1/NEWEST.tar.age .    # as an operator
+sudo sh -c 'umask 077; gcloud secrets versions access latest \
+  --secret=openagents-pay-backup-age-key --project openagentsgemini > /root/pay-backup.key'
+sudo /usr/local/sbin/openagents-pay-restore NEWEST.tar.age /root/pay-backup.key
+sudo shred -u /root/pay-backup.key
+sudo systemctl start openagents-pay
+```
+
+The host's own service account cannot read the identity or the bucket;
+these two reads need an operator account. `openagents-pay-restore` refuses a
+non-empty wallet home, checks every digest through `wallet restore`, checks
+the restored seed equals the Secret Manager seed, and keeps any live replay
+store and ledger; `--with-replay` restores them when none exist, under the
+replay rule above. If no archive is newer than the last channel update,
+restore from the seed alone (`wallet init --mnemonic -` from the secret) and
+have the LSP force-close, as [Backup and restore](../cli/README.md#backup-and-restore)
+describes.
+
+## First receive (the LSPS4 check)
+
+The first payment to a node with no channel makes the LSP open one; it holds
+the payment about 45 seconds meanwhile, and on Mutinynet the open took about
+60 seconds and the payment failed back. The mainnet check:
+
+```sh
+pay wallet invoice --msat 2000000 --request-hash $(openssl rand -hex 32)
+```
+
+Pay the `bolt11` from any mainnet wallet, then watch `journalctl -u
+openagents-pay -f` for `channel_pending`, `channel_ready`, and the payment,
+and `pay wallet lookup PAYMENT_HASH`. Either it settles (the open fit in the
+hold), or the payer sees a failure and the channel is open anyway, and a
+second invoice is an ordinary one that settles at once. Record which, with
+the times, below.
+
+## Record
+
+| Date | Event |
+| --- | --- |
+| 2026-10-02 | `oa-pay-1` provisioned and built from `869fbe155c` (`openagents 1.0.0-rc.2`). Node `0343a0f10d0856187ad55e8e64427b8902479ef510d9f5587ba6f124280db32e27` (the `payTo`) initialised on bitcoin with `--lsp mdk` (LSPS4 peer `02a63339…473b`); seed generated on the host and stored in Secret Manager. Synced to block 969,621; first encrypted backup uploaded and decrypted back as a check; the unit came back by itself after the stop and resize to `e2-small`; health `healthy`. |
+| 2026-10-02 | First-receive invoice issued: 2,000 sats, payment hash `55421ae0230a630201fce522fc6f63e46d1341e93f4032547d8f979249749cae`, expiry 7 days, with the LSPS4 route hint. Paying it is an owner step (workspace `NEEDS_OWNER.md`); record here whether it settled inside MDK's 45 s hold or failed back while the channel opened. |

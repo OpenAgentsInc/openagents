@@ -1,0 +1,73 @@
+[Unit]
+Description=OpenAgents central receiver (openagents wallet serve, MoneyDevKit LSPS4)
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/pay-host.md
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/openagents-pay
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openagents-pay
+Group=openagents-pay
+EnvironmentFile=/etc/openagents-pay/openagents-pay.env
+# The seed lives in Secret Manager. Before each start, root writes it to
+# /run/openagents-pay/seed (tmpfs, owner openagents-pay, mode 0400); the
+# wallet home's `seed` is a symlink to that file, so the mnemonic is never
+# on the data disk. The script prints no secret material.
+RuntimeDirectory=openagents-pay
+RuntimeDirectoryMode=0700
+ExecStartPre=+/usr/local/sbin/openagents-pay-seed fetch
+ExecStartPre=/usr/bin/test -x /opt/openagents-pay/current/openagents
+ExecStart=/opt/openagents-pay/current/openagents --json wallet serve
+Restart=on-failure
+RestartSec=5
+# ldk-node persists on every state change; give it time to stop cleanly.
+TimeoutStopSec=60
+KillSignal=SIGTERM
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-pay
+
+# The node reaches out (the MoneyDevKit LSP on 9735, Esplora over HTTPS)
+# and answers local commands on control.sock under the wallet home. It
+# binds no network port: LSPS4 channels are opened by the LSP over the
+# connection this node makes.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+
+StateDirectory=openagents-pay
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/openagents-pay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

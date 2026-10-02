@@ -1,0 +1,55 @@
+#!/bin/sh
+# Health of the central receiver, as one JSON line on stdout; exit 1 when
+# unhealthy. Checks: the resident answers on control.sock, the node is on
+# bitcoin with an LSP configured, and the newest
+# encrypted backup is recent. Prints no secret: `wallet info` carries no seed.
+#
+#   sudo -u openagents-pay env $(sudo cat /etc/openagents-pay/openagents-pay.env | xargs) \
+#     /usr/local/sbin/openagents-pay-health
+# or through the timer: systemctl status openagents-pay-health.service
+set -eu
+
+openagents=/opt/openagents-pay/current/openagents
+backups=/var/lib/openagents-pay/backups
+max_age="${OPENAGENTS_PAY_BACKUP_MAX_AGE_SECS:-7200}"
+
+home="${OPENAGENTS_WALLET_HOME:-/var/lib/openagents-pay/wallet}"
+# Without a resident, `wallet info` would open the node itself; never do
+# that beside a unit that may be restarting.
+if ! test -S "${home}/control.sock"; then
+    echo '{"healthy":false,"reasons":["no control.sock: the receiver is not running"]}' \
+        | tee /var/lib/openagents-pay/health.json
+    exit 1
+fi
+info="$("${openagents}" --json wallet info 2>/dev/null)" || {
+    echo '{"healthy":false,"reasons":["wallet info failed"]}' | tee /var/lib/openagents-pay/health.json
+    exit 1
+}
+newest="$(ls -1t "${backups}"/openagents-pay-*.tar.age 2>/dev/null | head -n 1 || true)"
+backup_age=null
+if test -n "${newest}"; then
+    backup_age=$(( $(date +%s) - $(stat -c %Y "${newest}") ))
+fi
+
+printf '%s' "${info}" | jq -c --argjson backup_age "${backup_age}" --argjson max_age "${max_age}" '
+    {
+      node_id: .node_id,
+      network: .network,
+      resident: (.resident != null),
+      lsp: (.lsp.node_id // null),
+      channels: .channels,
+      usable_channels: .usable_channels,
+      inbound_msat: .inbound_msat,
+      backup_age_secs: $backup_age
+    }
+    | .reasons = ([
+        (if .resident then empty else "no resident answering on control.sock" end),
+        (if .network == "bitcoin" then empty else "network is not bitcoin" end),
+        (if .lsp != null then empty else "no LSP configured" end),
+        (if $backup_age == null then "no backup yet"
+         elif $backup_age > $max_age then "newest backup is older than \($max_age)s"
+         else empty end)
+      ])
+    | .healthy = (.reasons | length == 0)
+' | tee "${backups}/../health.json"
+jq -e '.healthy' "${backups}/../health.json" > /dev/null
