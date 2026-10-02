@@ -1,0 +1,25 @@
+# Builds and pushes the openagents.com website image. From the repository root:
+#
+#   gcloud builds submit --project openagentsgemini \
+#     --config crates/openagents-web/cloudbuild.yaml \
+#     --ignore-file crates/openagents-web/web.gcloudignore \
+#     --substitutions _TAG=$(git rev-parse --short=10 HEAD) .
+#
+# See docs/deployment/openagents-web.md for the deploy and the rollback.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - crates/openagents-web/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+      - .
+images:
+  - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+substitutions:
+  _TAG: latest
+options:
+  machineType: E2_HIGHCPU_32
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s

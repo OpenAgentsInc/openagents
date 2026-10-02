@@ -7526,6 +7526,8 @@ dependencies = [
  "base64 0.22.1",
  "coder",
  "futures-util",
+ "hyper",
+ "hyper-util",
  "openagents-chat",
  "pulldown-cmark",
  "secp256k1 0.31.1",

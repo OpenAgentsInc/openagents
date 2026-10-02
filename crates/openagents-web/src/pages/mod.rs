@@ -10,11 +10,12 @@ use axum::Router;
 
 use crate::App;
 
+#[cfg(test)]
 pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
 pub(crate) use content::DOCS;
 #[cfg(test)]
-pub(crate) use install::MAC_DMG;
+pub(crate) use install::{MAC_DMG, SOURCE, TERMINAL_PS1, TERMINAL_SH};
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()

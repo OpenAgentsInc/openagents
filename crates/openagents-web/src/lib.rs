@@ -18,6 +18,7 @@ mod markdown;
 mod pages;
 pub mod palette;
 mod tasks;
+pub mod upstream;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -56,6 +57,12 @@ pub struct Config {
     pub ask_salt: [u8; 32],
     /// Whether the visitor cookie is marked `Secure` (served over HTTPS).
     pub secure_cookies: bool,
+    /// Where requests for paths this site doesn't own go ([`upstream`]).
+    /// With one, a request on a host other than the local and public ones
+    /// goes there whole, so the other names the upstream answered keep
+    /// answering as before. Without one, unowned paths answer `404` and
+    /// other hosts are refused.
+    pub upstream: Option<Arc<upstream::Upstream>>,
 }
 
 impl Config {
@@ -70,6 +77,7 @@ impl Config {
             chat: Arc::new(ask::Worker),
             ask_salt: secp256k1::rand::random(),
             secure_cookies: false,
+            upstream: None,
         }
     }
 }
@@ -99,6 +107,7 @@ pub fn router(config: Config) -> Router {
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
+        upstream: app.config.upstream.clone(),
     };
     Router::new()
         .route("/health", get(|| async { "ok" }))
@@ -123,6 +132,7 @@ pub fn router(config: Config) -> Router {
 struct Hosts {
     port: u16,
     public: Vec<String>,
+    upstream: Option<Arc<upstream::Upstream>>,
 }
 
 impl Hosts {
@@ -131,8 +141,9 @@ impl Hosts {
     }
 }
 
-/// Answers only the configured hosts, keeps the task browser local, and
-/// sets the security headers every response carries.
+/// Answers only the configured hosts, keeps the task browser local, sends
+/// what the site doesn't own to the upstream, and sets the security headers
+/// every response of its own carries.
 async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     let host = request
         .headers()
@@ -143,7 +154,14 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     let local = hosts.local(&host);
     let path = request.uri().path();
     let browser = path == "/app" || path.starts_with("/app/");
-    if !(local || (!browser && hosts.public.contains(&host))) {
+    let public = hosts.public.contains(&host);
+    if let Some(upstream) = &hosts.upstream
+        && !browser
+        && (!(local || public) || !upstream::owned(path))
+    {
+        return upstream.forward(request).await;
+    }
+    if !(local || (!browser && public)) {
         return (StatusCode::FORBIDDEN, "Use the local OpenAgents address").into_response();
     }
     let mut response = next.run(request).await;

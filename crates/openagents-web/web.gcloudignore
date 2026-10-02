@@ -1,0 +1,31 @@
+# Build context for the openagents-web image (crates/openagents-web/Dockerfile),
+# uploaded from the repository root by crates/openagents-web/cloudbuild.yaml.
+# The workspace manifest, every crate, and the files outside crates/ that the
+# site's dependencies compile in (include_str!/include_bytes!); nothing else.
+/*
+!/Cargo.toml
+!/Cargo.lock
+!/crates/
+!/migrations/
+!/nips/
+!/tests/
+!/programs/
+!/questions/
+!/packages/
+/packages/*
+!/packages/coder-defaults/
+!/deploy/
+/deploy/*
+!/deploy/eval-runner/
+!/docs/
+/docs/*
+!/docs/coder/
+!/docs/protocol/
+!/docs/terminal-bench/
+!/bench/
+/bench/*
+!/bench/coder/
+!/bench/terminal-bench/
+/bench/terminal-bench/*
+!/bench/terminal-bench/profiles/
+!/bench/terminal-bench/tests/

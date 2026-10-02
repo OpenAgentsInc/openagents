@@ -200,39 +200,39 @@ async fn the_homepage_links_one_install_page_and_leads_with_the_terminal() {
 }
 
 #[tokio::test]
-async fn the_install_page_covers_the_mac_linux_the_iphone_and_pairing() {
+async fn the_install_page_links_only_the_release_candidates_and_the_source() {
     let root = tempfile::tempdir().unwrap();
     let (status, body) = get(router(config(root.path().into())), "/install").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg"));
+    assert_eq!(
+        pages::MAC_DMG,
+        "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/rc/1.0.0-rc.2/OpenAgents-1.0.0-rc.2.dmg"
+    );
+    assert!(body.contains(&format!("href=\"{}\"", pages::MAC_DMG)));
     assert!(body.contains("macOS 13 or later"));
     assert!(body.contains("<strong>Applications</strong>"));
-    assert!(body.contains(pages::TESTFLIGHT));
-    assert!(body.contains("<strong>Connect a computer</strong>"));
-    assert!(body.contains("iPhone Camera"));
-    assert!(body.contains("Codex or Claude Code"));
-    assert!(body.contains("Android") && body.contains("Linux") && body.contains("Windows"));
-    // Linux links the published AppImage and .deb, beside the signed
-    // update manifest.
-    for linux in [
-        "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/1.0.0/OpenAgents-1.0.0-x86_64.AppImage",
-        "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/1.0.0/openagents_1.0.0_amd64.deb",
-    ] {
-        assert!(body.contains(&format!("href=\"{linux}\"")), "{linux}");
-    }
-    assert!(body.contains("glibc 2.31"));
-    // One row per platform: macOS, both Linux formats, and iPhone link a
-    // real build; Windows and Android are unpublished and link nowhere.
-    assert_eq!(body.matches("class=\"dl-row\"").count(), 6, "{body}");
-    assert_eq!(body.matches("Coming soon").count(), 2, "{body}");
-    for row in body.split("<li class=\"dl-row\">").skip(1) {
-        let row = &row[..row.find("</li>").unwrap()];
-        assert_eq!(row.contains("Coming soon"), !row.contains("href="), "{row}");
-    }
+    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::TERMINAL_SH)));
+    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::TERMINAL_PS1)));
+    assert!(body.contains(&format!(
+        "<a href=\"{}\">build from source</a>",
+        pages::SOURCE
+    )));
+    // Nothing else is downloadable here: no TestFlight, no Linux builds.
+    assert!(!body.contains(pages::TESTFLIGHT));
+    assert!(!body.contains("testflight") && !body.contains("TestFlight"));
+    assert!(!body.contains("AppImage") && !body.contains("amd64.deb"));
+    let main = &body[body.find("<main").unwrap()..body.find("</main>").unwrap()];
+    let links: Vec<&str> = main
+        .split("href=\"")
+        .skip(1)
+        .map(|rest| &rest[..rest.find('"').unwrap()])
+        .filter(|href| href.starts_with("http"))
+        .collect();
+    assert_eq!(links, [pages::MAC_DMG, pages::SOURCE], "{body}");
     for heading in [
-        "[1]</span> OpenAgents Desktop",
-        "[2]</span> OpenAgents Mobile",
-        "[3]</span> Connect them",
+        "[1]</span> OpenAgents for Mac",
+        "[2]</span> OpenAgents Terminal",
+        "[3]</span> Everything else",
     ] {
         assert!(body.contains(heading), "{heading}");
     }
@@ -612,4 +612,329 @@ async fn a_question_must_end_with_the_visitor() {
         let (status, _, _) = post_ask(router(config.clone()), body, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     }
+}
+
+// ---------------------------------------------------------------------
+// The upstream fallback: paths the site doesn't own go to the previous
+// server, which here is an in-process echo.
+
+/// An upstream that answers every request with `418` and a JSON echo of
+/// what reached it, and joins an `Upgrade: echo` on `/ws` to an echo of
+/// its bytes. It counts what it was sent.
+async fn echo_upstream() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let hits = Arc::new(AtomicUsize::new(0));
+    let counted = hits.clone();
+    let app = Router::new().fallback(move |mut request: Request<Body>| {
+        let counted = counted.clone();
+        async move {
+            counted.fetch_add(1, Ordering::SeqCst);
+            let headers = request.headers().clone();
+            let header = |name: &str| {
+                headers
+                    .get(name)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            if request.uri().path() == "/ws" && header("upgrade") == "echo" {
+                let upgraded = hyper::upgrade::on(&mut request);
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut io = hyper_util::rt::TokioIo::new(upgraded.await.unwrap());
+                    let mut buffer = [0u8; 64];
+                    let read = io.read(&mut buffer).await.unwrap();
+                    io.write_all(&buffer[..read]).await.unwrap();
+                });
+                return axum::response::Response::builder()
+                    .status(StatusCode::SWITCHING_PROTOCOLS)
+                    .header(header::CONNECTION, "upgrade")
+                    .header(header::UPGRADE, "echo")
+                    .body(Body::empty())
+                    .unwrap();
+            }
+            let mut echo = json!({
+                "method": request.method().as_str(),
+                "uri": request.uri().to_string(),
+                "host": header("host"),
+                "forwarded_host": header("x-forwarded-host"),
+                "forwarded_for": header("x-forwarded-for"),
+                "forwarded_proto": header("x-forwarded-proto"),
+                "keep_alive": header("keep-alive"),
+            });
+            let body = to_bytes(request.into_body(), 1024 * 1024).await.unwrap();
+            echo["body"] = json!(String::from_utf8_lossy(&body));
+            axum::response::Response::builder()
+                .status(StatusCode::IM_A_TEAPOT)
+                .header("set-cookie", "upstream=1; Path=/; HttpOnly")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(echo.to_string()))
+                .unwrap()
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{address}"), hits)
+}
+
+/// A public openagents.com server whose unowned paths go to `upstream`.
+fn proxying(root: &std::path::Path, upstream: &str) -> Config {
+    let mut config = config(root.join("tasks"));
+    config.public_hosts.push("openagents.com".to_owned());
+    config.upstream = Some(Arc::new(upstream::Upstream::new(upstream).unwrap()));
+    config
+}
+
+#[test]
+fn the_site_owns_its_pages_and_the_removed_sections() {
+    for path in [
+        "/",
+        "/install",
+        "/desktop",
+        "/docs",
+        "/docs/install",
+        "/docs/nope",
+        "/terms",
+        "/privacy",
+        "/connect",
+        "/ask",
+        "/health",
+        "/.well-known/apple-app-site-association",
+        "/.well-known/assetlinks.json",
+        "/static/site.css",
+        "/static/ask.js",
+        "/static/verse-grid.jpg",
+        "/favicon.svg",
+        "/favicon.ico",
+        "/app",
+        "/app/tasks/x",
+        "/forum",
+        "/forum/x",
+        "/gym",
+        "/traces",
+        "/trace/x",
+        "/earn",
+        "/weights",
+        "/qa",
+        "/blog",
+        "/blog/introducing-coder",
+        "/doc",
+        "/doc/install",
+    ] {
+        assert!(upstream::owned(path), "{path}");
+    }
+    for path in [
+        "/v1/token",
+        "/api/v1/chat",
+        "/login",
+        "/logout",
+        "/auth/github/callback",
+        "/stripe/webhook",
+        "/mcp",
+        "/releases/coder-latest.tar.gz",
+        "/install-terminal.sh",
+        "/install-terminal.ps1",
+        "/u/someone",
+        "/u/someone/avatar",
+        "/ws",
+        "/settings",
+        "/.well-known/oauth-protected-resource",
+        "/robots.txt",
+        "/static/coder.css",
+        "/static/webtui.css",
+        "/static/favicon.png",
+        "/forums",
+        "/documents",
+        "/installer",
+        "/earnings",
+    ] {
+        assert!(!upstream::owned(path), "{path}");
+    }
+}
+
+#[tokio::test]
+async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    let response = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/token?scope=a%20b")
+                .header(header::HOST, "openagents.com")
+                .header("x-forwarded-for", "203.0.113.7")
+                .header("x-forwarded-proto", "https")
+                .header("keep-alive", "timeout=5")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{\"ask\":1}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
+    let headers = response.headers().clone();
+    assert_eq!(headers["set-cookie"], "upstream=1; Path=/; HttpOnly");
+    assert!(
+        !headers.contains_key(header::CONTENT_SECURITY_POLICY),
+        "the site's headers are for its own pages"
+    );
+    let echo: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+    assert_eq!(echo["method"], "POST");
+    assert_eq!(echo["uri"], "/v1/token?scope=a%20b");
+    assert_eq!(echo["host"], "openagents.com", "the original Host");
+    assert_eq!(echo["forwarded_host"], "openagents.com");
+    assert_eq!(echo["forwarded_for"], "203.0.113.7", "passed on unchanged");
+    assert_eq!(echo["forwarded_proto"], "https");
+    assert_eq!(echo["keep_alive"], "", "hop-by-hop headers stop here");
+    assert_eq!(echo["body"], "{\"ask\":1}");
+    for uri in [
+        "/api/v1/chat",
+        "/login",
+        "/auth/github/callback",
+        "/releases/install-terminal.sh",
+        "/install-terminal.sh",
+        "/u/someone",
+        "/u/someone/avatar",
+        "/.well-known/oauth-protected-resource",
+        "/static/coder.css",
+        "/forums",
+    ] {
+        let (status, _, body) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::IM_A_TEAPOT, "{uri}");
+        assert!(
+            body.contains(&format!("\"uri\":\"{uri}\"")),
+            "{uri}: {body}"
+        );
+    }
+    // Another name the previous server answered goes there whole.
+    let (status, _, body) = get_with(site.clone(), "/", "new.openagents.com").await;
+    assert_eq!(status, StatusCode::IM_A_TEAPOT);
+    assert!(body.contains("\"host\":\"new.openagents.com\""), "{body}");
+    assert_eq!(hits.load(Ordering::SeqCst), 12);
+}
+
+#[tokio::test]
+async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for uri in PAGES.iter().copied().chain([
+        "/health",
+        "/.well-known/apple-app-site-association",
+        "/.well-known/assetlinks.json",
+        "/static/site.css",
+        "/favicon.svg",
+    ]) {
+        let (status, headers, _) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert!(
+            headers.contains_key(header::CONTENT_SECURITY_POLICY),
+            "{uri}"
+        );
+    }
+    let (status, _, _) = get_with(site.clone(), "/desktop", "openagents.com").await;
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
+    for uri in [
+        "/forum",
+        "/gym",
+        "/traces",
+        "/trace/x",
+        "/earn",
+        "/weights",
+        "/qa",
+        "/blog",
+        "/blog/introducing-coder",
+        "/doc",
+        "/doc/install",
+        "/docs/nope",
+    ] {
+        let (status, _, body) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        assert!(
+            body.contains("href=\"/terms\""),
+            "{uri}: in the site's frame"
+        );
+    }
+    for host in ["openagents.com", "new.openagents.com"] {
+        for uri in ["/app", "/app/tasks/x"] {
+            let (status, _, _) = get_with(site.clone(), uri, host).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{host}{uri}");
+        }
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn an_unreachable_upstream_answers_502() {
+    let root = tempfile::tempdir().unwrap();
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let (status, _, _) = get_with(
+        router(proxying(root.path(), &url)),
+        "/v1/token",
+        "openagents.com",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+}
+
+#[test]
+fn the_upstream_is_a_plain_http_origin() {
+    assert!(upstream::Upstream::new("http://127.0.0.1:8081").is_ok());
+    for bad in [
+        "https://example.com",
+        "http://127.0.0.1:8081/base",
+        "127.0.0.1:8081",
+        "nope",
+    ] {
+        assert!(upstream::Upstream::new(bad).is_err(), "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn an_upgrade_is_joined_end_to_end() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let root = tempfile::tempdir().unwrap();
+    let (url, _) = echo_upstream().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let site = router(proxying(root.path(), &url));
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            site.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    stream
+        .write_all(
+            b"GET /ws HTTP/1.1\r\nHost: openagents.com\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n",
+        )
+        .await
+        .unwrap();
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        let mut byte = [0u8; 1];
+        stream.read_exact(&mut byte).await.unwrap();
+        head.push(byte[0]);
+    }
+    let head = String::from_utf8(head).unwrap();
+    assert!(head.starts_with("HTTP/1.1 101"), "{head}");
+    assert!(
+        head.to_ascii_lowercase().contains("upgrade: echo"),
+        "{head}"
+    );
+    stream.write_all(b"ping").await.unwrap();
+    let mut echoed = [0u8; 4];
+    stream.read_exact(&mut echoed).await.unwrap();
+    assert_eq!(&echoed, b"ping");
 }

@@ -2,13 +2,14 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--listen ADDRESS] \
-[--public-host HOST]...";
+[--public-host HOST]... [--upstream http://HOST:PORT]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is unset")?);
     let mut config = openagents_web::Config::development(home.join(".openagents/tasks"));
     let mut listen: SocketAddr = "127.0.0.1:4300".parse()?;
+    let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
         let value = arguments.next().ok_or(USAGE)?;
@@ -16,6 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--store" => config.store = PathBuf::from(value),
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
             "--public-host" => config.public_hosts.push(value),
+            "--upstream" => upstream = Some(value),
             _ => return Err(USAGE.into()),
         }
     }
@@ -33,8 +35,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .try_into()
             .map_err(|_| "OPENAGENTS_WEB_ASK_SALT is not 64 hex characters")?;
     }
+    // Paths the site doesn't own go to the previous server, if one is named.
+    if let Some(url) = upstream.filter(|url| !url.is_empty()) {
+        config.upstream = Some(std::sync::Arc::new(
+            openagents_web::upstream::Upstream::new(&url)?,
+        ));
+        println!("Paths this site doesn't own are proxied to {url}");
+    }
     let listener = tokio::net::TcpListener::bind(listen).await?;
     println!("OpenAgents web is listening on http://{listen} (development backend)");
-    axum::serve(listener, openagents_web::router(config)).await?;
+    let router = openagents_web::router(config);
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
