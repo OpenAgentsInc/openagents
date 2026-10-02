@@ -335,12 +335,10 @@ fn the_thread_list_opens_starts_and_archives() {
     app.overlay = Some(Overlay::Threads {
         rows: vec![row("1", "one"), row("2", "two")],
         selected: 0,
+        query: String::new(),
     });
     assert!(app.key(&key(KeyCode::Down), 80).is_empty());
-    assert_eq!(
-        app.key(&key(KeyCode::Char('a')), 80),
-        vec![Action::Archive("2".into())]
-    );
+    assert_eq!(app.key(&ctrl('a'), 80), vec![Action::Archive("2".into())]);
     assert_eq!(
         app.key(&key(KeyCode::Enter), 80),
         vec![Action::Open("2".into())]
@@ -349,14 +347,63 @@ fn the_thread_list_opens_starts_and_archives() {
     app.overlay = Some(Overlay::Threads {
         rows: vec![row("1", "one")],
         selected: 0,
+        query: String::new(),
     });
-    assert_eq!(app.key(&key(KeyCode::Char('n')), 80), vec![Action::New]);
+    assert_eq!(app.key(&ctrl('n'), 80), vec![Action::New]);
     app.overlay = Some(Overlay::Threads {
         rows: Vec::new(),
         selected: 0,
+        query: String::new(),
     });
     assert!(app.key(&key(KeyCode::Esc), 80).is_empty());
     assert!(app.overlay.is_none());
+}
+
+#[test]
+fn typing_in_the_thread_list_searches_it() {
+    let mut app = app();
+    let row = |id: &str, title: &str, updated: u64| Summary {
+        id: id.into(),
+        title: title.into(),
+        started: 1,
+        updated,
+        coder: None,
+        archived: false,
+        pinned: false,
+        named: false,
+    };
+    app.overlay = Some(Overlay::Threads {
+        rows: vec![
+            row("1", "Fix the parser", 3),
+            row("2", "Lunch plans", 2),
+            row("3", "Parser docs", 1),
+        ],
+        selected: 0,
+        query: String::new(),
+    });
+    for c in "PARSE".chars() {
+        assert!(app.key(&key(KeyCode::Char(c)), 80).is_empty());
+    }
+    let Some(Overlay::Threads { rows, query, .. }) = &app.overlay else {
+        panic!("the list closed");
+    };
+    assert_eq!(query, "PARSE");
+    let ids: Vec<&str> = shown_threads(rows, query)
+        .iter()
+        .map(|row| row.id.as_str())
+        .collect();
+    assert_eq!(ids, ["1", "3"]);
+    assert!(app.key(&key(KeyCode::Down), 80).is_empty());
+    assert!(app.key(&key(KeyCode::Down), 80).is_empty());
+    assert_eq!(app.key(&ctrl('a'), 80), vec![Action::Archive("3".into())]);
+    for _ in 0..5 {
+        app.key(&key(KeyCode::Backspace), 80);
+    }
+    app.key(&key(KeyCode::Char('l')), 80);
+    assert_eq!(
+        app.key(&key(KeyCode::Enter), 80),
+        vec![Action::Open("2".into())]
+    );
 }
 
 #[test]

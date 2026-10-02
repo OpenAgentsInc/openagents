@@ -83,9 +83,18 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
 
     if let Some(overlay) = &app.overlay {
         let (title, items, selected, hint, empty) = match overlay {
-            Overlay::Threads { rows, selected } => (
-                "Threads",
-                rows.iter()
+            Overlay::Threads {
+                rows,
+                selected,
+                query,
+            } => (
+                if query.is_empty() {
+                    "Threads".to_owned()
+                } else {
+                    format!("Threads · {query}")
+                },
+                crate::app::shown_threads(rows, query)
+                    .into_iter()
                     .map(|row| Item {
                         label: if row.title.trim().is_empty() {
                             "New thread".to_owned()
@@ -96,11 +105,15 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                     })
                     .collect::<Vec<_>>(),
                 *selected,
-                "Enter open · n new · a archive · Esc close",
-                "No threads yet. Press n for a new one.",
+                "Type to search · Enter open · Ctrl+N new · Ctrl+A archive · Esc close",
+                if query.is_empty() {
+                    "No threads yet. Press Ctrl+N for a new one."
+                } else {
+                    "No threads match."
+                },
             ),
             Overlay::Plugins { rows, selected } => (
-                "Plugins",
+                "Plugins".to_owned(),
                 rows.iter()
                     .map(|(name, about)| Item {
                         label: name.clone(),
@@ -113,7 +126,7 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
             ),
         };
         ListOverlay {
-            title,
+            title: &title,
             items: &items,
             selected,
             hint,

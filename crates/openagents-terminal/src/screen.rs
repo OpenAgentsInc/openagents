@@ -321,17 +321,19 @@ impl Screen {
                 self.app.switch(id, true);
                 self.app.note("New thread. Type a message to start it.");
             }
-            Action::Threads => self.threads(None).await,
+            Action::Threads => self.threads(None, String::new()).await,
             Action::Archive(id) => {
                 let result = self.apply(Command::Archive { chat: id }).await;
-                let selected = match &self.app.overlay {
-                    Some(Overlay::Threads { selected, .. }) => *selected,
-                    _ => 0,
+                let (selected, query) = match &self.app.overlay {
+                    Some(Overlay::Threads {
+                        selected, query, ..
+                    }) => (*selected, query.clone()),
+                    _ => (0, String::new()),
                 };
                 if let Err(message) = result {
                     self.app.loud(message);
                 }
-                self.threads(Some(selected)).await;
+                self.threads(Some(selected), query).await;
             }
             Action::Export => self.export().await,
             _ => {}
@@ -427,8 +429,9 @@ impl Screen {
         }
     }
 
-    /// Show the thread list, newest first in the shared order.
-    async fn threads(&mut self, selected: Option<usize>) {
+    /// Show the thread list, newest first in the shared order, narrowed
+    /// to `query`.
+    async fn threads(&mut self, selected: Option<usize>, query: String) {
         let Some(client) = self.client.as_mut() else {
             return;
         };
@@ -438,17 +441,19 @@ impl Screen {
                     .into_iter()
                     .cloned()
                     .collect();
+                let shown = crate::app::shown_threads(&ordered, &query);
                 let selected = selected
                     .unwrap_or_else(|| {
-                        ordered
+                        shown
                             .iter()
                             .position(|row| row.id == self.app.thread)
                             .unwrap_or(0)
                     })
-                    .min(ordered.len().saturating_sub(1));
+                    .min(shown.len().saturating_sub(1));
                 self.app.overlay = Some(Overlay::Threads {
                     rows: ordered,
                     selected,
+                    query,
                 });
             }
             Err(error) => self.app.loud(error.message().to_owned()),

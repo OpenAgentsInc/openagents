@@ -38,8 +38,13 @@ pub enum Phase {
 /// A list over the transcript.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Overlay {
-    /// The thread list, in the shared chat-list order.
-    Threads { rows: Vec<Summary>, selected: usize },
+    /// The thread list, in the shared chat-list order. Typing narrows it
+    /// to the rows `query` finds; `selected` indexes the rows shown.
+    Threads {
+        rows: Vec<Summary>,
+        selected: usize,
+        query: String,
+    },
     /// The published plugins.
     Plugins {
         rows: Vec<(String, String)>,
@@ -283,50 +288,58 @@ impl App {
     }
 
     fn overlay_key(&mut self, key: &KeyEvent) -> Vec<Action> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let Some(overlay) = &mut self.overlay else {
             return Vec::new();
         };
-        let (len, selected) = match overlay {
-            Overlay::Threads { rows, selected } => (rows.len(), selected),
-            Overlay::Plugins { rows, selected } => (rows.len(), selected),
-        };
-        match key.code {
-            KeyCode::Esc => {
-                self.overlay = None;
-                Vec::new()
-            }
-            KeyCode::Up => {
-                *selected = selected.saturating_sub(1);
-                Vec::new()
-            }
-            KeyCode::Down => {
-                *selected = (*selected + 1).min(len.saturating_sub(1));
-                Vec::new()
-            }
-            KeyCode::Enter => match overlay {
-                Overlay::Threads { rows, selected } => {
-                    let id = rows.get(*selected).map(|row| row.id.clone());
-                    self.overlay = None;
-                    id.map(Action::Open).into_iter().collect()
+        if key.code == KeyCode::Esc {
+            self.overlay = None;
+            return Vec::new();
+        }
+        match overlay {
+            Overlay::Threads {
+                rows,
+                selected,
+                query,
+            } => {
+                let shown = shown_threads(rows, query);
+                let picked = shown.get(*selected).map(|row| row.id.clone());
+                let len = shown.len();
+                match (key.code, ctrl) {
+                    (KeyCode::Up, _) => *selected = selected.saturating_sub(1),
+                    (KeyCode::Down, _) => *selected = (*selected + 1).min(len.saturating_sub(1)),
+                    (KeyCode::Enter, _) => {
+                        self.overlay = None;
+                        return picked.map(Action::Open).into_iter().collect();
+                    }
+                    (KeyCode::Char('n'), true) => {
+                        self.overlay = None;
+                        return vec![Action::New];
+                    }
+                    (KeyCode::Char('a'), true) => {
+                        return picked.map(Action::Archive).into_iter().collect();
+                    }
+                    (KeyCode::Backspace, _) => {
+                        query.pop();
+                        *selected = 0;
+                    }
+                    (KeyCode::Char(c), false) => {
+                        query.push(c);
+                        *selected = 0;
+                    }
+                    _ => {}
                 }
-                Overlay::Plugins { .. } => {
-                    self.overlay = None;
-                    Vec::new()
-                }
-            },
-            KeyCode::Char('n') if matches!(overlay, Overlay::Threads { .. }) => {
-                self.overlay = None;
-                vec![Action::New]
+                Vec::new()
             }
-            KeyCode::Char('a') => match overlay {
-                Overlay::Threads { rows, selected } => rows
-                    .get(*selected)
-                    .map(|row| Action::Archive(row.id.clone()))
-                    .into_iter()
-                    .collect(),
-                Overlay::Plugins { .. } => Vec::new(),
-            },
-            _ => Vec::new(),
+            Overlay::Plugins { rows, selected } => {
+                match key.code {
+                    KeyCode::Up => *selected = selected.saturating_sub(1),
+                    KeyCode::Down => *selected = (*selected + 1).min(rows.len().saturating_sub(1)),
+                    KeyCode::Enter => self.overlay = None,
+                    _ => {}
+                }
+                Vec::new()
+            }
         }
     }
 
@@ -773,6 +786,11 @@ pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card
 }
 
 /// The `/help` card.
+/// The thread list's rows `query` finds, in list order.
+pub fn shown_threads<'a>(rows: &'a [Summary], query: &str) -> Vec<&'a Summary> {
+    openagents_chat_app::chat_list::search(rows, query)
+}
+
 pub fn help() -> Card {
     let mut rows: Vec<(String, String)> = Slash::ALL
         .iter()

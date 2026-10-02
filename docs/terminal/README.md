@@ -179,9 +179,10 @@ runs it there instead, as `openagents chat` does.
 ## Threads
 
 Ctrl+T or `/threads` lists threads in the same order as the desktop sidebar
-and the phone: pinned first, then newest first, then archived. Enter opens
-one, `n` starts a new one, `a` archives the selected one, and Esc closes the
-list. Opening a thread while a run streams stops following it; the run keeps
+and the phone: pinned first, then newest first, then archived. Typing
+narrows it to threads whose title or project matches, Backspace widens it.
+Enter opens one, Ctrl+N starts a new one, Ctrl+A archives the selected one,
+and Esc closes the list. Opening a thread while a run streams stops following it; the run keeps
 going.
 
 ## Sync with your phone, and pairing
