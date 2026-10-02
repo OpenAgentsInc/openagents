@@ -20,15 +20,19 @@ no revenue) and [Episode 289](../transcripts/289.md):
 | --- | --- |
 | D1 | **HTTP is the public face, and it is plain.** A developer uses it with curl and an API key: JSON in, JSON out, server-sent events for streaming, standard status codes and errors, cursor pagination, idempotency keys. No Nostr concept appears anywhere in it. "Special bullshit in our thing only." |
 | D2 | **Nostr stays inside our pieces**, as the `openagents` CLI hides it today. Our API front translates each HTTP call into our NIP traffic. |
-| D3 | **Payment is x402.** A call that is neither covered by a key's plan nor free gets a standard `402 Payment Required` with x402 terms; the client pays over Lightning and retries. Key holders on a free or prepaid plan never see a 402. |
+| D3 | **Payment is HTTP 402 over Lightning.** A call that is neither covered by a key's balance or plan nor free gets a standard `402 Payment Required`; the client pays over Lightning and retries. A request with a bearer key never triggers the 402 flow while its balance covers the call. |
 | D4 | **Coder through the API runs only on computers a user explicitly grants to that partner's key.** Never on the owner's computers, never on our machines, by default. |
 | D5 | **Threads are kept by us from the first slice.** `POST /v1/messages` takes an optional `thread`; we store turns as the apps do. |
 | D6 | **The address is `https://api.openagents.com`.** |
-| D7 | **Plugin authors are paid from each x402 payment for calls that used their plugin**, split automatically over Lightning. D9 sets how much. |
+| D7 | **Plugin authors are paid from each paid call that used their plugin** (per-call payment or balance), split automatically over Lightning. D9 sets how much. |
 | D8 | **Keyless callers get a small free tier per caller**, like the Ask box, then a `402` with a Lightning price. |
 | D9 | **Each plugin declares its own per-call fee.** The fee is added to the call's price, and the author receives all of it, split automatically after the call settles. |
-| D10 | **Bitcoin only (Lightning), no stablecoins.** Owner decision: "bitcoin only." The `402` offers one way to pay, the x402 `exact` scheme on Lightning. Consequence: stock upstream x402 SDKs cannot pay it until an `lnbtc` mechanism lands upstream, so clients use `openagents x402 fetch` or the curl steps in section 5, and we can contribute that mechanism. |
+| D10 | **Bitcoin only (Lightning), no stablecoins.** Owner decision: "bitcoin only." The `402` offers one way to pay, the x402 `exact` scheme on Lightning. Consequence: stock upstream x402 SDKs cannot pay it until an `lnbtc` mechanism lands upstream (we can contribute it). Existing L402 clients can pay it today (D12), and so can `openagents x402 fetch` and the curl steps in section 5. |
 | D11 | **Every response shows route, model, cost, and time for the call**, never Jev's internal scores. |
+| D12 | **The 402 speaks both x402 v2 and L402**, from one invoice, so existing Lightning 402 clients work with no OpenAgents code (section 5.2). |
+| D13 | **Prepaid sats balances.** An account is created without signup; its API keys draw on a sats balance topped up with a Lightning invoice; per-call 402 stays the keyless path (section 5.3). |
+| D14 | **`GET /v1/models` soon, OpenAI-shaped**, with prices in sats (section 4.1). |
+| D15 | **OpenAI's API conventions where they fit:** `x-request-id`, client request ids, rate-limit headers for third-party keys, a written versioning policy, an `llms.txt` index and `.md` docs, and an error-codes page (section 3). Prices are always in sats. |
 
 ## 1. What the API is
 
@@ -106,15 +110,54 @@ Everything here is ordinary HTTP API practice.
 | Topic | Rule |
 | --- | --- |
 | Base URL | `https://api.openagents.com/v1`. On a computer, `http://127.0.0.1:<port>/v1`. |
-| Auth | `Authorization: Bearer oak_<id>.<secret>`. No key is allowed on endpoints that are payable with x402 (section 5). |
+| Auth | `Authorization: Bearer oak_<id>.<secret>`. A key is optional on any endpoint payable per call (section 5). Revoking a key takes effect within seconds. A project or workspace header (`OpenAgents-Project`) comes later, if we add projects; the decision gateway's `X-Workspace-Id` is the precedent to reconcile with. |
 | Bodies | `Content-Type: application/json`, UTF-8. Times are RFC 3339. Ids are opaque strings with a type prefix (`th_`, `msg_`, `run_`, `pl_`, `cf_`). |
 | Streaming | `Accept: text/event-stream` (or `"stream": true`) returns server-sent events; otherwise one JSON body when the work is done. |
-| Errors | Standard status codes (`400`, `401`, `402`, `403`, `404`, `409`, `422`, `429`, `500`, `503`) and one body shape: `{"error": {"type": "not_found", "message": "No thread th_123.", "request_id": "req_…"}}`. |
+| Errors | Standard status codes and one body shape everywhere: `{"error": {"type": "not_found", "code": "thread_not_found", "message": "No thread th_123.", "param": "thread", "request_id": "req_…"}}`. The types and codes are in section 3.2, which is also published as the error-codes page. |
 | Pagination | `?limit=` (default 20, max 100) and `?after=<cursor>`; responses carry `{"data": [...], "next": "<cursor>" or null}`. |
 | Idempotency | `Idempotency-Key: <uuid>` on any `POST`. A repeat within 24 hours returns the first response, never a second run. |
-| Request ids | Every response carries `Request-Id`. |
-| Money | Sats as integers in JSON (`"amount_sats": 1000`). x402 headers use millisatoshi strings, as the x402 spec requires. |
-| Versioning | `/v1` in the path; additive changes only within a version. |
+| Request ids | Every response carries `x-request-id` (the header OpenAI-compatible client libraries already expose) and `openagents-processing-ms`. A client may send `X-Client-Request-Id` (ASCII, at most 512 characters, otherwise `400`); we log it beside ours, and support can look a call up by either. |
+| Header size | Request headers total under 64 KiB; custom headers under 60 KiB; otherwise `431`. |
+| Rate-limit headers | For third-party keys only: `x-ratelimit-limit-requests`, `x-ratelimit-remaining-requests`, `x-ratelimit-reset-requests`. A keyless caller gets the same headers for its free tier (D8); past it, the answer is a `402`, not a `429`. Our own apps and the owner's keys get none and are never limited. |
+| Docs | `https://api.openagents.com/llms.txt` indexes every API doc page, and every page has a Markdown version at the same URL with `.md` appended, so agents read the docs directly. The decision gateway already serves `llms.txt` and Markdown docs ([`discovery.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/gateway/src/discovery.rs)). |
+| Money | Sats as integers in JSON (`"amount_sats": 1000`), everywhere, including `/v1/models` pricing. x402 headers use millisatoshi strings, as the x402 spec requires. |
+| Versioning | `/v1` in the path; every response carries `openagents-version` (a date such as `2026-10-02`); policy in section 3.1. |
+
+### 3.1 Versioning and backwards compatibility
+
+Within `v1` we make only backwards-compatible changes. These count as
+backwards-compatible, and clients must tolerate them:
+
+- adding new resources and endpoints;
+- adding new optional request parameters;
+- adding new properties to responses;
+- changing the order of properties in a response;
+- changing the length or format of opaque strings, such as ids;
+- adding new event types to a stream, and new values to an open set such as
+  `route`.
+
+Anything else (removing or renaming a field, changing a type, making an
+optional parameter required) waits for a new dated `openagents-version`,
+announced in the API changelog (published beside `llms.txt`) before it ships.
+
+### 3.2 Errors
+
+| Status | `type` | Example `code`s |
+| --- | --- | --- |
+| `400` | `invalid_request` | `invalid_json`, `missing_param`, `client_request_id_invalid` |
+| `401` | `authentication` | `invalid_key`, `key_revoked` |
+| `402` | `payment_required` | `payment_required`, `balance_insufficient`, `invoice_expired`, `preimage_mismatch` |
+| `403` | `permission` | `scope_missing`, `computer_not_granted` |
+| `404` | `not_found` | `thread_not_found`, `run_not_found`, `model_not_found` |
+| `409` | `conflict` | `idempotency_conflict`, `run_already_stopped` |
+| `422` | `unprocessable` | `route_not_allowed`, `plugin_refused` |
+| `429` | `rate_limited` | `rate_limited` (third-party keys only) |
+| `431` | `headers_too_large` | `headers_too_large` |
+| `500` | `server_error` | `internal_error` |
+| `503` | `unavailable` | `computer_offline`, `upstream_unavailable` |
+
+A failed call is not charged to a balance; its usage record shows `cost_sats: 0`
+and the `code`.
 
 ## 4. The endpoints, with curl
 
@@ -125,7 +168,39 @@ export OA=https://api.openagents.com/v1
 export KEY=oak_…    # from your OpenAgents account
 ```
 
-### Send a message and stream the answer
+### 4.1 Models
+
+`GET /v1/models` and `GET /v1/models/{id}` answer in OpenAI's shape, so any
+OpenAI client that lists models works. The list is the ways to call
+OpenAgents, not the models behind it:
+
+| `id` | What it is |
+| --- | --- |
+| `openagents` | The routed agent: every route the key's scopes allow. |
+| `openagents-fast` | Answers and knowledge only, never an offer or a run; the cheapest. |
+| `openagents-coder` | Sends work to Coder runs on a computer granted to the key (D4). |
+
+```sh
+curl $OA/models -H "Authorization: Bearer $KEY"
+```
+
+```json
+{"object":"list","data":[
+  {"id":"openagents","object":"model","created":1790985600,"owned_by":"openagents",
+   "pricing":{"kind":"dynamic","per_call_sats":21,"basis":"per message; with a balance, the route's actual price"}},
+  {"id":"openagents-fast","object":"model","created":1790985600,"owned_by":"openagents",
+   "pricing":{"kind":"fixed","per_call_sats":5}},
+  {"id":"openagents-coder","object":"model","created":1790985600,"owned_by":"openagents",
+   "pricing":{"kind":"dynamic","per_call_sats":21,"basis":"per message; each run quoted on its offer"}}]}
+```
+
+`?include=underlying` adds the models the router may use, each with
+`"openagents": {"routable": false}` (they cannot be named in a call) and its
+cost to us in sats per million input and output tokens, so a caller can see
+what its answers rest on. `pricing` is an extra field; OpenAI clients ignore
+it. Prices are illustrative until the price list is set.
+
+### 4.2 Send a message and stream the answer
 
 ```sh
 curl -N $OA/messages \
@@ -241,6 +316,14 @@ curl $OA/runs/run_77…/diff -H "Authorization: Bearer $KEY"     # text/x-diff
 A run can also start from a message: the reply's `offer` with
 `action: "run.start"`, confirmed with `POST /v1/confirmations/{id}`.
 
+**Long work answers `202` with a signed status URL.** A run, or an eval,
+started by a call answers `202 Accepted` with
+`{"id": "run_77…", "status": "pending", "status_url": "https://api.openagents.com/v1/s/…"}`.
+The `status_url` is signed and can be polled without a key, which matters for a
+keyless caller who paid per call; diffs and artifacts come back as signed
+URLs the same way. Signed URLs expire after 24 hours; the keyed endpoints
+above keep working after that.
+
 ### Plugins and evals
 
 ```sh
@@ -324,10 +407,12 @@ and an embedded facilitator. Nothing Nostr is involved on this path.
 
 **Prices** are set in sats.
 
-**Clients.** Upstream's x402 SDKs ship no Lightning mechanism yet, so a stock
-x402 client reads our `402` but cannot pay it. Until an `lnbtc` mechanism
-lands upstream (we can contribute it, section 5's gap table), a client pays
-with `openagents x402 fetch` or the curl steps below.
+**Clients.** Every `402` carries the same Lightning invoice in two standard
+forms: x402 v2 headers, and an L402 challenge (section 5.2). An existing L402
+client pays it today with no OpenAgents code. Upstream's x402 SDKs ship no
+Lightning mechanism yet, so a stock x402 SDK reads our `402` but cannot pay
+it until an `lnbtc` mechanism lands upstream (we can contribute it); until
+then x402 callers use `openagents x402 fetch` or the curl steps below.
 
 **Who sees a 402.**
 
@@ -337,7 +422,8 @@ with `openagents x402 fetch` or the curl steps below.
 | A key on a free or prepaid plan | Never. Calls draw on the plan. |
 | A caller that sends its own provider key (OpenRouter, Vercel AI Gateway, or TypeSafe) | No 402 for the call's model cost: the model calls run on the caller's key, and a call its key cannot make fails plainly rather than being billed to us. See [BYOK, section 6](../byok/2026-10-02-byok-openrouter.md#6-api-callers-bring-their-own-key). |
 | No key, within the free tier (D8) | Answered free, like the Ask box. A keyless caller is the client's IP address (its `/64` for IPv6); the tier is a small daily number of messages. This applies only to third-party API callers; nothing is ever counted or limited in our own apps. |
-| A key with no plan, or no key past the free tier | `402 Payment Required` with x402 terms on any priced endpoint. Free endpoints (reading the plugin registry, knowledge reads) answer without payment. |
+| A key whose balance covers the call (section 5.3) | Never. The call is debited from the balance. |
+| A key with no plan and no balance left, or no key past the free tier | `402 Payment Required` with x402 terms on any priced endpoint. Free endpoints (reading the plugin registry, knowledge reads) answer without payment. |
 
 **The flow over Lightning.** The x402 Lightning scheme uses the `upfront`
 flow: payment settles before the work runs. The steps:
@@ -472,14 +558,137 @@ Owner steps, once:
    `OPENAGENTS_X402_HOME`) on durable disk, and keep it the one store for this
    receiver: every process that settles for this node must share it.
 
+### 5.2 L402 clients
+
+The same `402` also carries an [L402](https://github.com/lightninglabs/L402/blob/master/protocol-specification.md)
+challenge, so Lightning 402 clients that already exist work unchanged:
+
+```http
+HTTP/1.1 402 Payment Required
+PAYMENT-REQUIRED: eyJ4NDAyVmVyc2lvbiI6Mi…
+WWW-Authenticate: L402 macaroon="AgEL…", invoice="lnbc210n1…"
+WWW-Authenticate: LSAT macaroon="AgEL…", invoice="lnbc210n1…"
+```
+
+The client pays the invoice and replays the request with
+`Authorization: L402 <macaroon>:<preimage>`.
+
+**One invoice, one paid call, two encodings.** The invoice is the one in the
+x402 terms: its signed description hash is the x402 request hash, so it
+commits to this exact request. The L402 token (a macaroon) carries caveats
+for that request hash, the payment hash, and an expiry, signed by the front.
+On replay the front checks the token's signature and caveats, recomputes the
+request hash from the request it received, checks that the preimage hashes to
+the payment hash, and consumes the payment hash in the same replay store the
+x402 path uses. Whichever encoding arrives first is the one paid call; the
+other is refused as a duplicate. A token is good for that one call, not a
+session: a later request gets a fresh challenge. Because L402 uses the
+`Authorization` header for payment, this path is for keyless calls; a call
+with a bearer key uses its balance (section 5.3).
+
+With an L402 client (for example `lnget`), the whole flow is one command with
+a cost ceiling: it reads the challenge, pays from its wallet if the price is
+under the ceiling, and replays. By hand:
+
+```sh
+curl -si $OA/messages -H "Content-Type: application/json" \
+  -d '{"message":"What is new in the Gym?"}' | grep -i '^www-authenticate: L402'
+# pay the invoice with any Lightning wallet that shows the preimage, then:
+curl -N $OA/messages -H "Content-Type: application/json" \
+  -H "Authorization: L402 $MACAROON:$PREIMAGE" \
+  -d '{"message":"What is new in the Gym?"}'
+```
+
+And with our CLI (x402 headers, same invoice):
+
+```sh
+echo '{"message":"What is new in the Gym?"}' | openagents x402 fetch $OA/messages \
+    --method POST --body - --max-msat 21000 --max-fee-msat 100 --json
+```
+
+The machine-payments `Payment` authentication scheme
+(`WWW-Authenticate: Payment id="…", method="lightning", …`) carries the same
+idea; we add it as a third encoding of the same invoice once its
+specification settles.
+
+### 5.3 Accounts, keys, and a prepaid balance
+
+Per-call payment suits a caller who wants no account. A caller that makes
+many calls opens an account and prepays in sats. No email, no signup, no
+identity check:
+
+```sh
+curl -X POST $OA/accounts
+# 201 {"account":"acct_…","key":{"id":"key_…","secret":"oak_….…"},"balance_sats":0}
+```
+
+The secret appears once, in that response. Then top up with a Lightning
+invoice:
+
+```sh
+curl $OA/topups -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"amount_sats":50000}'
+# 201 {"id":"top_…","bolt11":"lnbc500u1…","amount_sats":50000,"status":"pending","expires_at":"…"}
+
+curl $OA/topups/top_… -H "Authorization: Bearer $KEY"
+# {"id":"top_…","status":"paid","amount_sats":50000,"paid_at":"…"}
+
+curl $OA/balance -H "Authorization: Bearer $KEY"
+# {"balance_sats":50000}
+```
+
+- **Top-ups** are Lightning invoices from the API host's wallet (section 5.1),
+  with a minimum and maximum per invoice and a 15-minute expiry; `status` is
+  `pending`, `paid`, or `expired`.
+- **Automatic top-ups (later):** `POST /v1/topups/auto` with a Nostr Wallet
+  Connect URI, a threshold, and an amount; the front requests a top-up from
+  the caller's wallet when the balance falls below the threshold.
+  `GET /v1/topups/auto` and `DELETE /v1/topups/auto` read and remove it.
+- **Keys:** `GET /v1/keys`, `POST /v1/keys`, `GET /v1/keys/{id}`,
+  `PATCH /v1/keys/{id}`, `DELETE /v1/keys/{id}`, all drawing on the account's
+  one balance. A key holder may set a spending cap and an expiry on its own
+  keys, to contain a leaked key; we never set one. This is the gateway's
+  existing key model (pause, rotate, revoke) with a sats balance in place of
+  a plan.
+- **Calls debit the balance after they succeed.** Unlike per-call payment,
+  which must price a call before the router runs, a balance is charged what
+  the call actually did: a prepared answer costs less than a knowledge
+  answer, and a plugin's fee only when the plugin ran. A request may send
+  `max_price_sats`; a route that would cost more comes back as an offer.
+- **Failures cost nothing.** A failed call is not debited; its usage record
+  shows `cost_sats: 0` and the error `code`.
+- **Empty balance:** a keyed call the balance cannot cover gets a `402` with
+  `code: balance_insufficient`, a link to top up, and the same per-call
+  challenge, so the call can still be paid on the spot.
+- **History:** `GET /v1/usage` lists calls with route, model, `cost_sats`,
+  time, key, and error `code`, filterable by key, model, and date;
+  `GET /v1/topups` lists top-ups.
+
+### 5.4 Prices
+
+Prices are in sats, published in `/v1/models` and here. Illustrative until
+the price list is set:
+
+| Endpoint | Kind | Price |
+| --- | --- | --- |
+| `POST /v1/messages`, `/v1/chat/completions` (`openagents-fast`) | Fixed | 5 sats per call |
+| `POST /v1/messages`, `/v1/chat/completions` (`openagents`, `openagents-coder`) | Fixed per call; dynamic with a balance | 21 sats per call, or the route's actual price |
+| `POST /v1/knowledge/search` | Fixed | 2 sats |
+| `POST /v1/plugins/{id}/invoke` | Dynamic | the endpoint price plus the plugin's declared fee |
+| A Coder run or eval | Dynamic | quoted on its offer, before confirmation |
+| Reads (`/v1/models`, plugin registry, knowledge entries, threads, runs, usage, balance) | Free | 0 |
+
+Every price includes the Lightning service provider's forwarding fee
+(section 5.1).
+
 ### x402: gaps between our NIP-X402, our code, and upstream
 
 | Gap | Close it by |
 | --- | --- |
 | The NIP pins upstream commit `4fcf836`. Upstream `main` is 16 commits later; none of them touch the v2 core, the HTTP transport, or the Lightning scheme. | Bump the pin in NIP-X402 and `crates/x402` (doc-only). |
 | The repository moved from `coinbase/x402` to `x402-foundation/x402`; the old `coinbase` `main` still lacks the Lightning scheme. | Link only `x402-foundation` (the NIP already does). |
-| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client reads our `402` but cannot pay it. | Contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. Until then, `openagents x402 fetch` and the curl steps above are the clients. |
-| Lightning supports only the `upfront` flow; upstream has `upto` and `escrow` flows on other networks, not Lightning. A message whose cost depends on the route cannot be priced exactly. | Fixed per-endpoint prices and priced offers now. Later, propose an `escrow`-flow Lightning variant upstream using hold invoices (settle a ceiling, charge the actual). |
+| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client reads our `402` but cannot pay it. | L402 clients pay today (section 5.2). For x402 SDKs, contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. |
+| Lightning supports only the `upfront` flow; upstream has `upto` and `escrow` flows on other networks, not Lightning. A message whose cost depends on the route cannot be priced exactly. | Fixed per-endpoint prices and priced offers for per-call payment; a prepaid balance (section 5.3) charges the actual route. Later, propose an `escrow`-flow Lightning variant upstream using hold invoices (settle a ceiling, charge the actual). |
 | v1 clients use `X-PAYMENT` and `X-PAYMENT-RESPONSE`; the Lightning scheme is v2-only (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`). | Serve v2 only and say so in the 402 body. |
 | Upstream has an A2A transport; the Lightning request binding defines only `http:1` and `mcp:1`. | If we offer A2A, propose an `a2a:1` binding profile upstream first. |
 | A paid call that fails after settlement has no refund (spec and NIP). | Our policy: a failure before any answer is retried free under the same `Idempotency-Key`; no automatic refund. |
@@ -517,7 +726,9 @@ sees the right-hand columns.
 | `POST /v1/decisions` | [DEC](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-DEC.md) `25910`/`26910`/`27010` | DEC already defines its HTTP-gateway equivalence; this is the model the rest follows. |
 | `GET /v1/profile` (later) | [XP](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-XP.md) awards `3193`, trainer cards `30194` | |
 | `POST /v1/files` | HOST `artifact.put` on a computer; hosted, the front's store (G6) | |
-| x402 on any endpoint | Upstream x402 `http:1` (NIP-X402 HTTP role), at the edge only | |
+| `GET /v1/models` | No NIP: the front's own catalog; a self-hoster can describe it as [CAP](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-CAP.md) capabilities | |
+| `/v1/accounts`, `/v1/keys`, `/v1/balance`, `/v1/topups` | No NIP: account state belongs to whoever runs the front; top-ups are invoices from its wallet; automatic top-ups use [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md) Wallet Connect toward the caller's wallet | |
+| x402 or L402 on any endpoint | Upstream x402 `http:1` (NIP-X402 HTTP role) and L402, at the edge only | |
 
 Upstream NIPs underneath: [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
 events and signatures, [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md)
@@ -602,18 +813,26 @@ records ([#10161](https://github.com/OpenAgentsInc/openagents/issues/10161)).
   (section 5.1).
 - A new `Surface::Api` router policy, starting from the web surface's
   (answers and knowledge, no Coder).
-- The OpenAI-compatible `/v1/chat/completions`.
+- The OpenAI-compatible `/v1/chat/completions` and `GET /v1/models`
+  (`openagents`, `openagents-fast`) with sats pricing.
+- Accounts without signup, keys, `GET /v1/balance`, and Lightning top-ups.
+- L402 beside x402 on every `402`.
+- The conventions in section 3: `x-request-id`, `X-Client-Request-Id`,
+  `openagents-processing-ms`, `openagents-version`, rate-limit headers for
+  third-party keys, header-size limits, the error-codes page, the versioning
+  policy and changelog, `llms.txt` and `.md` pages.
 - NIP amendments G1, G2, G3, G5 drafted with it.
 - Crates: `openagents-web` (the `api` module), `openagents-chat` (event
   schema, `Surface::Api`), `coder` (`router::policy`, usage key id),
   `gateway` (key lookup), `x402` (the HTTP edge). Size: medium.
 
 **Phase 2, plugins and evals.** Invoke, create through conversation, evals on
-the eval runner, publish, per-call plugin fees and author payouts over
+the eval runner (with signed status URLs), publish, automatic top-ups over
+Wallet Connect, per-call plugin fees and author payouts over
 Lightning (D7, D9, G9). An MCP `ask` tool.
 Size: medium.
 
-**Phase 3, computers.** Connect codes for partner apps (G8), runs, steer,
+**Phase 3, computers.** `openagents-coder`, signed status URLs for runs, connect codes for partner apps (G8), runs, steer,
 stop, diffs, wallet (G4), background rules, files (G6), confirmations (G7).
 Crates: `coder-host`, `coder` task, `wallet`, `openagents-web`. Size: large.
 
@@ -646,8 +865,8 @@ speaks Nostr natively.
 
 ## 12. Still open
 
-The owner's answers to the earlier questions are D8 to D11. What remains is
-setting numbers, not design:
+What remains is setting numbers, not design:
 
-1. The price list per endpoint, and the size of the keyless free tier.
-2. The free plan, if any, that a new `oak_` key gets.
+1. The price list (section 5.4 is illustrative), the keyless free tier's
+   size, and the top-up minimum and maximum.
+2. The free plan, if any, that a new key gets.
