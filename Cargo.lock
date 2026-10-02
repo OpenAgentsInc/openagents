@@ -9357,7 +9357,9 @@ dependencies = [
  "openagents-terminal",
  "openagents-wallet",
  "openagents-x402",
+ "pay-ledger",
  "playtest",
+ "plugin",
  "reqwest 0.12.28",
  "ring",
  "route-contract",
@@ -9751,6 +9753,27 @@ name = "pastey"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
+name = "pay-host"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "chrono",
+ "futures-util",
+ "hex",
+ "nostr",
+ "openagents-chat-app",
+ "pay-ledger",
+ "route-contract",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tower 0.5.3",
+]
 
 [[package]]
 name = "pay-ledger"

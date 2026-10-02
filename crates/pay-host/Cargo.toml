@@ -1,0 +1,28 @@
+[package]
+name = "pay-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = "0.8"
+futures-util = "0.3"
+hex = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+nostr = { path = "../nostr" }
+route-contract = { path = "../route-contract" }
+openagents-chat-app = { path = "../openagents-chat-app" }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+
+[dev-dependencies]
+pay-ledger = { path = "../pay-ledger" }
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -73,7 +73,9 @@ pub(crate) const REMOVED: [&str; 9] = [
 /// removed section that stays `404`. Anything else goes upstream.
 #[must_use]
 pub fn owned(path: &str) -> bool {
-    OWNED_EXACT.contains(&path)
+    path == "/api/stats"
+        || path.starts_with("/api/flow/")
+        || OWNED_EXACT.contains(&path)
         || OWNED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
         || REMOVED.iter().any(|section| {
             path.strip_prefix(section)

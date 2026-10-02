@@ -1029,3 +1029,80 @@ async fn an_upgrade_is_joined_end_to_end() {
     stream.read_exact(&mut echoed).await.unwrap();
     assert_eq!(&echoed, b"ping");
 }
+
+#[tokio::test]
+async fn payment_routes_use_dedicated_upstream_and_strip_api_prefix() {
+    let root = tempfile::tempdir().unwrap();
+    let (pay, hits) = echo_upstream().await;
+    let mut config = proxying(root.path(), &pay);
+    config.pay_upstream = Some(Arc::new(upstream::Upstream::new(&pay).unwrap()));
+    for (path, target) in [
+        ("/api/flow/snapshot", "/flow/snapshot"),
+        ("/api/stats", "/stats"),
+        ("/api/flow/stream?x=1", "/flow/stream?x=1"),
+    ] {
+        let (status, headers, body) =
+            get_with(router(config.clone()), path, "openagents.com").await;
+        assert_eq!(status, StatusCode::IM_A_TEAPOT);
+        assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
+        let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(value["uri"], target);
+    }
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn payment_proxy_preserves_resume_and_streams_before_upstream_finishes() {
+    use futures_util::StreamExt;
+    let app = Router::new().route(
+        "/flow/stream",
+        axum::routing::get(|headers: axum::http::HeaderMap| async move {
+            assert_eq!(headers["last-event-id"], "41");
+            let body = futures_util::stream::once(async {
+                Ok::<_, std::convert::Infallible>("id: 42\ndata: {\"v\":1,\"seq\":42}\n\n")
+            })
+            .chain(futures_util::stream::pending());
+            axum::response::Response::builder()
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(body))
+                .unwrap()
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let root = tempfile::tempdir().unwrap();
+    let mut config = config(root.path().into());
+    config.public_hosts.push("openagents.com".into());
+    config.pay_upstream = Some(Arc::new(
+        upstream::Upstream::new(&format!("http://{addr}")).unwrap(),
+    ));
+    let response = router(config)
+        .oneshot(
+            Request::builder()
+                .uri("/api/flow/stream")
+                .header("host", "openagents.com")
+                .header("last-event-id", "41")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "text/event-stream"
+    );
+    let mut body = response.into_body().into_data_stream();
+    let chunk = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(
+        String::from_utf8(chunk.to_vec())
+            .unwrap()
+            .contains("id: 42")
+    );
+    server.abort();
+}

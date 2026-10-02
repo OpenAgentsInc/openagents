@@ -404,6 +404,18 @@ when they published the plugin under it (public already), otherwise as
   can check the totals (a new kind, proposed `3200`, which the registry shows
   as free).
 
+The Rust `pay-host` binary projects a read-only `pay-ledger` database
+(`OPENAGENTS_PAY_SOURCE_DB`) into a separate `OPENAGENTS_PAY_FLOW_DB`.
+Set `OPENAGENTS_PAY_FLOW_SALT` to a stable 32-byte hex salt and optionally
+`OPENAGENTS_PAY_LISTEN` (default `127.0.0.1:4400`).
+`OPENAGENTS_PAY_PUBLICATIONS` reads signed public NIP-EXT listings or releases
+as JSONL. The ledger's call records supply paid and unpaid requests, including
+402 challenges. `OPENAGENTS_PAY_ROUTE_JOURNAL` optionally reads a route journal
+file or directory for completed runs. Dollar run costs never become sats.
+Amounts preserve exact msat as decimal sats, and reconciliation
+stays `unknown` until a reconciler updates it. Configure the website with
+`--pay-host http://HOST:PORT` or `OPENAGENTS_WEB_PAY_HOST`.
+
 ### Surfaces
 
 - **`openagents.com/live`:** a canvas page (`static/flow.js`, same-origin)

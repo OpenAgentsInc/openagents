@@ -64,6 +64,8 @@ pub struct Config {
     /// answering as before. Without one, unowned paths answer `404` and
     /// other hosts are refused.
     pub upstream: Option<Arc<upstream::Upstream>>,
+    /// The pay host for same-origin public flow and stats reads.
+    pub pay_upstream: Option<Arc<upstream::Upstream>>,
 }
 
 impl Config {
@@ -79,6 +81,7 @@ impl Config {
             ask_salt: secp256k1::rand::random(),
             secure_cookies: false,
             upstream: None,
+            pay_upstream: None,
         }
     }
 }
@@ -111,6 +114,8 @@ pub fn router(config: Config) -> Router {
         upstream: app.config.upstream.clone(),
     };
     Router::new()
+        .route("/api/flow/{*path}", get(pay_proxy))
+        .route("/api/stats", get(pay_proxy))
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
         .route("/static/verse-grid.jpg", get(verse_grid))
@@ -265,3 +270,22 @@ async fn not_found() -> Response {
 
 #[cfg(test)]
 mod tests;
+
+async fn pay_proxy(
+    axum::extract::State(app): axum::extract::State<App>,
+    mut request: Request,
+) -> Response {
+    let Some(upstream) = &app.config.pay_upstream else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let path = request
+        .uri()
+        .path_and_query()
+        .unwrap()
+        .as_str()
+        .strip_prefix("/api")
+        .unwrap()
+        .to_owned();
+    *request.uri_mut() = path.parse().expect("Stripped API path is a valid URI");
+    upstream.forward(request).await
+}

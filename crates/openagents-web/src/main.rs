@@ -2,13 +2,14 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--listen ADDRESS] \
-[--public-host HOST]... [--upstream http://HOST:PORT]";
+[--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is unset")?);
     let mut config = openagents_web::Config::development(home.join(".openagents/tasks"));
     let mut listen: SocketAddr = "127.0.0.1:4300".parse()?;
+    let mut pay_host = std::env::var("OPENAGENTS_WEB_PAY_HOST").ok();
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
@@ -17,6 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--store" => config.store = PathBuf::from(value),
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
             "--public-host" => config.public_hosts.push(value),
+            "--pay-host" => pay_host = Some(value),
             "--upstream" => upstream = Some(value),
             _ => return Err(USAGE.into()),
         }
@@ -41,6 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             openagents_web::upstream::Upstream::new(&url)?,
         ));
         println!("Paths this site doesn't own are proxied to {url}");
+    }
+    if let Some(url) = pay_host {
+        config.pay_upstream = Some(std::sync::Arc::new(
+            openagents_web::upstream::Upstream::new(&url)?,
+        ));
     }
     let listener = tokio::net::TcpListener::bind(listen).await?;
     println!("OpenAgents web is listening on http://{listen} (development backend)");
