@@ -135,6 +135,7 @@ unpublished version, missing platform), with no bucket and no network.
 | Version | Channel | Commit | Date |
 | --- | --- | --- | --- |
 | `1.0.0-rc.1` | `rc` | `8701d2f8bf` | 2026-10-01 |
+| `1.0.0-rc.2` | `rc` | `68662bd344` | 2026-10-01 |
 
 `1.0.0-rc.1` built all seven platforms on one Mac. Notarization:
 `cfb4306d-b2f3-4b31-8a03-e8a36c9856a2` (macos-aarch64) and
@@ -147,3 +148,17 @@ and on NixOS (linux-x86_64): `openagents --version` printed
 `openagents terminal --scratch` in a pty showed the `OpenAgents v1.0.0-rc.1`
 welcome card and an answer from the live chat worker. The Windows build was
 not run on Windows.
+
+`1.0.0-rc.2` built all seven platforms on one Mac from `68662bd344`
+([#10126](https://github.com/OpenAgentsInc/openagents/issues/10126)), and
+the `rc` channel moved to it. Notarization:
+`82f546ab-b194-4b20-bd5b-5188be45e5fe` (macos-aarch64) and
+`6bc9e85a-b689-4046-8c3d-6a9aa4b4a5e0` (macos-x86_64), both `Accepted`;
+Gatekeeper accepted all four macOS binaries on the first assessment, and
+again after the public install. Installed with the published `install.sh`
+(`OPENAGENTS_CHANNEL=rc`) into a temporary home on a Mac (macos-aarch64):
+`openagents --version` printed
+`openagents 1.0.0-rc.2 (OpenAgentsInc/openagents 68662bd344 clean)`, and
+`openagents terminal --scratch` in a pty showed the `OpenAgents v1.0.0-rc.2`
+welcome card and answered a question from the live chat worker. The Linux
+and Windows builds were not run on those systems.

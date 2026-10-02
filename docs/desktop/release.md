@@ -200,6 +200,44 @@ xcrun stapler validate OpenAgents-<version>.dmg
 Both should print `accepted` / `source=Notarized Developer ID` and
 `The validate action worked!`.
 
+## Release candidates
+
+A release candidate is a signed, notarized, stapled `.dmg` for testing
+that installed apps never see. It goes under
+`desktop/macos/rc/<name>/` in `openagentsgemini-oa-updates`, and
+`sign-manifest.sh` is not run, so `desktop/macos/manifest.json` (which
+installed apps follow) does not change.
+
+The bundle stays at `MARKETING_VERSION`: the lockstep rule (App versions)
+allows no `-rc.N` in `CFBundleShortVersionString` or the desktop crate, and
+the updater compares versions as semver, so an rc string would sort below
+the release it precedes. The candidate is told apart by its
+`CFBundleVersion` (the commit count, as every build has) and by the
+artifact's name, which carries the rc:
+
+```sh
+scripts/desktop/package-macos.sh --notary-env ~/work/.secrets/appstoreconnect.env
+gcloud storage cp --no-clobber target/desktop-release/OpenAgents-1.0.0.dmg \
+  gs://openagentsgemini-oa-updates/desktop/macos/rc/1.0.0-rc.2/OpenAgents-1.0.0-rc.2.dmg
+```
+
+| Candidate | Bundle version | `CFBundleVersion` | Commit | Date |
+| --- | --- | --- | --- | --- |
+| `1.0.0-rc.2` | 1.0.0 | 28828 | `68662bd344` | 2026-10-01 |
+
+`1.0.0-rc.2`
+([#10126](https://github.com/OpenAgentsInc/openagents/issues/10126)),
+`https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/rc/1.0.0-rc.2/OpenAgents-1.0.0-rc.2.dmg`,
+SHA-256 `8e3e6764c3299b976241b70d3f884b075742d5aa7eaf1ed03ccd3bcfa01514de`.
+Universal; notarization `a8933968-3f82-4929-92af-67748c91c7ef` (app) and
+`e5f72d18-2a3e-4e9b-a4c3-d5152b99e8e3` (`.dmg`), both `Accepted`. The
+`.dmg` downloaded from that URL with a quarantine flag was accepted by
+`spctl` (`Notarized Developer ID`) and mounted, the app copied out of it
+was accepted, and `stapler validate` passed on both. The release
+acceptance gate on that copy passed 29 of 30 scenarios; `delegate-grok`
+failed because Grok Build answered by reading the files without running a
+shell command, which the scenario requires.
+
 ## Record of the first runs (2026-09-29)
 
 On the desktop app itself (`30d22ea758`, the first commit with
