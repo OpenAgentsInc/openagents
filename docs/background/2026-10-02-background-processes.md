@@ -1,6 +1,9 @@
 # Background processes: user-defined, reliable, System One
 
-Status: design, 2026-10-02. Nothing here is implemented yet. Issues:
+Status: phase 1 (the disk monitor) implemented, 2026-10-02: `crates/background`,
+`coder host serve`, `openagents background`, the terminal's `/background`,
+and NIP-HOST `background.*`; see "Phase 1 as built" at the end. Phases 2
+and 3 are design. Issues:
 umbrella [#10155](https://github.com/OpenAgentsInc/openagents/issues/10155),
 phase 1 [#10156](https://github.com/OpenAgentsInc/openagents/issues/10156),
 phase 2 [#10157](https://github.com/OpenAgentsInc/openagents/issues/10157),
@@ -463,3 +466,53 @@ judgment.
 - **Tests.** Judgment question sets in the Gym with labeled directories;
   escalation briefing contents; each built-in's rule tests in the phase 1
   style.
+
+## Phase 1 as built
+
+Where the implementation differs from the design above, and why:
+
+- **Where it runs.** `coder host serve` starts the runner only for this
+  user's own host (the default root `~/.openagents/host`), so a test's or a
+  scratch host never cleans the person's disk. `OPENAGENTS_BACKGROUND=off`
+  in the host's environment turns it off. The desktop app's host, the dev
+  host LaunchAgent (`scripts/desktop/dev-host.sh`), and a host
+  `openagents service install` registers all run it.
+- **Task ended.** The runner reads the task store every 30 seconds and runs
+  a `TaskEnded` check when a task newly ended (the store's own `Task::ended`
+  test, shared with `targets::cleanup`). That poll is the task-ended signal;
+  no new event channel was needed.
+- **Runs in other processes.** `openagents background run` and `/background`
+  run in their own process and hold `~/.openagents/background/run.lock` while
+  deleting; the host's runner takes the same lock, so two runs never
+  overlap. The runner lock (`runner.lock`) only decides which host process
+  runs the triggers. A dry run takes no lock.
+- **A run someone asks for** plans for every watched volume below its stop
+  level, not only those below the start level; triggers plan only below the
+  start level. Above the stop level a run has nothing to do.
+- **Dry runs are not recorded**: they change nothing. Checks that find
+  enough free space are not recorded either. Every real run that acted or
+  notified is.
+- **Notifications** go to the host's log (`coder host: Freed …`), to the
+  rule's state (`~/.openagents/background/state.json`), which
+  `background.list` and `openagents background list` show, and to the
+  terminal, which shows a new one as a transcript line. Publishing it as a
+  Nostr activity summary comes with the desktop and phone surfaces
+  (phase 3).
+- **NIP-HOST.** `background.list`, `background.show`, `background.log`
+  (`observe`), `background.run`, and `background.pause` (`operate`). Their
+  answer is the `background` crate's JSON in one `background` outcome, at
+  most 256 KB, so `coder-access` does not depend on the rule types.
+  `background.run` queues a real run on the host's runner; a dry run is
+  asked where it is shown (the CLI, the terminal). No reply is retained.
+- **Gate pools.** No gate lock file exists in this repository, so a gate
+  build directory qualifies when its Cargo locks are free, no process uses
+  it, and nothing in it changed in the last hour.
+- **Sizes.** Hard-linked files (Cargo links each output into `deps/`) count
+  once. Sizes are cached in `sizes.json` for six hours while the
+  directory's last-use time is unchanged.
+- **Spare worktrees** (`*.spare-*`, #10115) are never candidates: they are
+  the next task's worktree.
+- **Stashes.** A worktree is kept when any stash was made on its branch (or,
+  detached, on its commit), since stashes belong to the repository.
+- **Low-disk log writes** are buffered in memory and flushed with the next
+  record; there is no preallocated file.

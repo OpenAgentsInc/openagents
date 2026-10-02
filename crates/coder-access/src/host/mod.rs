@@ -141,6 +141,15 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::media::ArtifactState, Code> {
         Err(Code::Unsupported)
     }
+    /// Answer a `background.*` operation for `device`, which holds the
+    /// right it requires. A host without background rules has none.
+    fn background(
+        &mut self,
+        _device: &str,
+        _op: &crate::protocol::Operation,
+    ) -> std::result::Result<serde_json::Value, Code> {
+        Err(Code::Unsupported)
+    }
 }
 /// Where the host keeps agent spend requests (phase 1 agent spending). The
 /// host has checked the sender's `operate` right, and for `spend.list` that
@@ -894,6 +903,19 @@ impl Host {
                     Err(code) => Err(Error::new(code, "the host refused the publication")),
                 }
             }
+            op @ (Operation::ListBackground {}
+            | Operation::ShowBackground { .. }
+            | Operation::LogBackground { .. }
+            | Operation::RunBackground { .. }
+            | Operation::PauseBackground { .. }) => match dispatch.background(&p.key, op) {
+                Ok(value) => {
+                    let outcome = Outcome::Background {
+                        background: Box::new(value),
+                    };
+                    outcome.validate().map(|()| outcome)
+                }
+                Err(code) => Err(Error::new(code, "the host has no background rules")),
+            },
             Operation::PutArtifact { artifact } => match dispatch.put_artifact(&p.key, artifact) {
                 Ok(state) => {
                     let outcome = Outcome::Artifact { artifact: state };

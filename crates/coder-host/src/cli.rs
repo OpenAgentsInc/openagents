@@ -298,6 +298,18 @@ fn check_workspaces(workspaces: &BTreeMap<String, PathBuf>, root: &Path) -> Vec<
     lines
 }
 
+/// Whether `root` is this user's own host root, `~/.openagents/host`.
+#[cfg(unix)]
+fn same_root(root: &Path) -> bool {
+    let Ok(own) = home(".openagents/host") else {
+        return false;
+    };
+    match (root.canonicalize(), own.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => root == own,
+    }
+}
+
 /// The chat home a host with `root` moves threads from at start:
 /// `OPENAGENTS_CHAT_HOME` when set, else `~/.openagents/chat` when `root` is
 /// this user's host root (`~/.openagents/host`), else none.
@@ -710,8 +722,17 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         config.chats = Some(chats);
     }
 
+    // Only this user's own host (the default root) runs the background
+    // rules: a host under another root, as a test runs it, never cleans
+    // the person's disk.
+    #[cfg(unix)]
+    let own_host = same_root(root);
     raise_open_file_limit();
     let running = crate::serve::start(config, tasks).await?;
+    #[cfg(unix)]
+    if own_host {
+        crate::background::start(&tasks_dir);
+    }
     if let Some(address) = running.iroh_addr() {
         eprintln!("coder host: iroh endpoint {}", address.id);
     }

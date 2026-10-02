@@ -16,6 +16,7 @@ pub enum Slash {
     Settings,
     Connect,
     Plugins,
+    Background,
     Import,
     Expand,
     Run,
@@ -25,7 +26,7 @@ pub enum Slash {
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 12] = [
+    pub const ALL: [Slash; 13] = [
         Slash::New,
         Slash::Threads,
         Slash::Stop,
@@ -33,6 +34,7 @@ impl Slash {
         Slash::Settings,
         Slash::Connect,
         Slash::Plugins,
+        Slash::Background,
         Slash::Import,
         Slash::Expand,
         Slash::Run,
@@ -50,6 +52,7 @@ impl Slash {
             Slash::Settings => "settings",
             Slash::Connect => "connect",
             Slash::Plugins => "plugins",
+            Slash::Background => "background",
             Slash::Import => "import",
             Slash::Expand => "expand",
             Slash::Run => "run",
@@ -68,6 +71,9 @@ impl Slash {
             Slash::Settings => "change when Coder starts and which coding agents it may use",
             Slash::Connect => "pair a phone with this computer by QR code",
             Slash::Plugins => "list plugins and run one installed here",
+            Slash::Background => {
+                "the background rules, such as disk cleanup: show, run, pause, log"
+            }
             Slash::Import => "copy this computer's Claude Code and Codex sessions in as threads",
             Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",
             Slash::Run => {

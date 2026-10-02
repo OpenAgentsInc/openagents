@@ -137,6 +137,45 @@ pub trait Extras: Send + Sync {
     /// The change is not allowed (the last agent turned off, say) or the
     /// file cannot be written, in words for the person.
     fn change(&self, key: &str, on: bool) -> Result<Settings, String>;
+    /// The host's background rules (`/background`).
+    ///
+    /// # Errors
+    /// They cannot be read here, in words for the person.
+    fn background(&self) -> Result<Vec<BackgroundRow>, String> {
+        Err("Background rules are not available here.".into())
+    }
+    /// Do `act` to the rule `id`; the lines of the card that shows it.
+    ///
+    /// # Errors
+    /// It could not, in words for the person.
+    fn background_act(&self, _id: &str, _act: BackgroundAct) -> Result<Vec<String>, String> {
+        Err("Background rules are not available here.".into())
+    }
+    /// The newest background notification and when it was sent.
+    fn background_notice(&self) -> Option<(u64, String)> {
+        None
+    }
+}
+
+/// One background rule in `/background`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackgroundRow {
+    pub id: String,
+    /// One plain line: on or paused, free space, last result.
+    pub line: String,
+    pub paused: bool,
+}
+
+/// What `/background` does to a rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackgroundAct {
+    Show,
+    /// What a run would delete, changing nothing.
+    DryRun,
+    Run,
+    Pause,
+    Resume,
+    Log,
 }
 
 /// Nothing beyond the chat: every extra says it is not available here.

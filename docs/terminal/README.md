@@ -167,6 +167,7 @@ including text that only starts with a slash, goes to OpenAgents.
 | `/settings` | Turn on or off when Coder starts at once and which coding agents it may use; Enter or Space changes the selected one and saves it. |
 | `/connect` | Pair a phone with this computer by QR code. |
 | `/plugins` | List the plugins installed on this computer, then the published ones. Enter on an installed one, then type what to ask it: it runs once on this folder, reading files only, and its reply shows as a card. Esc cancels. |
+| `/background` | The host's background rules, such as the disk cleanup monitor, each with its state and last result. Enter shows a rule, `r` shows its dry run (what it would delete and why) and `r` again runs it, `p` pauses or resumes it, `l` shows its log. A rule's notification appears as one line in the transcript. |
 | `/import` | Copy this computer's Claude Code and Codex sessions (`~/.claude`, `~/.codex`) into the host's threads, each once: the messages and text replies, without tool calls. The host only reads those folders. Needs the host. |
 | `/expand` | Expand or condense the tool calls (also Ctrl+O). |
 | `/run` | Open the Coder run full screen (also Ctrl+R). |

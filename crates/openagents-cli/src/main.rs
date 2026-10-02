@@ -17,6 +17,8 @@ use std::process::ExitCode;
 // `connect`, `labor`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
 mod argv;
+#[cfg(unix)]
+mod background;
 mod catalog;
 mod chat;
 mod computer;
@@ -88,6 +90,7 @@ Coder:
   task         Durable local task requests and explicit execution.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
+  background   The host's background rules: the disk cleanup monitor.
   ssh          Start or adopt a host over SSH and tunnel to it.
 
 Verse (NIP-MV):
@@ -218,6 +221,8 @@ fn main() -> ExitCode {
         "relay" => relay::run(&output, &rest),
         #[cfg(unix)]
         "service" => service::run(&output, &rest),
+        #[cfg(unix)]
+        "background" => background::run(&output, &rest),
         "settings" => settings::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
@@ -232,7 +237,7 @@ fn main() -> ExitCode {
         // service manager, the resident wallet, Unix file modes, and the
         // system ssh's process groups.
         #[cfg(not(unix))]
-        "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" => {
+        "background" | "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" => {
             eprintln!("openagents {command}: not available on Windows; run it from macOS or Linux");
             EXIT_FAILURE
         }
@@ -303,6 +308,8 @@ async fn host(arguments: &[String]) -> u8 {
     coder_host::control::set_local_runner(coder::task::local::runner_here);
     coder_host::control::set_local_engines(coder::task::local::engines_here);
     coder_host::control::set_local_result(coder::task::local::result_in);
+    #[cfg(unix)]
+    coder_host::background::set_facts(coder::task::background_facts);
     coder_host::cli::run(arguments, open).await
 }
 

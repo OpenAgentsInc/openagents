@@ -56,6 +56,11 @@ pub enum Overlay {
         settings: crate::Settings,
         selected: usize,
     },
+    /// The background rules (`/background`).
+    Background {
+        rows: Vec<crate::BackgroundRow>,
+        selected: usize,
+    },
 }
 
 /// What the input loop does next.
@@ -88,6 +93,14 @@ pub enum Action {
         key: String,
         name: String,
         request: String,
+    },
+    /// Show the background rules.
+    Background,
+    /// Show, dry-run, run, pause, resume, or read the log of a background
+    /// rule.
+    BackgroundAct {
+        id: String,
+        act: crate::BackgroundAct,
     },
     /// Copy Claude Code and Codex sessions in as threads.
     Import,
@@ -175,6 +188,11 @@ pub struct App {
     pub offline: Option<u64>,
     /// A plugin picked from the list: the next message is its request.
     pub plugin: Option<crate::Plugin>,
+    /// The background rule whose dry run was just shown: `r` on it in
+    /// `/background` runs it for real.
+    pub background_armed: Option<String>,
+    /// When the last background notification shown was sent.
+    pub notice_seen: u64,
     /// The thread's Coder run alone, every call with its output, for the
     /// run view.
     pub run_log: Scrollback<Row, Line<'static>, Wrap>,
@@ -228,6 +246,10 @@ impl App {
             expanded: false,
             offline: None,
             plugin: None,
+            background_armed: None,
+            notice_seen: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs()),
             run_log: transcript(ladder),
             run_view: None,
             file: None,
@@ -486,6 +508,43 @@ impl App {
                 }
                 Vec::new()
             }
+            Overlay::Background { rows, selected } => {
+                let picked = rows.get(*selected).cloned();
+                let act = match key.code {
+                    KeyCode::Up => {
+                        *selected = selected.saturating_sub(1);
+                        None
+                    }
+                    KeyCode::Down => {
+                        *selected = (*selected + 1).min(rows.len().saturating_sub(1));
+                        None
+                    }
+                    KeyCode::Enter => Some(crate::BackgroundAct::Show),
+                    // A run shows its dry run first; `r` again runs it.
+                    KeyCode::Char('r') => Some(
+                        if picked.as_ref().map(|row| &row.id) == self.background_armed.as_ref() {
+                            crate::BackgroundAct::Run
+                        } else {
+                            crate::BackgroundAct::DryRun
+                        },
+                    ),
+                    KeyCode::Char('p') => Some(if picked.as_ref().is_some_and(|row| row.paused) {
+                        crate::BackgroundAct::Resume
+                    } else {
+                        crate::BackgroundAct::Pause
+                    }),
+                    KeyCode::Char('l') => Some(crate::BackgroundAct::Log),
+                    _ => None,
+                };
+                match (act, picked) {
+                    (Some(act), Some(row)) => {
+                        self.overlay = None;
+                        self.background_armed = None;
+                        vec![Action::BackgroundAct { id: row.id, act }]
+                    }
+                    _ => Vec::new(),
+                }
+            }
         }
     }
 
@@ -643,6 +702,7 @@ impl App {
             Slash::Settings => vec![Action::Settings],
             Slash::Connect => vec![Action::Connect],
             Slash::Plugins => vec![Action::Plugins],
+            Slash::Background => vec![Action::Background],
             Slash::Import => vec![Action::Import],
             Slash::Expand => {
                 self.toggle_tools();

@@ -45,6 +45,7 @@ pub mod settings;
 pub mod spare;
 pub mod steer;
 pub(crate) mod targets;
+pub use targets::facts as background_facts;
 pub mod usage;
 pub mod view;
 /// Per-engine steering semantics; see [`coder_delegate::steering`].
@@ -280,6 +281,20 @@ pub struct Correction {
 }
 
 impl Task {
+    /// Whether the task is over for good: finished or cancelled, its checks
+    /// not running, and its delegation group clear. Its build directory and
+    /// worktree are then disposable (`targets::cleanup`, the background
+    /// disk monitor).
+    #[must_use]
+    pub fn ended(&self) -> bool {
+        matches!(self.status, Status::Finished | Status::Cancelled)
+            && self.checks != Checks::Running
+            && self
+                .run
+                .as_ref()
+                .is_none_or(|run| run.result.as_ref().is_some_and(|result| result.group_clear))
+    }
+
     /// Current user instructions; this does not change a running grant.
     ///
     /// The newest of the last correction and the last follow-up applies:

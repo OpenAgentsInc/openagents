@@ -553,6 +553,25 @@ impl Extras for ProgramExtras {
         change_setting(&path, key, on)?;
         Ok(coder_settings(&path))
     }
+
+    #[cfg(unix)]
+    fn background(&self) -> Result<Vec<openagents_terminal::BackgroundRow>, String> {
+        crate::background::rows()
+    }
+
+    #[cfg(unix)]
+    fn background_act(
+        &self,
+        id: &str,
+        act: openagents_terminal::BackgroundAct,
+    ) -> Result<Vec<String>, String> {
+        crate::background::act(id, act)
+    }
+
+    #[cfg(unix)]
+    fn background_notice(&self) -> Option<(u64, String)> {
+        crate::background::notice()
+    }
 }
 
 /// What an import did, in words.

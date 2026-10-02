@@ -108,6 +108,24 @@ impl Dispatch for Dispatcher {
         self.shared.tasks.clone().put_artifact(device, put)
     }
 
+    /// A `background.*` operation, answered by this host's background
+    /// runner.
+    fn background(
+        &mut self,
+        _device: &str,
+        op: &coder_access::protocol::Operation,
+    ) -> Result<serde_json::Value, Code> {
+        #[cfg(unix)]
+        {
+            crate::background::answer(op)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = op;
+            Err(Code::Unsupported)
+        }
+    }
+
     /// The configured workspace labels. The roots they name stay on the host.
     fn workspaces(&mut self) -> Result<Vec<String>, Code> {
         Ok(self.shared.config.workspaces.keys().cloned().collect())

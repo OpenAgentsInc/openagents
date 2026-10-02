@@ -23,6 +23,8 @@ use std::fmt;
 
 #[cfg(feature = "host")]
 pub mod authority;
+#[cfg(all(feature = "host", unix))]
+pub mod background;
 #[cfg(feature = "host")]
 pub mod cli;
 pub mod client;

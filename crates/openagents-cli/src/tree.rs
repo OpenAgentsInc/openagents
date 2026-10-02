@@ -106,6 +106,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::service::USAGE),
             crate::service::EFFECTS,
         ),
+        group(
+            "background",
+            Some(crate::background::USAGE),
+            crate::background::EFFECTS,
+        ),
         group("ssh", Some(crate::ssh::USAGE), crate::ssh::EFFECTS),
         group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
         GroupHelp {

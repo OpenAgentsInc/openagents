@@ -1259,3 +1259,59 @@ fn the_spinner_line_says_what_the_run_is_doing() {
     app.event(line(4, finished()));
     assert!(app.live_status().is_none());
 }
+
+/// `/background` lists the rules; `r` shows a dry run first and runs only
+/// when pressed again on the same rule; `p` pauses or resumes; `l` and
+/// Enter read.
+#[test]
+fn background_runs_only_after_its_dry_run() {
+    use crate::{BackgroundAct, BackgroundRow};
+    let mut app = app();
+    assert_eq!(typed(&mut app, "/background"), vec![Action::Background]);
+    let rows = vec![BackgroundRow {
+        id: "disk".into(),
+        line: "disk · on".into(),
+        paused: false,
+    }];
+    let open = |app: &mut App| {
+        app.overlay = Some(Overlay::Background {
+            rows: rows.clone(),
+            selected: 0,
+        });
+    };
+    let act = |act| {
+        vec![Action::BackgroundAct {
+            id: "disk".into(),
+            act,
+        }]
+    };
+    open(&mut app);
+    assert_eq!(
+        app.key(&key(KeyCode::Char('r')), 80),
+        act(BackgroundAct::DryRun)
+    );
+    assert!(app.overlay.is_none());
+    app.background_armed = Some("disk".into());
+    open(&mut app);
+    assert_eq!(
+        app.key(&key(KeyCode::Char('r')), 80),
+        act(BackgroundAct::Run)
+    );
+    open(&mut app);
+    assert_eq!(
+        app.key(&key(KeyCode::Char('r')), 80),
+        act(BackgroundAct::DryRun)
+    );
+    open(&mut app);
+    assert_eq!(
+        app.key(&key(KeyCode::Char('p')), 80),
+        act(BackgroundAct::Pause)
+    );
+    open(&mut app);
+    assert_eq!(
+        app.key(&key(KeyCode::Char('l')), 80),
+        act(BackgroundAct::Log)
+    );
+    open(&mut app);
+    assert_eq!(app.key(&key(KeyCode::Enter), 80), act(BackgroundAct::Show));
+}

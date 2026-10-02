@@ -3,9 +3,9 @@
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use super::{Error, Status, Store};
+use super::{Error, Store};
 
-const SLOTS: usize = 4;
+const SLOTS: usize = background::SLOTS;
 const BUDGET: u64 = 64 * 1024 * 1024 * 1024;
 
 fn root(store: &Path) -> PathBuf {
@@ -118,12 +118,33 @@ pub fn cleanup(store: &Path) -> Result<(), Error> {
 }
 
 fn ended(task: &super::Task) -> bool {
-    matches!(task.status, Status::Finished | Status::Cancelled)
-        && task.checks != super::Checks::Running
-        && task
-            .run
-            .as_ref()
-            .is_none_or(|run| run.result.as_ref().is_some_and(|result| result.group_clear))
+    task.ended()
+}
+
+/// What the background disk monitor needs from the task store: each
+/// task's worktree, its per-task build directory, and whether it ended.
+///
+/// # Errors
+/// The store cannot be read.
+pub fn facts(store: &Path) -> Result<Vec<background::TaskFact>, String> {
+    if !store.join(super::STORE_FILE).is_file() {
+        return Ok(Vec::new());
+    }
+    let tasks = Store::open_waiting(store, std::time::Duration::from_secs(30))
+        .and_then(|store| store.list())
+        .map_err(|error| error.to_string())?;
+    Ok(tasks
+        .iter()
+        .map(|task| {
+            let workspace = Path::new(&task.intent.workspace.path);
+            background::TaskFact {
+                id: task.task_id.clone(),
+                worktree: workspace.to_owned(),
+                target: legacy(store, workspace),
+                ended: ended(task),
+            }
+        })
+        .collect())
 }
 
 fn real_dir(path: &Path) -> bool {
@@ -244,6 +265,28 @@ mod tests {
         let _host = super::super::remote::Inbox::new(&store, Default::default());
         assert!(!old.exists());
         assert!(unknown.exists());
+    }
+
+    #[test]
+    fn facts_name_each_tasks_worktree_target_and_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("tasks");
+        assert!(facts(&store).unwrap().is_empty());
+        let workspace = dir.path().join("project-task");
+        let mut inbox = Store::open(&store).unwrap();
+        let submit = serde_json::json!({"schema": super::super::COMMAND_SCHEMA, "command_id":"submit", "task_id":"task", "expected_revision":null, "action":{"type":"submit", "intent":{"title":"test", "prompt":"test", "workspace":{"path":workspace,"source_revision":null}, "configuration":{"adapter":"test", "model":null}}}});
+        inbox.apply(&serde_json::to_vec(&submit).unwrap()).unwrap();
+        drop(inbox);
+        let found = facts(&store).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].worktree, workspace);
+        assert_eq!(found[0].target, legacy(&store, &workspace));
+        assert!(!found[0].ended);
+        let mut inbox = Store::open(&store).unwrap();
+        let cancel = serde_json::json!({"schema": super::super::COMMAND_SCHEMA, "command_id":"cancel", "task_id":"task", "expected_revision":1, "action":{"type":"cancel", "reason":"done"}});
+        inbox.apply(&serde_json::to_vec(&cancel).unwrap()).unwrap();
+        drop(inbox);
+        assert!(facts(&store).unwrap()[0].ended);
     }
 
     #[test]

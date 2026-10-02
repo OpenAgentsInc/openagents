@@ -186,6 +186,18 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                     .as_deref()
                     .unwrap_or("There are no settings to change here."),
             ),
+            Overlay::Background { rows, selected } => (
+                "Background".to_owned(),
+                rows.iter()
+                    .map(|row| Item {
+                        label: row.id.clone(),
+                        detail: row.line.clone(),
+                    })
+                    .collect(),
+                *selected,
+                "Enter show · r run (dry run first) · p pause or resume · l log · Esc close",
+                "No background rules.",
+            ),
         };
         ListOverlay {
             title: &title,

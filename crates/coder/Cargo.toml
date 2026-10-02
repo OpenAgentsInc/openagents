@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 atif = { path = "../atif" }
+# The disk cleanup monitor reads the task store through `task::background_facts`.
+background = { path = "../background" }
 capability = { path = "../capability" }
 coder-boundary = { path = "../coder-boundary" }
 coder-host = { path = "../coder-host" }

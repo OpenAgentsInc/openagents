@@ -691,6 +691,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "background"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "backon"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1551,6 +1562,7 @@ version = "0.1.0"
 dependencies = [
  "acp-client",
  "atif",
+ "background",
  "capability",
  "coder-boundary",
  "coder-connect",
@@ -1803,6 +1815,7 @@ dependencies = [
 name = "coder-host"
 version = "0.1.0"
 dependencies = [
+ "background",
  "base64 0.22.1",
  "coder-access",
  "coder-boundary",
@@ -7401,6 +7414,7 @@ name = "openagents-cli"
 version = "1.0.0-rc.2"
 dependencies = [
  "atif",
+ "background",
  "base64 0.22.1",
  "bitcoin-amount",
  "coder",

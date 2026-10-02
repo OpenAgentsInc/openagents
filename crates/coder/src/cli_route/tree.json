@@ -4655,6 +4655,342 @@
       ]
     },
     {
+      "name": "background",
+      "summary": "The host's background rules: the disk cleanup monitor.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "background",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "Each rule: on or paused, free space, and its last result.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "background",
+              "show"
+            ],
+            "usage": [
+              "show ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "The rule's definition, version, and digest.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "add",
+          "leaf": {
+            "path": [
+              "background",
+              "add"
+            ],
+            "usage": [
+              "add --file PATH"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "file",
+                    "value": "PATH",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Add or replace a rule from a JSON file.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "edit",
+          "leaf": {
+            "path": [
+              "background",
+              "edit"
+            ],
+            "usage": [
+              "edit ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "edit"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "Edit the rule as JSON in $EDITOR, then show its dry run.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "pause",
+          "leaf": {
+            "path": [
+              "background",
+              "pause"
+            ],
+            "usage": [
+              "pause ID [--until TIME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pause"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "until",
+                    "value": "TIME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop the rule, until TIME (2h, 1d, 2026-10-03, or seconds since the epoch) or until resumed.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "resume",
+          "leaf": {
+            "path": [
+              "background",
+              "resume"
+            ],
+            "usage": [
+              "resume ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "resume"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "Start the rule again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "background",
+              "run"
+            ],
+            "usage": [
+              "run ID [--dry-run]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "dry-run",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the rule now; --dry-run shows exactly what it would delete and why, and what it keeps, changing nothing.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "log",
+          "leaf": {
+            "path": [
+              "background",
+              "log"
+            ],
+            "usage": [
+              "log [ID] [--since TIME] [--stats]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "log"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "since",
+                    "value": "TIME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "stats",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The audit log; --stats totals bytes freed by week and class.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "undo",
+          "leaf": {
+            "path": [
+              "background",
+              "undo"
+            ],
+            "usage": [
+              "undo RUN"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "undo"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "RUN"
+                  }
+                ]
+              }
+            ],
+            "summary": "Recreate the worktrees that run removed.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "file",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "until",
+          "value": "TIME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "dry-run",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "since",
+          "value": "TIME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "stats",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "tasks",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "ssh",
       "summary": "Start or adopt a host over SSH and tunnel to it.",
       "children": [

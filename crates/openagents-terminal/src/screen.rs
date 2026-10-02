@@ -37,6 +37,8 @@ const PAIR_POLL: Duration = Duration::from_secs(1);
 /// The spinner's clock: Grok Build's 30 fps animation tick, each frame
 /// held four of them ([`coder_terminal::grok_spinner`]).
 const TICK: Duration = coder_terminal::grok_spinner::TICK;
+/// How often the screen looks for a background rule's notification.
+const NOTICE_POLL: Duration = Duration::from_secs(30);
 
 /// What a piece of work off the loop sends back.
 enum Done {
@@ -48,6 +50,9 @@ enum Done {
     Plugin(String, Result<String, String>),
     Imported(Result<String, String>),
     Settings(Result<crate::Settings, String>),
+    Background(Result<Vec<crate::BackgroundRow>, String>),
+    BackgroundCard(String, crate::BackgroundAct, Result<Vec<String>, String>),
+    Notice(Option<(u64, String)>),
     Steered(Result<client::Steering, String>),
     File(Result<Option<crate::view::FileView>, String>),
 }
@@ -184,6 +189,7 @@ async fn drive(
     // next frame (its timer moves with it); everything else redraws at
     // once.
     let mut dirty = true;
+    let mut notices = tokio::time::interval(NOTICE_POLL);
     loop {
         if dirty {
             terminal.draw(|frame| {
@@ -237,6 +243,14 @@ async fn drive(
                     && coder_terminal::grok_spinner::turns(screen.app.tick);
             }
             _ = poll.tick(), if screen.invite.is_some() && !screen.polling => screen.poll(),
+            _ = notices.tick() => {
+                // Nothing changes until the answer arrives.
+                dirty = false;
+                let (extras, done) = (screen.extras.clone(), screen.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Notice(extras.background_notice()));
+                });
+            }
         }
     }
     Ok(Exit {
@@ -351,6 +365,25 @@ impl Screen {
                 tokio::task::spawn_blocking(move || {
                     let ran = extras.run_plugin(&key, &request, folder.as_deref());
                     let _ = done.send(Done::Plugin(name, ran));
+                });
+            }
+            Action::Background => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Background(extras.background()));
+                });
+            }
+            Action::BackgroundAct { id, act } => {
+                if matches!(
+                    act,
+                    crate::BackgroundAct::DryRun | crate::BackgroundAct::Run
+                ) {
+                    self.app.note(format!("Running {id}…"));
+                }
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let result = extras.background_act(&id, act);
+                    let _ = done.send(Done::BackgroundCard(id, act, result));
                 });
             }
             Action::Import => {
@@ -684,6 +717,37 @@ impl Screen {
                 self.app.settings(settings);
             }
             Done::Settings(Err(why)) => self.app.loud(why),
+            Done::Background(Ok(rows)) => {
+                self.app.overlay = Some(Overlay::Background { rows, selected: 0 });
+            }
+            Done::Background(Err(why)) => self.app.loud(why),
+            Done::BackgroundCard(id, act, Ok(lines)) => {
+                let what = match act {
+                    crate::BackgroundAct::Show => "rule",
+                    crate::BackgroundAct::DryRun => "dry run",
+                    crate::BackgroundAct::Run => "run",
+                    crate::BackgroundAct::Pause | crate::BackgroundAct::Resume => "state",
+                    crate::BackgroundAct::Log => "log",
+                };
+                self.app.push(Row::Card(Card {
+                    title: format!("Background {id} · {what}"),
+                    rows: Vec::new(),
+                    body: lines,
+                    art: Vec::new(),
+                    keys: Vec::new(),
+                }));
+                if act == crate::BackgroundAct::DryRun {
+                    self.app.background_armed = Some(id);
+                    self.app
+                        .note("Press r on it in /background again to run it.");
+                }
+            }
+            Done::BackgroundCard(id, _, Err(why)) => self.app.loud(format!("{id}: {why}")),
+            Done::Notice(Some((at, line))) if at > self.app.notice_seen => {
+                self.app.notice_seen = at;
+                self.app.note(line);
+            }
+            Done::Notice(_) => {}
             Done::Imported(Ok(message)) => self.app.note(message),
             Done::Imported(Err(why)) => self.app.loud(why),
         }

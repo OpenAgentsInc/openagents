@@ -685,6 +685,33 @@ pub enum Operation {
     /// device only and answers what it holds.
     #[serde(rename = "artifact.put")]
     PutArtifact { artifact: crate::media::ArtifactPut },
+    /// The host's background rules (the disk cleanup monitor), each with
+    /// its state and last result. A read.
+    #[serde(rename = "background.list")]
+    ListBackground {},
+    /// One background rule's definition, version, and digest. A read.
+    #[serde(rename = "background.show")]
+    ShowBackground { rule: String },
+    /// The background audit log, newest last, for one rule or all, from
+    /// `since` (seconds since the epoch). A read.
+    #[serde(rename = "background.log")]
+    LogBackground {
+        rule: Option<String>,
+        since: Option<u64>,
+    },
+    /// Run a background rule now. The run happens on the host's runner;
+    /// its result reaches the log and `background.list`. Asking twice runs
+    /// it twice, which frees nothing more once its goal is met.
+    #[serde(rename = "background.run")]
+    RunBackground { rule: String },
+    /// Pause a background rule (until a time, or until resumed), or resume
+    /// it. Repeating it changes nothing more.
+    #[serde(rename = "background.pause")]
+    PauseBackground {
+        rule: String,
+        until: Option<u64>,
+        resume: bool,
+    },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -702,7 +729,21 @@ impl Operation {
     /// otherwise fill the reply store.
     #[must_use]
     pub fn retains_reply(&self) -> bool {
-        !self.reads_only() && !matches!(self, Self::PutArtifact { .. })
+        !self.reads_only() && !matches!(self, Self::PutArtifact { .. }) && !self.background()
+    }
+
+    /// A `background.*` operation. None of their replies is retained: the
+    /// reads change nothing, and a run or pause repeated is harmless.
+    #[must_use]
+    pub fn background(&self) -> bool {
+        matches!(
+            self,
+            Self::ListBackground {}
+                | Self::ShowBackground { .. }
+                | Self::LogBackground { .. }
+                | Self::RunBackground { .. }
+                | Self::PauseBackground { .. }
+        )
     }
     pub fn name(&self) -> &'static str {
         match self {
@@ -732,6 +773,11 @@ impl Operation {
             Self::ReviewTask { .. } => "task.review",
             Self::PublishTask { .. } => "task.publish",
             Self::PutArtifact { .. } => "artifact.put",
+            Self::ListBackground {} => "background.list",
+            Self::ShowBackground { .. } => "background.show",
+            Self::LogBackground { .. } => "background.log",
+            Self::RunBackground { .. } => "background.run",
+            Self::PauseBackground { .. } => "background.pause",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -748,7 +794,10 @@ impl Operation {
             Self::InviteChats {}
             | Self::ListThreads {}
             | Self::ReadThread { .. }
-            | Self::ReviewTask { .. } => Some(Right::Observe),
+            | Self::ReviewTask { .. }
+            | Self::ListBackground {}
+            | Self::ShowBackground { .. }
+            | Self::LogBackground { .. } => Some(Right::Observe),
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -762,7 +811,9 @@ impl Operation {
             | Self::StopThread { .. }
             | Self::RunThread { .. }
             | Self::PublishTask { .. }
-            | Self::PutArtifact { .. } => Some(Right::Operate),
+            | Self::PutArtifact { .. }
+            | Self::RunBackground { .. }
+            | Self::PauseBackground { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -850,6 +901,18 @@ impl Operation {
                 crate::media::validate_all(&task.images)?;
             }
             Self::PutArtifact { artifact } => artifact.validate()?,
+            Self::ListBackground {} => {}
+            Self::ShowBackground { rule }
+            | Self::RunBackground { rule }
+            | Self::PauseBackground { rule, .. } => background_rule(rule)?,
+            Self::LogBackground { rule, since } => {
+                if let Some(rule) = rule {
+                    background_rule(rule)?;
+                }
+                if let Some(since) = since {
+                    safe(*since)?;
+                }
+            }
             Self::OpenTerminal { cols, rows } => {
                 if !(1..=1000).contains(cols) || !(1..=1000).contains(rows) {
                     return fail(Code::Bounds, "terminal size exceeds its bound");
@@ -1031,6 +1094,29 @@ pub enum Outcome {
     Artifact {
         artifact: crate::media::ArtifactState,
     },
+    /// A `background.*` answer: the `background` crate's JSON (rules and
+    /// their state, one rule, log records, or an acknowledgement), at most
+    /// [`MAX_BACKGROUND_BYTES`]. It is carried as JSON so this crate does
+    /// not depend on the host's rule types.
+    Background {
+        background: Box<serde_json::Value>,
+    },
+}
+
+/// The largest `background` outcome.
+pub const MAX_BACKGROUND_BYTES: usize = 256 * 1024;
+
+/// A background rule ID: 1 to 64 lowercase letters, digits, and dashes.
+fn background_rule(rule: &str) -> Result<()> {
+    if rule.is_empty()
+        || rule.len() > 64
+        || !rule
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return fail(Code::Malformed, "not a background rule ID");
+    }
+    Ok(())
 }
 
 /// The longest `coder-pair:` invitation a `chats` outcome carries.
@@ -1117,6 +1203,11 @@ impl Outcome {
         if let Self::Published { publication } = self {
             publication.validate()?;
         }
+        if let Self::Background { .. } = self
+            && serde_json::to_vec(self).map_or(true, |bytes| bytes.len() > MAX_BACKGROUND_BYTES)
+        {
+            return fail(Code::Bounds, "background answer exceeds its bound");
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -1163,6 +1254,7 @@ impl Outcome {
                     && publication.head_commit == *head_commit
                     && publication.head == *head
             }
+            (op, Self::Background { .. }) if op.background() => true,
             (Operation::PutArtifact { artifact }, Self::Artifact { artifact: state }) => {
                 state.digest == artifact.digest && state.received <= artifact.size
             }
