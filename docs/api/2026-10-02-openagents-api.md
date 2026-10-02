@@ -320,6 +320,7 @@ and an embedded facilitator. Nothing Nostr is involved on this path.
 | --- | --- |
 | Our own apps and the owner's keys | Never. No price, no limit, no usage shown (#10120, #10121). |
 | A key on a free or prepaid plan | Never. Calls draw on the plan. |
+| A caller that sends its own provider key (OpenRouter, Vercel AI Gateway, or TypeSafe) | No 402 for the call's model cost: the model calls run on the caller's key, and a call its key cannot make fails plainly rather than being billed to us. See [BYOK, section 6](../byok/2026-10-02-byok-openrouter.md#6-api-callers-bring-their-own-key). |
 | A key with no plan, or no key at all | `402 Payment Required` with x402 terms on any priced endpoint. Free endpoints (reading the plugin registry, knowledge reads) answer without payment. |
 
 **The flow.** The x402 Lightning scheme uses the `upfront` flow: payment

@@ -340,8 +340,9 @@ pasted into a public page is a phishing pattern we should not teach.
 Owner decision (section 9, decision 3): a caller of the
 [OpenAgents API](../api/2026-10-02-openagents-api.md) can send its own provider
 key with each request. When it does, **no x402 payment is needed for the
-call's model cost**. The API design charges partner calls per call over x402
-("Pricing for partners", its section 6).
+call's model cost**. The API design otherwise answers a priced call from a
+caller with no plan with an x402 `402 Payment Required`
+([its section 5, "Payment: x402"](../api/2026-10-02-openagents-api.md#5-payment-x402)).
 
 - **HTTP fronts.** The key goes in one request header, `OpenAgents-Provider-Key:
   <provider> <key>` (provider `openrouter`, `vercel`, or `typesafe`). It may be
@@ -351,15 +352,14 @@ call's model cost**. The API design charges partner calls per call over x402
 - **What it covers.** A request whose model calls are all covered by the
   caller's keys gets no x402 challenge for model cost. This is the same `mine`
   rule as everywhere else: a model call the caller's keys cannot make fails
-  plainly, and is never quietly moved to our key and billed. Anything the API
-  prices that is not model cost (none yet) is unaffected.
+  plainly, and is never quietly moved to our key and billed. Anything else the
+  API prices is unaffected.
 - **Same protections.** The key is used for that request only, never stored or
   logged, and grants nothing beyond what the caller's `oak_` key or signature
   already allows. Receipts and usage records name `payer: theirs`, the
   provider, and the fingerprint.
 
-The API design doc gets a short cross-reference back to this section once its
-in-progress edit lands (noted in #10176).
+The API design's payment section links back here.
 
 ## 7. When it fails
 
