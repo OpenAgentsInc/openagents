@@ -77,6 +77,9 @@ struct ComputersHome: Decodable, Equatable {
         let status: String
         /// `online`, `pending`, `offline`, or `alert`.
         let tone: String
+        /// "1 background watcher · disk cleanup" for an online computer
+        /// that runs any; otherwise absent.
+        let watchers: String?
         let menu: [Item]
         var id: String { host }
     }

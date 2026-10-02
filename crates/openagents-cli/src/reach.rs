@@ -562,6 +562,7 @@ mod tests {
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
             workspaces: None,
+            watchers: None,
         }
     }
 

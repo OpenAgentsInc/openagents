@@ -72,6 +72,10 @@ pub struct Row {
     pub name: String,
     pub status: String,
     pub tone: Tone,
+    /// The background watchers an online computer runs, the line the
+    /// terminal and desktop show: "1 background watcher · disk cleanup".
+    /// `None` when it runs none, is not online, or has not said.
+    pub watchers: Option<String>,
     pub menu: Vec<Item>,
 }
 
@@ -171,6 +175,16 @@ pub fn short_status(host: &HostRecord, now: u64) -> (String, Tone) {
 
 fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
     let (status, tone) = short_status(host, snapshot.now);
+    let watchers = matches!(
+        HostStatus::derive(host, snapshot.now),
+        HostStatus::Online { .. }
+    )
+    .then(|| {
+        host.watchers
+            .as_deref()
+            .and_then(openagents_chat_app::watchers::line)
+    })
+    .flatten();
     let key = host.key.as_str();
     let mut menu = vec![];
     let offer = |menu: &mut Vec<Item>, choice, label, confirm, action: Option<Action>| {
@@ -274,6 +288,7 @@ fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
         name: host.label.clone(),
         status,
         tone,
+        watchers,
         menu,
     }
 }
@@ -417,6 +432,27 @@ mod tests {
             ["switch_off", "try_now", "access", "forget"]
         );
         assert_eq!(menu(row(&home, "Travel mini"))[0], "switch_on");
+    }
+
+    #[test]
+    fn an_online_computer_names_its_background_watchers_and_others_say_nothing() {
+        let (mut app, _dir) = app();
+        let home = packet(&mut app, Request::Snapshot);
+        // The same words the terminal and desktop show.
+        assert_eq!(
+            row(&home, "Studio Mac")["watchers"],
+            "1 background watcher · disk cleanup"
+        );
+        assert_eq!(
+            row(&home, "Studio Mac")["watchers"].as_str(),
+            openagents_chat_app::watchers::line(&["disk cleanup".into()]).as_deref()
+        );
+        // Home NAS said it runs one, but it is offline now: nothing.
+        assert!(row(&home, "Home NAS")["watchers"].is_null());
+        // Hosts that never said, and every other row: nothing.
+        for name in ["Build server", "Old laptop", "Lab box", "Travel mini"] {
+            assert!(row(&home, name)["watchers"].is_null(), "{name}");
+        }
     }
 
     #[test]

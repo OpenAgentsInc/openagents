@@ -168,10 +168,12 @@ impl Synthetic {
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
             workspaces: None,
+            watchers: None,
         };
         let mut studio = record(0xa1, "Studio Mac", enrolled(Rights::all()));
         studio.route = Some(Class::Lan);
         studio.workspaces = Some(vec!["openagents".into(), "scratch".into()]);
+        studio.watchers = Some(vec!["disk cleanup".into()]);
         studio.devices = DeviceList::Loaded {
             as_of: at - 90,
             devices: vec![
@@ -206,6 +208,9 @@ impl Synthetic {
         };
         let mut old = record(0xa4, "Old laptop", enrolled(standard.clone()));
         old.compatibility = Compatibility::HostOutOfDate;
+        // Read while it was online; it is offline now.
+        let mut nas = record(0xa3, "Home NAS", enrolled(standard.clone()));
+        nas.watchers = Some(vec!["disk cleanup".into()]);
         let mut lab = record(0xa5, "Lab box", Enrollment::NotEnrolled);
         lab.enrollments.push(PendingEnrollment {
             enrollment: "synthetic-enrollment".into(),
@@ -222,7 +227,7 @@ impl Synthetic {
                 supervisor: supervise(Script::Connecting),
             },
             Host {
-                record: record(0xa3, "Home NAS", enrolled(standard.clone())),
+                record: nas,
                 supervisor: supervise(Script::Backoff(Failure::Unreachable)),
             },
             Host {
@@ -409,6 +414,7 @@ impl Synthetic {
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
             workspaces: None,
+            watchers: None,
         };
         let key = record.key.clone();
         self.hosts.push(Host {

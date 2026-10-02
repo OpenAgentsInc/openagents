@@ -406,6 +406,8 @@ struct HostLive {
     activity: Vec<ActivitySummary>,
     /// The host's `workspace.list` answer, with `operate`.
     workspaces: Option<Vec<String>>,
+    /// The background watchers its `background.list` names, with `observe`.
+    watchers: Option<Vec<String>>,
     /// The connection the last catch-up read, and when it finished.
     caught_up: Option<(u64, Instant)>,
     catching_up: bool,
@@ -1376,6 +1378,19 @@ async fn catch_up(
             _ => None,
         }
     };
+    // A host without a background runner (or one that predates
+    // `background.*`) refuses it; the list then says nothing of watchers.
+    let watchers = async {
+        if !rights.contains(Right::Observe) {
+            return None;
+        }
+        match link.call(Operation::ListBackground {}).await {
+            Ok(Outcome::Background { background }) => {
+                crate::model::watchers(&background, (shared.settings.now)())
+            }
+            _ => None,
+        }
+    };
     let enrollments = async {
         if !rights.contains(Right::AccessAdmin) {
             return None;
@@ -1384,8 +1399,8 @@ async fn catch_up(
             .await
             .ok()
     };
-    let (presence, summaries, (devices, revoked), workspaces, enrollments) =
-        tokio::join!(reach, summaries, devices, workspaces, enrollments);
+    let (presence, summaries, (devices, revoked), workspaces, watchers, enrollments) =
+        tokio::join!(reach, summaries, devices, workspaces, watchers, enrollments);
     let compatibility = presence
         .as_ref()
         .map(|received| Compatibility::judge(&received.presence, &client));
@@ -1414,6 +1429,7 @@ async fn catch_up(
             if workspaces.is_some() {
                 live.workspaces = workspaces;
             }
+            live.watchers = watchers;
         }
     }
     if revoked {
@@ -1609,6 +1625,7 @@ impl ComputersService for Live {
                         })
                         .collect(),
                     workspaces: live.workspaces.clone(),
+                    watchers: live.watchers.clone(),
                 }
             })
             .collect();
@@ -1637,6 +1654,7 @@ impl ComputersService for Live {
                     devices: DeviceList::NotLoaded,
                     enrollments: Vec::new(),
                     workspaces: None,
+                    watchers: None,
                 });
             }
         }

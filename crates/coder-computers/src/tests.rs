@@ -261,6 +261,7 @@ fn host(enrollment: Enrollment, link: Option<Status>) -> HostRecord {
         devices: DeviceList::NotLoaded,
         enrollments: Vec::new(),
         workspaces: None,
+        watchers: None,
     }
 }
 
@@ -1988,4 +1989,35 @@ fn publishing_a_change_needs_operate_and_reading_it_needs_observe() {
         Err(Refusal::Failed(_))
     ));
     assert!(fixed.calls().is_empty(), "nothing was published");
+}
+
+/// A host's `background.list` answer names the watchers running: rules on,
+/// readable, and not paused, first letter lowercased, as the computer's own
+/// terminal and desktop name them.
+#[test]
+fn background_list_names_the_running_watchers() {
+    let list = serde_json::json!([
+        {"id": "disk-cleanup", "name": "Disk cleanup", "version": 1, "digest": "d",
+         "enabled": true, "state": {}},
+        {"id": "logs", "name": "Logs", "version": 1, "digest": "d",
+         "enabled": true, "paused_until": 500, "state": {}},
+        {"id": "old", "name": "Old", "version": 1, "digest": "d",
+         "enabled": true, "paused_until": 50, "state": {}},
+        {"id": "off", "name": "Off", "version": 1, "digest": "d",
+         "enabled": false, "state": {}},
+        {"id": "bad", "name": "bad", "version": 0, "digest": "",
+         "enabled": false, "state": {}, "error": "unreadable"},
+    ]);
+    assert_eq!(
+        crate::model::watchers(&list, 100),
+        Some(vec!["disk cleanup".to_owned(), "old".to_owned()])
+    );
+    assert_eq!(
+        crate::model::watchers(&serde_json::json!([]), 100),
+        Some(vec![])
+    );
+    assert_eq!(
+        crate::model::watchers(&serde_json::json!({"queued": "x"}), 100),
+        None
+    );
 }

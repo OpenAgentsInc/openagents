@@ -343,6 +343,10 @@ pub struct HostRecord {
     /// `workspace.list` answered. `None` until read, or when the host does
     /// not list them; ordering work then asks for a label instead.
     pub workspaces: Option<Vec<String>>,
+    /// The background watchers the host runs, by name ("disk cleanup"), as
+    /// its `background.list` answered (see [`watchers`]). `None` until read,
+    /// or when the host runs no background runner.
+    pub watchers: Option<Vec<String>>,
 }
 
 impl HostRecord {
@@ -597,4 +601,38 @@ pub fn right_label(right: Right) -> &'static str {
         Right::AccessRead => "See who has access",
         Right::AccessAdmin => "Manage access",
     }
+}
+
+/// The background watchers in a host's `background.list` answer, by name:
+/// the rules that are on, readable, and not paused at `now`, with the first
+/// letter lowercased ("disk cleanup"). The host answers `background.list`
+/// only while its runner runs, so these are the ones running. The same rule
+/// as `background::view::watchers` on the computer itself.
+#[must_use]
+pub fn watchers(list: &serde_json::Value, now: u64) -> Option<Vec<String>> {
+    #[derive(serde::Deserialize)]
+    struct Row {
+        name: String,
+        enabled: bool,
+        #[serde(default)]
+        paused_until: Option<u64>,
+        #[serde(default)]
+        error: Option<String>,
+    }
+    let rows: Vec<Row> = serde_json::from_value(list.clone()).ok()?;
+    Some(
+        rows.into_iter()
+            .filter(|row| {
+                row.error.is_none()
+                    && row.enabled
+                    && row.paused_until.is_none_or(|until| until <= now)
+            })
+            .map(|row| {
+                let mut chars = row.name.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_lowercase().chain(chars).collect()
+                })
+            })
+            .collect(),
+    )
 }

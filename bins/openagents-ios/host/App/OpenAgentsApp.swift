@@ -268,6 +268,9 @@ private struct ComputerRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name).foregroundStyle(.white)
                 Text(row.status).font(.subheadline).foregroundStyle(.secondary)
+                if let watchers = row.watchers {
+                    Text(watchers).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
