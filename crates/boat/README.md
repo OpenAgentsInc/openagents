@@ -153,14 +153,20 @@ Then update `SPEC_SHA256` in `src/lib.rs`; a test fails until it matches.
 - The spec's published examples, transport, retry, streaming and follower
   tests.
 
-The live test is ignored and also gated on an explicit cost acceptance. It
-creates one `small` sandbox, runs `echo`, round-trips a file, follows and kills
-detached commands, then stops and deletes it and fails unless `/usage` reads
-under one cent and nothing is left running. The key comes only from
-`BOAT_API_KEY`:
+The paid lifecycle test is ignored and requires an explicit cost acceptance,
+a scoped, expiring `BOAT_API_KEY`, and its ID in `OA_BOAT_LIVE_KEY_ID`:
 
 ```sh
-OA_BOAT_LIVE=I_ACCEPT_BOAT_COST cargo test -p boat --test live -- --ignored --nocapture
+OA_BOAT_LIVE=I_ACCEPT_BOAT_COST cargo test -p boat --test live paid_lifecycle -- --ignored
 ```
+
+The test validates the server-reported key scope, creates one `small` sandbox
+with a 600-second TTL, no inherited environment, and snapshots disabled. It
+checks streamed execution, a file round trip, detached output, and process-tree
+termination. It attempts stop and deletion even if the exercise fails, polls
+deletion, and requires final usage to be non-running and below $0.01. The cost
+check detects an overrun; it is not a provider-enforced spending cap. An
+ambiguous create failure can leave a sandbox until its TTL expires. Do not use
+an unrestricted account key.
 
 Build and run it on Boat, not locally: `scripts/boat-run.sh NAME -- cargo test -p boat`.

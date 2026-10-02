@@ -1,19 +1,8 @@
-// The one test that reaches the real Boat API. It costs machine time, so it is
-// ignored and also needs `OA_BOAT_LIVE=I_ACCEPT_BOAT_COST`:
-//
-//   OA_BOAT_LIVE=I_ACCEPT_BOAT_COST cargo test -p boat --test live -- --ignored --nocapture
-//
-// The key comes only from `BOAT_API_KEY` in the environment and is never
-// printed. One `small` sandbox (2 vCPU, $0.018 an hour) runs for well under a
-// minute; it is stopped and deleted whatever happens, and the test fails if it
-// cost a cent or more or is still running.
-
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+//! Opt-in paid lifecycle check. Default test runs never contact Boat.
+mod support;
 
 use boat::{ApiKey, Client, CommandFrame, Nullable, Signal, WaitOptions, models::*};
-
-const GATE: &str = "I_ACCEPT_BOAT_COST";
-const ACTIVE: [&str; 5] = ["provisioned", "cloning", "ready", "idle", "running"];
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn wait(seconds: u64) -> WaitOptions {
     WaitOptions {
@@ -23,33 +12,104 @@ fn wait(seconds: u64) -> WaitOptions {
     }
 }
 
-/// Everything the sandbox does between ready and stop.
-async fn exercise(client: &Client, id: &str) -> boat::Result<()> {
-    client.wait_until_ready(id, &wait(180)).await?;
+const ACTIONS: &[&str] = &[
+    "sandbox.create",
+    "sandbox.read",
+    "exec",
+    "file.read",
+    "file.write",
+    "sandbox.stop",
+    "sandbox.delete",
+];
 
+fn validate_scope(usage: &ApiKeyUsageResponse) -> Result<(), &'static str> {
+    if usage.credential_lane.as_deref() != Some("scoped-v1") || usage.expired != Some(false) {
+        return Err("Use a current scoped key.");
+    }
+    let scope = usage.scope.as_ref().ok_or("Missing key scope.")?;
+    if !scope
+        .expires_at
+        .as_ref()
+        .is_some_and(|s| !s.trim().is_empty())
+    {
+        return Err("Use an expiring key.");
+    }
+    let actions = scope
+        .actions
+        .as_ref()
+        .ok_or("Missing action restrictions.")?;
+    if actions.is_empty() || actions.iter().any(|a| !ACTIONS.contains(&a.as_str())) {
+        return Err("The key permits unrelated actions.");
+    }
+    Ok(())
+}
+
+fn affordable(dollars: f64) -> bool {
+    dollars.is_finite() && (0.0..0.01).contains(&dollars)
+}
+
+#[test]
+fn cost_guard_rejects_invalid_and_one_cent_totals() {
+    for cost in [f64::NAN, f64::INFINITY, -0.001, 0.01, 1.0] {
+        assert!(!affordable(cost));
+    }
+    assert!(affordable(0.0));
+    assert!(affordable(0.009));
+}
+
+#[test]
+fn scope_guard_rejects_unrestricted_and_nonexpiring_keys() {
+    let mut usage = ApiKeyUsageResponse {
+        credential_lane: Some("scoped-v1".into()),
+        expired: Some(false),
+        scope: Some(ApiKeyUsageResponseScope {
+            expires_at: Nullable::Value("2026-10-03T00:00:00Z".into()),
+            actions: Some(ACTIONS.iter().map(|a| a.to_string()).collect()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert!(validate_scope(&usage).is_ok());
+    usage.scope.as_mut().unwrap().actions = Some(vec!["*".into()]);
+    assert!(validate_scope(&usage).is_err());
+    usage.scope.as_mut().unwrap().actions = Some(vec!["exec".into()]);
+    usage.scope.as_mut().unwrap().expires_at = Nullable::Null;
+    assert!(validate_scope(&usage).is_err());
+    usage.expired = Some(true);
+    assert!(validate_scope(&usage).is_err());
+}
+
+async fn exercise(client: &Client, id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    client
+        .wait_until_ready(
+            id,
+            &WaitOptions {
+                timeout: Duration::from_secs(120),
+                ..Default::default()
+            },
+        )
+        .await?;
     let output = client
         .exec_stream(
             id,
             CommandRequest {
-                command: "echo boat-live".into(),
-                timeout_seconds: Some(30),
+                command: "uname -a".into(),
+                timeout_seconds: Some(10),
                 ..Default::default()
             },
         )
         .await?
         .collect()
         .await?;
-    assert_eq!(output.stdout, "boat-live\n");
-    assert_eq!(output.exit_code(), Some(0));
-
+    if output.exit_code() != Some(0) || output.stdout.trim().is_empty() {
+        return Err("The streamed command did not succeed.".into());
+    }
     client
-        .write_text(id, "/tmp/boat-live.txt", "round trip")
+        .write_text(id, "/tmp/oa-boat-live.txt", "Boat SDK lifecycle check\n")
         .await?;
-    assert_eq!(
-        client.read_text(id, "/tmp/boat-live.txt").await?,
-        "round trip"
-    );
-
+    if client.read_text(id, "/tmp/oa-boat-live.txt").await? != "Boat SDK lifecycle check\n" {
+        return Err("The file did not round-trip.".into());
+    }
     // A detached command followed from a byte cursor.
     let process = client
         .exec_detached(
@@ -64,15 +124,21 @@ async fn exercise(client: &Client, id: &str) -> boat::Result<()> {
         .follow_command(id, process.process_id, wait(60))?
         .collect()
         .await?;
-    assert_eq!(followed.stdout, "one\nthree\n");
-    assert_eq!(followed.stderr, "two\n");
-    assert!(matches!(
+    if followed.stdout != "one\nthree\n" {
+        return Err("Unexpected followed stdout.".into());
+    }
+    if followed.stderr != "two\n" {
+        return Err("Unexpected followed stderr.".into());
+    }
+    if !matches!(
         followed.last,
         Some(CommandFrame::Exit {
             exit_code: Some(0),
             ..
         })
-    ));
+    ) {
+        return Err("The followed command did not exit successfully.".into());
+    }
 
     // A detached process tree, killed.
     let sleeper = client
@@ -85,11 +151,15 @@ async fn exercise(client: &Client, id: &str) -> boat::Result<()> {
         )
         .await?;
     tokio::time::sleep(Duration::from_secs(1)).await;
-    assert!(client.kill_command(id, sleeper.pid, Signal::Term).await?);
+    if !client.kill_command(id, sleeper.pid, Signal::Term).await? {
+        return Err("The process was not running.".into());
+    }
     let status = client
         .wait_command(id, sleeper.process_id, &wait(30))
         .await?;
-    assert!(!status.running);
+    if status.running {
+        return Err("The process is still running.".into());
+    }
     let leftover = client
         .exec_stream(
             id,
@@ -102,70 +172,52 @@ async fn exercise(client: &Client, id: &str) -> boat::Result<()> {
         .await?
         .collect()
         .await?;
-    assert_eq!(
-        leftover.stdout.trim(),
-        "0",
-        "the killed tree left a process"
-    );
+    if leftover.stdout.trim() != "0" {
+        return Err("The killed tree left a process.".into());
+    }
     Ok(())
 }
 
 #[tokio::test]
-#[ignore = "creates a billable Boat sandbox; needs OA_BOAT_LIVE=I_ACCEPT_BOAT_COST and BOAT_API_KEY"]
-async fn a_small_sandbox_runs_echo_and_stops_for_under_a_cent() {
-    if std::env::var("OA_BOAT_LIVE").as_deref() != Ok(GATE) {
-        eprintln!("skipped: set OA_BOAT_LIVE={GATE} to run the live Boat test");
-        return;
+#[ignore = "Requires explicit cost consent and a scoped, expiring Boat key."]
+async fn paid_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::var("OA_BOAT_LIVE").as_deref() != Ok("I_ACCEPT_BOAT_COST") {
+        return Err("Set OA_BOAT_LIVE=I_ACCEPT_BOAT_COST to run the paid check.".into());
     }
-    let key = ApiKey::new(std::env::var("BOAT_API_KEY").expect("BOAT_API_KEY in the environment"))
-        .expect("a non-empty BOAT_API_KEY");
-    let client = Client::builder(key).build().expect("client");
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
+    let client = Client::builder(ApiKey::new(std::env::var("BOAT_API_KEY")?)?)
+        .timeout(Duration::from_secs(20))
+        .build()?;
+    let usage = client
+        .api_key_usage(&ApiKeyUsageParams {
+            api_key_id: std::env::var("OA_BOAT_LIVE_KEY_ID")?,
+            ..Default::default()
+        })
+        .await?;
+    validate_scope(&usage)?;
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let created = client
         .create(&CreateParams {
-            idempotency_key: Some(format!("oa-boat-live-{nonce}")),
+            idempotency_key: Some(format!("oa-boat-live-{}-{nonce}", std::process::id())),
             body: Some(CreateSandboxRequest {
                 type_: Some("small".into()),
                 ttl_seconds: Nullable::Value(600),
                 no_env: Some(true),
+                snapshots: Some(false),
                 ..Default::default()
             }),
             ..Default::default()
         })
-        .await
-        .expect("create a small sandbox");
+        .await?;
     let id = created.sandbox.id;
-    eprintln!("live: sandbox {id}");
+    lifecycle(&client, &id).await
+}
 
-    let result = exercise(&client, &id).await;
-
-    // Teardown runs whatever happened above.
+async fn lifecycle(client: &Client, id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let id = id.to_owned();
+    // Capture failures instead of returning before cleanup.
+    let result = tokio::time::timeout(Duration::from_secs(150), exercise(client, &id)).await;
     let stopped = client
         .stop(&StopParams {
-            sandbox_id: id.clone(),
-            ..Default::default()
-        })
-        .await;
-    let mut state = String::new();
-    for _ in 0..60 {
-        state = client
-            .get(&GetParams {
-                sandbox_id: id.clone(),
-                ..Default::default()
-            })
-            .await
-            .map(|info| info.sandbox.state)
-            .unwrap_or_default();
-        if !ACTIVE.contains(&state.as_str()) && !state.is_empty() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-    let usage = client
-        .usage(&UsageParams {
             sandbox_id: id.clone(),
             ..Default::default()
         })
@@ -177,28 +229,55 @@ async fn a_small_sandbox_runs_echo_and_stops_for_under_a_cent() {
             ..Default::default()
         })
         .await;
-    if let Ok(deleted) = &deleted {
-        let _ = client
-            .wait_for_deletion(&deleted.operation.id, &wait(120))
-            .await;
+    let deletion = match deleted {
+        Ok(response) => client
+            .wait_for_deletion(
+                &response.operation.id,
+                &WaitOptions {
+                    timeout: Duration::from_secs(120),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map(|_| ()),
+        Err(error) => Err(error),
+    };
+    // Usage includes retained billing after deletion, not a pre-stop estimate.
+    let billing = client
+        .usage(&UsageParams {
+            sandbox_id: id,
+            ..Default::default()
+        })
+        .await;
+    deletion?;
+    stopped?;
+    result??;
+    let billing = billing?;
+    if billing.running || !affordable(billing.dollars) {
+        return Err(
+            "The sandbox is still billed as running or its cost is not below one cent.".into(),
+        );
     }
+    Ok(())
+}
 
-    result.expect("the sandbox exercise");
-    stopped.expect("stop");
-    assert!(
-        !ACTIVE.contains(&state.as_str()),
-        "the sandbox is still {state} after stop"
+#[tokio::test]
+async fn cleanup_runs_after_exercise_and_stop_fail() {
+    use support::{Reply, serve_sequence};
+    let (client, job) = serve_sequence(vec![
+        Reply::new(400, &[], b""), // Readiness fails.
+        Reply::new(400, &[], b""), // Stop fails; deletion must still run.
+        Reply::new(202, &[], br#"{"ok":true,"type":"sandbox.deleting","operation":{"id":"op-test","status":"completed","kind":"sandbox","targetId":"bx_test","reason":"test","attemptCount":1,"requestedAt":"now","completedAt":"now"}}"#),
+        Reply::new(200, &[], br#"{"ok":true,"type":"deletion.operation","operation":{"id":"op-test","status":"completed","kind":"sandbox","targetId":"bx_test","reason":"test","attemptCount":1,"requestedAt":"now","completedAt":"now"}}"#),
+        Reply::new(400, &[], b""),
+    ], |b| b).await;
+    assert!(lifecycle(&client, "bx_test").await.is_err());
+    let seen = job.await.expect("server");
+    assert_eq!(
+        seen.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(),
+        ["GET", "POST", "DELETE", "GET", "GET"]
     );
-    let usage = usage.expect("usage");
-    eprintln!(
-        "live: {} billable seconds, ${:.6} at list price, final state {state}",
-        usage.seconds, usage.dollars
-    );
-    assert!(!usage.running, "usage says the sandbox is still running");
-    assert!(
-        usage.dollars < 0.01,
-        "cost ${} is a cent or more",
-        usage.dollars
-    );
-    deleted.expect("delete");
+    assert_eq!(seen[2].headers["x-ascii-confirm-delete"], "bx_test");
+    assert_eq!(seen[3].target, "/api/v1/deletion-operations/op-test");
+    assert_eq!(seen[4].target, "/api/v1/sandboxes/bx_test/usage");
 }

@@ -107,3 +107,13 @@ not evidence for the current shipped default path. This delegated run cannot
 launch another coding engine as a subprocess, so it did not execute raw-engine
 trials. Do not report a savings percentage or close the issue based on the
 historical pilot alone.
+
+## Boat paid lifecycle (#10218)
+
+Run the ignored `paid_lifecycle` test in `crates/boat/tests/live.rs` with a
+scoped, expiring Boat key and its ID. Follow `crates/boat/README.md` for the
+command and required variables. The offline suite and cleanup failure-path
+check pass; the paid check has not run. Confirm that deletion completes and
+final usage is non-running and below $0.01. The check detects cost overruns;
+it does not impose a provider-side spending limit. Do not use an unrestricted
+key or publish the credential in logs.
