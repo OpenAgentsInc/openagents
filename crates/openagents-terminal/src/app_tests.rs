@@ -708,6 +708,7 @@ fn a_results_changes_expand_with_ctrl_o() {
             worktree: "/w".into(),
             trajectory: "/t".into(),
             issue: None,
+            cost_microusd: Some(940_000),
         }),
     ));
     let collapsed = shown(&mut app);
@@ -717,6 +718,8 @@ fn a_results_changes_expand_with_ctrl_o() {
     );
     assert!(collapsed.contains("Press Ctrl+O to see the changes."));
     assert!(!collapsed.contains("pub fn new"));
+    // What the run cost shows as plain information on the card (#10161).
+    assert!(collapsed.contains("+1 -1 · $0.94"), "{collapsed}");
     app.key(&ctrl('o'), 80);
     let expanded = shown(&mut app);
     // Drawn as grok-build draws an edit: numbered, no +/- marks (#10154).
@@ -1166,6 +1169,7 @@ fn finished() -> CoderEvent {
         worktree: "/w".into(),
         trajectory: "/t".into(),
         issue: None,
+        cost_microusd: None,
     })
 }
 

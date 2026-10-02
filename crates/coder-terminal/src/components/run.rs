@@ -67,13 +67,17 @@ pub enum RunRow {
     /// each file's patch follows its row as grok-build draws an edit
     /// ([`super::diff`]): numbered, syntax-highlighted, removed and added
     /// lines on red and green bands, then "{n} more lines not shown" when
-    /// the patch was cut.
+    /// the patch was cut. A known cost ends the head as " · $0.94":
+    /// plain information, never a limit; an unknown cost shows nothing.
     Result {
         summary: String,
         files: Vec<FileRow>,
         insertions: u64,
         deletions: u64,
         worktree: String,
+        /// What the run cost in micro-dollars, engine and Jev together,
+        /// when the whole of it is known.
+        cost_microusd: Option<u64>,
         expanded: bool,
     },
     /// The run failed, in its words (Full).
@@ -213,15 +217,20 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
             insertions,
             deletions,
             worktree,
+            cost_microusd,
             expanded,
         } => {
             let count = files.len();
             let noun = if count == 1 { "file" } else { "files" };
-            let head = if count == 0 && *insertions == 0 && *deletions == 0 {
+            let mut head = if count == 0 && *insertions == 0 && *deletions == 0 {
                 "Coder finished".to_owned()
             } else {
                 format!("Coder finished · {count} {noun} changed · +{insertions} -{deletions}")
             };
+            if let Some(micro) = cost_microusd {
+                head.push_str(" · ");
+                head.push_str(&dollars(*micro));
+            }
             block.text(&mut out, 0, "", &head, full);
             if !summary.is_empty() {
                 block.markdown(&mut out, 0, "", three, summary, None);
@@ -260,6 +269,19 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
         }
     }
     out
+}
+
+/// A run's cost as a person reads it: "$0.94", and for less than ten
+/// cents enough places to show it ("$0.015", "$0.0042"). "$0.00" is a known
+/// zero.
+pub fn dollars(microusd: u64) -> String {
+    let usd = microusd as f64 / 1_000_000.0;
+    match microusd {
+        0 => "$0.00".to_owned(),
+        100_000.. => format!("${usd:.2}"),
+        10_000.. => format!("${usd:.3}"),
+        _ => format!("${usd:.4}"),
+    }
 }
 
 /// "9s", "1m 5s", "1h 2m".
@@ -720,6 +742,7 @@ mod tests {
             insertions: 1,
             deletions: 1,
             worktree: String::new(),
+            cost_microusd: None,
             expanded: false,
         };
         assert_eq!(
@@ -743,6 +766,28 @@ mod tests {
                 "        1 more line not shown",
             ]
         );
+    }
+
+    #[test]
+    fn a_known_cost_ends_the_head_and_an_unknown_one_shows_nothing() {
+        let row = |cost_microusd| RunRow::Result {
+            summary: String::new(),
+            files: Vec::new(),
+            insertions: 0,
+            deletions: 0,
+            worktree: String::new(),
+            cost_microusd,
+            expanded: false,
+        };
+        assert_eq!(
+            text(&row(Some(940_000)), 80),
+            ["    Coder finished · $0.94"]
+        );
+        assert_eq!(text(&row(None), 80), ["    Coder finished"]);
+        assert_eq!(dollars(0), "$0.00");
+        assert_eq!(dollars(15_300), "$0.015");
+        assert_eq!(dollars(4_200), "$0.0042");
+        assert_eq!(dollars(12_345_678), "$12.35");
     }
 
     /// The summary a Codex run on CoderOS ended with (2026-10-02): the
@@ -773,6 +818,7 @@ mod tests {
             insertions: 0,
             deletions: 0,
             worktree: String::new(),
+            cost_microusd: None,
             expanded: false,
         };
         let rows = text(&row, 80);
@@ -845,6 +891,7 @@ mod tests {
             insertions: 3,
             deletions: 0,
             worktree: "/tmp/worktree".into(),
+            cost_microusd: Some(12_345_678),
             expanded: true,
         };
         for width in [0u16, 1, 2, 5, 12, 40] {

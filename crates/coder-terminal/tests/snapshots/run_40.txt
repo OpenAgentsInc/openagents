@@ -21,7 +21,7 @@
     or rename it?
     answer in the composer
     Coder finished · 2 files changed ·
-    +40 -3
+    +40 -3 · $0.94
     Fixed the wrap so a wide character
     never splits across rows, and added
     a regression test.

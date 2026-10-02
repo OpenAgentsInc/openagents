@@ -423,7 +423,7 @@ pub async fn run_routes<L: Lane, J: Judge>(
         let replies = Replies::new(&host);
         run_loop(&host, &generator, judge, &replies).await?
     };
-    finish(host, state, outcome)
+    finish(host, state, outcome, task::owner::Cost::ZERO)
 }
 
 /// The loop's limits for a repository turn: no step, time, or spend
@@ -507,11 +507,29 @@ async fn run_loop<G: Generate, J: Judge>(
     Ok((state, outcome))
 }
 
+/// What a model-loop stage cost: its model calls and knowledge-base
+/// embeddings as the engine's part, and Jev's.
+fn loop_cost(outcome: &crate::run::Outcome) -> task::owner::Cost {
+    let engine = outcome
+        .model_usd
+        .zip(outcome.embedding_usd)
+        .map(|(model, embedding)| model + embedding);
+    task::owner::Cost::from_usd(engine, outcome.jev_usd)
+}
+
+/// What a whole coding agent's turn cost: what the agent reported, and no
+/// Jev call.
+fn agent_cost(ended: &devin::Ended) -> task::owner::Cost {
+    task::owner::Cost::from_usd(ended.cost_usd, Some(0.0))
+}
+
 fn finish(
     host: Host,
     state: State,
     outcome: crate::run::Outcome,
+    spent: task::owner::Cost,
 ) -> Result<task::Task, task::Error> {
+    host.cost(spent.plus(loop_cost(&outcome)));
     let configuration = host.configuration().clone();
     // A turn that asked ended as it meant to; the task then waits for the
     // answer.
@@ -952,6 +970,8 @@ async fn run_stages<T: codex_transport::Transport>(
 ) -> Result<task::Task, task::Error> {
     let count = stages.len();
     let mut refusals: Vec<Refusal> = Vec::new();
+    // What stages passed over for capacity already cost: zero to start.
+    let mut spent = task::owner::Cost::ZERO;
     for (index, stage) in stages.into_iter().enumerate() {
         let last = index + 1 == count;
         match stage {
@@ -967,9 +987,10 @@ async fn run_stages<T: codex_transport::Transport>(
                 .await?;
                 if matches!(outcome.ending, Ending::NoCapacity { .. }) && !last && !host.cancelled()
                 {
+                    spent = spent.plus(loop_cost(&outcome));
                     continue;
                 }
-                return finish(host, state, outcome);
+                return finish(host, state, outcome, spent);
             }
             Stage::Agent(engine, route, program) => {
                 let (name, note) = (engine.name(), engine.note());
@@ -1003,6 +1024,7 @@ async fn run_stages<T: codex_transport::Transport>(
                                 .noting(&format!("{note}_error"), json!({"error": error})),
                             );
                         }
+                        host.cost(spent.plus(agent_cost(&ended)));
                         let mut agent = ended.summary();
                         if let Some(message) = ended.stop_message(cancelled) {
                             agent["stopped"] = json!(message);

@@ -200,6 +200,7 @@ pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
             insertions: result.insertions,
             deletions: result.deletions,
             worktree: crate::app::home_relative(&result.worktree),
+            cost_microusd: result.cost_microusd,
             expanded: false,
         },
         CoderEvent::Failure(_) => RunRow::Failed {

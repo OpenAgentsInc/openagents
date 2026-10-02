@@ -188,6 +188,7 @@ fn result() -> CoderEvent {
         worktree: "/w".into(),
         trajectory: "/t".into(),
         issue: None,
+        cost_microusd: None,
     })
 }
 

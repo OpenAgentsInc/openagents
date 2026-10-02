@@ -73,6 +73,11 @@ pub fn read(
     }
     let store = Store::open(directory)?;
     let task = store.show(task_id)?;
+    let result = task.run.as_ref().and_then(|run| run.result.as_ref());
+    let cost_usd = result
+        .and_then(|result| result.cost_microusd)
+        .map(|micro| micro as f64 / 1_000_000.0);
+    let cost_status = result.map_or_else(|| "unknown".into(), |result| result.cost_status.clone());
     let (artifacts, artifact_error) = match artifact::manifest(&store.dir, &task) {
         Ok(manifest) => (manifest, None),
         Err(error) => (None, Some(error.to_string())),
@@ -110,8 +115,8 @@ pub fn read(
         artifact_faults,
         verification,
         integration: "not_attempted".into(),
-        cost_usd: None,
-        cost_status: "unknown".into(),
+        cost_usd,
+        cost_status,
     })
 }
 

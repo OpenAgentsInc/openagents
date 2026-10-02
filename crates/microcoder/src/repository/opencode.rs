@@ -390,6 +390,11 @@ mod tests {
         let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
         assert_eq!(result.ending, "model_finished");
         assert_eq!(result.exit_code, Some(0));
+        // The agent's reported cost is the run's, with no Jev call (#10161).
+        assert_eq!(result.cost_status, "priced");
+        assert_eq!(result.engine_microusd, Some(20_254));
+        assert_eq!(result.jev_microusd, Some(0));
+        assert_eq!(result.cost_microusd, Some(20_254));
         let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
         for expected in [
             "cat note.txt",

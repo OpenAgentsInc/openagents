@@ -940,3 +940,51 @@ async fn the_owner_process_waits_out_a_store_busy_past_the_lock_wait() {
     holder.join().unwrap();
     assert_eq!(task.execution, Execution::Finished);
 }
+
+/// A run's cost is recorded by part, priced only when every part is known,
+/// and never a stand-in zero (#10161).
+#[test]
+fn a_result_records_its_cost_by_part() {
+    let cost = Cost::from_usd(Some(0.9), Some(0.04));
+    assert_eq!(cost.engine_microusd, Some(900_000));
+    assert_eq!(cost.total_microusd(), Some(940_000));
+    assert_eq!(cost.status(), "priced");
+    let partial = Cost::from_usd(None, Some(0.04));
+    assert_eq!(partial.status(), "partial");
+    assert_eq!(partial.total_microusd(), None);
+    assert_eq!(Cost::default().status(), "unknown");
+    assert_eq!(Cost::ZERO.plus(cost), cost);
+    assert_eq!(cost.plus(partial).status(), "partial");
+    assert_eq!(Cost::from_usd(Some(f64::NAN), None).engine_microusd, None);
+
+    let mut result = ResultRecord {
+        ending: "model_finished".into(),
+        exit_code: Some(0),
+        stop_requested: false,
+        group_clear: true,
+        elapsed_ms: 1,
+        trace_digest: "0".repeat(64),
+        candidate_snapshot: None,
+        artifact_file: None,
+        artifact_digest: None,
+        output_incomplete: false,
+        cost_status: "unknown".into(),
+        cost_microusd: None,
+        engine_microusd: None,
+        jev_microusd: None,
+    };
+    // A record written before costs were recorded reads as unknown.
+    let old = serde_json::to_value(&result).unwrap();
+    assert!(old.get("cost_microusd").is_none());
+    let read: ResultRecord = serde_json::from_value(old).unwrap();
+    assert!(read.cost_consistent());
+    result.priced(cost);
+    assert_eq!(result.cost_status, "priced");
+    assert_eq!(result.cost_microusd, Some(940_000));
+    assert!(result.cost_consistent());
+    result.cost_microusd = Some(1);
+    assert!(
+        !result.cost_consistent(),
+        "a total that disagrees is refused"
+    );
+}

@@ -14,7 +14,7 @@
     ~ switched to Gemini 3.8 Flash after OpenRouter timed out
     Coder asks: keep the old test name or rename it?
     answer in the composer
-    Coder finished · 2 files changed · +40 -3
+    Coder finished · 2 files changed · +40 -3 · $0.94
     Fixed the wrap so a wide character never splits across rows, and added a
     regression test.
         M crates/coder-terminal/src/wrap.rs (+12 -3)

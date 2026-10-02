@@ -719,6 +719,10 @@ pub struct Finished {
     /// was the issue flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<IssueLink>,
+    /// What the turn cost in micro-dollars, the engine and Jev together,
+    /// when the whole of it is known. Information only, never a limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_microusd: Option<u64>,
 }
 
 /// The GitHub issue an issue-flow run worked, for a result card: its
@@ -1187,6 +1191,7 @@ impl Mapper {
                     worktree: worktree.to_owned(),
                     trajectory: trajectory.to_owned(),
                     issue: None,
+                    cost_microusd: None,
                 })
             }
             "asked_question" => CoderEvent::Question(Asked {
@@ -2480,6 +2485,7 @@ mod tests {
                     worktree: "/w".into(),
                     trajectory: "/t".into(),
                     issue: None,
+                    cost_microusd: None,
                 }),
             ),
         ];

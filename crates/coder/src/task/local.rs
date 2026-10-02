@@ -1893,13 +1893,18 @@ impl Follow {
                             book.earliest_reset(&self.providers, (self.now)())
                         })
                         .flatten();
-                    let end = mapper.end(
+                    let mut end = mapper.end(
                         &result.ending,
                         files,
                         &worktree,
                         &trace.display().to_string(),
                         resets_at,
                     );
+                    // What the turn cost, when the whole of it is known
+                    // (#10161): information on its card, never a limit.
+                    if let CoderEvent::Result(finished) = &mut end {
+                        finished.cost_microusd = result.cost_microusd;
+                    }
                     let end = match &flow {
                         Some(flow) => flow.ending(end),
                         None => end,

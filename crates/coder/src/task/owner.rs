@@ -264,7 +264,93 @@ pub struct ResultRecord {
     pub artifact_file: Option<String>,
     pub artifact_digest: Option<String>,
     pub output_incomplete: bool,
+    /// `priced` when the run's whole cost is known, `partial` when only
+    /// part of it is, `unknown` otherwise. Information about the run,
+    /// never a limit on it.
     pub cost_status: String,
+    /// The run's whole cost in micro-dollars, the engine and Jev
+    /// together, when both are known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_microusd: Option<u64>,
+    /// The engine's part (model calls, or a whole coding agent's turn).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_microusd: Option<u64>,
+    /// Jev's part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev_microusd: Option<u64>,
+}
+
+/// What a run cost, by part, as its engine reported or priced it. A part
+/// left `None` is unknown, never a stand-in zero.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Cost {
+    pub engine_microusd: Option<u64>,
+    pub jev_microusd: Option<u64>,
+}
+
+impl Cost {
+    /// A known zero: nothing spent yet.
+    pub const ZERO: Self = Self {
+        engine_microusd: Some(0),
+        jev_microusd: Some(0),
+    };
+
+    /// A cost from dollar amounts, each `None` when unknown.
+    #[must_use]
+    pub fn from_usd(engine: Option<f64>, jev: Option<f64>) -> Self {
+        let micro =
+            |usd: f64| (usd.is_finite() && usd >= 0.0).then(|| (usd * 1_000_000.0).round() as u64);
+        Self {
+            engine_microusd: engine.and_then(micro),
+            jev_microusd: jev.and_then(micro),
+        }
+    }
+
+    /// The whole cost, when every part is known.
+    #[must_use]
+    pub fn total_microusd(&self) -> Option<u64> {
+        Some(self.engine_microusd?.saturating_add(self.jev_microusd?))
+    }
+
+    /// This cost and `other` together: a part is known only when it is
+    /// known in both.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        let add = |a: Option<u64>, b: Option<u64>| Some(a?.saturating_add(b?));
+        Self {
+            engine_microusd: add(self.engine_microusd, other.engine_microusd),
+            jev_microusd: add(self.jev_microusd, other.jev_microusd),
+        }
+    }
+
+    /// `priced`, `partial`, or `unknown`.
+    #[must_use]
+    pub fn status(&self) -> &'static str {
+        match (self.engine_microusd, self.jev_microusd) {
+            (Some(_), Some(_)) => "priced",
+            (None, None) => "unknown",
+            _ => "partial",
+        }
+    }
+}
+
+impl ResultRecord {
+    /// Records `cost` on the result: its status, its parts, and its total.
+    pub fn priced(&mut self, cost: Cost) {
+        self.cost_status = cost.status().into();
+        self.cost_microusd = cost.total_microusd();
+        self.engine_microusd = cost.engine_microusd;
+        self.jev_microusd = cost.jev_microusd;
+    }
+
+    /// The cost these fields record, when they agree with each other.
+    fn cost_consistent(&self) -> bool {
+        let cost = Cost {
+            engine_microusd: self.engine_microusd,
+            jev_microusd: self.jev_microusd,
+        };
+        self.cost_status == cost.status() && self.cost_microusd == cost.total_microusd()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -451,7 +537,7 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                     || (task.status == Status::Unknown && result.ending == OWNER_ENDED))
                 || (result.ending == OWNER_ENDED && !result.group_clear)
                 || !hex_digest(&result.trace_digest)
-                || result.cost_status != "unknown"
+                || !result.cost_consistent()
             {
                 return Err(Error::InvalidTransition);
             }
@@ -634,6 +720,9 @@ impl Store {
                 artifact_digest: None,
                 output_incomplete: true,
                 cost_status: "unknown".into(),
+                cost_microusd: None,
+                engine_microusd: None,
+                jev_microusd: None,
             };
             self.record(&owner, Event::Result { result }, run.epoch)?
         };
@@ -1016,6 +1105,9 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
                 || stopped.stderr.truncated
                 || !stopped.rest.gaps.is_empty(),
             cost_status: "unknown".into(),
+            cost_microusd: None,
+            engine_microusd: None,
+            jev_microusd: None,
         }
     } else {
         ResultRecord {
@@ -1030,6 +1122,9 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             artifact_digest: None,
             output_incomplete: false,
             cost_status: "unknown".into(),
+            cost_microusd: None,
+            engine_microusd: None,
+            jev_microusd: None,
         }
     };
     let after = Snapshot::observe(&workspace);

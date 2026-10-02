@@ -221,7 +221,14 @@ async fn existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts() 
     );
     let view = task::view::read(&store, "fixture", None, 200).unwrap();
     assert_eq!(view.evidence.state, "sealed");
-    assert_eq!(view.cost_status, "unknown");
+    // The fixture's calls are priced: the run records its cost (#10161).
+    assert_eq!(view.cost_status, "priced");
+    let result = view.task.run.as_ref().unwrap().result.clone().unwrap();
+    assert_eq!(
+        view.cost_usd,
+        result.cost_microusd.map(|micro| micro as f64 / 1_000_000.0)
+    );
+    assert!(result.engine_microusd.is_some() && result.jev_microusd.is_some());
     let text = serde_json::to_string(&view).unwrap();
     assert!(
         text.contains("full command output")

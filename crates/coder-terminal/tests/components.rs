@@ -204,6 +204,7 @@ fn run_rows() -> Vec<RunRow> {
             insertions: 40,
             deletions: 3,
             worktree: "/Users/me/work/openagents-coder-1".into(),
+            cost_microusd: Some(940_000),
             expanded: false,
         },
         RunRow::Failed {

@@ -579,6 +579,8 @@ pub struct Host {
     group_clear: Cell<bool>,
     output_incomplete: Cell<bool>,
     fault: RefCell<Option<String>>,
+    /// What the run cost, as the engine reported it ([`Host::cost`]).
+    cost: Cell<owner::Cost>,
 }
 
 impl Host {
@@ -884,6 +886,7 @@ impl Host {
             group_clear: Cell::new(true),
             output_incomplete: Cell::new(false),
             fault: RefCell::new(None),
+            cost: Cell::new(owner::Cost::default()),
         })
     }
 
@@ -1369,6 +1372,12 @@ impl Host {
         })
     }
 
+    /// Records what the run cost, engine and Jev, for its result record.
+    /// Information only: nothing stops or limits a run on it.
+    pub fn cost(&self, cost: owner::Cost) {
+        self.cost.set(cost);
+    }
+
     /// Seal the same task journal and trace; the adapter never sets checks passed.
     pub fn finish(self, ending: &str, completed: bool, summary: Value) -> Result<Task, Error> {
         let stopped = self.cancelled();
@@ -1397,7 +1406,7 @@ impl Host {
         let (artifact_file, artifact_digest) =
             artifact::retain(&self.owner.dir, &self.before, &after)?;
         self.trace.borrow_mut().finish(atif::log::ENDED)?;
-        let result = owner::ResultRecord {
+        let mut result = owner::ResultRecord {
             ending: ending.into(),
             exit_code: Some(if completed && self.fault.borrow().is_none() {
                 0
@@ -1418,7 +1427,11 @@ impl Host {
             artifact_digest: Some(artifact_digest),
             output_incomplete: self.output_incomplete.get(),
             cost_status: "unknown".into(),
+            cost_microusd: None,
+            engine_microusd: None,
+            jev_microusd: None,
         };
+        result.priced(self.cost.get());
         self.owner.record(owner::Event::Result { result })
     }
 }
