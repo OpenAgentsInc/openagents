@@ -235,7 +235,7 @@ loaded by digest, so a change is a reviewed commit:
 
 ```toml
 version = 1
-effective = "2026-10-15T00:00:00Z"
+effective = "2026-10-02T00:00:00Z"
 
 [plugin_call]            # POST /v1/plugins/{id}/invoke, or a plugin offer in a message
 author = "fee"           # the whole declared fee (D9)

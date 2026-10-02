@@ -13,7 +13,7 @@ fn start() -> i64 {
 
 fn rules(first: i64, match_bps: u16, cap: i64, until: &str) -> String {
     V1.replace("version = 1", "version = 2")
-        .replace("2026-10-15", "2026-10-16")
+        .replace("2026-10-02", "2026-10-16")
         .replace(
             "first_paid_call_msat = 1_000_000",
             &format!("first_paid_call_msat = {first}"),

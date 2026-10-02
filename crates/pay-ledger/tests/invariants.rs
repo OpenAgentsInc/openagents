@@ -1,7 +1,9 @@
 use pay_ledger::*;
 use proptest::prelude::*;
 
-const START: i64 = 1_792_022_400; // 2026-10-15T00:00:00Z
+/// When rule v1 takes effect (2026-10-02T00:00:00Z).
+const V1_EFFECTIVE: i64 = 1_790_899_200;
+const START: i64 = 1_792_022_400; // 2026-10-15T00:00:00Z (after rule v1 takes effect)
 const NEXT: i64 = START + 86_400;
 fn input(key: &str, received: i64, fee: i64) -> SettlementInput {
     SettlementInput {
@@ -22,7 +24,7 @@ fn input(key: &str, received: i64, fee: i64) -> SettlementInput {
 }
 fn v2(bps: u16) -> String {
     V1.replace("version = 1", "version = 2")
-        .replace("2026-10-15", "2026-10-16")
+        .replace("2026-10-02", "2026-10-16")
         .replace(
             "resource_owner_bps = 9000",
             &format!("resource_owner_bps = {bps}"),
@@ -195,7 +197,7 @@ fn invalid_rules_inputs_and_payouts_are_atomic() {
     let invalid = v2(10_001);
     assert!(ledger.load_rule(&invalid, &digest(&invalid)).is_err());
     let mut i = input("early", 10, 10);
-    i.settled_at = START - 1;
+    i.settled_at = V1_EFFECTIVE - 1;
     assert!(matches!(ledger.record_settlement(i), Err(Error::NoRule)));
     assert!(
         ledger
