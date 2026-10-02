@@ -332,6 +332,40 @@ impl Failure {
     }
 }
 
+/// The refusal code a worker sends with a [`Failure::line`] as its
+/// message, for a job that ran on the caller's own keys.
+pub const PAYER_FAILED: &str = "payer_failed";
+
+impl Failure {
+    /// The failure `line` says, when it is exactly one of the fixed lines
+    /// ([`Failure::line`]) and so carries no provider's own words; `None`
+    /// for anything else.
+    #[must_use]
+    pub fn parse_line(line: &str) -> Option<Self> {
+        for provider in PROVIDERS {
+            for failure in [
+                Failure::Refused(provider),
+                Failure::NoCredits(provider),
+                Failure::RateLimited(provider),
+                Failure::NoConnection(provider),
+            ] {
+                if failure.line() == line {
+                    return Some(failure);
+                }
+            }
+        }
+        let model = line
+            .strip_prefix("Your keys can't use ")?
+            .strip_suffix('.')?;
+        (!model.is_empty()
+            && model.len() <= 128
+            && model
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | ':')))
+        .then(|| Failure::ModelUnavailable(model.to_owned()))
+    }
+}
+
 impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.line())
@@ -725,6 +759,21 @@ mod tests {
             assert!(!error.contains("sk-secret"), "{error}");
         }
         assert!(Keys::from_header_values(["openrouter a", "openrouter b"]).is_err());
+    }
+
+    #[test]
+    fn only_a_fixed_line_reads_back() {
+        for failure in [
+            Failure::Refused(Provider::Vercel),
+            Failure::NoCredits(Provider::OpenRouter),
+            Failure::RateLimited(Provider::TypeSafe),
+            Failure::NoConnection(Provider::OpenRouter),
+            Failure::ModelUnavailable("openai/gpt-6.1-sol".into()),
+        ] {
+            assert_eq!(Failure::parse_line(&failure.line()), Some(failure));
+        }
+        assert!(Failure::parse_line("Insufficient credits, buy more at example.com").is_none());
+        assert!(Failure::parse_line("Your keys can't use <b>x</b>.").is_none());
     }
 
     #[test]

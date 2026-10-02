@@ -202,7 +202,7 @@ impl Failure {
     /// failure for logs and records.
     pub fn describe(&self) -> String {
         match self {
-            Failure::Refused { code, .. } => match code.as_str() {
+            Failure::Refused { code, message, .. } => match code.as_str() {
                 // Only a worker from before #10120, or one under an
                 // operator's emergency brake, sends these.
                 "rate_limited" | "quota_exhausted" => UNREACHED.into(),
@@ -210,6 +210,19 @@ impl Failure {
                     "This conversation is too long for us to answer here. Start a new chat.".into()
                 }
                 "busy" => "We're busy right now. Try again in a moment.".into(),
+                // A job on the person's own keys (BYOK): the worker's line
+                // is shown only when it is one of the fixed lines, which
+                // carry no provider's words.
+                model_access::PAYER_FAILED => model_access::Failure::parse_line(message)
+                    .map_or_else(
+                        || "We couldn't answer this time on your keys. Try again.".into(),
+                        |failure| failure.line(),
+                    ),
+                // A worker that can't run on the person's keys refuses
+                // rather than answering on ours.
+                "unsupported_feature" if model_access::current().is_mine() => {
+                    "OpenAgents chat can't use your keys yet. Switch to OpenAgents in Settings to chat now.".into()
+                }
                 _ => format!("We couldn't answer this time ({code}). Try again."),
             },
             Failure::Silent => "We couldn't reply this time. Try again.".into(),
@@ -1041,6 +1054,44 @@ mod tests {
         assert_eq!(
             busy.describe(),
             "We're busy right now. Try again in a moment."
+        );
+        // A job on the person's own keys shows its fixed line, and never a
+        // provider's own words.
+        let payer = |message: &str| Failure::Refused {
+            code: model_access::PAYER_FAILED.into(),
+            message: message.into(),
+            retry_after_ms: None,
+        };
+        assert_eq!(
+            payer("Your OpenRouter key was refused. Update it in Settings.").describe(),
+            "Your OpenRouter key was refused. Update it in Settings."
+        );
+        assert_eq!(
+            payer("Insufficient credits. Buy more at example.com").describe(),
+            "We couldn't answer this time on your keys. Try again."
+        );
+    }
+
+    /// The person's keys travel sealed: the body names `payer.keys` and
+    /// holds only ciphertext, which opens to the keys under the same
+    /// conversation key.
+    #[test]
+    fn the_payer_envelope_is_sealed_apart_from_the_body() {
+        let mut keys = model_access::Keys::none();
+        keys.insert(
+            model_access::Provider::OpenRouter,
+            model_access::ApiKey::new("sk-or-v1-sealed-key"),
+        );
+        let conversation = [9u8; 32];
+        let mut body = json!({"v": 2, "requires": [], "task": "hi"});
+        seal_payer(&mut body, &keys, &conversation).unwrap();
+        assert_eq!(body["requires"], json!([model_access::PAYER_FEATURE]));
+        assert!(!body.to_string().contains("sk-or-v1-sealed-key"));
+        let opened =
+            nip44::decrypt(body["payer"]["keys"].as_str().unwrap(), &conversation).unwrap();
+        assert_eq!(
+            model_access::Keys::from_envelope_plaintext(&opened).unwrap(),
+            keys
         );
     }
 

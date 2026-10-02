@@ -1950,7 +1950,14 @@ impl Job {
         }
         if requires.contains(&model_access::PAYER_FEATURE) {
             if let Some(why) = &self.payer_refusal {
-                return refuse(version, "malformed", why.clone());
+                // A fixed line (their keys can't serve the chat) travels as
+                // the payer's own failure; anything else is malformed.
+                let code = if model_access::Failure::parse_line(why).is_some() {
+                    model_access::PAYER_FAILED
+                } else {
+                    "malformed"
+                };
+                return refuse(version, code, why.clone());
             }
             if self.payer.is_none() {
                 return refuse(
@@ -2271,7 +2278,7 @@ impl Job {
                     (self.payer_last, &error)
                     && let Some(failure) = model_access::Failure::of_status(provider, *status)
                 {
-                    refuse(version, "internal", failure.line())?;
+                    refuse(version, model_access::PAYER_FAILED, failure.line())?;
                     eprintln!("job {label} failed on the caller's key: HTTP {status}");
                     return Ok(());
                 }
