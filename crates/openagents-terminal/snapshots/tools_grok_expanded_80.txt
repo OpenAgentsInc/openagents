@@ -1,35 +1,35 @@
-    Grok Build is working.
-    ◈ Read 3 files, Listed 1 dir, Searched 2 patterns
-    · Continuing the OpenAgents conversation.
-    ◆ Read main.rs
-        1→fn main() { println!("{}", demo::add(2, 3)); } // TODO: args
-    ◆ Read Cargo.toml
-        1→[package]
-        name="demo"
-        version="0.1.0"
-        edition="2021"
-    ◆ Read lib.rs
-        1→pub fn add(a: i32, b: i32) -> i32 { a + b }
-        // TODO: subtract
-        pub fn mul(a: i32, b: i32) -> i32 { a * b }
-    ◆ List src
-    ◆ Search "fn"
-        found 3 matches
-    ◆ Search "TODO"
-        found 2 matches
-    ◆ Run Build crate and show git history
-        $ cargo build && echo "---GIT---" && git log --oneline
-           Compiling demo v0.1.0 (/Users/me/.openagents/worktrees/grokdemo-4c5a…
-            Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.70s
-        ---GIT---
-        45f98b7 init
-    · I will summarize the crate's purpose in one sentence.
+ Grok Build is working.
+ ◈ Read 3 files, Listed 1 dir, Searched 2 patterns
+ · Continuing the OpenAgents conversation.
+ ◆ Read main.rs
+  1→fn main() { println!("{}", demo::add(2, 3)); } // TODO: args
+ ◆ Read Cargo.toml
+  1→[package]
+  name="demo"
+  version="0.1.0"
+  edition="2021"
+ ◆ Read lib.rs
+  1→pub fn add(a: i32, b: i32) -> i32 { a + b }
+  // TODO: subtract
+  pub fn mul(a: i32, b: i32) -> i32 { a * b }
+ ◆ List src
+ ◆ Search "fn"
+  found 3 matches
+ ◆ Search "TODO"
+  found 2 matches
+ ◆ Run Build crate and show git history
+  $ cargo build && echo "---GIT---" && git log --oneline
+     Compiling demo v0.1.0 (/Users/me/.openagents/worktrees/grokdemo-4c5a8c0c5e…
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.70s
+  ---GIT---
+  45f98b7 init
+ · I will summarize the crate's purpose in one sentence.
 
-    Coder finished · 1 file changed · +7 -0
-    The demo crate is a tiny Rust 2021 binary that prints demo::add(2, 3) and
-    also exposes mul, with TODOs for command-line arguments and subtraction.
+ Coder finished · 1 file changed · +7 -0
+ The demo crate is a tiny Rust 2021 binary that prints demo::add(2, 3) and also
+ exposes mul, with TODOs for command-line arguments and subtraction.
 
-    src holds lib.rs and main.rs. cargo build finished cleanly (demo v0.1.0),
-    and git log --oneline shows one commit: 45f98b7 init. No files were changed.
-        added Cargo.lock (+7 -0)
-    worktree /Users/me/.openagents/worktrees/grokdemo-4c5a8c0c5ea8
+ src holds lib.rs and main.rs. cargo build finished cleanly (demo v0.1.0), and
+ git log --oneline shows one commit: 45f98b7 init. No files were changed.
+  added Cargo.lock (+7 -0)
+ worktree /Users/me/.openagents/worktrees/grokdemo-4c5a8c0c5ea8

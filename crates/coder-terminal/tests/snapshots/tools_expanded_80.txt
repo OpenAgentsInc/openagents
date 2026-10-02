@@ -1,21 +1,21 @@
-    ◈ Read 3 files, Searched 2 patterns, Listed 1 dir
-    ◆ Read src/lib.rs
-        pub fn add(a: i32, b: i32) -> i32 { a + b }
-        // TODO: subtract
-    ◆ Read src/main.rs
-    ◆ Read Cargo.toml
-    ◆ Search "TODO"
-        src/lib.rs:2: // TODO: subtract
-    ◆ Search "fn"
-    ◆ List src
-        lib.rs
-        main.rs
-    ◆ Run List files and recent git commits
-        $ ls -la && git log --oneline
-        total 16
-        45f98b7 init
-    ◆ Now the tests.
-    ◆ Run cargo test -p demo · exit 101
-        $ cargo test -p demo
-        test add ... FAILED
-    ◈ Reading 1 file · 1 failed
+ ◈ Read 3 files, Searched 2 patterns, Listed 1 dir
+ ◆ Read src/lib.rs
+  pub fn add(a: i32, b: i32) -> i32 { a + b }
+  // TODO: subtract
+ ◆ Read src/main.rs
+ ◆ Read Cargo.toml
+ ◆ Search "TODO"
+  src/lib.rs:2: // TODO: subtract
+ ◆ Search "fn"
+ ◆ List src
+  lib.rs
+  main.rs
+ ◆ Run List files and recent git commits
+  $ ls -la && git log --oneline
+  total 16
+  45f98b7 init
+ ◆ Now the tests.
+ ◆ Run cargo test -p demo · exit 101
+  $ cargo test -p demo
+  test add ... FAILED
+ ◈ Reading 1 file · 1 failed

@@ -83,7 +83,9 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
 
     // The live rows under the transcript: the reply streaming in, and the
     // run's latest progress. The run view shows the run alone.
-    let width = log.width.saturating_sub(1);
+    // One cell at the left edge and two at the right, so rows end before
+    // the window's edge (owner, 2026-10-02).
+    let width = log.width.saturating_sub(3);
     let mut live: Vec<Line<'static>> = Vec::new();
     let viewing = app.run_view.is_some();
     if !app.partial.is_empty() && !viewing {

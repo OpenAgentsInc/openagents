@@ -1,15 +1,13 @@
-    What I found
+ What I found
 
-    The parser drops wide
-    characters when a row breaks
-    mid-word. See wrap_rows and the
-    notes
-    (https://example.com/notes).
+ The parser drops wide characters
+ when a row breaks mid-word. See
+ wrap_rows and the notes
+ (https://example.com/notes).
 
-    • check the grapheme width
-    • keep the caret on the later
-      row
-    • add a test with a long list
-      item that wraps onto a second
-      line
+ • check the grapheme width
+ • keep the caret on the later row
+ • add a test with a long list
+   item that wraps onto a second
+   line
 

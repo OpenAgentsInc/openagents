@@ -1,5 +1,5 @@
-    Coder can make this change in a
-    worktree. Say "go" to start.
-    [1] Show me the failing test first
-    [2] Explain why the caret joins the
-        later row at a wrap point
+ Coder can make this change in a
+ worktree. Say "go" to start.
+ [1] Show me the failing test first
+ [2] Explain why the caret joins the
+     later row at a wrap point

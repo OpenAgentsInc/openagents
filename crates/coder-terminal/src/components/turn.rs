@@ -30,9 +30,9 @@ pub enum Who {
 /// grok-build's prompt arrow (`glyphs::prompt_arrow`).
 pub const PROMPT_ARROW: &str = "\u{276F} ";
 
-/// The cell the prompt's band starts at: grok-build's accent column, one
-/// cell left of the content's padding.
-const BAND_LEAD: usize = INDENT - 3;
+/// The cell the prompt's band starts at: one cell left of the text, so the
+/// band shows a cell before the arrow.
+const BAND_LEAD: usize = INDENT.saturating_sub(1);
 /// The cells right of the band: grok-build's outer padding, less the one
 /// cell the screen keeps at its left edge, plus its scrollbar's column.
 const BAND_TAIL: usize = 2;
@@ -313,15 +313,15 @@ mod tests {
     fn a_turn_has_no_label_and_ends_with_a_blank_line() {
         let ladder = Ladder::new(Colors::True);
         let done = turn(Who::OpenAgents, "hi", 40, ladder);
-        assert_eq!(text(&done), ["    hi", ""]);
+        assert_eq!(text(&done), [" hi", ""]);
         let live = streaming("hi", 40, ladder);
-        assert_eq!(text(&live), ["    hi"]);
+        assert_eq!(text(&live), [" hi"]);
         let asked = turn(Who::You, "fix it", 20, ladder);
         assert_eq!(
             text(&asked),
             [
                 "                  ",
-                "    \u{276F} fix it      ",
+                " \u{276F} fix it         ",
                 "                  ",
                 ""
             ]
@@ -351,14 +351,14 @@ mod tests {
         assert_eq!(
             text(&lines),
             [
-                "    Plan".to_owned(),
+                " Plan".to_owned(),
                 String::new(),
-                "    Run cargo test, see docs (https://x.dev).".to_owned(),
+                " Run cargo test, see docs (https://x.dev).".to_owned(),
                 String::new(),
-                "    • one".to_owned(),
+                " • one".to_owned(),
                 String::new(),
                 // The code band runs to the content's right edge.
-                format!("    plain{}", " ".repeat(60 - 4 - 4 - 5)),
+                format!(" plain{}", " ".repeat(60 - 1 - 4 - 5)),
                 String::new(),
             ]
         );
@@ -396,10 +396,7 @@ mod tests {
             18,
             Ladder::default(),
         );
-        assert_eq!(
-            text(&lines),
-            ["    [1] a follow", "        up that", "        wraps"]
-        );
+        assert_eq!(text(&lines), [" [1] a follow up", "     that wraps"]);
     }
 
     #[test]

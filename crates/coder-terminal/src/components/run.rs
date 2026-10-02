@@ -670,7 +670,7 @@ mod tests {
                 },
                 80
             ),
-            ["    step 3 · ≈40% done · 1m 5s"]
+            [" step 3 · ≈40% done · 1m 5s"]
         );
     }
 
@@ -691,10 +691,7 @@ mod tests {
             mark: '·',
             text: "reading the file that matters".into(),
         };
-        assert_eq!(
-            text(&row, 20),
-            ["    · reading the", "      file that", "      matters"]
-        );
+        assert_eq!(text(&row, 20), [" · reading the file", "   that matters"]);
     }
 
     #[test]
@@ -732,9 +729,9 @@ mod tests {
         assert_eq!(
             text(&row, 80),
             [
-                "    Coder finished · 1 file changed · +1 -1",
-                "        modified a.rs (+1 -1)",
-                "    Press Ctrl+O to see the changes.",
+                " Coder finished · 1 file changed · +1 -1",
+                "  modified a.rs (+1 -1)",
+                " Press Ctrl+O to see the changes.",
             ]
         );
         if let RunRow::Result { expanded, .. } = &mut row {
@@ -743,11 +740,11 @@ mod tests {
         assert_eq!(
             text(&row, 80),
             [
-                "    Coder finished · 1 file changed · +1 -1",
-                "        modified a.rs (+1 -1)",
-                "        1  old",
-                "        1  new",
-                "        1 more line not shown",
+                " Coder finished · 1 file changed · +1 -1",
+                "  modified a.rs (+1 -1)",
+                "  1  old",
+                "  1  new",
+                "  1 more line not shown",
             ]
         );
     }
@@ -763,8 +760,8 @@ mod tests {
             cost_microusd,
             expanded: false,
         };
-        assert_eq!(text(&row(Some(940_000)), 80), ["    Coder finished"]);
-        assert_eq!(text(&row(None), 80), ["    Coder finished"]);
+        assert_eq!(text(&row(Some(940_000)), 80), [" Coder finished"]);
+        assert_eq!(text(&row(None), 80), [" Coder finished"]);
     }
 
     /// The summary a Codex run on CoderOS ended with (2026-10-02): the
@@ -800,10 +797,9 @@ mod tests {
         };
         let rows = text(&row, 80);
         assert_eq!(raw_markdown(&rows), Vec::<String>::new(), "{rows:#?}");
-        assert_eq!(rows[0], "    Coder finished", "nothing changed: no counts");
+        assert_eq!(rows[0], " Coder finished", "nothing changed: no counts");
         assert!(
-            rows.iter()
-                .any(|row| row == "    • 45 terminal unit tests."),
+            rows.iter().any(|row| row == " • 45 terminal unit tests."),
             "{rows:#?}"
         );
         assert!(rows.iter().any(|row| row.contains("Commit: 0d6afa57b4.")));
@@ -827,14 +823,11 @@ mod tests {
             mark: '·',
             text: "**Inspecting** the `Store::open` path".into(),
         };
-        assert_eq!(
-            text(&thought, 80),
-            ["    · Inspecting the Store::open path"]
-        );
+        assert_eq!(text(&thought, 80), [" · Inspecting the Store::open path"]);
         let tool = RunRow::Tools(vec![ToolRow::Thought(
             "**Planning the fix**\n\nThen `cargo test`.".into(),
         )]);
-        assert_eq!(text(&tool, 80), ["    ◆ Planning the fix"]);
+        assert_eq!(text(&tool, 80), [" ◆ Planning the fix"]);
         let long = RunRow::Tools(vec![ToolRow::Thought(format!(
             "**{}**",
             "word ".repeat(30).trim()
@@ -849,8 +842,8 @@ mod tests {
         };
         let rows = text(&asked, 80);
         assert_eq!(raw_markdown(&rows), Vec::<String>::new(), "{rows:#?}");
-        assert_eq!(rows[0], "    Coder asks: Which one?");
-        assert!(rows.contains(&"    • main".to_owned()), "{rows:#?}");
+        assert_eq!(rows[0], " Coder asks: Which one?");
+        assert!(rows.contains(&" • main".to_owned()), "{rows:#?}");
     }
 
     #[test]

@@ -1,17 +1,15 @@
 OpenAgents
 model
-    Space Bunny
-    Alpha
+ Space Bunny
+ Alpha
 folder
-    ~/work/opena
-    gents
+ ~/work/openagen
+ ts
 account
-    signed in
-    as a person
-    with a long
-    display
-    name that
-    wraps
+ signed in as a
+ person with a
+ long display
+ name that wraps
 Ask anything
 about this
 folder, or hand

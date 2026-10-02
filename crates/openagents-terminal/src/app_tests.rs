@@ -1130,7 +1130,7 @@ fn the_owners_runs_draw_their_markdown() {
                         || (row.contains('`') && !lead.starts_with("$ ") && !lead.starts_with("◆ "))
                         || lead.starts_with("- ")
                 })
-                .filter(|row| !expanded || !row.starts_with("    "))
+                .filter(|row| !expanded || !row.starts_with("  "))
                 .collect();
             assert!(raw.is_empty(), "raw Markdown: {raw:#?}\n{text}");
             if let Some(bullet) = bullet {
@@ -1153,7 +1153,7 @@ fn the_owners_runs_draw_their_markdown() {
     ));
     let text = shown(&mut grok);
     assert!(
-        text.contains("  Coder finished\n"),
+        text.contains("\n Coder finished\n"),
         "nothing changed: no counts\n{text}"
     );
     assert!(text.contains("at detached commit fe70e10131"), "{text}");
