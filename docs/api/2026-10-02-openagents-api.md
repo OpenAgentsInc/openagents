@@ -25,9 +25,9 @@ no revenue) and [Episode 289](../transcripts/289.md):
 | D5 | **Threads are kept by us from the first slice.** `POST /v1/messages` takes an optional `thread`; we store turns as the apps do. |
 | D6 | **The address is `https://api.openagents.com`.** |
 | D7 | **Plugin authors are paid from each x402 payment for calls that used their plugin**, split automatically over Lightning. D9 sets how much. |
-| D8 | **Keyless callers get a small free tier per caller**, like the Ask box, then a `402` with a Lightning or USDC price. |
+| D8 | **Keyless callers get a small free tier per caller**, like the Ask box, then a `402` with a Lightning price. |
 | D9 | **Each plugin declares its own per-call fee.** The fee is added to the call's price, and the author receives all of it, split automatically after the call settles. |
-| D10 | **Payment accepts upstream x402's USDC `exact` schemes as well as Lightning**, so stock x402 clients pay out of the box. Lightning stays the native path. |
+| D10 | **Bitcoin only (Lightning), no stablecoins.** Owner decision: "bitcoin only." The `402` offers one way to pay, the x402 `exact` scheme on Lightning. Consequence: stock upstream x402 SDKs cannot pay it until an `lnbtc` mechanism lands upstream, so clients use `openagents x402 fetch` or the curl steps in section 5, and we can contribute that mechanism. |
 | D11 | **Every response shows route, model, cost, and time for the call**, never Jev's internal scores. |
 
 ## 1. What the API is
@@ -96,10 +96,6 @@ developer --HTTPS, API key, JSON/SSE, x402--> API front --signed, NIP-44 encrypt
 - **The Lightning receiver key** that issues x402 invoices is the front's
   wallet node key, on the front's host, with exclusive invoice authority as
   the x402 Lightning scheme requires.
-- **USDC receiving addresses** (one on Base, one on Solana) are only public
-  addresses in the front's configuration; their private keys stay in the
-  treasury wallet, off the front's host. The facilitator that submits USDC
-  payments holds only its own gas key, on its own host (section 5).
 - **On a user's computer**, the host uses its own keys and grants. Nothing
   leaves the machine except the jobs it already sends.
 
@@ -317,28 +313,21 @@ an `openagents` extension field. It cannot carry offers or runs; those need
 
 ## 5. Payment: x402
 
-We use [x402](https://github.com/x402-foundation/x402) v2 over HTTP, unchanged.
-A `402` offers two kinds of payment in one `accepts` list, and the client
-picks one (D10):
-
-- **Lightning (native):** the `exact` scheme on Lightning
+We use [x402](https://github.com/x402-foundation/x402) v2 over HTTP, unchanged,
+with Bitcoin only (D10): the `exact` scheme on Lightning
 ([`scheme_exact_lnbtc.md`](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md),
-merged upstream as #2861), priced in sats.
-- **USDC:** upstream's standard `exact` scheme on Base (`eip155:8453`, EIP-3009
-  `transferWithAuthorization`) and Solana mainnet
-  (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`, SPL transfer), the two networks
-  every stock x402 client and production facilitator supports. Other chains
-  upstream lists can be added later the same way.
-
-For Lightning, our [NIP-X402](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-X402.md)
+merged upstream as #2861), priced in sats. Our [NIP-X402](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-X402.md)
 already requires the HTTP role to be exactly that upstream profile, and
 [`crates/x402`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/x402)
 already implements it: the challenge, the request binding, the replay store,
 and an embedded facilitator. Nothing Nostr is involved on this path.
 
-**Prices** are set in sats. The USDC amount in the same `402` is the sat
-price converted at the rate when the `402` is issued, and that quote holds
-for the requirement's `maxTimeoutSeconds`.
+**Prices** are set in sats.
+
+**Clients.** Upstream's x402 SDKs ship no Lightning mechanism yet, so a stock
+x402 client reads our `402` but cannot pay it. Until an `lnbtc` mechanism
+lands upstream (we can contribute it, section 5's gap table), a client pays
+with `openagents x402 fetch` or the curl steps below.
 
 **Who sees a 402.**
 
@@ -379,17 +368,10 @@ flow: payment settles before the work runs. The steps:
       "amount":"21000","asset":"BTC","payTo":"02…","maxTimeoutSeconds":300,
       "extra":{"assetTransferMethod":"bolt11","paymentFlow":"upfront",
         "requestBindingProfile":"http:1","requestBindingParams":{"headers":["accept","content-type"]},
-        "requestHash":"0d66…","invoice":"lnbc210n1…"}},
-     {"scheme":"exact","network":"eip155:8453","amount":"25000",
-      "asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x…",
-      "maxTimeoutSeconds":600,"extra":{"name":"USD Coin","version":"2"}},
-     {"scheme":"exact","network":"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp","amount":"25000",
-      "asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","payTo":"…",
-      "maxTimeoutSeconds":600,"extra":{"feePayer":"…"}}]}
+        "requestHash":"0d66…","invoice":"lnbc210n1…"}}]}
    ```
 
-   (Illustrative: 21 sats and 0.025 USDC, whose amount is in USDC's six
-   decimals.)
+   (Illustrative price: 21 sats, `"21000"` millisatoshis.)
 
 2. Pay the invoice with any Lightning wallet that returns the preimage.
 
@@ -422,23 +404,6 @@ per call has `authorization` in the bound headers, and a caller that sends
 `OpenAgents-Provider-Key` (BYOK, below) has it bound too, since it changes
 the price.
 
-**Paying with USDC.** Any stock x402 client (the upstream `@x402/fetch`,
-`x402` for Python, or the Go SDK with its EVM or SVM mechanism) reads the
-same `402`, picks the Base or Solana requirement, signs a payment
-authorization with its wallet, and retries with `PAYMENT-SIGNATURE`; no
-OpenAgents code is needed. USDC uses upstream's default `authorization`
-flow: our facilitator verifies the signature before the work starts and
-settles after it succeeds, so a call that fails is not charged. A
-non-streamed answer carries `PAYMENT-RESPONSE` as usual. A streamed answer
-has already sent its headers when it settles, so the settlement result
-arrives as a final `payment` event in the stream; `maxTimeoutSeconds` is long
-enough to cover the answer.
-
-**The USDC facilitator** is the upstream open-source facilitator, run by us
-on our own host, with a production facilitator provider as a fallback.
-`crates/x402` stays the Lightning facilitator. Both write to one settlement
-log beside the usage records.
-
 **Bring your own provider key.** A caller that sends `OpenAgents-Provider-Key:
 <provider> <key>` gets no `402` for the call's model cost; see
 [BYOK, section 6](../byok/2026-10-02-byok-openrouter.md#6-api-callers-bring-their-own-key).
@@ -457,17 +422,55 @@ before paying. After the call settles, the front pays the whole fee to the
 author's Lightning payout address and records the split beside the usage
 record.
 
-**Authors are always paid in sats over Lightning, whatever the caller paid
-with.** The author sets one fee in sats and one Lightning address. When a
-caller pays in USDC, the fee was converted into the USDC quote at issue time;
-the USDC goes to our address and we pay the author the declared sats from
-our Lightning wallet. Authors never need a chain wallet, every author is paid
-the same way, and the small rate difference between quote and payout is
-ours to carry.
+The author sets one fee in sats and one Lightning address. The payout is
+sent from the API host's wallet, out of the payments it has received
+(section 5.1).
 
 **Threads without a key.** A pay-per-call caller with no key still gets a
 `thread` id. The id is long and random and is the only thing that opens the
 thread, like a share link.
+
+### 5.1 Receiving payments
+
+What exists already does the receiving side; this is setup, not new code.
+
+- **The wallet is the `payTo` node.** The built-in wallet
+  ([`crates/wallet`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/wallet),
+  built on MoneyDevKit's fork of `ldk-node`) runs resident on the API host
+  with `openagents wallet serve` (or `openagents wallet service install` to
+  start it with the system). Its node id is the `payTo` in every `402`, and
+  it signs every invoice itself.
+- **Initialise it with just-in-time inbound liquidity:**
+
+  ```sh
+  openagents wallet init --network bitcoin --lsp mdk --lsp-min-msat <from the LSP's fee policy>
+  openagents wallet serve
+  ```
+
+  `--lsp mdk` names MoneyDevKit's LSPS4 peer. The first payment opens the
+  channel, so there is no funding step. The LSP takes its fee out of the
+  forwarded amount, so prices must include it, and `--lsp-min-msat` (the
+  smallest payment the LSP forwards) makes the provider refuse a price below
+  it. See [Inbound liquidity from an LSP](https://github.com/OpenAgentsInc/openagents/blob/main/docs/cli/README.md#inbound-liquidity-from-an-lsp).
+- **First-channel caveat.** The LSP holds the first payment for about 45
+  seconds while the channel opens; if opening takes longer, the payment fails
+  back and that invoice stays unpayable. The channel still opens, and the
+  caller's retry gets a fresh `402` with an ordinary invoice that settles at
+  once. Clients retry a failed payment with a fresh challenge.
+- **The payment loop exists.** `openagents x402 serve` already does the `402`,
+  the invoice, the proof check, the replay store, and run-after-settle for
+  one resource; the API front uses the same `crates/x402` pieces for every
+  priced endpoint.
+- **Paying authors.** Plugin fee payouts (D9) go out from this same wallet;
+  its outbound liquidity is the payments it has received.
+
+Owner steps, once:
+
+1. Back up the wallet seed off the API host.
+2. Point DNS for `api.openagents.com` at the host and give it TLS.
+3. Put the replay store (`~/.openagents/x402/replay`, or
+   `OPENAGENTS_X402_HOME`) on durable disk, and keep it the one store for this
+   receiver: every process that settles for this node must share it.
 
 ### x402: gaps between our NIP-X402, our code, and upstream
 
@@ -475,7 +478,7 @@ thread, like a share link.
 | --- | --- |
 | The NIP pins upstream commit `4fcf836`. Upstream `main` is 16 commits later; none of them touch the v2 core, the HTTP transport, or the Lightning scheme. | Bump the pin in NIP-X402 and `crates/x402` (doc-only). |
 | The repository moved from `coinbase/x402` to `x402-foundation/x402`; the old `coinbase` `main` still lacks the Lightning scheme. | Link only `x402-foundation` (the NIP already does). |
-| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client pays the USDC requirements out of the box but cannot pay Lightning. | Contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. Until then, `openagents x402 fetch` and the curl steps above are the clients. |
+| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client reads our `402` but cannot pay it. | Contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. Until then, `openagents x402 fetch` and the curl steps above are the clients. |
 | Lightning supports only the `upfront` flow; upstream has `upto` and `escrow` flows on other networks, not Lightning. A message whose cost depends on the route cannot be priced exactly. | Fixed per-endpoint prices and priced offers now. Later, propose an `escrow`-flow Lightning variant upstream using hold invoices (settle a ceiling, charge the actual). |
 | v1 clients use `X-PAYMENT` and `X-PAYMENT-RESPONSE`; the Lightning scheme is v2-only (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`). | Serve v2 only and say so in the 402 body. |
 | Upstream has an A2A transport; the Lightning request binding defines only `http:1` and `mcp:1`. | If we offer A2A, propose an `a2a:1` binding profile upstream first. |
@@ -595,8 +598,8 @@ records ([#10161](https://github.com/OpenAgentsInc/openagents/issues/10161)).
   stop, `/v1/knowledge/search`, `/v1/plugins` reads, `/v1/usage`, on
   `api.openagents.com`.
 - `oak_` keys with plans; the keyless free tier (D8); x402 for everyone
-  else, Lightning through `crates/x402` and USDC on Base and Solana through
-  our own run of the upstream facilitator.
+  else, over Lightning through `crates/x402` and the API host's wallet
+  (section 5.1).
 - A new `Surface::Api` router policy, starting from the web surface's
   (answers and knowledge, no Coder).
 - The OpenAI-compatible `/v1/chat/completions`.
