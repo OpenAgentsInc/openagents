@@ -1450,3 +1450,18 @@ after a reply was answered by the model twice; no reply started with "We'll
 look that up for you."; and "how do I make coder use claude code instead
 of codex?" answered with `openagents settings set coder.providers
 claude,codex,grok`.
+
+Release `cdcc111e85` (2026-10-02 UTC) makes a wallet request mean the
+built-in wallet and lets a terminal run read-only commands
+([#10170](https://github.com/OpenAgentsInc/openagents/issues/10170)): in a
+terminal a sure `wallet` route descends the `wallet` commands (with
+`wallet info` when the descent picks none) and a read-only proposal is
+answered with `cli.run`; elsewhere the model is told `WALLET_NOTE`; the
+route question's wallet and clarify rubrics moved the set to
+`chat-router-v4@9d17e4d3e2d7` (bank `chat-answers-v1@cfc839ef703b`). It
+followed `ef69c18254` the same day, was built with `cargo zigbuild` as
+above, installed with `knowledge/` and `codebase-kb.gz` copied from
+`37bd623fec`, checked with `--check`, and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; `37bd623fec` stays for
+rollback. The live wallet eval (`crates/coder/tests/wallet_eval.rs`,
+`live_hosted_chat`) passed 11 of 11 terminal rows.
