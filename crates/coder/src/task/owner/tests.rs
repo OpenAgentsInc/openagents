@@ -1,6 +1,6 @@
 use super::*;
 
-fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
+pub(super) fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
     let root = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let repository = workspace.path().join("repo");
@@ -285,7 +285,7 @@ async fn a_live_owner_refuses_competitors_and_recovery_never_reexecutes() {
 
 /// Recover `id` until its run is ended, as a host's sweeps would, and check
 /// it ended as one whose owner process is gone.
-async fn settled(dir: &Path, id: &str) -> Task {
+pub(super) async fn settled(dir: &Path, id: &str) -> Task {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let task = recover(dir, id).unwrap_or_else(|error| panic!("{error:?}"));
@@ -649,7 +649,7 @@ fn legacy_inbox_reads_without_rewrite_and_migrates_on_first_mutation() {
     );
 }
 
-fn requirements(host: &Path, command: &str) -> checks::Requirements {
+pub(super) fn requirements(host: &Path, command: &str) -> checks::Requirements {
     use crate::capability::{self, Entry, Source};
     use std::os::unix::fs::PermissionsExt;
     let program = host.join("check-suite.sh");

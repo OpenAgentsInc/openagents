@@ -956,15 +956,15 @@ impl App {
             Event::Partial { text, .. } => self.partial = text,
             Event::Reply {
                 reply,
-                computer,
                 running,
+                route,
                 ..
             } => {
                 self.partial.clear();
                 self.push(Row::Turn(Who::OpenAgents, reply.text.clone()));
-                // The offer is what `run-coder` accepts, read the same way
-                // (#10170): the computer lane alone is not an offer.
-                let offered = openagents_chat::delegation::offered(reply.meta.as_ref(), computer);
+                // The shared route policy read the reply (#10207): a Coder
+                // route is the offer `run-coder` accepts (#10170).
+                let offered = route == Some(openagents_chat::route::RouteFamily::Coder);
                 let meta = reply.meta.clone().unwrap_or_default();
                 self.notes(&meta, offered && !running, running);
                 if running {

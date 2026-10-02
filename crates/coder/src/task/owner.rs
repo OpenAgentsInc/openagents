@@ -1186,3 +1186,7 @@ std::thread_local! { static OWNER_FAULT: std::cell::Cell<Option<&'static str>> =
 // The owner tests run shell scripts as the task program.
 #[cfg(all(test, unix))]
 mod tests;
+// Router phase 1's exit evidence (#10207): a routed message through this
+// owner, with a retained patch and an independent check.
+#[cfg(all(test, unix))]
+mod route_tests;

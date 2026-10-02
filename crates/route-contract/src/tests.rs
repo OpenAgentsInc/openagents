@@ -722,3 +722,196 @@ fn the_eval_split_is_labeled_and_traceable() {
     assert_eq!(wallets, wallet["rows"].as_array().unwrap().len());
     assert_eq!(followups, 46);
 }
+
+mod record {
+    use super::*;
+    use crate::record::{Observation, Refused, RouteRecord};
+
+    fn seen(status: TaskStatus, execution: TaskExecution, checks: TaskChecks) -> Observation {
+        Observation {
+            disposition: TaskDisposition {
+                status,
+                execution,
+                checks,
+            },
+            revision: 7,
+            cost_microusd: Some(1_250),
+            wall_ms: Some(4_000),
+            artifacts: vec![d("patch")],
+        }
+    }
+
+    fn coder() -> RouteRecord {
+        let result = RouteResult::Coder { plan: plan() };
+        RouteRecord::received("req_1", Some("th_1".into()), result, snapshot(), 1_000).unwrap()
+    }
+
+    #[test]
+    fn a_record_binds_its_snapshot_and_round_trips() {
+        let record = coder();
+        assert_eq!(record.schema, crate::RECORD_SCHEMA);
+        assert_eq!(record.snapshot_digest, record.snapshot.digest());
+        assert_eq!(record.state, Lifecycle::Received);
+        round_trip(&record);
+        // A snapshot that admitted another result is refused.
+        let other = RouteResult::Refusal {
+            reason: RefusalReason::Harmful,
+        };
+        assert_eq!(
+            RouteRecord::received("req_1", None, other, snapshot(), 0),
+            Err(Refused::Unbound)
+        );
+    }
+
+    #[test]
+    fn dispatch_runs_once_per_task_and_settles_with_cost_and_time() {
+        let mut record = coder();
+        assert!(
+            record.dispatched("t1", Some("codex")).is_err(),
+            "not admitted"
+        );
+        record
+            .step(Lifecycle::Admitted, "autostart", 1_100)
+            .unwrap();
+        for task in ["t1", "t2", "t1"] {
+            record.dispatched(task, Some("codex")).unwrap();
+        }
+        assert_eq!(record.tasks(), ["t1", "t2"]);
+        assert!(record.dispatched_any());
+        assert!(record.observe(
+            "t1",
+            seen(
+                TaskStatus::Finished,
+                TaskExecution::Finished,
+                TaskChecks::Passed
+            ),
+            2_000
+        ));
+        assert_eq!(record.state, Lifecycle::DispatchPending, "t2 still pending");
+        assert!(!record.observe(
+            "t9",
+            seen(
+                TaskStatus::Running,
+                TaskExecution::Running,
+                TaskChecks::NotRun
+            ),
+            2_000
+        ));
+        record.observe(
+            "t2",
+            seen(
+                TaskStatus::Finished,
+                TaskExecution::Finished,
+                TaskChecks::NotRun,
+            ),
+            5_000,
+        );
+        assert_eq!(record.state, Lifecycle::Completed);
+        assert_eq!(record.runs[0].projection.check, CheckLabel::Verified);
+        assert_eq!(record.runs[1].projection.check, CheckLabel::Unchecked);
+        assert_eq!(record.wall_ms(), Some(4_000));
+        assert_eq!(record.cost_microusd(), Some(2_500));
+        assert_eq!(record.runs[0].wall_ms, Some(4_000));
+        let moves: Vec<_> = record
+            .transitions
+            .iter()
+            .map(|t| (t.task.as_deref(), t.from, t.to))
+            .collect();
+        assert_eq!(
+            moves,
+            [
+                (None, Lifecycle::Received, Lifecycle::Admitted),
+                (Some("t1"), Lifecycle::Admitted, Lifecycle::DispatchPending),
+                (Some("t1"), Lifecycle::DispatchPending, Lifecycle::Completed),
+                (Some("t2"), Lifecycle::DispatchPending, Lifecycle::Completed),
+            ]
+        );
+        round_trip(&record);
+    }
+
+    #[test]
+    fn an_unknown_cost_leaves_the_route_cost_unknown_and_failure_outranks() {
+        let mut record = coder();
+        record
+            .step(Lifecycle::Admitted, "autostart", 1_000)
+            .unwrap();
+        record.dispatched("t1", None).unwrap();
+        record.dispatched("t2", None).unwrap();
+        let mut unknown = seen(
+            TaskStatus::Finished,
+            TaskExecution::Failed,
+            TaskChecks::NotRun,
+        );
+        unknown.cost_microusd = None;
+        record.observe("t1", unknown, 2_000);
+        record.observe(
+            "t2",
+            seen(
+                TaskStatus::Finished,
+                TaskExecution::Stopped,
+                TaskChecks::NotRun,
+            ),
+            2_000,
+        );
+        assert_eq!(record.state, Lifecycle::Failed);
+        assert_eq!(record.cost_microusd(), None);
+        // A crash leaves the route waiting for reconciliation, unsettled.
+        record.observe(
+            "t2",
+            seen(
+                TaskStatus::Unknown,
+                TaskExecution::Unknown,
+                TaskChecks::NotRun,
+            ),
+            3_000,
+        );
+        assert_eq!(record.state, Lifecycle::NeedsReconciliation);
+        assert!(!record.settled());
+    }
+
+    #[test]
+    fn answers_offers_refusals_and_commands_move_only_by_router_steps() {
+        let answer = RouteResult::Answer {
+            source: AnswerSource::Model,
+        };
+        let mut snap = snapshot();
+        snap.route.family = RouteFamily::Answer;
+        snap.route.result = answer.digest();
+        let mut record = RouteRecord::received("r", None, answer, snap.clone(), 0).unwrap();
+        assert!(record.step(Lifecycle::DispatchPending, "x", 1).is_err());
+        record.step(Lifecycle::Completed, "answered", 9).unwrap();
+        assert!(record.settled());
+        assert_eq!(record.wall_ms(), Some(9));
+        assert!(
+            record.ran(true, None, 10).is_err(),
+            "an answer runs nothing"
+        );
+
+        let command = RouteResult::LocalCommand {
+            action: LocalAction::Command {
+                argv: vec!["wallet".into(), "balance".into()],
+                effect: Effect::ReadOnly,
+            },
+        };
+        snap.route.family = RouteFamily::LocalCommand;
+        snap.route.result = command.digest();
+        let mut record = RouteRecord::received("c", None, command, snap.clone(), 0).unwrap();
+        record.step(Lifecycle::Proposed, "confirm", 1).unwrap();
+        assert!(record.ran(true, None, 2).is_err(), "not confirmed yet");
+        record.step(Lifecycle::Admitted, "confirmed", 3).unwrap();
+        record.ran(true, Some(40), 4).unwrap();
+        assert_eq!(record.state, Lifecycle::Completed);
+        assert!(
+            record.dispatched_any(),
+            "a confirmed command never runs twice"
+        );
+
+        let mut refused = coder();
+        refused
+            .refuse(Some(RefusalReason::MissingGrant), "grant_denied", 5)
+            .unwrap();
+        assert_eq!(refused.state, Lifecycle::Failed);
+        assert_eq!(refused.refusal, Some(RefusalReason::MissingGrant));
+        assert!(!refused.dispatched_any());
+    }
+}

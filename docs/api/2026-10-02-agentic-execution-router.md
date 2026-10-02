@@ -454,7 +454,74 @@ edit in place; golden digests in the crate's tests fail if a field moves.
   plugin creation, local commands, and defaults. A test checks every seeded
   row against its source.
 
-Not wired into any surface yet; phase 1 (#10207) does that.
+Phase 1 (#10207) wires it into the terminal and the CLI; see below.
+
+### Phase 1 exit evidence: the local vertical slice (2026-10-02, #10207)
+
+OpenAgents Terminal and `openagents chat` send every message through the
+router contract.
+
+- **One route policy.** [`openagents_chat::route`](../../crates/openagents-chat/src/route.rs)
+  (`route-policy-v1`) is the only reader of the worker's typed judgment and
+  offers: `propose` turns a reply into a `RouteResult` (Coder with a dispatch
+  plan of one run or N, continuing the thread's local task as steer or next
+  turn; a local command with its effect read from this computer's own command
+  tree; a screen; a Gym program or a step of the plugin-creation flow
+  (#10177); missing
+  capability; clarification; refusal; answer), and `admit` builds the
+  admission snapshot (placement on this computer, effects with access `full`
+  visible and the macOS deny set, recipients per engine provider, the payer
+  per resource with each engine on the person's own login, cost recorded and
+  not shown, the delegate settings' digest as the Coder adapter, defaults
+  applied, and `inherits` for a continuation, which widens nothing).
+  `delegation::offered`, which the desktop, phone, host, and chat app call, is
+  now the policy's `coder_offered`; the terminal and CLI read the family the
+  client attaches to each reply instead of interpreting offers.
+- **One record per message.** A new document beside the frozen ones,
+  [`route_contract::record`](../../crates/route-contract/src/record.rs)
+  (`openagents.route.record.v1`), binds the route result and the snapshot by
+  digest, the router's own moves (only `Lifecycle::router_step`), each task the
+  route started with its lifecycle projected from the task owner, and per-run
+  cost and wall time. Cost and time live on the record, bound to the snapshot
+  digest, because the snapshot is immutable and digested before dispatch. The
+  client keeps it in the thread's route journal
+  (`~/.openagents/routes/<thread>.jsonl`) before anything runs and settles it
+  when each operation ends ([route records](../cli/chat.md#route-records)).
+- **Dispatch through the task owner.** A Coder route starts exactly one task
+  through the local runner (the same submission, execution grant, and store a
+  host's auto-start uses) or, through a host, its `RunCoder`; a dispatch plan
+  starts its N. A request whose record already names tasks is followed, never
+  started again (this closes a `run-coder` after a plan starting the plan a
+  second time), and a confirmed command runs once per message.
+- **The lifecycle adapter.** [`coder::task::lifecycle`](../../crates/coder/src/task/lifecycle.rs)
+  maps `coder::task::{Status, Execution, Checks}` onto the contract's words
+  with exhaustive matches, and a test keeps the serde words equal both ways.
+- **Fixtures.** [`task/owner/route_tests.rs`](../../crates/coder/src/task/owner/route_tests.rs)
+  routes one message with the shared policy, journals its admission, and
+  dispatches it into the real task owner in a scratch store:
+  - delivery: one task, a retained patch, the independent check passes, the
+    route ends `completed`/`verified` with the run's wall time and cost (unknown
+    for the bounded fixture command, never a stand-in zero); asking again
+    follows it, and the effect counter stays at one;
+  - denied grant: a grant revoked after admission refuses before the executor
+    (`failed`, `missing_grant`, no run), and a grant the owner refuses admits
+    no run and ends the task `cancelled`;
+  - cancellation: requested while running, reported apart from the
+    acknowledged `cancelled`, with the later effect never written;
+  - executor crash after dispatch: the route stays unsettled (running or
+    `needs_reconciliation`) until recovery ends the run, then `failed`; the same message is followed, and the
+    owner refuses a second execution; the effect counter stays at one.
+
+  The policy's own fixtures (`crates/openagents-chat/src/route/tests.rs`) cover
+  every family, plans, continuation without widening, command effects, issue
+  work, and the journal; `route-contract` tests the record's moves.
+
+What phase 1 does not do yet: local runs carry no frozen check suites
+(autostart's grant has none), so a live terminal run is labeled `unchecked`,
+never `verified`, until they do; the issue flow is refined to `issue_work`
+after admission and still starts at once rather than as an offer; standing
+rules have no reading on the wire (#10157), though their route result admits
+and journals like any other.
 
 Do not block the initial local/HTTP slice on paid labor or metered sessions.
 Launch paid traffic only after phase 4's accounting and recovery gates pass.

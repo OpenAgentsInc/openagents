@@ -5319,6 +5319,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "playtest",
+ "route-contract",
  "rust-native",
  "secp256k1 0.31.1",
  "serde",
@@ -6453,6 +6454,15 @@ checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
 dependencies = [
  "bytes",
  "rustc-hex",
+]
+
+[[package]]
+name = "route-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

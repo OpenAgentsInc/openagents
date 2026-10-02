@@ -145,8 +145,9 @@ pub fn title(chat_title: &str, turns: &[Turn]) -> String {
     crate::basic_chats::handoff_title(chat_title, turns)
 }
 
-/// Whether a reply offers Coder. The router's offer selects presentation
-/// only; the host admits execution.
+/// Whether a reply offers Coder: the shared route policy's reading
+/// ([`crate::route::coder_offered`]), the one every surface uses. The
+/// router's offer selects presentation only; the host admits execution.
 ///
 /// Precedence when one reply carries several things (#10073): an explicit
 /// [`Offer::RunCoder`](crate::router::Offer::RunCoder) offers Coder; else a
@@ -160,29 +161,7 @@ pub fn title(chat_title: &str, turns: &[Turn]) -> String {
 /// working directory from the surface's context, #10079) never starts
 /// Coder.
 pub fn offered(meta: Option<&crate::router::Meta>, computer_lane: bool) -> bool {
-    use crate::router::{Offer, Screen};
-    if meta.is_some_and(|meta| meta.offers.contains(&Offer::RunCoder)) {
-        return true;
-    }
-    // A step of making a plugin (#10177) starts Coder only with its own Run
-    // Coder offer; every other step runs here, whatever the route read.
-    if meta.is_some_and(|meta| meta.plugin.is_some()) {
-        return false;
-    }
-    // Opening Computers is the dispatch's own "Connect a computer" offer,
-    // part of offering Coder, not another action.
-    let other = meta.is_some_and(|meta| {
-        !meta.cards.is_empty()
-            || meta.offers.iter().any(|offer| {
-                !matches!(
-                    offer,
-                    Offer::OpenScreen {
-                        screen: Screen::Computers
-                    }
-                )
-            })
-    });
-    computer_lane && !other && defers(meta)
+    crate::route::coder_offered(meta, computer_lane)
 }
 
 /// The router's typed route for work a computer does (`work.dispatch`).

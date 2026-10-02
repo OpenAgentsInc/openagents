@@ -334,6 +334,28 @@ impl Coder for Here {
         }
     }
 
+    /// The command's effect in this build's own command tree, in the
+    /// route contract's words (13.4): what the route policy reads.
+    fn effect(&self, argv: &[String]) -> Option<route_contract::route::Effect> {
+        use crate::cli_route::tree::Effect;
+        use route_contract::route::Effect as Contract;
+        Some(match crate::cli_route::gate::effect_here(argv)? {
+            Effect::ReadOnly => Contract::ReadOnly,
+            Effect::LocalWrite => Contract::LocalWrite,
+            Effect::Publishes => Contract::Publishes,
+            Effect::Grants => Contract::Grants,
+            Effect::Spends => Contract::Spends,
+            Effect::Secret => Contract::Secret,
+            Effect::LongRunning => Contract::LongRunning,
+        })
+    }
+
+    /// The task owner's disposition of `task`, with its current turn's cost
+    /// and wall time ([`super::lifecycle::observation`]).
+    fn observe(&self, store: &Path, task: &str) -> Option<route_contract::record::Observation> {
+        super::lifecycle::observe(store, task)
+    }
+
     /// `openagents ARGV` as a child of this program, as `openagents mcp
     /// serve` runs a tool call: no input, stopped after
     /// [`COMMAND_TIMEOUT`], what it printed kept to [`COMMAND_OUTPUT`].

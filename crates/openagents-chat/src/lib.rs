@@ -9,6 +9,7 @@ pub mod coder_events;
 pub mod delegation;
 pub mod migrate;
 pub mod plugin_flow;
+pub mod route;
 pub mod router;
 pub mod service;
 pub mod thread;

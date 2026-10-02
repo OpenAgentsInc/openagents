@@ -482,6 +482,7 @@ impl<'a> Printer<'a> {
                 reply,
                 computer,
                 running,
+                route,
             } => finish(
                 output,
                 &thread,
@@ -490,6 +491,7 @@ impl<'a> Printer<'a> {
                 &mut self.printed,
                 self.diverged,
                 running,
+                route,
             ),
             Event::ReplyFailed {
                 thread,
@@ -675,6 +677,7 @@ impl<'a> Printer<'a> {
 }
 
 /// Print the finished reply and what the router said beside it.
+#[allow(clippy::too_many_arguments)]
 fn finish(
     output: &Output,
     id: &str,
@@ -683,6 +686,7 @@ fn finish(
     printed: &mut String,
     diverged: bool,
     running: bool,
+    route: Option<openagents_chat::route::RouteFamily>,
 ) {
     let meta = reply.meta.clone().unwrap_or_default();
     let judgment: Value = meta
@@ -701,6 +705,8 @@ fn finish(
             "served_answer": meta.answer,
             "judgment": judgment,
             "computer": computer,
+            // The shared route policy's family for this reply (#10207).
+            "family": route,
             "followups": meta.followups,
             "cards": meta.cards,
             // Who would run Coder on this computer for this reply.
@@ -751,8 +757,9 @@ fn finish(
     }
     println!();
     printed.clone_from(&reply.text);
-    // The offer is what `run-coder` accepts, read the same way (#10170).
-    let offered = openagents_chat::delegation::offered(reply.meta.as_ref(), computer);
+    // The shared route policy read the reply (#10207): a Coder route is
+    // the offer `run-coder` accepts (#10170).
+    let offered = route == Some(openagents_chat::route::RouteFamily::Coder);
     notes(id, &meta, offered && !running, running);
 }
 

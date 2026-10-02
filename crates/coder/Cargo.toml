@@ -39,6 +39,8 @@ openrouter = { path = "../openrouter" }
 microcoder-loop = { path = "../microcoder-loop" }
 # The Coder event stream every surface shows (`task::local`).
 openagents-chat = { path = "../openagents-chat" }
+# The router's contract: `task::lifecycle` projects tasks onto it (#10207).
+route-contract = { path = "../route-contract" }
 codex-transport = { path = "../codex-transport" }
 crossterm = { version = "0.29", features = ["event-stream"] }
 futures-util = "0.3"

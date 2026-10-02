@@ -82,11 +82,13 @@ fn reply(text: &str, meta: Meta) -> Event {
     let mut turn = Turn::user(text);
     turn.role = Role::Assistant;
     turn.meta = Some(meta);
+    let route = Some(openagents_chat::route::family(turn.meta.as_ref(), true));
     Event::Reply {
         thread: "a".repeat(32),
         reply: Box::new(turn),
         computer: true,
         running: false,
+        route,
     }
 }
 
@@ -621,14 +623,20 @@ fn a_start_shows_starting_then_one_line() {
         passed: Vec::new(),
         requested: Some("grok".into()),
     };
-    let Event::Reply { thread, reply, .. } = reply(
+    let Event::Reply {
+        thread,
+        reply,
+        route,
+        ..
+    } = reply(
         "Starting Grok Build on this.",
         Meta {
             offers: vec![Offer::RunCoder],
             runner: Some(runner.clone()),
             ..Meta::default()
         },
-    ) else {
+    )
+    else {
         unreachable!()
     };
     app.event(Event::Reply {
@@ -636,6 +644,7 @@ fn a_start_shows_starting_then_one_line() {
         reply,
         computer: true,
         running: true,
+        route,
     });
     assert_eq!(app.status(), "Starting Grok Build…");
     assert!(app.busy(), "the spinner turns while it starts");

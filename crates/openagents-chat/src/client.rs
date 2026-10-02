@@ -45,9 +45,13 @@ use crate::basic_chats::{BasicChats, Summary};
 use crate::basic_coder::{self, Role, Turn};
 use crate::cache::Cache;
 use crate::coder_events::{CoderEvent, Line, Runner};
-use crate::router::{Caller, CoderRun, Context};
+use crate::route::{Bound, Journal, Reading, Situation};
+use crate::router::{Caller, ClientWord, CoderRun, Context};
 use crate::service::{self, Command, Snapshot};
 use crate::thread::{LOCAL_HOST, Thread};
+use route_contract::lifecycle::Lifecycle;
+use route_contract::record::RouteRecord;
+use route_contract::route::{LocalAction, RefusalReason, RouteFamily, RouteResult, RunPolicy};
 
 /// A boxed future, for the traits the caller implements.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -415,6 +419,23 @@ pub trait Coder: Send + Sync {
     fn permit(&self, _argv: &[String]) -> Permit {
         Permit::Never
     }
+    /// The effect class of the command `argv` in this computer's own
+    /// command tree (13.4), which the route policy reads
+    /// ([`crate::route::propose`]); `None` when the tree does not know it.
+    /// By default it is what [`Coder::permit`] says.
+    fn effect(&self, argv: &[String]) -> Option<route_contract::route::Effect> {
+        use route_contract::route::Effect;
+        match self.permit(argv) {
+            Permit::Now => Some(Effect::ReadOnly),
+            Permit::Confirm => Some(Effect::LocalWrite),
+            Permit::Never => None,
+        }
+    }
+    /// The task owner's disposition of `task`, with the current turn's cost
+    /// and wall time, for the route record (#10207). Blocking.
+    fn observe(&self, _store: &Path, _task: &str) -> Option<route_contract::record::Observation> {
+        None
+    }
     /// Run the `openagents` command `argv` on this computer. Blocking.
     ///
     /// # Errors
@@ -565,6 +586,11 @@ pub enum Event {
         reply: Box<Turn>,
         computer: bool,
         running: bool,
+        /// The route the shared policy read the reply as
+        /// ([`crate::route::propose`]): what the surface shows (a Coder
+        /// offer, a command), never interpreted again. `None` for a
+        /// plan's composed summary, which is no new message.
+        route: Option<RouteFamily>,
     },
     /// The message has no finished reply: it was stopped, or the worker
     /// failed. `partial` is what came, when a stopped reply kept text.
@@ -732,6 +758,21 @@ pub enum Op {
     Answer { thread: String, text: String },
 }
 
+impl Op {
+    /// The thread the operation is about.
+    #[must_use]
+    pub fn thread(&self) -> &str {
+        match self {
+            Op::Send { thread, .. }
+            | Op::RunCoder { thread }
+            | Op::RunCommand { thread }
+            | Op::Follow { thread }
+            | Op::Stop { thread }
+            | Op::Answer { thread, .. } => thread,
+        }
+    }
+}
+
 /// An operation running on its own task ([`Client::stream`]).
 pub struct Stream {
     /// Its events, in order; the channel closes when it ends.
@@ -763,6 +804,10 @@ pub struct Client {
     dir: Option<PathBuf>,
     interrupt: Interrupt,
     hint: Option<Hint>,
+    /// The route record of the message this operation serves (#10207):
+    /// written to the thread's journal at each move, and settled with the
+    /// task owner's dispositions when the operation ends.
+    routing: Option<RouteRecord>,
 }
 
 impl Client {
@@ -797,6 +842,7 @@ impl Client {
                 dir: dir.clone(),
                 interrupt: interrupt.clone(),
                 hint,
+                routing: None,
             }
             .warmed()
         };
@@ -870,6 +916,7 @@ impl Client {
             dir: options.dir,
             interrupt: options.interrupt,
             hint: options.hint,
+            routing: None,
         }
         .warmed()
     }
@@ -888,6 +935,7 @@ impl Client {
             dir: options.dir,
             interrupt: options.interrupt,
             hint: options.hint,
+            routing: None,
         }
         .warmed()
     }
@@ -909,6 +957,7 @@ impl Client {
             dir: options.dir,
             interrupt: options.interrupt,
             hint: options.hint,
+            routing: None,
         }
     }
 
@@ -1049,6 +1098,14 @@ impl Client {
     /// # Errors
     /// The backend failed while a reply streamed.
     pub async fn run(&mut self, op: Op, sink: &mut Sink<'_>) -> Result<Ended, Error> {
+        let thread = op.thread().to_owned();
+        self.routing = None;
+        let ended = self.operate(op, sink).await;
+        self.settle(&thread).await;
+        ended
+    }
+
+    async fn operate(&mut self, op: Op, sink: &mut Sink<'_>) -> Result<Ended, Error> {
         match op {
             Op::Send {
                 thread,
@@ -1082,12 +1139,18 @@ impl Client {
                 Ok(self.elsewhere(&thread, sink).await)
             }
             Op::Follow { thread } => Ok(match self.bound(&thread, sink).await {
-                Some(task) => self.follow_from(&thread, &task, 1, false, sink).await,
+                Some(task) => {
+                    self.routing = self.journal(&thread).of_task(&thread, &task);
+                    self.follow_from(&thread, &task, 1, false, sink).await
+                }
                 None => Ended::Failed,
             }),
             Op::Stop { thread } => Ok(self.stop(&thread, sink).await),
             Op::Answer { thread, text } => Ok(match self.bound(&thread, sink).await {
-                Some(task) => self.answer_task(&thread, &task, &text, sink).await,
+                Some(task) => {
+                    self.routing = self.journal(&thread).of_task(&thread, &task);
+                    self.answer_task(&thread, &task, &text, sink).await
+                }
                 None => Ended::Failed,
             }),
         }
@@ -1285,10 +1348,6 @@ impl Client {
             .cloned();
         match reply {
             Some(reply) if !reply.stopped => {
-                // The router judged this is coding: Coder runs here at
-                // once, unless the person asked only for the offer.
-                let coding = crate::delegation::offered(reply.meta.as_ref(), snapshot.computer);
-                let command = reply.meta.as_ref().and_then(|meta| meta.command.clone());
                 let plugin = reply.meta.as_ref().and_then(|meta| meta.plugin.clone());
                 // Say who will run it, from what the run itself reads here.
                 let mut turns = [reply];
@@ -1297,14 +1356,38 @@ impl Client {
                     self.coder.predict(&store, engine)
                 });
                 let [reply] = turns;
+                // One route policy reads the reply (#10207): its route
+                // result and admission are recorded with the thread
+                // before anything runs.
+                let routed = self
+                    .route(
+                        id,
+                        &request,
+                        text,
+                        &reply,
+                        snapshot.computer,
+                        run,
+                        &snapshot,
+                    )
+                    .await;
+                let coding = routed.family() == RouteFamily::Coder;
+                let command = match &routed {
+                    RouteResult::LocalCommand {
+                        action: LocalAction::Command { argv, .. },
+                    } => Some(argv.clone()),
+                    _ => None,
+                };
                 sink(Event::Reply {
                     thread: id.to_owned(),
                     reply: Box::new(reply),
                     computer: snapshot.computer,
                     running: coding && run,
+                    route: Some(routed.family()),
                 });
-                // The reply arrived; a coding reply then succeeds only if
-                // Coder does.
+                // The reply arrived. The router judged this is coding:
+                // Coder runs here at once, unless the person asked only
+                // for the offer, and the reply then succeeds only if Coder
+                // does.
                 if coding && run {
                     // A plan starts runs of its own (#10183); it never
                     // steers the thread's earlier run.
@@ -1387,12 +1470,285 @@ impl Client {
             .await
             .ok()?
             .ok()?;
+        self.dispatched(id, &coder.task, None);
         let (said, turn) = match steered {
             Steering::NextStep => ("Sent. Coder reads it at its next step.", 1),
             Steering::NextTurn(turn) => ("Sent. Coder starts its next turn with it.", turn),
         };
         coder_report(sink, id, true, said, serde_json::to_value(coder).ok());
         Some(self.follow_from(id, &coder.task, turn, false, sink).await)
+    }
+
+    /// This computer's route journal for the thread `id`, beside its task
+    /// store ([`Journal::beside`]).
+    fn journal(&self, id: &str) -> Journal {
+        Journal::beside(&self.store(id))
+    }
+
+    /// Keep the current route record in the thread's journal. Best effort:
+    /// a journal that cannot be written never stops the chat.
+    fn keep(&self, id: &str) {
+        if let Some(record) = &self.routing {
+            let _ = self.journal(id).write(record);
+        }
+    }
+
+    /// One of the router's own moves on the current record, kept.
+    fn step(&mut self, id: &str, to: Lifecycle, cause: &str) {
+        if let Some(record) = &mut self.routing
+            && record.step(to, cause, crate::route::now_ms()).is_ok()
+        {
+            self.keep(id);
+        }
+    }
+
+    /// The current record is admitted (`cause`), from a route or an offer.
+    fn admitted(&mut self, id: &str, cause: &str) {
+        if self
+            .routing
+            .as_ref()
+            .is_some_and(|record| matches!(record.state, Lifecycle::Received | Lifecycle::Proposed))
+        {
+            self.step(id, Lifecycle::Admitted, cause);
+        }
+    }
+
+    /// The current route ended without running.
+    fn refused(&mut self, id: &str, reason: Option<RefusalReason>, cause: &str) {
+        if let Some(record) = &mut self.routing
+            && record.state.router_owned()
+            && record.refuse(reason, cause, crate::route::now_ms()).is_ok()
+        {
+            self.keep(id);
+        }
+    }
+
+    /// `task` serves the current route: admitted if it was not yet, and the
+    /// task named once in its record.
+    fn dispatched(&mut self, id: &str, task: &str, engine: Option<&str>) {
+        let offered = self
+            .routing
+            .as_ref()
+            .is_some_and(|record| record.state == Lifecycle::Proposed);
+        self.admitted(id, if offered { "accepted" } else { "autostart" });
+        if let Some(record) = &mut self.routing
+            && record.dispatched(task, engine).is_ok()
+        {
+            self.keep(id);
+        }
+    }
+
+    /// The contract's word for where this client's messages come from.
+    fn surface(&self) -> route_contract::snapshot::Surface {
+        use route_contract::snapshot::Surface as To;
+        match (self.caller.client, self.caller.surface) {
+            (Some(ClientWord::Terminal), _) => To::Terminal,
+            (Some(ClientWord::Cli), _) => To::Cli,
+            (Some(ClientWord::Desktop), _) | (None, crate::router::Surface::Desktop) => To::Desktop,
+            (Some(ClientWord::Mobile), _) | (None, crate::router::Surface::Phone) => To::Phone,
+            (Some(ClientWord::Web), _) | (None, crate::router::Surface::Web) => To::Web,
+            (None, crate::router::Surface::Terminal) => To::Terminal,
+        }
+    }
+
+    /// The thread's Coder task on this computer, as a continuation reads it.
+    async fn bound_here(&self, id: &str, snapshot: &Snapshot) -> Option<Bound> {
+        if matches!(self.backend, Backend::Computer { .. }) {
+            return None;
+        }
+        let coder = snapshot
+            .coder
+            .as_ref()
+            .filter(|coder| coder.host == LOCAL_HOST)?;
+        let working = self.result(id, &coder.task).await.is_none();
+        let (runner, store, task) = (self.coder.clone(), self.store(id), coder.task.clone());
+        let revision = tokio::task::spawn_blocking(move || runner.observe(&store, &task))
+            .await
+            .ok()
+            .flatten()
+            .map(|seen| seen.revision);
+        Some(Bound {
+            task: coder.task.clone(),
+            working,
+            revision,
+        })
+    }
+
+    /// Route the reply to the message `request` (`text`) through the shared
+    /// route policy (#10207): its route result and admission snapshot
+    /// become the thread's route record, kept before anything runs, and the
+    /// router's first move is made: a Coder route that starts at once is
+    /// admitted, one that waits for the person is an offer, an answer is
+    /// delivered. A command moves when it runs ([`Client::command`]).
+    #[allow(clippy::too_many_arguments)]
+    async fn route(
+        &mut self,
+        id: &str,
+        request: &str,
+        text: &str,
+        reply: &Turn,
+        computer_lane: bool,
+        run: bool,
+        snapshot: &Snapshot,
+    ) -> RouteResult {
+        use route_contract::route::PluginRoute;
+        let elsewhere = matches!(self.backend, Backend::Computer { .. });
+        let bound = self.bound_here(id, snapshot).await;
+        let mut situation = Situation {
+            surface: self.surface(),
+            caller: format!("local:{}", self.caller.client_word()),
+            request: request.to_owned(),
+            thread: Some(id.to_owned()),
+            computer: match &self.backend {
+                Backend::Computer { label, .. } => label.clone(),
+                _ => crate::route::THIS_COMPUTER.to_owned(),
+            },
+            project: None,
+            ready: false,
+            bound,
+            // Local runs have no frozen suites yet: their results are
+            // labeled unchecked, never verified.
+            check: route_contract::snapshot::CheckScope::ExecutorExit,
+        };
+        let reading = Reading {
+            meta: reply.meta.as_ref(),
+            computer_lane,
+            text,
+            reply: &reply.text,
+        };
+        let coder = self.coder.clone();
+        let result = crate::route::propose(&reading, &situation, &|argv| coder.effect(argv));
+        if result.family() == RouteFamily::Coder && !elsewhere {
+            let (coder, store, dir) = (self.coder.clone(), self.store(id), self.dir.clone());
+            if let Ok(context) =
+                tokio::task::spawn_blocking(move || coder.context(&store, dir.as_deref())).await
+            {
+                situation.ready = context.computer_ready;
+                situation.project =
+                    context
+                        .project
+                        .map(|project| route_contract::snapshot::WorkspaceBinding {
+                            project: project.name,
+                            path: project.path,
+                        });
+            }
+        }
+        let parent = match &result {
+            RouteResult::Coder { plan } => plan
+                .runs
+                .iter()
+                .find_map(|run| run.continuation.as_ref())
+                .and_then(|continuation| self.journal(id).of_task(id, &continuation.task))
+                .map(|record| record.snapshot),
+            _ => None,
+        };
+        let admission = crate::route::admit(
+            &result,
+            &situation,
+            reply.meta.as_ref(),
+            text,
+            parent.as_ref(),
+        );
+        self.routing = RouteRecord::received(
+            request,
+            Some(id.to_owned()),
+            result.clone(),
+            admission,
+            crate::route::now_ms(),
+        )
+        .ok();
+        self.keep(id);
+        match &result {
+            RouteResult::Coder { .. } if run && !elsewhere => {
+                self.step(id, Lifecycle::Admitted, "autostart");
+            }
+            RouteResult::LocalCommand {
+                action: LocalAction::Command { .. },
+            } if !elsewhere => {}
+            RouteResult::Coder { .. }
+            | RouteResult::LocalCommand { .. }
+            | RouteResult::StandingRule { .. }
+            | RouteResult::MissingCapability { .. }
+            | RouteResult::Plugin {
+                plugin: PluginRoute::Run { .. },
+            } => self.step(id, Lifecycle::Proposed, "offer"),
+            RouteResult::Refusal { reason } => self.refused(id, Some(*reason), "refused"),
+            RouteResult::Answer { .. }
+            | RouteResult::Clarification { .. }
+            | RouteResult::Plugin {
+                plugin: PluginRoute::Create { .. },
+            } => self.step(id, Lifecycle::Completed, "answered"),
+        }
+        result
+    }
+
+    /// The record of the thread's last message, for an operation that
+    /// acts on its reply (`run-coder`, a confirmed command): from the
+    /// journal, or routed now for a thread from before the journal.
+    async fn last_routed(&mut self, id: &str, snapshot: &Snapshot) {
+        if self.routing.is_some() {
+            return;
+        }
+        let Some(at) = snapshot
+            .turns
+            .iter()
+            .rposition(|turn| turn.role == Role::User && turn.request.is_some())
+        else {
+            return;
+        };
+        let asked = snapshot.turns[at].clone();
+        let request = asked.request.clone().unwrap_or_default();
+        if let Some(record) = self.journal(id).latest(id, &request) {
+            self.routing = Some(record);
+            return;
+        }
+        if let Some(reply) = snapshot
+            .turns
+            .get(at + 1)
+            .filter(|turn| turn.role == Role::Assistant)
+            .cloned()
+        {
+            self.route(
+                id,
+                &request,
+                &asked.text,
+                &reply,
+                snapshot.computer,
+                false,
+                snapshot,
+            )
+            .await;
+        }
+    }
+
+    /// Copy the task owner's dispositions of the current route's tasks into
+    /// its record, with each run's cost and wall time, and keep it: what an
+    /// operation leaves when it ends, whether its runs ended or keep going.
+    async fn settle(&mut self, id: &str) {
+        let Some(mut record) = self.routing.take() else {
+            return;
+        };
+        let tasks: Vec<String> = record
+            .runs
+            .iter()
+            .filter(|run| !run.task.starts_with("command:"))
+            .map(|run| run.task.clone())
+            .collect();
+        if !tasks.is_empty() {
+            let (coder, store) = (self.coder.clone(), self.store(id));
+            let seen = tokio::task::spawn_blocking(move || {
+                tasks
+                    .into_iter()
+                    .filter_map(|task| coder.observe(&store, &task).map(|seen| (task, seen)))
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap_or_default();
+            for (task, seen) in seen {
+                record.observe(&task, seen, crate::route::now_ms());
+            }
+        }
+        let _ = self.journal(id).write(&record);
     }
 
     /// The command `argv` a reply proposed, as this computer's command
@@ -1406,8 +1762,17 @@ impl Client {
         confirmed: bool,
         sink: &mut Sink<'_>,
     ) -> Ended {
-        let runs = match self.coder.permit(&argv) {
-            Permit::Never => {
+        // The route policy's rule for commands (13.4), on the effect this
+        // computer's own command tree gives it.
+        let effect = self.coder.effect(&argv);
+        let runs = match effect.map(route_contract::route::Effect::run_policy) {
+            None | Some(RunPolicy::NeverFromChat) => {
+                let reason = match effect {
+                    Some(route_contract::route::Effect::Spends) => RefusalReason::MoneyMovement,
+                    Some(route_contract::route::Effect::Secret) => RefusalReason::AsksForSecret,
+                    _ => RefusalReason::RouteNotAllowed,
+                };
+                self.refused(id, Some(reason), "never_from_chat");
                 if confirmed {
                     sink(Event::Failure {
                         thread: id.to_owned(),
@@ -1420,8 +1785,8 @@ impl Client {
                 }
                 return Ended::Done;
             }
-            Permit::Now => now || confirmed,
-            Permit::Confirm => confirmed,
+            Some(RunPolicy::AtOnce) => now || confirmed,
+            Some(RunPolicy::Confirm) => confirmed,
         };
         sink(Event::Command {
             thread: id.to_owned(),
@@ -1429,8 +1794,11 @@ impl Client {
             confirm: !runs,
         });
         if !runs {
+            self.step(id, Lifecycle::Proposed, "confirm");
             return Ended::Done;
         }
+        self.admitted(id, if confirmed { "confirmed" } else { "at_once" });
+        let began = std::time::Instant::now();
         let coder = self.coder.clone();
         let words = argv.clone();
         let ran = tokio::task::spawn_blocking(move || coder.run_command(&words))
@@ -1440,6 +1808,12 @@ impl Client {
             Ok(ran) => (ran.ok, ran.output),
             Err(why) => (false, why),
         };
+        let wall = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if let Some(record) = &mut self.routing
+            && record.ran(ok, Some(wall), crate::route::now_ms()).is_ok()
+        {
+            self.keep(id);
+        }
         sink(Event::Ran {
             thread: id.to_owned(),
             argv,
@@ -1470,14 +1844,23 @@ impl Client {
             })
             .await
         {
-            Ok(snapshot) => snapshot
-                .turns
-                .last()
-                .filter(|turn| turn.role == Role::Assistant)
-                .and_then(|turn| turn.meta.as_ref())
-                .and_then(|meta| meta.command.clone()),
+            Ok(snapshot) => {
+                self.last_routed(id, &snapshot).await;
+                snapshot
+                    .turns
+                    .last()
+                    .filter(|turn| turn.role == Role::Assistant)
+                    .and_then(|turn| turn.meta.as_ref())
+                    .and_then(|meta| meta.command.clone())
+            }
             Err(message) => return refuse(sink, &message),
         };
+        // A confirmed command runs once for its message (#10207).
+        if self.routing.as_ref().is_some_and(|record| {
+            record.family() == RouteFamily::LocalCommand && record.dispatched_any()
+        }) {
+            return refuse(sink, "That command already ran for this message.");
+        }
         match argv {
             Some(argv) => self.command(id, argv, true, true, sink).await,
             None => refuse(
@@ -1594,6 +1977,41 @@ impl Client {
         if snapshot.coder.is_some() && matches!(self.backend, Backend::Computer { .. }) {
             return self.elsewhere(id, sink).await;
         }
+        // The message's work already started (#10207): its record names
+        // its tasks, so they are followed, never started again.
+        self.last_routed(id, &snapshot).await;
+        let started: Vec<String> = self
+            .routing
+            .as_ref()
+            .filter(|record| record.family() == RouteFamily::Coder)
+            .map(|record| record.tasks().into_iter().map(str::to_owned).collect())
+            .unwrap_or_default();
+        if let [task] = started.as_slice() {
+            coder_report(
+                sink,
+                id,
+                true,
+                &format!(
+                    "Following task {}; it already started for this message.",
+                    task.get(..8).unwrap_or(task)
+                ),
+                None,
+            );
+            return self.follow_from(id, task, 1, false, sink).await;
+        }
+        if !started.is_empty() {
+            coder_report(
+                sink,
+                id,
+                true,
+                &format!(
+                    "Following the {} runs already started for this message.",
+                    started.len()
+                ),
+                None,
+            );
+            return self.follow_many(id, &started, sink).await;
+        }
         // A run this computer started that still works: follow it. One
         // whose last turn ended takes the new message as its next turn,
         // as a start does (#10094); following it would only replay what
@@ -1614,6 +2032,7 @@ impl Client {
                 serde_json::to_value(coder).ok(),
             );
             let task = coder.task.clone();
+            self.dispatched(id, &task, None);
             return self.follow_from(id, &task, 1, false, sink).await;
         }
         let meta = snapshot
@@ -1649,6 +2068,7 @@ impl Client {
         };
         // Outside a checkout, a host with a project of its own still can.
         if let Backend::Local { .. } = self.backend {
+            self.refused(id, Some(RefusalReason::HostUnavailable), "no_checkout");
             coder_report(sink, id, false, &why, None);
             return Ended::Failed;
         }
@@ -1660,6 +2080,8 @@ impl Client {
         {
             Ok(snapshot) => match snapshot.coder {
                 Some(coder) => {
+                    // The host admitted and started it (#10207).
+                    self.dispatched(id, &coder.task, None);
                     coder_report(
                         sink,
                         id,
@@ -1670,6 +2092,7 @@ impl Client {
                     Ended::Done
                 }
                 None => {
+                    self.refused(id, None, "host_refused");
                     coder_report(
                         sink,
                         id,
@@ -1681,6 +2104,7 @@ impl Client {
                 }
             },
             Err(message) => {
+                self.refused(id, None, "host_refused");
                 coder_report(sink, id, false, &message, None);
                 Ended::Failed
             }
@@ -1694,6 +2118,7 @@ impl Client {
         let thread = match self.collect(id).await {
             Ok(thread) => thread,
             Err(error) => {
+                self.refused(id, None, "thread_unreadable");
                 coder_report(sink, id, false, error.message(), None);
                 return Ended::Failed;
             }
@@ -1735,7 +2160,9 @@ impl Client {
                     }
                     _ => text,
                 };
-                return self.answer_task(id, &coder.task, &text, sink).await;
+                let task = coder.task.clone();
+                self.dispatched(id, &task, None);
+                return self.answer_task(id, &task, &text, sink).await;
             }
             coder_report(
                 sink,
@@ -1747,7 +2174,9 @@ impl Client {
                 ),
                 serde_json::to_value(coder).ok(),
             );
-            return self.follow_from(id, &coder.task, 1, false, sink).await;
+            let task = coder.task.clone();
+            self.dispatched(id, &task, None);
+            return self.follow_from(id, &task, 1, false, sink).await;
         }
         let (mut prompt, requested) = handoff(&thread.summary.title, &thread.turns);
         // Coder drafting a plugin is told what a plugin is here (#10177).
@@ -1755,6 +2184,7 @@ impl Client {
             prompt = format!("{prompt}\n\n{}", crate::plugin_flow::BRIEF);
         }
         let Some(here) = self.dir.clone() else {
+            self.refused(id, Some(RefusalReason::HostUnavailable), "no_checkout");
             coder_report(sink, id, false, NO_DIR, None);
             return Ended::Failed;
         };
@@ -1765,6 +2195,10 @@ impl Client {
             .await
             .ok()
             .flatten();
+        let engine = runner
+            .as_ref()
+            .and_then(Runner::provider)
+            .map(str::to_owned);
         if let Some(Runner::Runs { provider, .. }) = runner {
             sink(Event::Starting {
                 thread: id.to_owned(),
@@ -1794,10 +2228,12 @@ impl Client {
         let record = match started {
             Ok(record) => record,
             Err(message) => {
+                self.refused(id, None, "executor_refused");
                 coder_report(sink, id, false, &message, None);
                 return Ended::Failed;
             }
         };
+        self.dispatched(id, &record.task, engine.as_deref());
         self.bind(id, &record, false, sink).await;
         // The task and its worktree, for `--json` and an export; the run's
         // own start line says who works (#10115).
@@ -1831,6 +2267,7 @@ impl Client {
         sink: &mut Sink<'_>,
     ) -> Ended {
         let Some(here) = self.dir.clone() else {
+            self.refused(id, Some(RefusalReason::HostUnavailable), "no_checkout");
             coder_report(sink, id, false, NO_DIR, None);
             return Ended::Failed;
         };
@@ -1870,7 +2307,11 @@ impl Client {
             );
         }
         if started.is_empty() {
+            self.refused(id, None, "executor_refused");
             return Ended::Failed;
+        }
+        for (engine, record) in &started {
+            self.dispatched(id, &record.task, Some(agent_word(*engine)));
         }
         if thread.summary.coder.is_none() {
             self.bind(id, &started[0].1, false, sink).await;
@@ -2098,6 +2539,7 @@ impl Client {
                     reply: Box::new(reply),
                     computer: snapshot.computer,
                     running: false,
+                    route: None,
                 });
                 Ended::Done
             }
@@ -2181,10 +2623,21 @@ impl Client {
                 } else {
                     format!("Coder did not take #{number}: {message}")
                 };
+                self.refused(id, None, "issue_refused");
                 coder_report(sink, id, false, &message, None);
                 return Ended::Failed;
             }
         };
+        // The route is issue work on #number (13.5).
+        if let Some(issue) = self
+            .routing
+            .as_ref()
+            .and_then(|routed| crate::route::reissue(routed, number, crate::route::now_ms()))
+        {
+            self.routing = Some(issue);
+            self.keep(id);
+        }
+        self.dispatched(id, &record.task, None);
         self.bind(id, &record, true, sink).await;
         coder_report(
             sink,
@@ -2235,6 +2688,7 @@ impl Client {
         let Some(task) = self.bound(id, sink).await else {
             return Ended::Failed;
         };
+        self.routing = self.journal(id).of_task(id, &task);
         let (coder, store, stopping) = (self.coder.clone(), self.store(id), task.clone());
         let result = tokio::task::spawn_blocking(move || coder.stop(&store, &stopping))
             .await

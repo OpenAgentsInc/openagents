@@ -529,7 +529,7 @@ With `--json`, `send` prints NDJSON, one event per line, in this order:
 | `partial` | `thread`, `text` (the reply so far), `delta` (what was added, or null when the preview was rewritten) |
 | `offline` | `thread`, `retry_in` (seconds): the relay, or this computer's host, has not been reached for 3 s (a shorter blip, such as the host restarting, is not reported); the reply is asked for again then, with a pause that doubles up to 30 s, until it goes through or Ctrl-C stops it |
 | `online` | `thread`: reached again after an `offline`; the reply streams on |
-| `route` | `thread`, `tier`, `route`, `bank`, `served_answer` (a knowledge entry `id@version`, when the reply is one), `judgment` (the router's typed judgment as it arrived), `computer` (the judgment placed it on a computer), `followups`, `cards` |
+| `route` | `thread`, `tier`, `route`, `bank`, `served_answer` (a knowledge entry `id@version`, when the reply is one), `judgment` (the router's typed judgment as it arrived), `computer` (the judgment placed it on a computer), `family` (the shared route policy's route family for the reply: `answer`, `local_command`, `plugin`, `coder`, `standing_rule`, `missing_capability`, `clarification`, or `refusal`; see [Route records](#route-records)), `followups`, `cards` |
 | `offer` | `thread`, `offer` (the typed offer, such as `{"offer": "run_coder"}`), `accept` (the command that accepts it, when there is one) |
 | `result` | `thread`, `text`, `model` (the model the worker named), `served_answer` |
 | `command` | `thread`, `argv` (without `openagents`), `confirm` (false: it runs now; true: it waits for `run-command`) |
@@ -556,6 +556,33 @@ $ openagents --json chat --scratch "Write a haiku about rain"
 `openagents mcp serve` exposes the group as the `chat` tool: its `args` are
 the words after `openagents chat`, and its result carries the events as
 `{"events": [...]}`.
+
+## Route records
+
+Every message `openagents chat` and OpenAgents Terminal send goes through
+one route policy, `openagents_chat::route` (`route-policy-v1`; router plan
+phase 1, #10207). It reads the worker's typed judgment and offers into the
+router contract's route result (`crates/route-contract`), builds the
+immutable admission snapshot, and keeps a route record
+(`openagents.route.record.v1`) in the thread's journal on this computer,
+`~/.openagents/routes/<thread>.jsonl` beside the task store (a scratch
+thread's beside its own). Each line is one write; the latest line of a
+request is its record. A record holds:
+
+- the route result and the admission snapshot, named by its digest;
+- the router's own moves (`received`, then `proposed` for an offer or a
+  command waiting for Enter, `admitted` for work that starts now, or
+  `completed`/`failed` for an answer or refusal);
+- each Coder task the route started (one, or a dispatch plan's N), with its
+  lifecycle projected from the task owner's `(status, execution, checks)`,
+  the run's cost in micro-dollars when known, its wall time, and its
+  retained artifact and trace digests;
+- the route's own wall time, received to settled.
+
+Cost is recorded, never shown. A request whose record already names its
+tasks is followed by `run-coder`, never started again, and a confirmed
+command runs once per message. The snapshot names the checkout's path, so
+the journal stays on this computer.
 
 ## Threads as ATIF
 

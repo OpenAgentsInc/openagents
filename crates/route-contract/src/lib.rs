@@ -19,6 +19,9 @@
 //! - [`lifecycle`]: the domain lifecycle and its total mapping onto the task
 //!   owner's existing `(status, execution, checks)` dispositions. The task
 //!   owner's journal stays the only execution state machine.
+//! - [`record`]: what one message's route became (phase 1, #10207): the
+//!   route result, the snapshot that admitted it, the router's own moves,
+//!   each task's projected lifecycle, and per-run cost and wall time.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -30,12 +33,14 @@ pub mod digest;
 pub mod eval;
 pub mod lifecycle;
 pub mod offer;
+pub mod record;
 pub mod route;
 pub mod snapshot;
 
 pub use digest::{Digest, digest_of};
 pub use lifecycle::{Lifecycle, Projection, TaskDisposition};
 pub use offer::Offer;
+pub use record::{Observation, RouteRecord, RunOutcome};
 pub use route::{DispatchPlan, RouteFamily, RouteResult};
 pub use snapshot::AdmissionSnapshot;
 
@@ -52,6 +57,9 @@ pub const ROUTE_SCHEMA: &str = "openagents.route.result.v1";
 pub const OFFER_SCHEMA: &str = "openagents.route.offer.v1";
 /// A lifecycle transition record's schema.
 pub const TRANSITION_SCHEMA: &str = "openagents.route.transition.v1";
+/// A route record's schema ([`record`]), added in phase 1 beside the
+/// frozen documents.
+pub const RECORD_SCHEMA: &str = "openagents.route.record.v1";
 /// The evaluation split's schema.
 pub const EVAL_SCHEMA: &str = "openagents.route.eval-split.v1";
 
