@@ -21,8 +21,7 @@
 //!    `money_movement` at [`RISK_WARN`] answers `wallet.send` with the
 //!    wallet screen offered and no amount carried.
 //! 2. **Close call.** When the second route is within [`CLOSE_MARGIN`] of
-//!    the first, the router does less: a clarify at [`CLARIFY_WINS`] (on a
-//!    later turn, only when `clarify` is the first route, #10138), else
+//!    the first, the router does less: a clarify at [`CLARIFY_WINS`], else
 //!    the model (with a Run Coder offer only when `work.dispatch` is one
 //!    of the two, the other is in [`LANE_ROUTES`], and the lane says
 //!    computer).
@@ -82,7 +81,9 @@
 //!     model told to ask one question; but an `answer` reading at
 //!     [`ANSWER_CONFIDENCE`] on an entry that answers in the chat, with
 //!     `needs_specifics` below [`SPECIFICS_CEILING`], serves that entry
-//!     whole instead (#10138).
+//!     whole instead (#10138). On a later turn, a clarify (here or in
+//!     rule 2) is the model told [`LATER_CLARIFY_NOTE`]: the earlier
+//!     messages may already say what the latest one means (#10138).
 //! 13. **T3 model**, led by the argmax opener at [`OPENER_CONFIDENCE`];
 //!     when the route or the runner-up is a Gym or eval route, the model is
 //!     told it has no verified records ([`super::gym::NO_RECORDS_NOTE`]).
@@ -193,6 +194,14 @@ pub const AUTHOR_CONTINUES: [RouteId; 7] = [
 
 /// The instruction the model gets when the router wants one question.
 pub const CLARIFY_NOTE: &str = "The user's message is ambiguous. Reply with one short question \
+that would let us answer or act, and nothing else.";
+
+/// The instruction the model gets when the router wants one question on a
+/// later turn: the earlier messages may already say what a short message
+/// means (#10138).
+pub const LATER_CLARIFY_NOTE: &str = "The user's latest message is short or unclear on its \
+own. Read it with the earlier messages: when they make clear what it asks, such as to try the \
+last answer again or to go on, do that. Only when they do not, reply with one short question \
 that would let us answer or act, and nothing else.";
 
 /// How a turn asked for its first response.
@@ -763,12 +772,7 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         if let Some(tier) = knowledge(routing) {
             return tier;
         }
-        // A clarify that is only the runner-up does not ask on a later
-        // turn: the earlier messages give the latest one its meaning, and
-        // the model reads them (#10138).
-        if routing.clarify_p >= CLARIFY_WINS
-            && (routing.route == RouteId::Clarify || !situation.earlier)
-        {
+        if routing.clarify_p >= CLARIFY_WINS {
             return clarify(bank, facts, situation);
         }
         // An offer loses to an answer: work and a route with its own answer
@@ -967,7 +971,17 @@ fn clarify_or_answer(routing: &Routing, bank: &Bank, facts: &Facts, situation: &
     clarify(bank, facts, situation)
 }
 
+/// Rules 2 and 12's question. On a later turn the model reads the earlier
+/// messages first and asks only when they leave the latest one unclear
+/// ([`LATER_CLARIFY_NOTE`], #10138); a first message gets the
+/// `clarify.generic` stem, or the model told [`CLARIFY_NOTE`].
 fn clarify(bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+    if situation.earlier {
+        return Tier::Model {
+            lead: None,
+            note: Some(LATER_CLARIFY_NOTE),
+        };
+    }
     if situation.personalize
         && let Some(tier) = bank
             .entry("clarify.generic")
@@ -1344,11 +1358,10 @@ mod tests {
         assert!(matches!(router(&poem), Tier::Model { .. }));
     }
 
-    /// On a later turn a runner-up clarify does not ask: the earlier
-    /// messages give the latest its meaning, and the model answers
-    /// (#10138). A first-route clarify still asks.
+    /// On a later turn a clarify is the model told to read the earlier
+    /// messages first, never the generic stem (#10138).
     #[test]
-    fn a_close_call_on_a_later_turn_asks_only_a_first_route_clarify() {
+    fn a_clarify_on_a_later_turn_reads_the_earlier_messages() {
         let later = |routing: &Routing| {
             decide(
                 routing,
@@ -1363,22 +1376,25 @@ mod tests {
                 },
             )
         };
-        // "try that again, I stopped it too soon", after a reply.
+        let reads = Tier::Model {
+            lead: None,
+            note: Some(LATER_CLARIFY_NOTE),
+        };
+        // "try that again, I stopped it too soon", after a reply: a close
+        // call either way round, and a sure clarify.
         let mut again = routed(RouteId::General, 0.52, "none", 0.0, 0.21);
         again.runner_up = Some((RouteId::Clarify, 0.42));
         again.clarify_p = 0.42;
-        assert_eq!(
-            later(&again),
-            Tier::Model {
-                lead: None,
-                note: None
-            }
-        );
-        let mut unclear = routed(RouteId::Clarify, 0.5, "none", 0.0, 0.5);
-        unclear.runner_up = Some((RouteId::General, 0.4));
-        unclear.clarify_p = 0.5;
+        assert_eq!(later(&again), reads);
+        let mut first = routed(RouteId::Clarify, 0.48, "none", 0.0, 0.19);
+        first.runner_up = Some((RouteId::General, 0.4));
+        first.clarify_p = 0.48;
+        assert_eq!(later(&first), reads);
+        let sure = routed(RouteId::Clarify, 0.8, "none", 0.0, 0.5);
+        assert_eq!(later(&sure), reads);
+        // A first message still gets the stem.
         assert!(matches!(
-            later(&unclear),
+            decided(&sure, &Context::default(), true),
             Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
         ));
     }
