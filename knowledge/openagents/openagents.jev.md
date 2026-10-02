@@ -1,6 +1,6 @@
 ---
 id: openagents.jev
-version: 1
+version: 2
 kind: product
 title: "Jev and TypeSafe"
 summary: >-
@@ -26,6 +26,7 @@ provenance:
     - docs/verse/agent-trainer-leveling.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-02: BYOK (#10176): Jev runs on the person's own keys when they chose them."
 ---
 
 ## Answer
@@ -36,6 +37,7 @@ Jev is a small, fast decision model from TypeSafe. It answers typed questions, s
 
 - Its answers are Choice (one of listed options with probabilities), Noul (a probability of yes), and Score (ordered levels).
 - A Jev answer is a model's judgment, not a grader.
+- With your own keys on (Use my keys for everything), Jev runs on your TypeSafe key, then your Vercel AI Gateway key (`typesafe-ai/jev`), then your OpenRouter key (`typesafe/jev-1.13`), never on ours (#10176).
 
 ## Sources
 

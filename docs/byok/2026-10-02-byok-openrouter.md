@@ -1,7 +1,20 @@
 # BYOK: run everything through the user's own keys
 
-Status: design, 2026-10-02. Nothing here is implemented yet. Tracking issue:
+Status: implemented on computers, 2026-10-02. Tracking issue:
 [#10176](https://github.com/OpenAgentsInc/openagents/issues/10176).
+
+What shipped: `crates/model-access` (who pays, the fixed order, key checks,
+keychain-or-0600 storage); `openagents settings provider-key
+set|show|test|clear` and `models.payer`; the `--openrouter-key`,
+`--vercel-key`, and `--typesafe-key` flags and `OPENAGENTS_*_KEY` variables;
+Jev, embeddings, Microcoder's cloud fallback, and local plugin eval judges on
+the person's keys; the hosted chat's `payer.keys` envelope (NIP-CJ,
+"Caller-paid model calls"); `payer` fields in the chat worker's usage log;
+the terminal's `/settings` key fields and switch; the desktop's Model
+providers page; and `OpenAgents-Provider-Key` on model-cost routes of the
+x402 pay front. Not yet: the phone's Account section, Connect OpenRouter
+(OAuth PKCE), and grounded product and codebase answers for a chat on the
+person's keys (those seams are off for such a chat).
 
 The design started with OpenRouter. The owner's answers the same day (section 9)
 added Vercel AI Gateway and TypeSafe keys from the start, and narrowed the
