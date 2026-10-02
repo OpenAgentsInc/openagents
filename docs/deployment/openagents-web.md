@@ -9,7 +9,7 @@ repository (`bins/coder-serve`) into this repository's
 
 openagents.com serves this site since 2026-10-02 02:20 UTC (#10128): Cloud
 Run service `coder` (us-central1, openagentsgemini), revision
-`coder-web-79692f5e9a` since 2026-10-02 06:55 UTC (the complete user guide
+`coder-web-79692f5e9a` since 2026-10-02 06:55 UTC (now `coder-web-3a46b3c415`, below) (the complete user guide
 at `/docs`; the one before it, `coder-web-dcc80c9096`, the move to
 `/download`, is the rollback), two containers. `web` is this crate's image
 (`openagents/openagents-web:79692f5e9a`, built by `crates/openagents-web/cloudbuild.yaml`)
@@ -49,24 +49,16 @@ and the privacy policy) and no backend code,
 prompts, endpoints, or secrets. The site is now drawn in four intensities of
 white on near-black instead of four intensities of amber.
 
-Built, not yet live (2026-10-02 23:30 UTC): image
-`openagents/openagents-web:3a46b3c415` (`/live` and `/stats`, #10196) was
-built by Cloud Build as the automation account, but `services replace` of
-revision `coder-web-3a46b3c415` (no traffic, tag `new`) was refused
-`iam.serviceAccounts.actAs` on the runtime account again, although that
-account's policy still lists the automation account as
-`roles/iam.serviceAccountUser` and `testIamPermissions` grants it only
-`get` and `setIamPolicy` there; something above the account's own policy
-withholds `actAs`. Apply it as `chris@` with the steps above. No pay host
-is wired yet (`OPENAGENTS_WEB_PAY_HOST` is unset), so after the deploy
-`/api/flow/*` and `/api/stats` answer `503`, `/live` says the stream is
-unreachable, and `/stats` says the statistics are unreachable.
-
-`/live` (#10197) is on `main` but not deployed: it reads
-`/api/flow/snapshot` and `/api/flow/stream` on this origin, which this
-server proxies to the pay host once #10195 lands. Until then it says the
-flow stream is unreachable. Deploy it with the next site build after
-#10195 is live.
+Live (2026-10-02, after 23:30 UTC): revision `coder-web-3a46b3c415`
+(image `openagents/openagents-web:3a46b3c415`, `/live` and `/stats`,
+#10196, #10197) serves 100% of the traffic; `coder-web-79692f5e9a` is the
+rollback (`--to-revisions coder-web-79692f5e9a=100`). The automation
+account was refused `actAs` on the runtime account again, although that
+account's policy lists it as `roles/iam.serviceAccountUser`; the revision
+was applied as `chris@`. No pay host is wired yet (`OPENAGENTS_WEB_PAY_HOST`
+is unset), so `/api/flow/*` and `/api/stats` answer `503`, `/live` says the
+stream is unreachable, and `/stats` says the statistics are unreachable,
+until a pay host runs beside the site.
 
 ## Ported and complete
 
