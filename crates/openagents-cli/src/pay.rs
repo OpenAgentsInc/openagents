@@ -233,6 +233,7 @@ impl RouteSpec {
                 .description
                 .clone()
                 .unwrap_or_else(|| format!("{} over openagents pay", self.id)),
+            model_cost_only: false,
             mime_type: self
                 .mime
                 .clone()
@@ -744,6 +745,7 @@ upstream = "http://127.0.0.1:9/weather/{city}"
                 params: &params,
                 request: &request,
                 payment_hash: Some("ab"),
+                provider_keys: None,
             })
             .unwrap();
         assert_eq!(out.body, b"messages|p1|hello");
@@ -767,6 +769,7 @@ upstream = "http://127.0.0.1:9/weather/{city}"
             params: &params,
             request: &request,
             payment_hash: None,
+            provider_keys: None,
         };
         assert_eq!(
             exec.url_for(&call),

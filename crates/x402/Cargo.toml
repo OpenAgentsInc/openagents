@@ -11,6 +11,8 @@ name = "openagents_x402"
 path = "src/lib.rs"
 
 [dependencies]
+# BYOK: an API caller's own provider keys (`OpenAgents-Provider-Key`, #10176).
+model-access = { path = "../model-access" }
 base64 = "0.22"
 hex = "0.4"
 nostr = { path = "../nostr" }

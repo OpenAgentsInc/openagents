@@ -39,8 +39,13 @@ pub struct Call<'a> {
     /// `{name}` segments of the route's path, in order.
     pub params: &'a [(String, String)],
     pub request: &'a Request,
-    /// The settled payment hash; `None` only while pricing the call.
+    /// The settled payment hash; `None` only while pricing the call, or
+    /// for a call the caller's own provider keys pay for.
     pub payment_hash: Option<&'a str>,
+    /// The caller's own provider keys (`OpenAgents-Provider-Key`, BYOK),
+    /// for a route whose price is its model cost alone: the executor runs
+    /// every model call on them and never on ours.
+    pub provider_keys: Option<&'a model_access::Keys>,
 }
 
 impl Call<'_> {
@@ -106,6 +111,10 @@ pub struct Route {
     pub plugin: Option<String>,
     pub description: String,
     pub mime_type: String,
+    /// The price is the call's model cost alone, so a caller that brings
+    /// its own provider keys (`OpenAgents-Provider-Key`) gets no `402`:
+    /// the executor runs on their keys (BYOK, #10176).
+    pub model_cost_only: bool,
 }
 
 fn match_path(pattern: &str, path: &str) -> Option<Vec<(String, String)>> {
@@ -188,6 +197,14 @@ pub struct Event {
     pub payment_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_reason: Option<String>,
+    /// `theirs` when the caller's own provider keys paid; absent is a sale.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payer: Option<String>,
+    /// The caller's first key's provider and fingerprint, never the key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payer_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payer_fingerprint: Option<String>,
 }
 
 /// The front's fixed configuration.
@@ -332,6 +349,9 @@ impl<S: ReplayStore> Front<S> {
             outcome: String::new(),
             payment_hash: None,
             error_reason: None,
+            payer: None,
+            payer_provider: None,
+            payer_fingerprint: None,
         };
         let path = request.target.split('?').next().unwrap_or_default();
         let matched: Vec<(&Route, Vec<(String, String)>)> = self
@@ -369,11 +389,76 @@ impl<S: ReplayStore> Front<S> {
             );
         };
         event.request_hash = Some(request_hash.clone());
+        // BYOK: the caller's own provider keys pay a model-cost-only route,
+        // with no 402. The header is read here and never logged or echoed.
+        let provided: Vec<&str> = request
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case(model_access::PROVIDER_KEY_HEADER))
+            .map(|(_, value)| value.as_str())
+            .collect();
+        if !provided.is_empty() && route.model_cost_only {
+            let keys = match model_access::Keys::from_header_values(provided) {
+                Ok(keys) => keys,
+                Err(why) => {
+                    return done(
+                        event,
+                        Response::json(
+                            400,
+                            &json!({"error": {"type": "provider_key_malformed", "message": why}}),
+                        ),
+                        "provider_key_malformed",
+                    );
+                }
+            };
+            if let Some((provider, key)) = keys.iter().next() {
+                event.payer = Some("theirs".into());
+                event.payer_provider = Some(provider.word().into());
+                event.payer_fingerprint = Some(key.fingerprint());
+            }
+            let call = Call {
+                route: &route.id,
+                params,
+                request,
+                payment_hash: None,
+                provider_keys: Some(&keys),
+            };
+            return match route.executor.execute(&call) {
+                Ok(output) => {
+                    let content_type = output
+                        .content_type
+                        .unwrap_or_else(|| route.mime_type.clone());
+                    let response = Response {
+                        status: 200,
+                        headers: vec![
+                            ("content-type".into(), content_type),
+                            ("openagents-payer".into(), "theirs".into()),
+                        ],
+                        body: output.body,
+                    };
+                    done(event, response, "caller_paid")
+                }
+                Err(message) => {
+                    // The caller's own keys could not make the call; it is
+                    // never moved to ours and never billed.
+                    event.error_reason = Some(message.clone());
+                    done(
+                        event,
+                        Response::json(
+                            502,
+                            &json!({"error": {"type": "model_call_failed", "message": message}}),
+                        ),
+                        "caller_paid_failed",
+                    )
+                }
+            };
+        }
         let call = Call {
             route: &route.id,
             params,
             request,
             payment_hash: None,
+            provider_keys: None,
         };
         let price = match route.price.of(&call) {
             Ok(price) if price > 0 => price,
@@ -714,6 +799,7 @@ impl<S: ReplayStore> Front<S> {
             params: paid.params,
             request: paid.request,
             payment_hash: Some(&payment_hash),
+            provider_keys: None,
         };
         let mut response = match paid.route.executor.execute(&call) {
             Ok(output) => {

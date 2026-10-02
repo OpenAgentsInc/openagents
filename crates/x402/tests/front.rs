@@ -164,6 +164,7 @@ fn route(id: &str, path: &str, sats: u64, executor: Arc<Counted>) -> Route {
         resource: format!("api:{id}"),
         plugin: None,
         description: format!("{id} call"),
+        model_cost_only: false,
         mime_type: "text/plain".into(),
     }
 }
@@ -786,4 +787,66 @@ fn lnget_built_credential_is_accepted() {
         Some(read("receipt.txt").as_str())
     );
     std::fs::remove_dir_all(f.dir).unwrap();
+}
+
+/// BYOK (#10176): a caller that brings its own provider key to a route
+/// whose price is its model cost gets no `402`, the executor runs with the
+/// caller's keys, the event names the payer and never the key, and a
+/// malformed header is refused without echoing it. A route whose price is
+/// more than model cost still challenges.
+#[test]
+fn a_callers_own_provider_key_pays_a_model_cost_route_with_no_402() {
+    let dir = temp("byok");
+    let node = Arc::new(TestNode::new(Some(NOW)));
+    let ledger = Arc::new(Ledger::default());
+    let (model, priced) = (Arc::new(Counted::default()), Arc::new(Counted::default()));
+    let mut byok = route("messages", "/v1/messages", 21, model.clone());
+    byok.model_cost_only = true;
+    let front = Front::new(
+        Config {
+            base_url: BASE.into(),
+            network: nostr::x402::MAINNET,
+            realm: "api.example.com".into(),
+            challenge_key: vec![7; 32],
+            timeout_secs: 300,
+        },
+        node,
+        Facilitator::new(FileReplayStore::open(&dir).unwrap(), 60),
+        ledger.clone(),
+        vec![
+            byok,
+            route("invoke", "/v1/plugins/{id}/invoke", 5, priced.clone()),
+        ],
+    )
+    .unwrap();
+    let key = "sk-or-v1-callers-own-key";
+    let header = ("OpenAgents-Provider-Key", format!("openrouter {key}"));
+    let (answered, event) = front.handle(&post("/v1/messages", b"{}", vec![header.clone()]), NOW);
+    assert_eq!(answered.status, 200);
+    assert_eq!(model.runs.load(Ordering::SeqCst), 1);
+    assert_eq!(event.outcome, "caller_paid");
+    assert_eq!(event.payer.as_deref(), Some("theirs"));
+    assert_eq!(event.payer_provider.as_deref(), Some("openrouter"));
+    let logged = serde_json::to_string(&event).unwrap();
+    assert!(!logged.contains(key), "{logged}");
+    assert!(ledger.rows.lock().unwrap().is_empty(), "nothing was sold");
+
+    let (refused, event) = front.handle(
+        &post(
+            "/v1/messages",
+            b"{}",
+            vec![("OpenAgents-Provider-Key", key.to_string())],
+        ),
+        NOW,
+    );
+    assert_eq!(refused.status, 400);
+    assert!(!String::from_utf8_lossy(&refused.body).contains(key));
+    assert!(!serde_json::to_string(&event).unwrap().contains(key));
+
+    let (challenged, _) = front.handle(&post("/v1/plugins/p1/invoke", b"{}", vec![header]), NOW);
+    assert_eq!(
+        challenged.status, 402,
+        "a key never waives more than model cost"
+    );
+    assert_eq!(priced.runs.load(Ordering::SeqCst), 0);
 }
