@@ -11,7 +11,10 @@ finding. When the product changes, change this file in the same commit.
   work on one of your own computers.
 - Coder runs on your own computer, in projects you picked, with that
   computer's Git and GitHub sign-in. It drives Codex, Claude Code, or Grok
-  Build: whichever one is signed in on that computer with capacity.
+  Build: whichever one is signed in on that computer with capacity, first
+  in the order of the `coder.providers` setting. A task can also hand work
+  to OpenCode or Devin when they are installed and enabled in Coder's
+  settings.
 - Chatting needs no computer. From the chat alone, OpenAgents can't read
   your files, run code, or reach your computer.
 - There is no OpenAgents account or password. Each phone or computer makes
