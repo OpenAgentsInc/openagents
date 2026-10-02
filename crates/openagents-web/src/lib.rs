@@ -4,8 +4,9 @@
 //! page, the terms and the privacy policy, the pairing link's landing page,
 //! and profiles) and the local, read-only task browser at `/app`.
 //!
-//! Only the homepage runs a script: its terminal (`static/ask.js`), which
-//! posts questions to [`ask`] (#10106). Pages that need the production account store
+//! Two pages run a script: the homepage's terminal (`static/ask.js`), which
+//! posts questions to [`ask`] (#10106), and `/live`'s map of the flow
+//! stream (`static/flow.js`, #10197). Pages that need the production account store
 //! read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
 //! without records or secrets. The design follows the private Coder
@@ -114,6 +115,7 @@ pub fn router(config: Config) -> Router {
         .route("/static/site.css", get(stylesheet))
         .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/static/ask.js", get(ask_script))
+        .route("/static/flow.js", get(flow_script))
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
@@ -202,6 +204,18 @@ async fn ask_script() -> Response {
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         include_str!("../static/ask.js"),
+    )
+        .into_response()
+}
+
+/// The `/live` page's map (#10197).
+async fn flow_script() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        include_str!("../static/flow.js"),
     )
         .into_response()
 }

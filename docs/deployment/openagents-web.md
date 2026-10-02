@@ -49,6 +49,12 @@ and the privacy policy) and no backend code,
 prompts, endpoints, or secrets. The site is now drawn in four intensities of
 white on near-black instead of four intensities of amber.
 
+`/live` (#10197) is on `main` but not deployed: it reads
+`/api/flow/snapshot` and `/api/flow/stream` on this origin, which this
+server proxies to the pay host once #10195 lands. Until then it says the
+flow stream is unreachable. Deploy it with the next site build after
+#10195 is live.
+
 ## Ported and complete
 
 These pages need nothing more than this repository and the public buckets:

@@ -418,6 +418,18 @@ when they published the plugin under it (public already), otherwise as
   node id, and its pulses run along `path_to(leaf)`. Episode decks can show
   `routes-future` (the projection) and `routes-live` (today) side by side.
 
+Status (2026-10-02): `/live` (`crates/openagents-web/src/pages/live.rs`,
+`static/flow.js`, #10197) and the deck scene `routes-live`
+(`crates/openagents-desktop/src/route_live.rs`, the Episode 289 deck's
+sixth slide, #10198) are on `main`, built against the schema above and the
+fixture `docs/payments/fixtures/flow-stream.jsonl`. Both map events to dots
+by the same table (tested in `route_live.rs` and `static/flow.test.js`),
+resolve a short plugin node (`plugin:explain-error`) to the map's
+`plugin:crates/plugin-explain-error`, and say the stream is unreachable
+until `/api/flow/*` answers (#10195). The desktop reads
+`https://openagents.com/api/flow` unless `OPENAGENTS_FLOW_URL` names another
+base or `file:PATH` to replay a fixture.
+
 ## 8. End-to-end demo
 
 The first real flow, in order:
