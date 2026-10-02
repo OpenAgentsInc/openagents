@@ -850,7 +850,9 @@ pub async fn fetch_results(
 
 /// The Gym's records and their retrieval.
 pub struct GymKnowledge<E: Embed = Embedder> {
-    records: Mutex<Records>,
+    /// Shared, with the fetched files and the vectors, with every copy lent
+    /// to a job on the caller's keys ([`GymKnowledge::lent`]).
+    records: Arc<Mutex<Records>>,
     embedder: E,
     recipient: String,
     judge: Arc<dyn Judge>,
@@ -861,10 +863,10 @@ pub struct GymKnowledge<E: Embed = Embedder> {
     /// no adoptions.
     documents: Option<String>,
     /// Release files fetched, by digest; content-addressed, so kept.
-    files: Mutex<HashMap<String, Arc<Vec<u8>>>>,
+    files: Arc<Mutex<HashMap<String, Arc<Vec<u8>>>>>,
     http: reqwest::Client,
     /// Item vectors by item id and the model that made them.
-    vectors: Mutex<HashMap<String, Arc<Vec<f32>>>>,
+    vectors: Arc<Mutex<HashMap<String, Arc<Vec<f32>>>>>,
 }
 
 impl GymKnowledge<Embedder> {
@@ -914,18 +916,40 @@ impl<E: Embed> GymKnowledge<E> {
             ..Records::default()
         };
         GymKnowledge {
-            records: Mutex::new(records),
+            records: Arc::new(Mutex::new(records)),
             embedder,
             recipient: recipient.into(),
             judge,
             documents: blobs.as_ref().map(|_| DEFAULTS_DOCUMENTS.to_string()),
             blobs: blobs.map(|base| base.trim_end_matches('/').to_string()),
-            files: Mutex::new(HashMap::new()),
+            files: Arc::new(Mutex::new(HashMap::new())),
             http: reqwest::Client::builder()
                 .timeout(BLOB_BUDGET)
                 .build()
                 .unwrap_or_default(),
-            vectors: Mutex::new(HashMap::new()),
+            vectors: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// The same records, files, and vectors for one job on the caller's
+    /// own keys (BYOK): the message, and any record not yet embedded, is
+    /// embedded with `embedder` and judged by `judge`, both on their keys.
+    pub fn lent<F: Embed>(
+        &self,
+        embedder: F,
+        recipient: impl Into<String>,
+        judge: Arc<dyn Judge>,
+    ) -> GymKnowledge<F> {
+        GymKnowledge {
+            records: self.records.clone(),
+            embedder,
+            recipient: recipient.into(),
+            judge,
+            blobs: self.blobs.clone(),
+            documents: self.documents.clone(),
+            files: self.files.clone(),
+            http: self.http.clone(),
+            vectors: self.vectors.clone(),
         }
     }
 
@@ -1377,6 +1401,16 @@ impl GymKb for GymKnowledge<Embedder> {
                 news,
             })
         })
+    }
+
+    fn on_their_keys(&self, theirs: &crate::router::seams::TheirKeys) -> Option<Arc<dyn GymKb>> {
+        let embedder = theirs.embedder()?;
+        let recipient = crate::codebase::embedding_recipient(embedder.provider).to_string();
+        Some(Arc::new(self.lent(
+            embedder,
+            recipient,
+            theirs.judge.clone(),
+        )))
     }
 }
 

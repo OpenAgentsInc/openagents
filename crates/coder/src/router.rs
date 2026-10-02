@@ -1884,6 +1884,70 @@ pub fn worker_facts_ordered(
     facts
 }
 
+/// The facts for one job on the caller's own provider keys (BYOK, NIP-CJ
+/// "Caller-paid model calls"): the same lane, with the door named as the
+/// caller's own key ("OpenRouter on your own key"), and recipients that say
+/// every service is reached on the caller's keys and under their account's
+/// settings there, with Jev reached through `jev` (their providers that
+/// serve it, named for a person, in the order asked). `primary`, `model`,
+/// `url`, and `seams` are the job's own, as [`worker_facts_ordered`] takes
+/// them.
+#[must_use]
+pub fn worker_facts_theirs(
+    primary: Option<(&str, &str)>,
+    model: &str,
+    url: Option<&str>,
+    seams: &Seams,
+    jev: &[&str],
+) -> Facts {
+    let mut facts = worker_facts_ordered(primary, model, url, seams, None, &[]);
+    if let Some(host) = facts.get("worker.door.display").map(str::to_string) {
+        facts = facts.set("worker.door.display", format!("{host} on your own key"));
+    }
+    let door = crate::first::Facts::of(model, url);
+    let first = primary.and_then(|(model, url)| {
+        let first = crate::first::Facts::of(model, Some(url));
+        Some((
+            first.chat_model?,
+            first.chat_model_host?,
+            first.chat_model_keeps,
+        ))
+    });
+    if let (Some(model), Some(host)) = (&door.chat_model, &door.chat_model_host) {
+        let mut recipients = Vec::new();
+        let mut keeps = None;
+        match &first {
+            Some((first_model, first_host, first_keeps)) => {
+                recipients.push(format!("{first_host} for {first_model}"));
+                let short = first_model.split(" (").next().unwrap_or(first_model);
+                recipients.push(format!("{host} for {model} when {short} can't answer"));
+                keeps.clone_from(first_keeps);
+            }
+            None => recipients.push(format!("{host} for {model}")),
+        }
+        for name in seams.recipients() {
+            if !recipients.contains(&name) {
+                recipients.push(name);
+            }
+        }
+        if !jev.is_empty() {
+            recipients.push(format!(
+                "Jev, which chooses how we reply, through {}",
+                or_series(jev)
+            ));
+        }
+        let mut said = format!(
+            "{}, all on your own keys and under your own accounts there",
+            series(&recipients)
+        );
+        if let Some(keeps) = keeps {
+            said = format!("{said}. {keeps}");
+        }
+        facts = facts.set("worker.recipients", said);
+    }
+    facts
+}
+
 /// `a`, `a or b`, or `a, b, or c`.
 fn or_series(items: &[&str]) -> String {
     match items {

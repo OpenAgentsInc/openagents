@@ -192,9 +192,11 @@ plain text.
 
 A worker that serves `payer.keys`:
 
-- runs every model call of that job (the reply, personalization, and
-  decision subcalls) only on those keys, and refuses the job rather than
-  answering any part of it on keys of its own;
+- runs every model call of that job (the reply, personalization, decision
+  subcalls, and the embeddings and judgments of any retrieval it grounds the
+  reply in) only on those keys, and refuses the job rather than answering any
+  part of it on keys of its own; a retrieval those keys cannot run is skipped
+  for that job, never run on the worker's keys;
 - uses the keys for that job only, never stores, logs, or publishes them,
   and records at most each key's provider and a fingerprint (the first 8 hex
   characters of its SHA-256 digest);

@@ -539,7 +539,9 @@ pub struct Answered {
 
 /// The index and the embedder that reads questions into it.
 pub struct Codebase<E: Embed> {
-    pub index: Index,
+    /// Shared with every copy lent to a job on the caller's keys
+    /// ([`Codebase::lent`]).
+    pub index: std::sync::Arc<Index>,
     embedder: E,
 }
 
@@ -559,7 +561,30 @@ impl<E: Embed> Codebase<E> {
                 embedder.model()
             ));
         }
-        Ok(Self { index, embedder })
+        Ok(Self {
+            index: std::sync::Arc::new(index),
+            embedder,
+        })
+    }
+
+    /// The same index, reading questions with `embedder` (BYOK: an
+    /// embedder on the caller's keys, for one job).
+    ///
+    /// # Errors
+    ///
+    /// The embedder is another model than the index's.
+    pub fn lent<F: Embed>(&self, embedder: F) -> Result<Codebase<F>, String> {
+        if embedder.model() != self.index.model {
+            return Err(format!(
+                "the index holds {}'s vectors and the embedder is {}",
+                self.index.model,
+                embedder.model()
+            ));
+        }
+        Ok(Codebase {
+            index: self.index.clone(),
+            embedder,
+        })
     }
 
     /// Reads the index at `path`.
@@ -809,6 +834,14 @@ impl crate::router::seams::CodebaseKb for Seam {
                 needs_dispatch: grounded.escalation.is_some(),
             })
         })
+    }
+
+    fn on_their_keys(
+        &self,
+        theirs: &crate::router::seams::TheirKeys,
+    ) -> Option<std::sync::Arc<dyn crate::router::seams::CodebaseKb>> {
+        let kb = self.kb.lent(theirs.embedder()?).ok()?;
+        Some(std::sync::Arc::new(Seam::new(kb, theirs.judge.clone())))
     }
 }
 

@@ -116,12 +116,18 @@ struct Index {
 
 /// The product knowledge base: a corpus, an embedder, and a judge.
 pub struct ProductKnowledge<E: Embed = Embedder> {
-    corpus: Corpus,
+    corpus: Arc<Corpus>,
     embedder: E,
     /// The embedding provider, named for a person, for the privacy answer.
     recipient: String,
     judge: Arc<dyn Judge>,
-    index: Mutex<Option<Arc<Index>>>,
+    /// The entries' vectors, shared with every copy made for a job on the
+    /// caller's keys ([`ProductKnowledge::lent`]).
+    index: Arc<Mutex<Option<Arc<Index>>>>,
+    /// Whether this copy may embed the corpus itself; a copy lent to a job
+    /// on the caller's keys only reads the vectors we made, so they never
+    /// pay to index our corpus.
+    builds: bool,
 }
 
 /// One candidate and what the lookup found about it.
@@ -191,11 +197,33 @@ impl<E: Embed> ProductKnowledge<E> {
         judge: Arc<dyn Judge>,
     ) -> Self {
         ProductKnowledge {
-            corpus,
+            corpus: Arc::new(corpus),
             embedder,
             recipient: recipient.into(),
             judge,
-            index: Mutex::new(None),
+            index: Arc::new(Mutex::new(None)),
+            builds: true,
+        }
+    }
+
+    /// The same corpus and vectors for one job on the caller's own keys
+    /// (BYOK): the message is embedded with `embedder` and judged by
+    /// `judge`, both on their keys. The copy never embeds the corpus: until
+    /// our vectors are made, its lookups fail and the router answers past
+    /// the seam.
+    pub fn lent<F: Embed>(
+        &self,
+        embedder: F,
+        recipient: impl Into<String>,
+        judge: Arc<dyn Judge>,
+    ) -> ProductKnowledge<F> {
+        ProductKnowledge {
+            corpus: self.corpus.clone(),
+            embedder,
+            recipient: recipient.into(),
+            judge,
+            index: self.index.clone(),
+            builds: false,
         }
     }
 
@@ -215,6 +243,11 @@ impl<E: Embed> ProductKnowledge<E> {
     async fn index(&self) -> Result<Arc<Index>, SeamError> {
         if let Some(index) = self.index.lock().ok().and_then(|i| i.clone()) {
             return Ok(index);
+        }
+        if !self.builds {
+            return Err(SeamError::Failed(
+                "the corpus is not indexed yet".to_string(),
+            ));
         }
         let texts: Vec<String> = self
             .corpus
@@ -567,6 +600,19 @@ impl ProductKb for ProductKnowledge<Embedder> {
 
     fn ground<'a>(&'a self, lookup: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>> {
         Box::pin(async move { self.find(lookup).await.map(|found| found.grounding) })
+    }
+
+    fn on_their_keys(
+        &self,
+        theirs: &crate::router::seams::TheirKeys,
+    ) -> Option<Arc<dyn ProductKb>> {
+        let embedder = theirs.embedder()?;
+        let recipient = crate::codebase::embedding_recipient(embedder.provider).to_string();
+        Some(Arc::new(self.lent(
+            embedder,
+            recipient,
+            theirs.judge.clone(),
+        )))
     }
 }
 

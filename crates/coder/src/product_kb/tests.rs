@@ -391,3 +391,27 @@ fn product_citations_are_taken_out_as_the_reply_streams() {
     assert_eq!(read.known, vec!["openagents.connect-computer".to_string()]);
     assert_eq!(read.unknown, vec!["openagents.tailnet".to_string()]);
 }
+
+/// A copy lent to a job on the caller's keys (BYOK) reads our vectors and
+/// never embeds the corpus itself: before ours are made, its lookups fail
+/// (the router answers past the seam); after, it grounds with its own
+/// embedder and judge.
+#[tokio::test]
+async fn a_lent_copy_reads_our_vectors_and_never_indexes_the_corpus() {
+    let ours = kb(Down);
+    let sure = || Sure {
+        title: "Why amounts show as whole ₿ numbers".into(),
+        relevance: 0.95,
+        pick: 0.9,
+    };
+    let lent = ours.lent(Words, "Their embeddings", Arc::new(sure()));
+    assert_eq!(lent.recipients(), ["Their embeddings"]);
+    let message = "why does the wallet show amounts like ₿10,000 instead of BTC";
+    assert!(
+        lent.ground(&lookup(message)).await.is_err(),
+        "a lent copy does not index our corpus on their keys"
+    );
+    ours.warm().await.expect("our vectors");
+    let grounding = lent.ground(&lookup(message)).await.expect("a grounding");
+    assert_eq!(grounding.passages[0].id, "openagents.wallet-amounts@1");
+}

@@ -197,6 +197,33 @@ pub struct Grounding {
     pub needs_dispatch: bool,
 }
 
+/// What one job on the caller's own provider keys (BYOK, NIP-CJ
+/// "Caller-paid model calls") lends a seam for that job: their keys, and
+/// Jev on them. A seam that grounds on these embeds the message and asks
+/// for judgments on the caller's keys only; the records it reads (a corpus,
+/// an index, the Gym's verified results) are ours and stay shared.
+pub struct TheirKeys {
+    /// The caller's keys for this job ([`model_access::Access::theirs`]).
+    pub access: model_access::Access,
+    /// Jev on the caller's keys.
+    pub judge: std::sync::Arc<jev::Client>,
+}
+
+impl std::fmt::Debug for TheirKeys {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TheirKeys").finish_non_exhaustive()
+    }
+}
+
+impl TheirKeys {
+    /// The embedder on the caller's keys, or `None` when none of their keys
+    /// embeds. Never one of ours.
+    #[must_use]
+    pub fn embedder(&self) -> Option<knowledge::search::Embedder> {
+        knowledge::search::Embedder::theirs(&self.access).and_then(Result::ok)
+    }
+}
+
 /// The OpenAgents product knowledge base (`knowledge/openagents/`).
 pub trait ProductKb: Send + Sync {
     /// Whether a corpus is configured.
@@ -206,6 +233,12 @@ pub trait ProductKb: Send + Sync {
     fn recipients(&self) -> Vec<String>;
     /// The admitted passages relevant to `lookup`.
     fn ground<'a>(&'a self, lookup: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>>;
+    /// This knowledge base for one job on the caller's own keys: the same
+    /// corpus, embedding and judging on their keys. `None` turns the seam
+    /// off for that job; it never runs on ours.
+    fn on_their_keys(&self, _theirs: &TheirKeys) -> Option<std::sync::Arc<dyn ProductKb>> {
+        None
+    }
 }
 
 /// Knowledge of the public OpenAgents codebase at a pinned commit.
@@ -220,6 +253,11 @@ pub trait CodebaseKb: Send + Sync {
     /// message, so the first question after a quiet spell fits the budget.
     fn warm(&self) -> BoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+    /// This index for one job on the caller's own keys, as
+    /// [`ProductKb::on_their_keys`].
+    fn on_their_keys(&self, _theirs: &TheirKeys) -> Option<std::sync::Arc<dyn CodebaseKb>> {
+        None
     }
 }
 
@@ -293,6 +331,11 @@ pub trait GymKb: Send + Sync {
         &'a self,
         lookup: &'a GymLookup,
     ) -> BoxFuture<'a, Result<super::gym::Grounding, SeamError>>;
+    /// These records for one job on the caller's own keys, as
+    /// [`ProductKb::on_their_keys`].
+    fn on_their_keys(&self, _theirs: &TheirKeys) -> Option<std::sync::Arc<dyn GymKb>> {
+        None
+    }
 }
 
 /// No Gym records: the Gym and eval routes answer with the bank or the

@@ -1492,6 +1492,44 @@ impl RouterConfig {
     /// [`RouterConfig::with_news`] for a judge that falls back to
     /// `jev_fallbacks` (doors named for a person) when TypeSafe cannot
     /// answer: the privacy answer names them.
+    /// This configuration for one job on the caller's own keys (BYOK):
+    /// the bank's model and privacy answers name the caller's own key as
+    /// the door, every recipient as reached on their keys, and Jev through
+    /// `jev`, their providers that serve it.
+    fn on_their_keys(mut self, door: &Door, jev: &[&str]) -> Self {
+        let primary = match door {
+            Door::Fallback(ordered) => {
+                Some((ordered.primary.model.as_str(), ordered.primary.url.as_str()))
+            }
+            _ => None,
+        };
+        let (model, url) = match door {
+            Door::Fallback(ordered) => (
+                ordered.fallback.model.as_str(),
+                Some(ordered.fallback.url.as_str()),
+            ),
+            Door::Live(live) => (live.model.as_str(), Some(live.url.as_str())),
+            door => (door.model(), None),
+        };
+        self.facts = router::worker_facts_theirs(primary, model, url, &self.seams, jev);
+        self.fell_back = match door {
+            Door::Fallback(ordered) => {
+                let named = first::Facts::of(&ordered.fallback.model, Some(&ordered.fallback.url));
+                match (named.chat_model, named.chat_model_host) {
+                    (Some(model), Some(host)) => Some(
+                        self.facts
+                            .clone()
+                            .set("worker.lane.display", model)
+                            .set("worker.door.display", format!("{host} on your own key")),
+                    ),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        self
+    }
+
     fn with_news_and_jev(
         setting: RouterSetting,
         seams: Seams,
@@ -1649,6 +1687,76 @@ fn cli_seam(
     })
 }
 
+/// A provider of the caller's, named for a person as the privacy answer
+/// names a door.
+fn door_name(provider: model_access::Provider) -> &'static str {
+    match provider {
+        model_access::Provider::OpenRouter => "OpenRouter",
+        model_access::Provider::Vercel => "the Vercel AI Gateway",
+        model_access::Provider::TypeSafe => "TypeSafe",
+    }
+}
+
+/// The seams for one job on the caller's own keys (BYOK): each seam the
+/// worker holds, lent the caller's embedder and Jev on their keys
+/// ([`router::seams::TheirKeys`]), so product, codebase, Gym, CLI, and
+/// authoring turns stay grounded on our records while every embedding,
+/// judgment, and model call is theirs. A seam their keys cannot run (no Jev
+/// on them, no key that embeds) is off for the job, never on ours.
+fn their_seams(
+    ours: &Seams,
+    access: &model_access::Access,
+    judge: Option<&Arc<jev::Client>>,
+    door: &Arc<Door>,
+) -> Seams {
+    let personalize: Arc<dyn router::seams::Personalize> =
+        match router::personalize::Personalizer::theirs(access) {
+            Some(personalizer) => Arc::new(personalizer),
+            None => Arc::new(router::seams::NoPersonalize),
+        };
+    let Some(judge) = judge else {
+        return Seams {
+            personalize,
+            ..Seams::default()
+        };
+    };
+    let theirs = router::seams::TheirKeys {
+        access: access.clone(),
+        judge: judge.clone(),
+    };
+    Seams {
+        personalize,
+        product: ours
+            .product
+            .on_their_keys(&theirs)
+            .unwrap_or_else(|| Arc::new(router::seams::NoKb)),
+        codebase: ours
+            .codebase
+            .on_their_keys(&theirs)
+            .unwrap_or_else(|| Arc::new(router::seams::NoKb)),
+        gym: ours
+            .gym
+            .on_their_keys(&theirs)
+            .unwrap_or_else(|| Arc::new(router::seams::NoGym)),
+        cli: if ours.cli.groups().is_empty() {
+            Arc::new(router::seams::NoCli)
+        } else {
+            Arc::new(coder::cli_route::CommandRoute::new(
+                (**judge).clone(),
+                Arc::new(DoorFill(door.clone())),
+            ))
+        },
+        author: if ours.author.available() {
+            coder::eval_author::seam(
+                &door,
+                Some(judge.clone() as Arc<dyn coder::product_kb::Judge>),
+            )
+        } else {
+            Arc::new(router::seams::NoAuthor)
+        },
+    }
+}
+
 fn router_from_env() -> Result<RouterSetting, String> {
     match env::var(ROUTER_VAR).as_deref() {
         Ok("live") | Ok("") | Err(_) => Ok(RouterSetting::Live),
@@ -1755,9 +1863,9 @@ impl Job {
 
     /// Bind this job to the caller's own provider keys when its body names
     /// `payer.keys` (BYOK, NIP-CJ "Caller-paid model calls"): the model,
-    /// the personalizer, and Jev run on the caller's keys for this job
-    /// only, and the routed seams that would embed or judge on our keys
-    /// are off. The keys live in this job's doors and are dropped with it;
+    /// the personalizer, Jev, and every routed seam's embedding and
+    /// judgment run on the caller's keys for this job only ([`their_seams`]);
+    /// a seam their keys cannot run is off, never on ours. The keys live in this job's doors and are dropped with it;
     /// they are never logged, recorded, or published. `None` for a job
     /// that names no payer.
     ///
@@ -1795,8 +1903,10 @@ impl Job {
         unsafe { opened.as_bytes_mut().fill(0) };
         let access = model_access::Access::theirs(keys?);
         let (door, first, last) = their_door(&self.door, &access)?;
+        let mut jev_names: Vec<&'static str> = Vec::new();
         let judge = match access.decisions() {
-            Ok(model_access::Decisions::Theirs { config, .. }) => {
+            Ok(model_access::Decisions::Theirs { config, order, .. }) => {
+                jev_names = order.iter().map(|provider| door_name(*provider)).collect();
                 let model = self.judge.as_ref().map_or_else(
                     || jev::defaults::MODEL.to_string(),
                     |judge| judge.default_model().to_string(),
@@ -1807,17 +1917,13 @@ impl Job {
             }
             _ => None,
         };
-        let seams = Seams {
-            personalize: match router::personalize::Personalizer::theirs(&access) {
-                Some(personalizer) => Arc::new(personalizer),
-                None => Arc::new(router::seams::NoPersonalize),
-            },
-            ..Seams::default()
-        };
+        let door = Arc::new(door);
+        let seams = their_seams(&self.routing.seams, &access, judge.as_ref(), &door);
         let routing =
             RouterConfig::with_news_and_jev(self.routing.setting, seams, &door, None, &[])
-                .calibrated(self.routing.calibration.clone());
-        self.door = Arc::new(door);
+                .calibrated(self.routing.calibration.clone())
+                .on_their_keys(&door, if judge.is_some() { &jev_names[..] } else { &[] });
+        self.door = door;
         self.judge = judge;
         self.routing = Arc::new(routing);
         self.payer_last = Some(last);
@@ -4268,6 +4374,117 @@ mod tests {
                 &model_access::Access::theirs(model_access::Keys::none())
             )
             .is_err()
+        );
+    }
+
+    /// A product knowledge base that says whose keys it runs on.
+    struct Whose(&'static str);
+
+    impl router::seams::ProductKb for Whose {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            vec![format!("{} (embeddings)", self.0)]
+        }
+        fn ground<'a>(
+            &'a self,
+            _: &'a router::seams::Lookup,
+        ) -> futures_util::future::BoxFuture<
+            'a,
+            Result<router::seams::Grounding, router::seams::SeamError>,
+        > {
+            Box::pin(async { Err(router::seams::SeamError::Unavailable) })
+        }
+        fn on_their_keys(
+            &self,
+            theirs: &router::seams::TheirKeys,
+        ) -> Option<Arc<dyn router::seams::ProductKb>> {
+            theirs
+                .embedder()
+                .map(|_| Arc::new(Whose("Their door")) as Arc<dyn router::seams::ProductKb>)
+        }
+    }
+
+    /// A job on the caller's keys keeps its grounded seams: each is lent
+    /// their embedder and Jev, never left on ours; without Jev on their
+    /// keys the grounded seams are off. The model and privacy answers
+    /// name their own key as the door and every recipient as theirs.
+    #[test]
+    fn a_payer_job_grounds_on_their_keys_and_says_so() {
+        let ours = Door::Fallback(Box::new(FallbackDoor::new(
+            coder::generate::ResponsesDoor::new(
+                coder::generate::OPENROUTER_DOOR_URL,
+                Lane::SpaceBunny.model(),
+                "our-key",
+            ),
+            coder::generate::ResponsesDoor::new(
+                coder::generate::DEFAULT_DOOR_URL,
+                GEMINI,
+                "our-key",
+            ),
+        )));
+        let mut keys = model_access::Keys::none();
+        keys.insert(
+            model_access::Provider::OpenRouter,
+            model_access::ApiKey::new("their-or"),
+        );
+        let access = model_access::Access::theirs(keys);
+        let (door, _, _) = their_door(&ours, &access).unwrap();
+        let door = Arc::new(door);
+        let our_seams = Seams {
+            product: Arc::new(Whose("Our door")),
+            ..Seams::default()
+        };
+        let judge = Arc::new(
+            jev::Client::new(jev::Config::local("http://127.0.0.1:9", "jev-test")).unwrap(),
+        );
+        let lent = their_seams(&our_seams, &access, Some(&judge), &door);
+        assert_eq!(
+            lent.product.recipients(),
+            vec!["Their door (embeddings)".to_string()]
+        );
+        assert!(
+            !lent.codebase.available(),
+            "a seam we do not hold stays off"
+        );
+        let without_jev = their_seams(&our_seams, &access, None, &door);
+        assert!(
+            !without_jev.product.available(),
+            "no Jev on their keys: off, never ours"
+        );
+
+        let config = RouterConfig::with_news_and_jev(RouterSetting::Live, lent, &door, None, &[])
+            .on_their_keys(&door, &["OpenRouter"]);
+        let render = |facts: &router::Facts, id: &str| {
+            Bank::builtin()
+                .entry(id)
+                .and_then(|entry| entry.render(facts))
+                .unwrap_or_else(|| panic!("{id} renders"))
+        };
+        let model = render(&config.facts, "meta.model");
+        assert!(
+            model.starts_with(
+                "Our chat runs on Space Bunny Alpha (an anonymous preview model) through OpenRouter \
+                 on your own key."
+            ),
+            "{model}"
+        );
+        let privacy = render(&config.facts, "meta.privacy");
+        assert!(privacy.contains("Their door (embeddings)"), "{privacy}");
+        assert!(!privacy.contains("Our door"), "{privacy}");
+        assert!(
+            privacy.contains(
+                "Jev, which chooses how we reply, through OpenRouter, all on your own keys"
+            ),
+            "{privacy}"
+        );
+        assert!(!privacy.contains("TypeSafe for Jev"), "{privacy}");
+        let fell_back = config.fell_back.as_ref().expect("a fallback's facts");
+        assert!(
+            render(fell_back, "meta.model").contains("on your own key"),
+            "{}",
+            render(fell_back, "meta.model")
         );
     }
 
