@@ -27,9 +27,9 @@ no revenue) and [Episode 289](../transcripts/289.md):
 | D7 | **Plugin authors are paid from each paid call that used their plugin** (per-call payment or balance), split automatically over Lightning. D9 sets how much. |
 | D8 | **Keyless callers get a small free tier per caller**, like the Ask box, then a `402` with a Lightning price. |
 | D9 | **Each plugin declares its own per-call fee.** The fee is added to the call's price, and the author receives all of it, split automatically after the call settles. |
-| D10 | **Bitcoin only (Lightning), no stablecoins.** Owner decision: "bitcoin only." The `402` offers one way to pay, the x402 `exact` scheme on Lightning. Consequence: stock upstream x402 SDKs cannot pay it until an `lnbtc` mechanism lands upstream (we can contribute it). Existing L402 clients can pay it today (D12), and so can `openagents x402 fetch` and the curl steps in section 5. |
+| D10 | **Bitcoin only (Lightning), no stablecoins.** Owner decision: "bitcoin only." Every `402` is a Lightning invoice (D12 lists its encodings). Consequence: stock upstream x402 SDKs cannot pay it until an `lnbtc` mechanism lands upstream (we can contribute it). Clients of the HTTP `Payment` scheme with Lightning can pay it today (D12), and so can `openagents x402 fetch` and the curl steps in section 5. |
 | D11 | **Every response shows route, model, cost, and time for the call**, never Jev's internal scores. |
-| D12 | **The 402 speaks both x402 v2 and L402**, from one invoice, so existing Lightning 402 clients work with no OpenAgents code (section 5.2). |
+| D12 | **The 402 speaks x402 v2 (`exact` on `lnbtc`) and the HTTP `Payment` authentication scheme with Lightning (`intent="charge"`)**, from one invoice, one replay store, and one wallet, so existing Lightning 402 clients work with no OpenAgents code (section 5.2). Both bind the request body. Classic L402 is left out for now (section 5.2 says why). The `Payment` scheme's Lightning `session` intent prices route-dependent and streamed calls (section 5.2). |
 | D13 | **Prepaid sats balances.** An account is created without signup; its API keys draw on a sats balance topped up with a Lightning invoice; per-call 402 stays the keyless path (section 5.3). |
 | D14 | **`GET /v1/models` soon, OpenAI-shaped**, with prices in sats (section 4.1). |
 | D15 | **OpenAI's API conventions where they fit:** `x-request-id`, client request ids, rate-limit headers for third-party keys, a written versioning policy, an `llms.txt` index and `.md` docs, and an error-codes page (section 3). Prices are always in sats. |
@@ -189,7 +189,7 @@ curl $OA/models -H "Authorization: Bearer $KEY"
 ```json
 {"object":"list","data":[
   {"id":"openagents","object":"model","created":1790985600,"owned_by":"openagents",
-   "pricing":{"kind":"dynamic","per_call_sats":21,"basis":"per message; with a balance, the route's actual price"}},
+   "pricing":{"kind":"dynamic","per_call_sats":21,"basis":"per message; with a session or a balance, the route's actual price"}},
   {"id":"openagents-fast","object":"model","created":1790985600,"owned_by":"openagents",
    "pricing":{"kind":"fixed","per_call_sats":5}},
   {"id":"openagents-coder","object":"model","created":1790985600,"owned_by":"openagents",
@@ -410,8 +410,9 @@ and an embedded facilitator. Nothing Nostr is involved on this path.
 **Prices** are set in sats.
 
 **Clients.** Every `402` carries the same Lightning invoice in two standard
-forms: x402 v2 headers, and an L402 challenge (section 5.2). An existing L402
-client pays it today with no OpenAgents code. Upstream's x402 SDKs ship no
+forms: x402 v2 headers, and a `Payment` scheme challenge (section 5.2). A
+client of the `Payment` scheme with Lightning pays it today with no
+OpenAgents code. Upstream's x402 SDKs ship no
 Lightning mechanism yet, so a stock x402 SDK reads our `402` but cannot pay
 it until an `lnbtc` mechanism lands upstream (we can contribute it); until
 then x402 callers use `openagents x402 fetch` or the curl steps below.
@@ -560,58 +561,90 @@ Owner steps, once:
    `OPENAGENTS_X402_HOME`) on durable disk, and keep it the one store for this
    receiver: every process that settles for this node must share it.
 
-### 5.2 L402 clients
+### 5.2 Payment-scheme clients, and sessions for streamed work
 
-The same `402` also carries an [L402](https://github.com/lightninglabs/L402/blob/master/protocol-specification.md)
-challenge, so Lightning 402 clients that already exist work unchanged:
+The same `402` also carries a challenge in the HTTP `Payment` authentication
+scheme ([draft-httpauth-payment](https://paymentauth.org/draft-httpauth-payment-01.txt))
+with its Lightning method
+([draft-lightning-charge](https://paymentauth.org/draft-lightning-charge-00.txt)),
+the scheme the existing Lightning 402 clients speak (`lnget`, and `mppx` with a
+Lightning plugin). HTTP allows several `WWW-Authenticate` challenges, and an
+x402 client ignores this one:
 
 ```http
 HTTP/1.1 402 Payment Required
 PAYMENT-REQUIRED: eyJ4NDAyVmVyc2lvbiI6Mi…
-WWW-Authenticate: L402 macaroon="AgEL…", invoice="lnbc210n1…"
-WWW-Authenticate: LSAT macaroon="AgEL…", invoice="lnbc210n1…"
+WWW-Authenticate: Payment id="Nsjr…", realm="api.openagents.com", method="lightning", intent="charge", request="eyJhbW91bnQiOiIyMSIs…", digest="sha-256=:X48E9q…:", expires="2026-10-02T16:49:01Z", description="OpenAgents message"
+Content-Type: application/json
+Cache-Control: no-store
+
+{"error":{"type":"payment_required","code":"payment_required","message":"This call costs 21 sats.","request_id":"req_…"},
+ "type":"https://paymentauth.org/problems/payment-required","title":"Payment Required","status":402,
+ "detail":"This call costs 21 sats.","challengeId":"Nsjr…","price_sats":21}
 ```
 
-The client pays the invoice and replays the request with
-`Authorization: L402 <macaroon>:<preimage>`.
+The body is our one error shape (section 3.2) with the scheme's problem
+fields beside it, so both kinds of client read the same `402`.
 
-**One invoice, one paid call, two encodings.** The invoice is the one in the
-x402 terms: its signed description hash is the x402 request hash, so it
-commits to this exact request. The L402 token (a macaroon) carries caveats
-for that request hash, the payment hash, and an expiry, signed by the front.
-On replay the front checks the token's signature and caveats, recomputes the
-request hash from the request it received, checks that the preimage hashes to
-the payment hash, and consumes the payment hash in the same replay store the
-x402 path uses. Whichever encoding arrives first is the one paid call; the
-other is refused as a duplicate. A token is good for that one call, not a
-session: a later request gets a fresh challenge. Because L402 uses the
-`Authorization` header for payment, this path is for keyless calls; a call
-with a bearer key uses its balance (section 5.3).
+`request` is base64url JSON: `{"amount":"21","currency":"sat","methodDetails":{"invoice":"lnbc210n1…","network":"mainnet","paymentHash":"…"}}`.
+The client pays and replays with `Authorization: Payment <base64url JSON>`
+echoing the challenge and carrying `{"preimage": "…"}`. A successful answer
+carries `Payment-Receipt` beside x402's `PAYMENT-RESPONSE`; refusals use the
+scheme's problem-JSON types.
 
-With an L402 client (for example `lnget`), the whole flow is one command with
-a cost ceiling: it reads the challenge, pays from its wallet if the price is
-under the ceiling, and replays. By hand:
+**One invoice, one paid call.** The invoice is the one in the x402 terms: its
+signed description hash is the x402 request hash. The challenge `id` is an
+HMAC over realm, method, intent, request, expires, and `digest`, with the
+method and URL in its HMAC-covered `opaque` map, so it needs no stored state.
+We always send `digest` (the request body's SHA-256), which the scheme makes
+optional: a proof bought for one body cannot pay for another. On replay the
+front recomputes the HMAC, checks `expires`, checks the digest against the
+replayed body, checks that the preimage hashes to the payment hash, and
+consumes the payment hash in the same replay store the x402 path uses, so a
+preimage spent one way cannot be spent the other. Because the scheme uses the
+`Authorization` header, it is for keyless calls; a key holder who pays per
+call uses x402, whose separate headers let the key and the payment both be
+bound.
+
+By hand, and with our CLI:
 
 ```sh
 curl -si $OA/messages -H "Content-Type: application/json" \
-  -d '{"message":"What is new in the Gym?"}' | grep -i '^www-authenticate: L402'
-# pay the invoice with any Lightning wallet that shows the preimage, then:
-curl -N $OA/messages -H "Content-Type: application/json" \
-  -H "Authorization: L402 $MACAROON:$PREIMAGE" \
-  -d '{"message":"What is new in the Gym?"}'
-```
+  -d '{"message":"What is new in the Gym?"}' | grep -i '^www-authenticate: Payment'
+# pay the invoice in request.methodDetails.invoice, then send
+# Authorization: Payment base64url({"challenge":{…echoed…},"payload":{"preimage":"…"}})
 
-And with our CLI (x402 headers, same invoice):
-
-```sh
 echo '{"message":"What is new in the Gym?"}' | openagents x402 fetch $OA/messages \
     --method POST --body - --max-msat 21000 --max-fee-msat 100 --json
 ```
 
-The machine-payments `Payment` authentication scheme
-(`WWW-Authenticate: Payment id="…", method="lightning", …`) carries the same
-idea; we add it as a third encoding of the same invoice once its
-specification settles.
+With `lnget`, the whole flow is one command with a cost ceiling.
+
+**Classic L402 is left out for now.** It needs macaroon minting and
+verification, and its tokens are reusable by design, so we would have to
+mint each one single-use. `lnget` already speaks the `Payment` scheme, so
+the `Payment` scheme covers it without macaroons. L402 can be added later as
+a third encoding of the same invoice if a client needs it.
+
+**Sessions for route-dependent and streamed calls.** A charge is paid before
+the router runs, so it must be a fixed price. The scheme's Lightning
+`session` intent
+([draft-lightning-session](https://paymentauth.org/draft-lightning-session-00.txt))
+fits what a message actually costs:
+
+1. The `402` also offers `intent="session"`: the client pays a deposit
+   invoice (a ceiling, such as 200 sats) and supplies a return invoice for
+   the refund.
+2. The answer streams; the front deducts the call's actual cost as it goes,
+   by route, model, plugin fees, and tokens.
+3. If the deposit runs low mid-stream, the front sends a
+   `payment-need-topup` event and holds the stream open until the client
+   tops up.
+4. When the stream ends, the unspent remainder is refunded to the return
+   invoice, and the usage record shows the actual cost.
+
+A session can also span several calls until it is closed. For x402 callers
+the same need waits on an upstream Lightning `escrow` flow (gap table below).
 
 ### 5.3 Accounts, keys, and a prepaid balance
 
@@ -721,7 +754,7 @@ the price list is set:
 | Endpoint | Kind | Price |
 | --- | --- | --- |
 | `POST /v1/messages`, `/v1/chat/completions` (`openagents-fast`) | Fixed | 5 sats per call |
-| `POST /v1/messages`, `/v1/chat/completions` (`openagents`, `openagents-coder`) | Fixed per call; dynamic with a balance | 21 sats per call, or the route's actual price |
+| `POST /v1/messages`, `/v1/chat/completions` (`openagents`, `openagents-coder`) | Fixed per charge; dynamic with a session or a balance | 21 sats per call, or the route's actual price |
 | `POST /v1/knowledge/search` | Fixed | 2 sats |
 | `POST /v1/plugins/{id}/invoke` | Dynamic | the endpoint price plus the plugin's declared fee |
 | A Coder run or eval | Dynamic | quoted on its offer, before confirmation |
@@ -736,8 +769,8 @@ Every price includes the Lightning service provider's forwarding fee
 | --- | --- |
 | The NIP pins upstream commit `4fcf836`. Upstream `main` is 16 commits later; none of them touch the v2 core, the HTTP transport, or the Lightning scheme. | Bump the pin in NIP-X402 and `crates/x402` (doc-only). |
 | The repository moved from `coinbase/x402` to `x402-foundation/x402`; the old `coinbase` `main` still lacks the Lightning scheme. | Link only `x402-foundation` (the NIP already does). |
-| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client reads our `402` but cannot pay it. | L402 clients pay today (section 5.2). For x402 SDKs, contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. |
-| Lightning supports only the `upfront` flow; upstream has `upto` and `escrow` flows on other networks, not Lightning. A message whose cost depends on the route cannot be priced exactly. | Fixed per-endpoint prices and priced offers for per-call payment; a prepaid balance (section 5.3) charges the actual route. Later, propose an `escrow`-flow Lightning variant upstream using hold invoices (settle a ceiling, charge the actual). |
+| The upstream SDKs ship no Lightning mechanism (the TypeScript mechanisms are aptos, avm, cardano, casper, concordium, evm, hedera, keeta, near, stellar, svm, tvm, and xrpl). A stock x402 client reads our `402` but cannot pay it. `Payment`-scheme Lightning clients pay today (section 5.2). For x402 SDKs, contribute an `lnbtc` mechanism to the upstream TypeScript, Python, and Go SDKs, ported from `crates/x402` and `nostr::x402`, with a payer adapter (NWC or LDK) that returns the preimage. |
+| Lightning supports only the `upfront` flow; upstream has `upto` and `escrow` flows on other networks, not Lightning. A message whose cost depends on the route cannot be priced exactly. Fixed prices for a charge; the `Payment` scheme's Lightning `session` intent (section 5.2) and a prepaid balance (section 5.3) charge the actual route. For x402 itself, later, propose an `escrow`-flow Lightning variant upstream using hold invoices (settle a ceiling, charge the actual). |
 | v1 clients use `X-PAYMENT` and `X-PAYMENT-RESPONSE`; the Lightning scheme is v2-only (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`). | Serve v2 only and say so in the 402 body. |
 | Upstream has an A2A transport; the Lightning request binding defines only `http:1` and `mcp:1`. | If we offer A2A, propose an `a2a:1` binding profile upstream first. |
 | A paid call that fails after settlement has no refund (spec and NIP). | Our policy: a failure before any answer is retried free under the same `Idempotency-Key`; no automatic refund. |
@@ -777,7 +810,7 @@ sees the right-hand columns.
 | `POST /v1/files` | HOST `artifact.put` on a computer; hosted, the front's store (G6) | |
 | `GET /v1/models` | No NIP: the front's own catalog; a self-hoster can describe it as [CAP](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-CAP.md) capabilities | |
 | `/v1/accounts`, `/v1/keys`, `/v1/balance`, `/v1/topups` | No NIP: account state belongs to whoever runs the front; top-ups are invoices from its wallet; automatic top-ups use [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md) Wallet Connect toward the caller's wallet | |
-| x402 or L402 on any endpoint | Upstream x402 `http:1` (NIP-X402 HTTP role) and L402, at the edge only | |
+| x402 or `Payment` scheme on any endpoint | Upstream x402 `http:1` (NIP-X402 HTTP role) and the HTTP `Payment` scheme's Lightning `charge` and `session` intents, at the edge only | NIP-X402 could later name the `Payment` scheme as a second HTTP binding of the same receiver and replay store. |
 
 Upstream NIPs underneath: [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
 events and signatures, [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md)
@@ -866,7 +899,9 @@ records ([#10161](https://github.com/OpenAgentsInc/openagents/issues/10161)).
 - The OpenAI-compatible `/v1/chat/completions` and `GET /v1/models`
   (`openagents`, `openagents-fast`) with sats pricing.
 - Accounts without signup, keys, `GET /v1/balance`, and Lightning top-ups.
-- L402 beside x402 on every `402`.
+- The `Payment` scheme (Lightning `charge`) beside x402 on every `402`, one
+  module in `crates/x402` sharing the replay store and wallet, tested against
+  `lnget` as the reference client. The `session` intent follows in phase 2.
 - User-set limits on accounts and keys (section 5.4), with `limit_reached`.
 - The conventions in section 3: `x-request-id`, `X-Client-Request-Id`,
   `openagents-processing-ms`, `openagents-version`, rate-limit headers for
