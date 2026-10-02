@@ -1776,8 +1776,10 @@ fn changed_by(worktree: &Path, from: &str, to: &str) -> Vec<FileChange> {
             status: status.to_owned(),
             added: added.parse().ok(),
             removed: removed.parse().ok(),
+            ..FileChange::default()
         });
     }
+    coder_events::attach_patches(&mut out, &super::review::patch(worktree, from, Some(to)));
     out
 }
 

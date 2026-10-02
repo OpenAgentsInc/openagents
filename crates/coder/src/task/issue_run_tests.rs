@@ -180,6 +180,7 @@ fn result() -> CoderEvent {
             status: "modified".into(),
             added: Some(3),
             removed: Some(1),
+            ..FileChange::default()
         }],
         insertions: 0,
         deletions: 0,

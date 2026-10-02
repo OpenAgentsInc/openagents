@@ -191,17 +191,20 @@ fn run_rows() -> Vec<RunRow> {
                     path: "crates/coder-terminal/src/wrap.rs".into(),
                     added: Some(12),
                     removed: Some(3),
+                    ..FileRow::default()
                 },
                 FileRow {
                     status: "A".into(),
                     path: "crates/coder-terminal/tests/wrap.rs".into(),
                     added: None,
                     removed: None,
+                    ..FileRow::default()
                 },
             ],
             insertions: 40,
             deletions: 3,
             worktree: "/Users/me/work/openagents-coder-1".into(),
+            expanded: false,
         },
         RunRow::Failed {
             text: "the provider refused the request".into(),

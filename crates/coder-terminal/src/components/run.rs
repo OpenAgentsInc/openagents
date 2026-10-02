@@ -52,13 +52,18 @@ pub enum RunRow {
     /// The turn finished: "Coder finished · {n} file(s) changed · +{ins}
     /// -{del}" (Full), the summary (ThreeQuarters, wrapped), each file
     /// "  {status} {path} (+a -r)" (Half; "?" when unknown), then
-    /// "worktree {path}" (Half).
+    /// "worktree {path}" (Half). Collapsed, a file with a patch adds
+    /// "Press Ctrl+O to see the changes." (Half) at the end; `expanded`,
+    /// each file's patch follows its row, clipped rather than wrapped,
+    /// its added and removed lines at ThreeQuarters and the rest at Half,
+    /// then "{n} more lines not shown" when the patch was cut.
     Result {
         summary: String,
         files: Vec<FileRow>,
         insertions: u64,
         deletions: u64,
         worktree: String,
+        expanded: bool,
     },
     /// The run failed, in its words (Full).
     Failed { text: String },
@@ -98,13 +103,20 @@ pub const GROUP_MARK: &str = "◈ ";
 pub const CALL_MARK: &str = "◆ ";
 
 /// One changed file in a finished run.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileRow {
     pub status: String,
     pub path: String,
     pub added: Option<u64>,
     pub removed: Option<u64>,
+    /// The file's unified diff from its first hunk, when the run sent one.
+    pub patch: Option<String>,
+    /// Lines of the patch the run left out.
+    pub cut: u64,
 }
+
+/// The hint under a collapsed result whose files carry patches.
+pub const SHOW_CHANGES: &str = "Press Ctrl+O to see the changes.";
 
 /// Transcript lines for one run row at `width`, indented two cells under
 /// the turn, long text wrapped with a hanging indent, output tail lines
@@ -180,6 +192,7 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
             insertions,
             deletions,
             worktree,
+            expanded,
         } => {
             let count = files.len();
             let noun = if count == 1 { "file" } else { "files" };
@@ -199,9 +212,19 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
                     count(file.removed)
                 );
                 block.text(&mut out, INDENT, "", &row, half);
+                if *expanded {
+                    block.patch(&mut out, file);
+                }
             }
             if !worktree.is_empty() {
                 block.text(&mut out, 0, "", &format!("worktree {worktree}"), half);
+            }
+            if !*expanded
+                && files
+                    .iter()
+                    .any(|file| file.patch.is_some() || file.cut > 0)
+            {
+                block.text(&mut out, 0, "", SHOW_CHANGES, half);
             }
         }
         RunRow::Failed { text } => block.text(&mut out, 0, "", text, full),
@@ -368,6 +391,24 @@ impl Block {
         }
     }
 
+    /// A changed file's patch under its row, one clipped row per line,
+    /// then how many lines were left out.
+    fn patch(&self, out: &mut Vec<Line<'static>>, file: &FileRow) {
+        for line in file.patch.as_deref().unwrap_or("").lines() {
+            let at = if line.starts_with(['+', '-']) {
+                Intensity::ThreeQuarters
+            } else {
+                Intensity::Half
+            };
+            self.clipped(out, INDENT * 2, "", line, at);
+        }
+        if file.cut > 0 {
+            let noun = if file.cut == 1 { "line" } else { "lines" };
+            let note = format!("{} more {noun} not shown", file.cut);
+            self.clipped(out, INDENT * 2, "", &note, Intensity::Half);
+        }
+    }
+
     /// `mark` then `text` on one row, clipped with "…" rather than wrapped.
     fn clipped(
         &self,
@@ -466,6 +507,47 @@ mod tests {
     }
 
     #[test]
+    fn a_result_shows_its_patch_only_when_expanded() {
+        let mut row = RunRow::Result {
+            summary: String::new(),
+            files: vec![FileRow {
+                status: "modified".into(),
+                path: "a.rs".into(),
+                added: Some(1),
+                removed: Some(1),
+                patch: Some("@@ -1 +1 @@\n-old\n+new".into()),
+                cut: 1,
+            }],
+            insertions: 1,
+            deletions: 1,
+            worktree: String::new(),
+            expanded: false,
+        };
+        assert_eq!(
+            text(&row, 80),
+            [
+                "  Coder finished · 1 file changed · +1 -1",
+                "    modified a.rs (+1 -1)",
+                "  Press Ctrl+O to see the changes.",
+            ]
+        );
+        if let RunRow::Result { expanded, .. } = &mut row {
+            *expanded = true;
+        }
+        assert_eq!(
+            text(&row, 80),
+            [
+                "  Coder finished · 1 file changed · +1 -1",
+                "    modified a.rs (+1 -1)",
+                "      @@ -1 +1 @@",
+                "      -old",
+                "      +new",
+                "      1 more line not shown",
+            ]
+        );
+    }
+
+    #[test]
     fn nothing_is_wider_than_the_width() {
         let row = RunRow::Result {
             summary: "a summary of the change".into(),
@@ -474,10 +556,13 @@ mod tests {
                 path: "crates/a/very/long/path/to/a/file.rs".into(),
                 added: Some(3),
                 removed: None,
+                patch: Some("@@ -1 +1 @@\n-a very long removed line of code\n+x".into()),
+                cut: 12,
             }],
             insertions: 3,
             deletions: 0,
             worktree: "/tmp/worktree".into(),
+            expanded: true,
         };
         for width in [0u16, 1, 2, 5, 12, 40] {
             for line in lines(&row, width, Ladder::default()) {

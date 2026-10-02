@@ -115,7 +115,7 @@ it.
 | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
 | Ctrl+T | The thread list. |
 | Ctrl+Y | Copy the last reply. Press again for each code block in it, last first. It copies through the terminal (OSC 52), so it works over SSH; in tmux, `set-clipboard on`. |
-| Ctrl+O | Expand every Coder run's tool calls to each call and its output, or condense them again. |
+| Ctrl+O | Expand every Coder run's tool calls to each call and its output, and each run result's changed files to their diffs, or condense them again. |
 | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
 | PageUp, PageDown | Scroll the transcript. |
 | Up, Down | Move in the message, then through your earlier messages, kept across restarts. |

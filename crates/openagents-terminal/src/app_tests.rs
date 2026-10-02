@@ -687,3 +687,46 @@ fn ctrl_y_copies_the_last_reply_then_its_code_blocks() {
     app.key(&key(KeyCode::Char('x')), 80);
     assert_eq!(copy(&mut app), vec![Action::Copy(reply.into())]);
 }
+
+/// A run's result shows its files collapsed; Ctrl+O shows each file's
+/// patch under it (#10152), and condenses it again.
+#[test]
+fn a_results_changes_expand_with_ctrl_o() {
+    use openagents_chat::coder_events::{FileChange, Finished};
+    let mut app = app();
+    app.event(line(1, started()));
+    app.event(line(
+        2,
+        CoderEvent::Result(Finished {
+            turn: 1,
+            summary: "I renamed it.".into(),
+            files_changed: vec![FileChange {
+                path: "src/lib.rs".into(),
+                status: "modified".into(),
+                added: Some(1),
+                removed: Some(1),
+                patch: Some("@@ -1 +1 @@\n-pub fn old() {}\n+pub fn new() {}".into()),
+                patch_cut: 0,
+            }],
+            insertions: 1,
+            deletions: 1,
+            worktree: "/w".into(),
+            trajectory: "/t".into(),
+            issue: None,
+        }),
+    ));
+    let collapsed = shown(&mut app);
+    assert!(
+        collapsed.contains("modified src/lib.rs (+1 -1)"),
+        "{collapsed}"
+    );
+    assert!(collapsed.contains("Press Ctrl+O to see the changes."));
+    assert!(!collapsed.contains("pub fn new"));
+    app.key(&ctrl('o'), 80);
+    let expanded = shown(&mut app);
+    assert!(expanded.contains("-pub fn old() {}"), "{expanded}");
+    assert!(expanded.contains("+pub fn new() {}"));
+    assert!(!expanded.contains("Press Ctrl+O"));
+    app.key(&ctrl('o'), 80);
+    assert_eq!(shown(&mut app), collapsed);
+}

@@ -259,6 +259,28 @@ fn counts(worktree: &Path, base: &str, tree: &str) -> Result<Vec<FileCount>, Str
     Ok(files)
 }
 
+/// The most bytes of a diff read to give a result's files their patches.
+const PATCH_BYTES: usize = 512 * 1024;
+
+/// The unified diff from `base` to `to` in `worktree`, or to the
+/// worktree's content now (new files included) when `to` is `None`,
+/// bounded, for [`coder_events::attach_patches`]. Empty when Git cannot
+/// produce it.
+///
+/// [`coder_events::attach_patches`]: openagents_chat::coder_events::attach_patches
+pub(crate) fn patch(worktree: &Path, base: &str, to: Option<&str>) -> String {
+    let tree = match to {
+        Some(to) => to.to_owned(),
+        None => match head(worktree) {
+            Ok(head) => head.tree,
+            Err(_) => return String::new(),
+        },
+    };
+    bounded_diff(worktree, base, &tree, PATCH_BYTES)
+        .map(|(diff, _)| diff)
+        .unwrap_or_default()
+}
+
 /// The unified diff from `base` to `tree`, kept up to `max` bytes as it
 /// streams and cut at a line.
 fn bounded_diff(

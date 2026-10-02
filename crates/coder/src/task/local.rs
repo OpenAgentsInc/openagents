@@ -1545,6 +1545,7 @@ pub fn changes(worktree: &Path, base: &str) -> Vec<FileChange> {
                 .unwrap_or_else(|| "modified".into()),
             added: added.parse().ok(),
             removed: removed.parse().ok(),
+            ..FileChange::default()
         });
     }
     for path in git_out(worktree, &["ls-files", "--others", "--exclude-standard"])
@@ -1564,9 +1565,11 @@ pub fn changes(worktree: &Path, base: &str) -> Vec<FileChange> {
             status: "added".into(),
             added: lines,
             removed: lines.map(|_| 0),
+            ..FileChange::default()
         });
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
+    coder_events::attach_patches(&mut out, &super::review::patch(worktree, base, None));
     out
 }
 
@@ -3166,20 +3169,34 @@ mod tests {
             cut.completeness,
             coder_host::access::review::Completeness::Truncated { .. }
         ));
+        // Each file carries its patch from its first hunk, new files too.
+        assert_eq!(found[0].patch.as_deref(), Some("@@ -1 +1,2 @@\n one\n+two"));
         assert_eq!(
-            found,
+            found[1].patch.as_deref(),
+            Some("@@ -0,0 +1,2 @@\n+x\n+y\n\\ No newline at end of file")
+        );
+        assert_eq!(
+            found
+                .into_iter()
+                .map(|file| FileChange {
+                    patch: None,
+                    ..file
+                })
+                .collect::<Vec<_>>(),
             vec![
                 FileChange {
                     path: "a.txt".into(),
                     status: "modified".into(),
                     added: Some(1),
-                    removed: Some(0)
+                    removed: Some(0),
+                    ..FileChange::default()
                 },
                 FileChange {
                     path: "new.txt".into(),
                     status: "added".into(),
                     added: Some(2),
-                    removed: Some(0)
+                    removed: Some(0),
+                    ..FileChange::default()
                 },
             ]
         );

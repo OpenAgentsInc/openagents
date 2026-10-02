@@ -172,11 +172,14 @@ pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
                     path: file.path.clone(),
                     added: file.added,
                     removed: file.removed,
+                    patch: file.patch.clone(),
+                    cut: file.patch_cut,
                 })
                 .collect(),
             insertions: result.insertions,
             deletions: result.deletions,
             worktree: result.worktree.clone(),
+            expanded: false,
         },
         CoderEvent::Failure(_) => RunRow::Failed {
             text: coder_events::text(event).unwrap_or_default(),

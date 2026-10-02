@@ -479,12 +479,16 @@ impl App {
         })]
     }
 
-    /// Expand every stretch of tool calls, or condense them all again.
+    /// Expand every stretch of tool calls and every run result's changes,
+    /// or condense them all again.
     pub fn toggle_tools(&mut self) {
         self.expanded = !self.expanded;
         for row in self.transcript.lines_mut() {
-            if let Row::Tools { expanded, .. } = row {
-                *expanded = self.expanded;
+            match row {
+                Row::Tools { expanded, .. } | Row::Run(RunRow::Result { expanded, .. }) => {
+                    *expanded = self.expanded
+                }
+                _ => {}
             }
         }
     }
@@ -685,7 +689,10 @@ impl App {
             });
             return;
         }
-        if let Some(row) = rows::run_row(&line.event) {
+        if let Some(mut row) = rows::run_row(&line.event) {
+            if let RunRow::Result { expanded, .. } = &mut row {
+                *expanded = self.expanded;
+            }
             self.push(Row::Run(row));
         }
     }
@@ -851,7 +858,7 @@ pub fn help() -> Card {
         ),
         (
             "Ctrl+O".to_owned(),
-            "expand or condense tool calls".to_owned(),
+            "expand or condense tool calls and a run's changes".to_owned(),
         ),
         (
             "Ctrl+S".to_owned(),

@@ -605,7 +605,7 @@ impl Progress {
 }
 
 /// One file the turn changed in the worktree.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileChange {
     pub path: String,
     /// `added`, `modified`, `deleted`, or `renamed`.
@@ -613,6 +613,78 @@ pub struct FileChange {
     /// Lines added and removed; `None` for a binary file.
     pub added: Option<u64>,
     pub removed: Option<u64>,
+    /// The file's unified diff from its first hunk on, at most
+    /// [`PATCH_LINES`] lines; `None` when no patch was read. Older
+    /// clients ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<String>,
+    /// Lines of the patch left out to keep the event small.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub patch_cut: u64,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+/// The most lines of one file's patch a [`FileChange`] carries.
+pub const PATCH_LINES: usize = 400;
+/// The most patch lines one turn's [`FileChange`]s carry together.
+pub const PATCH_LINES_TOTAL: usize = 2_000;
+
+/// Gives each of `changes` its patch from `diff`, a whole unified diff
+/// (`git diff`) of the same change: the lines from the file's first hunk
+/// on, cut at [`PATCH_LINES`] per file and [`PATCH_LINES_TOTAL`] in all,
+/// with the count of lines left out. A file `diff` does not name, or a
+/// binary file, keeps no patch.
+pub fn attach_patches(changes: &mut [FileChange], diff: &str) {
+    let patches = split_diff(diff);
+    let mut left = PATCH_LINES_TOTAL;
+    for change in changes.iter_mut() {
+        let Some(lines) = patches
+            .iter()
+            .find(|(path, _)| *path == change.path)
+            .map(|(_, lines)| lines)
+        else {
+            continue;
+        };
+        if lines.is_empty() {
+            continue;
+        }
+        let keep = lines.len().min(PATCH_LINES).min(left);
+        left -= keep;
+        change.patch = (keep > 0).then(|| lines[..keep].join("\n"));
+        change.patch_cut = (lines.len() - keep) as u64;
+    }
+}
+
+/// A whole unified diff split by file: each file's new path (its old one
+/// when deleted) and its lines from the first hunk header on.
+fn split_diff(diff: &str) -> Vec<(String, Vec<&str>)> {
+    let mut out: Vec<(String, Vec<&str>)> = Vec::new();
+    let mut in_hunks = false;
+    for line in diff.lines() {
+        if let Some(header) = line.strip_prefix("diff --git ") {
+            let path = header
+                .rsplit_once(" b/")
+                .map_or(header, |(_, path)| path)
+                .trim_matches('"');
+            out.push((path.to_owned(), Vec::new()));
+            in_hunks = false;
+            continue;
+        }
+        let Some((_, lines)) = out.last_mut() else {
+            continue;
+        };
+        if line.starts_with("@@") {
+            in_hunks = true;
+        }
+        if in_hunks {
+            lines.push(line);
+        }
+    }
+    out
 }
 
 /// The turn finished.
@@ -1535,6 +1607,67 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn change(path: &str) -> FileChange {
+        FileChange {
+            path: path.into(),
+            status: "modified".into(),
+            added: Some(1),
+            removed: Some(1),
+            ..FileChange::default()
+        }
+    }
+
+    #[test]
+    fn each_file_gets_its_own_patch_from_its_first_hunk() {
+        let diff = "diff --git a/a.rs b/a.rs\nindex 1..2 100644\n--- a/a.rs\n+++ b/a.rs\n\
+                    @@ -1 +1 @@\n-old\n+new\n\
+                    diff --git a/b c.md b/b c.md\nnew file mode 100644\n--- /dev/null\n\
+                    +++ b/b c.md\n@@ -0,0 +1 @@\n+hi\n\
+                    diff --git a/pic.png b/pic.png\nBinary files differ\n";
+        let mut changes = vec![
+            change("a.rs"),
+            change("b c.md"),
+            change("pic.png"),
+            change("gone"),
+        ];
+        attach_patches(&mut changes, diff);
+        assert_eq!(changes[0].patch.as_deref(), Some("@@ -1 +1 @@\n-old\n+new"));
+        assert_eq!(changes[1].patch.as_deref(), Some("@@ -0,0 +1 @@\n+hi"));
+        assert_eq!(changes[2].patch, None);
+        assert_eq!(changes[3].patch, None);
+        assert!(changes.iter().all(|c| c.patch_cut == 0));
+    }
+
+    #[test]
+    fn a_long_patch_is_cut_and_says_how_much() {
+        let body: String = (0..PATCH_LINES + 50).map(|n| format!("+{n}\n")).collect();
+        let one = format!("diff --git a/a b/a\n@@ -0,0 +1 @@\n{body}");
+        let diff = (0..6)
+            .map(|n| one.replace("a/a b/a", &format!("a/{n} b/{n}")))
+            .collect::<String>();
+        let mut changes: Vec<FileChange> = (0..6).map(|n| change(&n.to_string())).collect();
+        attach_patches(&mut changes, &diff);
+        assert_eq!(
+            changes[0].patch.as_deref().unwrap().lines().count(),
+            PATCH_LINES
+        );
+        assert_eq!(changes[0].patch_cut, 51);
+        let kept: usize = changes
+            .iter()
+            .map(|c| c.patch.as_deref().map_or(0, |p| p.lines().count()))
+            .sum();
+        assert_eq!(kept, PATCH_LINES_TOTAL);
+        assert_eq!(changes[5].patch_cut, (PATCH_LINES + 51) as u64);
+    }
+
+    #[test]
+    fn an_old_result_without_patches_still_reads() {
+        let old = json!({"path": "a.rs", "status": "modified", "added": 1, "removed": 0});
+        let read: FileChange = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(read.patch, None);
+        assert_eq!(serde_json::to_value(&read).unwrap(), old);
+    }
+
     /// Grok Build's tool calls as the owner saw them on 2026-10-01
     /// (#10113): kind `other`, its typed arguments, and its own title. Each
     /// is a readable step line, and an unknown tool a short one, never JSON.
@@ -1827,6 +1960,7 @@ mod tests {
                 status: "added".into(),
                 added: Some(9),
                 removed: Some(0),
+                ..FileChange::default()
             }],
             "/w",
             "/s/t.1.atif.jsonl",
@@ -2282,6 +2416,7 @@ mod tests {
                         status: "added".into(),
                         added: Some(3),
                         removed: Some(0),
+                        ..FileChange::default()
                     }],
                     insertions: 3,
                     deletions: 0,
