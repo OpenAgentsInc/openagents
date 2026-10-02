@@ -430,10 +430,7 @@ fn the_welcome_card_is_three_short_facts() {
     let shown = Row::Card(card)
         .text(80, Ladder::new(Colors::None))
         .join("\n");
-    assert!(
-        shown.contains(&format!("OpenAgents v{}", env!("CARGO_PKG_VERSION"))),
-        "{shown}"
-    );
+    assert!(shown.contains("OpenAgents dev build"), "{shown}");
     assert!(shown.contains("Project  demo"), "{shown}");
     // Only the agents that can run are named, without a word of state.
     assert!(shown.contains("Agents   Codex"), "{shown}");

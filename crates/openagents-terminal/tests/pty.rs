@@ -645,7 +645,7 @@ fn the_screen_end_to_end() {
     // The welcome card: the version, the project, the agents, the chats.
     session.wait(
         "the welcome card",
-        &["OpenAgents v", "demo", "Codex", "this computer"],
+        &["OpenAgents dev build", "demo", "Codex", "this computer"],
     );
 
     // A question streams its answer, then the whole reply shows.
@@ -878,7 +878,11 @@ fn live() {
             std::env::var_os("RUSTUP_HOME").unwrap_or_else(|| real.join(".rustup").into()),
         );
     let mut session = spawn(command);
-    session.wait_for("the welcome card", &["OpenAgents v", "scratch"], 600);
+    session.wait_for(
+        "the welcome card",
+        &["OpenAgents dev build", "scratch"],
+        600,
+    );
     session.typed(&question);
     session.wait_for("the reply streaming", &["replying"], 60);
     let deadline = Instant::now() + Duration::from_secs(180);

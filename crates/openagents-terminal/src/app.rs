@@ -1213,7 +1213,7 @@ pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card
         Kind::Computer => "another computer's",
     };
     Card {
-        title: format!("OpenAgents v{}", env!("CARGO_PKG_VERSION")),
+        title: title(),
         rows: vec![
             ("Project".into(), project),
             ("Agents".into(), agents),
@@ -1287,3 +1287,14 @@ pub fn help() -> Card {
 #[cfg(test)]
 #[path = "app_tests.rs"]
 mod tests;
+
+/// The welcome card's title: the version for a published release, which
+/// `scripts/release/terminal.sh` builds with `OPENAGENTS_RELEASE=1`, and
+/// "dev build" for any other build, so a local build never passes for the
+/// released version (owner, 2026-10-02).
+fn title() -> String {
+    match option_env!("OPENAGENTS_RELEASE") {
+        Some("1") => format!("OpenAgents v{}", env!("CARGO_PKG_VERSION")),
+        _ => "OpenAgents dev build".to_owned(),
+    }
+}

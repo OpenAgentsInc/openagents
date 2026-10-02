@@ -613,6 +613,7 @@ for platform in $targets; do
     set -- cargo build --target "$triple"
   fi
   if ! (cd "$source" && CODER_BUILD_COMMIT="$sha" CODER_BUILD_DIRTY=clean \
+    OPENAGENTS_RELEASE=1 \
     MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}" \
     CARGO_TARGET_DIR="$target_dir" \
     "$@" --release --locked -p "$product_package" --bin "$product_bin" \
