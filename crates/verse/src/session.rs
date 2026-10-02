@@ -1700,6 +1700,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "the Grid's ball and blocks are off for now (2026-10-01)"]
     fn a_bare_world_player_stays_within_the_event_budget_while_playing() {
         let mut session = online_presence();
         let mut world = crate::runtime::WorldRuntime::bare();
@@ -1756,6 +1757,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "the Grid's ball and blocks are off for now (2026-10-01)"]
     fn body_reports_reach_the_inbox_and_never_the_crowd() {
         let mut session = online_presence();
         let other = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();

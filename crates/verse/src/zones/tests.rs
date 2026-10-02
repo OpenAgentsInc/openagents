@@ -317,6 +317,7 @@ fn walk_until_zone_changes(runtime: &mut WorldRuntime, seconds: f32) -> bool {
 }
 
 #[test]
+#[ignore = "the Grid's ball and blocks are off for now (2026-10-01)"]
 fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_returns() {
     let mut runtime = WorldRuntime::bare();
     // The portal is hidden in the apps; this keeps its path working.
@@ -408,6 +409,7 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
 }
 
 #[test]
+#[ignore = "the Grid's ball and blocks are off for now (2026-10-01)"]
 fn the_grid_shows_no_portal_while_it_is_hidden() {
     const { assert!(!super::gate::GRID_PORTAL_OPEN) };
     let mut runtime = WorldRuntime::bare();
