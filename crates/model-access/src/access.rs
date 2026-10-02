@@ -9,7 +9,7 @@
 //! Under [`Mode::Mine`] the doors hold only the person's keys, so failing
 //! over only ever means another key of theirs.
 
-use crate::{ApiKey, Failure, Keys, Mode, Payer, Provider};
+use crate::{ApiKey, Failure, KeyPrint, Keys, Mode, Paid, Payer, Provider};
 
 /// The embedding model every provider serves with the same vectors.
 pub const EMBEDDING_MODEL: &str = "openai/text-embedding-3-small";
@@ -292,6 +292,29 @@ impl Access {
         })
     }
 
+    /// Who pays for the calls this access makes, as a run record keeps
+    /// it: [`Paid::Ours`] with no keys, or [`Paid::Theirs`] with each of
+    /// the person's keys that may pay (provider and fingerprint, in
+    /// [`crate::PROVIDERS`] order), never a key.
+    #[must_use]
+    pub fn paid(&self) -> (Paid, Vec<KeyPrint>) {
+        if !self.is_mine() {
+            return (Paid::Ours, Vec::new());
+        }
+        let prints = self
+            .keys
+            .providers()
+            .into_iter()
+            .filter_map(|provider| {
+                self.keys.get(provider).map(|key| KeyPrint {
+                    provider,
+                    fingerprint: key.fingerprint(),
+                })
+            })
+            .collect();
+        (Paid::Theirs, prints)
+    }
+
     /// The payer a record names for a call through `door`, or ours.
     #[must_use]
     pub fn payer(&self, door: Option<&ChatDoor>) -> Payer {
@@ -322,6 +345,32 @@ mod tests {
             Doors::Theirs(doors) => doors.into_iter().map(|d| (d.provider, d.model)).collect(),
             Doors::Ours => panic!("ours under mine"),
         }
+    }
+
+    #[test]
+    fn a_record_names_who_paid_and_each_key_by_fingerprint_only() {
+        let stored = keys(&[Provider::TypeSafe, Provider::OpenRouter]);
+        assert_eq!(
+            Access::new(Mode::Ours, stored.clone(), &Keys::none()).paid(),
+            (Paid::Ours, Vec::new())
+        );
+        let (paid, prints) = Access::new(Mode::Mine, stored, &Keys::none()).paid();
+        assert_eq!(paid, Paid::Theirs);
+        assert_eq!(
+            prints,
+            vec![
+                KeyPrint {
+                    provider: Provider::OpenRouter,
+                    fingerprint: crate::fingerprint("key-openrouter"),
+                },
+                KeyPrint {
+                    provider: Provider::TypeSafe,
+                    fingerprint: crate::fingerprint("key-typesafe"),
+                },
+            ]
+        );
+        let json = serde_json::to_string(&(paid, prints)).unwrap();
+        assert!(json.contains("theirs") && !json.contains("key-openrouter"));
     }
 
     #[test]

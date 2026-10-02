@@ -1656,7 +1656,25 @@ impl Client {
             admission,
             crate::route::now_ms(),
         )
-        .ok();
+        .ok()
+        .map(|mut record| {
+            // BYOK (#10176): the keys that paid for this message, by
+            // fingerprint only.
+            record.payer_keys = reply
+                .meta
+                .as_ref()
+                .map(|meta| {
+                    meta.payer_keys
+                        .iter()
+                        .map(|key| route_contract::record::PayerKey {
+                            provider: key.provider.word().to_owned(),
+                            fingerprint: key.fingerprint.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            record
+        });
         self.keep(id);
         match &result {
             RouteResult::Coder { .. } if run && !elsewhere => {

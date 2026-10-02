@@ -276,6 +276,37 @@ impl Payer {
     }
 }
 
+/// Who paid, as a run record or a route record keeps it (BYOK section 8):
+/// `ours`, or `theirs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Paid {
+    /// OpenAgents' keys, or a call that cost nobody's key.
+    Ours,
+    /// The person's own keys.
+    Theirs,
+}
+
+impl Paid {
+    /// The record's word: `ours` or `theirs`.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Paid::Ours => "ours",
+            Paid::Theirs => "theirs",
+        }
+    }
+}
+
+/// One of the person's keys a record names: the provider and the key's
+/// [`fingerprint`], never the key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyPrint {
+    pub provider: Provider,
+    pub fingerprint: String,
+}
+
 /// Why one of the person's keys could not make a call, read from the
 /// error's code and never from the provider's words.
 #[derive(Clone, Debug, PartialEq, Eq)]

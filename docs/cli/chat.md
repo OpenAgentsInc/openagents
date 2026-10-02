@@ -575,9 +575,15 @@ request is its record. A record holds:
   `completed`/`failed` for an answer or refusal);
 - each Coder task the route started (one, or a dispatch plan's N), with its
   lifecycle projected from the task owner's `(status, execution, checks)`,
-  the run's cost in micro-dollars when known, its wall time, and its
-  retained artifact and trace digests;
-- the route's own wall time, received to settled.
+  the run's cost in micro-dollars when known, its wall time, its
+  retained artifact and trace digests, and who paid for its model calls
+  (`payer`: `ours` or `theirs`, and `payer_keys`, each key's provider and
+  fingerprint, from the run's result record);
+- the route's own wall time, received to settled;
+- under BYOK `mine`, `payer_keys`: the person's keys the message went with,
+  by provider and fingerprint, never a key. The snapshot's `money` then
+  says `byok: mine` and names their providers as the payers of routing,
+  decisions, and the chat model (#10176).
 
 Cost is recorded, never shown. A request whose record already names its
 tasks is followed by `run-coder`, never started again, and a confirmed

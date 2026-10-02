@@ -1054,6 +1054,13 @@ pub struct Meta {
     /// what this computer does next, never read from the reply's text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin: Option<crate::plugin_flow::Flow>,
+    /// The person's own keys this turn went with (BYOK `mine`, #10176),
+    /// by provider and fingerprint, never the key: the worker ran the
+    /// turn's model and Jev on them. Empty when it ran on ours. This
+    /// computer sets it when it seals the keys; nothing the worker sends
+    /// sets it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payer_keys: Vec<model_access::KeyPrint>,
 }
 
 impl Meta {

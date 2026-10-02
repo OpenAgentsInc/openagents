@@ -279,6 +279,15 @@ pub struct ResultRecord {
     /// Jev's part.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jev_microusd: Option<u64>,
+    /// Who paid for the run's model calls (BYOK, #10176): `ours` or
+    /// `theirs`, as the run's process held it. Absent on records written
+    /// before it was kept, and on a run its owner ended.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer: Option<model_access::Paid>,
+    /// Under `theirs`, each of the person's keys that may have paid: the
+    /// provider and the key's fingerprint, never the key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payer_keys: Vec<model_access::KeyPrint>,
 }
 
 /// What a run cost, by part, as its engine reported or priced it. A part
@@ -342,6 +351,14 @@ impl ResultRecord {
         self.cost_microusd = cost.total_microusd();
         self.engine_microusd = cost.engine_microusd;
         self.jev_microusd = cost.jev_microusd;
+    }
+
+    /// Records who pays for this process's model calls
+    /// ([`model_access::current`]).
+    pub fn paid_by(&mut self, access: &model_access::Access) {
+        let (payer, keys) = access.paid();
+        self.payer = Some(payer);
+        self.payer_keys = keys;
     }
 
     /// The cost these fields record, when they agree with each other.
@@ -744,6 +761,8 @@ impl Store {
                 cost_microusd: None,
                 engine_microusd: None,
                 jev_microusd: None,
+                payer: None,
+                payer_keys: Vec::new(),
             };
             self.record(&owner, Event::Result { result }, run.epoch)?
         };
@@ -1129,6 +1148,8 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             cost_microusd: None,
             engine_microusd: None,
             jev_microusd: None,
+            payer: None,
+            payer_keys: Vec::new(),
         }
     } else {
         ResultRecord {
@@ -1146,8 +1167,11 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             cost_microusd: None,
             engine_microusd: None,
             jev_microusd: None,
+            payer: None,
+            payer_keys: Vec::new(),
         }
     };
+    result.paid_by(&model_access::current());
     let after = Snapshot::observe(&workspace);
     if after.is_complete() {
         result.candidate_snapshot = Some(after.digest());

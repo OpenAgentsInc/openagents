@@ -709,6 +709,8 @@ impl Relay {
         let access = model_access::current();
         if access.is_mine() {
             seal_payer(&mut payload, access.keys(), &key).map_err(Failure::Transport)?;
+            // The turn's records name the keys that paid, never a key.
+            lock(&reply).meta.payer_keys = access.paid().1;
         }
         let content = nip44::encrypt(
             &payload.to_string(),

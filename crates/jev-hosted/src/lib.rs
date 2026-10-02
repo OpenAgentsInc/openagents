@@ -895,6 +895,7 @@ pub fn served(
     result: Result<&jev::SystemOneResponse, &jev::Error>,
 ) {
     record.via = Some(via(client).to_string());
+    paid(record, client, &model_access::current());
     match result {
         Ok(response) => {
             record.service = response.service();
@@ -917,6 +918,29 @@ pub fn served(
                 record.service = Some(json!({"exchange": service}));
             }
         }
+    }
+}
+
+/// Name who paid for a decision call (BYOK, #10176): under `mine`, the
+/// person's key that Jev is asked on first (its provider and fingerprint,
+/// never the key); through the hosted decision service, ours. A direct or
+/// local door outside `mine` says nothing.
+pub fn paid(record: &mut atif::Decision, client: &jev::Client, access: &model_access::Access) {
+    use model_access::Provider;
+    if access.is_mine() && client.base_url().trim_end_matches('/') == DOOR {
+        // The order `model_access::Access::decisions` asks in.
+        let first = [Provider::TypeSafe, Provider::Vercel, Provider::OpenRouter]
+            .into_iter()
+            .find_map(|provider| access.keys().get(provider).map(|key| (provider, key)));
+        if let Some((provider, key)) = first {
+            record.payer = Some("theirs".to_string());
+            record.payer_provider = Some(provider.word().to_string());
+            record.payer_fingerprint = Some(key.fingerprint());
+            return;
+        }
+    }
+    if client.service().is_some() {
+        record.payer = Some("ours".to_string());
     }
 }
 
@@ -1258,6 +1282,47 @@ mod tests {
         // backups; no fallback door here.
         let env = keys(&[("AI_GATEWAY_API_KEY", "vck"), (HOSTED_VAR, "off")]);
         assert!(resolve_with_fallbacks(&env, &dir, &door, &tune, None).is_err());
+    }
+
+    /// BYOK (#10176): a decision on the person's key names the provider
+    /// and fingerprint of the key asked first, never the key; through the
+    /// hosted service it is ours; a door of its own says nothing.
+    #[test]
+    fn a_decision_record_names_who_paid_by_fingerprint_only() {
+        let mut keys = model_access::Keys::none();
+        keys.insert(
+            model_access::Provider::OpenRouter,
+            model_access::ApiKey::new("sk-or-secret"),
+        );
+        keys.insert(
+            model_access::Provider::Vercel,
+            model_access::ApiKey::new("vck-secret"),
+        );
+        let mine = model_access::Access::theirs(keys);
+        let theirs = theirs(&mine, &DOOR_PIN, &|config| config).unwrap().unwrap();
+        let mut record = atif::Decision::default();
+        paid(&mut record, &theirs.client, &mine);
+        assert_eq!(record.payer.as_deref(), Some("theirs"));
+        assert_eq!(record.payer_provider.as_deref(), Some("vercel"));
+        assert_eq!(
+            record.payer_fingerprint,
+            Some(model_access::fingerprint("vck-secret"))
+        );
+        let call = record.call();
+        assert_eq!(call.extra["payer"], "theirs");
+        assert!(!format!("{call:?}").contains("secret"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let hosted = resolve(&no_env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        let mut record = atif::Decision::default();
+        paid(&mut record, &hosted.client, &model_access::Access::ours());
+        assert_eq!(record.payer.as_deref(), Some("ours"));
+        assert_eq!(record.payer_fingerprint, None);
+
+        let local = jev::Client::new(jev::Config::local("http://127.0.0.1:9", "kev")).unwrap();
+        let mut record = atif::Decision::default();
+        paid(&mut record, &local, &mine);
+        assert_eq!(record.payer, None);
     }
 
     #[test]

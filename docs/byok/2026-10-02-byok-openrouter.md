@@ -9,7 +9,8 @@ set|show|test|clear` and `models.payer`; the `--openrouter-key`,
 `--vercel-key`, and `--typesafe-key` flags and `OPENAGENTS_*_KEY` variables;
 Jev, embeddings, Microcoder's cloud fallback, and local plugin eval judges on
 the person's keys; the hosted chat's `payer.keys` envelope (NIP-CJ,
-"Caller-paid model calls"); `payer` fields in the chat worker's usage log;
+"Caller-paid model calls"); `payer` fields in the chat worker's usage log,
+Coder run records, route records, and decision records;
 the terminal's `/settings` key fields and switch; the desktop's Model
 providers page; and `OpenAgents-Provider-Key` on model-cost routes of the
 x402 pay front; Connect OpenRouter (OAuth PKCE, `model_access::connect`)
@@ -415,17 +416,32 @@ OpenRouter, Vercel AI Gateway, or TypeSafe.
 ## 8. Records: who paid
 
 - **Coder run records.** `ResultRecord` (`crates/coder/src/task/owner.rs`)
-  gains `payer: ours | theirs` and, for `theirs`, the provider and the
-  fingerprint of each key that paid. The per-part costs (`engine_microusd`,
-  `jev_microusd`) keep their meaning. A part paid on the person's key takes
-  the provider's reported cost (`usage.cost` on OpenRouter, the gateway's
+  has `payer: ours | theirs` (`model_access::Paid`, from the run process's
+  installed access) and, for `theirs`, `payer_keys`: the provider and the
+  fingerprint of each of the person's keys that may pay
+  (`Access::paid`). A record written before it has neither and still
+  reads. The per-part costs (`engine_microusd`, `jev_microusd`) keep their
+  meaning. A part paid on the person's key takes the provider's reported
+  cost (`usage.cost` on OpenRouter, the gateway's
   `provider_metadata.gateway` cost) as the price.
+- **Route records.** Each run of an `openagents.route.record.v1` record
+  (`~/.openagents/routes/<thread>.jsonl`) copies its run record's `payer`
+  and `payer_keys`. The record's own `payer_keys` names the keys the
+  message went with (`Meta::payer_keys`, set when the client seals them),
+  and the admission snapshot's `money` says `byok: mine` with
+  `caller_key` payers for routing, decisions (TypeSafe, then Vercel, then
+  OpenRouter), and the chat model (OpenRouter, then Vercel).
 - **Chat worker usage log.** The log (`crates/coder/src/relay/usage.rs`
   `Record`) gains `payer`, `payer_provider`, and `payer_fingerprint`.
   `coder-worker usage --by payer` reads them. Our spend then excludes jobs the
   person paid for.
 - **Decision records and API receipts.** `openagents.decision-call.v1` records
-  keep `service.upstream` (the door) and add `payer`. API receipts do the same.
+  keep `service.upstream` (the door) and add `payer` (`ours` through the
+  hosted decision service; `theirs` under `mine`, with `payer_provider` and
+  `payer_fingerprint` of the key Jev is asked on first;
+  `jev_hosted::paid`). A thread's `chat_router` record names the same from
+  the turn's `payer_keys`. API receipts do the same (the x402 pay front's
+  event names the payer and fingerprint).
 - **The person sees their spend; we don't show ours.** Under `mine`, each key's
   row shows what it has spent, read from the provider's key or credits
   endpoint. A Coder run's detail view may show what that run cost on their

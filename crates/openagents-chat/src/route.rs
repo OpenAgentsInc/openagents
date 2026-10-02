@@ -422,6 +422,30 @@ pub fn reissue(record: &RouteRecord, number: u64, now_ms: u64) -> Option<RouteRe
     Some(issue)
 }
 
+/// Who paid for a turn's decisions (routing and Jev) and its chat model,
+/// given the person's keys it went with: ours with none; otherwise the
+/// first key in the worker's fixed order, TypeSafe, then the Vercel AI
+/// Gateway, then OpenRouter for decisions, and OpenRouter, then the
+/// gateway for the model.
+fn paid_by(keys: &[model_access::KeyPrint]) -> (Payer, Payer) {
+    use model_access::Provider;
+    let first = |order: &[Provider]| {
+        order
+            .iter()
+            .find(|provider| keys.iter().any(|key| key.provider == **provider))
+            .map_or(Payer::OpenAgents, |provider| Payer::CallerKey {
+                provider: provider.word().to_owned(),
+            })
+    };
+    if keys.is_empty() {
+        return (Payer::OpenAgents, Payer::OpenAgents);
+    }
+    (
+        first(&[Provider::TypeSafe, Provider::Vercel, Provider::OpenRouter]),
+        first(&[Provider::OpenRouter, Provider::Vercel]),
+    )
+}
+
 /// The provider a coding engine sends repository text to.
 fn provider_of(engine: &str) -> &'static str {
     match engine {
@@ -649,18 +673,27 @@ pub fn admit(
     ];
     let mut context = vec![ContentClass::Message, ContentClass::Thread];
     let mut artifacts = Vec::new();
+    // BYOK `mine` (#10176): the turn went with the person's keys, and the
+    // worker ran its model and Jev on them (`basic_coder::seal_payer`).
+    let theirs = meta.map_or(&[][..], |meta| meta.payer_keys.as_slice());
+    let (decision_payer, chat_payer) = paid_by(theirs);
+    let byok = if theirs.is_empty() {
+        ByokMode::Ours
+    } else {
+        ByokMode::Mine
+    };
     let mut payers = vec![
         PayerEntry {
             resource: Resource::Routing,
-            payer: Payer::OpenAgents,
+            payer: decision_payer.clone(),
         },
         PayerEntry {
             resource: Resource::Decision,
-            payer: Payer::OpenAgents,
+            payer: decision_payer,
         },
         PayerEntry {
             resource: Resource::ChatModel,
-            payer: Payer::OpenAgents,
+            payer: chat_payer,
         },
     ];
     for run in &runs {
@@ -750,7 +783,7 @@ pub fn admit(
             caller_limits: Vec::new(),
         },
         money: Money {
-            byok: ByokMode::Ours,
+            byok,
             payers,
             funding: Funding::None,
             price_book: None,

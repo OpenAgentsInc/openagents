@@ -51,6 +51,24 @@ pub struct RunOutcome {
     /// Retained evidence by digest: the patch or artifact, the trace.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<Digest>,
+    /// Who paid for the run's model calls, as its run record says (BYOK,
+    /// #10176): `ours` or `theirs`. Absent until the run records it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer: Option<String>,
+    /// Under `theirs`, each of the person's keys that may have paid, by
+    /// provider and fingerprint, never the key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payer_keys: Vec<PayerKey>,
+}
+
+/// One of the person's provider keys as a record names it (BYOK): the
+/// provider (`openrouter`, `vercel`, `typesafe`) and the first 8 hex
+/// characters of the key's SHA-256 digest. Never the key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PayerKey {
+    pub provider: String,
+    pub fingerprint: String,
 }
 
 /// What a task owner reports for one task, for [`RouteRecord::observe`].
@@ -61,6 +79,9 @@ pub struct Observation {
     pub cost_microusd: Option<u64>,
     pub wall_ms: Option<u64>,
     pub artifacts: Vec<Digest>,
+    /// The run record's payer, when it names one.
+    pub payer: Option<String>,
+    pub payer_keys: Vec<PayerKey>,
 }
 
 /// One message's route, admission, and outcome.
@@ -90,6 +111,11 @@ pub struct RouteRecord {
     /// Unix milliseconds the route settled (a terminal state).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settled_ms: Option<u64>,
+    /// The person's keys that paid for routing and answering this message
+    /// (BYOK `mine`, #10176), by provider and fingerprint; empty when it
+    /// ran on ours. The snapshot's `money` names the payer per resource.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payer_keys: Vec<PayerKey>,
 }
 
 /// Why a record refuses a move.
@@ -133,6 +159,7 @@ impl RouteRecord {
             refusal: None,
             received_ms: now_ms,
             settled_ms: None,
+            payer_keys: Vec::new(),
         })
     }
 
@@ -210,6 +237,8 @@ impl RouteRecord {
                 cost_microusd: None,
                 wall_ms: None,
                 artifacts: Vec::new(),
+                payer: None,
+                payer_keys: Vec::new(),
             });
         }
         Ok(())
@@ -248,6 +277,10 @@ impl RouteRecord {
         if !seen.artifacts.is_empty() {
             run.artifacts = seen.artifacts;
         }
+        if seen.payer.is_some() {
+            run.payer = seen.payer;
+            run.payer_keys = seen.payer_keys;
+        }
         self.state = aggregate(self.runs.iter().map(|run| run.projection.state));
         self.settle_if_done(now_ms);
         true
@@ -285,6 +318,8 @@ impl RouteRecord {
             cost_microusd: Some(0),
             wall_ms,
             artifacts: Vec::new(),
+            payer: None,
+            payer_keys: Vec::new(),
         });
         self.settle_if_done(now_ms);
         Ok(())

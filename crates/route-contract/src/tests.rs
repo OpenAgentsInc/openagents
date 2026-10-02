@@ -738,7 +738,51 @@ mod record {
             cost_microusd: Some(1_250),
             wall_ms: Some(4_000),
             artifacts: vec![d("patch")],
+            payer: None,
+            payer_keys: Vec::new(),
         }
+    }
+
+    /// BYOK (#10176): a run's payer comes from its run record, by provider
+    /// and fingerprint; a record written before it was kept still reads.
+    #[test]
+    fn a_run_keeps_who_paid_from_its_run_record() {
+        let mut record = coder();
+        record
+            .step(Lifecycle::Admitted, "autostart", 1_100)
+            .unwrap();
+        record.dispatched("task_1", Some("codex")).unwrap();
+        let mut paid = seen(
+            TaskStatus::Running,
+            TaskExecution::Running,
+            TaskChecks::NotRun,
+        );
+        paid.payer = Some("theirs".into());
+        paid.payer_keys = vec![crate::record::PayerKey {
+            provider: "openrouter".into(),
+            fingerprint: "0a1b2c3d".into(),
+        }];
+        assert!(record.observe("task_1", paid, 3_000));
+        assert_eq!(record.runs[0].payer.as_deref(), Some("theirs"));
+        // A later observation that names no payer keeps the one recorded.
+        assert!(record.observe(
+            "task_1",
+            seen(
+                TaskStatus::Running,
+                TaskExecution::Running,
+                TaskChecks::NotRun
+            ),
+            4_000
+        ));
+        assert_eq!(record.runs[0].payer_keys[0].fingerprint, "0a1b2c3d");
+        let value = serde_json::to_value(&record).unwrap();
+        assert_eq!(value["runs"][0]["payer_keys"][0]["provider"], "openrouter");
+        round_trip(&record);
+        let mut old = value;
+        old["runs"][0].as_object_mut().unwrap().remove("payer");
+        old["runs"][0].as_object_mut().unwrap().remove("payer_keys");
+        let read: RouteRecord = serde_json::from_value(old).unwrap();
+        assert_eq!(read.runs[0].payer, None);
     }
 
     fn coder() -> RouteRecord {

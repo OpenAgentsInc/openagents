@@ -449,6 +449,15 @@ pub struct Decision {
     /// What the call cost in US dollars, when the door's cost or its
     /// tokens say.
     pub cost_usd: Option<f64>,
+    /// Who paid for the call (BYOK, #10176): `ours`, or `theirs` when it
+    /// ran on the person's own key; `None` when the caller does not say.
+    pub payer: Option<String>,
+    /// Under `theirs`, the provider whose key paid (`openrouter`,
+    /// `vercel`, `typesafe`).
+    pub payer_provider: Option<String>,
+    /// Under `theirs`, the fingerprint of the key that paid (the first 8
+    /// hex characters of its SHA-256 digest), never the key.
+    pub payer_fingerprint: Option<String>,
 }
 
 impl Decision {
@@ -511,6 +520,15 @@ impl Decision {
         }
         if let Some(cost) = self.cost_usd {
             extra.insert("cost_usd".to_string(), json!(cost));
+        }
+        if let Some(payer) = &self.payer {
+            extra.insert("payer".to_string(), json!(payer));
+        }
+        if let Some(provider) = &self.payer_provider {
+            extra.insert("payer_provider".to_string(), json!(provider));
+        }
+        if let Some(fingerprint) = &self.payer_fingerprint {
+            extra.insert("payer_fingerprint".to_string(), json!(fingerprint));
         }
         extra.insert("latency_ms".to_string(), json!(self.milliseconds));
         let arguments = bounded_request(self.request, &state, &questions);

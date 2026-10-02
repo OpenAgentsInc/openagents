@@ -303,6 +303,21 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
                             None => json!({"door": door()}),
                         }),
                         answers,
+                        // BYOK (#10176): the worker judged on the
+                        // person's key when the turn went with theirs (the
+                        // first in Jev's order), else on ours.
+                        payer: Some(
+                            if meta.payer_keys.is_empty() {
+                                "ours"
+                            } else {
+                                "theirs"
+                            }
+                            .into(),
+                        ),
+                        payer_provider: decision_key(&meta.payer_keys)
+                            .map(|key| key.provider.word().to_owned()),
+                        payer_fingerprint: decision_key(&meta.payer_keys)
+                            .map(|key| key.fingerprint.clone()),
                         ..atif::Decision::default()
                     }
                     .call(),
@@ -324,6 +339,15 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
         step = step.noting("stopped", json!(true));
     }
     step
+}
+
+/// The person's key Jev is asked on first, in its fixed order (TypeSafe,
+/// then the Vercel AI Gateway, then OpenRouter).
+fn decision_key(keys: &[model_access::KeyPrint]) -> Option<&model_access::KeyPrint> {
+    use model_access::Provider;
+    [Provider::TypeSafe, Provider::Vercel, Provider::OpenRouter]
+        .into_iter()
+        .find_map(|provider| keys.iter().find(|key| key.provider == provider))
 }
 
 #[cfg(test)]
@@ -411,6 +435,33 @@ mod tests {
         let document = trajectory(&self::thread(), "test");
         let call = &document["steps"][1]["tool_calls"][0];
         assert!(call["extra"]["service"].get("upstream").is_none());
+    }
+
+    /// BYOK (#10176): the router's record names who paid for the
+    /// judgment: ours, or the person's key Jev was asked on first, by
+    /// provider and fingerprint only.
+    #[test]
+    fn the_router_record_names_who_paid() {
+        let document = trajectory(&thread(), "test");
+        let call = &document["steps"][1]["tool_calls"][0];
+        assert_eq!(call["extra"]["payer"], "ours");
+        assert!(call["extra"].get("payer_fingerprint").is_none());
+        let mut thread = thread();
+        thread.turns[1].meta.as_mut().unwrap().payer_keys = vec![
+            model_access::KeyPrint {
+                provider: model_access::Provider::OpenRouter,
+                fingerprint: "0a1b2c3d".into(),
+            },
+            model_access::KeyPrint {
+                provider: model_access::Provider::TypeSafe,
+                fingerprint: "4e5f6a7b".into(),
+            },
+        ];
+        let document = trajectory(&thread, "test");
+        let call = &document["steps"][1]["tool_calls"][0];
+        assert_eq!(call["extra"]["payer"], "theirs");
+        assert_eq!(call["extra"]["payer_provider"], "typesafe");
+        assert_eq!(call["extra"]["payer_fingerprint"], "4e5f6a7b");
     }
 
     #[test]

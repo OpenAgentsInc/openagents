@@ -1083,6 +1083,8 @@ fn a_result_records_its_cost_by_part() {
         cost_microusd: None,
         engine_microusd: None,
         jev_microusd: None,
+        payer: None,
+        payer_keys: Vec::new(),
     };
     // A record written before costs were recorded reads as unknown.
     let old = serde_json::to_value(&result).unwrap();
@@ -1098,4 +1100,47 @@ fn a_result_records_its_cost_by_part() {
         !result.cost_consistent(),
         "a total that disagrees is refused"
     );
+}
+
+/// BYOK (#10176): a run record names who paid and, under `theirs`, each
+/// key by provider and fingerprint, never the key; a record written before
+/// the payer was kept still reads.
+#[test]
+fn a_run_record_names_its_payer_by_fingerprint_only() {
+    let mut result: ResultRecord = serde_json::from_value(json!({
+        "ending": "model_finished",
+        "exit_code": 0,
+        "stop_requested": false,
+        "group_clear": true,
+        "elapsed_ms": 1,
+        "trace_digest": "0".repeat(64),
+        "candidate_snapshot": null,
+        "artifact_file": null,
+        "artifact_digest": null,
+        "output_incomplete": false,
+        "cost_status": "unknown",
+    }))
+    .unwrap();
+    assert_eq!(result.payer, None);
+    result.paid_by(&model_access::Access::ours());
+    assert_eq!(result.payer, Some(model_access::Paid::Ours));
+    let value = serde_json::to_value(&result).unwrap();
+    assert_eq!(value["payer"], "ours");
+    assert!(value.get("payer_keys").is_none());
+    let mut keys = model_access::Keys::none();
+    keys.insert(
+        model_access::Provider::OpenRouter,
+        model_access::ApiKey::new("sk-or-v1-secret".to_owned()),
+    );
+    result.paid_by(&model_access::Access::theirs(keys));
+    let value = serde_json::to_value(&result).unwrap();
+    assert_eq!(value["payer"], "theirs");
+    assert_eq!(value["payer_keys"][0]["provider"], "openrouter");
+    assert_eq!(
+        value["payer_keys"][0]["fingerprint"],
+        model_access::fingerprint("sk-or-v1-secret")
+    );
+    assert!(!value.to_string().contains("sk-or-v1-secret"));
+    let read: ResultRecord = serde_json::from_value(value).unwrap();
+    assert_eq!(read, result);
 }

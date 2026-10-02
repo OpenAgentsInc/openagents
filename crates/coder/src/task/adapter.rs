@@ -1435,8 +1435,11 @@ impl Host {
             cost_microusd: None,
             engine_microusd: None,
             jev_microusd: None,
+            payer: None,
+            payer_keys: Vec::new(),
         };
         result.priced(self.cost.get());
+        result.paid_by(&model_access::current());
         self.owner.record(owner::Event::Result { result })
     }
 }

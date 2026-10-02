@@ -101,6 +101,19 @@ pub fn observation(task: &Task) -> Observation {
         cost_microusd: result.and_then(|result| result.cost_microusd),
         wall_ms: result.map(|result| result.elapsed_ms),
         artifacts,
+        payer: result.and_then(|result| result.payer.map(|payer| payer.word().to_owned())),
+        payer_keys: result
+            .map(|result| {
+                result
+                    .payer_keys
+                    .iter()
+                    .map(|key| route_contract::record::PayerKey {
+                        provider: key.provider.word().to_owned(),
+                        fingerprint: key.fingerprint.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 

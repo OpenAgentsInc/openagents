@@ -414,3 +414,53 @@ fn the_journal_keeps_the_latest_record_of_each_request() {
     assert!(journal.write(&record).is_err());
     assert!(journal.records("../escape").is_empty());
 }
+
+/// BYOK (#10176): a turn that went with the person's keys admits with
+/// `mine` and names their providers as the payers of routing, decisions,
+/// and the model; one on ours names OpenAgents.
+#[test]
+fn a_turn_on_the_persons_keys_names_their_providers_as_payers() {
+    let result = RouteResult::Answer {
+        source: AnswerSource::Model,
+    };
+    let ours = admit(&result, &situation(), Some(&Meta::default()), "hi", None);
+    assert_eq!(ours.money.byok, ByokMode::Ours);
+    assert!(
+        ours.money
+            .payers
+            .iter()
+            .all(|entry| entry.payer == Payer::OpenAgents)
+    );
+    let meta = Meta {
+        payer_keys: vec![
+            model_access::KeyPrint {
+                provider: model_access::Provider::OpenRouter,
+                fingerprint: "0a1b2c3d".into(),
+            },
+            model_access::KeyPrint {
+                provider: model_access::Provider::TypeSafe,
+                fingerprint: "4e5f6a7b".into(),
+            },
+        ],
+        ..Meta::default()
+    };
+    let theirs = admit(&result, &situation(), Some(&meta), "hi", None);
+    assert_eq!(theirs.money.byok, ByokMode::Mine);
+    let payer = |resource| {
+        theirs
+            .money
+            .payers
+            .iter()
+            .find(|entry| entry.resource == resource)
+            .map(|entry| entry.payer.clone())
+            .unwrap()
+    };
+    let key = |provider: &str| Payer::CallerKey {
+        provider: provider.into(),
+    };
+    assert_eq!(payer(Resource::Decision), key("typesafe"));
+    assert_eq!(payer(Resource::Routing), key("typesafe"));
+    assert_eq!(payer(Resource::ChatModel), key("openrouter"));
+    assert!(!theirs.money.switches_payer_from(&theirs.money));
+    assert!(ours.money.switches_payer_from(&theirs.money));
+}
