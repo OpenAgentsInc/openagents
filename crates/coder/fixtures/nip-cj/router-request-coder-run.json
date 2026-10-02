@@ -4,7 +4,7 @@
   "task": "summarize what happened",
   "transcript": [
     { "role": "user", "content": "do a test delegation to claude" },
-    { "role": "assistant", "content": "We'll dispatch Coder, asking for Claude Code, to take this on." },
+    { "role": "assistant", "content": "Starting Claude Code on this." },
     { "role": "user", "content": "summarize what happened" }
   ],
   "client": "openagents-desktop",

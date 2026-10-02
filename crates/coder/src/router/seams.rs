@@ -546,7 +546,7 @@ mod tests {
         let ask = Ask {
             route: RouteId::WorkDispatch,
             answer: "dispatch.stem".into(),
-            stem: "We'll dispatch Coder to".into(),
+            stem: "Working on".into(),
             message: "fix it".into(),
         };
         assert_eq!(

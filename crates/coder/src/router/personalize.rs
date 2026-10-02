@@ -1,10 +1,10 @@
 //! T1 personalization: a cheap, fast model finishes a prepared stem.
 //!
 //! When the chat router picks a stem (a bank line that is true for every
-//! message on its route, such as "We'll dispatch Coder to"), the stem is
+//! message on its route, such as "Working on"), the stem is
 //! shown at once and a small model writes only the rest of the sentence
-//! from the user's own words: "… find where the relay's retry timeout is
-//! set and make it configurable." This module is the router's
+//! from the user's own words: "… finding where the relay's retry timeout
+//! is set and making it configurable." This module is the router's
 //! [`seams::Personalize`] implementation, after the design's
 //! "Personalization with a cheap model"
 //! (`docs/coder/design/2026-09-28-chat-router.md`).
@@ -74,17 +74,21 @@ You receive a route, the start of a sentence (the stem), and the user's latest m
 Write only the words that come after the stem, so that the stem followed by your words is \
 one grammatical sentence saying what the user asked for: at most 20 words, ending with a \
 period. When the stem ends with \"to\", begin with the verb the user asked for (fix, add, \
-find, explain, review). Begin with a lowercase word and do not repeat the stem. Where the \
+find, explain, review). When the stem ends with \"on\", begin with that verb's -ing form \
+(fixing, adding, finding, explaining, reviewing). The stem starts with a verb ending in -ing; \
+any further verbs you list after it, joined by commas or \"and\", take the -ing form too. \
+Begin with a lowercase word and do not repeat the stem. Where the \
 user wrote \"my\" or \"our\", write \"your\"; otherwise keep their names as written. \
-Never write \"I\", \"me\", \"my\", \"we\", \"us\", or \"our\". Name only things the \
+Never write \"I\", \"me\", \"my\", \"we\", \"us\", or \"our\", and never name who does \
+the work. Name only things the \
 user named. Do not say the work is done, promise a time or a price, add a link, or mention a \
 button. Reply with plain words alone, with no quotes or formatting.\n\n\
-Example: stem \"We'll dispatch Coder to\", message \"can you add dark mode to my settings \
-page\", reply \"add dark mode to your settings page.\"\n\
-Example: stem \"We'll have Coder look through\", message \"how does our deploy script pick \
+Example: stem \"Working on\", message \"can you add dark mode to my settings \
+page\", reply \"adding dark mode to your settings page.\"\n\
+Example: stem \"Looking through\", message \"how does our deploy script pick \
 the binary?\", reply \"your deploy script to find how it picks the binary.\"\n\
-Example: stem \"We'll have Coder pick up\", message \"review PR 412 on my repo\", reply \
-\"PR 412 on your repo and review it.\"";
+Example: stem \"Picking up\", message \"review PR 412 on my repo and comment on it\", \
+reply \"PR 412 on your repo, reviewing it, and commenting on it.\"";
 
 /// The prompt's user message: the [`Ask`]'s route, stem, and message, and
 /// nothing else. The message is cut to [`seams::MESSAGE_CHARS`] again here,
@@ -111,6 +115,10 @@ pub enum Refusal {
     Question,
     /// "we", "us", or "our": a promise the stem does not make.
     SpeaksForUs,
+    /// Hands the work to someone by name ("have Coder", "Coder will",
+    /// "dispatch"): a reply that starts work says what starts, never who
+    /// is sent to do it.
+    NamesWorker,
     /// A button or a tap, which the app shows itself.
     Button,
     /// A time, price, or guarantee, or a claim that work is already
@@ -129,6 +137,7 @@ impl Refusal {
             Refusal::NotOneLine => "not_one_line".to_string(),
             Refusal::Question => "question".to_string(),
             Refusal::SpeaksForUs => "speaks_for_us".to_string(),
+            Refusal::NamesWorker => "names_worker".to_string(),
             Refusal::Button => "button".to_string(),
             Refusal::Promise => "promise".to_string(),
             Refusal::Router(invalid) => format!("{invalid:?}"),
@@ -165,6 +174,19 @@ const PLURAL_US: &[&str] = &[
     "our",
     "ours",
     "ourselves",
+];
+
+/// Phrases that hand the work to someone by name, where a reply that
+/// starts work says only what starts ([`Refusal::NamesWorker`]).
+pub const HANDOFF_PHRASES: &[&str] = &[
+    "have coder",
+    "having coder",
+    "coder will",
+    "coder to",
+    "dispatch",
+    "dispatching",
+    "dispatched",
+    "we'll have",
 ];
 
 const BUTTON_WORDS: &[&str] = &[
@@ -222,6 +244,13 @@ pub fn check(written: &str, stem: &str, message: &str, cut_off: bool) -> Result<
     let asked = words(message);
     if said.iter().any(|word| PLURAL_US.contains(&word.as_str())) {
         return Err(Refusal::SpeaksForUs);
+    }
+    let joined = said.join(" ");
+    if HANDOFF_PHRASES.iter().any(|phrase| {
+        format!(" {joined} ").contains(&format!(" {phrase} "))
+            && !format!(" {} ", asked.join(" ")).contains(&format!(" {phrase} "))
+    }) {
+        return Err(Refusal::NamesWorker);
     }
     if said
         .iter()
@@ -614,7 +643,7 @@ mod tests {
     use super::super::{Invalid, RouteId, redact};
     use super::*;
 
-    const STEM: &str = "We'll dispatch Coder to";
+    const STEM: &str = "Working on";
 
     fn ask(message: &str) -> Ask {
         Ask {
@@ -631,7 +660,7 @@ mod tests {
         let ask = ask(&format!("rotate {key} and fix the build"));
         assert_eq!(
             prompt_text(&ask),
-            "Route: work.dispatch\nStem: We'll dispatch Coder to\nMessage: rotate [redacted] \
+            "Route: work.dispatch\nStem: Working on\nMessage: rotate [redacted] \
              and fix the build"
         );
         let mut long = ask.clone();
@@ -646,23 +675,23 @@ mod tests {
         let message = "fix the flaky retry test in crates/coder and open a PR";
         assert_eq!(
             check(
-                "fix the flaky retry test in crates/coder and open a PR",
+                "fixing the flaky retry test in crates/coder and opening a PR",
                 STEM,
                 message,
                 false
             ),
-            Ok(" fix the flaky retry test in crates/coder and open a PR.".to_string())
+            Ok(" fixing the flaky retry test in crates/coder and opening a PR.".to_string())
         );
         assert_eq!(
             check(
-                "\"We'll dispatch Coder to fix the flaky retry test.\"",
+                "\"Working on fixing the flaky retry test.\"",
                 STEM,
                 message,
                 false
             ),
-            Ok(" fix the flaky retry test.".to_string())
+            Ok(" fixing the flaky retry test.".to_string())
         );
-        assert!(check("close issue 9920.", STEM, "close issue 9920", false).is_ok());
+        assert!(check("closing issue 9920.", STEM, "close issue 9920", false).is_ok());
         // A promise word the user wrote is theirs to repeat.
         assert!(check("ship it today", STEM, "ship it today", false).is_ok());
     }
@@ -681,6 +710,12 @@ mod tests {
                 "look through your repo after you tap Run Coder",
                 Refusal::Button,
             ),
+            ("having Coder look through your repo", Refusal::NamesWorker),
+            (
+                "your repo, and Coder will report back",
+                Refusal::NamesWorker,
+            ),
+            ("dispatching a run on your repo", Refusal::NamesWorker),
             (
                 "look through your repo, which is already fine",
                 Refusal::Promise,

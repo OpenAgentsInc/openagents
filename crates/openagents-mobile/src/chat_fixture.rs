@@ -41,7 +41,7 @@ fn script(n: usize, computer_ready: bool) -> (&'static str, Vec<Value>) {
         ),
         1 => (
             if computer_ready {
-                "We'll dispatch Coder to find the flaky test in crates/coder and fix it."
+                "Working on finding the flaky test in crates/coder and fixing it."
             } else {
                 "That needs a computer. Connect one first."
             },

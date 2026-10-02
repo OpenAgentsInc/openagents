@@ -622,7 +622,7 @@ fn a_start_shows_starting_then_one_line() {
         requested: Some("grok".into()),
     };
     let Event::Reply { thread, reply, .. } = reply(
-        "We'll dispatch Grok Build to take this on.",
+        "Starting Grok Build on this.",
         Meta {
             offers: vec![Offer::RunCoder],
             runner: Some(runner.clone()),
@@ -662,7 +662,7 @@ fn a_start_shows_starting_then_one_line() {
     let shown = shown(&mut app);
     let after: Vec<&str> = shown
         .lines()
-        .skip_while(|line| !line.contains("We'll dispatch"))
+        .skip_while(|line| !line.contains("Starting Grok Build on this."))
         .skip(1)
         .filter(|line| !line.trim().is_empty())
         .collect();

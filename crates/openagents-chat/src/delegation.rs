@@ -226,7 +226,7 @@ mod tests {
         let mut turns = vec![
             Turn::user("Do a test delegation to claude"),
             Turn::assistant(
-                "We'll dispatch Coder, asking for Claude Code, to take this on.",
+                "Starting Claude Code on this.",
                 Some(Meta {
                     offers: vec![Offer::RunCoder],
                     engine: Some(Engine::ClaudeCode),
@@ -244,7 +244,7 @@ mod tests {
         let plain = vec![
             Turn::user("delegate this"),
             Turn::assistant(
-                "We'll dispatch Coder to take this on.",
+                "Working on this.",
                 Some(Meta {
                     offers: vec![Offer::RunCoder],
                     ..Meta::default()
@@ -379,7 +379,7 @@ mod tests {
         let claude = vec![
             Turn::user("do a test delegation to claude"),
             Turn::assistant(
-                "We'll dispatch Coder, asking for Claude Code, to take this on.",
+                "Starting Claude Code on this.",
                 offer(Some(Engine::ClaudeCode)),
             ),
         ];
@@ -422,7 +422,7 @@ mod tests {
         // Codex, asked for by name, is named the same way.
         let codex = vec![
             Turn::user("have codex fix the parser"),
-            Turn::assistant("We'll dispatch Coder.", offer(Some(Engine::Codex))),
+            Turn::assistant("Working on this.", offer(Some(Engine::Codex))),
         ];
         assert!(prompt("Chat", &codex).contains("if you are Codex, you are the engine"));
         // No engine named: the routing is still done, and no engine is
@@ -431,7 +431,7 @@ mod tests {
             Turn::user("who are you"),
             Turn::assistant("We are OpenAgents.", None),
             Turn::user("do a test delegation now"),
-            Turn::assistant("We'll dispatch Coder.", offer(None)),
+            Turn::assistant("Working on this.", offer(None)),
         ];
         let text = prompt("who are you", &now);
         assert!(text.contains("hand this conversation to Coder"), "{text}");
@@ -449,7 +449,7 @@ mod tests {
         // A request too long to fit is cut; the routing is kept whole.
         let long = vec![
             Turn::user("y".repeat(MAX_PROMPT_BYTES * 2)),
-            Turn::assistant("We'll dispatch Coder.", offer(Some(Engine::ClaudeCode))),
+            Turn::assistant("Working on this.", offer(Some(Engine::ClaudeCode))),
         ];
         let text = prompt("Chat", &long);
         assert!(text.len() <= MAX_PROMPT_BYTES, "{}", text.len());

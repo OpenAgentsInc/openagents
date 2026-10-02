@@ -2052,7 +2052,7 @@ mod tests {
             },
             Message {
                 role: Role::Assistant,
-                text: "We'll dispatch Coder.".into(),
+                text: "Working on this.".into(),
             },
             Message {
                 role: Role::User,

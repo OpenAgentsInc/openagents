@@ -572,7 +572,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Work goes to Coder",
-                detail: "Ask for work on your code and the reply says \"We'll dispatch Coder to…\" with a Run Coder button, or Connect a computer if none is connected yet.",
+                detail: "Ask for work on your code and the reply says what starts, \"Working on…\", with a Run Coder button, or Connect a computer if none is connected yet.",
             },
             Item {
                 title: "Links to the right screen",

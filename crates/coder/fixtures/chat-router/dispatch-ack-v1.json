@@ -1,0 +1,132 @@
+{
+  "schema": "openagents.chat.dispatch_ack.v1",
+  "about": "Requests that start work, and the acknowledgement each gets. The owner (2026-10-02): a reply that starts work begins with the verb in its -ing form and names no one doing it. crates/coder/tests/dispatch_ack_eval.rs replays each row's recorded continuation (written by the personalization model, rerecorded with DISPATCH_ACK_RECORD=1) through the router's check and close.",
+  "forbidden": [
+    "We'll have",
+    "We'll dispatch",
+    "We will dispatch",
+    "Coder will",
+    "have Coder",
+    "dispatch Coder"
+  ],
+  "rows": [
+    {
+      "id": "owner-claim",
+      "message": "pick one of the open issues anotehr agent isnt working on , comment on it to claim it and delegate",
+      "answer": "dispatch.github_stem",
+      "facts": {},
+      "live": true,
+      "recorded": "one of the open issues another agent isn't working on, commenting on it to claim it and delegate."
+    },
+    {
+      "id": "owner-commits",
+      "message": "look through the latest commits and tell me what changed",
+      "answer": "dispatch.explore_stem",
+      "facts": {},
+      "live": true,
+      "recorded": "your latest commits to tell you what changed."
+    },
+    {
+      "id": "issue",
+      "message": "work on issue #10178",
+      "answer": "dispatch.github_stem",
+      "facts": {},
+      "live": true,
+      "recorded": "issue #10178."
+    },
+    {
+      "id": "pr-review",
+      "message": "review PR 412 on my repo and leave comments",
+      "answer": "dispatch.github_stem",
+      "facts": {},
+      "live": true,
+      "recorded": "PR 412 on your repo, reviewing it, and leaving comments."
+    },
+    {
+      "id": "explain-deploy",
+      "message": "how does our deploy script pick the binary?",
+      "answer": "dispatch.explore_stem",
+      "facts": {},
+      "live": true,
+      "recorded": "your deploy script to find how it picks the binary."
+    },
+    {
+      "id": "auth",
+      "message": "look through my rails repo and tell me how auth works",
+      "answer": "dispatch.explore_stem",
+      "facts": {},
+      "live": true,
+      "recorded": "your rails repo to find how auth works."
+    },
+    {
+      "id": "flaky",
+      "message": "fix the flaky relay test",
+      "answer": "dispatch.stem",
+      "facts": {},
+      "live": true,
+      "recorded": "fixing the flaky relay test."
+    },
+    {
+      "id": "dark-mode",
+      "message": "can you add dark mode to my settings page",
+      "answer": "dispatch.stem",
+      "facts": {},
+      "live": true,
+      "recorded": "adding dark mode to your settings page."
+    },
+    {
+      "id": "release",
+      "message": "bump the version to 1.4.2 and tag a release",
+      "answer": "dispatch.stem",
+      "facts": {},
+      "live": true,
+      "recorded": "bumping the version to 1.4.2 and tagging a release."
+    },
+    {
+      "id": "upgrade",
+      "message": "upgrade tokio to the latest version and fix whatever breaks",
+      "answer": "dispatch.stem",
+      "facts": {},
+      "live": true,
+      "recorded": "upgrading tokio to the latest version and fixing whatever breaks."
+    },
+    {
+      "id": "capability",
+      "message": "map out the project and then fix the failing build",
+      "answer": "dispatch.capability_stem",
+      "facts": {
+        "capability.name": "Project map"
+      },
+      "live": true,
+      "recorded": "map out your project and fix the failing build."
+    },
+    {
+      "id": "engine-claude",
+      "message": "do a test delegation to claude",
+      "answer": "dispatch.engine_stem",
+      "facts": {
+        "engine.name": "Claude Code"
+      },
+      "live": true,
+      "recorded": null
+    },
+    {
+      "id": "engine-grok",
+      "message": "delegate this to grok build",
+      "answer": "dispatch.engine_stem",
+      "facts": {
+        "engine.name": "Grok Build"
+      },
+      "live": true,
+      "recorded": null
+    },
+    {
+      "id": "wallet",
+      "message": "check my wallet balance",
+      "answer": "cli.run",
+      "facts": {},
+      "live": true,
+      "recorded": null
+    }
+  ]
+}

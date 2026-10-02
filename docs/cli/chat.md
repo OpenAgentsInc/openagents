@@ -401,7 +401,7 @@ turn changed is computed once, when it ends, and kept in the run's record
 ```sh
 $ cd ~/code/slugs && openagents --json chat "add a unit test for slugify that covers an empty string"
 {"event":"accepted","thread":"1742…","backend":"in_process",…}
-{"event":"result","thread":"1742…","text":"We'll dispatch Coder to add a unit test for slugify that covers an empty string.",…}
+{"event":"result","thread":"1742…","text":"Working on adding a unit test for slugify that covers an empty string.",…}
 {"event":"starting","thread":"1742…","engine":"claude","text":"Starting Claude Code…"}
 {"event":"coder","thread":"1742…","accepted":true,"message":"Coder started.","task":{"host":"local","task":"4d0d…","project":"slugs","worktree":"…/worktrees/slugs-4d0d730cb9be"}}
 {"seq":1,"task":"4d0d…","thread":"1742…","event":"coder_started","turn":1,"project":"slugs",…,"provider":"claude","model":"claude-opus-5-5","reason":"Codex reached its usage limit until 2026-09-30 17:39 UTC; using Claude Code.","fallbacks":["codex:gpt-6-luna"],"via":"local"}

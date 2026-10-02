@@ -335,45 +335,51 @@ verdict = "end_conversation"
 
 # ---------------------------------------------------------------------------
 # work.dispatch: sentences in front of a Run Coder offer
+#
+# A reply that starts work starts with the verb, in its -ing form, and
+# names no one doing it: "Looking through the latest commits.", "Picking up
+# issue #10178.", never "We'll have Coder ..." or "We'll dispatch ..."
+# (the owner, 2026-10-02). crates/coder/tests/dispatch_ack_eval.rs holds
+# every stem here to that.
 # ---------------------------------------------------------------------------
 
 [[answer]]
 id = "dispatch.stem"
-version = 2
+version = 3
 routes = ["work.dispatch"]
 when = "The user wants a change made: fix, build, add, refactor, test, bump, or release something in code or a repository"
-stem = "We'll dispatch Coder to"
-generic_end = " take this on."
+stem = "Working on"
+generic_end = " this."
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.explore_stem"
-version = 2
+version = 3
 routes = ["work.dispatch"]
 when = "The user wants a repository or code looked through, explained, or searched, with nothing changed"
-stem = "We'll have Coder look through"
-generic_end = " the code and report back."
+stem = "Looking through"
+generic_end = " the code."
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.github_stem"
-version = 2
+version = 3
 routes = ["work.dispatch"]
 when = "The user wants a specific GitHub issue or pull request worked on or reviewed"
-stem = "We'll have Coder pick up"
+stem = "Picking up"
 generic_end = " that work."
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.capability_stem"
-version = 2
+version = 3
 routes = ["work.dispatch"]
 records = true
 when = "Picked by code from the admitted-capability set: the user hands us work on their code that a named capability usable in a Coder run, such as Project map, would do"
-stem = "We'll dispatch Coder, with {capability}, to"
+stem = "Using {capability} to"
 generic_end = " take this on."
 facts = { capability = "capability.name" }
 offer = { run_coder = true, label = "Run Coder" }
@@ -381,12 +387,12 @@ sources = ["crates/coder/src/router/capability.rs", "crates/openagents-mobile/sr
 
 [[answer]]
 id = "dispatch.engine_stem"
-version = 2
+version = 3
 routes = ["work.dispatch"]
 records = true
 when = "Picked by code from the typed engine reading: the user hands us work on their code and asks for a named coding engine, such as Claude Code or Codex, to do it"
-stem = "We'll dispatch {engine} to"
-generic_end = " take this on."
+stem = "Starting {engine} on"
+generic_end = " this."
 facts = { engine = "engine.name" }
 offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/coder/src/router/judge.rs", "crates/coder/src/task/local.rs"]
@@ -424,10 +430,10 @@ sources = ["docs/cli/README.md"]
 
 [[answer]]
 id = "cli.run"
-version = 1
+version = 2
 routes = ["cli"]
 when = "The user wants something a read-only openagents command shows, and the terminal runs it now"
-text = "We're running the openagents command for that on this computer."
+text = "Running the openagents command for that on this computer."
 sources = ["docs/cli/README.md", "docs/cli/chat.md"]
 
 # ---------------------------------------------------------------------------

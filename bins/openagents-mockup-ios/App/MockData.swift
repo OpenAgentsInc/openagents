@@ -541,10 +541,10 @@ enum MockData {
 
         // CHAT-7: work on your own code needs a computer.
         Answer(id: "fix", question: "Fix the failing login test in my repo",
-               reply: "We'll dispatch Coder to fix the failing login test.",
+               reply: "Working on fixing the failing login test.",
                prepared: false, offers: [.runCoder]),
         Answer(id: "fix-nocomputer", question: "Fix the failing login test in my repo",
-               reply: "We'll dispatch Coder to fix the failing login test. It needs a computer to work on your code.",
+               reply: "Working on fixing the failing login test. It needs a computer to work on your code.",
                prepared: false, offers: [.connectComputer]),
         // CHAT-8: support.
         Answer(id: "wallet", question: "Where's my wallet?",

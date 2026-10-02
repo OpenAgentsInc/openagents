@@ -4812,7 +4812,7 @@ mod start_setting_tests {
                 turns: vec![
                     user,
                     Turn::assistant(
-                        "We'll dispatch Coder.",
+                        "Working on this.",
                         Some(openagents_chat::router::Meta {
                             route: Some(route.into()),
                             ..Default::default()
@@ -4880,7 +4880,7 @@ mod start_setting_tests {
             asked.request = Some("r2".into());
             snapshot.turns.push(asked);
             snapshot.turns.push(Turn::assistant(
-                "We'll dispatch Coder to add a test.",
+                "Working on adding a test.",
                 Some(openagents_chat::router::Meta {
                     route: Some(route.into()),
                     ..Default::default()

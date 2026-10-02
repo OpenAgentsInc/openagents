@@ -4638,7 +4638,7 @@ mod tests {
                 "fix the flaky relay test, my key is nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
                 json!({ "surface": "phone", "computer_ready": true }),
             ),
-            personalized(" fix the flaky relay test."),
+            personalized(" fixing the flaky relay test."),
             RouterSetting::Live,
         )
         .await;
@@ -4650,20 +4650,17 @@ mod tests {
         assert_eq!(judgment["tier"], "offer");
         let partials = of_type(&frames, "partial");
         assert_eq!(partials[0]["seq"], 0);
-        assert_eq!(partials[0]["delta"], "We'll dispatch Coder to");
+        assert_eq!(partials[0]["delta"], "Working on");
         assert_eq!(partials[1]["seq"], 1);
-        assert_eq!(partials[1]["delta"], " fix the flaky relay test.");
+        assert_eq!(partials[1]["delta"], " fixing the flaky relay test.");
         assert_eq!(partials.len(), 2);
         let offers = of_type(&frames, "offer");
         assert_eq!(offers[0]["offer"], "run_coder");
         assert_eq!(offers[0]["target"], "connected_computer");
         let (at, result) = frames.last().unwrap();
-        assert_eq!(
-            result["text"],
-            "We'll dispatch Coder to fix the flaky relay test."
-        );
+        assert_eq!(result["text"], "Working on fixing the flaky relay test.");
         assert_eq!(result["tier"], "offer");
-        assert_eq!(result["answer"], "dispatch.stem@2");
+        assert_eq!(result["answer"], "dispatch.stem@3");
         assert_eq!(result["model"], "test/cheap");
         assert_eq!(result["route"], "work.dispatch");
         assert!(
@@ -4698,7 +4695,7 @@ mod tests {
         assert_eq!(offers[0]["offer"], "run_coder");
         assert_eq!(offers[0]["engine"], "claude_code");
         let partials = of_type(&frames, "partial");
-        assert_eq!(partials[0]["delta"], "We'll dispatch Claude Code to");
+        assert_eq!(partials[0]["delta"], "Starting Claude Code on");
         let result = &frames.last().unwrap().1;
         assert!(
             result["answer"]
@@ -4706,10 +4703,7 @@ mod tests {
                 .unwrap()
                 .starts_with("dispatch.engine_stem@")
         );
-        assert_eq!(
-            result["text"],
-            "We'll dispatch Claude Code to take this on."
-        );
+        assert_eq!(result["text"], "Starting Claude Code on this.");
         let plain = frames_routed(
             slow_door(Duration::from_millis(1_500)),
             Some(judge(
@@ -4740,7 +4734,7 @@ mod tests {
         )
         .await;
         let result = &frames.last().unwrap().1;
-        assert_eq!(result["text"], "We'll dispatch Coder to take this on.");
+        assert_eq!(result["text"], "Working on this.");
         assert_eq!(result["model"], "bank:chat-answers-v1");
     }
 
@@ -4815,7 +4809,7 @@ mod tests {
                 "fix the flaky relay test",
                 json!({ "surface": "phone", "computer_ready": true }),
             ),
-            personalized(" fix the flaky relay test."),
+            personalized(" fixing the flaky relay test."),
             RouterSetting::Live,
         )
         .await;

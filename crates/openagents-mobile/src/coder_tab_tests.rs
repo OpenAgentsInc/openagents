@@ -1540,7 +1540,7 @@ fn offers_become_the_phones_own_controls() {
         json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "settings.erase",
             "label": "Erase"}),
     ]);
-    hand.say("We'll dispatch Coder to fix the flaky test.", true);
+    hand.say("Working on fixing the flaky test.", true);
     let chat = fixture.render();
     assert_eq!(
         node(&chat, "coder-connect").expect("connect")["element"]["props"]["label"],
@@ -3039,7 +3039,7 @@ fn run_coder_asks_the_computer_for_the_engine_the_offer_named() {
             offer["engine"] = json!(engine);
         }
         hand.route(&[offer]);
-        hand.say("We'll dispatch Coder to take this on.", true);
+        hand.say("Working on this.", true);
     };
     fixture.say("Do a test delegation to claude");
     offer(&hand, Some("claude_code"));
@@ -3094,7 +3094,7 @@ fn a_coding_reply_starts_coder_at_once_on_a_computer_that_allows_it() {
     fixture.say("Can you summarize the code that implements that or doesn't?");
     hand.route(&[json!({"v": 2, "type": "offer", "offer": "run_coder",
         "target": "connected_computer", "label": "Run Coder", "engine": "claude_code"})]);
-    hand.say("We'll have Coder look through the code.", true);
+    hand.say("Looking through the code.", true);
     let view = fixture.render();
     assert_eq!(delivery.lock().unwrap().engines, [Some(Engine::ClaudeCode)]);
     assert!(node(&view, "coder-run").is_none(), "{:?}", keys(&view));
@@ -3221,7 +3221,7 @@ fn started_at_once(fixture: &mut Fixture, hand: &Hand) -> Value {
     fixture.say("Archive the iOS app and upload it to TestFlight");
     hand.route(&[json!({"v": 2, "type": "offer", "offer": "run_coder",
         "target": "connected_computer", "label": "Run Coder"})]);
-    hand.say("We'll have Coder archive and upload it.", true);
+    hand.say("Archiving and uploading it.", true);
     fixture.render()
 }
 

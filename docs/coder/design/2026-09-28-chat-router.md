@@ -487,7 +487,7 @@ Rules for every entry:
   not a list of keywords. Each `when` includes what the entry does not cover
   when a neighbor is close ("… not how much Coder costs on the user's own
   provider accounts").
-- **Stems** (`stem = "We'll dispatch Coder to"`) are entries whose text ends
+- **Stems** (`stem = "Working on"`) are entries whose text ends
   in a continuation written by the cheap model; each has a `generic_end`
   used when personalization is off or fails.
 - **Versioned.** A text change bumps `version`; ids are never reused. Old
@@ -518,10 +518,10 @@ stem that is true for every message on that route, and a fast, cheap model
 writes only the rest of the sentence.
 
 ```text
-stem  (bank, shown at ~600 ms): "We'll dispatch Coder to"
+stem  (bank, shown at ~600 ms): "Working on"
 ask   (cheap model):  continue the sentence with what the user asked for,
                       in at most 20 words, as a verb phrase
-continuation (≤ 1.8 s): " find where the relay's retry timeout is set in OpenAgentsInc/openagents and make it configurable."
+continuation (≤ 1.8 s): " finding where the relay's retry timeout is set in OpenAgentsInc/openagents and making it configurable."
 ```
 
 **Continuation only.** The model never rewrites the stem. That keeps NIP-CJ's
@@ -804,7 +804,7 @@ Sample answers:
 - **Examples:** "fix the flaky test in crates/coder and open a PR", "look
   through my repo and tell me how auth works", "what's in the README of
   OpenAgentsInc/psionic", "bump the version and tag a release".
-- **Tier:** T4 offer, with a T1 sentence: stem "We'll dispatch Coder to" +
+- **Tier:** T4 offer, with a T1 sentence: stem "Working on" +
   continuation, then the `run_coder` offer (computer ready) or
   `dispatch.no_computer` + `open_screen: account.computers` (none ready).
 - **Data:** `context.computer_ready`; the transcript becomes the task prompt
@@ -1871,3 +1871,35 @@ read files. What changed:
   rubric and bank wording that serve them `meta.map.desktop` on the desktop,
   and the `explain` opener's new line, "We'll look that up for you."
   See [the measurement](../measurements/2026-10-01-essays-route.md#summaries-of-our-essays-and-the-map-on-the-desktop-10102).
+
+### Replies that start work begin with the verb (2026-10-02)
+
+Fixed in [#10212](https://github.com/OpenAgentsInc/openagents/issues/10212).
+The owner, on "We'll have Coder pick up one of the open issues …": "dont
+talk about Coder ... speak like 'Picking up one of the...' just the verb". A
+reply that starts work begins with the verb in its -ing form and names no
+one doing it. What changed (the route rubric and its digest did not, so no
+recalibration):
+
+- **The bank** (version 3 of each `dispatch.*` stem, 2 of `cli.run`):
+  `dispatch.stem` "Working on" + "fixing the flaky relay test." (generic end
+  "this."); `dispatch.explore_stem` "Looking through" (generic end "the
+  code."); `dispatch.github_stem` "Picking up"; `dispatch.capability_stem`
+  "Using {capability} to"; `dispatch.engine_stem` "Starting {engine} on
+  this."; `cli.run` "Running the openagents command for that on this
+  computer."
+- **Personalization.** The prompt asks for the -ing form after a stem ending
+  in "on", and -ing for every listed verb after an -ing stem; `check`
+  refuses a continuation that hands the work to someone by name ("have
+  Coder", "Coder will", "dispatch"), so the generic end shows instead.
+- **The chat instructions** (`basic_coder::INSTRUCTIONS`,
+  `INSTRUCTIONS_ON_COMPUTER`) say the same for a model-written reply.
+- **The eval** `crates/coder/tests/dispatch_ack_eval.rs` over
+  `crates/coder/fixtures/chat-router/dispatch-ack-v1.json`: recorded
+  continuations replayed through `check` and `close_stem`, every bank line
+  that starts work, and live runs against the personalization model and the
+  hosted chat.
+- **Not changed:** the locked labeled set `routes-v4.json` keeps its earlier
+  assistant turns ("We'll dispatch Coder ...") as recorded transcripts;
+  changing them would move the calibrated eval, and the route question does
+  not read the bank's stems.

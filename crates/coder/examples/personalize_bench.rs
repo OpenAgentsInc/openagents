@@ -28,83 +28,68 @@ use coder::router::{RouteId, redact};
 /// `(stem, message)`: what a user on the `work.dispatch` route writes.
 const CASES: &[(&str, &str)] = &[
     (
-        "We'll dispatch Coder to",
+        "Working on",
         "fix the flaky retry test in crates/coder and open a PR",
     ),
+    ("Working on", "make the relay's retry timeout configurable"),
+    ("Working on", "bump the version to 1.4.2 and tag a release"),
+    ("Working on", "can you add dark mode to my settings page"),
     (
-        "We'll dispatch Coder to",
-        "make the relay's retry timeout configurable",
-    ),
-    (
-        "We'll dispatch Coder to",
-        "bump the version to 1.4.2 and tag a release",
-    ),
-    (
-        "We'll dispatch Coder to",
-        "can you add dark mode to my settings page",
-    ),
-    (
-        "We'll dispatch Coder to",
+        "Working on",
         "rename the UserService class to AccountService everywhere",
     ),
     (
-        "We'll dispatch Coder to",
+        "Working on",
         "upgrade tokio to the latest version and fix whatever breaks",
     ),
     (
-        "We'll dispatch Coder to",
+        "Working on",
         "write unit tests for the quota module, it has none",
     ),
     (
-        "We'll dispatch Coder to",
+        "Working on",
         "the build is failing on main with a linker error, please fix it",
     ),
+    ("Working on", "add a --json flag to the list command"),
     (
-        "We'll dispatch Coder to",
-        "add a --json flag to the list command",
-    ),
-    (
-        "We'll dispatch Coder to",
+        "Working on",
         "refactor my python script to use async requests instead of threads",
     ),
     (
-        "We'll dispatch Coder to",
+        "Working on",
         "delete the dead code in src/legacy and make sure everything still compiles",
     ),
     (
-        "We'll dispatch Coder to",
+        "Working on",
         "set up a GitHub Action... actually no, just add a Makefile with build and test targets",
     ),
     (
-        "We'll have Coder look through",
+        "Looking through",
         "look through my rails repo and tell me how auth works",
     ),
     (
-        "We'll have Coder look through",
+        "Looking through",
         "what's in the README of OpenAgentsInc/psionic",
     ),
     (
-        "We'll have Coder look through",
+        "Looking through",
         "find where the chat worker's quota is implemented",
     ),
     (
-        "We'll have Coder look through",
+        "Looking through",
         "explore the codebase and tell me which crates depend on nostr",
     ),
     (
-        "We'll have Coder look through",
+        "Looking through",
         "how does our deploy script decide which binary to ship?",
     ),
     (
-        "We'll have Coder pick up",
+        "Picking up",
         "work on issue #9920 in OpenAgentsInc/openagents",
     ),
+    ("Picking up", "review PR 412 on my repo and leave comments"),
     (
-        "We'll have Coder pick up",
-        "review PR 412 on my repo and leave comments",
-    ),
-    (
-        "We'll have Coder pick up",
+        "Picking up",
         "take the top open bug in my tracker and fix it",
     ),
 ];

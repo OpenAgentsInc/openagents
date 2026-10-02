@@ -6070,7 +6070,7 @@ mod coder_events {
             total: 2,
             turns: vec![
                 Turn::user("add a unit test for slugify"),
-                Turn::assistant("We'll dispatch Coder to add a unit test for slugify.", None),
+                Turn::assistant("Working on adding a unit test for slugify.", None),
             ],
             coder: Some(Spawned {
                 host: "local".into(),

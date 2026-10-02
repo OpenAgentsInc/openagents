@@ -1612,10 +1612,7 @@ mod computer_context_tests {
         let request = crate::basic_coder::payload(
             &[
                 crate::basic_coder::Turn::user("do a test delegation to claude"),
-                crate::basic_coder::Turn::assistant(
-                    "We'll dispatch Coder, asking for Claude Code, to take this on.",
-                    None,
-                ),
+                crate::basic_coder::Turn::assistant("Starting Claude Code on this.", None),
                 crate::basic_coder::Turn::user("summarize what happened"),
             ],
             &context,

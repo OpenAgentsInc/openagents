@@ -361,7 +361,7 @@ never the model's words.
 | `CHAT-4` | "Test Project map on Coder" | "We'll run 8 tests with Project map and without it. It takes about 5 minutes." and `CARD-01` with **Start the test**; the run starts only on that tap. | `LOOP-3` | EXISTS (the hosted runner; run live on 2026-09-29) |
 | `CHAT-5` | "How did my test do?", "Did Coder get better?" | `CARD-04` from the player's own result ("5 of 8 → 7 of 8 tests with Project map. Better.") with **See details** and **Add to the Gym**. | `LOOP-4` | EXISTS (`eval.result`; the phone draws its own latest result) |
 | `CHAT-6` | "How do I earn XP?", "What level am I?" | A prepared or product answer; "Level 2, 93 XP to level 3" from the player's card, and `CARD-07` when they have credit. | `LOOP-6` | EXISTS (`eval.credit` and the XP notes; `CARD-07` from the phone's ledger) |
-| `CHAT-7` | "Fix the failing test in my repo", "Look through this project" | "We'll dispatch Coder to …" and **Run Coder on** the computer, or **Connect a computer** when none is added. Coder's reply streams into its own chat (`SCR-19`). | Beyond the loop (your own code) | EXISTS (`work.dispatch`; `SCR-17.E05`) |
+| `CHAT-7` | "Fix the failing test in my repo", "Look through this project" | "Working on …" and **Run Coder on** the computer, or **Connect a computer** when none is added. Coder's reply streams into its own chat (`SCR-19`). | Beyond the loop (your own code) | EXISTS (`work.dispatch`; `SCR-17.E05`) |
 | `CHAT-8` | "Where's my wallet?", "How do I report a bug?", "Which computers are online?" | A short answer and a screen chip (**Open Wallet**, **Your computers**, **Identity keys**, **Playtest**, **Report a problem**) or a read-only command card. | Support | EXISTS on the phone; the worker's command proposals are PARTIAL |
 | `CHAT-9` | "What's new in the Gym?", "What are people working on?", "What's the latest?" | A grounded answer from the Gym's records (new results, test sets, checks waiting, tools Coder adopted) and our changelog, as `CARD-05`, every item with its source; at most one offer. | `LOOP-1` | EXISTS (`gym.news` from the Gym's records) |
 | `CHAT-10` | "Help me make a tool that …", "Write tests for my tool" | The interview, one question per turn: what the tool is for, what a good run looks like, then a draft as `CARD-02` with **Looks good** and **Change it**. | `LOOP-2` | EXISTS (`eval.author` and the authoring interview) |
@@ -2199,7 +2199,7 @@ needed.
 
 ```
  SCR-17  "Fix the failing login test in my repo"
-   |     "We'll dispatch Coder to fix the failing login test."
+   |     "Working on fixing the failing login test."
    |
    +-- computer ready -->  [Run Coder on Studio Mac]
    |                          | tap

@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v4@9d17e4d3e2d7",
-  "bank": "chat-answers-v1@cfc839ef703b",
+  "bank": "chat-answers-v1@d8b84f3faf1d",
   "routes": [
     {
       "id": "meta",
@@ -576,7 +576,7 @@
     },
     {
       "id": "dispatch.stem",
-      "version": 2,
+      "version": 3,
       "routes": [
         "work.dispatch"
       ],
@@ -594,7 +594,7 @@
     },
     {
       "id": "dispatch.explore_stem",
-      "version": 2,
+      "version": 3,
       "routes": [
         "work.dispatch"
       ],
@@ -612,7 +612,7 @@
     },
     {
       "id": "dispatch.github_stem",
-      "version": 2,
+      "version": 3,
       "routes": [
         "work.dispatch"
       ],
@@ -630,7 +630,7 @@
     },
     {
       "id": "dispatch.capability_stem",
-      "version": 2,
+      "version": 3,
       "routes": [
         "work.dispatch"
       ],
@@ -649,7 +649,7 @@
     },
     {
       "id": "dispatch.engine_stem",
-      "version": 2,
+      "version": 3,
       "routes": [
         "work.dispatch"
       ],
@@ -715,7 +715,7 @@
     },
     {
       "id": "cli.run",
-      "version": 1,
+      "version": 2,
       "routes": [
         "cli"
       ],

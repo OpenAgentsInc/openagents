@@ -67,7 +67,7 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   Code decides what is shown. A turn that sends `"router":
   "chat-router-v1"` (build 20 of the app) gets every tier: a whole answer
   from the reviewed bank (`crates/coder/answers/chat-answers-v1.toml`) with
-  followup chips, a refusal, a "We'll dispatch Coder to …" stem with a Run
+  followup chips, a refusal, a "Working on …" stem with a Run
   Coder or Connect a computer offer, a wallet or account answer with its
   screen offered, or the model led by an opener. A turn that sends only
   `"opener": true` (builds 19 and earlier) gets a whole answer with no offer, an
@@ -132,8 +132,8 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   another question set than this build asks (rerun the published eval to
   refit), and logs when the bank has moved since the fit. The maps change
   only probabilities, never which route or answer was chosen.
-- **Personalization (T1).** The chat router's stems ("We'll dispatch Coder
-  to …") are finished by a cheap model through `coder::router::personalize`;
+- **Personalization (T1).** The chat router's stems ("Working on …",
+  "Looking through …", "Picking up …") are finished by a cheap model through `coder::router::personalize`;
   the worker reads `personalize::seam_from_env()` at start, and its
   `router` line names whether personalization is on. It is off unless the
   worker's environment sets it:

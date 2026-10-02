@@ -625,7 +625,7 @@ fn the_cli_handoff_tells_the_engine_the_routing_is_done() {
     let turns = vec![
         Turn::user("do a test delegation to claude"),
         Turn::assistant(
-            "We'll dispatch Coder, asking for Claude Code, to take this on.",
+            "Starting Claude Code on this.",
             Some(Meta {
                 offers: vec![Offer::RunCoder],
                 engine: Some(nostr::cj_conversation::Engine::ClaudeCode),
@@ -1054,7 +1054,7 @@ impl Door for StandInJev {
         Box::pin(async move {
             let mut reply = lock(&reply);
             reply.text = if work {
-                "Coder will do that.".into()
+                "Working on that.".into()
             } else {
                 "The review found two issues.".into()
             };
@@ -1153,7 +1153,7 @@ impl Door for Proposes {
         let argv = self.0.clone();
         Box::pin(async move {
             let mut reply = lock(&reply);
-            reply.text = "We're running the openagents command for that on this computer.".into();
+            reply.text = "Running the openagents command for that on this computer.".into();
             let mut meta = Meta {
                 route: Some("wallet".into()),
                 tier: Some("cli".into()),

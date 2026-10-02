@@ -1369,7 +1369,7 @@ mod tests {
             panic!("{tier:?}");
         };
         assert_eq!(answer.id, "dispatch.explore_stem");
-        assert_eq!(stem, "We'll have Coder look through");
+        assert_eq!(stem, "Looking through");
         assert!(generic_end.starts_with(' '));
         assert!(matches!(offer, Some(Offer::RunCoder { .. })));
         assert!(*personalize);
@@ -1875,7 +1875,7 @@ mod tests {
             panic!("{tier:?}");
         };
         assert_eq!(answer.id, "dispatch.engine_stem");
-        assert_eq!(stem, "We'll dispatch Claude Code to");
+        assert_eq!(stem, "Starting Claude Code on");
         // Closed by its generic end, never a continuation.
         assert!(matches!(
             tier,
@@ -1942,7 +1942,7 @@ mod tests {
             panic!("{tier:?}");
         };
         assert_eq!(answer.id, "dispatch.capability_stem");
-        assert_eq!(stem, "We'll dispatch Coder, with Project map, to");
+        assert_eq!(stem, "Using Project map to");
         assert!(matches!(offer, Some(Offer::RunCoder { .. })));
         assert_eq!(tier.word(), "offer");
         // Coder itself, or an unsure reading, is the plain stem.

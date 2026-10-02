@@ -1,7 +1,7 @@
 message user
   markdown "add a unit test for slugify"
 message assistant
-  markdown "We'll dispatch Coder to add a unit test for slugify."
+  markdown "Working on adding a unit test for slugify."
 vertical stack [card]
   body "Codex is working."
 message user
